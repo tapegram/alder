@@ -5001,20 +5001,27 @@ production's.
 
 #### One browser per test
 
-For each task test, `rtesting.Run` puts a slot
-in the test's `context` holding the routes and options.
-`rtesting.BrowserOf(env)` finds the slot and makes the browser the first
-time a step asks (`rt/testing/browser.go`, `NewBrowser`). A context
-value, not a global, so each test's browser is its own, and a step
-inside `Test.run` (which runs on the same `Env`) finds the same one.
-`NewBrowser` calls `web.NewRouter(routes, opts)`, replacing a few
-options: the test's store and capabilities; a clock for the cookie that
-stands still; dev mode off; a fixed key for signing cookies; a log that
-keeps the router's last error line, which becomes `RequestFailed`'s text; and
-four hooks the router has for this: `EnvFor` and `Served`, below, `Rendered`,
-which hands the browser the full render of the page a Datastar answer was
-cut from, and `Answered`, which hands it the `rt.Response` a write route
-gave. The last two let a step check the answer it applied and name it
+For each task test, `rtesting.Run` puts a slot in the test's `context`
+holding the routes and options. `rtesting.BrowserOf(env)` finds the slot
+and makes the browser the first time a step asks (`rt/testing/browser.go`,
+`NewBrowser`). A context value, not a global, so each test's browser is its
+own, and a step inside `Test.run` (which runs on the same `Env`) finds the
+same one.
+
+`NewBrowser` calls `web.NewRouter(routes, opts)`, replacing a few options:
+
+- the test's store and capabilities;
+- a clock for the cookie that stands still;
+- dev mode off;
+- a fixed key for signing cookies;
+- a log that keeps the router's last error line, which becomes
+  `RequestFailed`'s text;
+- four hooks the router has for this: `EnvFor` and `Served`, below,
+  `Rendered`, which hands the browser the full render of the page a
+  Datastar answer was cut from, and `Answered`, which hands it the
+  `rt.Response` a write route gave.
+
+The last two let a step check the answer it applied and name it
 (`Rendered r`, `Refreshed`) without parsing the events for it.
 
 #### `EnvFor`: a request inside the test's transaction
@@ -5041,29 +5048,33 @@ type Within struct {
 ```
 
 `Tx` is the test's transaction, begun by the browser if no step has yet
-(`env.Transaction()`). With `Within` set, `eff.Run` (`rt/eff/run.go`)
-never begins or commits: a `Query` (a route's `load`) reads through
-`Tx`; a `Task` (an `update`) takes `SAVEPOINT alder_tN` as it starts,
-then `RELEASE` when it succeeds, or `ROLLBACK TO` and `RELEASE` when it
-fails, the same three statements as `Test.run`'s. The savepoint is taken
-at once rather than at the first step, so that writes made by effects
-the task starts on other `Env`s are inside it too. The request's `Env`
-shares the test's store, capabilities (read at each request, so a
-`Test.fake` installed later applies), clock and log, and after each
-request the browser appends that `Env`'s trace to the test's: the
-step's name first (the `Call`), then the request's effects.
+(`env.Transaction()`).
+
+With `Within` set, `eff.Run` (`rt/eff/run.go`) never begins or commits: a
+`Query` (a route's `load`) reads through `Tx`; a `Task` (an `update`) takes
+`SAVEPOINT alder_tN` as it starts, then `RELEASE` when it succeeds, or
+`ROLLBACK TO` and `RELEASE` when it fails, the same three statements as
+`Test.run`'s. The savepoint is taken at once rather than at the first step, so
+that writes made by effects the task starts on other `Env`s are inside it too.
+
+The request's `Env` shares the test's store, capabilities (read at each
+request, so a `Test.fake` installed later applies), clock and log, and after
+each request the browser appends that `Env`'s trace to the test's: the step's
+name first (the `Call`), then the request's effects.
 
 #### `Served` and `Request.Model`: the model
 
-`Test.get` gives the model
-the page rendered, so it must come from the request itself. Each GET
-route's handler sets it on the request before rendering, `rq.Model =
-model` (section 8, "A request"), in every build; production ignores
-it. `web.Options.Served`, when set, is called with each request after
-its handler answers. The browser's keeps `rq.Model`, and `ModelOf`
-returns it with its Go type, or fails "GET /: the page gave no model".
-`load` runs once, so a route that reads the clock in `load` shows the
-time its model holds.
+`Test.get` gives the model the page rendered, so it must come from the request
+itself. Each GET route's handler sets it on the request before rendering,
+`rq.Model = model` (section 8, "A request"), in every build; production
+ignores it.
+
+`web.Options.Served`, when set, is called with each request after its handler
+answers. The browser's keeps `rq.Model`, and `ModelOf` returns it with its Go
+type, or fails "GET /: the page gave no model".
+
+`load` runs once, so a route that reads the clock in `load` shows the time its
+model holds.
 
 #### Requests in memory
 
@@ -5075,146 +5086,181 @@ and, as `Referer`, the held page's address. `router.ServeHTTP` writes the
 answer into an `httptest.ResponseRecorder`, and the browser reads it:
 
 - `200` with HTML: the page is shown; the browser parses it and holds it.
+
 - `303`: followed with a `GET` (at most ten in a row), and the answer is
-  `Redirected` with the page it ends on. A target with a scheme or a
-  host is another site: `Redirected` with that address, nothing
-  fetched, the held page kept.
-- `404` and `500`: `PageMissing` and `RequestFailed`, holding the page served.
+  `Redirected` with the page it ends on. A target with a scheme or a host
+  is another site: `Redirected` with that address, nothing fetched, the
+  held page kept.
+
+- `404` and `500`: `PageMissing` and `RequestFailed`, holding the page
+  served.
+
 - A Datastar answer (`text/event-stream`) is a list of events, applied in
-  order. A `datastar-patch-elements` event whose selector is `body`
-  replaces the held `<body>` with the one it carries, and one whose
-  selector is `head > title` the held `<title>`. One whose selector is
-  `#<id>` in mode `outer` replaces the held element with that `id`: the
-  regions of a `refresh` or an `invalid`, the one element of a `render` or
-  an element fetch. The held page without an element of that id cannot take
-  it, and the step fails ("the answer patched `#row-1`, which the page does
-  not have"), where a real browser would drop the patch silently. One
-  whose selector is `#_alder_shown` records the hash of the body shown
-  (`Browser.shown`, sent with the next write). One that appends to
-  `al-toasts` is read into the step's `notices` and `toasts`. An event that
-  runs `window.location.assign(…)`, Datastar's way of navigating, is
-  followed with a `GET`, as above. An event that runs `history.pushState`
-  (the router followed a redirect itself, "A redirect, followed") makes its
-  URL the held page's address, and the answer is what the `GET` of it would
-  have given: `Redirected` with that page, or `PageMissing` or
-  `RequestFailed` by `Alder-Status`. After a patch, the router's
-  `Alder-Status` header (set on a Datastar answer that is a 404 or a 500,
-  which is otherwise a `200` patch like any other) gives `PageMissing` or
-  `RequestFailed`.
+  order. A `datastar-patch-elements` event is applied by its selector:
+
+  - `body` replaces the held `<body>` with the one it carries.
+  - `head > title` replaces the held `<title>`.
+  - `#<id>` in mode `outer` replaces the held element with that `id`: the
+    regions of a `refresh` or an `invalid`, the one element of a `render`
+    or an element fetch.
+  - `#_alder_shown` records the hash of the body shown (`Browser.shown`,
+    sent with the next write).
+  - Appending to `al-toasts` is read into the step's `notices` and
+    `toasts`.
+
+  The held page without an element of that id cannot take a patch, and the
+  step fails ("the answer patched `#row-1`, which the page does not
+  have"), where a real browser would drop the patch silently.
+
+  Other events are handled as well:
+
+  - An event that runs `window.location.assign(…)`, Datastar's way of
+    navigating, is followed with a `GET`, as above.
+  - An event that runs `history.pushState` (the router followed a redirect
+    itself, "A redirect, followed") makes its URL the held page's address,
+    and the answer is what the `GET` of it would have given: `Redirected`
+    with that page, or `PageMissing` or `RequestFailed` by `Alder-Status`.
+  - After a patch, the router's `Alder-Status` header (set on a Datastar
+    answer that is a 404 or a 500, which is otherwise a `200` patch like
+    any other) gives `PageMissing` or `RequestFailed`.
 
 Which `Answer` a patch comes to is not read from the events. The router's
-`Answered` hook gave the browser the `rt.Response` the write route
-answered, and `sendRoute` reads its kind: a `render r` is `Rendered r` (once
-the element check below has passed), a `refresh` is `Refreshed`, an
-`invalid` is `FormRejected`, with the errors the page now shows in its
-`<ul class="errors" data-errors="…">` lists, in page order
-(`data-errors="form"` as the field `""`). A click on a GET route is an
-element fetch and is `Rendered r` too. A redirect is `Redirected`; a 404 or
-a 500 is `PageMissing` or `RequestFailed`. `Rerendered` is what a patch with
-no `Answered` response comes to, the older form's re-render.
+`Answered` hook gave the browser the `rt.Response` the write route answered,
+and `sendRoute` reads its kind: a `render r` is `Rendered r` (once the element
+check below has passed), a `refresh` is `Refreshed`, an `invalid` is
+`FormRejected`, with the errors the page now shows in its `<ul class="errors"
+data-errors="…">` lists, in page order (`data-errors="form"` as the field
+`""`).
+
+A click on a GET route is an element fetch and is `Rendered r` too. A redirect
+is `Redirected`; a 404 or a 500 is `PageMissing` or `RequestFailed`.
+`Rerendered` is what a patch with no `Answered` response comes to, the older
+form's re-render.
 
 #### Controls
 
-Before a `submit` or `click` is sent, the browser looks
-for the control on the held page. A page's controls are the Datastar
-actions its views render (`rt/html` `RouteClick` and `RouteSubmit`): a
-`<form>`'s `data-on:submit="…@post('/_/Submit?filter=Active', …)"`, or a
-button's `data-on:click`. `routeControl` walks the held document in
-order, reads each action with a regular expression (`routeAction`: the
-verb, the URL, and whether it sends a form), and keeps the first whose
-`rt.RouteKey` (its method, then `rt.MsgKey`: the path and the route's own
-parameters) equals that of the route the test wrote. A form that posts a
-`_method` field (a `PUT`, `PATCH` or `DELETE` route) has that as its method.
+Before a `submit` or `click` is sent, the browser looks for the control on the
+held page. A page's controls are the Datastar actions its views render
+(`rt/html` `RouteClick` and `RouteSubmit`): a `<form>`'s
+`data-on:submit="…@post('/_/Submit?filter=Active', …)"`, or a button's
+`data-on:click`. `routeControl` walks the held document in order, reads each
+action with a regular expression (`routeAction`: the verb, the URL, and
+whether it sends a form), and keeps the first whose `rt.RouteKey` (its method,
+then `rt.MsgKey`: the path and the route's own parameters) equals that of the
+route the test wrote.
+
+A form that posts a `_method` field (a `PUT`, `PATCH` or `DELETE` route) has
+that as its method.
+
 A `submit` does not count a click button's own little form
-(`class="_alder-click"`) as a form; a `click` counts it, and any element
-whose `data-on:click` requests the route. With no match it sends nothing
-and returns a `*NoControlError`, whose text the test fails with; it names
-the held page's URL and the route as the test wrote it. A submit then sends only the
-fields the matched form has an `input`, `select` or `textarea` for, by
-`name`, as Datastar's form serialization does (`Fields.For`). The generated
-`encode__M__F` returns the encoded fields together with `Absent`, the
-names whose value is what the decoder makes of a missing field (a
-`Maybe` without a default that is `Nothing`, a field equal to its
-default); such a field without an input is left out, and any other one
-is a `*NoInputError`, "the page's form F has no input `n`".
+(`class="_alder-click"`) as a form; a `click` counts it, and any element whose
+`data-on:click` requests the route.
+
+With no match it sends nothing and returns a `*NoControlError`, whose text the
+test fails with; it names the held page's URL and the route as the test wrote
+it.
+
+A submit then sends only the fields the matched form has an `input`, `select`
+or `textarea` for, by `name`, as Datastar's form serialization does
+(`Fields.For`).
+
+The generated `encode__M__F` returns the encoded fields together with
+`Absent`, the names whose value is what the decoder makes of a missing field
+(a `Maybe` without a default that is `Nothing`, a field equal to its default);
+such a field without an input is left out, and any other one is a
+`*NoInputError`, "the page's form F has no input `n`".
 
 The request is then the one the page's script would make (`sendRoute`):
 Datastar's verb for the route (`PATCH` for a `PATCH` route; a `DELETE` that
 sends a form is a `POST`), `Datastar-Request: true`, `Alder-Page`, the held
-page's address, and `Alder-Build`, the build the held page names. A GET
-route is an element fetch, with `Alder-Fetch: 1` and no hash; a write sends
-`Alder-Shown`, the hash of the body held. The body is the form's fields
-url-encoded (a click button's own form sends only its `_method`), or
-else the script's empty payload: `{}` as a JSON body, or, for a `GET` or a
-`DELETE`, `datastar={}` in the query, which the router drops. The test
-never writes the body of a `click`: a route with `form F` clicked gets what
-the page sends, and `F` decodes as it can.
+page's address, and `Alder-Build`, the build the held page names.
+
+A GET route is an element fetch, with `Alder-Fetch: 1` and no hash; a write
+sends `Alder-Shown`, the hash of the body held.
+
+The body is the form's fields url-encoded (a click button's own form sends
+only its `_method`), or else the script's empty payload: `{}` as a JSON body,
+or, for a `GET` or a `DELETE`, `datastar={}` in the query, which the router
+drops.
+
+The test never writes the body of a `click`: a route with `form F` clicked
+gets what the page sends, and `F` decodes as it can.
 
 #### The checks
 
-After a patch the browser compares what it holds with what
-the server would have sent whole. The `Rendered` hook gave it the full
-render the router cut the answer from (`refresh`, `invalid`, a followed
-redirect), and `checkPatched` parses that render the way a browser's parser
-builds a page (`html.Repair`) and compares it with the page now held: the
-whole body when the answer replaced the body, else only the regions the
-answer patched, each by its `id`. If they differ the step fails with a
-`DriftError` that names where. This is the region check, chapter 6's
-guarantee ("every region the server sent is right") made a test. For a
-`render` or an element fetch `checkElement` fetches the route's own address
-once more, as an element fetch, inside a savepoint it rolls back
-(`quietly`), and compares the element the held page now has with the
-element that comes back; the two are equal by construction, and the check
-is what proves it (an `ElementError` otherwise). `Test.refresh` is the
-whole-page check, and is the developer's: it sends a plain `GET` for the
-address held, as a reload does, and compares the body it gets with the body
-held (`refreshBody`: without the toasts, which a reload may fill from a
-notice), failing with a `RefreshError` that gives the first difference.
+After a patch the browser compares what it holds with what the server would
+have sent whole. The `Rendered` hook gave it the full render the router cut
+the answer from (`refresh`, `invalid`, a followed redirect), and
+`checkPatched` parses that render the way a browser's parser builds a page
+(`html.Repair`) and compares it with the page now held: the whole body when
+the answer replaced the body, else only the regions the answer patched, each
+by its `id`. If they differ the step fails with a `DriftError` that names
+where.
+
+This is the region check, chapter 6's guarantee ("every region the server sent
+is right") made a test.
+
+For a `render` or an element fetch `checkElement` fetches the route's own
+address once more, as an element fetch, inside a savepoint it rolls back
+(`quietly`), and compares the element the held page now has with the element
+that comes back; the two are equal by construction, and the check is what
+proves it (an `ElementError` otherwise).
+
+`Test.refresh` is the whole-page check, and is the developer's: it sends a
+plain `GET` for the address held, as a reload does, and compares the body it
+gets with the body held (`refreshBody`: without the toasts, which a reload may
+fill from a notice), failing with a `RefreshError` that gives the first
+difference.
 
 #### Parsing the page
 
-`rt/html` already renders a view to text. For the
-browser it gained `Parse` (`rt/html/parse.go`), which reads that text
-back into the same `Node` tree: elements with their attributes in order,
-text with its entities decoded, the contents of `<script>` and
-`<style>` kept as they are. It is written for the renderer's own
-output, which is always regular (lower-case names, quoted values, `<br
-/>`), and tested on it: every page of both examples, rendered by the
-built apps, parses and renders back byte for byte. The browser drops
-the `<!doctype html>` line and the Datastar `<script>` tag the router
-adds, so the held tree is what `view` made. `Select(node, selector)`
-walks the tree in document order and keeps each element that matches
-the selector's last compound, checking the ones before it against the
-element's ancestors (any ancestor for a space, the parent for `>`).
-`TextContent` joins the text inside an element and collapses its
-whitespace. `Doc`'s `==` is `Node.Equal` of the two trees (after
-`html.WithoutPageParams`, which an address in the older message form
-needs and a route's does not), so a page compares equal to
-`Test.doc (view …)`, which renders without a request. When a test's `==` of two `Doc`s is
-`False`, `rtesting.Eq` records `html.Diff` instead of the two markups:
-the path of the first element whose content differs and that element on
-each side, cut to 120 characters, which the report prints as `left:`,
-`right:` and `note:`.
+`rt/html` already renders a view to text. For the browser it gained `Parse`
+(`rt/html/parse.go`), which reads that text back into the same `Node` tree:
+elements with their attributes in order, text with its entities decoded, the
+contents of `<script>` and `<style>` kept as they are. It is written for the
+renderer's own output, which is always regular (lower-case names, quoted
+values, `<br />`), and tested on it: every page of both examples, rendered by
+the built apps, parses and renders back byte for byte.
+
+The browser drops the `<!doctype html>` line and the Datastar `<script>` tag
+the router adds, so the held tree is what `view` made.
+
+`Select(node, selector)` walks the tree in document order and keeps each
+element that matches the selector's last compound, checking the ones before it
+against the element's ancestors (any ancestor for a space, the parent for
+`>`).
+
+`TextContent` joins the text inside an element and collapses its whitespace.
+`Doc`'s `==` is `Node.Equal` of the two trees (after `html.WithoutPageParams`,
+which an address in the older message form needs and a route's does not), so a
+page compares equal to `Test.doc (view …)`, which renders without a request.
+
+When a test's `==` of two `Doc`s is `False`, `rtesting.Eq` records `html.Diff`
+instead of the two markups: the path of the first element whose content
+differs and that element on each side, cut to 120 characters, which the report
+prints as `left:`, `right:` and `note:`.
 
 #### Production
 
-None of this is in an app's binary. The step nodes, like
-`Test.run`'s, reach the emitter only from `test` bodies, which a
-production build does not emit (a step that reached it anyway would be
-the emitter's internal error, `testNode`); the `encode__` functions and
-the `selector__` variables are emitted only in test builds; and
-`TestGen_ProdHasNoTests` (`internal/gen/gen_test.go`) checks that a
-production build of a fixture app using every step has none of
-`encode__`, `selector__` or `BrowserOf`. What production gains is
-`Web()`, the routes' `rq.Model = model`, the router's four hooks, left
-unset, and the `Alder-Status` header on a Datastar answer that is a 404
-or a 500, which Datastar's client ignores. `rt/html` imports
-`rt/selector` (for `Select`), so the package is part of every
-app's build, but nothing in production calls `Parse` or `Select`, and
+None of this is in an app's binary. The step nodes, like `Test.run`'s, reach
+the emitter only from `test` bodies, which a production build does not emit (a
+step that reached it anyway would be the emitter's internal error,
+`testNode`); the `encode__` functions and the `selector__` variables are
+emitted only in test builds; and `TestGen_ProdHasNoTests`
+(`internal/gen/gen_test.go`) checks that a production build of a fixture app
+using every step has none of `encode__`, `selector__` or `BrowserOf`.
+
+What production gains is `Web()`, the routes' `rq.Model = model`, the router's
+four hooks, left unset, and the `Alder-Status` header on a Datastar answer
+that is a 404 or a 500, which Datastar's client ignores.
+
+`rt/html` imports `rt/selector` (for `Select`), so the package is part of
+every app's build, but nothing in production calls `Parse` or `Select`, and
 the linker leaves their code out: `go tool nm` on a built app lists no
-`rt/selector` symbol. (The selector package keeps the HTML element
-names in a string rather than a map for the same reason: a map would be
-built when the binary starts.)
+`rt/selector` symbol.
+
+(The selector package keeps the HTML element names in a string rather than a
+map for the same reason: a map would be built when the binary starts.)
 
 ### Mutation testing
 
