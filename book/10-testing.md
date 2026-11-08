@@ -2494,12 +2494,12 @@ survivor's line gives:
 
 ### The operators
 
-Each mutant comes from one of twenty-seven **operators**, named by what it
+Each mutant comes from one of twenty-six **operators**, named by what it
 breaks, in five classes; every mutant is well-typed:
 
 | Class | Operator | What it changes |
 |---|---|---|
-| authorization | `requires dropped` | A route's `requires user` no longer redirects a visitor, who is served as `User.UserId "mutant"` (for a field that is a brand over `Text`); one mutant per route (and per old `page`) |
+| authorization | `requires dropped` | A route's `requires user` no longer redirects a visitor, who is served as `User.UserId "mutant"` (for a field that is a brand over `Text`); one mutant per route |
 | authorization | `role dropped` | A route's `requires user, role R` becomes `requires user` |
 | authorization | `scope dropped` | `Db.mine T` becomes `Db.from T`; the other scoped operations act on anyone's row; likewise `Db.scoped` and its family (not on a siloed table) |
 | authorization | `membership dropped` | A key's `via M` check removed: a `Session.put` of any org succeeds |
@@ -2514,11 +2514,10 @@ breaks, in five classes; every mutant is well-typed:
 | data | `session put dropped` | A `Session.put` step becomes `Task.succeed ()` |
 | flow | `redirect → refresh` | `Response.redirect r` becomes `Response.refresh` |
 | flow | `render → redirect` | `Response.render r` becomes `Response.redirect r` |
+| flow | `render → refresh` | `Response.render r` becomes `Response.refresh`: the whole page rendered again, not `r`'s element |
 | flow | `invalid → refresh` | `Response.invalid "message"` becomes `Response.refresh`: a refused write answered as a done one |
 | flow | `refresh → invalid` | `Response.refresh` becomes `Response.invalid "mutant"`: a done write answered as a refused one |
 | flow | `toast dropped` | One `Response.toast`, `success`, `warning` or `error` left out: the `Response` it decorates is answered without the notice |
-| flow | `redirect → rerender` | `Redirect page` becomes `Rerender`; old `Nav` only |
-| flow | `reject → rerender` | `Reject "message"` becomes `Rerender`; old `Nav` only |
 | flow | `arm swapped` | Two neighbouring arms of a `match` trade bodies (one mutant per pair) |
 | logic | `condition negated` | `if c` becomes `if not c` |
 | logic | `operator flipped` | `==`↔`!=`, `<`↔`<=`, `>`↔`>=`, `&&`↔`\|\|` |
@@ -2526,9 +2525,6 @@ breaks, in five classes; every mutant is well-typed:
 | logic | `not dropped` | `not e` becomes `e` |
 | schema | `default changed` | A table field's default: `False`↔`True`, a number → one more, `""`→`"x"`, a union's constructor → the next one |
 | schema | `cascade ↔ restrict` | A reference's delete rule, `@cascade`↔`@restrict` |
-
-Two operators are for what chapter 6 replaced, the old `Nav`; `requires
-dropped` and `role dropped` mutate an old `page`'s clause as a route's.
 
 A write route runs no `load` (chapter 6), so its own `requires`, its role
 and the access check its `update` begins with are all that stop a
