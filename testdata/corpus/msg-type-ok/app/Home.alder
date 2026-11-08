@@ -1,0 +1,12 @@
+module Home
+
+-- a route module's own `Msg` type: nothing generates one, so the name is free
+type Msg = { text: Text }
+
+route Home = GET "/" { }
+
+Home.load : Home.Params -> Session -> Query Msg
+Home.load params session = Query.succeed { text: "hi" }
+
+Home.view : Msg -> Session -> Html
+Home.view msg session = <p>{msg.text}</p>

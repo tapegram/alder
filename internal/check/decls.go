@@ -131,6 +131,9 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 			if (t.Ref.Module == mc.m.Name || t.Ref.Module == "App") && !strings.Contains(t.Ref.Name, ".") {
 				switch t.Name {
 				case "Msg":
+					if _, declared := c.types[c.key(t.Ref.Module, "Msg")]; declared {
+						break // the module's own `type Msg`: nothing generates one now
+					}
 					c.errorf(diag.RemovedSyntax, t.Span, "`Msg` is gone: a click or a form names a route, whose type is `Route`; %s", removedHint)
 					return types.Err
 				case "Session":
@@ -777,7 +780,7 @@ func (mc *modCtx) defineApp() {
 	mc.session = c.session
 	mc.checkDeploy(deploys)
 	mc.checkTheme(themes)
-	mc.reserveGenerated("the App module", map[string]string{"Msg": "the old `msg` declarations (E0046)", "Session": "the session"})
+	mc.reserveGenerated("the App module", map[string]string{"Session": "the session"})
 }
 
 // defineParams fills rec with the fields of params, the `{ … }` of a route (noun), and
