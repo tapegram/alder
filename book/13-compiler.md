@@ -194,12 +194,15 @@ If you have never read Go: `:=` declares a variable and gives it its first
 value, a function can return two values (`m, diags`), and `if err != nil`
 checks whether reading the file failed. `syntax.ParseFile` is the parser's
 entry point; it returns the module's AST and any parse errors, which the
-command then prints to stderr. `--tokens` calls `syntax.Tokens`, which
-runs the same parser but records each token it takes from the lexer, so
-HTML text shows up as the `Text` runs the parser asked for. `--ir` runs the
-pipeline `alder check` runs (load, resolve, check) and then `ir.Lower` and
-`ir.Dump`. The golden tests do the same thing in bulk: `TestParseGolden`
-in `internal/syntax/parser_test.go` parses every
+command then prints to stderr.
+
+`--tokens` calls `syntax.Tokens`, which runs the same parser but records
+each token it takes from the lexer, so HTML text shows up as the `Text`
+runs the parser asked for. `--ir` runs the pipeline `alder check` runs
+(load, resolve, check) and then `ir.Lower` and `ir.Dump`.
+
+The golden tests do the same thing in bulk: `TestParseGolden` in
+`internal/syntax/parser_test.go` parses every
 `testdata/golden/parse_*.alder` and compares its dump with the `.dump` file
 beside it.
 
@@ -218,12 +221,16 @@ Read it from the outside in:
 - `(val area : (fn Shape -> Float) s = …)` is a value declaration: its
   name, its signature (a function type from `Shape` to `Float`), its
   parameter `s`, and its body.
+
 - `(match (var s) …)` is the `match`; `(var s)` is a reference to the name
   `s`. The parser doesn't know yet what `s` refers to.
+
 - `(arm (pctor Circle r) …)` is an arm whose pattern is a constructor
   pattern `Circle` with a variable `r` inside.
+
 - `(prec (w w) (h h))` is a record pattern: field `w` bound to `w`, field
   `h` bound to `h`.
+
 - `(* (* (float 3.14) (var r)) (var r))` is `3.14 * r * r`. The nesting
   shows that `*` groups to the left: `(3.14 * r) * r`.
 
@@ -274,12 +281,15 @@ E0005. That rule lets the compiler find a module from its name alone.
 
 Each `import` is an edge in the **module graph** (`internal/names/graph.go`).
 The graph must have no cycles: if `A` imports `B` and `B` imports `A`,
-neither can be understood first, and you get E0006. Two module names may
-not differ only in case either (`Ab` and `AB`, E0014): each module becomes
-a file named after it, and on a case-insensitive file system the two would
-be one file. With no cycles, the
-modules can be put in an order where every module comes after the modules
-it imports (`Program.Order`). Every later stage walks modules in that order.
+neither can be understood first, and you get E0006.
+
+Two module names may not differ only in case either (`Ab` and `AB`, E0014):
+each module becomes a file named after it, and on a case-insensitive file
+system the two would be one file.
+
+With no cycles, the modules can be put in an order where every module comes
+after the modules it imports (`Program.Order`). Every later stage walks
+modules in that order.
 
 Then `resolve.go` visits every name. `s` in `area` is the parameter. `List.map`
 is the stdlib function `map` in module `List`. `Circle` is the constructor
@@ -301,21 +311,25 @@ app/Index.alder:5:28: error[E0201]: module `Todo` is not imported
 
 Three things keep it to one:
 
-- The resolver reports each missing module once per module. It keeps a
-  `reported` set (`notImported` in `internal/names/resolve.go`) and skips
-  any module already in it. (This is not exact for a nested module such as
-  `Table.Todo`: some uses are keyed by the written qualifier, so one missing
-  import can be reported more than once,
-  [#192](https://github.com/tapegram/alder/issues/192).)
-- Every unresolved reference gets the **poison type**, `types.Err` in
-  `internal/types/types.go`. Poison unifies with every type without
-  complaint (`unify` in `unify.go` returns early when either side is
-  poison), so `List Todo` failing to resolve can't cause a second error
+- **Once per module.** The resolver reports each missing module once per
+  module. It keeps a `reported` set (`notImported` in
+  `internal/names/resolve.go`) and skips any module already in it.
+
+- **Poison type.** Every unresolved reference gets the **poison type**,
+  `types.Err` in `internal/types/types.go`. Poison unifies with every type
+  without complaint (`unify` in `unify.go` returns early when either side
+  is poison), so `List Todo` failing to resolve can't cause a second error
   where `model.todos` is used. Poison never appears in a message.
-- A module whose names failed to resolve has its value bodies skipped
-  (pass 4 in `internal/check/check.go`), because checking them would only
-  repeat the same problem. Every other module is still checked in full, so
-  a missing import never hides type errors elsewhere.
+
+- **Skipped bodies.** A module whose names failed to resolve has its value
+  bodies skipped (pass 4 in `internal/check/check.go`), because checking
+  them would only repeat the same problem. Every other module is still
+  checked in full, so a missing import never hides type errors elsewhere.
+
+> **Not exact for nested modules.** The once-per-module rule is not exact
+> for a nested module such as `Table.Todo`: some uses are keyed by the
+> written qualifier, so one missing import can be reported more than once,
+> [#192](https://github.com/tapegram/alder/issues/192).
 
 One cause, one diagnostic, one fix. That matters because an agent fixes
 the first error it reads; if one missing import produced five errors, it
@@ -327,12 +341,16 @@ The type checker (`internal/check`, using `internal/types`) decides what
 type every expression has and reports when two things that must agree
 don't.
 
+### Types
+
 To the checker, a **type** is a Go value from `internal/types/types.go`: a
 `Con` for a built-in like `Int` or `Float`, a `Record` or `Union` for your
 declarations, a `Fun` for a function, an `App` for things like `List Text`,
 a `Brand` for a brand, a `Param` for a type parameter (the `a` in
 `Card`'s `Html a`, which stands for any type, so one component serves every
 module's markup), or a `Var` for a type not yet known.
+
+### Unification
 
 That last kind is what makes **unification** work. When the checker meets
 something whose type it can't know yet, it invents a fresh variable, say
@@ -341,13 +359,18 @@ something whose type it can't know yet, it invents a fresh variable, say
 type, filling in variables as needed, or fail".
 
 Follow `m ?? 0` in `label`, where `m : Maybe Int`. The checker handles `??`
-in `inferBinOp` (`internal/check/expr.go`): it makes a fresh variable `t1`,
-checks the left side against `Maybe t1`, and checks the right side against
-`t1`. Unifying `Maybe Int` (the type of `m`) with `Maybe t1` succeeds and
-records `t1 = Int`. Checking `0` against `t1`, which is now `Int`,
-succeeds. The result of `??` is `t1`, which is `Int`, exactly what
-`Text.fromInt` needs. If the right side were a `Text`, the last step would
-fail. For `count m = m ?? "none"` with `count : Maybe Int -> Int`:
+in `inferBinOp` (`internal/check/expr.go`):
+
+1. It makes a fresh variable `t1`, checks the left side against `Maybe t1`,
+   and checks the right side against `t1`.
+2. Unifying `Maybe Int` (the type of `m`) with `Maybe t1` succeeds and
+   records `t1 = Int`.
+3. Checking `0` against `t1`, which is now `Int`, succeeds.
+4. The result of `??` is `t1`, which is `Int`, exactly what `Text.fromInt`
+   needs.
+
+If the right side were a `Text`, the last step would fail. For
+`count m = m ?? "none"` with `count : Maybe Int -> Int`:
 
 ```
 app/M.alder:4:16: error[E0003]: expected Int, got Text
@@ -360,16 +383,23 @@ record where `{ median: 1.0, sigma: 2.0, perDoubling: 0.5 }` is written,
 say in `let wide = { … }`, the checker can't yet know which named type it
 is, so it gives the literal a structural type carrying a **handle**
 (`Record.Flex` in `types.go`), a fresh variable that stands for "the type
-this literal will turn out to be". When `wide` is later passed where a
-`Curve` is expected, `unify` sees a structural record with an unbound
-handle on one side and a named record on the other. If the field names are
-exactly the same and every field's type unifies, it records
-`handle = Curve`, just as it recorded `t1 = Int` above; from then on
-`Apply` returns `Curve` for the literal, so the generated Go builds a
-`Curve` struct. If the names differ or a field's type is wrong, the handle
-stays unbound and the error says which field. The first named type wins,
-so a literal used as a `Point` and then as a `Vec` (same fields, different
-names) is still a mismatch: records stay nominal.
+this literal will turn out to be".
+
+When `wide` is later passed where a `Curve` is expected, `unify` sees a
+structural record with an unbound handle on one side and a named record on
+the other. If the field names are exactly the same and every field's type
+unifies, it records `handle = Curve`, just as it recorded `t1 = Int` above;
+from then on `Apply` returns `Curve` for the literal, so the generated Go
+builds a `Curve` struct.
+
+If the names differ or a field's type is wrong, the handle stays unbound
+and the error says which field.
+
+> **Records stay nominal.** The first named type wins, so a literal used as
+> a `Point` and then as a `Vec` (same fields, different names) is still a
+> mismatch.
+
+### Brands
 
 **Brands** show what the checker knows that the program doesn't. Given
 `type UserId = brand Text`, the checker refuses a `Text` where a `UserId`
@@ -378,15 +408,18 @@ Once the checker has said yes, the distinction has done its job. The next
 stage erases brands, and the generated Go uses a plain `string`. The
 checker remembers; the runtime forgets.
 
+### Checking and inferring
+
 The checker runs in two directions. **Checking** pushes an expected type
 down into an expression: in `area`, the signature says the body must be a
 `Float`, so each arm is checked against `Float`. **Inferring** works up from
 the leaves: `3.14 * r` has a type because `3.14` and `r` do. The functions
-`check` and `infer` in `expr.go` call each other. Since every top-level
-value has a signature, there is always an expected type to start from.
-That is also why a missing signature is an error. For E0007 the checker
-infers the type anyway (`inferSig`) and offers it as the fix, from
-`testdata/corpus/E0007-inferred/`:
+`check` and `infer` in `expr.go` call each other.
+
+Since every top-level value has a signature, there is always an expected
+type to start from. That is also why a missing signature is an error. For
+E0007 the checker infers the type anyway (`inferSig`) and offers it as the
+fix, from `testdata/corpus/E0007-inferred/`:
 
 ```
 app/Index.alder:15:1: error[E0007]: `rank` has no type signature; write `rank : Priority -> Int` on the line before it
@@ -394,6 +427,8 @@ app/Index.alder:15:1: error[E0007]: `rank` has no type signature; write `rank : 
   ^
   fix: rank : Priority -> Int
 ```
+
+### Exhaustiveness
 
 **Exhaustiveness** is checked per `match` (`internal/check/pattern.go`).
 The checker lists the constructors of the subject's type, marks each one
@@ -415,6 +450,8 @@ checker can't guess which fields you need, and `?todo` is a typed hole.
 Applying the fix leaves you with a warning that tells you what to write:
 `warning[W0002]: hole ?todo has type Float`.
 
+### Route members
+
 A route's members have a shape, and the checker holds them to it
 (`checkRoutes` in `internal/check/routes.go`, E0043). A GET route has
 `R.load : R.Params -> Session -> Query m` and `R.view : m -> Session -> Html`
@@ -431,136 +468,201 @@ app/Todos/Index.alder:14:14: error[E0043]: `Index.load` must have type `Index.Pa
   fix: Index.Params -> Session -> Query Model
 ```
 
-(`Model` in the fix is what `view` takes; with no `view` signature to read,
-the fix writes `m`.) The checker ties the two members together with the
-unifier of the last paragraphs: it makes a fresh variable for `m`, unifies
-`load`'s result `Query m` with the declared `load`, then unifies `view`'s
-first argument with the same variable. A `view` that takes another type is
-E0043 too, and the message says what `view` takes and what `load` gives.
-A `diag.Fix` may carry a `Title`
-and be `Preferred`: this one is titled ``Change signature to `…` `` and is
-preferred, because it is the one obvious repair. The command line ignores
-both; the language server uses the title for the code action, marks it
+> **The `Model` in the fix.** `Model` in the fix is what `view` takes; with
+> no `view` signature to read, the fix writes `m`.
+
+The checker ties the two members together with the unifier of the last
+paragraphs: it makes a fresh variable for `m`, unifies `load`'s result
+`Query m` with the declared `load`, then unifies `view`'s first argument
+with the same variable. A `view` that takes another type is E0043 too, and
+the message says what `view` takes and what `load` gives.
+
+A `diag.Fix` may carry a `Title` and be `Preferred`: this one is titled
+``Change signature to `…` `` and is preferred, because it is the one
+obvious repair. The command line ignores both.
+
+The language server uses the title for the code action, marks it
 `isPreferred`, and lists preferred fixes first, before the other fixes and
 before the generators, which are `refactor` actions and are not about the
 text under the cursor.
 
+### Whether a route needs the shown page
+
 The same pass works out something the generator will need. A write route
 whose `update` can answer `Response.refresh` or `Response.invalid` must have
 the page the browser is on rendered before the update runs, so the answer
-can be compared with it (section 8, "A request"). `needsShown` decides, once,
-per write route: does the body mention `Response.refresh` or
-`Response.invalid`, or call an app function whose type's result holds a
-`Response` (`resultHasResponse`)? A helper is judged by its type, not its
-name, so `confirmDelete : Todo -> Task Response` counts and `Text.trim`
-does not. The answer is `RouteInfo.NeedsShown`, and the IR carries it to the
-generator.
+can be compared with it (section 8, "A request").
 
-**HTML** is checked element by element (`internal/check/html.go`). A
-lower-case tag must be one of the HTML5 tags listed in `htmlTags`; an
-attribute's value is checked against the type its name calls for (a
-`Text`, a `Bool` for `disabled`, a route for `href`, `click` and `submit`,
-and a route's method must suit the attribute: `href` goes to a GET route and
-`submit` to a write route, else E0045). A tag with a hyphen is a **custom element**, and there the
-checker has no list of its own: it asks the manifests
-(`internal/check/elements.go`). Before any body is checked,
-`loadElements` builds one table of custom elements from two Custom
-Elements Manifests. The first is `alder-ui`'s, which the compiler carries
-inside itself: `rt/al/custom-elements.json` is embedded in the binary
-with the runtime (`rt/embed.go`), and `internal/elements` parses it once
-(`elements.Builtin`). The second is the app's
-`elements/custom-elements.json`, which `names.Load` reads along with the
-`.alder` files (`Program.ElementsManifest`), so the checker itself never
-touches the disk. `elements.Merge` puts them in one map by tag, the app's
-entry replacing the built-in one for a tag both declare. A manifest is a
-large format (classes, members, events, CSS parts); `internal/elements`
-decodes only the part the compiler uses: each declaration's `tagName`
-and `description`, its attributes' names, `type.text` (`boolean` marks a
-boolean attribute), defaults and descriptions, and its slots' names and
-descriptions. The checker reads the names and types; the descriptions and
-defaults are for the editor (section 10, "Completion"), and the merged table
-is kept on the check's result for it (`check.Result.Elements`). `customElement` then looks the tag up
-(E0028 when it is missing), checks each attribute against the entry or
-the short escape list of global attributes, the popover and invoker ones
-included (`elements.Escaped`; `submit`
-is refused outright), a literal value against the entry's list of
-quoted values when its type is one (`Attr.Values`), and each child's
-`slot="…"` against the entry's slots. A plain element's children are
-looked at too (`misplacedSlots` in `html.go`): a `slot` there names no
-slot of anything, so it is E0028. The one exception is a `<dialog>` the
-author writes directly inside an `<al-dialog>`: its children's slots are
-the `<al-dialog>`'s, checked against its entry (`Checker.slotted` marks
-it), and the renderer then adds nothing to that dialog.
+`needsShown` decides, once, per write route: does the body mention
+`Response.refresh` or `Response.invalid`, or call an app function whose
+type's result holds a `Response` (`resultHasResponse`)? A helper is judged
+by its type, not its name, so `confirmDelete : Todo -> Task Response`
+counts and `Text.trim` does not. The answer is `RouteInfo.NeedsShown`, and
+the IR carries it to the generator.
+
+### HTML
+
+HTML is checked element by element (`internal/check/html.go`). A
+lower-case tag must be one of the HTML5 tags listed in `htmlTags`.
+
+An attribute's value is checked against the type its name calls for:
+
+- a `Text`;
+- a `Bool` for `disabled`;
+- a route for `href`, `click` and `submit`, and the route's method must
+  suit the attribute: `href` goes to a GET route and `submit` to a write
+  route, else E0045.
+
+#### Custom elements
+
+A tag with a hyphen is a **custom element**, and there the checker has no
+list of its own: it asks the manifests (`internal/check/elements.go`).
+Before any body is checked, `loadElements` builds one table of custom
+elements from two Custom Elements Manifests:
+
+1. The first is `alder-ui`'s, which the compiler carries inside itself:
+   `rt/al/custom-elements.json` is embedded in the binary with the runtime
+   (`rt/embed.go`), and `internal/elements` parses it once
+   (`elements.Builtin`).
+2. The second is the app's `elements/custom-elements.json`, which
+   `names.Load` reads along with the `.alder` files
+   (`Program.ElementsManifest`), so the checker itself never touches the
+   disk.
+
+`elements.Merge` puts them in one map by tag, the app's entry replacing the
+built-in one for a tag both declare.
+
+A manifest is a large format (classes, members, events, CSS parts);
+`internal/elements` decodes only the part the compiler uses: each
+declaration's `tagName` and `description`, its attributes' names,
+`type.text` (`boolean` marks a boolean attribute), defaults and
+descriptions, and its slots' names and descriptions. The checker reads the
+names and types; the descriptions and defaults are for the editor (section
+10, "Completion"), and the merged table is kept on the check's result for
+it (`check.Result.Elements`).
+
+`customElement` then looks the tag up (E0028 when it is missing) and
+checks:
+
+- each attribute against the entry or the short escape list of global
+  attributes, the popover and invoker ones included (`elements.Escaped`;
+  `submit` is refused outright);
+- a literal value against the entry's list of quoted values when its type
+  is one (`Attr.Values`);
+- each child's `slot="…"` against the entry's slots.
+
+A plain element's children are looked at too (`misplacedSlots` in
+`html.go`): a `slot` there names no slot of anything, so it is E0028.
+
+> **A `<dialog>` the author writes directly inside an `<al-dialog>`.** This
+> is the one exception: its children's slots are the `<al-dialog>`'s, checked against
+> its entry (`Checker.slotted` marks it), and the renderer then adds
+> nothing to that dialog.
+
+#### Bound inputs
 
 Four of the built-in elements are more than markup. `al-input`,
 `al-textarea`, `al-select` and `al-checkbox` inside a `<form submit>` are
 Alder's bound inputs: `wrappedInput` hands their `field`, `label` and
 `value` to `formControl`, the same function that checks `<Input>`,
 `<Textarea>` and `<Select>`, so the rules and the error messages are
-shared rather than copied. The checker records each such element in
-`Result.Wrapped`, with the component it stands for. The IR stage reads
-that record and lowers the element to the same `Input` node an `<Input>`
-becomes, with `Wrap` set to the tag; the runtime's `rt/html` then draws
-the element around the control and the field's error list, setting
-`invalid` when there are errors (chapter 5, "The input elements"). The
-decision is made once, by the checker, and every later stage follows it.
-A `help` attribute becomes a `<small class="help" id="help-<field>">`
-after the label. When the field has errors, `Control.build` also gives
-the native control `aria-invalid="true"`, and the error list the `id`
-`errors-<field>`. The control's `aria-describedby` names the help, then
-the errors list, whichever are there. Those are for screen readers:
+shared rather than copied.
+
+The checker records each such element in `Result.Wrapped`, with the
+component it stands for. The IR stage reads that record and lowers the
+element to the same `Input` node an `<Input>` becomes, with `Wrap` set to
+the tag; the runtime's `rt/html` then draws the element around the control
+and the field's error list, setting `invalid` when there are errors
+(chapter 5, "The input elements"). The decision is made once, by the
+checker, and every later stage follows it.
+
+The help and the errors are wired up for screen readers:
+
+- A `help` attribute becomes a `<small class="help" id="help-<field>">`
+  after the label.
+- When the field has errors, `Control.build` also gives the native control
+  `aria-invalid="true"`, and the error list the `id` `errors-<field>`.
+- The control's `aria-describedby` names the help, then the errors list,
+  whichever are there.
+
 `aria-invalid` says the value was refused, and `aria-describedby` names
 the elements whose text describes the control, so the hint and the
-messages are read with it. The errors `id` appears only with errors,
-because a page of per-row forms repeats field names and an `id` must be
-unique in a page. The `formCtx` also records which fields a wrapped
-input shows, so an `<Errors field>` for one of them is E0028.
+messages are read with it.
+
+The errors `id` appears only with errors, because a page of per-row forms
+repeats field names and an `id` must be unique in a page. The `formCtx`
+also records which fields a wrapped input shows, so an `<Errors field>` for
+one of them is E0028.
+
+#### Buttons, alerts, dialogs and toasts
 
 Two more built-in elements get something from the renderer, recorded the
 same way in `Result.Rendered` by `rendered` (also in
 `internal/check/elements.go`). A custom element is not a button: the
 browser gives it no keyboard focus, Enter does nothing on it, and a form
-does not submit through it. So an `<al-button>` with `click`, `type` or
-`href` is recorded as `"button"` or `"a"`, and the IR stage
-(`completeBuiltin` in `internal/ir/lower_html.go`) rewrites it into two
-nested elements: the `<al-button>` with its styling attributes, and
-inside it a real `<button>` (with the `click`, a `type`, and a copy of
-`disabled`) or `<a>` (with the `href`; a disabled one gets
-`aria-disabled="true"` and no `href`, under an `HIf` when `disabled` is
-computed) holding the children. Before recording it, `alButton` checks
-that the children cannot put a control inside that control: it walks
-them through `if`, `for` and `match` and into nested elements, and
-reports E0028 for an interactive tag or an element with `click`, and for
-an `Html`-typed expression or a component (their markup is not known
-until run time; the expression's type is in `Result.Types`, since the
-children are checked first). It also refuses `href` with `click`. Everything after the IR
-sees two ordinary elements. The one place that knows about the pair is
-the renderer's click button (`clickButton` in `rt/html/html.go`; chapter 6,
-"With and without JavaScript"):
-its no-JavaScript form must wrap the whole `<al-button>`, not the
-`<button>` alone, or the stylesheet's `al-button > button` would no
-longer match. An `<al-alert>` without `role` whose `variant` is written
-as a literal is recorded as `"status"` or `"alert"`, and the IR stage
-adds that `role`, so a screen reader announces the message when it
-appears. Two more elements are completed the same way (`"dialog"` and
-`"popover"` in `Result.Rendered`, `completeDialog` in the IR's
-`lower_html.go`): an `<al-dialog>` gets the native `<dialog>` the
-library's CSS and the invoker commands act on (its `id` moves to it, the
-`heading` becomes an `<h2 slot="header">` the dialog's `aria-labelledby`
-names, a `dismissible` one gets a close form (none for a literal
-`dismissible={False}`, an `if` around it for a computed one), and
-`data-preserve-attr="open"` tells Datastar's morph to keep the `open` the
-browser wrote; one whose direct child is the author's own `<dialog>` gets
-nothing), and an `<al-toasts>` without `popover` gets
-`popover="manual"`. Each rule is checked only for the built-in entry: an app that
-redefines `al-button` in its own manifest gets its element as written.
+does not submit through it.
+
+So an `<al-button>` with `click`, `type` or `href` is recorded as
+`"button"` or `"a"`, and the IR stage (`completeBuiltin` in
+`internal/ir/lower_html.go`) rewrites it into two nested elements:
+
+- the `<al-button>` with its styling attributes;
+- inside it, holding the children, a real `<button>` (with the `click`, a
+  `type`, and a copy of `disabled`) or `<a>` (with the `href`; a disabled
+  one gets `aria-disabled="true"` and no `href`, under an `HIf` when
+  `disabled` is computed).
+
+Before recording it, `alButton` checks that the children cannot put a
+control inside that control. It walks them through `if`, `for` and `match`
+and into nested elements, and reports E0028 for an interactive tag or an
+element with `click`, and for an `Html`-typed expression or a component
+(their markup is not known until run time; the expression's type is in
+`Result.Types`, since the children are checked first). It also refuses
+`href` with `click`.
+
+Everything after the IR sees two ordinary elements.
+
+> **The click button.** The one place that knows about the pair is the
+> renderer's click button (`clickButton` in `rt/html/html.go`; chapter 6,
+> "With and without JavaScript"): its no-JavaScript form must wrap the
+> whole `<al-button>`, not the `<button>` alone, or the stylesheet's
+> `al-button > button` would no longer match.
+
+An `<al-alert>` without `role` whose `variant` is written as a literal is
+recorded as `"status"` or `"alert"`, and the IR stage adds that `role`, so
+a screen reader announces the message when it appears.
+
+Two more elements are completed the same way (`"dialog"` and `"popover"`
+in `Result.Rendered`, `completeDialog` in the IR's `lower_html.go`). An
+`<al-dialog>` gets the native `<dialog>` the library's CSS and the invoker
+commands act on:
+
+- its `id` moves to it;
+- the `heading` becomes an `<h2 slot="header">` the dialog's
+  `aria-labelledby` names;
+- a `dismissible` one gets a close form (none for a literal
+  `dismissible={False}`, an `if` around it for a computed one);
+- `data-preserve-attr="open"` tells Datastar's morph to keep the `open` the
+  browser wrote;
+- one whose direct child is the author's own `<dialog>` gets nothing.
+
+An `<al-toasts>` without `popover` gets `popover="manual"`.
+
+> **Built-in entries only.** Each rule is checked only for the built-in
+> entry: an app that redefines `al-button` in its own manifest gets its
+> element as written.
+
+### The check result
 
 The checker's output is a `check.Result` (`internal/check/result.go`). It
-records the type of every expression (`Types`, keyed by AST node), the type
-of every variable at the place it is introduced (`Binds`), every
-signature, every declared type, constructor, table, form and route
-(`Routes`, with each route's `Params`, `Session` and `NeedsShown`). The
-next stage needs all of it: to write Go, you must know that `r` is a
+records:
+
+- the type of every expression (`Types`, keyed by AST node);
+- the type of every variable at the place it is introduced (`Binds`);
+- every signature, every declared type, constructor, table, form and route
+  (`Routes`, with each route's `Params`, `Session` and `NeedsShown`).
+
+The next stage needs all of it: to write Go, you must know that `r` is a
 `float64` and `m` an `rt.Maybe[int64]`, and the only stage that worked
 that out is the checker. `Result` hands it over so nothing has to be
 worked out twice.
@@ -611,13 +713,17 @@ Here is `area` as AST and as IR. The IR is from
 The differences, one at a time:
 
 - `area` became `M.area`: the name is now fully qualified.
+
 - `match` became `match union`: the IR knows the subject is a union, so the
   emitter will switch on its tag.
+
 - Patterns are gone. `(pctor Circle r)` became `(case Circle …)`, a test of
   one tag, plus `(bind _m1 value : Float)`, which binds the payload to a
   fresh temporary `_m1`, plus `(let r : Float (var _m1) …)`, which gives it
   your name. `Rect`'s record pattern became one bind per field.
+
 - Every binding shows its type (`: Float`), from `check.Result.Binds`.
+
 - `(float 3.14)` became `3.14`: a literal's kind is now in its type.
 
 Why the temporaries, when `Circle r` could just bind `r`? Because an arm
@@ -683,7 +789,9 @@ The emitter (`internal/gen`) walks the IR and prints Go, formatted with
 Every snippet below is from `testdata/golden/gen_basic/want/M_alder.go`, which is
 byte-for-byte what `alder build --emit` writes for `gen_basic`.
 
-**`Shape`.** Go has no sum types: there is no way to say "a value that is
+#### `Shape`
+
+Go has no sum types: there is no way to say "a value that is
 either a `Circle` with a float or a `Rect` with two". So a union becomes a
 struct holding a tag, which says which constructor built it, and one field
 per constructor's payload. A Go `struct` is a record type with named
@@ -721,13 +829,16 @@ func M__Shape__Circle__(v float64) M__Shape {
 The `*` in `*payload__M__Shape__Circle` makes the field a *pointer*: it
 holds the address of a payload struct stored elsewhere, or `nil` (no
 address) when another constructor built the value. Only the field matching
-`Tag` is set. Pointers are what make a recursive union possible. In
+`Tag` is set.
+
+Pointers are what make a recursive union possible. In
 `type Tree a = Leaf | Node { left: Tree a, value: a, right: Tree a }`, a
 `Node` holds two more trees; if each tree held its `Node` payload directly,
 a tree would have to contain itself and Go would reject the type as
 infinitely large. A pointer has a fixed size, so every payload is held by
 pointer, recursive or not, and the emitter never has to work out which
 unions recurse.
+
 `Circle`'s `Float` payload is wrapped in a struct with one field, `Value`,
 as the IR said: `ir_basic.ir` declares the union as
 `(union M.Shape (Circle { value: Float }) (Rect { w: Float, h: Float }))`.
@@ -736,15 +847,18 @@ The constructor `Circle` becomes a function, `func M__Shape__Circle__(v
 float64) M__Shape { … }`: it takes a `float64` named `v` and returns a
 `M__Shape`. Inside, `M__Shape{Tag: …, Circle: …}` builds a struct value,
 naming the fields it sets, and `&payload__M__Shape__Circle{Value: v}`
-builds a payload struct and takes its address with `&`. Note the
-underscores. Every part of a generated name is joined by a double `__`:
-the module, the union, the constructor. A trailing `__` marks the
+builds a payload struct and takes its address with `&`.
+
+Note the underscores. Every part of a generated name is joined by a double
+`__`: the module, the union, the constructor. A trailing `__` marks the
 constructor (`M__Shape__Circle__`), and names that are not one of your
 declarations start with a lowercase word saying what they are: `tag__` for
 the tag type, `is__` for a tag constant, `payload__` for a payload struct.
 Section 9 lists the whole scheme and why no two names can clash.
 
-**`area`.** The IR's `match union` becomes a `switch` on the tag:
+#### `area`
+
+The IR's `match union` becomes a `switch` on the tag:
 
 ```go
 func M__area(s M__Shape) float64 {
@@ -772,7 +886,9 @@ that message if it ever runs. It never does, because the checker proved
 the match exhaustive, but Go requires a function that returns a value to
 end in a `return` or a `panic`.
 
-**`shift`.** A record update builds a new struct, copying every field
+#### `shift`
+
+A record update builds a new struct, copying every field
 except the one you replaced. `p.X` reads field `X` of `p`:
 
 ```go
@@ -781,7 +897,9 @@ func M__shift(p M__Point) M__Point {
 }
 ```
 
-**`names`.** Stdlib calls become calls into `rt/std`, one Go function per
+#### `names`
+
+Stdlib calls become calls into `rt/std`, one Go function per
 Alder function, chosen from the table in `internal/gen/stdcall.go`.
 `[]string` is a Go slice, a list of strings, and `std.TextToUpper` is
 passed as a value, without calling it, for `ListMap` to call on each
@@ -793,7 +911,9 @@ func M__names(xs []string) string {
 }
 ```
 
-**`label`.** `Maybe Int` is `rt.Maybe[int64]`, `??` is `rt.OrElse`, and
+#### `label`
+
+`Maybe Int` is `rt.Maybe[int64]`, `??` is `rt.OrElse`, and
 interpolation is `rt.Concat`. `rt.Maybe` is defined in `rt/core.go`:
 
 ```go
@@ -816,6 +936,8 @@ func M__label(m rt.Maybe[int64]) string {
 	return rt.Concat("n = ", std.TextFromInt(rt.OrElse(m, 0)))
 }
 ```
+
+#### Recursive records
 
 Because `Maybe` holds its value directly, a record that refers to itself
 through `Maybe` would be a struct that contains itself, which Go rejects
@@ -842,7 +964,9 @@ never change, so the pointer is never nil and two records may share it. A
 `List Node` field needs no pointer: a Go slice already holds its elements
 elsewhere, and so does a union's payload.
 
-**Partial application.** `gen_basic` has none, because the pipes in
+#### Partial application
+
+`gen_basic` has none, because the pipes in
 `names` became full calls. Write `adder 1` where a function is expected,
 as in this module:
 
@@ -873,16 +997,20 @@ else in scope uses, and calls `P__adder` with the `1`
 it already has. A function literal that uses values from around it is
 called a closure.
 
-**Equality and ordering.** Go's `==` doesn't work on every struct, and
-wouldn't mean the right thing if it did (two `Dict`s with the same entries
-inserted in different orders are equal in Alder). So `==` on records,
-unions, `Maybe`, `Dict`, `Time` and `Html` calls `rt.Eq`, which compares
-structurally: a `Dict` ignoring insertion order, a `Time` as an instant.
+#### Equality and ordering
+
+Go's `==` doesn't work on every struct, and wouldn't mean the right thing
+if it did (two `Dict`s with the same entries inserted in different orders
+are equal in Alder). So `==` on records, unions, `Maybe`, `Dict`, `Time`
+and `Html` calls `rt.Eq`, which compares structurally: a `Dict` ignoring
+insertion order, a `Time` as an instant.
+
 A runtime type can bring an equality of its own by implementing
 `rt.Equaler` (`AlderEqual(other any) bool`), which `rt.Eq` asks first:
 `html.Node` does, comparing the markup the two nodes render to, so
 `<p>{Html.text "a"}{Html.text "b"}</p> == <p>ab</p>` is `True` although
 one tree has two text nodes and the other one.
+
 `<` on a `Date` or `Time` calls `rt.DateCmp` or `rt.TimeCmp`. From
 `build/facts/F_alder.go`:
 
@@ -903,7 +1031,9 @@ func F__greet(id string) string {
 `F__greet` takes a `string`: that is the erased `UserId` brand from
 section 6.
 
-**`Card`.** A component becomes a function from its props to an
+#### `Card`
+
+A component becomes a function from its props to an
 `html.Node`, and markup becomes calls to the `rt/html` builder. The props
 type is an anonymous `struct { … }` written in place, because `Card`'s
 props record has no name. `[]html.Attr{ … }` is a slice literal, `nil`
@@ -939,11 +1069,13 @@ The body of a `<script>` or `<style>` is the one text that is never
 escaped: `&&` escaped to `&amp;&amp;` would break the JavaScript. The parser
 reads it as raw text (`(rawtext "…")` in `alder dump`), byte for byte up to
 the closing tag, and the emitter writes it as `html.RawText("…")`, always
-with a Go string literal. The renderer writes a `RawText` unescaped only
-as a direct child of `<script>` or `<style>`, and only if it holds no
-`</script` or `</style`; it drops every other child of those two elements
-(a `Text`, an `Html.unsafe`, an element). So no Alder value can be spliced
-into script or style text, even if some future path put one there.
+with a Go string literal.
+
+The renderer writes a `RawText` unescaped only as a direct child of
+`<script>` or `<style>`, and only if it holds no `</script` or `</style`;
+it drops every other child of those two elements (a `Text`, an
+`Html.unsafe`, an element). So no Alder value can be spliced into script or
+style text, even if some future path put one there.
 `testdata/golden/render_html/` pins the rendered bytes.
 
 ## 8. The runtime
@@ -951,62 +1083,100 @@ into script or style text, even if some future path put one there.
 The generated code is short because most of the work is in the runtime: Go
 packages the generated code imports. There are seven.
 
-- **`rt`** (`rt/core.go`) holds the types the mapping table names: `Maybe`,
-  `Result`, `Dict`, `Date`. It also holds the helpers the emitter
-  calls: `Concat`, `OrElse`, `Append`, `Eq`, `DateCmp`, `TimeCmp`, and
-  `Int` and `Float`, which return their argument unchanged: a literal goes
-  through one when Go would otherwise compute an operation on constants
-  while compiling, and reject `1 / 0` or an `Int` that overflows, which
-  Alder defines to happen when the program runs (chapter 4). A `Dict` takes
-  keys of any type: it files each under `Key(k)`, a text that is the same
-  for two keys exactly when they are `==`. `rt/route.go` holds `Route`, a
-  request to one of the app's routes: its name, method, path with the path
-  parameters filled in, and the rest of its parameters (`rt.RouteURL` makes
-  the URL of one). `rt/response.go` holds `Response`, the result of an
-  `update`: a kind (`RespRedirect`, `RespRender`, `RespRefresh` or
-  `RespInvalid`), the `Route` it names or the text it carries, and a list of
-  events (so far only toasts), built by `rt.RedirectTo(route)`,
-  `rt.Render(route)`, `rt.Refresh()`, `rt.Invalid(text)` and
-  `rt.WithToast`. Its `Status` and `Headers` are shaped for the builders
-  chapter 6 says are not built yet (`status`, `header`); nothing sets them,
-  and its event list holds toasts only.
-- **`rt/html`** (`rt/html/html.go`) builds HTML trees (`El`, `Text`,
-  `Raw`, `A`, `Nodes`) and renders them. `Render` is where escaping
-  happens: a text node goes through `html.EscapeString`, and so does every
-  attribute value, and a carriage return becomes `&#13;`. A `Raw` node is
-  written as is.
-- **`rt/std`** (`rt/std/*.go`) has one Go function per stdlib function:
-  `std.ListMap` is `List.map`, `std.TextToUpper` is `Text.toUpper`. A call
-  lets Go infer a generic one's type arguments; a stdlib function used as
-  a value instead (`let r = List.reverse`) is written with them,
-  `std.ListReverse[int64]`, worked out from its type at that use
-  (`stdInstance` in `internal/gen/stdcall.go`). The effectful ones, in `rt/std/effects.go`, don't do anything: `std.TimeNow`
-  returns a one-step effect tree that reads the clock when it is run. The
-  `Response` builders are plain: `std.ResponseRefresh()` is `rt.Refresh()`.
-- **`rt/eff`** (`rt/eff/eff.go`, `run.go`) is the effect runtime: the tree
-  that a `Query` or `Task` is, and `Run`, which performs it. Chapter 7's
-  "How effects run" introduces it.
-- **`rt/db`** (`rt/db/table.go`, `store.go`, `sqlite.go`, `encode.go`)
-  is the database: a descriptor for each table, `Select` values, the
-  `Store` interface that the effect steps call, and its SQLite
-  implementation.
-- **`rt/web`** (`rt/web/router.go`, `request.go`, `shown.go`, `deliver.go`,
-  `answer.go`, `method.go`, `session.go`, `decode.go`) is the web server:
-  the router, the `Request` a handler gets and the `web.Response` it
-  returns, how a view is delivered (`deliver.go`) and how a write's
-  `rt.Response` is (`answer.go`, `shown.go`), the signed session cookie, and
-  the helpers the generated form decoders call (`web.Text`, `web.Date`,
-  `web.NonEmpty`, …). Chapter 6, "How a request runs", describes it from
-  the outside.
-- **`rt/datastar`** (`rt/datastar/datastar.go`) serves the Datastar
-  script, which is built into the binary, and writes the server-sent
-  events Alder answers with: `PatchBody`, which replaces the `<body>`;
-  `PatchRegion`, which replaces one element by its `id`; `PatchShown`,
-  which records the hash of the body the server last rendered;
-  `PatchTitle`, which replaces the `<title>`; and `Navigate`, which either
-  sends the browser to another URL or records a URL in its history. It
-  also holds the *boost* (`BoostTag`), the attributes that turn a click
-  on a link into a Datastar request.
+### The seven packages
+
+#### `rt`
+
+`rt` (`rt/core.go`) holds the types the mapping table names: `Maybe`,
+`Result`, `Dict`, `Date`. It also holds the helpers the emitter calls:
+`Concat`, `OrElse`, `Append`, `Eq`, `DateCmp`, `TimeCmp`, and `Int` and
+`Float`, which return their argument unchanged.
+
+A literal goes through `Int` or `Float` when Go would otherwise compute an
+operation on constants while compiling, and reject `1 / 0` or an `Int` that
+overflows, which Alder defines to happen when the program runs (chapter 4).
+
+A `Dict` takes keys of any type: it files each under `Key(k)`, a text that
+is the same for two keys exactly when they are `==`.
+
+`rt/route.go` holds `Route`, a request to one of the app's routes: its
+name, method, path with the path parameters filled in, and the rest of its
+parameters (`rt.RouteURL` makes the URL of one).
+
+`rt/response.go` holds `Response`, the result of an `update`: a kind
+(`RespRedirect`, `RespRender`, `RespRefresh` or `RespInvalid`), the `Route`
+it names or the text it carries, and a list of events (so far only toasts),
+built by `rt.RedirectTo(route)`, `rt.Render(route)`, `rt.Refresh()`,
+`rt.Invalid(text)` and `rt.WithToast`.
+
+> **Not yet:** `Response`'s `Status` and `Headers` are shaped for the
+> builders chapter 6 says are not built yet (`status`, `header`); nothing
+> sets them, and its event list holds toasts only.
+
+#### `rt/html`
+
+`rt/html` (`rt/html/html.go`) builds HTML trees (`El`, `Text`, `Raw`, `A`,
+`Nodes`) and renders them. `Render` is where escaping happens: a text node
+goes through `html.EscapeString`, and so does every attribute value, and a
+carriage return becomes `&#13;`. A `Raw` node is written as is.
+
+#### `rt/std`
+
+`rt/std` (`rt/std/*.go`) has one Go function per stdlib function:
+`std.ListMap` is `List.map`, `std.TextToUpper` is `Text.toUpper`.
+
+A call lets Go infer a generic one's type arguments; a stdlib function used
+as a value instead (`let r = List.reverse`) is written with them,
+`std.ListReverse[int64]`, worked out from its type at that use
+(`stdInstance` in `internal/gen/stdcall.go`).
+
+The effectful ones, in `rt/std/effects.go`, don't do anything:
+`std.TimeNow` returns a one-step effect tree that reads the clock when it
+is run. The `Response` builders are plain: `std.ResponseRefresh()` is
+`rt.Refresh()`.
+
+#### `rt/eff`
+
+`rt/eff` (`rt/eff/eff.go`, `run.go`) is the effect runtime: the tree that a
+`Query` or `Task` is, and `Run`, which performs it. Chapter 7's "How
+effects run" introduces it.
+
+#### `rt/db`
+
+`rt/db` (`rt/db/table.go`, `store.go`, `sqlite.go`, `encode.go`) is the
+database: a descriptor for each table, `Select` values, the `Store`
+interface that the effect steps call, and its SQLite implementation.
+
+#### `rt/web`
+
+`rt/web` (`rt/web/router.go`, `request.go`, `shown.go`, `deliver.go`,
+`answer.go`, `method.go`, `session.go`, `decode.go`) is the web server:
+
+- the router;
+- the `Request` a handler gets and the `web.Response` it returns;
+- how a view is delivered (`deliver.go`) and how a write's `rt.Response` is
+  (`answer.go`, `shown.go`);
+- the signed session cookie;
+- the helpers the generated form decoders call (`web.Text`, `web.Date`,
+  `web.NonEmpty`, …).
+
+Chapter 6, "How a request runs", describes it from the outside.
+
+#### `rt/datastar`
+
+`rt/datastar` (`rt/datastar/datastar.go`) serves the Datastar script, which
+is built into the binary, and writes the server-sent events Alder answers
+with:
+
+- `PatchBody` replaces the `<body>`;
+- `PatchRegion` replaces one element by its `id`;
+- `PatchShown` records the hash of the body the server last rendered;
+- `PatchTitle` replaces the `<title>`;
+- `Navigate` either sends the browser to another URL or records a URL in
+  its history.
+
+It also holds the *boost* (`BoostTag`), the attributes that turn a click on
+a link into a Datastar request.
 
 The generated program is small because the runtime is the library. All of
 `examples/todos`, with the admin `alder new admin` generated for it, emits
@@ -1016,13 +1186,14 @@ and those lines mostly call into `rt`. The largest file, `routes__alder.go`
 decoders and guards they share. The last part of this section reads them.
 
 The rest of this section follows one `load` from source to SQL, then one
-write route's `update` through a transaction. The program is
-`testdata/golden/ir_effects/app/`, whose module `Index` uses the `Todo`
-table (declared in `app/Todo.alder`: a table's module only has to end in its
-name, so the root works, though an app keeps it in `app/Table/`, chapter 8)
-and has a GET route `Index` at `"/pair/{a}/{b}"` and four write routes,
-`Add`, `Toggle`, `Remove` and `Notify`. `alder build --emit
-testdata/golden/ir_effects` writes the Go they become.
+write route's `update` through a transaction.
+
+The program is `testdata/golden/ir_effects/app/`, whose module `Index` uses
+the `Todo` table (declared in `app/Todo.alder`: a table's module only has
+to end in its name, so the root works, though an app keeps it in
+`app/Table/`, chapter 8) and has a GET route `Index` at `"/pair/{a}/{b}"`
+and four write routes, `Add`, `Toggle`, `Remove` and `Notify`. `alder build
+--emit testdata/golden/ir_effects` writes the Go they become.
 
 ### The source
 
@@ -1108,15 +1279,19 @@ are defined in `internal/ir/ir.go` and produced by
 - `bind query todos : List Todo` is `EffBind`: run the effect, call the
   result `todos`, continue. `query` is its kind; in an `update` it says
   `task`.
+
 - `db-select Todo.Todo … all` is `DbSelect`. The whole pipeline,
   `Db.from` through `Db.all`, is folded into one node that knows its
   table, its conditions, its orders, its limit, and what to do with it:
   `all`, `first`, `count`, or `select` for a pipeline that is only a value,
   like `q`.
+
 - `cond eq (col Todo.Todo owner) …` is a `Cond` on a `ColumnRef`: the
   column `owner` of table `Todo.Todo`, compared with `session.user`.
+
 - `all query (list …)` is `EffAll` (`Query.all`), `map query` is `EffMap`,
   and `pure query` is `EffPure` (`Query.succeed`).
+
 - `db-run count (var q)` is `DbRun`: running a `Select` that is not
   written in place but held in a variable or, for `Db.first
   Todo.pending`, declared elsewhere (`global Todo.pending`).
@@ -1160,6 +1335,7 @@ It is long, but it is the IR printed with Go spelling, one node at a time
 - Each `bind` is `eff.Bind(first, func(x T) eff.Task[…] { return rest })`.
   The rest of the block is a Go function literal that receives the bound
   value, so the nesting is the same as in the IR.
+
 - Each database node is `eff.Call(name, write, fn)`: a step named
   `"Db.all Todo"`, marked `false` because it doesn't write, whose `fn`
   receives the `Env` and calls a typed helper in `rt/db` (`db.All`,
@@ -1167,14 +1343,17 @@ It is long, but it is the IR printed with Go spelling, one node at a time
   and the transaction from it. `db.TxOf(_e1)` is the running `Task`'s
   transaction, which the first such step of a `Task` begins, or `nil` in
   a `Query`.
+
 - A `Select` is data. `db.Limit(10, db.OrderBy(db.Desc("created"),
   db.Where(db.CEq("owner", session.User), db.From(table__Todo__Todo))))`
   reads inside out: start from every row of `Todo`, keep `owner = …`,
   order by `created` descending, keep 10. `q :=` is a plain Go variable
   for the same reason: building a `Select` runs nothing.
+
 - Values compared with a column are encoded the way the column stores
   them: `Todo.done.eq True` is `db.CEq("done", db.EncodeBool(true))`,
   because a `Bool` is stored as `1` (chapter 8).
+
 - `eff.Bind`, `eff.Map` and `eff.All` work on `Task`s, so the emitter
   wraps the whole tree once in `eff.Q(…)` to make it a `Query` again, and
   turns the `Query` from `std.TimeNow()` into a `Task` with `eff.T(…)`.
@@ -1219,9 +1398,11 @@ var Capabilities = []string{"Todo.Stats", "Index.Mailer"}
 same file) can check at startup that each has an implementation and
 refuse to start otherwise (chapter 7, "Implementing a capability"). A call
 to one that isn't wired, which only a test that skips `Serve` can reach,
-stops with `alder: capability "Index.Mailer" is not wired`. The file's name can't clash with a module's: only a module named `app_` would
-produce `app__alder.go`, and a module name segment may not end in `_`
-(E0001, section 9).
+stops with `alder: capability "Index.Mailer" is not wired`.
+
+> **The file name.** The file's name can't clash with a module's: only a
+> module named `app_` would produce `app__alder.go`, and a module name
+> segment may not end in `_` (E0001, section 9).
 
 ### What `Run` does
 
@@ -1235,13 +1416,16 @@ the block" functions it has yet to call.
 1. A `Query` gets no transaction: `env.Tx` is `nil`, and `db.TxOf` gives
    `nil` too. `Run` also puts `env` itself in `env.Ctx` for as long as it
    runs, so a capability can find it (chapter 7).
+
 2. The node is a `bind`. Its continuation (the function that takes
    `todos`) goes on the stack, and the loop moves to its first part.
+
 3. The node is the `call` named `Db.all Todo`. It isn't a write, so it may
    run in a `Query`. `Run` checks that the request hasn't been cancelled,
    logs `Db.all Todo` at level `effect` (the app's logger writes it as
    `debug: effect Db.all Todo`, under `ALDER_LOG=debug` only), appends the
    name to `env.Trace`, and calls `fn`.
+
 4. `fn` calls `db.All`, which renders the `Select` (`Select.SQL` in
    `rt/db/table.go`) and asks the store for the rows. The SQLite store
    runs
@@ -1254,13 +1438,16 @@ the block" functions it has yet to call.
    descriptor and every value is a `?`, so nothing from the request is
    ever pasted into SQL. Each row is turned into a `Todo__Todo` by the
    descriptor's `Decode`.
+
 5. The result becomes a `pure` node. The loop pops the continuation and
    calls it with the list. That Go function now builds the *next* part of
    the tree, the `bind` around `eff.All`, and the loop carries on with
    it.
+
 6. The two `Db.get` steps run in order, then `Time.now` reads
    `env.Now()`, then `q` is built and `Db.count` runs it, then
    `Db.first` runs `Todo.pending` with a limit of 1.
+
 7. The last continuation returns `pure` of the `Model`. The stack is
    empty, so that is the result.
 
@@ -1270,14 +1457,17 @@ Run against a database holding one todo, the trace is
 ["Db.all Todo" "Db.get Todo" "Db.get Todo" "Time.now" "Db.count Todo" "Db.first Todo"]
 ```
 
-one name per step, in source order. Step 5 is why the interpreter is
-called **eager**: a continuation is a Go function that is called only once
-the value it needs exists, so the tree after a step isn't built until the
-step has run. That is what lets a `match` on a result decide what happens
-next, and it is why two effect values can't be compared with `==`
-(chapter 12, "Effects are data, interpreted eagerly"). The stack is a Go
-slice, not Go's call stack, so a block of any length runs in constant
-stack space.
+one name per step, in source order.
+
+Step 5 is why the interpreter is called **eager**: a continuation is a Go
+function that is called only once the value it needs exists, so the tree
+after a step isn't built until the step has run. That is what lets a
+`match` on a result decide what happens next, and it is why two effect
+values can't be compared with `==` (chapter 12, "Effects are data,
+interpreted eagerly").
+
+The stack is a Go slice, not Go's call stack, so a block of any length runs
+in constant stack space.
 
 ### A `Task`: `Toggle`
 
@@ -1315,14 +1505,21 @@ after the values:
   (needs-shown))
 ```
 
-It holds the method and path, the record of parameters, the guard
-(`requires`, `role`, `silo`), the narrowed session record, its members (a GET
-route has `(load …)` and `(view …)` instead of `(update …)`), the store its
-`update` writes in an app with silos (`(store silo org)`) and `(needs-shown)`,
-the checker's answer from section 5: this `update` mentions
-`Response.refresh`, so the handler renders the page the browser is on before
-it runs (below). The generator writes one handler per `ir.Route`, and
-nothing in it reads the route's source.
+It holds:
+
+- the method and path;
+- the record of parameters;
+- the guard (`requires`, `role`, `silo`);
+- the narrowed session record;
+- its members (a GET route has `(load …)` and `(view …)` instead of
+  `(update …)`);
+- the store its `update` writes in an app with silos (`(store silo org)`);
+- `(needs-shown)`, the checker's answer from section 5: this `update`
+  mentions `Response.refresh`, so the handler renders the page the browser
+  is on before it runs (below).
+
+The generator writes one handler per `ir.Route`, and nothing in it reads
+the route's source.
 
 The `update` itself is emitted as
 
@@ -1340,23 +1537,27 @@ func Index__Toggle__update(p Index__Toggle__Params, session Index__Index__Sessio
 
 The one `bind` is an `EffBind` from this section: run the `db-update`,
 discard its result (`_`), continue with `pure task`. The kind word `task`
-(not `query`) says the bind belongs to a `Task`. The route's parameters are the
-function's first argument: `p` is an `Index__Toggle__Params`, the record the
-route declared, and `p.Id` is its field, with no `match` and no pattern in
-between (a `match` on a union would show `bind _m1` temporaries, as `Remove`
-does for its `Maybe`).
-The last argument to `db.UpdateRow`, `_e1.Now()`, is
-the time from the `Env`'s clock: the store writes it into the table's
-`@updated` column, if it has one. This `Todo` has none, so it goes
-unused, but the call looks the same for every table. The function ends in
-`std.ResponseRefresh()`, which is `rt.Refresh()`: a `Response` value of kind
-`RespRefresh`. The task does not deliver anything. It only says what the
-answer should be.
+(not `query`) says the bind belongs to a `Task`.
+
+The route's parameters are the function's first argument: `p` is an
+`Index__Toggle__Params`, the record the route declared, and `p.Id` is its
+field, with no `match` and no pattern in between (a `match` on a union
+would show `bind _m1` temporaries, as `Remove` does for its `Maybe`).
+
+The last argument to `db.UpdateRow`, `_e1.Now()`, is the time from the
+`Env`'s clock: the store writes it into the table's `@updated` column, if
+it has one. This `Todo` has none, so it goes unused, but the call looks the
+same for every table.
+
+The function ends in `std.ResponseRefresh()`, which is `rt.Refresh()`: a
+`Response` value of kind `RespRefresh`. The task does not deliver
+anything. It only says what the answer should be.
 
 This time the step is marked `true`, a write, and the caller runs it with
 `eff.Run(env, eff.KTask, …)`:
 
 1. `Run` remembers `env.Session` and begins no transaction yet.
+
 2. The `call` named `Db.update Todo` is traced and run. Its `db.TxOf(_e1)`
    finds no transaction, so it begins one (`env.Store.Begin`, through
    `env.Transaction`) and records it in `env.Tx`. `db.UpdateRow`
@@ -1378,10 +1579,11 @@ If `p.Id` names no row, step 2 fails with
 `Db.update Todo: no row with id "nope"`, an `*eff.ErrFail`. The loop
 stops at once, the continuation is never called, and `Run` rolls the
 transaction back instead of committing, and puts back the session it
-remembered. The `Remove` route shows the same
-for `Task.fail`: when `Db.get` finds nothing, `match found` picks
-`Task.fail "no such todo"`, a `fail` node, and the transaction is rolled
-back with nothing written.
+remembered.
+
+The `Remove` route shows the same for `Task.fail`: when `Db.get` finds
+nothing, `match found` picks `Task.fail "no such todo"`, a `fail` node, and
+the transaction is rolled back with nothing written.
 
 You can watch this happen. `TestGenRoute_DeleteRefresh` and
 `TestGenRoute_ToggleRender` in `internal/gen/gen_test.go` emit a small app
@@ -1394,28 +1596,38 @@ each step a test runs (`Test.run` returns it in `r.trace`).
 ### A request: `GET` and `POST`
 
 The last two parts ran `load` and `update` by hand. In the server, a
-request handler runs them. This part follows two requests through the
-to-do app (chapter 2): a `GET` of the list, then a `POST` of the Done
-button, sent by Datastar. Then it looks at the other ways a route is
-delivered and the other answers a write gives. Build the app and run it
-with the commands in chapter 11, log in as `a@b.c` with the password
-`password`, and add a todo called Milk. The bytes below are what that
-server sent. (They come from the built program started with `ALDER_DEV=1`
-and `ALDER_DEV_PANEL=0`, which keeps the dev panel and the reload overlay of
-`alder run` out of what you read, and a command-line client sent the headers
-the page's script sends, which the list below shows.) The id
-`M2PBzBsivm3srrcFIlTD` is random and differs every run, and so does the
-build id.
+request handler runs them.
 
-**`GET /?filter=Active`.** The router's `ServeHTTP` (`rt/web/router.go`)
-sees that the path is neither the Datastar script nor under `/static/`. It
-splits the path into segments (none, for `/`) and finds the first route
-with method `GET` whose pattern fits: `/`, the route `Todos.Index.Index`.
-It builds a `web.Request` with no path parameters, the query
-`filter=Active`, `Datastar: false`, and the session from the cookie, and
-gives the request a fresh `eff.Env` holding the store, the capabilities,
-the clock and the session. Then it calls the handler
-(`build/todos/routes__alder.go`):
+This part follows two requests through the to-do app (chapter 2): a `GET`
+of the list, then a `POST` of the Done button, sent by Datastar. Then it
+looks at the other ways a route is delivered and the other answers a write
+gives.
+
+To follow along, build the app and run it with the commands in chapter 11,
+log in as `a@b.c` with the password `password`, and add a todo called
+Milk. The bytes below are what that server sent.
+
+> **How the bytes were captured.** They come from the built program
+> started with `ALDER_DEV=1` and `ALDER_DEV_PANEL=0`, which keeps the dev
+> panel and the reload overlay of `alder run` out of what you read, and a
+> command-line client sent the headers the page's script sends, which the
+> list below shows. The id `M2PBzBsivm3srrcFIlTD` is random and differs
+> every run, and so does the build id.
+
+#### `GET /?filter=Active`
+
+The router's `ServeHTTP` (`rt/web/router.go`) takes it in steps:
+
+1. It sees that the path is neither the Datastar script nor under
+   `/static/`.
+2. It splits the path into segments (none, for `/`) and finds the first
+   route with method `GET` whose pattern fits: `/`, the route
+   `Todos.Index.Index`.
+3. It builds a `web.Request` with no path parameters, the query
+   `filter=Active`, `Datastar: false`, and the session from the cookie, and
+   gives the request a fresh `eff.Env` holding the store, the capabilities,
+   the clock and the session.
+4. It calls the handler (`build/todos/routes__alder.go`):
 
 ```go
 func Route__Todos__Index__Index() web.Route {
@@ -1466,20 +1678,23 @@ func page__Todos__Index__Index(rq *web.Request, params Todos__Index__Index__Para
 
 The first four lines are `requires user`. `app.User.Ok` is false when
 `user` is `Nothing`, and the answer is then a 303 to `rq.Login`, which is
-`/login` because `App.login` is `Auth.Login.Login`. Otherwise the session is
-narrowed: `session.User` is `app.User.Val`, a plain `string`, as section
-9 explains. Then `load` builds its tree and `eff.RunQuery` runs it, as
-"What `Run` does" showed. When the query stops with `Query.notFound` or
-fails, `route__fail` makes a 404 or a 500. `keep` is `nil` here; the
-write routes below show why it exists.
+`/login` because `App.login` is `Auth.Login.Login`.
+
+Otherwise the session is narrowed: `session.User` is `app.User.Val`, a
+plain `string`, as section 9 explains. Then `load` builds its tree and
+`eff.RunQuery` runs it, as "What `Run` does" showed. When the query stops
+with `Query.notFound` or fails, `route__fail` makes a 404 or a 500. `keep`
+is `nil` here; the write routes below show why it exists.
 
 `view` turns the model into an `html.Node`. The handler returns it in a
 `web.Response` made by `PageResponse`, and it has not said yet whether the
 node is a document, a body or one element: the router decides that from the
-request, below. The `FormState` it passes is `nil` for a request of its own
-(`WithPageParams` keeps `nil` as it is); when a write route renders this page
-again for the browser that sent the write, it passes the form the write
-posted, and the route's parameters ride in it as text:
+request, below.
+
+The `FormState` it passes is `nil` for a request of its own
+(`WithPageParams` keeps `nil` as it is); when a write route renders this
+page again for the browser that sent the write, it passes the form the
+write posted, and the route's parameters ride in it as text:
 
 ```go
 func params__Todos__Index__Index(p Todos__Index__Index__Params) []rt.KV {
@@ -1521,25 +1736,33 @@ each gets its own delivery (chapter 6, "Delivery, decided by the request"):
 | a Datastar `GET` without `Alder-Fetch` (a boosted link) | `write`, then `morph` | the body, the title, a history step |
 | a Datastar `GET` with `Alder-Fetch: 1` (a `click` on a GET route) | `deliverElement` | one element |
 
-The plain request is this one, so the router goes on with `write`. A page
-view leaves the session as it was (`setSession` compares the answer's
-session with the one the request carried), so no cookie is set, and the
-browser keeps the one the login stored, with its issued time (chapter 6,
-"The session cookie"). Then it calls `html.RenderWith(node, state)`. Every
-route attribute in the tree is an `html.RouteAttr`, a value that is only
-turned into text now: a link's `href` is the route's URL (`rt.RouteURL`),
-a `click` is a Datastar request for the route. The URL carries the route's
-own parameters and nothing about the page it is drawn on: the request will
-name the page in a header (below). A `<button>` with a `click` is rendered as
-a click button here too: the renderer knows whether it is inside a
-`<form>`, and wraps the button in a form of its own when it is not (chapter
-6, "With and without JavaScript"); the Done button is the `<button>` the
-compiler put inside an `<al-button>` (section 5), and the form wraps the
-`<al-button>` whole. Last, `document` writes `<!doctype html>` and the page,
-with the `<al-shown>` element at the end of the body (below) and the head
-tags (`withScript`) after `<head>`. The answer begins like this (without
-the `Date` and `X-Request-Id` headers, and with the page cut after the
-Datastar script tag):
+The plain request is this one, so the router goes on with `write`:
+
+1. A page view leaves the session as it was (`setSession` compares the
+   answer's session with the one the request carried), so no cookie is set,
+   and the browser keeps the one the login stored, with its issued time
+   (chapter 6, "The session cookie").
+
+2. It calls `html.RenderWith(node, state)`. Every route attribute in the
+   tree is an `html.RouteAttr`, a value that is only turned into text now:
+   a link's `href` is the route's URL (`rt.RouteURL`), a `click` is a
+   Datastar request for the route. The URL carries the route's own
+   parameters and nothing about the page it is drawn on: the request will
+   name the page in a header (below).
+
+3. A `<button>` with a `click` is rendered as a click button here too: the
+   renderer knows whether it is inside a `<form>`, and wraps the button in
+   a form of its own when it is not (chapter 6, "With and without
+   JavaScript"). The Done button is the `<button>` the compiler put inside
+   an `<al-button>` (section 5), and the form wraps the `<al-button>`
+   whole.
+
+4. Last, `document` writes `<!doctype html>` and the page, with the
+   `<al-shown>` element at the end of the body (below) and the head tags
+   (`withScript`) after `<head>`.
+
+The answer begins like this (without the `Date` and `X-Request-Id`
+headers, and with the page cut after the Datastar script tag):
 
 ```
 HTTP/1.1 200 OK
@@ -1558,46 +1781,67 @@ and has the Done button with its route's URL:
 The `&#39;` and `&amp;` are the escaping of section 8's first part: the
 attribute holds
 `(window._alderBusy||((e,p)=>p))(el, @post('/_/Toggle?id=…', window._alderO?.('form')))`.
-`id` is a parameter of the route that is not in its path (`/_/Toggle`), so it
-rides in the query string. `window._alderO` (defined once in the page's
+
+`id` is a parameter of the route that is not in its path (`/_/Toggle`), so
+it rides in the query string. `window._alderO` (defined once in the page's
 `<head>`) returns the post's options, and the headers in them are what the
 server does not remember:
 
-- **`Alder-Page`** is `location.pathname + location.search`, the page the
-  browser is on: here `/?filter=Active`. A write route does not know which
-  page it was clicked on (`Toggle` may be used from the list and from the
-  todo's own page), and `refresh`, `invalid` and the before-view need it.
-  The router reads it with `rq.ShownURL()`, through `rt.BackURL`
-  (`rt/core.go`): the path and query of the value, never a scheme or host,
-  and `/` for anything that could name another site (a path that starts with
-  `//`, a backslash, a control byte). Without JavaScript there is no such
-  header, and `ShownURL` reads `Referer` the same way.
-- **`Alder-Build`** is the id of the build that rendered the page, from
-  `<meta name="alder-build">` in its `<head>` (`web.BuildID`: the first 16
-  hex digits of the SHA-256 of the executable). Every Datastar request
-  sends it. Datastar never patches the `<head>`, so a tab open across a
-  deploy keeps the old build's stylesheet and scripts; the router answers
-  a request from another build with a reload (below), never a patch.
-- **`Alder-Shown`** is the hash the page's `<al-shown>` element holds
-  (below): the hash of the body as the server last rendered it for this
-  page, whole or in part.
-- **`Alder-Fetch`** is not sent by a post. A `click` on a GET route is an
-  element fetch, and `window._alderF` sends it with the page and build
-  headers: `Alder-Fetch: 1`, which is what makes the request the third kind
-  in the table above.
+##### `Alder-Page`
 
-(`window._alderO` is called with `?.`: a click before the page's script has
-defined it posts without these options, and the answer morphs the whole
-body.) The options also carry a new shared `AbortController` after aborting
-the request in flight, which makes the newest navigation the only one whose
+`Alder-Page` is `location.pathname + location.search`, the page the
+browser is on: here `/?filter=Active`. A write route does not know which
+page it was clicked on (`Toggle` may be used from the list and from the
+todo's own page), and `refresh`, `invalid` and the before-view need it.
+
+The router reads it with `rq.ShownURL()`, through `rt.BackURL`
+(`rt/core.go`): the path and query of the value, never a scheme or host,
+and `/` for anything that could name another site (a path that starts with
+`//`, a backslash, a control byte). Without JavaScript there is no such
+header, and `ShownURL` reads `Referer` the same way.
+
+##### `Alder-Build`
+
+`Alder-Build` is the id of the build that rendered the page, from
+`<meta name="alder-build">` in its `<head>` (`web.BuildID`: the first 16
+hex digits of the SHA-256 of the executable). Every Datastar request sends
+it.
+
+Datastar never patches the `<head>`, so a tab open across a deploy keeps
+the old build's stylesheet and scripts; the router answers a request from
+another build with a reload (below), never a patch.
+
+##### `Alder-Shown`
+
+`Alder-Shown` is the hash the page's `<al-shown>` element holds (below):
+the hash of the body as the server last rendered it for this page, whole or
+in part.
+
+##### `Alder-Fetch`
+
+`Alder-Fetch` is not sent by a post. A `click` on a GET route is an
+element fetch, and `window._alderF` sends it with the page and build
+headers: `Alder-Fetch: 1`, which is what makes the request the third kind
+in the table above.
+
+> **`window._alderO` before the script runs.** `window._alderO` is called
+> with `?.`: a click before the page's script has defined it posts without
+> these options, and the answer morphs the whole body.
+
+The options also carry a new shared `AbortController` after aborting the
+request in flight, which makes the newest navigation the only one whose
 answer is applied (chapter 6, "Links and navigation").
 
-**`POST /_/Toggle?id=M2PBzBsivm3srrcFIlTD`.** Click Done, and the button
-submits its little form; Datastar catches the submission and runs that
-`@post`. It sends the header `Datastar-Request: true`, the three headers
-above (`Alder-Shown: 2bfef09fe1ff4b0c`, `Alder-Page: /?filter=Active`,
+#### `POST /_/Toggle?id=M2PBzBsivm3srrcFIlTD`
+
+Click Done, and the button submits its little form; Datastar catches the
+submission and runs that `@post`. It sends the header
+`Datastar-Request: true`, the three headers above
+(`Alder-Shown: 2bfef09fe1ff4b0c`, `Alder-Page: /?filter=Active`,
 `Alder-Build: 7459b858a2232e68`) and the form's fields, url-encoded: there
-are none. The router matches the `POST` route with pattern `/_/Toggle`.
+are none.
+
+The router matches the `POST` route with pattern `/_/Toggle`.
 `rq.Datastar` is true. The handler is:
 
 ```go
@@ -1630,51 +1874,65 @@ This is chapter 6's lifecycle, line by line:
    parameters are in its path, which `Toggle` has none of). If it does not
    decode, 404; `html.None()` is an empty document, which the router
    replaces with `App.notFound`.
+
 2. `guard__…` is `requires user` and the role: a 303 to `App.login` or a 404
    when the session falls short, otherwise the narrowed `Session` that
    `update` takes. A write route has no `load`, so it has no `page__…`
    function: `guard__` is what `page__` is without the load.
-3. Because `Toggle.update` mentions `Response.refresh`, the checker marked the
-   route (`NeedsShown`, section 5), and the generator wrote the lines
+
+3. Because `Toggle.update` mentions `Response.refresh`, the checker marked
+   the route (`NeedsShown`, section 5), and the generator wrote the lines
    with `before`. For a Datastar request the handler renders the page the
-   browser is on, now, before the update. `rq.RenderShown` (`rt/web/shown.go`)
-   resolves `rq.ShownURL()` (`/?filter=Active`) to a GET route with the
-   matcher a GET uses, `Todos.Index.Index`, and calls that route's own
-   handler, in-process, with a fresh `Env` (so nothing the write does reaches
-   the page and nothing the page does reaches the write) and the request's
-   session. The result, `web.Shown`, holds the URL, the status the route
-   answered and its render with the regions (below). It is nil when no GET
-   route matches the URL, or the route is a file page. A route whose `update`
-   only redirects or renders has no such lines; the golden's `Toggle`, further
-   down, is one.
+   browser is on, now, before the update.
+
+   `rq.RenderShown` (`rt/web/shown.go`) resolves `rq.ShownURL()`
+   (`/?filter=Active`) to a GET route with the matcher a GET uses,
+   `Todos.Index.Index`, and calls that route's own handler, in-process, with
+   a fresh `Env` (so nothing the write does reaches the page and nothing
+   the page does reaches the write) and the request's session.
+
+   The result, `web.Shown`, holds the URL, the status the route answered
+   and its render with the regions (below). It is nil when no GET route
+   matches the URL, or the route is a file page. A route whose `update`
+   only redirects or renders has no such lines; the golden's `Toggle`,
+   further down, is one.
+
 4. `eff.Run` with `eff.KTask` runs the `Toggle` route's `update` much as "A
-   `Task`: `Toggle`" did, as one step, `Db.updateMine Todo`: it reads the row
-   with the owner in the `WHERE` (which begins the transaction), writes it
-   with the owner in the `WHERE` again, then a commit ("The rules", below),
-   and the task's value is `Response.refresh`. If the task failed, `route__fail`
-   answers 500, or 404 for `Task.notFound` (an id that is missing or someone
-   else's), and nothing is stored, since `Run` already rolled back the writes
-   and the session.
-5. `web.AnswerResponse(resp, before, rq.Env.Session)` wraps the `rt.Response`,
-   the before-view and the session the task left in a `web.Response`:
-   `Answer`, `Shown` and `Session`, with the status `resp.Code()`. It
-   delivers nothing. The router does that.
+   `Task`: `Toggle`" did, as one step, `Db.updateMine Todo`: it reads the
+   row with the owner in the `WHERE` (which begins the transaction), writes
+   it with the owner in the `WHERE` again, then a commit ("The rules",
+   below), and the task's value is `Response.refresh`.
+
+   If the task failed, `route__fail` answers 500, or 404 for
+   `Task.notFound` (an id that is missing or someone else's), and nothing
+   is stored, since `Run` already rolled back the writes and the session.
+
+5. `web.AnswerResponse(resp, before, rq.Env.Session)` wraps the
+   `rt.Response`, the before-view and the session the task left in a
+   `web.Response`: `Answer`, `Shown` and `Session`, with the status
+   `resp.Code()`. It delivers nothing. The router does that.
+
+#### Delivering the answer
 
 The router's `write` sees a `web.Response` with `Answer` set. It checks that
 the target is one it can deliver (`targetProblem`: a `redirect` goes to a
 GET route, a `render` patches in a named GET route's view), and then
-`answer` (`rt/web/answer.go`) delivers the `Response` by its kind. The
-toasts are set first (`setToasts`), to follow the patches. A `redirect`
-goes its own way (below). For the others the session is stored if the task
-changed it (`setSession`; the task here left it as it was, so no cookie), and
-a request without Datastar is answered plainly (`answerPlain`, below).
-With Datastar, `render` has its own delivery (below) and `refresh` and
-`invalid` are `answerShown`. It runs the page the browser is on again, with
-the session the write left (`runShown` again: this is the page's second
-render), renders it with `html.RenderTracked`, which is `RenderWith` that
-also writes down, as it goes, where each element with an `id` starts and
-ends in the markup (here `<ul id="todos">` and `<p id="summary">`: the page's
-**regions**), and compares it with `before`.
+`answer` (`rt/web/answer.go`) delivers the `Response` by its kind:
+
+- The toasts are set first (`setToasts`), to follow the patches.
+- A `redirect` goes its own way (below).
+- For the others the session is stored if the task changed it
+  (`setSession`; the task here left it as it was, so no cookie), and a
+  request without Datastar is answered plainly (`answerPlain`, below).
+- With Datastar, `render` has its own delivery (below) and `refresh` and
+  `invalid` are `answerShown`.
+
+`answerShown` runs the page the browser is on again, with the session the
+write left (`runShown` again: this is the page's second render), renders it
+with `html.RenderTracked`, which is `RenderWith` that also writes down, as
+it goes, where each element with an `id` starts and ends in the markup
+(here `<ul id="todos">` and `<p id="summary">`: the page's **regions**), and
+compares it with `before`.
 
 Which of the two ways to send the change applies is decided by `regions` in
 `rt/web/shown.go`, which falls back to sending the whole body when there is no
