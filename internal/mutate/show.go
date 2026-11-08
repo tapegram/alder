@@ -121,6 +121,8 @@ func atomic(e ir.Expr) bool {
 		return x.Payload == nil
 	case *ir.PageRef:
 		return x.Params == nil
+	case *ir.RouteRef:
+		return x.Params == nil
 	case *ir.Widen:
 		return atomic(x.Expr)
 	case *ir.Cond:
@@ -217,6 +219,12 @@ func (p *printer) expr(e ir.Expr) string {
 		return "[" + strings.Join(es, ", ") + "]"
 	case *ir.PageRef:
 		s := p.qual("", x.Page.Module)
+		if x.Params != nil {
+			s += " " + p.atom(x.Params)
+		}
+		return s
+	case *ir.RouteRef:
+		s := p.qual(x.Route.Module, x.Route.Name)
 		if x.Params != nil {
 			s += " " + p.atom(x.Params)
 		}

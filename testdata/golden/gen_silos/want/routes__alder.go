@@ -272,7 +272,7 @@ func decode__Notes__Index__Index__Params(_ map[string]string, _ url.Values) (r N
 func page__Notes__Index__Index(rq *web.Request, params Notes__Index__Index__Params, keep any) (Notes__Index__Model, Notes__Index__Index__Session, *web.Response) {
 	var model Notes__Index__Model
 	app := rq.Env.Session.(App__Session)
-	if !app.User.Ok && Mutant == 11 {
+	if !app.User.Ok && Mutant == 13 {
 		app.User = rt.Just("mutant")
 	}
 	if !app.User.Ok {
@@ -326,7 +326,7 @@ func decode__Notes__Index__Add__Params(_ map[string]string, _ url.Values) (r Not
 // takes, or the response that ends the request.
 func guard__Notes__Index__Add(rq *web.Request, params Notes__Index__Add__Params) (Notes__Index__Index__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
-	if !app.User.Ok && Mutant == 12 {
+	if !app.User.Ok && Mutant == 14 {
 		app.User = rt.Just("mutant")
 	}
 	if !app.User.Ok {
@@ -382,7 +382,7 @@ func decode__Orgs__Orgs__Params(_ map[string]string, _ url.Values) (r Orgs__Orgs
 func page__Orgs__Orgs(rq *web.Request, params Orgs__Orgs__Params, keep any) (Orgs__Model, Orgs__Orgs__Session, *web.Response) {
 	var model Orgs__Model
 	app := rq.Env.Session.(App__Session)
-	if !app.User.Ok && Mutant == 15 {
+	if !app.User.Ok && Mutant == 18 {
 		app.User = rt.Just("mutant")
 	}
 	if !app.User.Ok {
@@ -439,7 +439,7 @@ func decode__Orgs__Pick__Params(_ map[string]string, q url.Values) (r Orgs__Pick
 // response that ends the request.
 func guard__Orgs__Pick(rq *web.Request, params Orgs__Pick__Params) (Orgs__Orgs__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
-	if !app.User.Ok && Mutant == 16 {
+	if !app.User.Ok && Mutant == 19 {
 		app.User = rt.Just("mutant")
 	}
 	if !app.User.Ok {
@@ -488,7 +488,7 @@ func decode__Orgs__Switch__Params(_ map[string]string, _ url.Values) (r Orgs__Sw
 // or the response that ends the request.
 func guard__Orgs__Switch(rq *web.Request, params Orgs__Switch__Params) (Orgs__Orgs__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
-	if !app.User.Ok && Mutant == 17 {
+	if !app.User.Ok && Mutant == 20 {
 		app.User = rt.Just("mutant")
 	}
 	if !app.User.Ok {

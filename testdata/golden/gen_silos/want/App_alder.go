@@ -26,14 +26,20 @@ type App__Leave__Params struct{}
 func App__Leave__update(params App__Leave__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[struct{}] {
 		switch Mutant {
-		case 6:
+		case 7:
 			return eff.Pure(struct{}{})
 		}
 		return std.SessionPut(func(s App__Session) App__Session {
 			return App__Session{User: s.User, Org: rt.Nothing[string](), Role: s.Role}
 		})
 	}(), func(_ struct{}) eff.Task[rt.Response] {
-		return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Orgs.Orgs", Method: "GET", Path: "/orgs"}))
+		return eff.Pure(func() rt.Response {
+			switch Mutant {
+			case 8:
+				return std.ResponseRefresh()
+			}
+			return std.ResponseRedirect(rt.Route{Name: "Orgs.Orgs", Method: "GET", Path: "/orgs"})
+		}())
 	})
 }
 

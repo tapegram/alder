@@ -53,7 +53,13 @@ func Admin__Projects__Remove__update(p Admin__Projects__Remove__Params, session 
 			return struct{}{}, db.DeleteRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Project__Project, p.Id)
 		})
 	}(), func(_ struct{}) eff.Task[rt.Response] {
-		return eff.Pure(std.ResponseRefresh())
+		return eff.Pure(func() rt.Response {
+			switch Mutant {
+			case 6:
+				return std.ResponseInvalid("mutant")
+			}
+			return std.ResponseRefresh()
+		}())
 	})
 }
 

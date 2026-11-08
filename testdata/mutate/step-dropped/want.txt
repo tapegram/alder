@@ -1,0 +1,13 @@
+1  User  adminOnly:12     guard dropped        if id == Just "admin" then Query.succeed () else Query.notFound → the notFound arm dropped
+2  User  adminOnly:12     operator flipped     id == Just "admin" → id != Just "admin"
+3  Home  Save.update:19   step dropped         let _ <- User.adminOnly session.user → let _ <- Query.succeed ()
+4  Home  Save.update:20   step dropped         let _ <- User.audit "save" → let _ <- Task.succeed ()
+5  Home  Save.update:21   write replaced       let _ <- Db.insert User { name: "U" } → let _ <- Task.succeed (User.UserId "mutant")
+6  Home  Save.update:24   refresh → invalid    Response.refresh → Response.invalid "mutant"
+7  Home  Login.update:30  session put dropped  let _ <- Session.put (\s -> { s | user: Just p.id }) → let _ <- Task.succeed ()
+8  Home  Login.update:31  refresh → invalid    Response.refresh → Response.invalid "mutant"
+-  User  adminOnly:12     condition negated    skipped: operator flipped makes the same program
+-  Home  Save.update:21   step dropped         skipped: write replaced makes the same program
+-  Home  Save.update:22   step dropped         equivalent: the step does nothing
+-  Home  Save.update:23   step dropped         skipped: the step's result is not Unit
+-  Home  Login.update:30  step dropped         skipped: session put dropped makes the same program

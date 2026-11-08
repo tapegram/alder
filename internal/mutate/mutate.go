@@ -518,8 +518,12 @@ func (c *collector) walk(e ir.Expr) {
 	case *ir.EffBind:
 		c.write(x)
 		c.sessionPut(x)
+		c.step(x)
 	case *ir.Call:
 		c.notDropped(x)
+		c.answer(x)
+	case *ir.Var:
+		c.refresh(x)
 	case *ir.Update:
 		c.updateFields(x)
 	case *ir.Ctor:
@@ -1184,11 +1188,94 @@ func (c *collector) nav(x *ir.Ctor) {
 	c.add(kind, x.Pos, x, r, c.show(x), "Rerender")
 }
 
+// ---- a route's Response (#160)
+
+// responseStd is the stdlib value Response.name, of type ty.
+func responseStd(ty types.Type, name string) *ir.Var {
+	return &ir.Var{Typed: ir.Typed{Ty: ty}, Kind: ir.VarStd, Module: "Response", Name: name}
+}
+
+// answer swaps a write's answer for another of type Response, as nav does a Nav's: `redirect
+// r` → refresh (the write stays on the page it was sent from), `render r` → `redirect r` (the
+// same route, but a 303 to it), `invalid t` → refresh (a refused write answered as a done one);
+// and drops a notice (`toast`, `success`, `warning`, `error`), leaving the Response it decorates.
+func (c *collector) answer(x *ir.Call) {
+	v, ok := x.Fn.(*ir.Var)
+	if !ok || v.Kind != ir.VarStd || v.Module != "Response" {
+		return
+	}
+	refresh := responseStd(x.Ty, "refresh")
+	switch {
+	case v.Name == "redirect" && len(x.Args) == 1:
+		c.add(RedirectRefresh, x.Pos, x, refresh, c.show(x), "Response.refresh")
+	case v.Name == "render" && len(x.Args) == 1:
+		r := &ir.Call{Typed: x.Typed, Pos: x.Pos, Fn: responseStd(v.Ty, "redirect"), Args: x.Args}
+		c.add(RenderRedirect, x.Pos, x, r, c.show(x), c.show(r))
+	case v.Name == "invalid" && len(x.Args) == 1:
+		c.add(InvalidRefresh, x.Pos, x, refresh, c.show(x), "Response.refresh")
+	case (v.Name == "toast" || v.Name == "success" || v.Name == "warning" || v.Name == "error") && len(x.Args) == 2:
+		c.add(ToastDropped, x.Pos, x, x.Args[1], c.show(x), "the "+v.Name+" dropped")
+	}
+}
+
+// refresh answers `Response.refresh` with `Response.invalid "mutant"`: a done write answered
+// as a refused one.
+func (c *collector) refresh(x *ir.Var) {
+	if x.Kind != ir.VarStd || x.Module != "Response" || x.Name != "refresh" {
+		return
+	}
+	invalid := &ir.Var{Typed: ir.Typed{Ty: &types.Fun{Params: []types.Type{types.Text}, Result: x.Ty}},
+		Kind: ir.VarStd, Module: "Response", Name: "invalid"}
+	r := &ir.Call{Typed: x.Typed, Pos: x.Pos, Fn: invalid,
+		Args: []ir.Expr{&ir.Lit{Typed: ir.Typed{Ty: types.Text}, Kind: ir.LitText, Text: "mutant"}}}
+	c.add(RefreshInvalid, x.Pos, x, r, "Response.refresh", c.show(r))
+}
+
+// step drops a `let _ <- e` step of a block, e being replaced by Task.succeed () (or
+// Query.succeed (), as e's kind): the access check `let _ <- Layout.adminOnly …` that begins a
+// write route's update, an audit, a mail. Not dropped: a Db write or a Session.put (write
+// replaced and session put dropped make the same program), a step whose result is not Unit (no
+// value to succeed with), a step that is already Task.succeed (equivalent).
+func (c *collector) step(x *ir.EffBind) {
+	if x.Param != nil {
+		return
+	}
+	switch e := x.Effect.(type) {
+	case *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete, *ir.DbInsertScoped, *ir.DbUpdateScoped, *ir.DbDeleteScoped:
+		c.skip(StepDropped, x.Pos.Line, "write replaced makes the same program")
+		return
+	case *ir.Call:
+		if isStd(e.Fn, "Session", "put") {
+			c.skip(StepDropped, x.Pos.Line, "session put dropped makes the same program")
+			return
+		}
+	case *ir.EffPure:
+		c.suppress(StepDropped, x.Pos.Line, "the step does nothing")
+		return
+	}
+	app, ok := x.Effect.Type().(*types.App)
+	if !ok || len(app.Args) != 1 || !isUnit(app.Args[0]) {
+		c.skip(StepDropped, x.Pos.Line, "the step's result is not Unit")
+		return
+	}
+	kind, shown := ir.EffTask, "Task.succeed ()"
+	if app.Con == "Query" {
+		kind, shown = ir.EffQuery, "Query.succeed ()"
+	}
+	repl := &ir.EffPure{Typed: ir.Typed{Ty: app}, Kind: kind, Value: &ir.Lit{Typed: ir.Typed{Ty: types.Unit}, Kind: ir.LitUnit}}
+	c.add(StepDropped, x.Pos, x.Effect, repl, line(c.module, x.Effect, wrapped("let _ <- ", "")), "let _ <- "+shown)
+}
+
 // ---- helpers
 
 func isText(t types.Type) bool {
 	con, ok := t.(*types.Con)
 	return ok && con.Name == "Text"
+}
+
+func isUnit(t types.Type) bool {
+	con, ok := t.(*types.Con)
+	return ok && con.Name == "Unit"
 }
 
 // isHtml reports whether a value's final result type contains Html anywhere (`Html m`,

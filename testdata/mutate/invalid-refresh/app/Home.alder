@@ -1,0 +1,17 @@
+module Home
+
+route Home = GET  "/"       { }
+route Save = POST "/_/Save" { n: Int }
+
+type Model = { }
+
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = Query.succeed { }
+
+-- A mutant: the refused save answers refresh, as a saved one (and the saved one invalid).
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session =
+  if p.n > 0 then Task.succeed Response.refresh else Task.succeed (Response.invalid "Too small")
+
+Home.view : Model -> Session -> Html
+Home.view model session = <p>Home</p>

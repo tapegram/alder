@@ -1,0 +1,35 @@
+module Home
+
+import User
+
+route Home   = GET  "/"         { }
+route Save   = POST "/_/Save"   { }
+route Login  = POST "/_/Login"  { id: User.UserId }
+
+type Model = { }
+
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = Query.succeed { }
+
+-- A mutant: the access check dropped (a Query step in a Task); a Task step too. Refused: the
+-- insert (write replaced makes the same program), the step that does nothing, the step whose
+-- result is not Unit.
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session = {
+  let _ <- User.adminOnly session.user
+  let _ <- User.audit "save"
+  let _ <- Db.insert User.User { name: "U" }
+  let _ <- Task.succeed ()
+  let _ <- Db.from User.User |> Db.count
+  Task.succeed Response.refresh
+}
+
+-- Refused: session put dropped makes the same program.
+Login.update : Login.Params -> Session -> Task Response
+Login.update p session = {
+  let _ <- Session.put (\s -> { s | user: Just p.id })
+  Task.succeed Response.refresh
+}
+
+Home.view : Model -> Session -> Html
+Home.view model session = <p>Home</p>

@@ -65,7 +65,13 @@ func Notes__Add__update(p Notes__Add__Params, session Notes__Notes__Session) eff
 			}(), Owner: session.User}), _e1.Now())
 		})
 	}(), func(_ string) eff.Task[rt.Response] {
-		return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Notes.Notes", Method: "GET", Path: "/notes"}))
+		return eff.Pure(func() rt.Response {
+			switch Mutant {
+			case 8:
+				return std.ResponseRefresh()
+			}
+			return std.ResponseRedirect(rt.Route{Name: "Notes.Notes", Method: "GET", Path: "/notes"})
+		}())
 	})
 }
 

@@ -75,15 +75,19 @@ var Mutants = []rtesting.Mutant{
 	{ID: 12, Module: "Notes", Decl: "Notes.load", Kind: "scope dropped", File: "app/Notes.alder", Line: 19, Col: 5, Before: "Db.mine Note", After: "Db.from Note"},
 	{ID: 13, Module: "Notes", Decl: "Notes.load", Kind: "bool flipped", File: "app/Notes.alder", Line: 20, Col: 35, Before: "True", After: "False"},
 	{ID: 14, Module: "Notes", Decl: "Add.update", Kind: "write replaced", File: "app/Notes.alder", Line: 29, Col: 3, Before: "let _ <- Db.insertMine Note { title: p.form.title }", After: "let _ <- Task.succeed (Note.NoteId \"mutant\")"},
-	{ID: 15, Module: "Notes", Decl: "Pin.update", Kind: "scope dropped", File: "app/Notes.alder", Line: 35, Col: 12, Before: "Db.getMine Note p.id", After: "Db.get Note p.id, not found when missing"},
-	{ID: 16, Module: "Notes", Decl: "Pin.update", Kind: "write replaced", File: "app/Notes.alder", Line: 36, Col: 3, Before: "let _ <- Db.updateMine Note n.id (\\x -> { x | pinned: True })", After: "let _ <- Task.succeed ()"},
-	{ID: 17, Module: "Notes", Decl: "Pin.update", Kind: "scope dropped", File: "app/Notes.alder", Line: 36, Col: 12, Before: "Db.updateMine Note n.id (\\x -> { x | pinned: True })", After: "Db.update Note n.id (\\x -> { x | pinned: True }), not found when missing"},
-	{ID: 18, Module: "Notes", Decl: "Pin.update", Kind: "bool flipped", File: "app/Notes.alder", Line: 36, Col: 57, Before: "True", After: "False"},
-	{ID: 19, Module: "Notes", Decl: "wipe", Kind: "scope dropped", File: "app/Notes.alder", Line: 48, Col: 8, Before: "Db.deleteMine Note _m1", After: "Db.delete Note _m1, not found when missing"},
+	{ID: 15, Module: "Notes", Decl: "Add.update", Kind: "refresh → invalid", File: "app/Notes.alder", Line: 30, Col: 16, Before: "Response.refresh", After: "Response.invalid \"mutant\""},
+	{ID: 16, Module: "Notes", Decl: "Pin.update", Kind: "scope dropped", File: "app/Notes.alder", Line: 35, Col: 12, Before: "Db.getMine Note p.id", After: "Db.get Note p.id, not found when missing"},
+	{ID: 17, Module: "Notes", Decl: "Pin.update", Kind: "write replaced", File: "app/Notes.alder", Line: 36, Col: 3, Before: "let _ <- Db.updateMine Note n.id (\\x -> { x | pinned: True })", After: "let _ <- Task.succeed ()"},
+	{ID: 18, Module: "Notes", Decl: "Pin.update", Kind: "scope dropped", File: "app/Notes.alder", Line: 36, Col: 12, Before: "Db.updateMine Note n.id (\\x -> { x | pinned: True })", After: "Db.update Note n.id (\\x -> { x | pinned: True }), not found when missing"},
+	{ID: 19, Module: "Notes", Decl: "Pin.update", Kind: "bool flipped", File: "app/Notes.alder", Line: 36, Col: 57, Before: "True", After: "False"},
+	{ID: 20, Module: "Notes", Decl: "Pin.update", Kind: "refresh → invalid", File: "app/Notes.alder", Line: 37, Col: 16, Before: "Response.refresh", After: "Response.invalid \"mutant\""},
+	{ID: 21, Module: "Notes", Decl: "Remove.update", Kind: "step dropped", File: "app/Notes.alder", Line: 42, Col: 3, Before: "let _ <- wipe p.id", After: "let _ <- Task.succeed ()"},
+	{ID: 22, Module: "Notes", Decl: "Remove.update", Kind: "refresh → invalid", File: "app/Notes.alder", Line: 43, Col: 16, Before: "Response.refresh", After: "Response.invalid \"mutant\""},
+	{ID: 23, Module: "Notes", Decl: "wipe", Kind: "scope dropped", File: "app/Notes.alder", Line: 48, Col: 8, Before: "Db.deleteMine Note _m1", After: "Db.delete Note _m1, not found when missing"},
 }
 
 // MutantsSuppressed and MutantsSkipped count the mutants refused as equivalent and as not applicable.
-var MutantsSuppressed, MutantsSkipped = 0, 1
+var MutantsSuppressed, MutantsSkipped = 0, 3
 
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
