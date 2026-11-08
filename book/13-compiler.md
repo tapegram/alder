@@ -2824,29 +2824,38 @@ and the runtime that keeps a database per org.
 
 #### The checker
 
-`internal/check/partitions.go` reads `@partition k`
-(and `@owner` as `@partition user`) into the table's `PartKey` and
-`PartCol`, once the session is known (E0032); `via`, `choose` and `silo`
-declarations into `Result.Via`, `Choose` and `Silos` (E0032, E0033). A
-scoped operation is checked as in M11, with the key in place of `user`:
+`internal/check/partitions.go` reads `@partition k` (and `@owner` as
+`@partition user`) into the table's `PartKey` and `PartCol`, once the
+session is known (E0032); `via`, `choose` and `silo` declarations into
+`Result.Via`, `Choose` and `Silos` (E0032, E0033).
+
+A scoped operation is checked as in M11, with the key in place of `user`:
 legal in a member of a route that `requires` the table's key (or has `silo
 k`, the admin form), in a test, and, through a helper, wherever the
-helper's own use is legal (E0026). An unscoped operation on a siloed
-table is held to the same rule. After every body is checked, the
-**write-set analysis** (`internal/check/writeset.go`) collects, for each
-top-level value, the tables its body writes: every mention of
-`Db.insert`, `Db.update`, `Db.delete` or a scoped form, called there or
-not (`let ins = Db.insert`, a lambda handed `Db.insert`), each with the
-table its type has at that mention — the analysis reads types, not
-spellings, so a write cannot hide behind a name. It closes that over
-every value the body refers to (a fixed point, so a helper of a helper
-counts), and gives each write route's `update` the store its writes fall
-in: the shared one, or `silo org`. An `update` with two stores is E0031.
-It over-approximates (a helper counts if it is
-referred to, called or not) and never under-approximates. What it
-proves is about `update`s (and fakes): a `test`'s own Tasks and an
-adapter's Go code are the runtime's to check, below. The answer is
-`Result.Arms`, which the IR keeps as the route's `Store`:
+helper's own use is legal (E0026). An unscoped operation on a siloed table
+is held to the same rule.
+
+##### The write-set analysis
+
+After every body is checked, the **write-set analysis**
+(`internal/check/writeset.go`) collects, for each top-level value, the
+tables its body writes: every mention of `Db.insert`, `Db.update`,
+`Db.delete` or a scoped form, called there or not (`let ins = Db.insert`, a
+lambda handed `Db.insert`), each with the table its type has at that
+mention — the analysis reads types, not spellings, so a write cannot hide
+behind a name.
+
+It closes that over every value the body refers to (a fixed point, so a
+helper of a helper counts), and gives each write route's `update` the store
+its writes fall in: the shared one, or `silo org`. An `update` with two
+stores is E0031.
+
+> **Over-approximation.** It over-approximates (a helper counts if it is
+> referred to, called or not) and never under-approximates. What it proves
+> is about `update`s (and fakes): a `test`'s own Tasks and an adapter's Go
+> code are the runtime's to check, below.
+
+The answer is `Result.Arms`, which the IR keeps as the route's `Store`:
 `(store silo org)` in `alder dump --ir`, under the route's `update`.
 
 #### The Go
@@ -2864,15 +2873,18 @@ The table's descriptor names its partition and its silo
 	Silo: "org",
 ```
 
-`Owner` and `User` are M11's fields, now the partition column and the
-key's value in a session; the scoped helpers (`db.Scoped`,
-`InsertScopedRow`, `DeleteScopedRow`, …) are the M11 helpers under
-general names, and emit the same SQL with `"org" = ?`. A route that
-`requires user, org` gets two checks in its guard: no `org`
-is a redirect to `choose org`'s path, and then `db.Narrow(rq.Env, "org",
-app.Org.Val)` records the request's org for the runtime. A write route's
-handler binds its `Task` to the route's store before it runs it. This is
-`Projects.Index.Remove`, between the before-view and `eff.Run`:
+`Owner` and `User` are M11's fields, now the partition column and the key's
+value in a session; the scoped helpers (`db.Scoped`, `InsertScopedRow`,
+`DeleteScopedRow`, …) are the M11 helpers under general names, and emit the
+same SQL with `"org" = ?`.
+
+A route that `requires user, org` gets two checks in its guard: no `org` is
+a redirect to `choose org`'s path, and then `db.Narrow(rq.Env, "org",
+app.Org.Val)` records the request's org for the runtime.
+
+A write route's handler binds its `Task` to the route's store before it
+runs it. This is `Projects.Index.Remove`, between the before-view and
+`eff.Run`:
 
 ```go
 		if err := db.Enter(rq.Env, "org"); err != nil {
@@ -2881,81 +2893,97 @@ handler binds its `Task` to the route's store before it runs it. This is
 		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Remove__update(params, session))
 ```
 
-`db.Enter(rq.Env, "org")` opens that org's
-database and makes it the store `eff.Run` begins the transaction on. The
-string is the route's `Store` from the IR, written into the handler by the
-generator; a route that writes the shared database has `db.Enter(rq.Env,
-"")`.
+`db.Enter(rq.Env, "org")` opens that org's database and makes it the store
+`eff.Run` begins the transaction on. The string is the route's `Store` from
+the IR, written into the handler by the generator; a route that writes the
+shared database has `db.Enter(rq.Env, "")`.
+
 `via` is one function, the router's session check (`session__via` in
 `app__alder.go`), called whenever a `Session.put` changes the session:
-a user set to `Nothing` clears the `org`; an `org` that changed to `Just
-v` needs a `Membership` row for the user and `v`, read with `db.Member`
-inside the running `Task`'s transaction, or the step fails with
-"Session.put org: no Membership for this user and org". That failure is
-marked (`eff.ErrFail`'s `NotMember`), so a write route's handler answers it
-as `Response.invalid "You are not a member of that workspace."` for a route
-with a form, and with the not-found page (404) for one without a form,
-rather than the error page (`routeUpdateFailure` in `internal/gen/routes.go`
-writes the lines); `Test.run` sees the failure as it is.
+
+- a user set to `Nothing` clears the `org`;
+- an `org` that changed to `Just v` needs a `Membership` row for the user
+  and `v`, read with `db.Member` inside the running `Task`'s transaction,
+  or the step fails with "Session.put org: no Membership for this user and
+  org".
+
+That failure is marked (`eff.ErrFail`'s `NotMember`), so a write route's
+handler answers it as `Response.invalid "You are not a member of that
+workspace."` for a route with a form, and with the not-found page (404) for
+one without a form, rather than the error page (`routeUpdateFailure` in
+`internal/gen/routes.go` writes the lines); `Test.run` sees the failure as
+it is.
 
 #### A store per silo
 
-`rt/db/stores.go`'s `Stores` holds the shared
-database and the silos opened so far, by key and value. Every database
-step of `rt/db` asks `route` which store it runs on: a table with no
-`Silo` runs on the shared one; a siloed table on the silo of the row's
-own `org` (an insert), else of the request's narrowed key (`Env.Keys`),
-else of the session. When that is the store the `Task` was bound to,
-the step runs in its transaction. A read of the other store runs on a
-read-only connection outside the transaction (SQLite's `query_only`,
-and a Go wrapper that refuses a write), which is how a `load` reads an
-org's name and its projects in one go. A write to another store cannot
-happen in an `update` that checked; one that reaches it anyway (a
-test's own `Task`, an adapter, a bug in gen) is refused by `route` as an
-internal error rather than written outside the `Task`.
+`rt/db/stores.go`'s `Stores` holds the shared database and the silos
+opened so far, by key and value. Every database step of `rt/db` asks
+`route` which store it runs on:
+
+- a table with no `Silo` runs on the shared one;
+- a siloed table runs on the silo of the row's own `org` (an insert), else
+  of the request's narrowed key (`Env.Keys`), else of the session.
+
+When that is the store the `Task` was bound to, the step runs in its
+transaction. A read of the other store runs on a read-only connection
+outside the transaction (SQLite's `query_only`, and a Go wrapper that
+refuses a write), which is how a `load` reads an org's name and its
+projects in one go.
+
+A write to another store cannot happen in an `update` that checked; one
+that reaches it anyway (a test's own `Task`, an adapter, a bug in gen) is
+refused by `route` as an internal error rather than written outside the
+`Task`.
 
 #### Opening a silo
 
-The first request for an org opens its file
-(`openSilo`): the id must be an id, the org's row must exist in the
-shared database (one read), and then the open-time check of chapter 8
-runs in one `BEGIN IMMEDIATE` on the file: create it at the build's
-schema; serve it when its `_alder_schema` row is the build's (`siloHash`:
-the app's schema hash and the tables of each silo, so a table moved
-into a silo leaves the silos made before it behind); apply the
-pending migrations (each statement whose target is a silo table, with
-references out of the silo removed) when it is behind, unless one drops
-data; refuse it when it is ahead. The outcome is cached per process. A
-silo not served is a `*MaintenanceError`, which the route answers with
-the maintenance page (503), and is checked again after a minute; one
-unused for ten minutes is closed. Only requests for the same org wait
-while it opens: the registry's lock guards the map, not the check.
+The first request for an org opens its file (`openSilo`): the id must be an
+id, the org's row must exist in the shared database (one read), and then
+the open-time check of chapter 8 runs in one `BEGIN IMMEDIATE` on the file:
+
+- create it at the build's schema;
+- serve it when its `_alder_schema` row is the build's (`siloHash`: the
+  app's schema hash and the tables of each silo, so a table moved into a
+  silo leaves the silos made before it behind);
+- apply the pending migrations (each statement whose target is a silo
+  table, with references out of the silo removed) when it is behind,
+  unless one drops data;
+- refuse it when it is ahead.
+
+The outcome is cached per process. A silo not served is a
+`*MaintenanceError`, which the route answers with the maintenance page
+(503), and is checked again after a minute; one unused for ten minutes is
+closed. Only requests for the same org wait while it opens: the registry's
+lock guards the map, not the check.
 
 #### The drain
 
-A deploy starts the new build while the old one drains
-its requests (chapter 16). The new build may migrate a silo the old one
-has open. So once the old process is told to stop, it opens no new silo
-(a request for one answers the maintenance page) and, before each
-write to a silo it has open, reads that file's `_alder_schema` row again
-inside the write's transaction: if another build migrated it, the write
-is refused and the silo answers the maintenance page for the rest of
-the drain. A process that is not draining never re-checks, which is why
-a deploy always signals the old process before it starts the new.
+A deploy starts the new build while the old one drains its requests
+(chapter 16). The new build may migrate a silo the old one has open.
+
+So once the old process is told to stop, it opens no new silo (a request
+for one answers the maintenance page) and, before each write to a silo it
+has open, reads that file's `_alder_schema` row again inside the write's
+transaction: if another build migrated it, the write is refused and the
+silo answers the maintenance page for the rest of the drain. A process
+that is not draining never re-checks, which is why a deploy always signals
+the old process before it starts the new.
 
 #### Tests
 
-`db.NewTestStores` gives each test a `:memory:` database per
-org it touches, made on first use, each with its transaction open for
-the whole test, and the test's savepoints (`Test.run`, each browser
-request) span all of them. A browser request's `Task` is bound by the
-same `db.Enter` as production's. A `Test.run`'s `Task` is bound too
-(`rtesting.Inner` sets `Env.Pending`): to the store its first write
-lands in, or, for a route's `update`, to the route's store beforehand
-(`rtesting.InnerOn`), so a write to a second store fails it as a
-request's would. The
-test's own body is not bound: it may set up rows in the shared database and
-in several silos.
+`db.NewTestStores` gives each test a `:memory:` database per org it
+touches, made on first use, each with its transaction open for the whole
+test, and the test's savepoints (`Test.run`, each browser request) span all
+of them.
+
+A browser request's `Task` is bound by the same `db.Enter` as production's.
+A `Test.run`'s `Task` is bound too (`rtesting.Inner` sets `Env.Pending`): to
+the store its first write lands in, or, for a route's `update`, to the
+route's store beforehand (`rtesting.InnerOn`), so a write to a second store
+fails it as a request's would.
+
+The test's own body is not bound: it may set up rows in the shared database
+and in several silos.
 
 ### The dev server
 
@@ -2972,39 +3000,100 @@ browser ──HTTP──▶ dev server (alder run, ALDER_ADDR) ──proxy──
 
 #### The proxy
 
-The dev server's handler, `devServer.ServeHTTP`, answers
-`/_dev/reload` and the `/_dev/theme` routes itself and hands every other request to Go's
+The dev server's handler, `devServer.ServeHTTP`, answers `/_dev/reload` and
+the `/_dev/theme` routes itself and hands every other request to Go's
 `httputil.ReverseProxy`, aimed at the current child's address. The
 address is read once per request, under a lock, so a request that started
-before a swap finishes on the child it started on. `FlushInterval: -1`
-makes the proxy pass each piece of an answer on as soon as the app writes
-it, which a Datastar answer (a stream of server-sent events, "A request"
-above) needs. Cookies and `303`s are passed on untouched, and the
-`Host` header is kept, so the app sees the address the browser used.
+before a swap finishes on the child it started on.
+
+`FlushInterval: -1` makes the proxy pass each piece of an answer on as soon
+as the app writes it, which a Datastar answer (a stream of server-sent
+events, "A request" above) needs. Cookies and `303`s are passed on
+untouched, and the `Host` header is kept, so the app sees the address the
+browser used.
 
 #### The theme page
 
-`/_dev/theme` (`cmd/alder/theme_ui.go`, with the page's HTML, CSS and JavaScript as Go string constants in `theme_ui_assets.go`) is answered by this handler too, never proxied, so it works while the app is still building or does not build. A write is refused while the app has errors the checker cannot get past (an `App.alder` that does not parse, say); type errors elsewhere do not block it. That is also why it exists only under `alder run`: the supervisor is the one process that owns the app's directory and may write to it, and a built app carries no such routes. Before anything else each of its routes passes `themeAllowed`, which refuses a request from another site (`Sec-Fetch-Site`, `Origin`) or addressed to another name (`Host`), because a write to `App.alder` must not be reachable from a web page you merely visited. The write path has four steps. The page posts its theme as JSON; `generate.ThemeEdit` runs the checker's own theme check on it (the E0042 rules, so the page and `alder check` cannot disagree) and refuses a declaration that fails; the formatter prints the declaration (`format.Theme`, the same code `alder fmt` uses); and that text is spliced over the old `theme { … }` in `App.alder`, read afresh at that moment so an edit made in an editor since the page loaded is kept. The splice goes through `Apply`, chapter 15's copy, check, write: the result is checked in a copy before the file is touched. The watcher then sees the file change and rebuilds like for any edit. Printing the whole declaration is why a `--` comment inside `theme { … }` does not survive a write.
+`/_dev/theme` (`cmd/alder/theme_ui.go`, with the page's HTML, CSS and
+JavaScript as Go string constants in `theme_ui_assets.go`) is answered by
+this handler too, never proxied, so it works while the app is still
+building or does not build. A write is refused while the app has errors the
+checker cannot get past (an `App.alder` that does not parse, say); type
+errors elsewhere do not block it.
+
+That is also why it exists only under `alder run`: the supervisor is the
+one process that owns the app's directory and may write to it, and a built
+app carries no such routes.
+
+Before anything else each of its routes passes `themeAllowed`, which
+refuses a request from another site (`Sec-Fetch-Site`, `Origin`) or
+addressed to another name (`Host`), because a write to `App.alder` must not
+be reachable from a web page you merely visited.
+
+The write path has four steps:
+
+1. The page posts its theme as JSON.
+2. `generate.ThemeEdit` runs the checker's own theme check on it (the E0042
+   rules, so the page and `alder check` cannot disagree) and refuses a
+   declaration that fails.
+3. The formatter prints the declaration (`format.Theme`, the same code
+   `alder fmt` uses).
+4. That text is spliced over the old `theme { … }` in `App.alder`, read
+   afresh at that moment so an edit made in an editor since the page loaded
+   is kept. The splice goes through `Apply`, chapter 15's copy, check,
+   write: the result is checked in a copy before the file is touched.
+
+The watcher then sees the file change and rebuilds like for any edit.
+
+> **Comments in `theme { … }`.** Printing the whole declaration is why a
+> `--` comment inside `theme { … }` does not survive a write.
 
 #### The importer
 
-`theme.Import` (`internal/theme/import.go`) reads CSS with a small scanner of its own, as the repository allows no CSS library. It drops `/* … */` comments outside strings, then `nodes` cuts the text into statements and `{ … }` blocks, tracking strings, parentheses and braces so a `;` inside `url(…)` or a `}` inside a quoted string does not end one (parentheses are tracked only for `;`). A block's selector decides where its `--name: value` lines go: `.dark` (or `[data-theme=dark]`) is the dark scheme, `:root` or `html` the light one, and a rule inside `@media (prefers-color-scheme: dark)` is dark; `@media`, `@layer` and `@supports` are walked into, and Tailwind's own at-rules (`@theme`, `@import`, `@custom-variant`) are counted and skipped. Each name is looked up in the token table (`theme.ByCSS`), the value is checked against the token's kind, and bare HSL channels are wrapped in `hsl()`. Whatever cannot be placed is kept with a reason (`Unplaced`) instead of being lost; `UnplacedCSS` prints those as the block to paste into `app.css`. The importer is a pure function from text to a theme: `alder theme import` and the page's Import… button both call it, and only the first writes.
+`theme.Import` (`internal/theme/import.go`) reads CSS with a small scanner
+of its own, as the repository allows no CSS library. It drops `/* … */`
+comments outside strings, then `nodes` cuts the text into statements and
+`{ … }` blocks, tracking strings, parentheses and braces so a `;` inside
+`url(…)` or a `}` inside a quoted string does not end one (parentheses are
+tracked only for `;`).
+
+A block's selector decides where its `--name: value` lines go:
+
+- `.dark` (or `[data-theme=dark]`) is the dark scheme;
+- `:root` or `html` is the light one;
+- a rule inside `@media (prefers-color-scheme: dark)` is dark.
+
+`@media`, `@layer` and `@supports` are walked into, and Tailwind's own
+at-rules (`@theme`, `@import`, `@custom-variant`) are counted and skipped.
+
+Each name is looked up in the token table (`theme.ByCSS`), the value is
+checked against the token's kind, and bare HSL channels are wrapped in
+`hsl()`. Whatever cannot be placed is kept with a reason (`Unplaced`)
+instead of being lost; `UnplacedCSS` prints those as the block to paste
+into `app.css`.
+
+The importer is a pure function from text to a theme: `alder theme import`
+and the page's Import… button both call it, and only the first writes.
 
 #### The watcher
 
-`watch` polls rather than asking the operating system
-for change notifications, so the compiler needs no dependency beyond Go's
-standard library. Every 300 ms, `snapshot` records the modification time
-and size of every `.alder` file under `app/`, every file under
-`adapters/` (any directory, any extension: `alder build` copies the whole
-tree, so any of it can change the build; but not an editor's files,
-which `editorNoise` recognizes by name: a name starting with `.`, ending
-in `~`, `.swp` or `.swx`, or of the form `#…#`, nor a symbolic link,
-which the build does not copy), the migration files, and every file
-under `static/`; `diff` compares two
-snapshots and says which kinds changed, `sourceChange`, `staticChange` or
-both (a `change` is a set of bits). The watcher does not report a change
-at once. It waits for a poll that finds nothing new:
+`watch` polls rather than asking the operating system for change
+notifications, so the compiler needs no dependency beyond Go's standard
+library. Every 300 ms, `snapshot` records the modification time and size
+of:
+
+- every `.alder` file under `app/`;
+- every file under `adapters/` (any directory, any extension: `alder
+  build` copies the whole tree, so any of it can change the build; but not
+  an editor's files, which `editorNoise` recognizes by name: a name
+  starting with `.`, ending in `~`, `.swp` or `.swx`, or of the form
+  `#…#`, nor a symbolic link, which the build does not copy);
+- the migration files;
+- every file under `static/`.
+
+`diff` compares two snapshots and says which kinds changed, `sourceChange`,
+`staticChange` or both (a `change` is a set of bits). The watcher does not
+report a change at once. It waits for a poll that finds nothing new:
 
 ```go
 		cur := snapshot(dir)
