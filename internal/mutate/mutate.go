@@ -78,8 +78,8 @@ const (
 //     is its name.
 //   - role dropped: Page is the page, or Route the route, whose `requires user, role R | …` is
 //     dropped to `requires user` (any signed-in user is served); Node and Replacement are nil.
-//     Either is suppressed for a write route whose update only redirects to a GET route whose
-//     own guard refuses the same requests (redirectOnly: the admin's Search routes).
+//     Either is suppressed for a write route without a form whose update only redirects to a
+//     GET route whose own guard refuses the same requests, in the same order (redirectOnly).
 //   - step dropped: Node is the Effect of a `let _ <- e` step and Replacement `Task.succeed ()`
 //     (`Query.succeed ()` for a Query step).
 //   - scope dropped: Node is a scoped Db node and Replacement its unscoped twin: `Db.mine T` →
@@ -251,7 +251,9 @@ func (c *collector) requires(g guard) {
 			return
 		}
 	}
-	if t := redirectOnly(g.route); t != nil && g.roles == nil && slices.Contains(t.Requires, req) {
+	// redirect-only (redirectOnly): without a role and another field (which would still run
+	// after the placeholder), the target's first check is this very field's
+	if t := redirectOnly(g.route); t != nil && g.roles == nil && len(g.requires) == 1 && len(t.Requires) > 0 && t.Requires[0] == req {
 		c.suppress(RequiresDropped, line, "the update only redirects to "+t.Name+", which requires "+req+" too")
 		return
 	}
@@ -279,12 +281,14 @@ func (c *collector) requires(g guard) {
 }
 
 // redirectOnly is, for a write route whose update does nothing but answer `Response.redirect`
-// to a GET route (`Task.succeed (Response.redirect (Edit { … }))`: the admin's Search routes), that
-// GET route; nil otherwise. Its guard runs on the redirect: when it refuses whom r's own clause
-// would (the same `requires`, roles among r's), dropping r's clause ends a request where the clause
-// did, at the login page or a 404, with nothing run in between (equivalent).
+// to a GET route (`Task.succeed (Response.redirect (Show { … }))`), that GET route; nil otherwise.
+// Its guard runs on the redirect: when it refuses whom r's own clause would, in the same order
+// (requires dropped, roles: the callers' conditions), dropping r's clause ends a request where the
+// clause did, at the login page or a 404. Only when nothing runs between r's guard and its update
+// that could answer otherwise: r has no form (a post that does not decode is a 422, and the
+// options check a 400) and is not in a silo (db.Enter may answer the maintenance page).
 func redirectOnly(r *ir.Route) *ir.Route {
-	if r == nil || r.Method == "GET" || r.Update == nil {
+	if r == nil || r.Method == "GET" || r.Update == nil || r.Form != nil || r.Silo != "" || r.Store.Silo != "" {
 		return nil
 	}
 	pure, ok := r.Update.Body.(*ir.EffPure)
@@ -321,7 +325,10 @@ func (c *collector) memberships() {
 // roles drops g's `role R | …`: the page or route serves any signed-in user.
 func (c *collector) roles(g guard) {
 	c.decl = g.decl
+	// redirect-only (redirectOnly): the target requires nothing the route does not (a field it
+	// lacks would answer otherwise, its `choose` page say), and refuses every role the route does
 	if t := redirectOnly(g.route); t != nil && t.Roles != nil && slices.Contains(t.Requires, "user") &&
+		!slices.ContainsFunc(t.Requires, func(f string) bool { return !slices.Contains(g.requires, f) }) &&
 		!slices.ContainsFunc(t.Roles, func(r string) bool { return !slices.Contains(g.roles, r) }) {
 		c.suppress(RoleDropped, g.rolesPos.Line, "the update only redirects to "+t.Name+", whose role check refuses every other role too")
 		return
@@ -1269,16 +1276,38 @@ func (c *collector) refresh(x *ir.Var) {
 }
 
 // step drops a `let _ <- e` step of a block, e being replaced by Task.succeed () (or
-// Query.succeed (), as e's kind): the access check `let _ <- Layout.adminOnly …` that begins a
-// write route's update, an audit, a mail. Not dropped: a Db write or a Session.put (write
-// replaced and session put dropped make the same program), a step whose result is not Unit (no
-// value to succeed with), a step that is already Task.succeed (equivalent).
+// Query.succeed (), as e's kind; `succeed []` for a step whose result is a List of Unit, the
+// `Task.all (List.map … Db.delete …)` of a bulk action): the access check `let _ <- Layout.adminOnly
+// …` that begins a write route's update, an audit, a mail. Not dropped: a step whose result is
+// neither (an insert's id: no value to succeed with), a Db update or delete or a Session.put (write
+// replaced and session put dropped make the same program), an `if` or `match` whose guard dropped
+// leaves a succeed (the same program again), a step that is already a succeed (equivalent).
 func (c *collector) step(x *ir.EffBind) {
 	if x.Param != nil {
 		return
 	}
+	if _, ok := x.Effect.(*ir.EffPure); ok {
+		c.suppress(StepDropped, x.Pos.Line, "the step does nothing")
+		return
+	}
+	app, ok := x.Effect.Type().(*types.App)
+	if !ok || len(app.Args) != 1 {
+		c.skip(StepDropped, x.Pos.Line, "the step's result is neither Unit nor a List of Unit")
+		return
+	}
+	var value ir.Expr
+	shown := "()"
+	switch r := app.Args[0]; {
+	case isUnit(r):
+		value = &ir.Lit{Typed: ir.Typed{Ty: types.Unit}, Kind: ir.LitUnit}
+	case isListOf(r, isUnit):
+		value, shown = &ir.List{Typed: ir.Typed{Ty: r}}, "[]"
+	default:
+		c.skip(StepDropped, x.Pos.Line, "the step's result is neither Unit nor a List of Unit")
+		return
+	}
 	switch e := x.Effect.(type) {
-	case *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete, *ir.DbInsertScoped, *ir.DbUpdateScoped, *ir.DbDeleteScoped:
+	case *ir.DbUpdate, *ir.DbDelete, *ir.DbUpdateScoped, *ir.DbDeleteScoped:
 		c.skip(StepDropped, x.Pos.Line, "write replaced makes the same program")
 		return
 	case *ir.Call:
@@ -1286,21 +1315,47 @@ func (c *collector) step(x *ir.EffBind) {
 			c.skip(StepDropped, x.Pos.Line, "session put dropped makes the same program")
 			return
 		}
-	case *ir.EffPure:
-		c.suppress(StepDropped, x.Pos.Line, "the step does nothing")
-		return
+	case *ir.If, *ir.Match:
+		if guardLeavesSucceed(e) {
+			c.skip(StepDropped, x.Pos.Line, "guard dropped makes the same program")
+			return
+		}
 	}
-	app, ok := x.Effect.Type().(*types.App)
-	if !ok || len(app.Args) != 1 || !isUnit(app.Args[0]) {
-		c.skip(StepDropped, x.Pos.Line, "the step's result is not Unit")
-		return
-	}
-	kind, shown := ir.EffTask, "Task.succeed ()"
+	kind, verb := ir.EffTask, "Task.succeed "
 	if app.Con == "Query" {
-		kind, shown = ir.EffQuery, "Query.succeed ()"
+		kind, verb = ir.EffQuery, "Query.succeed "
 	}
-	repl := &ir.EffPure{Typed: ir.Typed{Ty: app}, Kind: kind, Value: &ir.Lit{Typed: ir.Typed{Ty: types.Unit}, Kind: ir.LitUnit}}
-	c.add(StepDropped, x.Pos, x.Effect, repl, line(c.module, x.Effect, wrapped("let _ <- ", "")), "let _ <- "+shown)
+	repl := &ir.EffPure{Typed: ir.Typed{Ty: app}, Kind: kind, Value: value}
+	c.add(StepDropped, x.Pos, x.Effect, repl, line(c.module, x.Effect, wrapped("let _ <- ", "")), "let _ <- "+verb+shown)
+}
+
+// guardLeavesSucceed reports whether e, an If or a two-arm Match, has one guard arm (guard
+// dropped mutates it) and a plain succeed as its other arm: guard dropped then makes the program
+// step dropped would make.
+func guardLeavesSucceed(e ir.Expr) bool {
+	var bodies []ir.Expr
+	switch x := e.(type) {
+	case *ir.If:
+		bodies = []ir.Expr{x.Then, x.Else}
+	case *ir.Match:
+		for _, a := range arms(x) {
+			bodies = append(bodies, a.body)
+		}
+	}
+	if len(bodies) != 2 {
+		return false
+	}
+	_, g0 := isGuard(bodies[0])
+	_, g1 := isGuard(bodies[1])
+	if g0 == g1 {
+		return false
+	}
+	other := bodies[1]
+	if g1 {
+		other = bodies[0]
+	}
+	_, pure := other.(*ir.EffPure)
+	return pure
 }
 
 // ---- helpers
@@ -1313,6 +1368,12 @@ func isText(t types.Type) bool {
 func isUnit(t types.Type) bool {
 	con, ok := t.(*types.Con)
 	return ok && con.Name == "Unit"
+}
+
+// isListOf reports whether t is a List whose element satisfies elem.
+func isListOf(t types.Type, elem func(types.Type) bool) bool {
+	app, ok := t.(*types.App)
+	return ok && app.Con == "List" && len(app.Args) == 1 && elem(app.Args[0])
 }
 
 // isHtml reports whether a value's final result type contains Html anywhere (`Html m`,

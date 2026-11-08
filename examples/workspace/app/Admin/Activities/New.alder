@@ -194,6 +194,18 @@ test "a long list of orgs offers 50, and the search narrows it" = {
   let r <- Test.submit SearchOrg { q: "zz" }
   let _ <- Test.login { user: Nothing, org: Nothing }
   let visitor <- Test.submit SearchOrg { q: "zz" }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
+  let _ <- Test.get (New {})
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
+  let reader <- Test.submitRaw SearchOrg []
   Task.succeed (
     {
       shown: List.length all.model.orgs,
@@ -201,12 +213,14 @@ test "a long list of orgs offers 50, and the search narrows it" = {
       found: Test.texts "select[name=org] option" found.doc == ["name-203"],
       answer: r.answer,
       visitor: visitor.answer,
+      reader: reader.answer,
     } == {
       shown: 50,
       total: 203,
       found: True,
       answer: Redirected (New { findOrg: "zz" }),
       visitor: Redirected (Auth.Login.Login {}),
+      reader: PageMissing,
     }
   )
 }

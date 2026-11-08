@@ -43,7 +43,7 @@
 -   App          Logout.update:14  step dropped          skipped: session put dropped makes the same program
 -   Auth.Login   Submit.update:36  arm swapped           skipped: unscopable: an arm uses what the match binds
 -   Auth.Login   Submit.update:38  step dropped          skipped: session put dropped makes the same program
--   Todos.Index  Submit.update:29  step dropped          skipped: write replaced makes the same program
+-   Todos.Index  Submit.update:29  step dropped          skipped: the step's result is neither Unit nor a List of Unit
 -   Todos.Index  Toggle.update:40  step dropped          skipped: write replaced makes the same program
 -   Todos.Index  Delete.update:47  step dropped          skipped: write replaced makes the same program
 -   Todos.Index  owned:57          guard dropped         skipped: unscopable: the other arm uses what the match binds

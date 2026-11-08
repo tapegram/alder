@@ -925,13 +925,7 @@ func (g *adminGen) writeGate(mod string, imports *importSet, what string, refs b
 	if g.p.Login != "" {
 		refused("a visitor cannot "+what, "Redirected ("+pageLit(g.p.Login, nil)+")", func(tb *testBuilder) { tb.logout() })
 	}
-	other := ""
-	for _, c := range g.p.Session.Role.Ctors {
-		if c != "Admin" && other == "" {
-			other = c
-		}
-	}
-	if other != "" {
+	if other := g.otherRole(); other != "" {
 		name := article(other) + " cannot " + what
 		if g.role != nil { // the row says Admin (the login inserted it so), the cookie does not
 			name += ", even one made Admin since logging in"
@@ -956,6 +950,16 @@ func (g *adminGen) writeGate(mod string, imports *importSet, what string, refs b
 		tb.let("let _ <- Db.update %s %s (\\u -> { u | %s: %s })", ut.Name, tb.user(), g.role.Name, maybeJust(g.role, demoted))
 	})
 	return tests
+}
+
+// otherRole is the session's first role but Admin, "" for none.
+func (g *adminGen) otherRole() string {
+	for _, c := range g.p.Session.Role.Ctors {
+		if c != "Admin" {
+			return c
+		}
+	}
+	return ""
 }
 
 // testsText renders the generated tests, in the region `tests` at the end of the file: regen

@@ -11,16 +11,22 @@ type Model = { }
 Home.load : Home.Params -> Session -> Query Model
 Home.load params session = Query.succeed { }
 
--- A mutant: the access check dropped (a Query step in a Task); a Task step too. Refused: the
--- insert (write replaced makes the same program), the step that does nothing, the step whose
--- result is not Unit.
+-- Mutants: the access check dropped (a Query step in a Task); a Task step too; a step of a List
+-- of Unit (a bulk action's writes) becomes `Task.succeed []`. Refused: the insert and the count
+-- (their results are neither Unit nor a List of Unit), the step that does nothing, the delete
+-- (write replaced makes the same program), the inline check whose guard dropped makes the same
+-- program.
 Save.update : Save.Params -> Session -> Task Response
 Save.update p session = {
   let _ <- User.adminOnly session.user
   let _ <- User.audit "save"
-  let _ <- Db.insert User.User { name: "U" }
+  let id <- Db.insert User.User { name: "U" }
+  let _ <- Db.insert User.User { name: "V" }
   let _ <- Task.succeed ()
   let _ <- Db.from User.User |> Db.count
+  let _ <- Task.all (List.map (\n -> User.audit n) ["a", "b"])
+  let _ <- Db.delete User.User id
+  let _ <- if session.user == Nothing then Task.notFound else Task.succeed ()
   Task.succeed Response.refresh
 }
 

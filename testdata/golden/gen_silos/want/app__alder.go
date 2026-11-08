@@ -127,19 +127,20 @@ var Mutants = []rtesting.Mutant{
 	{ID: 34, Module: "Projects.Index", Decl: "Remove.update", Kind: "refresh → invalid", File: "app/Projects/Index.alder", Line: 66, Col: 16, Before: "Response.refresh", After: "Response.invalid \"mutant\""},
 	{ID: 35, Module: "Projects.Index", Decl: "Tag.update", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 73, Col: 3, Before: "let _ <- Db.insertScoped Label { name: \"new\" }", After: "let _ <- Task.succeed (Label.LabelId \"mutant\")"},
 	{ID: 36, Module: "Projects.Index", Decl: "Tag.update", Kind: "refresh → invalid", File: "app/Projects/Index.alder", Line: 74, Col: 16, Before: "Response.refresh", After: "Response.invalid \"mutant\""},
-	{ID: 37, Module: "Projects.Index", Decl: "Seed.update", Kind: "refresh → invalid", File: "app/Projects/Index.alder", Line: 81, Col: 16, Before: "Response.refresh", After: "Response.invalid \"mutant\""},
-	{ID: 38, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 116, Col: 3, Before: "let me <- Db.insert User { name: \"Me\" }", After: "let me <- Task.succeed (User.UserId \"mutant\")"},
-	{ID: 39, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 117, Col: 3, Before: "let them <- Db.insert User { name: \"Them\" }", After: "let them <- Task.succeed (User.UserId \"mutant\")"},
-	{ID: 40, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 118, Col: 3, Before: "let a <- Db.insert Org { name: \"A\" }", After: "let a <- Task.succeed (Org.OrgId \"mutant\")"},
-	{ID: 41, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 119, Col: 3, Before: "let b <- Db.insert Org { name: \"B\" }", After: "let b <- Task.succeed (Org.OrgId \"mutant\")"},
-	{ID: 42, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 120, Col: 3, Before: "let _ <- Db.insert Membership { user: me, org: a }", After: "let _ <- Task.succeed (Membership.MembershipId \"mutant\")"},
-	{ID: 43, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 121, Col: 3, Before: "let _ <- Db.insert Membership { user: them, org: b }", After: "let _ <- Task.succeed (Membership.MembershipId \"mutant\")"},
-	{ID: 44, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 122, Col: 3, Before: "let _ <- Db.insert Project { name: \"theirs\", org: b }", After: "let _ <- Task.succeed (Project.ProjectId \"mutant\")"},
-	{ID: 45, Module: "App", Decl: "session", Kind: "membership dropped", File: "app/App.alder", Line: 10, Col: 3, Before: "Session.put org", After: "Session.put org without the Membership check"},
+	{ID: 37, Module: "Projects.Index", Decl: "Seed.update", Kind: "step dropped", File: "app/Projects/Index.alder", Line: 80, Col: 3, Before: "let _ <- Task.all (List.map seed [\"x\", \"y\"])", After: "let _ <- Task.succeed []"},
+	{ID: 38, Module: "Projects.Index", Decl: "Seed.update", Kind: "refresh → invalid", File: "app/Projects/Index.alder", Line: 81, Col: 16, Before: "Response.refresh", After: "Response.invalid \"mutant\""},
+	{ID: 39, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 116, Col: 3, Before: "let me <- Db.insert User { name: \"Me\" }", After: "let me <- Task.succeed (User.UserId \"mutant\")"},
+	{ID: 40, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 117, Col: 3, Before: "let them <- Db.insert User { name: \"Them\" }", After: "let them <- Task.succeed (User.UserId \"mutant\")"},
+	{ID: 41, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 118, Col: 3, Before: "let a <- Db.insert Org { name: \"A\" }", After: "let a <- Task.succeed (Org.OrgId \"mutant\")"},
+	{ID: 42, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 119, Col: 3, Before: "let b <- Db.insert Org { name: \"B\" }", After: "let b <- Task.succeed (Org.OrgId \"mutant\")"},
+	{ID: 43, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 120, Col: 3, Before: "let _ <- Db.insert Membership { user: me, org: a }", After: "let _ <- Task.succeed (Membership.MembershipId \"mutant\")"},
+	{ID: 44, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 121, Col: 3, Before: "let _ <- Db.insert Membership { user: them, org: b }", After: "let _ <- Task.succeed (Membership.MembershipId \"mutant\")"},
+	{ID: 45, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 122, Col: 3, Before: "let _ <- Db.insert Project { name: \"theirs\", org: b }", After: "let _ <- Task.succeed (Project.ProjectId \"mutant\")"},
+	{ID: 46, Module: "App", Decl: "session", Kind: "membership dropped", File: "app/App.alder", Line: 10, Col: 3, Before: "Session.put org", After: "Session.put org without the Membership check"},
 }
 
 // MutantsSuppressed and MutantsSkipped count the mutants refused as equivalent and as not applicable.
-var MutantsSuppressed, MutantsSkipped = 12, 16
+var MutantsSuppressed, MutantsSkipped = 12, 15
 
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
@@ -353,7 +354,7 @@ func session__via(e *eff.Env, o, n any) (any, error) {
 		b.Org = rt.Maybe[string]{}
 	}
 	if b.Org.Ok && (!a.Org.Ok || a.Org.Val != b.Org.Val || a.User != b.User) {
-		if Mutant != 45 {
+		if Mutant != 46 {
 			ok, err := db.Member(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__Membership__Membership, "user", b.User.Val, "org", b.Org.Val)
 			if err != nil {
 				return nil, err

@@ -29,7 +29,7 @@
 29  Switch2  update:25   scope dropped        Db.deleteMine Item model.item.id → Db.delete Item model.item.id, not found when missing
 -   Items    update:25   arm swapped          skipped: unscopable: an arm uses what the match binds
 -   Items    update:25   arm swapped          skipped: unscopable: an arm uses what the match binds
--   Items    update:27   step dropped         skipped: write replaced makes the same program
+-   Items    update:27   step dropped         skipped: the step's result is neither Unit nor a List of Unit
 -   Items    update:27   scope dropped        skipped: the owner comes from the session either way
 -   Items    update:32   step dropped         skipped: write replaced makes the same program
 -   Peek     load:13     guard dropped        skipped: unscopable: the other arm uses what the match binds

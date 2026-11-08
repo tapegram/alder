@@ -2,7 +2,7 @@ module App
 
 import User
 
-session { user: Maybe User.UserId, role: User.Role = Reader }
+session { user: Maybe User.UserId, team: Maybe User.TeamId, role: User.Role = Reader }
 
 login = Login
 
