@@ -312,8 +312,9 @@ class BuildContextTests(unittest.TestCase):
         # `membership dropped` is one more, with a sentence on the partition mutants; the operators table
         # has since grown to twenty-one operators (7.2k measured, found when #22's heading change let the test run again);
         # chapter 10 on routes (#160, PR 8) is 7.5k: the report has the routes' longer survivor lines and a sentence on
-        # the four operators a route does not have
-        self.assertLessEqual(len(section), 7500, "the reference keeps at most 7.5k characters of chapter 10's section 11")
+        # the four operators a route does not have; #187's six route operators (27 rows) and their report lines make it
+        # 10.1k, as does the docs formatting pass (docs/markdown-style.md), which split it into short paragraphs
+        self.assertLessEqual(len(section), 10100, "the reference keeps at most 10.1k characters of chapter 10's section 11")
 
     def test_real_reference_keeps_browser_steps(self):
         # agents write browser tests: chapter 10's "Testing through the browser" (the step table,
@@ -380,7 +381,9 @@ class BuildContextTests(unittest.TestCase):
         code, out, _ = self.run_main("--reference", "--chapters", ",".join(bc.DEFAULT_CHAPTERS), "--book", str(bc.BOOK),
                                      "--example", str(bc.EXAMPLE))
         self.assertEqual(code, 0)
-        self.assertLessEqual(len(out) // 4, 68000, "the reference is at most 68k tokens (len/4)")
+        # #187 raised it to 69.1k (the six route operators in chapter 10's table and the mutation report); the docs
+        # formatting pass (docs/markdown-style.md: blank lines, short paragraphs, `###` headings, callouts) to 70k.
+        self.assertLessEqual(len(out) // 4, 70000, "the reference is at most 70k tokens (len/4)")
         # M17 (file pages) raised from 48000; see the M17 plan
         # M15: the partition rules, `via`, `silo`, the one-store rule and the commands are in; the
         # silo files, the open-time check and moving a table into a silo (the inside) are not

@@ -74,8 +74,8 @@ same text.
 ## 2. Running the tests
 
 `alder test` checks the app, compiles it with its tests, runs every test
-and prints one line per test. In the repository, the to-do app has 126:
-its own 23, and the 103 of the admin that `alder new admin` generated for
+and prints one line per test. In the repository, the to-do app has 147:
+its own 25, and the 122 of the admin that `alder new admin` generated for
 it (chapter 15). `-run` (section 7) picks out the app's own, by module:
 
 ```text
@@ -3013,7 +3013,7 @@ selects no test ends with `no test matches -run: nothing can kill a
 mutant`.
 
 Mutants run one after another, each with a fresh database
-per test; the to-do app's 124 take a few seconds once the build is made,
+per test; the to-do app's 236 take a few seconds once the build is made,
 because each mutant stops at the first test that fails, and the tests of
 the mutant's own module run first, where the killing test almost always is.
 
@@ -3056,7 +3056,7 @@ Modules come in import order (a module after those it
 imports, otherwise alphabetical), so adding an import can move a whole
 module and renumber mutants in code the edit never touched. The generated
 admin's modules come before `Todos.Index` in that order, so a mutant
-of the to-do list's `load` is number 110 here. Ids and lines are for
+of the to-do list's `load` is number 214 here. Ids and lines are for
 reading one report; to compare runs, compare what survived.
 
 ## 12. Properties
