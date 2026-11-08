@@ -88,20 +88,28 @@ There is no `andThen`; use `let x <-` in a block.
 
 ## Failure
 
+### A `Task` that fails
+
 A `Task` can fail. `Task.fail "message"` fails explicitly; a capability may
 fail on its own (database down, email rejected). A failed task stops
 `update`, undoes everything it did (its database writes and its
 `Session.put` changes), and the runtime renders `App.error`.
+
 `Task.notFound` fails the same way but answers 404 with `App.notFound`:
 use it when a request names something that is not there, or not the
 user's. The scoped operations of chapter 6, "Rules" (`Db.getMine`,
 `Db.updateMine`, `Db.deleteMine`) fail this way by themselves when the
-row is missing or someone else's. A task that
-ends in `Response.invalid` has not failed: it produced a result, so its
-writes and session changes are **kept** (chapter 6, "`Response`"). To refuse
-without changing anything, decide before writing. There is no `try`/`catch`:
-if a failure should be handled, the capability returns a `Result` instead
-of failing.
+row is missing or someone else's.
+
+> **`Response.invalid` is not a failure.** A task that ends in
+> `Response.invalid` has not failed: it produced a result, so its writes and
+> session changes are **kept** (chapter 6, "`Response`"). To refuse without
+> changing anything, decide before writing.
+
+There is no `try`/`catch`: if a failure should be handled, the capability
+returns a `Result` instead of failing.
+
+### A `Query` that stops
 
 A `Query` cannot fail. A missing row is `Nothing`; a database outage is
 an `App.error` page. It can stop: `Query.notFound` answers 404, and
@@ -138,12 +146,15 @@ capability Weather {
 ```
 
 Each entry is a function whose result is a `Query` or `Task`. Using
-`Email.send { ... }` in `update` is then an ordinary effect. The compiler
-generates a Go interface for each capability, and the app will not build
-or start until every capability is implemented and wired in ("Implementing
-a capability", below). In a test, a capability can instead be replaced by
-a `fake`, an implementation written in Alder beside the capability
-(chapter 10, "Faking a capability").
+`Email.send { ... }` in `update` is then an ordinary effect.
+
+The compiler generates a Go interface for each capability, and the app will
+not build or start until every capability is implemented and wired in
+("Implementing a capability", below).
+
+In a test, a capability can instead be replaced by a `fake`, an
+implementation written in Alder beside the capability (chapter 10, "Faking a
+capability").
 
 Capabilities are declared in any module and used by their name. When
 two imported modules both declare `Clock`, the bare name is E0002
@@ -168,7 +179,9 @@ Http.post   : { url: Text, body: Text } -> Task (Result Http.HttpError Text)
 The four `Log` functions write a line to the app's log at their level.
 An operator chooses how much of it to keep with `ALDER_LOG` (chapter 16,
 "Operating an app"): the default, `info`, drops `Log.debug`; `warn`
-keeps only `Log.warn` and `Log.error`. A log line is kept for a long
+keeps only `Log.warn` and `Log.error`.
+
+A log line is kept for a long
 time and read by people who are not the user, so what goes in one is
 the app's responsibility: the runtime masks secrets in the URLs it
 logs, but it cannot know that a `Log.info` text holds an email address
@@ -193,7 +206,9 @@ which is no effect at all, so `load` and plain functions can use it
 Nothing else in the language touches the outside world. If a function's
 signature has no `Query` or `Task` in it, it is pure.
 
-**A capability in `load`.** An entry whose result is a `Query` is a
+### A capability in `load`
+
+An entry whose result is a `Query` is a
 read, so `load` can call it like `Db.get`. The blog (chapter 14) keeps
 its Markdown renderer behind such an entry. Its module,
 `examples/blog/app/Markdown.alder`, begins:
@@ -211,11 +226,15 @@ capability Markdown {
 `Posts.Show`'s `load` writes `let body <- Markdown.render post.body` and
 keeps the result in its Model. `Html Never` is markup that links and
 sends nothing, so the route's `view` can embed it in its own `Html`
-(chapter 5). The capability has the same name as its module. From
+(chapter 5).
+
+The capability has the same name as its module. From
 another module, `Markdown.render` therefore names the capability's
 entry, because the module `Markdown` has no value called `render`. A
 module that declared both a value `render` and the entry would be
-E0009. In Go, the entry is the method
+E0009.
+
+In Go, the entry is the method
 `Render(ctx, args app.Args__Markdown__Markdown__Render) (html.Node, error)`
 on the field `Markdown__Markdown` of `Caps` ("Implementing a capability",
 below). An `Html` value is an `html.Node` from `alder/rt/html`, which
@@ -314,7 +333,9 @@ generated code imports. You don't need it to write Alder, but it explains
 when things happen and what a failure undoes. Chapter 13 follows one
 `load` through it step by step.
 
-**An effect is a tree.** A `Query` or `Task` value is data: a small tree
+### An effect is a tree
+
+A `Query` or `Task` value is data: a small tree
 of steps, built by the generated code and never inspected by it. There are
 six kinds of node (`rt/eff/eff.go`):
 
@@ -339,23 +360,28 @@ type notFound struct{}
 type redirect struct{ location string }
 ```
 
-`pure` is `Task.succeed`/`Query.succeed`. `bind` is one `let x <- e`: run
-`e`, then hand its result to `f`, a Go function that builds the rest of
-the block. `call` is one step that touches the outside world: a `Db.*`
-operation, a capability, `Time.now`, `Log.info`. It carries a name for the
-log, whether it writes, and the Go function that does the work. `fail` is
-`Task.fail` (and a `@unique` violation, chapter 8); `notFound` is
-`Query.notFound` or `Task.notFound`; `redirect` is `Query.redirect r`,
-carrying `r`'s URL (`rt.PageURL`), which `Run` returns as
-`*eff.ErrRedirect` for the router to answer with a 303. Building a tree
-does nothing. Only `eff.Run` does.
+- `pure` is `Task.succeed`/`Query.succeed`.
+- `bind` is one `let x <- e`: run `e`, then hand its result to `f`, a Go
+  function that builds the rest of the block.
+- `call` is one step that touches the outside world: a `Db.*` operation, a
+  capability, `Time.now`, `Log.info`. It carries a name for the log, whether
+  it writes, and the Go function that does the work.
+- `fail` is `Task.fail` (and a `@unique` violation, chapter 8).
+- `notFound` is `Query.notFound` or `Task.notFound`.
+- `redirect` is `Query.redirect r`, carrying `r`'s URL (`rt.PageURL`), which
+  `Run` returns as `*eff.ErrRedirect` for the router to answer with a 303.
 
-**Run is eager.** `eff.Run` (`rt/eff/run.go`) walks the tree node by node:
+Building a tree does nothing. Only `eff.Run` does.
+
+### Run is eager
+
+`eff.Run` (`rt/eff/run.go`) walks the tree node by node:
 at a `call` it runs the step right away, at a `bind` it remembers the
 **continuation** (the function that builds the rest of the block once it
 is given the bound value), and when a value comes out it passes the value
-on. The
-`Toggle.update` of the to-do app, written in two steps,
+on.
+
+The `Toggle.update` of the to-do app, written in two steps,
 
 ```alder fragment
 Toggle.update p session = {
@@ -370,55 +396,81 @@ is a `bind` whose first part is the `call` named `Db.getMine Todo`
 else's) and whose continuation is a second `bind`: the `call` named
 `Db.update Todo`, then `pure Response.refresh`. `Run` performs the read, then
 the update, then returns the `Response`; when the read ends in `notFound`, it
-stops there and nothing is written. (The to-do app writes this update as
-one step, `Db.updateMine`, which reads and writes with the owner in the
-statement: chapter 13 shows it. The two-step form is here to show a
-continuation.) Nothing is batched,
-reordered or run in parallel: steps run in the order the block lists
-them, one at a time.
+stops there and nothing is written.
 
-**One transaction per `Task`, begun when needed.** `Run` does not begin
+> **A two-step form.** The to-do app writes this update as one step,
+> `Db.updateMine`, which reads and writes with the owner in the statement:
+> chapter 13 shows it. The two-step form is here to show a continuation.
+
+Nothing is batched, reordered or run in parallel: steps run in the order the
+block lists them, one at a time.
+
+#### One transaction per `Task`, begun when needed
+
+`Run` does not begin
 a transaction up front. The first step of a `Task` that touches the
 database begins one (`db.TxOf`, through `Env.Transaction`), and every
 later step uses the same one, so reads inside a `Task` see the task's own
-earlier writes. A `Task` that never touches the database (it only calls
+earlier writes.
+
+A `Task` that never touches the database (it only calls
 `Session.put`, a capability or `Http.get`) begins none, and a slow
 capability or HTTP call made before the first database step holds no
-database lock: other requests' tasks run meanwhile. If the task produces
-its result, `Run` commits the transaction, if one was begun. If it fails
-in any way (`Task.fail`, `Db.update` on a row that doesn't exist, a
-scoped operation on a row that is not the user's,
-`Query.notFound`, `Task.notFound`, `Query.redirect`, an error from the database or a capability, or a Go
-panic), `Run` rolls the transaction back instead. `Db.get` finding
-nothing is not a failure: it produces `Nothing`. Either every write of an
-`update` happens or none does.
+database lock: other requests' tasks run meanwhile.
 
-**The session is part of the same promise.** `Run` remembers the session
+If the task produces its result, `Run` commits the transaction, if one was
+begun. If it fails in any way, `Run` rolls the transaction back instead. A
+failure is any of:
+
+- `Task.fail`;
+- `Db.update` on a row that doesn't exist;
+- a scoped operation on a row that is not the user's;
+- `Query.notFound`, `Task.notFound` or `Query.redirect`;
+- an error from the database or a capability;
+- a Go panic.
+
+`Db.get` finding nothing is not a failure: it produces `Nothing`. Either
+every write of an `update` happens or none does.
+
+#### The session is part of the same promise
+
+`Run` remembers the session
 a `Task` starts with. If the task fails, `Run` puts that session back, so
 a `Session.put` before a `Task.fail` is undone like a write. A task that
 succeeds keeps its session changes, and so does one producing
 `Response.invalid` (chapter 6): it is a successful result, and the
 transaction commits.
 
-**A `Query` has no transaction and cannot write.** `Run` runs a `Query`
-directly against the database. A step marked as a write (`Db.insert`,
-`Db.update`, `Db.delete`, their scoped forms `Db.insertMine`,
-`Db.updateMine` and `Db.deleteMine`, `Session.put`, a capability entry that returns a
-`Task`) is refused with an internal error if a `Query` ever reaches it.
+#### A `Query` has no transaction and cannot write
+
+`Run` runs a `Query` directly against the database. A step marked as a write
+(`Db.insert`, `Db.update`, `Db.delete`, their scoped forms `Db.insertMine`,
+`Db.updateMine` and `Db.deleteMine`, `Session.put`, a capability entry that
+returns a `Task`) is refused with an internal error if a `Query` ever reaches
+it.
+
 The checker already makes that impossible (E0401); the runtime checks
 again so that a compiler bug can't turn a GET route into a write.
 
-**Every step is traced.** Before it runs a `call`, `Run` appends the
+#### Every step is traced
+
+Before it runs a `call`, `Run` appends the
 step's name to `Env.Trace` and logs it at level `effect` (written as a
 `debug:` line, so only under `ALDER_LOG=debug`). The `Toggle.update`
 above leaves the trace `["Db.getMine Todo", "Db.update Todo"]`: the
-scoped read, then the update. A scoped operation is traced as written
+scoped read, then the update.
+
+A scoped operation is traced as written
 (`Db.updateMine Todo`), and `Db.mine Todo` adds its own name before the
 step that runs it: `Db.mine Todo |> Db.all` traces `["Db.mine Todo",
-"Db.all Todo"]`. An `update` that
+"Db.all Todo"]`.
+
+An `update` that
 inserts a row with `Db.insert` and then logs at three levels
 (`Log.info`, `Log.debug`, `Log.error`) leaves `["Db.insert Todo" "Log.info"
-"Log.debug" "Log.error"]`. The trace is the dev
+"Log.debug" "Log.error"]`.
+
+The trace is the dev
 log of what a request did, and what a test can compare (chapter 10).
 
 ### What a capability looks like in Go
@@ -485,14 +537,23 @@ Returning a non-nil `error` fails the task, which rolls it back. The
 brands are gone in Go (`User.UserId` is a `string`), so the Go side must
 keep the brand's promise itself.
 
-The other types: `Int` is `int64`, `Float` `float64`, `Text` `string`,
-`Bool` `bool`, `Unit` `struct{}` (an entry returning `Task Unit` returns
-`struct{}{}, nil`), `Maybe a` `rt.Maybe[A]` (`rt.Just(x)`,
-`rt.Nothing[A]()`), `Result e a` `rt.Result[E, A]`, `List a` `[]A`,
-`Time` `time.Time` and `Html Never` `html.Node`. The stub above lives
+The other types:
+
+- `Int` is `int64`, `Float` `float64`, `Text` `string`, `Bool` `bool`.
+- `Unit` `struct{}` (an entry returning `Task Unit` returns
+  `struct{}{}, nil`).
+- `Maybe a` `rt.Maybe[A]` (`rt.Just(x)`, `rt.Nothing[A]()`).
+- `Result e a` `rt.Result[E, A]`.
+- `List a` `[]A`.
+- `Time` `time.Time`.
+- `Html Never` `html.Node`.
+
+The stub above lives
 inside the generated package; an adapter, in its own package, imports it
 as `"app"` and writes `app.Cap__…` and `app.Args__…`, with `rt.Maybe`
-from `"alder/rt"`. An adapter that uses the database passes
+from `"alder/rt"`.
+
+An adapter that uses the database passes
 `db.TxFrom(ctx)` (from `"alder/rt/db"`), the running task's transaction,
 to every query it makes.
 
@@ -503,8 +564,9 @@ the `ctx` it passes to a capability carries the running effect
 (`eff.EnvFrom(ctx)`), so a Go implementation reaches the task's store and
 transaction with `db.StoreFrom(ctx)` and `db.TxFrom(ctx)`; the
 transaction is begun on first use, as for a `Db.*` step. What it writes
-that way commits or rolls back with the rest of the task. This
-implementation of `Pay.charge` (from `TestGen_RunEffectsCorpus` in
+that way commits or rolls back with the rest of the task.
+
+This implementation of `Pay.charge` (from `TestGen_RunEffectsCorpus` in
 `internal/gen/gen_test.go`, over `testdata/golden/gen_vet/m3b-effects`)
 inserts a `Customer` row in the running task's transaction:
 
@@ -517,11 +579,14 @@ func (pay) Charge(ctx context.Context, args Args__Shop__Pay__Charge) (rt.Maybe[s
 ```
 
 When the task that called `Pay.charge` then fails, the row is gone.
+
 A capability that writes through the store without `db.TxFrom(ctx)` (with
 a `nil` transaction) is outside the task: its writes survive a rollback,
 and once the task has begun its transaction the write waits for it,
 forever on `:memory:` (one connection) and up to SQLite's five-second busy
-timeout on a file. In a `Query` (a capability entry typed `Query`),
+timeout on a file.
+
+In a `Query` (a capability entry typed `Query`),
 `db.TxFrom(ctx)` is `nil` and `db.StoreFrom(ctx)` is read-only: it reads
 without a transaction, and its `Insert`, `Update`, `Delete` and `Begin`
 return an internal error (`eff.ErrInternal`, "write from a Query") and
@@ -531,12 +596,14 @@ write nothing.
 
 Inside the program, an implementation is found by the capability's
 module-qualified name, `Env.Caps["Auth.Login.Password"]`. The generated
-list `Capabilities` (in `app__alder.go`) names every key an app needs. A
-call to a capability with nothing registered is a Go `panic`,
+list `Capabilities` (in `app__alder.go`) names every key an app needs.
+
+A call to a capability with nothing registered is a Go `panic`,
 `alder: capability "Auth.Login.Password" is not wired`, which rolls the
 task back like any other failure; a server never gets that far, because
-it checks every capability when it starts (below). An error the
-implementation returns is wrapped with the call's name
+it checks every capability when it starts (below).
+
+An error the implementation returns is wrapped with the call's name
 (`*eff.ErrCapability`, whose text is `Password.verify: <the error>`) and
 fails the task too.
 
@@ -625,13 +692,17 @@ You never have to work this out yourself. When an adapter is missing,
 per missing adapter, such as
 ``capability `Markdown.Markdown` needs `adapters/markdown/` with `func Markdown() app.Cap__Markdown__Markdown` ``.
 
-A few words of Go, for what follows. A Go **package** is one directory of
-`.go` files that all start with the same `package <name>` line. A name
-that starts with a capital letter (`LoginPassword`) is **exported**: other
-packages can use it; `password` cannot be seen outside its package. A Go
-**interface** is a list of methods; any type that has those methods
-implements it, with nothing to declare. The function the rule names is a
-**constructor**: it builds the value the app will call.
+A few words of Go, for what follows:
+
+- A Go **package** is one directory of `.go` files that all start with the
+  same `package <name>` line.
+- A name that starts with a capital letter (`LoginPassword`) is
+  **exported**: other packages can use it; `password` cannot be seen outside
+  its package.
+- A Go **interface** is a list of methods; any type that has those methods
+  implements it, with nothing to declare.
+- The function the rule names is a **constructor**: it builds the value the
+  app will call.
 
 ### What the build does with `adapters/`
 
@@ -675,7 +746,9 @@ Each import has a name of its own, `a_<directory>` (an *alias*: the name
 the file uses for that package, whatever its `package` line says). That
 is why a module named `App` works: its adapters are `adapters/app/`, whose
 package would otherwise clash with the generated package `"app"`, and here
-it is `a_app`. The program's `main` (`build/<app>/cmd/main.go`) imports
+it is `a_app`.
+
+The program's `main` (`build/<app>/cmd/main.go`) imports
 `"app/caps"` and starts the server with `app.Serve(caps.Caps(), …)`.
 Nothing under your `adapters/` is generated or changed; the wiring is
 only ever this file.
@@ -694,9 +767,10 @@ Every name your adapters use from `app` is exported and has a fixed
 shape: `Cap__<Module>__<Capability>` (the interface, "What a capability
 looks like in Go", above), `Args__<Module>__<Capability>__<Entry>` (an
 argument record), `Caps`, and `Tables` (every table's descriptor, for
-`db`). The `.` in a module name becomes `__`. That is why a module may not
-be named `Cap`, `Args` or `Route` (E0015, chapter 11): its names would
-start the same way.
+`db`). The `.` in a module name becomes `__`.
+
+That is why a module may not be named `Cap`, `Args` or `Route` (E0015,
+chapter 11): its names would start the same way.
 
 ### An adapter, line by line
 
@@ -780,13 +854,16 @@ func LoginPassword() app.Cap__Auth__Login__Password { return password{} }
 The rest of the file is a development stub: in dev mode (`ALDER_DEV=1`,
 which `alder run` sets) its `Verify` accepts two accounts with the
 password "password", and outside dev mode it refuses every login (it is
-to be replaced before the app is deployed). Its `Verify` cannot return a
+to be replaced before the app is deployed).
+
+Its `Verify` cannot return a
 made-up id: a post's `author` is `User.UserId @ref User`, so the id must
 name a real `User` row. Its helper `devUser` looks the row up with
 `db.StoreFrom(ctx)` and `db.TxFrom(ctx)` and inserts it the first time,
 inside the transaction of the `Task` that called `Password.verify`. If
-that task fails, the new row is rolled back with it. Pass
-`db.TxFrom(ctx)` to every query an adapter makes: under `alder test` the
+that task fails, the new row is rolled back with it.
+
+Pass `db.TxFrom(ctx)` to every query an adapter makes: under `alder test` the
 database is a single in-memory connection that the running transaction
 holds, so a query made through `db.StoreFrom(ctx)` outside that
 transaction waits for it forever.
@@ -801,16 +878,23 @@ An adapter's arguments are its own. Every `List` and `Bytes` it is handed,
 directly or inside a record, a `Maybe` or a `Dict`, is a fresh copy made
 for that call (the generated call passes each such argument through
 `rt.Fresh`). The method may sort a slice, write into it or keep it, and
-the Alder caller sees no difference. This matters because the runtime
-shares storage wherever no one can tell. `List.take` gives a view of the
-original list, not a copy. `File.text` uses the bytes of the `Text` as the
-body. A Text written in the program's source lives in read-only memory,
-where a write would crash the server. Sharing is safe only because nothing
+the Alder caller sees no difference.
+
+This matters because the runtime shares storage wherever no one can tell:
+
+- `List.take` gives a view of the original list, not a copy.
+- `File.text` uses the bytes of the `Text` as the body.
+- A Text written in the program's source lives in read-only memory, where a
+  write would crash the server.
+
+Sharing is safe only because nothing
 ever writes to an Alder value, and Go code is the one place the compiler
 cannot check that, so the copy happens at the boundary. Do not rely on an
 argument sharing storage with anything: a change to it never reaches the
-app. The values a method returns are not copied. Return a slice the
-adapter will not touch again.
+app.
+
+The values a method returns are not copied. Return a slice the adapter will
+not touch again.
 
 The server refuses to start when a field of `Caps` is `nil` (a
 constructor that returned `nil`, say). `Serve`, in `app__alder.go`,
@@ -906,10 +990,13 @@ instead.
 
 A constructor with the right name but the wrong type is found, and the
 mistake surfaces when Go compiles the package. The build quotes Go's
-errors as they are, under a line naming the adapters, and exits 1
-(`alder test`, `alder eval` and the REPL print the same line, prefixed
-with their own name, and `alder test` and `alder eval` exit 1 as well:
-it is your program, like a check error). In this
+errors as they are, under a line naming the adapters, and exits 1.
+
+> **Other commands.** `alder test`, `alder eval` and the REPL print the same
+> line, prefixed with their own name, and `alder test` and `alder eval` exit
+> 1 as well: it is your program, like a check error.
+
+In this
 copy of the blog, `Render` forgot its `error` result, and the constructor
 returns its struct type:
 
@@ -931,73 +1018,98 @@ caps/caps__alder.go:18:26: cannot use a_markdown.Markdown() (value of struct typ
 The error is in the generated `caps/caps__alder.go`, at the line that
 hands your constructor's value to the app: that is where Go first needs
 `markdown` to be a `Cap__Markdown__Markdown`. `have` is what you wrote,
-`want` what the interface says. (Had the constructor declared
-`app.Cap__Markdown__Markdown` as its result, the same error would point at
-`return markdown{}` in your own file.) Paths are relative to
-`build/blog/`, where Go ran.
+`want` what the interface says. Paths are relative to `build/blog/`, where
+Go ran.
+
+> **A declared result type.** Had the constructor declared
+> `app.Cap__Markdown__Markdown` as its result, the same error would point at
+> `return markdown{}` in your own file.
 
 ### Helpers, tests and other files
 
 Everything under `adapters/` is copied, so an adapter can be more than
 one file and more than one package:
 
-- **Helper packages.** A directory that matches no module (one whose
-  name is not the first segment of a module with a capability) is copied
-  and compiled with the rest, and never wired: nothing calls it but your
-  adapters. Put shared Go there. The conventional place is
-  `adapters/internal/`: Go lets a package under a directory named
-  `internal` be imported only by code under that directory's parent, here
-  `adapters/`, so nothing else can depend on it. In
-  `cmd/alder/testdata/subadapters` (a small app the tests build), both
-  `adapters/auth/` and `adapters/app/` import the helper
-  `"app/adapters/internal/dbx"`.
-- **Two names a module cannot have.** Because `adapters/internal/` is for
-  helpers, a module whose first segment is `Internal` cannot have
-  capabilities, and neither can one starting with `Testdata` (Go skips
-  every directory named `testdata`). `alder build` refuses them before
-  it looks for a single adapter (only the naming error at the end of this
-  section is checked earlier), and exits 1, as `alder test` and `alder
-  eval` do:
+#### Helper packages
 
-  ```
-  module `Internal` cannot name an adapter package: Go keeps `adapters/internal/` private to adapters/ (it holds helpers); rename the module
-  ```
+A directory that matches no module (one whose
+name is not the first segment of a module with a capability) is copied
+and compiled with the rest, and never wired: nothing calls it but your
+adapters. Put shared Go there.
 
-  ```
-  module `Testdata` cannot name an adapter package: Go skips `testdata/` directories; rename the module
-  ```
-- **A module named like a Go keyword.** A module `Select.Menu` with a
-  capability `Choice` needs `adapters/select/` with
-  `func MenuChoice() app.Cap__Select__Menu__Choice`, but `package select`
-  is not legal Go: `select` is a keyword. Name the package anything else,
-  `package selectadapter` for instance. The directory is still
-  `adapters/select/`, and the generated `caps` imports it under its alias,
-  `a_select "app/adapters/select"`, so the package's own name never
-  appears there. While the adapter is missing, its line says so:
+The conventional place is
+`adapters/internal/`: Go lets a package under a directory named
+`internal` be imported only by code under that directory's parent, here
+`adapters/`, so nothing else can depend on it.
 
-  ```
-  capability `Select.Menu.Choice` needs `adapters/select/` with `func MenuChoice() app.Cap__Select__Menu__Choice` (select is a Go keyword: name the package e.g. selectadapter)
-  ```
-- **An adapter's own tests.** Go test files (`*_test.go`) and `testdata/`
-  directories are copied too, so an adapter can be tested in Go against
-  the real generated `app` package. Run them inside the build directory,
-  after `alder build`:
+In `cmd/alder/testdata/subadapters` (a small app the tests build), both
+`adapters/auth/` and `adapters/app/` import the helper
+`"app/adapters/internal/dbx"`.
 
-  ```
-  $ alder build .
-  wrote build/blog/blog
-  $ cd build/blog && go test ./adapters/...
-  ok  	app/adapters/auth	0.144s
-  ok  	app/adapters/markdown	0.157s
-  ```
+#### Two names a module cannot have
 
-  `examples/blog/adapters/markdown/markdown_test.go` tests `ToHTML`;
-  `examples/blog/adapters/auth/password_test.go` tests that the stub
-  refuses every login outside dev mode. The executable contains none of
-  this: `go build` never compiles test files. The build's check does,
-  though: `go vet` compiles every package with its tests, so an adapter
-  `_test.go` that does not compile stops `alder build` like any other
-  adapter that does not compile.
+Because `adapters/internal/` is for
+helpers, a module whose first segment is `Internal` cannot have
+capabilities, and neither can one starting with `Testdata` (Go skips
+every directory named `testdata`).
+
+`alder build` refuses them before
+it looks for a single adapter (only the naming error at the end of this
+section is checked earlier), and exits 1, as `alder test` and `alder
+eval` do:
+
+```
+module `Internal` cannot name an adapter package: Go keeps `adapters/internal/` private to adapters/ (it holds helpers); rename the module
+```
+
+```
+module `Testdata` cannot name an adapter package: Go skips `testdata/` directories; rename the module
+```
+
+#### A module named like a Go keyword
+
+A module `Select.Menu` with a
+capability `Choice` needs `adapters/select/` with
+`func MenuChoice() app.Cap__Select__Menu__Choice`, but `package select`
+is not legal Go: `select` is a keyword. Name the package anything else,
+`package selectadapter` for instance.
+
+The directory is still
+`adapters/select/`, and the generated `caps` imports it under its alias,
+`a_select "app/adapters/select"`, so the package's own name never
+appears there. While the adapter is missing, its line says so:
+
+```
+capability `Select.Menu.Choice` needs `adapters/select/` with `func MenuChoice() app.Cap__Select__Menu__Choice` (select is a Go keyword: name the package e.g. selectadapter)
+```
+
+#### An adapter's own tests
+
+Go test files (`*_test.go`) and `testdata/`
+directories are copied too, so an adapter can be tested in Go against
+the real generated `app` package. Run them inside the build directory,
+after `alder build`:
+
+```
+$ alder build .
+wrote build/blog/blog
+$ cd build/blog && go test ./adapters/...
+ok  	app/adapters/auth	0.144s
+ok  	app/adapters/markdown	0.157s
+```
+
+`examples/blog/adapters/markdown/markdown_test.go` tests `ToHTML`;
+`examples/blog/adapters/auth/password_test.go` tests that the stub
+refuses every login outside dev mode.
+
+The executable contains none of
+this: `go build` never compiles test files. The build's check does,
+though: `go vet` compiles every package with its tests, so an adapter
+`_test.go` that does not compile stops `alder build` like any other
+adapter that does not compile.
+
+#### Watching and other messages
+
 
 `alder run` (chapter 11) rebuilds when any file under `adapters/` changes,
 in any directory, except your editor's own files (a name starting with
@@ -1005,7 +1117,9 @@ in any directory, except your editor's own files (a name starting with
 or `.swx`; `#markdown.go#`) and symbolic links, which the build does not
 copy.
 
-Two more messages you can meet. Two capabilities whose names join to the
+Two more messages you can meet.
+
+Two capabilities whose names join to the
 same function in the same directory (module `Mail`'s `OutBox` and module
 `Mail.Out`'s `Box` would both be `func OutBox` in `adapters/mail/`) cannot
 both be wired, and the build stops with:
