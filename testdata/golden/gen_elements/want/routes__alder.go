@@ -12,9 +12,8 @@ import (
 	"strings"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
-// write routes, in declaration order), then every message of the pages and of App (POST), in module
-// order.
+// Routes are the app's endpoints for web.NewRouter: every route (GET and write routes), in module
+// order, then declaration order.
 var Routes = []web.Route{
 	Route__Index__Index(),
 	Route__Index__Submit(),
@@ -41,12 +40,6 @@ func page__Index__Index(rq *web.Request, params Index__Index__Params, keep any) 
 	return model, session, nil
 }
 
-// params__Index__Index are route Index.Index's parameters as text (html.FormState.PageParams), for
-// the posted form's state its view renders with when a write renders it again.
-func params__Index__Index(_ Index__Index__Params) []rt.KV {
-	return nil
-}
-
 // Route__Index__Index serves route Index.Index, GET /: decode the parameters (404 when they do
 // not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
 // in rq.Model, which a test's browser reads).
@@ -61,7 +54,7 @@ func Route__Index__Index() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Index__Index__view(model, session), web.WithPageParams(rq.FormState, params__Index__Index(params)), rq.Session, false)
+		return web.PageResponse(Index__Index__view(model, session), rq.FormState, rq.Session, false)
 	}}
 }
 

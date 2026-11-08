@@ -6,16 +6,14 @@ import (
 	"alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
-	"alder/rt/std"
 	"alder/rt/web"
 	"errors"
 	"net/url"
 	"strings"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
-// write routes, in declaration order), then every message of the pages and of App (POST), in module
-// order.
+// Routes are the app's endpoints for web.NewRouter: every route (GET and write routes), in module
+// order, then declaration order.
 var Routes = []web.Route{
 	Route__Wood__Wood(),
 	Route__Wood__Bump(),
@@ -62,12 +60,6 @@ func page__Wood__Wood(rq *web.Request, params Wood__Wood__Params, keep any) (Woo
 	return model, session, nil
 }
 
-// params__Wood__Wood are route Wood.Wood's parameters as text (html.FormState.PageParams), for the
-// posted form's state its view renders with when a write renders it again.
-func params__Wood__Wood(p Wood__Wood__Params) []rt.KV {
-	return []rt.KV{{Key: "cfg", Value: p.Cfg}, rt.QueryKV("ElectionId", p.ElectionId, ""), rt.QueryKV("ContestId", rt.MaybeText(p.ContestId, std.TextFromInt), "")}
-}
-
 // Route__Wood__Wood serves route Wood.Wood, GET /r/{cfg}/wood/Results: decode the parameters (404
 // when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view
 // (the model also in rq.Model, which a test's browser reads).
@@ -82,7 +74,7 @@ func Route__Wood__Wood() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Wood__Wood__view(model, session), web.WithPageParams(rq.FormState, params__Wood__Wood(params)), rq.Session, false)
+		return web.PageResponse(Wood__Wood__view(model, session), rq.FormState, rq.Session, false)
 	}}
 }
 

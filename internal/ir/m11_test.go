@@ -37,7 +37,7 @@ func TestIR_Partitions(t *testing.T) {
 	if strings.Join(silo, " ") != "Project Issue" || len(p.Silos) != 1 {
 		t.Errorf("silos: %v", p.Silos)
 	}
-	if r, ok := p.Choose["org"].(*Route); !ok || r.Module != "Orgs.Index" {
+	if r := p.Choose["org"]; r == nil || r.Module != "Orgs.Index" {
 		t.Errorf("choose: %v", p.Choose)
 	}
 	stores := map[string]string{}
@@ -95,7 +95,7 @@ func TestIR_Partitions(t *testing.T) {
 // routes of one module share.
 func TestIR_RouteSilos(t *testing.T) {
 	p := lowerDir(t, "../../testdata/corpus/silo-routes-ok")
-	if r, ok := p.Choose["org"].(*Route); !ok || r.Module != "Orgs" || r.Name != "Pick" || r.TargetPath() != "/orgs" {
+	if r := p.Choose["org"]; r == nil || r.Module != "Orgs" || r.Name != "Pick" || r.Path != "/orgs" {
 		t.Errorf("choose: %v", p.Choose)
 	}
 	got := map[string]string{}

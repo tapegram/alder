@@ -12,12 +12,6 @@ type App__Session struct {
 	User rt.Maybe[string]
 }
 
-type App__Msg struct {
-	Tag tag__App__Msg
-}
-
-type tag__App__Msg uint8
-
 // Cap__App__Clock is capability Clock of module App, implemented by adapters/app/ (func Clock,
 // wired by the generated caps package): one method per entry, called with the running request's
 // context (db.TxFrom(ctx) is the running Task's transaction).

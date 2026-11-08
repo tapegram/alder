@@ -18,12 +18,6 @@ type App__Feedback struct {
 	Text string
 }
 
-type App__Msg struct {
-	Tag tag__App__Msg
-}
-
-type tag__App__Msg uint8
-
 type App__Logout__Params struct{}
 
 type App__Send__Params struct {

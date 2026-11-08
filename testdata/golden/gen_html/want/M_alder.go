@@ -121,9 +121,9 @@ func M__M__view(model M__Model, session App__Session) html.Node {
 			html.El("p", nil, html.Text("a < b")),
 		}}),
 		html.El("button", []html.Attr{html.A("class", "go"), html.B("disabled", model.Busy), html.M("aria-current", model.Current), html.RouteAttr("data-on:click", rt.Route{Name: "M.Ping", Method: "POST", Path: rt.Concat("/m/", rt.PathSegment(std.TextFromInt(model.Id)), "/_/Ping")})}, html.Text("ping")),
-		html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "Other.Other", Method: "GET", Path: "/other"}))}, html.Text("other")),
+		html.El("a", []html.Attr{html.A("href", rt.RouteURL(rt.Route{Name: "Other.Other", Method: "GET", Path: "/other"}))}, html.Text("other")),
 		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Logout", Method: "POST", Path: "/_/Logout"})}, html.Text("log out")),
-		html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "M.M", Method: "GET", Path: rt.Concat("/m/", rt.PathSegment(std.TextFromInt(model.Id+1)))}))}, html.Text("next")),
+		html.El("a", []html.Attr{html.A("href", rt.RouteURL(rt.Route{Name: "M.M", Method: "GET", Path: rt.Concat("/m/", rt.PathSegment(std.TextFromInt(model.Id+1)))}))}, html.Text("next")),
 		html.El("ul", nil, html.Nodes(std.ListMap(func(item string) html.Node {
 			return html.El("li", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "M.Pick", Method: "POST", Path: rt.Concat("/m/", rt.PathSegment(std.TextFromInt(model.Id)), "/_/Pick"), Query: []rt.KV{{Key: "name", Value: item}, {Key: "n", Value: std.TextFromInt(model.Id)}}})}, html.Text(item))
 		}, model.Items)...)),

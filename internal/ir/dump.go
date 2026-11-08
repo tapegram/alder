@@ -15,17 +15,17 @@ import (
 //
 // Forms: (module M); (record M.T fields…) with fields (name Type) or (name Type = default);
 // (union M.T params… (Ctor payload?)…); (value|component M.name : Type (params) body);
-// then (table …), (form …), (page …) with (view|load|update M.name), (route …) (routeForm), (app-msg …),
-// (app-update App.update), (session …), (capability …), (fake M.Cap (tables (record …)
+// then (table …), (form …), (route …) (routeForm),
+// (session …), (capability …), (fake M.Cap (tables (record …)
 // (table …)…) (entries (entry M.name : Type (params) body)…)). Expressions: literals bare (1, 3.14, "s", True, ()), (var x), (global M.f),
 // (std List.map), (call f args…), (partial f given… (missing n)), (lambda (x : T) body),
 // (record M.T? (field value)…), (update base (field value)…), (field name expr),
-// (ctor M.Union.Ctor payload?), (list elems…), (page-ref M params?), (route-ref M.R params?), (hole name),
+// (ctor M.Union.Ctor payload?), (list elems…), (route-ref M.R params?), (hole name),
 // (match kind subject (case Tag (bind name field : T)… body)… (default body)?),
 // (if c t e), (let x : T value body), (op l r) or (op : OperandT l r) for comparisons, `++` and
 // `??`, (str parts…); HTML: (elem tag (attr name kind value)… children…), (comp M.C props children…),
 // (htext "…"), (hexpr kind expr), (hfor x : T list body), (hif c t e), (hmatch …),
-// (input Kind Form field=f label="…" [label-expr] [(value e)] [form]), (form-el M.Msg|(route M.R) attrs… children…).
+// (input Kind Form field=f label="…" [label-expr] [(value e)] [form]), (form-el nil|(route M.R) attrs… children…).
 // Effects (kind is query or task): (pure kind v), (bind kind x : T effect body) or
 // (bind kind _ effect body), (map kind fn effect), (all kind effects), (fail msg), (not-found),
 // (cap M.Cap entry args…). Tests, after a module's values and components: (test "name" pure|task
@@ -38,10 +38,8 @@ import (
 // (ord col asc|desc); the scoped operations (M15) (db-scoped Op key M.T), (db-get-scoped Op key
 // M.T id), (db-update-scoped Op key M.T id fn), (db-delete-scoped Op key M.T id),
 // (db-insert-scoped Op key M.T row), Op the function as written (Db.mine, Db.scoped, …). A
-// table's partition is (partition key column); a page's `requires` (requires f…), its admin
-// form (silo k), and, in a program with silos, its arms (arms (Msg shared|silo k)…). After the
-// session: (via f M.T)…, (silo k M.T…)…, (choose k M.Page|M.Route)…, (app-arms …) in a program with
-// silos. Then App's deploy declaration, when it has one:
+// table's partition is (partition key column). After the session: (via f M.T)…, (silo k M.T…)…,
+// (choose k M.Route)…. Then App's deploy declaration, when it has one:
 // (deploy (env NAME ssh|fly|render|script (host "h")…)… (image "path")? (floor f)? (checks "c"…)? (requires "N"…)?
 // (backup s3 "url")? (keep n)? (proxy Caddy|None)).
 func Dump(p *Program) string {
@@ -76,48 +74,8 @@ func Dump(p *Program) string {
 	for _, f := range p.Forms {
 		form(atoms("form", f.Module+"."+f.Name))
 	}
-	for _, pg := range p.Pages {
-		d := &dumper{home: pg.Module}
-		x := list(3, atom("page"), atom(pg.Module), atom(strconv.Quote(pg.Path)), atoms("params", d.rt(pg.Params)))
-		if len(pg.Requires) > 0 {
-			x.items = append(x.items, atoms(append([]string{"requires"}, pg.Requires...)...))
-		}
-		if len(pg.Roles) > 0 {
-			x.items = append(x.items, atoms(append([]string{"roles"}, pg.Roles...)...))
-		}
-		if pg.Silo != "" {
-			x.items = append(x.items, atoms("silo", pg.Silo))
-		}
-		if pg.Session != nil && pg.Session != p.Session {
-			x.items = append(x.items, atoms("session", d.rt(pg.Session)))
-		}
-		if pg.Model != nil {
-			x.items = append(x.items, atoms("model", d.rt(pg.Model)))
-		}
-		for _, m := range pg.Msgs {
-			x.items = append(x.items, d.msg("msg", m))
-		}
-		for _, v := range []struct {
-			kind string
-			v    *Value
-		}{{"view", pg.View}, {"load", pg.Load}, {"update", pg.Update}} {
-			if v.v != nil {
-				x.items = append(x.items, atoms(v.kind, v.v.Module+"."+v.v.Name))
-			}
-		}
-		if p.Silos != nil && len(pg.Arms) > 0 {
-			x.items = append(x.items, armsForm("arms", pg.Arms))
-		}
-		form(x)
-	}
 	for _, r := range p.Routes {
 		form(routeForm(p, r))
-	}
-	for _, m := range p.AppMsgs {
-		form((&dumper{home: "App"}).msg("app-msg", m))
-	}
-	if p.AppUpdate != nil {
-		form(atoms("app-update", p.AppUpdate.Module+"."+p.AppUpdate.Name))
 	}
 	if p.Session != nil {
 		form(atoms("session", p.Session.Module+"."+p.Session.Name))
@@ -133,15 +91,8 @@ func Dump(p *Program) string {
 		form(atoms(ss...))
 	}
 	for _, k := range sortedKeys(p.Choose) {
-		switch t := p.Choose[k].(type) {
-		case *Page:
-			form(atoms("choose", k, t.Module))
-		case *Route:
-			form(atoms("choose", k, t.Module+"."+t.Name))
-		}
-	}
-	if p.Silos != nil && len(p.AppArms) > 0 {
-		form(armsForm("app-arms", p.AppArms))
+		t := p.Choose[k]
+		form(atoms("choose", k, t.Module+"."+t.Name))
 	}
 	if p.Deploy != nil {
 		form(deployForm(p.Deploy))
@@ -289,23 +240,6 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(ks)
 	return ks
-}
-
-// armsForm is (head (Msg store)…) with store `shared` or `silo k`, `_` for Msg "".
-func armsForm(head string, arms []*Arm) *sx {
-	x := list(1, atom(head))
-	for _, a := range arms {
-		m := a.Msg
-		if m == "" {
-			m = "_"
-		}
-		item := []string{m, "shared"}
-		if a.Store.Silo != "" {
-			item = []string{m, "silo", a.Store.Silo}
-		}
-		x.items = append(x.items, atoms(item...))
-	}
-	return x
 }
 
 // table is a table's form: (table M.T (id f) (created f)? (updated f)? (unique f…)? (partition k f)?
@@ -466,17 +400,6 @@ func (d *dumper) value(kind string, v *Value) *sx {
 	return list(5, atom(kind), atom(v.Module+"."+v.Name), atom(":"), atom(d.ty(v.Type)), atom("("+strings.Join(ps, " ")+")"), d.expr(v.Body))
 }
 
-func (d *dumper) msg(kind string, m *Msg) *sx {
-	x := list(2, atom(kind), atom(m.Name))
-	if m.Params != nil {
-		x.items = append(x.items, atoms("params", d.rt(m.Params)))
-	}
-	if m.Form != nil {
-		x.items = append(x.items, atoms("form", d.ty(&types.Record{Module: m.Form.Module, Name: m.Form.Name})))
-	}
-	return x
-}
-
 // ---- expressions
 
 func (d *dumper) exprs(es []Expr) []*sx {
@@ -558,11 +481,6 @@ func (d *dumper) expr(e Expr) *sx {
 		return list(2, atom("ctor"), atom(name), d.expr(x.Payload))
 	case *List:
 		return list(1, append([]*sx{atom("list")}, d.exprs(x.Elems)...)...)
-	case *PageRef:
-		if x.Params == nil {
-			return atoms("page-ref", x.Page.Module)
-		}
-		return list(2, atom("page-ref"), atom(x.Page.Module), d.expr(x.Params))
 	case *RouteRef:
 		name := x.Route.Module + "." + x.Route.Name
 		if x.Params == nil {
@@ -655,7 +573,7 @@ func (d *dumper) expr(e Expr) *sx {
 	case *EffNotFound:
 		return atoms("not-found")
 	case *EffRedirect:
-		return list(1, atom("redirect"), d.expr(x.Page))
+		return list(1, atom("redirect"), d.expr(x.To))
 	case *TestRun:
 		return list(1, atom("test-run"), d.expr(x.Task))
 	case *TestTrace:
@@ -692,27 +610,17 @@ func (d *dumper) expr(e Expr) *sx {
 		if x.Fetch {
 			name = "test-fetch"
 		}
-		items := []*sx{atom(name), atom(stepTarget(x.Page, x.Route))}
+		items := []*sx{atom(name), atom(stepTarget(x.Route))}
 		if x.Params != nil {
 			items = append(items, d.expr(x.Params))
 		}
 		return list(2, items...)
 	case *TestSubmit:
-		return list(3, d.submitItems("test-submit", x.Form, x.Msg, x.Route, x.Params, x.Record)...)
+		return list(3, d.submitItems("test-submit", x.Form, x.Route, x.Params, x.Record)...)
 	case *TestSubmitRaw:
-		return list(3, d.submitItems("test-submit-raw", x.Form, x.Msg, x.Route, x.Params, x.Fields)...)
+		return list(3, d.submitItems("test-submit-raw", x.Form, x.Route, x.Params, x.Fields)...)
 	case *TestClick:
-		var target string
-		if x.Route != nil {
-			target = stepTarget(nil, x.Route)
-		} else {
-			owner := "App"
-			if x.Page != nil {
-				owner = x.Page.Module
-			}
-			target = owner + "." + x.Msg.Name
-		}
-		items := []*sx{atom("test-click"), atom(target)}
+		items := []*sx{atom("test-click"), atom(stepTarget(x.Route))}
 		if x.Params != nil {
 			items = append(items, d.expr(x.Params))
 		}
@@ -782,18 +690,11 @@ func (d *dumper) expr(e Expr) *sx {
 		}
 		return list(1, atom("ord"), d.expr(x.Col), atom(dir))
 	case *FormEl:
-		msg := "nil"
-		if x.Msg != nil {
-			owner := "App"
-			if x.Page != nil {
-				owner = x.Page.Module
-			}
-			msg = owner + "." + x.Msg.Name
-		}
+		target := "nil"
 		if x.Route != nil {
-			msg = "(route " + x.Route.Module + "." + x.Route.Name + ")"
+			target = stepTarget(x.Route)
 		}
-		items := []*sx{atom("form-el"), atom(msg)}
+		items := []*sx{atom("form-el"), atom(target)}
 		items = append(items, d.attrs(x.Attrs)...)
 		el := list(len(items), append(items, d.exprs(x.Children)...)...)
 		el.minHead = 2
@@ -840,26 +741,15 @@ var effKinds = []string{"query", "task"}
 
 var selTerminals = []string{"select", "all", "first", "count"}
 
-// stepTarget is what a browser step goes to: page module M, or (route M.R).
-func stepTarget(pg *Page, r *Route) string {
-	if r != nil {
-		return "(route " + r.Module + "." + r.Name + ")"
-	}
-	return pg.Module
-}
+// stepTarget is what a browser step or a form goes to: (route M.R).
+func stepTarget(r *Route) string { return "(route " + r.Module + "." + r.Name + ")" }
 
 func tableName(t *Table) string { return t.Module + "." + t.Name }
 
-// submitItems are the items of a test-submit or test-submit-raw: the form, the message (with
-// its parameters when the test wrote them) and the value posted.
-func (d *dumper) submitItems(name string, form *Form, msg *Msg, route *Route, params, value Expr) []*sx {
-	var target string
-	if route != nil {
-		target = stepTarget(nil, route)
-	} else {
-		target = msg.Name
-	}
-	items := []*sx{atom(name), atom(form.Module + "." + form.Name), atom(target)}
+// submitItems are the items of a test-submit or test-submit-raw: the form, the route (with its
+// parameters when the test wrote them) and the value posted.
+func (d *dumper) submitItems(name string, form *Form, route *Route, params, value Expr) []*sx {
+	items := []*sx{atom(name), atom(form.Module + "." + form.Name), atom(stepTarget(route))}
 	if params != nil {
 		items = append(items, list(1, atom("params"), d.expr(params)))
 	}

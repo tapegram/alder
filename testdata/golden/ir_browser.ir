@@ -3,7 +3,6 @@
 (module App)
 (record App.Session (user Maybe Text))
 (record App.Feedback (text Text))
-(union App.Msg)
 (record App.Logout.Params)
 (record App.Send.Params (form Feedback))
 (value App.Logout.update : Logout.Params -> Session -> Task Response (p session)
@@ -736,7 +735,6 @@
   (model Model)
   (load Notes.Show.Show.load)
   (view Notes.Show.Show.view))
-(app-update App.Send.update)
 (session App.Session)
 (capability Auth.Login.Password
   (verify { email: Text, password: Text } -> Task (Maybe Text)))

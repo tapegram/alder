@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"reflect"
 	"strings"
 	"time"
 )
@@ -48,11 +47,6 @@ func (c Caps) Registry() map[string]any {
 		"Markdown.Markdown":   c.Markdown__Markdown,
 		"Payments.Stripe":     c.Payments__Stripe,
 	}
-}
-
-// init registers the constructor names of every union of the app, for rt.Show.
-func init() {
-	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that

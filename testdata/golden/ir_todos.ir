@@ -31,7 +31,6 @@
 (record App.Session
   (user Maybe Text)
   (role Table.User.Role = (ctor Table.User.Role.Member)))
-(union App.Msg)
 (record App.Logout.Params)
 (value App.Logout.update : Logout.Params -> Session -> Task Response (p session)
   (bind task _
@@ -1381,7 +1380,6 @@
   (requires user)
   (session Show.Session)
   (update Todos.Show.Delete.update))
-(app-update App.Logout.update)
 (session App.Session)
 (deploy (env local script (script "./scripts/deploy-local.sh")) (proxy Caddy))
 (capability Auth.Login.Password

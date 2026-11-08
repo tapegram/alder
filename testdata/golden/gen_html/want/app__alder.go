@@ -42,7 +42,6 @@ func (Caps) Registry() map[string]any {
 
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
-	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
 	rt.RegisterUnion(reflect.TypeOf(tag__M__Color(0)), []string{"Red", "Green"})
 	rt.RegisterUnion(reflect.TypeOf(tag__M__Shape(0)), []string{"Circle", "Square"})
 }
@@ -156,7 +155,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
-		DevMap:      "{\"pages\":[],\"tables\":[],\"caps\":[],\"session\":[\"visits: Int\"]}",
+		DevMap:      "{\"pages\":[{\"module\":\"M.M\",\"path\":\"/m/{id}\",\"params\":[\"id: Int\"]},{\"module\":\"Other.Other\",\"path\":\"/other\"}],\"tables\":[],\"caps\":[],\"session\":[\"visits: Int\"]}",
 	}
 }
 

@@ -119,8 +119,6 @@ func atomic(e ir.Expr) bool {
 		return true
 	case *ir.Ctor:
 		return x.Payload == nil
-	case *ir.PageRef:
-		return x.Params == nil
 	case *ir.RouteRef:
 		return x.Params == nil
 	case *ir.Widen:
@@ -217,12 +215,6 @@ func (p *printer) expr(e ir.Expr) string {
 			es = append(es, p.expr(el))
 		}
 		return "[" + strings.Join(es, ", ") + "]"
-	case *ir.PageRef:
-		s := p.qual("", x.Page.Module)
-		if x.Params != nil {
-			s += " " + p.atom(x.Params)
-		}
-		return s
 	case *ir.RouteRef:
 		s := p.qual(x.Route.Module, x.Route.Name)
 		if x.Params != nil {
@@ -263,7 +255,7 @@ func (p *printer) expr(e ir.Expr) string {
 	case *ir.EffFail:
 		return "Task.fail " + p.atom(x.Message)
 	case *ir.EffRedirect:
-		return "Query.redirect " + p.atom(x.Page)
+		return "Query.redirect " + p.atom(x.To)
 	case *ir.EffNotFound:
 		if app, ok := x.Ty.(*types.App); ok && app.Con == "Query" {
 			return "Query.notFound"

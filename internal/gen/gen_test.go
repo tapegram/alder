@@ -421,7 +421,7 @@ func TestGen_AlButtonAnchorAttrs(t *testing.T) {
 		t.Errorf("%d html.M(\"target\", model.T), want 2 (both branches of the disabled `if`):\n%s", n, src)
 	}
 	contains(t, []byte(src),
-		`html.El("a", []html.Attr{html.A("href", rt.PageURL(`,
+		`html.El("a", []html.Attr{html.A("href", rt.RouteURL(`,
 		`html.A("target", "_blank"), html.A("rel", "noopener"), `+reload+`, html.A("download", "a.txt")`,
 		`html.El("a", []html.Attr{html.A("aria-disabled", "true"), html.A("target", "_blank"), `+reload+`}`,
 	)
@@ -2561,14 +2561,14 @@ import (
 
 func TestLinks(t *testing.T) {
 	for got, want := range map[string]string{
-		rt.PageURL(T__link1):   "/t/a%2Fb%20c/x?filter=Active&q=x%26y&n=2&b=True&tags=p&tags=q+r&m=",
-		rt.PageURL(T__link2("c")): "/t/c/x?n=-1",
+		rt.RouteURL(T__link1):   "/t/a%2Fb%20c/x?filter=Active&q=x%26y&n=2&b=True&tags=p&tags=q+r&m=",
+		rt.RouteURL(T__link2("c")): "/t/c/x?n=-1",
 	} {
 		if got != want {
-			t.Errorf("PageURL = %q, want %q", got, want)
+			t.Errorf("RouteURL = %q, want %q", got, want)
 		}
 	}
-	u, _ := url.Parse(rt.PageURL(T__link1))
+	u, _ := url.Parse(rt.RouteURL(T__link1))
 	p, errs := decode__T__T__Params(map[string]string{"id": "a/b c"}, u.Query())
 	if errs != nil || p.Id != "a/b c" || p.Filter.Tag != is__T__Filter__Active || p.Q.Val != "x&y" || p.N != 2 || !p.B || strings.Join(p.Tags, ",") != "p,q r" || p.M.Ok {
 		t.Fatalf("decoded link1: %+v %v", p, errs)
@@ -3221,12 +3221,12 @@ func TestGen_Mutate(t *testing.T) {
 				t.Fatalf("Mutants has %d entries, want %d", got, len(ms))
 			}
 			for _, m := range ms {
-				if m.Node == nil && m.Page == nil && m.Route == nil {
+				if m.Node == nil && m.Route == nil {
 					continue
 				}
 				// a switch's case, or an If's or a Match's test of Mutant (mutatedIf, mutatedMatch)
 				needles := []string{fmt.Sprintf("case %d:\n", m.ID), fmt.Sprintf("Mutant == %d ", m.ID), fmt.Sprintf("Mutant != %d ", m.ID), fmt.Sprintf("(Mutant == %d)", m.ID)}
-				if m.Page != nil || m.Route != nil {
+				if m.Route != nil {
 					needles = []string{fmt.Sprintf("Mutant == %d {", m.ID), fmt.Sprintf("Mutant != %d && ", m.ID)} // requires, role dropped
 				}
 				found := false
@@ -3665,7 +3665,7 @@ Go.view n session = File.text { contentType: "text/plain", body: "never" }
 `,
 	})
 	contains(t, files["Start_alder.go"], `eff.Redirect[`)
-	contains(t, files["Start_alder.go"], `rt.PageURL(`)
+	contains(t, files["Start_alder.go"], `rt.RouteURL(`)
 	runGo(t, files, `package app
 
 import (

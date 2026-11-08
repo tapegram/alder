@@ -141,7 +141,6 @@
 (record App.Session
   (user Maybe Text)
   (role User.Role = (ctor User.Role.Reader)))
-(union App.Msg)
 (value App.error : Error -> Html (err)
   (elem html (elem body (elem h1 (htext "error")))))
 (value App.notFound : Html ()

@@ -2,7 +2,6 @@
 (record Table.User.User (id Text) (email Text))
 (module App)
 (record App.Session (user Maybe Text) (theme Text = "light"))
-(union App.Msg)
 (value App.error : Error -> Html (err)
   (elem html (elem body (elem h1 (htext "Something went wrong")))))
 (value App.notFound : Html ()

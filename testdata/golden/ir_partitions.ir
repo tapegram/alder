@@ -29,7 +29,6 @@
   (user Maybe Text)
   (org Maybe Text)
   (role User.Role = (ctor User.Role.Reader)))
-(union App.Msg)
 (record App.Leave.Params)
 (value App.Leave.update : Leave.Params -> Session -> Task Response (params session)
   (bind task _
@@ -402,9 +401,7 @@
   (model Model)
   (load Projects.Show.Show.load)
   (view Projects.Show.Show.view))
-(app-update App.Leave.update)
 (session App.Session)
 (via org Membership.Membership)
 (silo org Project.Project Issue.Issue)
 (choose org Orgs.Index.Index)
-(app-arms (Leave shared))

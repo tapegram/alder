@@ -37,7 +37,7 @@ func Wood__Bump__update(p Wood__Bump__Params, session App__Session) eff.Task[rt.
 func Wood__Wood__view(model Wood__Model, session App__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("p", []html.Attr{html.A("id", "election")}, html.Text(model.Election)),
-		html.El("a", []html.Attr{html.A("id", "next"), html.A("href", rt.PageURL(rt.Route{Name: "Wood.Wood", Method: "GET", Path: rt.Concat("/r/", rt.PathSegment(model.Cfg), "/wood/Results"), Query: []rt.KV{rt.QueryKV("ElectionId", "18", ""), rt.QueryKV("ContestId", "5", "")}}))}, html.Text("next")),
+		html.El("a", []html.Attr{html.A("id", "next"), html.A("href", rt.RouteURL(rt.Route{Name: "Wood.Wood", Method: "GET", Path: rt.Concat("/r/", rt.PathSegment(model.Cfg), "/wood/Results"), Query: []rt.KV{rt.QueryKV("ElectionId", "18", ""), rt.QueryKV("ContestId", "5", "")}}))}, html.Text("next")),
 		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Wood.Bump", Method: "POST", Path: rt.Concat("/r/", rt.PathSegment(model.Cfg), "/wood/Results/_/Bump"), Query: []rt.KV{rt.QueryKV("ElectionId", model.Election, "")}})}, html.Text("bump")),
 	))
 }

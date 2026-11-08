@@ -27,7 +27,7 @@ import (
 //	EffAll             eff.All([]eff.Task[A]{task(e1), …}); a list that is no literal:
 //	                   eff.All(list) for Tasks, std.QueryAll(list) for Queries
 //	EffFail/NotFound   eff.Fail[T](msg), eff.NotFound[T]()
-//	EffRedirect        eff.Redirect[T](rt.PageURL(page))
+//	EffRedirect        eff.Redirect[T](rt.RouteURL(route))
 //	DbGet, DbSelect    eff.Call("Db.get Todo", false, func(_e *eff.Env) (R, error) {
 //	  (run), DbRun,      return db.GetRow(_e.Ctx, _e.Store.(db.Store), db.TxOf(_e), …) })
 //	  DbInsert, …      (write is true for insert, update, delete); Db.insert passes the row's
@@ -189,7 +189,7 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 	case *ir.EffNotFound:
 		return "eff.NotFound[" + GoType(effResult(x.Ty)) + "]()", true
 	case *ir.EffRedirect:
-		return "eff.Redirect[" + GoType(effResult(x.Ty)) + "](rt.PageURL(" + f.code(x.Page, s) + "))", true
+		return "eff.Redirect[" + GoType(effResult(x.Ty)) + "](rt.RouteURL(" + f.code(x.To, s) + "))", true
 	case *ir.DbGet:
 		tb := x.Table
 		return f.dbCall("Db.get "+tb.Name, false, x.Ty, s, func(env string, c *scope) string {
@@ -350,53 +350,19 @@ func (f *fn) testRun(x *ir.TestRun, s *scope) string {
 	r := GoType(effResult(x.Ty))
 	a := GoType(effResult(x.Task.Type()))
 	return f.callStmts("Test.run", true, x.Ty, s, func(env string, c *scope) string {
-		pre, inner := "", "rtesting.Inner("+env+", "
-		task := ""
-		if call, m := f.pageUpdate(x.Task); call != nil {
-			// a page's update: bound to its arm's store, as the request's db.Enter binds it
-			key, g := f.tempVar(c, "_m")
-			pre = g + " := " + f.code(call.Args[0], c) + "\n"
-			args := append([]ir.Expr{&ir.Var{Typed: ir.Typed{Ty: call.Args[0].Type()}, Kind: ir.VarLocal, Name: key}}, call.Args[1:]...)
-			task = f.task(&ir.Call{Typed: call.Typed, Pos: call.Pos, Fn: call.Fn, Args: args}, c)
-			inner = "rtesting.InnerOn(" + env + ", store__" + strings.ReplaceAll(m, ".", "__") + "(" + g + "), "
-		} else if r := f.routeUpdate(x.Task); r != nil {
+		inner := "rtesting.Inner(" + env + ", "
+		if r := f.routeUpdate(x.Task); r != nil {
 			// a route's update: bound to the route's store, as the request's db.Enter binds it
-			task = f.task(x.Task, c)
 			inner = "rtesting.InnerOn(" + env + ", " + strconv.Quote(r.Store.Silo) + ", "
-		} else {
-			task = f.task(x.Task, c)
 		}
+		task := f.task(x.Task, c)
 		v, msg, ok, tr, err, out, zero := f.temp(c, "_v"), f.temp(c, "_msg"), f.temp(c, "_ok"), f.temp(c, "_tr"), f.temp(c, "_err"), f.temp(c, "_r"), f.temp(c, "_z")
-		return pre + v + ", " + msg + ", " + ok + ", " + tr + ", " + err + " := " + inner + task + ")\n" +
+		return v + ", " + msg + ", " + ok + ", " + tr + ", " + err + " := " + inner + task + ")\n" +
 			"if " + err + " != nil {\nvar " + zero + " " + r + "\nreturn " + zero + ", " + err + "\n}\n" +
 			out + " := " + r + "{Trace: " + tr + "}\n" +
 			"if " + ok + " {\n" + out + ".Value = rt.Ok[string, " + a + "](" + v + ")\n} else {\n" + out + ".Value = rt.Err[string, " + a + "](" + msg + ")\n}\n" +
 			"return " + out + ", nil\n"
 	})
-}
-
-// pageUpdate is, in an app with silos, e as a call of a page's update with its message (the
-// first argument) and the page's module; nil otherwise. Test.run binds such a Task to the store
-// of the message's arm (store__M, routes.go), as the request does.
-func (f *fn) pageUpdate(e ir.Expr) (*ir.Call, string) {
-	if len(f.g.prog.Silos) == 0 {
-		return nil, ""
-	}
-	call, ok := e.(*ir.Call)
-	if !ok || len(call.Args) == 0 {
-		return nil, ""
-	}
-	v, ok := call.Fn.(*ir.Var)
-	if !ok || v.Kind != ir.VarGlobal || v.Name != "update" {
-		return nil, ""
-	}
-	if pg := f.g.pages[v.Module]; pg == nil || pg.Update == nil {
-		return nil, ""
-	}
-	if _, isMutant := f.hoisted(e); isMutant || f.mutantsOf(e) != nil {
-		return nil, ""
-	}
-	return call, v.Module
 }
 
 // routeUpdate is, in an app with silos, the write route whose update e calls (`R.update params

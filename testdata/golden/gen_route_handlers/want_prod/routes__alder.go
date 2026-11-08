@@ -12,9 +12,8 @@ import (
 	"strings"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
-// write routes, in declaration order), then every message of the pages and of App (POST), in module
-// order.
+// Routes are the app's endpoints for web.NewRouter: every route (GET and write routes), in module
+// order, then declaration order.
 var Routes = []web.Route{
 	Route__About__Show(),
 	Route__Admin__Stats(),
@@ -53,12 +52,6 @@ func page__About__Show(rq *web.Request, params About__Show__Params, keep any) (s
 	return model, session, nil
 }
 
-// params__About__Show are route About.Show's parameters as text (html.FormState.PageParams), for
-// the posted form's state its view renders with when a write renders it again.
-func params__About__Show(p About__Show__Params) []rt.KV {
-	return []rt.KV{rt.QueryKV("tab", p.Tab, "team")}
-}
-
 // Route__About__Show serves route About.Show, GET /about: decode the parameters (404 when they do
 // not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
 // in rq.Model, which a test's browser reads).
@@ -73,7 +66,7 @@ func Route__About__Show() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(About__Show__view(model, session), web.WithPageParams(rq.FormState, params__About__Show(params)), rq.Session, false)
+		return web.PageResponse(About__Show__view(model, session), rq.FormState, rq.Session, false)
 	}}
 }
 
@@ -111,12 +104,6 @@ func page__Admin__Stats(rq *web.Request, params Admin__Stats__Params, keep any) 
 	return model, session, nil
 }
 
-// params__Admin__Stats are route Admin.Stats's parameters as text (html.FormState.PageParams), for
-// the posted form's state its view renders with when a write renders it again.
-func params__Admin__Stats(_ Admin__Stats__Params) []rt.KV {
-	return nil
-}
-
 // Route__Admin__Stats serves route Admin.Stats, GET /admin/stats: decode the parameters (404 when
 // they do not), `requires` (303 to App.login), the role (404), load (404 on Query.notFound, 303 on
 // Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser
@@ -132,7 +119,7 @@ func Route__Admin__Stats() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Admin__Stats__view(model, session), web.WithPageParams(rq.FormState, params__Admin__Stats(params)), rq.Session, false)
+		return web.PageResponse(Admin__Stats__view(model, session), rq.FormState, rq.Session, false)
 	}}
 }
 
@@ -156,13 +143,6 @@ func page__Auth__Login__Login(rq *web.Request, params Auth__Login__Login__Params
 	return model, session, nil
 }
 
-// params__Auth__Login__Login are route Auth.Login.Login's parameters as text
-// (html.FormState.PageParams), for the posted form's state its view renders with when a write
-// renders it again.
-func params__Auth__Login__Login(_ Auth__Login__Login__Params) []rt.KV {
-	return nil
-}
-
 // Route__Auth__Login__Login serves route Auth.Login.Login, GET /login: decode the parameters (404
 // when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view
 // (the model also in rq.Model, which a test's browser reads).
@@ -177,7 +157,7 @@ func Route__Auth__Login__Login() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Auth__Login__Login__view(model, session), web.WithPageParams(rq.FormState, params__Auth__Login__Login(params)), rq.Session, false)
+		return web.PageResponse(Auth__Login__Login__view(model, session), rq.FormState, rq.Session, false)
 	}}
 }
 
@@ -215,12 +195,6 @@ func page__Todos__Index(rq *web.Request, params Todos__Index__Params, keep any) 
 	return model, session, nil
 }
 
-// params__Todos__Index are route Todos.Index's parameters as text (html.FormState.PageParams), for
-// the posted form's state its view renders with when a write renders it again.
-func params__Todos__Index(p Todos__Index__Params) []rt.KV {
-	return []rt.KV{rt.QueryKV("filter", []string{"All", "Done"}[p.Filter.Tag], "All")}
-}
-
 // Route__Todos__Index serves route Todos.Index, GET /: decode the parameters (404 when they do
 // not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500 on a
 // failure), view (the model also in rq.Model, which a test's browser reads).
@@ -235,7 +209,7 @@ func Route__Todos__Index() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Todos__Index__view(model, session), web.WithPageParams(rq.FormState, params__Todos__Index(params)), rq.Session, false)
+		return web.PageResponse(Todos__Index__view(model, session), rq.FormState, rq.Session, false)
 	}}
 }
 
@@ -275,12 +249,6 @@ func page__Todos__Row(rq *web.Request, params Todos__Row__Params, keep any) (Tab
 	return model, session, nil
 }
 
-// params__Todos__Row are route Todos.Row's parameters as text (html.FormState.PageParams), for the
-// posted form's state its view renders with when a write renders it again.
-func params__Todos__Row(p Todos__Row__Params) []rt.KV {
-	return []rt.KV{{Key: "id", Value: p.Id}}
-}
-
 // Route__Todos__Row serves route Todos.Row, GET /todos/{id}: decode the parameters (404 when they
 // do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500
 // on a failure), view (the model also in rq.Model, which a test's browser reads).
@@ -295,7 +263,7 @@ func Route__Todos__Row() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Todos__Row__view(model, session), web.WithPageParams(rq.FormState, params__Todos__Row(params)), rq.Session, false)
+		return web.PageResponse(Todos__Row__view(model, session), rq.FormState, rq.Session, false)
 	}}
 }
 

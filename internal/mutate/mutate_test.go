@@ -186,11 +186,6 @@ func TestNeverInTestsFakesViews(t *testing.T) {
 				}
 			}
 		}
-		for _, pg := range p.Pages {
-			if pg.View != nil && !pg.File {
-				mark(pg.View.Body)
-			}
-		}
 		for _, f := range p.Fakes {
 			for _, v := range f.Entries {
 				mark(v.Body)

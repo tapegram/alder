@@ -11,12 +11,6 @@ type App__Session struct {
 	User rt.Maybe[string]
 }
 
-type App__Msg struct {
-	Tag tag__App__Msg
-}
-
-type tag__App__Msg uint8
-
 func App__error(err error) html.Node {
 	return html.El("html", nil, html.El("body", nil, html.El("h1", nil, html.Text("Something went wrong"))))
 }

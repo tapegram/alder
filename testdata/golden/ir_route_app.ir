@@ -1,6 +1,5 @@
 (module App)
 (record App.Session (user Maybe Text) (visits Int = 0))
-(union App.Msg)
 (value App.error : Error -> Html (err) (elem p (htext "error")))
 (value App.notFound : Html () (elem p (htext "not found")))
 (module Edit)

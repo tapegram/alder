@@ -14,9 +14,8 @@ import (
 	"strings"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
-// write routes, in declaration order), then every message of the pages and of App (POST), in module
-// order.
+// Routes are the app's endpoints for web.NewRouter: every route (GET and write routes), in module
+// order, then declaration order.
 var Routes = []web.Route{
 	Route__App__Logout(),
 	Route__App__Send(),
@@ -133,13 +132,6 @@ func page__Auth__Login__Login(rq *web.Request, params Auth__Login__Login__Params
 	return model, session, nil
 }
 
-// params__Auth__Login__Login are route Auth.Login.Login's parameters as text
-// (html.FormState.PageParams), for the posted form's state its view renders with when a write
-// renders it again.
-func params__Auth__Login__Login(_ Auth__Login__Login__Params) []rt.KV {
-	return nil
-}
-
 // Route__Auth__Login__Login serves route Auth.Login.Login, GET /login: decode the parameters (404
 // when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view
 // (the model also in rq.Model, which a test's browser reads).
@@ -154,7 +146,7 @@ func Route__Auth__Login__Login() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Auth__Login__Login__view(model, session), web.WithPageParams(rq.FormState, params__Auth__Login__Login(params)), rq.Session, false)
+		return web.PageResponse(Auth__Login__Login__view(model, session), rq.FormState, rq.Session, false)
 	}}
 }
 
@@ -258,13 +250,6 @@ func page__Notes__Index__Index(rq *web.Request, params Notes__Index__Index__Para
 	return model, session, nil
 }
 
-// params__Notes__Index__Index are route Notes.Index.Index's parameters as text
-// (html.FormState.PageParams), for the posted form's state its view renders with when a write
-// renders it again.
-func params__Notes__Index__Index(p Notes__Index__Index__Params) []rt.KV {
-	return []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[p.Filter.Tag], "All")}
-}
-
 // Route__Notes__Index__Index serves route Notes.Index.Index, GET /: decode the parameters (404 when
 // they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect,
 // 500 on a failure), view (the model also in rq.Model, which a test's browser reads).
@@ -279,7 +264,7 @@ func Route__Notes__Index__Index() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Notes__Index__Index__view(model, session), web.WithPageParams(rq.FormState, params__Notes__Index__Index(params)), rq.Session, false)
+		return web.PageResponse(Notes__Index__Index__view(model, session), rq.FormState, rq.Session, false)
 	}}
 }
 
@@ -751,13 +736,6 @@ func page__Notes__Show__Show(rq *web.Request, params Notes__Show__Show__Params, 
 	return model, session, nil
 }
 
-// params__Notes__Show__Show are route Notes.Show.Show's parameters as text
-// (html.FormState.PageParams), for the posted form's state its view renders with when a write
-// renders it again.
-func params__Notes__Show__Show(p Notes__Show__Show__Params) []rt.KV {
-	return []rt.KV{{Key: "id", Value: p.Id}}
-}
-
 // Route__Notes__Show__Show serves route Notes.Show.Show, GET /notes/{id}: decode the parameters
 // (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on
 // Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser
@@ -773,7 +751,7 @@ func Route__Notes__Show__Show() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Notes__Show__Show__view(model, session), web.WithPageParams(rq.FormState, params__Notes__Show__Show(params)), rq.Session, false)
+		return web.PageResponse(Notes__Show__Show__view(model, session), rq.FormState, rq.Session, false)
 	}}
 }
 

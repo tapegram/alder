@@ -326,7 +326,7 @@ func (g *gen) testsTable(b *strings.Builder, p *ir.Program) {
 }
 
 // unionsInit writes the init registering every union of the program (module order, then
-// declaration order; page and App Msg unions included) with rt.RegisterUnion: its tag type and
+// declaration order) with rt.RegisterUnion: its tag type and
 // its constructor names in tag order, so rt.Show prints its values.
 func unionsInit(b *strings.Builder, p *ir.Program) {
 	var regs []string
@@ -389,7 +389,7 @@ func importSpec(path string) string {
 // serve writes Options, Serve and the session codec of an app with an App module.
 func (g *gen) serve(b *strings.Builder, p *ir.Program) {
 	login := p.Login
-	if login == "" { // no `login`: the checker accepts that only when no page `requires`
+	if login == "" { // no `login`: the checker accepts that only when no route `requires`
 		login = "/"
 	}
 	notFound := "func() html.Node { return App__notFound }"
@@ -578,7 +578,7 @@ func (g *gen) serveSilos(p *ir.Program, src string) string {
 // to Just v — changed, or with another user — names a row of its membership table for the
 // session's user, read inside the running Task's transaction on the shared store (db.Member);
 // else the step fails "Session.put org: no Membership for this user and org" (an eff.ErrFail
-// marked NotMember: a message's route answers it with Reject or 404). Nothing is always
+// marked NotMember: a write route answers it with `invalid` or 404). Nothing is always
 // allowed, and a session without a user has every `via` field cleared (logging out clears the
 // org: it returns the session to store). In a mutate build each field's `membership dropped`
 // mutant skips its check.

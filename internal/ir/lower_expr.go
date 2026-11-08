@@ -12,13 +12,11 @@ import (
 func (l *lowerer) expr(e syntax.Expr) Expr {
 	if to, ok := l.res.Widened[e]; ok {
 		rec := l.typeOf(e).(*types.Record)
-		w := &Widen{Typed: Typed{l.erase(to)}, Expr: l.exprOf(e), Page: l.pages[rec.Module]}
-		if w.Page == nil { // a route's narrowed Session: the first route of the module that has it
-			for _, info := range l.res.Routes[rec.Module] {
-				if info.Session != nil && info.Session.Name == rec.Name {
-					w.Route = l.routeOf[info]
-					break
-				}
+		w := &Widen{Typed: Typed{l.erase(to)}, Expr: l.exprOf(e)}
+		for _, info := range l.res.Routes[rec.Module] { // the first route of the module with this narrowed Session
+			if info.Session != nil && info.Session.Name == rec.Name {
+				w.Route = l.routeOf[info]
+				break
 			}
 		}
 		return w
@@ -166,16 +164,11 @@ func (l *lowerer) variable(x *syntax.Var) Expr {
 	panic(fmt.Sprintf("ir: cannot lower reference %s.%s at %s", x.Module, x.Name, pos(x.Span)))
 }
 
-// ctorRef lowers a constructor, page, route or brand name used as a value (not applied).
+// ctorRef lowers a constructor, route or brand name used as a value (not applied).
 func (l *lowerer) ctorRef(x *syntax.CtorRef) Expr {
 	t := l.typeOf(x)
 	fn, isFn := t.(*types.Fun)
 	switch x.Ref.Kind {
-	case syntax.RefPage:
-		if !isFn {
-			return &PageRef{Typed: Typed{t}, Page: l.page(x.Ref.Module)}
-		}
-		return l.eta(fn, func(arg Expr) Expr { return &PageRef{Typed: Typed{fn.Result}, Page: l.page(x.Ref.Module), Params: arg} })
 	case syntax.RefRoute:
 		r := l.route(x.Ref.Module, x.Ref.Name)
 		if !isFn { // a route whose parameters are none or only its form
@@ -190,14 +183,7 @@ func (l *lowerer) ctorRef(x *syntax.CtorRef) Expr {
 		if isFn {
 			return l.eta(fn, func(arg Expr) Expr { return l.ctor(fn.Result, x.Ref.Name, arg, nil, posOf(x.Span)) })
 		}
-		// no payload, or a message whose payload the runtime supplies (only a `form`)
-		u := l.union(t.(*types.Union))
-		ct := u.ctorT(x.Ref.Name)
-		out := &Ctor{Typed: Typed{t}, Pos: posOf(x.Span), U: u, Name: x.Ref.Name}
-		if ct.Payload != nil {
-			out.Payload = &Record{Typed: Typed{l.payloadType(t, x.Ref.Name)}, T: ct.Payload}
-		}
-		return out
+		return &Ctor{Typed: Typed{t}, Pos: posOf(x.Span), U: l.union(t.(*types.Union)), Name: x.Ref.Name} // no payload
 	}
 	if x.Ref.Kind == syntax.RefTable {
 		tb := l.tables[key(x.Ref.Module, x.Ref.Name)]
@@ -214,13 +200,6 @@ func (l *lowerer) eta(fn *types.Fun, body func(Expr) Expr) Expr {
 	name := l.temp()
 	arg := &Var{Typed: Typed{fn.Params[0]}, Kind: VarLocal, Name: name}
 	return &Lambda{Typed: Typed{fn}, Params: []*Param{{Name: name, Type: fn.Params[0]}}, Body: body(arg)}
-}
-
-func (l *lowerer) page(module string) *Page {
-	if pg := l.pages[module]; pg != nil {
-		return pg
-	}
-	panic(fmt.Sprintf("ir: unknown page %s", module))
 }
 
 func (l *lowerer) route(module, name string) *Route {
@@ -244,11 +223,11 @@ func (l *lowerer) ctor(t types.Type, name string, arg Expr, lit *syntax.RecordLi
 	ct := u.ctorT(name)
 	pt := l.payloadType(t, name)
 	out := &Ctor{Typed: Typed{t}, Pos: at, U: u, Name: name}
-	if lit != nil && ct.Payload != nil { // `Poke {}` for `msg Poke { }`: no payload to build
+	if lit != nil && ct.Payload != nil {
 		arg = l.record(lit, ct.Payload, pt)
 	}
 	switch {
-	case ct.Payload == nil: // no payload, or a message payload with no fields
+	case ct.Payload == nil: // no payload
 	case l.wrappers[ct.Payload]:
 		wrap := &types.Record{Anonymous: true, Fields: []types.Field{{Name: "value", Type: pt}}}
 		out.Payload = &Record{Typed: Typed{wrap}, T: ct.Payload, Fields: []FieldInit{{Name: "value", Value: arg}}}
@@ -284,8 +263,6 @@ func (l *lowerer) app(fn syntax.Expr, args []syntax.Expr, piped Expr, t types.Ty
 	}
 	if ct, ok := fn.(*syntax.CtorRef); ok {
 		switch ct.Ref.Kind {
-		case syntax.RefPage:
-			return &PageRef{Typed: Typed{t}, Page: l.page(ct.Ref.Module), Params: lower()[0]}
 		case syntax.RefRoute:
 			return &RouteRef{Typed: Typed{t}, Route: l.route(ct.Ref.Module, ct.Ref.Name), Params: lower()[0]}
 		case syntax.RefCtor:

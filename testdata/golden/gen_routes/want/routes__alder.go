@@ -13,9 +13,8 @@ import (
 	"strings"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
-// write routes, in declaration order), then every message of the pages and of App (POST), in module
-// order.
+// Routes are the app's endpoints for web.NewRouter: every route (GET and write routes), in module
+// order, then declaration order.
 var Routes = []web.Route{
 	Route__Edit__Edit(),
 	Route__Edit__Save(),
@@ -55,12 +54,6 @@ func page__Edit__Edit(rq *web.Request, params Edit__Edit__Params, keep any) (Edi
 	return model, session, nil
 }
 
-// params__Edit__Edit are route Edit.Edit's parameters as text (html.FormState.PageParams), for the
-// posted form's state its view renders with when a write renders it again.
-func params__Edit__Edit(p Edit__Edit__Params) []rt.KV {
-	return []rt.KV{{Key: "n", Value: std.TextFromInt(p.N)}}
-}
-
 // Route__Edit__Edit serves route Edit.Edit, GET /edit/{n}: decode the parameters (404 when they do
 // not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
 // in rq.Model, which a test's browser reads).
@@ -75,7 +68,7 @@ func Route__Edit__Edit() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Edit__Edit__view(model, session), web.WithPageParams(rq.FormState, params__Edit__Edit(params)), rq.Session, false)
+		return web.PageResponse(Edit__Edit__view(model, session), rq.FormState, rq.Session, false)
 	}}
 }
 
@@ -214,12 +207,6 @@ func page__Other__Other(rq *web.Request, params Other__Other__Params, keep any) 
 	return model, session, nil
 }
 
-// params__Other__Other are route Other.Other's parameters as text (html.FormState.PageParams), for
-// the posted form's state its view renders with when a write renders it again.
-func params__Other__Other(_ Other__Other__Params) []rt.KV {
-	return nil
-}
-
 // Route__Other__Other serves route Other.Other, GET /other: decode the parameters (404 when they do
 // not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
 // in rq.Model, which a test's browser reads).
@@ -234,7 +221,7 @@ func Route__Other__Other() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Other__Other__view(model, session), web.WithPageParams(rq.FormState, params__Other__Other(params)), rq.Session, false)
+		return web.PageResponse(Other__Other__view(model, session), rq.FormState, rq.Session, false)
 	}}
 }
 
@@ -265,12 +252,6 @@ func page__Secret__Secret(rq *web.Request, params Secret__Secret__Params, keep a
 	return model, session, nil
 }
 
-// params__Secret__Secret are route Secret.Secret's parameters as text (html.FormState.PageParams),
-// for the posted form's state its view renders with when a write renders it again.
-func params__Secret__Secret(_ Secret__Secret__Params) []rt.KV {
-	return nil
-}
-
 // Route__Secret__Secret serves route Secret.Secret, GET /secret: decode the parameters (404 when
 // they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect,
 // 500 on a failure), view (the model also in rq.Model, which a test's browser reads).
@@ -285,7 +266,7 @@ func Route__Secret__Secret() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Secret__Secret__view(model, session), web.WithPageParams(rq.FormState, params__Secret__Secret(params)), rq.Session, false)
+		return web.PageResponse(Secret__Secret__view(model, session), rq.FormState, rq.Session, false)
 	}}
 }
 

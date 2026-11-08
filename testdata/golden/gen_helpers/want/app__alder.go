@@ -3,7 +3,7 @@
 package app
 
 import (
-	"alder/rt"
+	_ "alder/rt" // initialized before this package (rt/tether.go)
 	"alder/rt/applog"
 	"alder/rt/db"
 	"alder/rt/html"
@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"reflect"
 	"strings"
 	"time"
 )
@@ -64,11 +63,6 @@ var FakeTables = []db.TableDesc{}
 // running test's Env.Caps. Test builds only.
 var Fakes = map[string]func() any{
 	"Gate.Gate": func() any { return fake__Gate__Gate{} },
-}
-
-// init registers the constructor names of every union of the app, for rt.Show.
-func init() {
-	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that
@@ -182,7 +176,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
-		DevMap:      "{\"pages\":[],\"tables\":[],\"caps\":[\"Gate.Gate\"],\"session\":null}",
+		DevMap:      "{\"pages\":[{\"module\":\"Sites.MnSos.MnSos\",\"path\":\"/mnsos\",\"params\":[\"cfg: Text\"]}],\"tables\":[],\"caps\":[\"Gate.Gate\"],\"session\":null}",
 	}
 }
 

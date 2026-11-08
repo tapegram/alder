@@ -20,8 +20,6 @@ func Children(e Expr) []Expr {
 		return []Expr{x.Payload}
 	case *List:
 		return x.Elems
-	case *PageRef:
-		return []Expr{x.Params}
 	case *RouteRef:
 		return []Expr{x.Params}
 	case *Match:
@@ -67,7 +65,7 @@ func Children(e Expr) []Expr {
 	case *EffFail:
 		return []Expr{x.Message}
 	case *EffRedirect:
-		return []Expr{x.Page}
+		return []Expr{x.To}
 	case *DbGet:
 		return []Expr{x.ID}
 	case *DbSelect:

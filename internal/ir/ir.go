@@ -13,7 +13,6 @@
 //     nodes, the Db.* functions the Db* nodes (with Cond, Ord and ColumnRef for conditions and
 //     orders), capability entries CapCall. The other effectful stdlib values (Session.put,
 //     Log.*, Random.*, Time.now, Date.today, Http.*) stay ordinary Var/Call/Partial of VarStd.
-//     The Prelude union Nav (Rerender | Redirect Page | Reject Text) is built with Ctor.
 //   - Nothing here is Go-specific.
 package ir
 
@@ -21,42 +20,26 @@ import "alder/internal/types"
 
 // Program is a whole lowered app.
 type Program struct {
-	Modules   []*Module // in names.Program.Order (dependencies first)
-	Tables    []*Table
-	Forms     []*Form
-	Pages     []*Page
-	Routes    []*Route    // every route, in module order, then declaration order
-	AppMsgs   []*Msg      // App's `msg` declarations, in order
-	AppUpdate *Value      // App's `update` (a Task effect); nil when App declares none
-	Session   *RecordType // App's `session` record (empty when App declares none); nil without an App module
-	Caps      []*Capability
-	Fakes     []*Fake  // the `fake` declarations, in module order; test builds only use them
-	Brands    []*Brand // the app's brands, in module order then declaration order
-	Login     string   // the path of the page App's `login` names; "" when App has none
-	Deploy    *Deploy  // App's `deploy` declaration (chapter 16); nil when App has none. Data only: nothing in the generated program reads it
-	Theme     *Theme   // App's `theme` declaration (Appendix C); nil when App has none. Its CSS goes into the generated Web()
-	// AppArms are the arms of App's `update` with the store each one's Task writes (M15); nil
-	// when App declares no update.
-	AppArms []*Arm
+	Modules []*Module // in names.Program.Order (dependencies first)
+	Tables  []*Table
+	Forms   []*Form
+	Routes  []*Route    // every route, in module order, then declaration order
+	Session *RecordType // App's `session` record (empty when App declares none); nil without an App module
+	Caps    []*Capability
+	Fakes   []*Fake  // the `fake` declarations, in module order; test builds only use them
+	Brands  []*Brand // the app's brands, in module order then declaration order
+	Login   string   // the path of the GET route App's `login` names; "" when App has none
+	Deploy  *Deploy  // App's `deploy` declaration (chapter 16); nil when App has none. Data only: nothing in the generated program reads it
+	Theme   *Theme   // App's `theme` declaration (Appendix C); nil when App has none. Its CSS goes into the generated Web()
 	// Partitions and silos (M15, book 06 "Partitions", 08). Via maps each session field
 	// declared `via T` to its membership table T (one `@ref` to the user table, one to the
 	// key's table). Silos maps each `silo k { … }` key to its tables, in the order written;
-	// a table in no silo is in the shared store. Choose maps each `choose k = …` key to the page
-	// or route it names. Each is nil when the app declares none.
+	// a table in no silo is in the shared store. Choose maps each `choose k = …` key to the GET
+	// route it names, where a request without k is sent. Each is nil when the app declares none.
 	Via    map[string]*Table
 	Silos  map[string][]*Table
-	Choose map[string]ChooseTarget
+	Choose map[string]*Route
 }
-
-// ChooseTarget is what App's `choose k = …` names: a *Page or a GET *Route (#160; PR 9 leaves
-// only routes). TargetPath is the path a request without k is sent to.
-type ChooseTarget interface{ TargetPath() string }
-
-// TargetPath is the page's path.
-func (pg *Page) TargetPath() string { return pg.Path }
-
-// TargetPath is the route's path.
-func (r *Route) TargetPath() string { return r.Path }
 
 // Store is where a Task writes (M15): the shared store (StoreShared, Silo "") or the store of
 // one silo key's value (StoreSilo(k)), chosen at run time by the session's k.
@@ -74,19 +57,6 @@ func (s Store) String() string {
 		return "shared"
 	}
 	return "silo " + s.Silo
-}
-
-// Arm is one arm of an `update` (a page's or App's) and the store its Task writes, from the
-// checker's one-store-per-Task analysis (E0031): every table the arm writes (insert, update,
-// delete, scoped or not, through helpers too) is in Store. An arm that writes nothing is
-// StoreShared. Msg is the message constructor the arm matches; "" for an arm that matches every
-// other message (`_ ->`, a variable), and for an update whose body is not a `match` on its
-// message (one Arm for all). Several arms of one constructor are one Arm. Pos is the arm's
-// pattern (the update's body for Msg "").
-type Arm struct {
-	Msg   string
-	Store Store
-	Pos   Pos
 }
 
 // Partition is a table's partition (M15): the session field Key whose value the table's
@@ -158,9 +128,9 @@ type Brand struct {
 // Module holds a module's declarations.
 //
 // Types lists every nominal type the module declares: its records and unions, the records of its
-// tables and forms, App's Session record and App's Msg union (with the Msg payload records before
-// it), and for a page module its generated Params record, Msg payload records and Msg union.
-// Program.Tables, Forms, Pages and Session point at these same RecordTypes, so a consumer
+// tables and forms, App's Session record, and each route's generated Params record (and the
+// narrowed Session record of the routes that `requires`).
+// Program.Tables, Forms, Routes and Session point at these same RecordTypes, so a consumer
 // declares each type once by walking Types. Brands have no TypeDecl: they are erased.
 type Module struct {
 	Name       string
@@ -218,7 +188,7 @@ type FieldT struct {
 	DefaultLit  *string
 	RenamedFrom string
 	Pos         Pos // the field's declaration; zero for a field Lower made up
-	// Wire is the query key of a page's query parameter declared `as "Key"` (#55), "" for none;
+	// Wire is the query key of a route's query parameter declared `as "Key"` (#55), "" for none;
 	// see Key.
 	Wire string
 }
@@ -232,7 +202,7 @@ func (f FieldT) Key() string {
 }
 
 // UnionType is a union's declaration. Params are its type parameter names (`Maybe a` → ["a"]).
-// Unions of the Prelude (Maybe, Result, Nav) are runtime-provided: they appear as Ctor.U but in
+// Unions of the Prelude (Maybe, Result, Answer) are runtime-provided: they appear as Ctor.U but in
 // no Module's Types.
 type UnionType struct {
 	Module, Name string
@@ -240,8 +210,8 @@ type UnionType struct {
 	Ctors        []CtorT // in declaration order; a ctor's index is its tag number
 }
 
-// CtorT is a constructor. Payload is nil for none; a record payload is that record (anonymous, or
-// named for a message's generated `<Msg>Params`); any other payload T is wrapped as the anonymous
+// CtorT is a constructor. Payload is nil for none; a record payload is that record (anonymous or
+// named); any other payload T is wrapped as the anonymous
 // record { value: T }.
 //
 // PayloadType is the payload's type as declared in the union, in terms of the union's type
@@ -314,54 +284,17 @@ type Form struct {
 	Record       *RecordType
 }
 
-// Page is a page module. Params and the Msg union are in the module's Types. Model is the
-// module's `Model` record (nil when Model is a union). Load is the page's `load` (a Query
-// effect); Update its `update` (a Task effect), nil when the page declares none.
-//
-// Session is the session the page's code sees: App's Session record, or for a `requires f`
-// page a record named Session in the page module (also in its Types, without field defaults)
-// whose field f is narrowed from `Maybe T` to `T`; every type in the page's code that is the
-// session names that record, and where App's Session is expected a Widen converts it. The
-// runtime builds it after the requires check.
-type Page struct {
-	Module, Path string
-	Params       *RecordType
-	Requires     []string // session fields the page requires (`requires user, org`), nil for none
-	File         bool     // view returns File: a raw GET answer, no messages
-	RequiresPos  Pos      // the `requires f` clause; zero when Requires is nil
-	// Silo is the key of the admin form `requires user, role Admin, silo k` (M15), "" for none:
-	// the page's session field k is its parameter k (narrowed in Session, like a required
-	// field), not the cookie's, and no `via` check applies (the role check gates the page).
-	// SiloPos is the clause.
-	Silo    string
-	SiloPos Pos
-	// Arms are the page update's arms with their stores (see Arm), nil without an update.
-	Arms []*Arm
-	// Roles are the constructors of `requires user, role R | S` (["R", "S"]), nil for none:
-	// constructors of the union of App's session field `role` (never Maybe; the page session's
-	// `role` is that union as App's is). The route answers 404 when the session's role is none
-	// of them, after the `requires user` redirect and before load. RolesPos is the `role R…`
-	// clause; zero when Roles is nil. Requires starts with "user" whenever Roles is set.
-	Roles        []string
-	RolesPos     Pos
-	Session      *RecordType
-	Model        *RecordType
-	Msgs         []*Msg
-	View         *Value
-	Load, Update *Value
-}
-
 // Route is a `route Name = METHOD "path" { params } [form F] [requires …]` declaration (#160)
 // of module Module. Params is the record `Name.Params` in the module's Types (with a field
 // `form` holding the form when Form is set). Requires, Roles, Silo and their positions are the
-// route's guard, as a Page's. Session is the session its members see: App's Session record, or,
+// route's guard. Session is the session its members see: App's Session record, or,
 // for a route that `requires` (or has a `silo`), the checker's narrowed record of the module
 // (named after the first route of the module that narrows the same fields, "Index.Session", and
 // in the module's Types), which routes narrowing the same fields share.
 //
 // A GET route has Load (a Query of Model) and View (Html, or File when File is set); a write
 // route (POST, PUT, PATCH, DELETE) has Update (a Task Response) and Store, where that Task
-// writes (see Arm). NeedsShown is set for a write route whose update may answer with the page it
+// writes. NeedsShown is set for a write route whose update may answer with the page it
 // was sent from rendered again (Response.refresh, Response.invalid, or an app function giving a
 // Response). OptionRoutes are, for a write route with a form, the GET routes whose view renders
 // a `<Select options>` of that form, itself or through a view it calls (`Row.view` inside
@@ -382,15 +315,6 @@ type Route struct {
 	Store                      Store
 	NeedsShown                 bool
 	OptionRoutes               []*Route
-}
-
-// Msg is a `msg` declaration. Params is the payload record of the message's constructor in its
-// Msg union (named "<Msg>Params"): the declared parameters, then a field `form` holding the form
-// when Form is set. Params is nil when the message has neither parameters nor a form.
-type Msg struct {
-	Name   string
-	Params *RecordType
-	Form   *Form
 }
 
 // Capability is a `capability` declaration: Entries are its functions with their types.
@@ -541,14 +465,6 @@ type List struct {
 	Elems []Expr
 }
 
-// PageRef is a link to a page (`Todos.Show { id: x }`), of type Page. Params is the page's
-// Params record, nil when the page has no parameters and is written bare.
-type PageRef struct {
-	Typed
-	Page   *Page
-	Params Expr
-}
-
 // RouteRef is a route value (`Todos.Row { id: x }`), of type Route: Route with its Params
 // record, nil when the route is written bare (no parameters but its form, which the runtime
 // supplies).
@@ -629,15 +545,12 @@ type Op struct {
 	OperandT types.Type
 }
 
-// Widen converts Expr, a `requires` page's Session (of the page's narrowed record Page.Session),
-// or a `requires` route's (Route.Session, #160), to App's Session (its Type): the fields the page
-// or route requires become `Just` of their values, every other field is copied. The checker
-// accepts a page's or route's session where App's is expected, never the reverse. One of Page
-// and Route is set.
+// Widen converts Expr, a `requires` route's Session (Route.Session), to App's Session (its
+// Type): the fields the route requires become `Just` of their values, every other field is
+// copied. The checker accepts a route's session where App's is expected, never the reverse.
 type Widen struct {
 	Typed
 	Expr  Expr
-	Page  *Page
 	Route *Route
 }
 
@@ -658,8 +571,8 @@ const (
 	AttrText   AttrKind = iota // Value is Text
 	AttrBool                   // Value is Bool: present when True (a bare attribute is Lit True)
 	AttrMaybe                  // Value is Maybe Text: present when Just
-	AttrHref                   // Value is a Page (PageRef, RouteRef or Url.external): an href, or a src given a page
-	AttrClick                  // Value is a message (a Ctor of a page's Msg union or App's) or a Route (RouteRef or any Route value)
+	AttrHref                   // Value is a Route (RouteRef or Url.external): an href, or a src given a route
+	AttrClick                  // Value is a Route (RouteRef or any Route value)
 	AttrSubmit                 // as AttrClick, on a <form>
 )
 
@@ -761,15 +674,11 @@ type Input struct {
 	WrapAttrs []HAttr
 }
 
-// FormEl is `<form submit={…}>`. Attrs include the AttrSubmit attribute holding the message
-// value. Msg is the message it submits and Page the page declaring it (nil for an App message);
-// both are nil when the submit value is not a constructor written in place. Route is the write
-// route it posts to when the submit value is a route constructor written in place (Msg and Page
-// are then nil).
+// FormEl is `<form submit={…}>`. Attrs include the AttrSubmit attribute holding the route value.
+// Route is the write route it posts to when the submit value is a route constructor written in
+// place, nil otherwise.
 type FormEl struct {
 	Typed
-	Msg      *Msg
-	Page     *Page
 	Route    *Route
 	Attrs    []HAttr
 	Children []Expr
@@ -838,11 +747,11 @@ type EffFail struct {
 // route answers with 404 (App.notFound).
 type EffNotFound struct{ Typed }
 
-// EffRedirect is Query.redirect p: the effect stops with eff.ErrRedirect to p's URL (Page, of
-// type Page), which a route answers with a 303 (book 07).
+// EffRedirect is Query.redirect r: the effect stops with eff.ErrRedirect to r's URL (To, of
+// type Route), which a route answers with a 303 (book 07).
 type EffRedirect struct {
 	Typed
-	Page Expr
+	To Expr
 }
 
 // ---- Database operations: the Db.* functions, resolved to the table they act on.
@@ -930,8 +839,8 @@ type DbDelete struct {
 
 // ---- Scoped operations (M11, generalised in M15): the scoped Db functions of a table with a
 // partition (Table.Partition, Key the session field it is partitioned by). The checker accepts
-// them only where the session's Key is narrowed: in a page module whose page `requires` Key
-// (load, update, view and helper values), or the admin form's `silo Key`, and in tests. Each is
+// them only where the session's Key is narrowed: in the members of a route that `requires` Key
+// (load, update, view), or the admin form's `silo Key`, and in tests. Each is
 // the unscoped operation with the predicate `Column = session.Key`. A row of another partition
 // answers as a missing one (not found), never an error. Key is the table's partition key; Op is
 // the function as written, for traces and messages: "Db.scoped" (any key) or M11's "Db.mine"
@@ -1085,57 +994,43 @@ type TestLogin struct {
 	Session Expr
 }
 
-// TestGet is `Test.get p` (Open unset: a Task { model: M, session, doc }, failing unless the
-// page is shown; M is Page's Model), `Test.open p` (Open set: { answer, session, doc }) or
-// `Test.fetch p` (Fetch set: the raw answer { status, contentType, body, headers }), for the
-// page value Page with Params (nil for a page without parameters), or for the GET route value
-// Route (Page nil; M is the route's Model) with its Params.
+// TestGet is `Test.get r` (Open unset: a Task { model: M, session, doc }, failing unless the
+// page is shown; M is the route's Model), `Test.open r` (Open set: { answer, session, doc }) or
+// `Test.fetch r` (Fetch set: the raw answer { status, contentType, body, headers }), for the GET
+// route value Route with its Params (nil when written bare).
 type TestGet struct {
 	Typed
-	Page   *Page
 	Route  *Route
 	Params Expr
 	Open   bool
 	Fetch  bool
 }
 
-// TestSubmit is `Test.submit F r`: Record (F's record) posted to Msg, the message that posts
-// form Form, of Page (nil for App's form): a Task { answer, session, doc }. Params is the
-// message's payload when the test wrote the message (`Test.submit (Save { id: id }) r`), nil
-// when it wrote the form: the form is then found by the message alone. A route's form is posted
-// to Route, the write route the test names (`Test.submit (Move { id: id }) r`; Msg and Page
-// nil), with Params its parameters record without `form` (nil when written bare).
+// TestSubmit is `Test.submit (Move { id: id }) r`: Record (form Form's record) posted to Route,
+// the write route the test names: a Task { answer, session, doc }. Params is the route's
+// parameters record without `form` (nil when written bare).
 type TestSubmit struct {
 	Typed
 	Form   *Form
-	Msg    *Msg
-	Page   *Page
 	Route  *Route
 	Params Expr
 	Record Expr
 }
 
-// TestSubmitRaw is `Test.submitRaw F fields`: Fields (a List { name: Text, value: Text })
-// posted as text to Msg, the message that posts form Form, of Page (nil for App's form);
-// Route and Params as for TestSubmit.
+// TestSubmitRaw is `Test.submitRaw r fields`: Fields (a List { name: Text, value: Text })
+// posted as text as form Form to Route; Params as for TestSubmit.
 type TestSubmitRaw struct {
 	Typed
 	Form   *Form
-	Msg    *Msg
-	Page   *Page
 	Route  *Route
 	Params Expr
 	Fields Expr
 }
 
-// TestClick is `Test.click m`: message Msg of Page (nil for App's) with its parameters Params
-// (Msg's payload record; nil for a message without parameters) posted as the held page's
-// control for it would; or the route value Route (a GET route fetched, or a write route without
-// a form sent; Page and Msg nil) with its Params (nil when written bare).
+// TestClick is `Test.click r`: the route value Route (a GET route fetched, or a write route
+// without a form sent) with its Params (nil when written bare).
 type TestClick struct {
 	Typed
-	Page   *Page
-	Msg    *Msg
 	Route  *Route
 	Params Expr
 }

@@ -46,7 +46,6 @@ func (c Caps) Registry() map[string]any {
 
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
-	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
 	rt.RegisterUnion(reflect.TypeOf(tag__Note__Filter(0)), []string{"All", "Open", "Done"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Note__Kind(0)), []string{"Plain", "Idea", "Chore"})
 }
@@ -162,7 +161,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/login",
-		DevMap:      "{\"pages\":[],\"tables\":[{\"name\":\"User.User\",\"sql\":\"User__User\",\"columns\":[\"id: Text\",\"email: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"email\",\"type\":\"Text\",\"sql\":\"email\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"unique\":[\"email\"]},{\"name\":\"Note.Note\",\"sql\":\"Note__Note\",\"columns\":[\"id: Text\",\"title: Text\",\"done: Bool\",\"owner: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"title\",\"type\":\"Text\",\"sql\":\"title\",\"sqlType\":\"TEXT\"},{\"name\":\"done\",\"type\":\"Bool\",\"sql\":\"done\",\"sqlType\":\"INTEGER\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"}}],\"caps\":[\"Auth.Login.Password\"],\"session\":[\"user: Maybe Text\",\"visits: Int\"]}",
+		DevMap:      "{\"pages\":[{\"module\":\"Auth.Login.Login\",\"path\":\"/login\"},{\"module\":\"Notes.Index.Index\",\"path\":\"/\",\"requires\":\"user\",\"params\":[\"filter: Note.Filter\"]},{\"module\":\"Notes.Show.Show\",\"path\":\"/notes/{id}\",\"requires\":\"user\",\"params\":[\"id: Text\"]}],\"tables\":[{\"name\":\"User.User\",\"sql\":\"User__User\",\"columns\":[\"id: Text\",\"email: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"email\",\"type\":\"Text\",\"sql\":\"email\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"unique\":[\"email\"]},{\"name\":\"Note.Note\",\"sql\":\"Note__Note\",\"columns\":[\"id: Text\",\"title: Text\",\"done: Bool\",\"owner: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"title\",\"type\":\"Text\",\"sql\":\"title\",\"sqlType\":\"TEXT\"},{\"name\":\"done\",\"type\":\"Bool\",\"sql\":\"done\",\"sqlType\":\"INTEGER\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"}}],\"caps\":[\"Auth.Login.Password\"],\"session\":[\"user: Maybe Text\",\"visits: Int\"]}",
 	}
 }
 

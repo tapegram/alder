@@ -12,32 +12,11 @@ import (
 
 // Routes: routes__alder.go, the web layer of an app with an App module (rt/web serves it).
 //
-// Per page module M:
+// Per GET route R of module M:
 //
-//	decode__M__Params(params, q)    the page's parameters: path ones from params, the others
-//	                                from the query q; defaults applied; an error is a 404
-//	decode__M__<Msg>Params(q)       a message's parameters from its URL's query (404)
-//	decode__M__<Form>(v)            a form from the request body; errors re-render the page
-//	params__M(p)                    the page's parameters as text, carried by every message
-//	                                URL the page renders (rt.MsgRef.URL: "_p.<name>" keys)
-//	page__M(rq, params, keep)       `requires` (a 303 to App.login storing keep), then load (a
-//	                                failure's response also stores keep)
-//	update__M(rq, params, msg, st)  load, update, and the Nav: Rerender → under Datastar load,
-//	                                view, patched; else a 303 to the page (rt.PageAt: PRG);
-//	                                Redirect p → 303; Reject t → load, view with t on the form
-//	                                state st (patched under Datastar)
-//	Route__M__page()                GET <path>: decode (404), page__M, view
-//	Route__M__<Msg>()               POST /_m/M/<Msg>: decode the page's parameters (the query's
-//	                                "_p." keys: rt.PageParams; 404 without them) and the message's
-//	                                (404), the form (re-render with errors), update__M
-//
-// and for App's messages update__App (Rerender and Reject redirect back to the Referer) and
-// Route__App__<Msg>. Per GET route R of module M (#160):
-//
-//	decode__M__R__Params(params, q) R's parameters, as a page's (404)
+//	decode__M__R__Params(params, q) R's parameters: path ones from params, the others from the
+//	                                query q; defaults applied; an error is a 404
 //	page__M__R(rq, params, keep)    `requires` (a 303 to App.login), the role (404), then load
-//	params__M__R(p)                 R's parameters as text: the PageParams of the posted form's
-//	                                state when a write renders R's view again (web.WithPageParams)
 //	Route__M__R()                   GET <path>: decode (404), page__M__R, R.view rendered with
 //	                                rq.FormState (a File written raw); the router delivers it
 //	                                as the request asks (a document, a morph, one element)
@@ -45,6 +24,7 @@ import (
 // and per write route R (POST, PUT, PATCH, DELETE):
 //
 //	decode__M__R__Params(params, q) R's parameters but its form, as a GET route's (404)
+//	decode__M__<Form>(v)            the route's form from the request body
 //	guard__M__R(rq, params)         `requires` (a 303 to App.login), the role (404): the session
 //	                                R.update takes (a route that requires only)
 //	Route__M__R()                   <METHOD> <path>: decode (404), guard__M__R, the form (one
@@ -53,7 +33,7 @@ import (
 //	                                page before the update (rq.RenderShown: only when R.update
 //	                                may answer refresh or invalid), R.update, web.AnswerResponse
 //
-// Routes lists every route: pages, then routes (#160), then messages. The book's request
+// Routes lists every route, in module order, then declaration order. The book's request
 // lifecycle (chapter 6) is the order of these steps. Under Datastar rt/web answers a 303 to a
 // page of the app with that page, served in-process and morphed in with a history push, and one
 // to another site with an SSE event navigating the browser (datastar.Navigate).
@@ -77,40 +57,17 @@ import (
 // routesSource is routes__alder.go.
 func (g *gen) routesSource(p *ir.Program) string {
 	var b strings.Builder
-	var routes, msgRoutes []string
+	var routes []string
 	usesForms := false
-	for _, pg := range p.Pages {
-		routes = append(routes, routeFunc(pg.Module, "")+"()")
-		if pg.Update != nil {
-			for _, m := range pg.Msgs {
-				msgRoutes = append(msgRoutes, routeFunc(pg.Module, m.Name)+"()")
-				usesForms = usesForms || m.Form != nil
-			}
-		}
-	}
-	if p.AppUpdate != nil {
-		for _, m := range p.AppMsgs {
-			msgRoutes = append(msgRoutes, routeFunc("App", m.Name)+"()")
-		}
-	}
-	var declared []string
 	for _, r := range p.Routes {
-		declared = append(declared, routeFunc(r.Module, r.Name)+"()")
+		routes = append(routes, routeFunc(r.Module, r.Name)+"()")
 		usesForms = usesForms || r.Form != nil
 	}
-	if len(p.Routes) == 0 {
-		b.WriteString(comment("Routes are the app's endpoints for web.NewRouter: every page (GET), then every message of the pages and of App (POST), in module order."))
-	} else {
-		b.WriteString(comment("Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and write routes, in declaration order), then every message of the pages and of App (POST), in module order."))
-	}
-	all := append(append(routes, declared...), msgRoutes...)
-	if len(all) == 0 {
+	b.WriteString(comment("Routes are the app's endpoints for web.NewRouter: every route (GET and write routes), in module order, then declaration order."))
+	if len(routes) == 0 {
 		b.WriteString("var Routes = []web.Route{}\n\n")
 	} else {
-		b.WriteString("var Routes = []web.Route{\n" + strings.Join(all, ",\n") + ",\n}\n\n")
-	}
-	for _, pg := range p.Pages {
-		g.pageRoutes(&b, p, pg)
+		b.WriteString("var Routes = []web.Route{\n" + strings.Join(routes, ",\n") + ",\n}\n\n")
 	}
 	forms := map[*ir.Form]bool{} // a form's decoder, once for every write route posting it
 	for _, r := range p.Routes {
@@ -119,9 +76,6 @@ func (g *gen) routesSource(p *ir.Program) string {
 		} else {
 			g.writeRoute(&b, p, r, forms)
 		}
-	}
-	if p.AppUpdate != nil && len(p.AppMsgs) > 0 {
-		g.appRoutes(&b, p)
 	}
 	if g.tests {
 		g.encoders(&b, p) // browser.go
@@ -211,131 +165,6 @@ func comment(text string) string {
 	return b.String()
 }
 
-// pageRoutes writes page pg's decoders, page__/update__ functions and routes.
-func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
-	m := pg.Module
-	g.paramsDecoder(b, pg)
-	hasUpdate := pg.Update != nil && len(pg.Msgs) > 0
-	forms := map[*ir.Form]bool{}
-	if hasUpdate {
-		for _, msg := range pg.Msgs {
-			g.msgDecoders(b, m, msg, forms)
-		}
-	}
-	g.pageFunc(b, p, pageGuard(pg))
-	checks := ""
-	if hasUpdate && g.optionChecks(b, pg) {
-		checks = fmt.Sprintf(`	if st != nil {
-		if errs := %s(st.Form, st.Values, model, session); errs != nil {
-			st.Errors, st.PageParams = route__errors(errs), %s(params)
-			return web.PageResponse(%[3]s(model, session), st, nil, true).WithBefore(func() html.Node { return %[3]s(model, session) })
-		}
-	}
-`, optionsFunc(m), paramsFunc(m), GoName(m, "view"))
-	}
-	keep := func(k string) string { return ", " + k }
-	g.paramsKVs(b, pg)
-	enter := ""
-	if hasUpdate {
-		enter = g.enter(b, p, pg)
-	}
-	if hasUpdate {
-		b.WriteString(comment(fmt.Sprintf("%s runs page %s's update for msg and answers its Nav (book 06): load, update (a Task, whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on a form (st, the state of the form that sent the message; nil for a message without one) load and view again with t on the form (patched into the page under Datastar); for Rerender (and a Reject without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh does not post again). A failed Task changes nothing: 500 (App.error), 404 for Query.notFound or Task.notFound, or a 303 for Query.redirect.", updateFunc(m), m)))
-		fmt.Fprintf(b, `func %[1]s(rq *web.Request, params %[2]s, msg %[3]s, st *html.FormState) web.Response {
-	model, session, stop := %[4]s(rq, params%[5]s)
-	if stop != nil {
-		return *stop
-	}
-	model0, session0 := model, session // the page the client shows: Before
-%[11]s%[12]s	nav, err := eff.Run(rq.Env, eff.KTask, %[6]s(msg, model, session))
-%[13]s	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	switch {
-	case nav.Tag == rt.NavRedirect:
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	case nav.Tag == rt.NavReject && st != nil:
-		st.FormError = nav.Text
-	case !rq.Datastar:
-		return web.RedirectResponse(rt.PageAt(%[10]s, %[9]s(params)), rq.Env.Session)
-	default:
-		st = &html.FormState{}
-	}
-	st.PageParams = %[9]s(params)
-	model, session, stop = %[4]s(rq, params%[7]s)
-	if stop != nil {
-		return *stop
-	}
-	return web.PageResponse(%[8]s(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return %[8]s(model0, session0) })
-}
-
-`, updateFunc(m), GoName(m, "Params"), GoName(m, "Msg"), pageFunc(m), keep("nil"), GoName(m, "update"), keep("rq.Env.Session"), GoName(m, "view"), paramsFunc(m), strconv.Quote(pg.Path), checks, enter, updateFailure(p))
-	}
-
-	// the GET route
-	steps := "decode the parameters (404 when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
-	if len(pg.Requires) > 0 {
-		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
-	}
-	if pg.Roles != nil {
-		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), the role (404), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
-	}
-	fileField, respond := "", fmt.Sprintf("web.PageResponse(%s(model, session), &html.FormState{PageParams: %s(params)}, rq.Session, false)", GoName(m, "view"), paramsFunc(m))
-	if pg.File {
-		steps = strings.Replace(steps, "view (the model", "view (its File written raw; the model", 1)
-		fileField, respond = "File: true, ", fmt.Sprintf("web.FileResponse(%s(model, session), rq.Session)", GoName(m, "view"))
-	}
-	b.WriteString(comment(fmt.Sprintf("%s serves page %s, GET %s (book 06): %s", routeFunc(m, ""), m, pg.Path, steps)))
-	fmt.Fprintf(b, `func %s() web.Route {
-	return web.Route{Method: "GET", Pattern: %s, %sHandle: func(rq *web.Request) web.Response {
-		params, errs := %s(rq.Params, rq.Query)
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		model, session, stop := %s(rq, params%s)
-		if stop != nil {
-			return *stop
-		}
-		rq.Model = model
-		return %s
-	}}
-}
-
-`, routeFunc(m, ""), strconv.Quote(pg.Path), fileField, decodeName(m, "Params"), pageFunc(m), keep("nil"), respond)
-
-	if !hasUpdate {
-		return
-	}
-	for _, msg := range pg.Msgs {
-		text := fmt.Sprintf("%s serves message %s of page %s, POST %s (book 06): decode the page's parameters (the message URL's _p. keys, which the rendered page put there)", routeFunc(m, msg.Name), msg.Name, m, msgPath(m, msg.Name))
-		if msgHasParams(msg) {
-			text += " and the message's (from the query)"
-		}
-		text += ": 404 when they do not decode;"
-		if msg.Form != nil {
-			text += fmt.Sprintf(" decode form %s from the body: when it does not, re-render the page with the submitted values (no Text.Secret field) and the errors, without calling update;", msg.Form.Name)
-		}
-		text += " then " + updateFunc(m) + "."
-		b.WriteString(comment(text))
-		fmt.Fprintf(b, `func %s() web.Route {
-	return web.Route{Method: "POST", Pattern: %s, Handle: func(rq *web.Request) web.Response {
-		params, errs := %s(rt.PageParams(rq.Query))
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-`, routeFunc(m, msg.Name), strconv.Quote(msgPath(m, msg.Name)), decodeName(m, "Params"))
-		g.msgBody(b, m, msg, func(form, st string) string {
-			return fmt.Sprintf(`model, session, stop := %s(rq, params%s)
-			if stop != nil {
-				return *stop
-			}
-			return web.PageResponse(%[3]s(model, session), %[4]s, nil, true).WithBefore(func() html.Node { return %[3]s(model, session) })
-`, pageFunc(m), keep("nil"), GoName(m, "view"), st)
-		}, func(value, st string) string {
-			return fmt.Sprintf("return %s(rq, params, %s, %s)\n", updateFunc(m), value, st)
-		})
-		b.WriteString("}}\n}\n\n")
-	}
-}
-
 // getRoute writes GET route r's parameters decoder, its page__ function (`requires`, load) and
 // its route, Route__M__R (#160). Its view renders with the request's FormState: nil for a
 // request of its own, the posted form's state when a write renders the page the browser is on
@@ -346,9 +175,6 @@ func (g *gen) getRoute(b *strings.Builder, p *ir.Program, r *ir.Route) {
 	decode := decodeName(m, r.Name+".Params")
 	g.paramsDecoderOf(b, decode, "route "+key, GoName(m, r.Name+".Params"), r.Path, r.Params)
 	g.pageFunc(b, p, routeGuard(r))
-	if !r.File {
-		g.paramsKVsOf(b, routeParamsFunc(r), "route "+key, GoName(m, r.Name+".Params"), r.Params)
-	}
 	steps := "decode the parameters (404 when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
 	if len(r.Requires) > 0 {
 		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
@@ -357,7 +183,7 @@ func (g *gen) getRoute(b *strings.Builder, p *ir.Program, r *ir.Route) {
 		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), the role (404), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
 	}
 	view := GoName(m, r.Name+".view")
-	fileField, respond := "", fmt.Sprintf("web.PageResponse(%s(model, session), web.WithPageParams(rq.FormState, %s(params)), rq.Session, false)", view, routeParamsFunc(r))
+	fileField, respond := "", fmt.Sprintf("web.PageResponse(%s(model, session), rq.FormState, rq.Session, false)", view)
 	if r.File {
 		steps = strings.Replace(steps, "view (the model", "view (its File written raw; the model", 1)
 		fileField, respond = "File: true, ", fmt.Sprintf("web.FileResponse(%s(model, session), rq.Session)", view)
@@ -380,9 +206,6 @@ func (g *gen) getRoute(b *strings.Builder, p *ir.Program, r *ir.Route) {
 
 `, routeFunc(m, r.Name), strconv.Quote(r.Path), fileField, decode, pageFunc(key), respond)
 }
-
-// routeParamsFunc is GET route r's params__ function ("params__Todos__Index": paramsKVsOf).
-func routeParamsFunc(r *ir.Route) string { return paramsFunc(routeKey(r)) }
 
 // guardFunc is write route r's guard__ function ("guard__Todos__Toggle").
 func guardFunc(r *ir.Route) string { return "guard__" + GoName(r.Module, r.Name) }
@@ -572,8 +395,7 @@ func (g *gen) selfRoute(r *ir.Route) string {
 // routeUpdateFailure is a write route's answer to a failed update Task: route__fail, and for an
 // app with `via` fields a Session.put the membership check refused (eff.ErrFail.NotMember: a
 // crafted switch to an org the user is no member of) is `invalid` "You are not a member of that
-// workspace." for a route with a form (hasForm), else 404 — not a 500 — as for a message
-// (updateFailure).
+// workspace." for a route with a form (hasForm), else 404 — not a 500.
 func routeUpdateFailure(p *ir.Program, hasForm bool) string {
 	if len(p.Via) == 0 {
 		return "\t\tif err != nil {\n\t\t\treturn route__fail(err)\n\t\t}\n"
@@ -585,219 +407,13 @@ func routeUpdateFailure(p *ir.Program, hasForm bool) string {
 	return "\t\tif err != nil {\n\t\t\tvar nm *eff.ErrFail\n\t\t\tif !errors.As(err, &nm) || !nm.NotMember {\n\t\t\t\treturn route__fail(err)\n\t\t\t}\n" + member + "\t\t}\n"
 }
 
-// msgPath is the URL message msg of module m is posted to.
-func msgPath(m, msg string) string { return "/_m/" + m + "/" + msg }
-
-// msgHasParams reports whether msg has parameters besides its form.
-func msgHasParams(msg *ir.Msg) bool {
-	if msg.Params == nil {
-		return false
-	}
-	for _, f := range msg.Params.Fields {
-		if f.Name != "form" {
-			return true
-		}
-	}
-	return false
-}
-
-// optionInput is a `<Select options={…}>` of a page's view: the form ("M.F") and field it binds,
-// its options' expression, the name of the Go function computing them again, and whether a blank
-// value is allowed (a Maybe field, a field with a default).
-type optionInput struct {
-	form, field string
-	input       *ir.Input
-	fn          string
-	blank       bool
-}
-
-// optionInputs are the selects with `options={…}` in page pg's view, in the order they come. A
-// field drawn by two selects (in two branches of an `if`) has both: a value either offers is
-// accepted.
-func optionInputs(pg *ir.Page) []optionInput {
-	var out []optionInput
-	if pg.View == nil {
-		return out
-	}
-	n := map[string]int{}
-	var visit func(e ir.Expr)
-	visit = func(e ir.Expr) {
-		if e == nil {
-			return
-		}
-		if x, ok := e.(*ir.Input); ok && x.Kind == ir.InputSelect && x.Options != nil && x.Form != nil {
-			key := x.Form.Module + "." + x.Form.Name
-			blank := false
-			for _, fd := range x.Form.Record.Fields {
-				if fd.Name == x.Field {
-					u, isMaybe := fd.Type.(*types.Union)
-					blank = fd.Default != nil || (isMaybe && u.Module == "Prelude" && u.Name == "Maybe")
-				}
-			}
-			fn := "choices__" + GoName(pg.Module, x.Form.Name) + "__" + Field(x.Field)
-			if n[key+"."+x.Field]++; n[key+"."+x.Field] > 1 {
-				fn += strconv.Itoa(n[key+"."+x.Field])
-			}
-			out = append(out, optionInput{key, x.Field, x, fn, blank})
-		}
-		for _, k := range ir.Children(e) {
-			if k != nil {
-				visit(k)
-			}
-		}
-	}
-	visit(pg.View.Body)
-	return out
-}
-
-// optionsFunc checks the posted values of page M's selects with `options={…}` ("options__M").
-func optionsFunc(module string) string { return "options__" + strings.ReplaceAll(module, ".", "__") }
-
-// optionChecks writes, for page pg whose view has selects with `options={…}`, a function per
-// select computing its options again from the view's parameters (as the view does), and
-// options__M: the field errors of the values posted on form st.Form that its selects did not
-// offer. update__M calls it once the page is loaded, before update. It reports whether it wrote
-// them.
-func (g *gen) optionChecks(b *strings.Builder, pg *ir.Page) bool {
-	ft, ok := pg.View.Type.(*types.Fun)
-	ins := optionInputs(pg)
-	if !ok || len(ins) == 0 {
-		return false
-	}
-	m := pg.Module
-	for _, oi := range ins {
-		v := &ir.Value{Module: m, Name: "choices", Params: pg.View.Params, Body: oi.input.Options,
-			Type: &types.Fun{Params: ft.Params, Result: oi.input.Options.Type()}}
-		b.WriteString(comment(fmt.Sprintf("%s computes again the options page %s's view offers for field %s of form %s, to check a posted value (chapter 5).", oi.fn, m, oi.field, oi.form)))
-		g.valueAs(b, v, oi.fn)
-	}
-	model, session := GoName(m, "Model"), GoName(pg.Session.Module, pg.Session.Name)
-	b.WriteString(comment(fmt.Sprintf("%s are the field errors of values posted on form (a page %s form) that its `options={…}` selects did not offer: \"must be one of the options\" (chapter 5). The options are computed again from the model, loaded for the message as for the page.", optionsFunc(m), m)))
-	fmt.Fprintf(b, "func %s(form string, values map[string]string, model %s, session %s) []web.FieldError {\nvar errs []web.FieldError\nswitch form {\n", optionsFunc(m), model, session)
-	var forms []string
-	byForm := map[string][]optionInput{}
-	for _, oi := range ins {
-		if byForm[oi.form] == nil {
-			forms = append(forms, oi.form)
-		}
-		byForm[oi.form] = append(byForm[oi.form], oi)
-	}
-	for _, form := range forms {
-		fmt.Fprintf(b, "case %s:\n", strconv.Quote(form))
-		var fields []string
-		byField := map[string][]optionInput{}
-		for _, oi := range byForm[form] {
-			if byField[oi.field] == nil {
-				fields = append(fields, oi.field)
-			}
-			byField[oi.field] = append(byField[oi.field], oi)
-		}
-		for _, field := range fields {
-			var lists []string
-			for _, oi := range byField[field] {
-				elem := GoType(oi.input.Options.Type().(*types.App).Args[0])
-				lists = append(lists, fmt.Sprintf("html.Choices(%s(model, session), func(_o %s) html.Choice { return html.Choice{Value: _o.%s, Label: _o.%s} })", oi.fn, elem, Field("value"), Field("label")))
-			}
-			choices := lists[0]
-			if len(lists) > 1 {
-				for _, l := range lists[1:] {
-					choices = "append(" + choices + ", " + l + "...)"
-				}
-			}
-			fmt.Fprintf(b, "if !html.Offered(values[%s], %s, %t) {\nerrs = append(errs, web.FieldError{Field: %s, Message: web.MsgOption})\n}\n",
-				strconv.Quote(field), choices, byField[field][0].blank, strconv.Quote(field))
-		}
-	}
-	b.WriteString("}\nreturn errs\n}\n\n")
-	return true
-}
-
-// msgBody writes the part of message msg's handler (of module m) after the page's parameters:
-// decode its parameters (404) and its form (formErr: the statements answering form errors, with
-// the FormState expression), then run (the statements answering the message value and the
-// FormState of a Reject).
-func (g *gen) msgBody(b *strings.Builder, m string, msg *ir.Msg, formErr func(form, st string) string, run func(value, st string) string) {
-	switch {
-	case msgHasParams(msg):
-		fmt.Fprintf(b, `p, errs := %s(rq.Query)
-if errs != nil {
-	return web.NotFoundResponse(html.None())
-}
-`, decodeName(m, msg.Params.Name))
-	case msg.Params != nil:
-		fmt.Fprintf(b, "p := %s{}\n", GoName(m, msg.Params.Name))
-	}
-	value := ctorName(m, "Msg", msg.Name)
-	if msg.Params != nil {
-		value += "(p)"
-	}
-	st := "nil"
-	if msg.Form != nil {
-		f := msg.Form
-		formName := strconv.Quote(f.Module + "." + f.Name)
-		key := "rt.MsgKey(" + strconv.Quote(msgPath(m, msg.Name)) + ", rq.Query)"
-		args := []string{"rq.Form"}
-		for _, fd := range f.Record.Fields {
-			if isSecret(fd.Brand) {
-				args = append(args, strconv.Quote(fd.Name))
-			}
-		}
-		if m == "App" { // App renders no page: a form error goes back to the page, and no state is kept
-			fmt.Fprintf(b, "form, errs := %s(rq.Form)\nif errs != nil {\n%s}\np.Form = form\n",
-				decodeName(f.Module, f.Name), formErr(formName, "nil"))
-		} else {
-			fmt.Fprintf(b, "values := route__values(%s)\nform, errs := %s(rq.Form)\nif errs != nil {\n%s}\np.Form = form\n",
-				strings.Join(args, ", "), decodeName(f.Module, f.Name),
-				formErr(formName, "&html.FormState{Form: "+formName+", Msg: "+key+", Values: values, Errors: route__errors(errs), PageParams: "+paramsFunc(m)+"(params)}"))
-			st = "&html.FormState{Form: " + formName + ", Msg: " + key + ", Values: values}"
-		}
-	}
-	b.WriteString(run(value, st))
-}
-
 // isSecret reports whether b is the stdlib's Text.Secret.
 func isSecret(b *ir.Brand) bool { return b != nil && b.Module == "Text" && b.Name == "Secret" }
 
-// paramsKVs writes params__M: page pg's parameters as text, the PageParams every message URL
-// on its rendering carries (left out at a default, as in a link).
-func (g *gen) paramsKVs(b *strings.Builder, pg *ir.Page) {
-	m := pg.Module
-	kvs, p := g.paramsKVList(m, "Params", pg.Params)
-	b.WriteString(comment(fmt.Sprintf("%s are page %s's parameters as text for its message URLs (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.", paramsFunc(m), m)))
-	fmt.Fprintf(b, "func %s(%s %s) []rt.KV {\nreturn %s\n}\n\n", paramsFunc(m), p, GoName(m, "Params"), kvs)
-}
-
-// paramsKVsOf writes name, the parameters rec (Go type typ) of what (a GET route) as text: the
-// PageParams of the form state its view renders with (web.WithPageParams), as a page's.
-func (g *gen) paramsKVsOf(b *strings.Builder, name, what, typ string, rec *ir.RecordType) {
-	kvs, p := g.paramsKVList(rec.Module, rec.Name, rec)
-	b.WriteString(comment(fmt.Sprintf("%s are %s's parameters as text (html.FormState.PageParams), for the posted form's state its view renders with when a write renders it again.", name, what)))
-	fmt.Fprintf(b, "func %s(%s %s) []rt.KV {\nreturn %s\n}\n\n", name, p, typ, kvs)
-}
-
-// paramsKVList is the parameters rec (record module.name) of a variable p as text (each left
-// out at its default, as in a link), and p's name in the signature ("_" when rec has none).
-func (g *gen) paramsKVList(module, name string, rec *ir.RecordType) (kvs, p string) {
-	f := &fn{g: g}
-	s := newScope()
-	p = s.declare("p")
-	pv := &ir.Var{Typed: ir.Typed{Ty: &types.Record{Module: module, Name: name}}, Kind: ir.VarLocal, Name: "p"}
-	var items []kvItem
-	for _, fd := range rec.Fields {
-		items = append(items, kvItem{name: fd.Key(), t: fd.Type, v: &ir.Field{Typed: ir.Typed{Ty: fd.Type}, Expr: pv, Name: fd.Name}, def: fd.Default, omitBlank: true})
-	}
-	kvs = f.kvList(items, s)
-	if len(items) == 0 {
-		p = "_"
-	}
-	return kvs, p
-}
-
-// guarded is what page__X (pageFunc) runs for: a page, or a GET route (#160); and what a write
-// route's guard__M__R runs. key names the function ("Todos" for page Todos, "Todos.Row" for
-// route Row of module Todos: a module Todos.Row and that route cannot both exist) and keys a
-// mutate build's requires dropped and role dropped mutants (mutation.go); what names it in
-// comments.
+// guarded is what page__M__R (pageFunc) runs for a GET route, and what a write route's
+// guard__M__R runs. key names the function ("Todos.Row" for route Row of module Todos: a module
+// Todos.Row and that route cannot both exist) and keys a mutate build's requires dropped and
+// role dropped mutants (mutation.go); what names it in comments.
 type guarded struct {
 	key, what       string
 	params, model   string // Go types
@@ -805,13 +421,6 @@ type guarded struct {
 	load            string // the Go function
 	requires, roles []string
 	silo            string
-}
-
-// pageGuard is page pg as guarded.
-func pageGuard(pg *ir.Page) guarded {
-	m := pg.Module
-	return guarded{key: m, what: "page " + m, params: GoName(m, "Params"), model: GoName(m, "Model"),
-		session: pg.Session, load: GoName(m, "load"), requires: pg.Requires, roles: pg.Roles, silo: pg.Silo}
 }
 
 // routeGuard is GET route r as guarded.
@@ -911,7 +520,7 @@ func (g *gen) requiresChecks(b *strings.Builder, p *ir.Program, gd guarded, ret,
 		r := web.RedirectResponse(%[3]s, %[5]s)
 		return %[4]s%[2]s{}, &r
 	}
-`, Field(req), session, strconv.Quote(ch.TargetPath()), ret, keep)
+`, Field(req), session, strconv.Quote(ch.Path), ret, keep)
 		default:
 			fmt.Fprintf(b, `	if !app.%[1]s.Ok {
 		r := web.NotFoundResponse(html.None())
@@ -928,65 +537,6 @@ func (g *gen) requiresChecks(b *strings.Builder, p *ir.Program, gd guarded, ret,
 `, g.roleRefused(p, gd, "app"), stored, ret, session)
 	}
 	g.narrow(b, gd)
-}
-
-// updateFailure is the update route's answer to a failed Task: route__fail, and for an app with
-// `via` fields a Session.put the membership check refused (eff.ErrFail.NotMember: a crafted
-// switch to an org the user is no member of) is Reject "You are not a member of that
-// workspace." on the form that sent the message, else 404 — not a 500.
-func updateFailure(p *ir.Program) string {
-	if len(p.Via) == 0 {
-		return "\tif err != nil {\n\t\treturn route__fail(err)\n\t}\n"
-	}
-	return `	if err != nil {
-		var nm *eff.ErrFail
-		switch {
-		case !errors.As(err, &nm) || !nm.NotMember:
-			return route__fail(err)
-		case st == nil:
-			return web.NotFoundResponse(html.None())
-		}
-		nav = rt.Reject("You are not a member of that workspace.")
-	}
-`
-}
-
-// enter writes, for an app with silos, the function naming the store of each arm of page pg's
-// update (store__M: its silo key, "" for the shared store; the checker's Arm.Store: a case for
-// each arm whose store is not the `_` arm's, the default) and
-// returns the statement binding the Task to it (db.Enter) before update__M runs it: a silo not
-// served answers the maintenance page. "" without silos.
-func (g *gen) enter(b *strings.Builder, p *ir.Program, pg *ir.Page) string {
-	if len(p.Silos) == 0 {
-		return ""
-	}
-	m := pg.Module
-	def := "" // the store of the `_` arm (the others), shared when there is none
-	for _, a := range pg.Arms {
-		if a.Msg == "" {
-			def = a.Store.Silo
-		}
-	}
-	var cases []string
-	for _, a := range pg.Arms {
-		// every arm whose store is not the default's, the shared one included: an explicit
-		// shared arm beside a `_` silo arm must not inherit the silo
-		if a.Msg != "" && a.Store.Silo != def {
-			cases = append(cases, fmt.Sprintf("case %s:\nreturn %s\n", tagConst(m, "Msg", a.Msg), strconv.Quote(a.Store.Silo)))
-		}
-	}
-	fn := "store__" + strings.ReplaceAll(m, ".", "__")
-	b.WriteString(comment(fmt.Sprintf("%s is the store the Task of page %s's update for msg writes to (the checker's one-store rule): the silo key, \"\" for the shared store.", fn, m)))
-	param := "msg"
-	if len(cases) == 0 {
-		param = "_"
-	}
-	fmt.Fprintf(b, "func %s(%s %s) string {\n", fn, param, GoName(m, "Msg"))
-	if len(cases) > 0 {
-		b.WriteString("switch msg.Tag {\n" + strings.Join(cases, "") + "}\n")
-	}
-	fmt.Fprintf(b, "return %s\n}\n\n", strconv.Quote(def))
-	return fmt.Sprintf("\tif err := db.Enter(rq.Env, %s(msg)); err != nil {\n\t\treturn route__fail(err)\n\t}\n", fn)
 }
 
 // narrow writes, for an app with partitions other than the user's, gd's db.Narrow of each such
@@ -1040,57 +590,7 @@ func (g *gen) roleRefused(p *ir.Program, gd guarded, app string) string {
 	return g.roleDropped(gd) + cond
 }
 
-// appRoutes writes the decoders and routes of App's messages, and update__App.
-func (g *gen) appRoutes(b *strings.Builder, p *ir.Program) {
-	forms := map[*ir.Form]bool{}
-	for _, msg := range p.AppMsgs {
-		g.msgDecoders(b, "App", msg, forms)
-	}
-	app := GoName(p.Session.Module, p.Session.Name)
-	b.WriteString(comment(fmt.Sprintf("%s runs App's update for msg and answers its Nav: Redirect p is a 303 to p; Rerender and Reject t are a 303 back to the page that sent the message (the Referer, else /), as App has no page of its own to render (a Reject's text is not shown). The session the Task leaves is stored; a failed Task changes nothing: 500 (App.error), 404 for Query.notFound or Task.notFound, or a 303 for Query.redirect.", updateFunc("App"))))
-	fmt.Fprintf(b, `func %s(rq *web.Request, msg %s) web.Response {
-	nav, err := eff.Run(rq.Env, eff.KTask, %s(msg, rq.Env.Session.(%s)))
-	if err != nil {
-		return route__fail(err)
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	if nav.Tag == rt.NavRedirect {
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	}
-	return web.RedirectResponse(rt.BackURL(rq.HTTP.Referer()), rq.Env.Session)
-}
-
-`, updateFunc("App"), GoName("App", "Msg"), GoName("App", "update"), app)
-	for _, msg := range p.AppMsgs {
-		var steps []string
-		if msgHasParams(msg) {
-			steps = append(steps, "decode its parameters from the query (404 when they do not decode)")
-		}
-		if msg.Form != nil {
-			steps = append(steps, fmt.Sprintf("decode form %s from the body (when it does not, a 303 back to the page that sent the message, without calling update)", msg.Form.Name))
-		}
-		steps = append(steps, updateFunc("App"))
-		if len(steps) > 1 {
-			steps[len(steps)-1] = "then " + steps[len(steps)-1]
-		}
-		b.WriteString(comment(fmt.Sprintf("%s serves App's message %s, POST %s: %s.", routeFunc("App", msg.Name), msg.Name, msgPath("App", msg.Name), strings.Join(steps, "; "))))
-		fmt.Fprintf(b, "func %s() web.Route {\nreturn web.Route{Method: \"POST\", Pattern: %s, Handle: func(rq *web.Request) web.Response {\n",
-			routeFunc("App", msg.Name), strconv.Quote(msgPath("App", msg.Name)))
-		g.msgBody(b, "App", msg, func(string, string) string {
-			return "return web.RedirectResponse(rt.BackURL(rq.HTTP.Referer()), nil)\n"
-		}, func(value, _ string) string {
-			return fmt.Sprintf("return %s(rq, %s)\n", updateFunc("App"), value)
-		})
-		b.WriteString("}}\n}\n\n")
-	}
-}
-
 // ---- decoders
-
-// paramsDecoder writes decode__M__Params for page pg.
-func (g *gen) paramsDecoder(b *strings.Builder, pg *ir.Page) {
-	g.paramsDecoderOf(b, decodeName(pg.Module, "Params"), "page "+pg.Module, GoName(pg.Module, "Params"), pg.Path, pg.Params)
-}
 
 // paramsDecoderOf writes name, the decoder of the parameters rec (Go type typ) of what (a page or
 // a route) at path.
@@ -1125,26 +625,6 @@ func (g *gen) paramsDecoderOf(b *strings.Builder, name, what, typ, path string, 
 	b.WriteString(comment(fmt.Sprintf("%s decodes %s's parameters: the path's from params, the others from q. A parameter that does not decode is an error (the route answers 404).", name, what)))
 	fmt.Fprintf(b, "func %s(%s map[string]string, %s url.Values) (r %s, errs []web.FieldError) {\n%s%sreturn r, errs\n}\n\n",
 		name, params, q, typ, pre, body.String())
-}
-
-// msgDecoders writes the decoders of message msg of module m: its parameters (when it has any
-// besides the form) and its form (unless forms has it already).
-func (g *gen) msgDecoders(b *strings.Builder, m string, msg *ir.Msg, forms map[*ir.Form]bool) {
-	if msgHasParams(msg) {
-		d := &decoder{g: g, url: true}
-		var body strings.Builder
-		for _, f := range msg.Params.Fields {
-			if f.Name != "form" {
-				body.WriteString(d.field(f, "q"))
-			}
-		}
-		b.WriteString(comment(fmt.Sprintf("%s decodes the parameters of message %s from its URL's query q; the form is decoded apart. A parameter that does not decode is an error (the route answers 404).", decodeName(m, msg.Params.Name), msg.Name)))
-		fmt.Fprintf(b, "func %s(q url.Values) (r %s, errs []web.FieldError) {\n%sreturn r, errs\n}\n\n",
-			decodeName(m, msg.Params.Name), GoName(m, msg.Params.Name), body.String())
-	}
-	if msg.Form != nil {
-		g.formDecoder(b, msg.Form, forms)
-	}
 }
 
 // formDecoder writes the decoder of form f, unless forms has it already.
@@ -1357,12 +837,4 @@ func listArg(t types.Type) types.Type {
 		return app.Args[0]
 	}
 	return nil
-}
-
-// firstRequired is the first session field page pg requires, "" for none.
-func firstRequired(pg *ir.Page) string {
-	if len(pg.Requires) == 0 {
-		return ""
-	}
-	return pg.Requires[0]
 }

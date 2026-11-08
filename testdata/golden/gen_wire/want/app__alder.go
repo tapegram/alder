@@ -3,7 +3,7 @@
 package app
 
 import (
-	"alder/rt"
+	_ "alder/rt" // initialized before this package (rt/tether.go)
 	"alder/rt/applog"
 	"alder/rt/db"
 	"alder/rt/html"
@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"reflect"
 	"strings"
 	"time"
 )
@@ -58,11 +57,6 @@ var FakeTables = []db.TableDesc{}
 // Fakes are the app's fakes by the Env.Caps key of their capability: Test.fake installs one in the
 // running test's Env.Caps. Test builds only.
 var Fakes = map[string]func() any{}
-
-// init registers the constructor names of every union of the app, for rt.Show.
-func init() {
-	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
-}
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that
 // returned nil.
@@ -173,7 +167,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
-		DevMap:      "{\"pages\":[],\"tables\":[],\"caps\":[],\"session\":[\"visits: Int\"]}",
+		DevMap:      "{\"pages\":[{\"module\":\"Wood.Wood\",\"path\":\"/r/{cfg}/wood/Results\",\"params\":[\"cfg: Text\",\"electionId: Text as \\\"ElectionId\\\"\",\"contestId: Maybe Int as \\\"ContestId\\\"\"]}],\"tables\":[],\"caps\":[],\"session\":[\"visits: Int\"]}",
 	}
 }
 

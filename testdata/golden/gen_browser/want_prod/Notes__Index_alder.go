@@ -181,7 +181,7 @@ func Notes__Index__Index__view(model Notes__Index__Model, session Notes__Index__
 			html.El("button", nil, html.Text("Add")),
 		),
 		html.El("nav", nil, html.Nodes(std.ListMap(func(f Note__Filter) html.Node {
-			return html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "Notes.Index.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[f.Tag], "All")}}))}, html.Text(Note__filterLabel(f)))
+			return html.El("a", []html.Attr{html.A("href", rt.RouteURL(rt.Route{Name: "Notes.Index.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[f.Tag], "All")}}))}, html.Text(Note__filterLabel(f)))
 		}, []Note__Filter{Note__Filter__All__, Note__Filter__Open__, Note__Filter__Done__})...)),
 		html.El("ul", []html.Attr{html.A("id", "notes")}, html.Nodes(std.ListMap(func(n Note__Note) html.Node {
 			return html.El("li", []html.Attr{html.A("class", func() string {

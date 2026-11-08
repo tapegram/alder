@@ -19,30 +19,23 @@ import (
 //
 //	TestLogin      "Test.login": BrowserOf(_e).Login(session), and the test's own session becomes
 //	               session (_e.Session), so the scoped Db operations a test runs act for that user
-//	TestGet        "Test.get M" / "Test.open M": _p := params; _r, _err := _b.GetPage(rt.PageURL(
-//	               page(_p)), "<requires>") (Open for open); for get, the model the page's GET
-//	               rendered (the route's rq.Model, through web.Options.Served):
-//	               _m, _err := rtesting.ModelOf[M__Model](_u, _r);
+//	TestGet        "Test.get M.R" / "Test.open M.R": _r, _err := _b.GetPage(rt.RouteURL(route),
+//	               "<requires>") (Open for open); for get, the model the route's GET rendered
+//	               (rq.Model, through web.Options.Served):
+//	               _m, _err := rtesting.ModelOf[M](_u, _r);
 //	               R{Model: _m, Session: rtesting.SessionOf[S](_r.Session), Doc: rtesting.DocOf(_r.Doc)}
-//	TestGet        "Test.fetch M" (Fetch): _r, _err := _b.Fetch(rt.PageURL(page(_p))); _r is the
+//	TestGet        "Test.fetch M.R" (Fetch): _r, _err := _b.Fetch(rt.RouteURL(route)); _r is the
 //	               result as is (rtesting.Fetched is the record's Go type)
-//	TestSubmit     "Test.submit F": _b.SubmitForm("/_m/M/Msg", "F", encode__M__F(record)); when
-//	               the test wrote the message with its parameters, _b.SubmitMsg(<its URL>, "F",
-//	               <its label>, encode__M__F(record)) (matched as a click is)
+//	TestSubmit     "Test.submit F": _b.SubmitRoute(route, "F", encode__M__F(record))
 //	TestSubmitRaw  "Test.submitRaw F": rtesting.RawFields("F", <F's fields>, fields), then
-//	               SubmitForm or SubmitMsg
-//	TestClick      "Test.click M.Msg": _b.ClickMsg(rt.MsgRef{…}.URL(nil), rtesting.MsgName("M.Msg",
-//	               params)) — the message's URL with its own parameters only: the browser posts
-//	               the URL the held page renders for it, which carries the page's parameters
+//	               SubmitRoute
+//	TestClick      "Test.click M.R": _b.ClickRoute(route, rtesting.MsgName("M.R", params))
 //	TestRefresh    "Test.refresh": _r, _err := rtesting.BrowserOf(_e).Refresh() (#160); R{Answer:
 //	               _r.Answer, …}
 //
-// On a route (#160) each names the route value, an rt.Route literal (routeRef) with its
-// parameters bound once (routeTarget): Test.get/open/fetch "Test.get M.R" request rt.RouteURL
-// of it (get's model the route's Model, its first `requires` in GetPage); Test.click "Test.click
-// M.R" is _b.ClickRoute(route, rtesting.MsgName("M.R", params)); Test.submit and submitRaw of a
-// route's form are _b.SubmitRoute(route, "F", fields), the fields encode__M__F (a route's form
-// has an encoder too) or RawFields.
+// Each names the route value, an rt.Route literal (routeRef) with its parameters bound once
+// (routeTarget); get's model is the route's Model, its first `requires` named in GetPage. A
+// route's form has an encoder, encode__M__F.
 //
 // A query (Test.text, texts, has, count, attr) whose selector is a literal calls the Sel form of
 // its rtesting function with the selector parsed once, a package variable selector__N
@@ -124,54 +117,12 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 		if x.Fetch {
 			name = "Test.fetch "
 		}
-		if x.Route != nil {
-			return f.routeGet(name, x, t, s, fail, result)
-		}
-		return f.callStmts(name+x.Page.Module, true, t, s, func(env string, c *scope) string {
-			var w strings.Builder
-			pKey, p := f.tempVar(c, "_p")
-			params := GoName(x.Page.Module, "Params") + "{}"
-			if x.Params != nil {
-				params = f.code(x.Params, c)
-			}
-			if len(x.Page.Params.Fields) > 0 { // the URL's parameters
-				fmt.Fprintf(&w, "var %s %s = %s\n", p, GoName(x.Page.Module, "Params"), params)
-			}
-			pt := &types.Record{Module: x.Page.Module, Name: "Params"}
-			for _, fd := range x.Page.Params.Fields {
-				pt.Fields = append(pt.Fields, types.Field{Name: fd.Name, Type: fd.Type})
-			}
-			ref := &ir.PageRef{Typed: ir.Typed{Ty: types.Page}, Page: x.Page,
-				Params: &ir.Var{Typed: ir.Typed{Ty: pt}, Kind: ir.VarLocal, Name: pKey}}
-			if len(x.Page.Params.Fields) == 0 {
-				ref.Params = nil
-			}
-			u, b, res, err := f.temp(c, "_u"), f.temp(c, "_b"), f.temp(c, "_r"), f.temp(c, "_err")
-			fmt.Fprintf(&w, "%s := rt.PageURL(%s)\n%s := rtesting.BrowserOf(%s)\n", u, f.pageRef(ref, c), b, env)
-			if x.Fetch { // the record's Go type is rtesting.Fetched
-				fmt.Fprintf(&w, "%s, %s := %s.Fetch(%s)\n%sreturn %s, nil\n", res, err, b, u, fail(c, err), res)
-				return w.String()
-			}
-			if x.Open {
-				fmt.Fprintf(&w, "%s, %s := %s.Open(%s)\n%s", res, err, b, u, fail(c, err))
-				w.WriteString(result(c, "Answer", res+".Answer", res))
-				return w.String()
-			}
-			fmt.Fprintf(&w, "%s, %s := %s.GetPage(%s, %s)\n%s", res, err, b, u, strconv.Quote(firstRequired(x.Page)), fail(c, err))
-			m := f.temp(c, "_m")
-			fmt.Fprintf(&w, "%s, %s := rtesting.ModelOf[%s](%s, %s)\n%s", m, err, GoName(x.Page.Module, "Model"), u, res, fail(c, err))
-			w.WriteString(result(c, "Model", m, res))
-			return w.String()
-		})
+		return f.routeGet(name, x, t, s, fail, result)
 	case *ir.TestSubmit:
 		return f.callStmts("Test.submit "+x.Form.Name, true, t, s, func(env string, c *scope) string {
 			var w strings.Builder
 			fields := encodeName(x.Form.Module, x.Form.Name) + "(" + f.code(x.Record, c) + ")"
-			if x.Route != nil {
-				f.submitRoute(&w, c, env, x.Form, x.Route, x.Params, fields, fail, result)
-				return w.String()
-			}
-			f.submit(&w, c, env, x.Form, x.Msg, x.Page, x.Params, fields, fail, result)
+			f.submitRoute(&w, c, env, x.Form, x.Route, x.Params, fields, fail, result)
 			return w.String()
 		})
 	case *ir.TestSubmitRaw:
@@ -183,30 +134,15 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 			}
 			fs, err := f.temp(c, "_f"), f.temp(c, "_err")
 			fmt.Fprintf(&w, "%s, %s := rtesting.RawFields(%s, []string{%s}, %s)\n%s", fs, err, strconv.Quote(x.Form.Name), strings.Join(names, ", "), f.code(x.Fields, c), fail(c, err))
-			if x.Route != nil {
-				f.submitRoute(&w, c, env, x.Form, x.Route, x.Params, fs, fail, result)
-				return w.String()
-			}
-			f.submit(&w, c, env, x.Form, x.Msg, x.Page, x.Params, fs, fail, result)
+			f.submitRoute(&w, c, env, x.Form, x.Route, x.Params, fs, fail, result)
 			return w.String()
 		})
 	case *ir.TestClick:
-		if x.Route != nil {
-			return f.callStmts("Test.click "+x.Route.Module+"."+x.Route.Name, true, t, s, func(env string, c *scope) string {
-				var w strings.Builder
-				r, label := f.routeTarget(&w, c, x.Route, x.Params)
-				res, err := f.temp(c, "_r"), f.temp(c, "_err")
-				fmt.Fprintf(&w, "%s, %s := rtesting.BrowserOf(%s).ClickRoute(%s, %s)\n%s", res, err, env, r, label, fail(c, err))
-				w.WriteString(result(c, "Answer", res+".Answer", res))
-				return w.String()
-			})
-		}
-		owner := stepOwner(x.Page)
-		return f.callStmts("Test.click "+owner+"."+x.Msg.Name, true, t, s, func(env string, c *scope) string {
+		return f.callStmts("Test.click "+x.Route.Module+"."+x.Route.Name, true, t, s, func(env string, c *scope) string {
 			var w strings.Builder
-			u, label := f.msgTarget(&w, c, owner, x.Msg, x.Params)
+			r, label := f.routeTarget(&w, c, x.Route, x.Params)
 			res, err := f.temp(c, "_r"), f.temp(c, "_err")
-			fmt.Fprintf(&w, "%s, %s := rtesting.BrowserOf(%s).ClickMsg(%s, %s)\n%s", res, err, env, u, label, fail(c, err))
+			fmt.Fprintf(&w, "%s, %s := rtesting.BrowserOf(%s).ClickRoute(%s, %s)\n%s", res, err, env, r, label, fail(c, err))
 			w.WriteString(result(c, "Answer", res+".Answer", res))
 			return w.String()
 		})
@@ -219,26 +155,9 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 	panic(fmt.Sprintf("gen: %T is not a browser step", x))
 }
 
-// submit writes the request of Test.submit or submitRaw posting fields (Go url.Values): to the
-// form of message msg the held page renders — matched by the message and its parameters when
-// the test wrote them (params, SubmitMsg), else by the message alone (SubmitForm) — and the
-// return of the step's result.
-func (f *fn) submit(w *strings.Builder, c *scope, env string, form *ir.Form, msg *ir.Msg, page *ir.Page, params ir.Expr, fields string,
-	fail func(*scope, string) string, result func(*scope, string, string, string) string) {
-	owner := stepOwner(page)
-	res, err := f.temp(c, "_r"), f.temp(c, "_err")
-	if params == nil {
-		fmt.Fprintf(w, "%s, %s := rtesting.BrowserOf(%s).SubmitForm(%s, %s, %s)\n%s", res, err, env, strconv.Quote(msgPath(owner, msg.Name)), strconv.Quote(form.Name), fields, fail(c, err))
-	} else {
-		u, label := f.msgTarget(w, c, owner, msg, params)
-		fmt.Fprintf(w, "%s, %s := rtesting.BrowserOf(%s).SubmitMsg(%s, %s, %s, %s)\n%s", res, err, env, u, strconv.Quote(form.Name), label, fields, fail(c, err))
-	}
-	w.WriteString(result(c, "Answer", res+".Answer", res))
-}
-
-// routeGet is Test.get, open or fetch (name, "Test.get ") of a GET route: as of a page, the URL
-// the route value builds (rt.RouteURL), its first `requires` named in a redirect to the login
-// page, and get's model the route's Model.
+// routeGet is Test.get, open or fetch (name, "Test.get ") of a GET route: the URL the route
+// value builds (rt.RouteURL), its first `requires` named in a redirect to the login page, and
+// get's model the route's Model.
 func (f *fn) routeGet(name string, x *ir.TestGet, t types.Type, s *scope, fail func(*scope, string) string, result func(*scope, string, string, string) string) string {
 	r := x.Route
 	return f.callStmts(name+r.Module+"."+r.Name, true, t, s, func(env string, c *scope) string {
@@ -297,53 +216,6 @@ func (f *fn) routeTarget(w *strings.Builder, c *scope, r *ir.Route, params ir.Ex
 	fmt.Fprintf(w, "%s := %s\n", m, f.code(params, c))
 	mv := &ir.Var{Typed: ir.Typed{Ty: params.Type()}, Kind: ir.VarLocal, Name: key}
 	return f.routeRef(&ir.RouteRef{Typed: ir.Typed{Ty: types.Route}, Route: r, Params: mv}, c), "rtesting.MsgName(" + name + ", " + m + ")"
-}
-
-// msgTarget writes the statements binding message msg's parameters params (its payload record;
-// nil for a message without parameters) and returns the Go expressions of its URL with its
-// own parameters only (the browser posts the URL the held page renders for it, which carries
-// the page's parameters too) and of its label, the message as Alder writes it (MsgName).
-func (f *fn) msgTarget(w *strings.Builder, c *scope, owner string, msg *ir.Msg, params ir.Expr) (string, string) {
-	name := strconv.Quote(owner + "." + msg.Name)
-	if params == nil {
-		return "rt.MsgURL(" + strconv.Quote(owner) + ", " + strconv.Quote(msg.Name) + ")", "rtesting.MsgName(" + name + ", nil)"
-	}
-	key, m := f.tempVar(c, "_m")
-	fmt.Fprintf(w, "%s := %s\n", m, f.code(params, c))
-	mv := &ir.Var{Typed: ir.Typed{Ty: params.Type()}, Kind: ir.VarLocal, Name: key}
-	var items []kvItem
-	var shown []string
-	for _, fd := range msg.Params.Fields {
-		if fd.Name != "form" {
-			items = append(items, kvItem{name: fd.Name, t: fd.Type, v: &ir.Field{Typed: ir.Typed{Ty: fd.Type}, Expr: mv, Name: fd.Name}})
-			shown = append(shown, Field(fd.Name)+": "+m+"."+Field(fd.Name))
-		}
-	}
-	label := m
-	if msg.Form != nil { // its payload's form is not the test's to show: the parameters alone
-		label = "struct{ " + paramFields(msg) + " }{" + strings.Join(shown, ", ") + "}"
-	}
-	u := "rt.MsgRef{Module: " + strconv.Quote(owner) + ", Msg: " + strconv.Quote(msg.Name) + ", Params: " + f.kvList(items, c) + "}.URL(nil)"
-	return u, "rtesting.MsgName(" + name + ", " + label + ")"
-}
-
-// paramFields are the Go fields of message msg's parameters, without its form.
-func paramFields(msg *ir.Msg) string {
-	var fs []string
-	for _, fd := range msg.Params.Fields {
-		if fd.Name != "form" {
-			fs = append(fs, Field(fd.Name)+" "+GoType(fd.Type))
-		}
-	}
-	return strings.Join(fs, "; ")
-}
-
-// stepOwner is the module of a step's message: its page's, or App.
-func stepOwner(p *ir.Page) string {
-	if p == nil {
-		return "App"
-	}
-	return p.Module
 }
 
 // sessionGo is the Go type of the `session` field of step type t's result record.
@@ -413,8 +285,8 @@ func (g *gen) selectorVars(b *strings.Builder) {
 	b.WriteString(")\n\n")
 }
 
-// encoders writes, for a test build, encode__M__F for every form a message of a page or of App,
-// or a write route, posts: the form's record as the browser's inputs submit it, the inverse of decode__M__F (the
+// encoders writes, for a test build, encode__M__F for every form a write route posts: the
+// form's record as the browser's inputs submit it, the inverse of decode__M__F (the
 // rules at the top of routes.go): Text as given, Int and Float as digits, Bool as a checkbox
 // ("True" when checked, absent when not), Date as YYYY-MM-DD, a union by its constructor's
 // name, Maybe blank for Nothing (a cleared input; absent would give a field with a default its
@@ -426,19 +298,7 @@ func (g *gen) selectorVars(b *strings.Builder) {
 func (g *gen) encoders(b *strings.Builder, p *ir.Program) {
 	seen := map[*ir.Form]bool{}
 	var forms []*ir.Form
-	add := func(ms []*ir.Msg) {
-		for _, m := range ms {
-			if m.Form != nil && !seen[m.Form] {
-				seen[m.Form] = true
-				forms = append(forms, m.Form)
-			}
-		}
-	}
-	for _, pg := range p.Pages {
-		add(pg.Msgs)
-	}
-	add(p.AppMsgs)
-	for _, r := range p.Routes { // a write route's `form F` (#160)
+	for _, r := range p.Routes { // a write route's `form F`
 		if r.Form != nil && !seen[r.Form] {
 			seen[r.Form] = true
 			forms = append(forms, r.Form)

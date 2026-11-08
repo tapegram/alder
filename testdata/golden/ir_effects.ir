@@ -55,7 +55,6 @@
     (var owners)))
 (module App)
 (record App.Session (user Maybe Text) (theme Text = "light"))
-(union App.Msg)
 (record App.Logout.Params)
 (value App.Logout.update : Logout.Params -> Session -> Task Response (p session)
   (bind task _
@@ -207,7 +206,6 @@
   (model Model)
   (load Login.Login.load)
   (view Login.Login.view))
-(app-update App.Logout.update)
 (session App.Session)
 (capability Todo.Stats (total Query Int) (forOwner Text -> Bool -> Query Int))
 (capability Index.Mailer (send { to: Text, body: Text } -> Task Bool))
