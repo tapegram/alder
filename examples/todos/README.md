@@ -30,8 +30,12 @@ nothing installed; `go test ./book` runs this deploy for chapter 16.
 To put it on a server, add an environment to the declaration in `app/App.alder`, such as
 `production: Ssh "deploy@box.example.com" { domain: "todos.example.com", path: "/srv/todos" }`,
 write `ALDER_SECRET=…` (16 bytes or more) into `/srv/todos/env` on the box, and run `alder
-deploy production`; `alder ci init` writes the GitHub workflow that does it on every push to
-`main`. The example's login is the development stub, which refuses every password outside
+deploy production`;
+
+`alder ci init` writes the GitHub workflow that does it on every push to
+`main`.
+
+The example's login is the development stub, which refuses every password outside
 `alder run`: a real deployment needs a real `Password` adapter (book 7).
 
 ## Mutation score
@@ -40,32 +44,44 @@ deploy production`; `alder ci init` writes the GitHub workflow that does it on e
 killed, 2 survived (score 0.98). `TestExample_TodosMutation` fails if the score drops below
 0.98 or the number of mutants is not 124.
 
-- The app's own code: 30 mutants, all killed by its 23 tests (score 1.00).
-- The generated admin (`app/Admin/`, "Replaying the admin" below): 94 mutants, 92 killed by
-  its generated tests, kept as `alder new admin` wrote them. The two survivors are equivalent:
-  `ownersTotal > 200` flipped to `>= 200` in the `where` of the New route's owner list, where a
-  search of "" matches every row anyway, and `Todo.owner.in ids` dropped from the user bulk
-  route's `load`, whose `refused` is only asked of the chosen rows. (The Edit route's list no longer
-  has the first: its row's own owner is read by itself and comes first, and the search leaves it
-  out, so the generated test of exactly 200 users tells `>` from `>=`.)
+- **The app's own code:** 30 mutants, all killed by its 23 tests (score 1.00).
+
+- **The generated admin** (`app/Admin/`, "Replaying the admin" below): 94 mutants, 92 killed by
+  its generated tests, kept as `alder new admin` wrote them.
+
+  The two survivors are equivalent:
+
+  - `ownersTotal > 200` flipped to `>= 200` in the `where` of the New route's owner list, where a
+    search of "" matches every row anyway.
+  - `Todo.owner.in ids` dropped from the user bulk route's `load`, whose `refused` is only asked
+    of the chosen rows.
+
+  > **The Edit route.** The Edit route's list no longer has the first: its row's own owner is
+  > read by itself and comes first, and the search leaves it out, so the generated test of
+  > exactly 200 users tells `>` from `>=`.
 
 The history of the app's own code:
 
 - Before: 11 tests, 18 killed, 14 survived of 32 (score 0.56).
 - After: 20 tests, 32 killed, 0 survived (score 1.00).
-- With the role (M12): the session's `role` added four mutants. Two of them, the `update field
-  dropped` of the role in logout's and login's `Session.put`, survived the 20 tests; two more
-  tests kill them: `App "Logout makes the role Member"` (an Admin who logs out is a Member) and
+- With the role (M12): the session's `role` added four mutants.
+
+  Two of them, the `update field dropped` of the role in logout's and login's `Session.put`,
+  survived the 20 tests; two more tests kill them: `App "Logout makes the role Member"` (an Admin who logs out is a Member) and
   `Auth.Login "logging in copies the role from the user's row"`.
 
 The ownership rules are declared (book 06, "Rules"): `Todo.owner` is the table's `@owner`, and
 the routes use `Db.mine`, `Db.getMine`, `Db.updateMine`, `Db.deleteMine` and `Db.insertMine`.
+
 Their four `scope dropped` mutants (each scoped operation made unscoped) are killed by the
 ownership tests among the eleven: `Todos.Index "a stranger cannot see my todo"` (the list's
 `Db.mine` and `Todos.Show`'s `Db.getMine`), `Todos.Index "Toggle by another user is not found"`
 and `Todos.Index "Delete by another user is not found"` (a stranger presses my todo's button on
-a page still open in the browser). `Db.insertMine` has no `scope dropped` mutant: the owner
-comes from the session either way. On routes (#160) no `load` runs before a write, so the
+a page still open in the browser).
+
+> **`Db.insertMine`.** It has no `scope dropped` mutant: the owner comes from the session either way.
+
+On routes (#160) no `load` runs before a write, so the
 `scope dropped` of `Todos.Show`'s Save and Delete (`Db.updateMine` and `Db.deleteMine` of the
 id in their path) are no longer equivalent: `Todos.Show "saving or deleting another user's todo
 is not found"` kills them.
@@ -101,10 +117,13 @@ The steps, from the app before the admin:
    session gains `role: User.Role = Member`; `Auth.Login` copies the row's role into the
    session, and `App.Logout` puts `Member` back.
 2. `migrations/0001_initial.sql` was written again from the tables (`rm migrations/*` and
-   `alder migrate`) at this step: the example had no data to keep, so it kept one migration. The
-   tables have since moved into `app/Table/` (`0002_rename_*`, see Layout above), so do not
+   `alder migrate`) at this step: the example had no data to keep, so it kept one migration.
+
+   The tables have since moved into `app/Table/` (`0002_rename_*`, see Layout above), so do not
    `rm migrations/*` now: it would delete that rename. An app with
-   data runs `alder migrate` instead, which rebuilds `User` with the new column. A `todos.db`
+   data runs `alder migrate` instead, which rebuilds `User` with the new column.
+
+   A `todos.db`
    that `alder run` made before this step no longer matches `0001`, and the app refuses to
    start on it: delete it, or run once with `ALDER_DEV=1`, which recreates the database empty
    (book 8).

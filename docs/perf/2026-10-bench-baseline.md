@@ -27,7 +27,9 @@
 A record, not a target. Machine: Apple M5 Pro, 18 cores, 64 GB, macOS (Darwin 27.0.0); Go 1.27.2
 (darwin/arm64). Code: branch `issue-48-perf-harness` at the commit that adds this file (the
 runtime without a statement cache, see below). Fixture: `testdata/bench/rows`; each test seeds its
-rows (not measured), then takes the steps its name says. `ms` and `alloc` are medians of 10 runs,
+rows (not measured), then takes the steps its name says.
+
+`ms` and `alloc` are medians of 10 runs,
 and count the server only: the time and allocations while the router served the step's requests,
 not the test browser parsing the answer or applying the patch.
 
@@ -86,7 +88,9 @@ allocations: the time is the load's, the allocations are not.)
 
 `alder bench`, `--count 10`, the same fixture with and without the cache (the cache's build
 prepared each text once per store, and inside a test's transaction on the `:memory:` database
-once per transaction). These were taken before `alder bench` measured the server only, so they
+once per transaction).
+
+These were taken before `alder bench` measured the server only, so they
 include the test browser's work; the differences between the columns are the cache's all the
 same, since the browser's share is identical in both:
 
@@ -99,7 +103,9 @@ same, since the browser's share is identical in both:
 
 The SQL counts are the same; the allocations are higher with the cache on every row (+10 per
 cold statement, +5 per statement on the N+1 page, +1 to +7 per statement warm in the probe),
-so it stays out. The time it saves (about 4 µs a statement here, 7 µs on an idle machine per the
+so it stays out.
+
+The time it saves (about 4 µs a statement here, 7 µs on an idle machine per the
 spec's probe) matters on the N+1 page (0.75 → 0.46 ms) and not against a 1,000-row render. A
 later attempt could lower its allocations (reusing the transaction's statement instead of
 `Tx.StmtContext` per call) and is measured against this file's re-run: #105.
@@ -133,14 +139,22 @@ Where the other numbers move:
 - **The page is 138 kB (17%) smaller**, ids and all. Every post action now calls one helper the
   boost defines once in the `<head>`, `@post('<url>', window._alderO?.())` (`window._alderO?.('form')`
   for a form): it aborts the navigation in flight, starts the next one's AbortController and adds
-  the `Alder-Shown` header. That replaces the 86 bytes of abort and controller every button
+  the `Alder-Shown` header.
+
+  That replaces the 86 bytes of abort and controller every button
   carried before (plus their escaping), and pays for the fixture's new `id="row-…"` on 1,000 rows
   (30 kB) and the `<al-shown>` element (60 B).
+
 - **`toggle` and `add` render the page twice.** The before-view is a second view and render
-  (+51k objects, the same as a GET's tree). Its buffer is sized from the after-page up front
+  (+51k objects, the same as a GET's tree).
+
+  Its buffer is sized from the after-page up front
   (`html.RenderTrackedSized`); grown step by step it cost 4 MB more. `add 1000` gains nothing in
   bytes for it: a row added changes `#rows`' children, so the whole `<ul>` is sent (the keyed-diff
-  follow-up). Regions are tracked only when the request carries `Alder-Shown`.
+  follow-up).
+
+  Regions are tracked only when the request carries `Alder-Shown`.
+
 - The equality check the test browser runs after every re-render (a parse, the parser's repairs
   modelled by `html.Repair`, and a diff of the body) is the browser's work, not measured.
 
@@ -195,20 +209,28 @@ The keep rule (R-P4, against today's 938 B and 2% of today's page):
   row `<li>` now carries a Delete button, so it is larger, still one `<li>` and the event),
   and against 13.5 kB (2% of the old page; 19.5 kB of the new 973.8 kB one): 0.11% of the page.
   It allocates 26.6 kB / 321 objects against 14.58 MB / 117.8k, and runs in 0.10 ms against
-  7.59 ms. The page's `load` runs 0 times. The `loads` column's 1 is the render's own
+  7.59 ms. The page's `load` runs 0 times.
+
+  The `loads` column's 1 is the render's own
   `Item.load` (the second of the request's two Envs: the write has 0 loads and 2 statements,
   the render 1 load and 1 statement), and `sql` is 3, not 2: the write's `Db.update` is 2
   statements, `Item.load` one more.
+
 - **`delete 1000` via `refresh` after a toggle: loads 2, sql 3, as the PR 3 Rerender row
   (loads 2, sql 3).** It sends 969.1 kB against 963.1 kB, allocates 25.54 MB / 125.7k against
   23.71 MB / 159.6k (8% more bytes, 21% fewer objects) and takes 10.35 ms against 10.90 ms.
-  That it is on the regions path (not a whole-body morph) is **inferred** from these numbers
-  (the same loads and statements, bytes below the 973.8 kB page, the same size as before),
-  not measured: the answer is asserted `Refreshed`, but that it went the regions path is inferred.
+
+  > **Inferred, not measured.** That it is on the regions path (not a whole-body morph) is
+  > **inferred** from these numbers (the same loads and statements, bytes below the 973.8 kB
+  > page, the same size as before): the answer is asserted `Refreshed`, but that it went the
+  > regions path is inferred.
+
 - `add 1000` allocates 25.55 MB against 16.60 MB (+54%), 125.9k objects against 117.8k, loads
   2 and sql 3 as before: the fixture's page is 300 kB larger (the Delete button on every row),
   which accounts for the bytes (a 45% bigger page rendered twice) rather than the objects.
+
 - The index page grew from 673.8 kB to 973.8 kB for the same reason (the Delete button, 300 B a
   row); `index` times and allocations scale with it.
+
 - `checkOptionRoutes` (a DFS per GET route) does not show on this fixture: `alder check` takes
   11 ms with three GET routes. It is quadratic in the GET routes; not measured on a larger app.

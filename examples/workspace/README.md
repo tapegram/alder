@@ -1,18 +1,27 @@
 # workspace
 
 The third example, which chapter 14 tours after the blog: orgs, the users who are their members,
-and each org's projects and to-dos, which live in a database of the org's own. It is the
-example of partitions and silos (book 06, "Partitions"; book 08, "Silos"): the session's `org`
-is a key `via Membership`, `choose org = Orgs.Index` is where a session without one is sent,
-`silo org { Project, Todo }` puts those two tables in a database per org, and `Activity`, the
-org's log, is partitioned by org in the shared database instead. `alder check`, `alder build`
-and `alder test` take this directory; chapter 11 explains each command.
+and each org's projects and to-dos, which live in a database of the org's own.
+
+It is the example of partitions and silos (book 06, "Partitions"; book 08, "Silos"):
+
+- the session's `org` is a key `via Membership`;
+- `choose org = Orgs.Index` is where a session without one is sent;
+- `silo org { Project, Todo }` puts those two tables in a database per org;
+- `Activity`, the org's log, is partitioned by org in the shared database instead.
+
+`alder check`, `alder build` and `alder test` take this directory; chapter 11 explains each command.
 
 To try it: `alder run`, then log in at `/login` with the password `password` as
 `ann@example.com` or `bob@example.com` (Members) or `admin@example.com` (an Admin: `/admin`).
+
 The accounts are the development stub's (`adapters/auth/password.go`), which accepts them only
-under `alder run`. Make an org on `/orgs` as Ann, add Bob to it by email on `/members`, and log
-in as Bob: he sees Ann's org's projects, and none of an org he is not in. Under `alder run` the
+under `alder run`.
+
+Make an org on `/orgs` as Ann, add Bob to it by email on `/members`, and log
+in as Bob: he sees Ann's org's projects, and none of an org he is not in.
+
+Under `alder run` the
 shared database is `build/workspace/dev.db` and each org's a file of its own under
 `build/workspace/silos/org/`, named after the org's id (book 08, "Where the files live").
 
@@ -26,7 +35,9 @@ The tables (Activity, Membership, Org, Project, Todo and User) live under `app/T
   `Orgs.Index`'s `Open` puts an org in the session, and the runtime refuses one the user has no
   `Membership` row for (`Orgs.Index "a non-member's switch is refused"`, a request crafted by
   hand), also when the row was deleted earlier in the same Task (`Orgs.Index "a membership
-  deleted earlier in the same Task counts as gone"`). Logging in puts the first org the user
+  deleted earlier in the same Task counts as gone"`).
+
+  Logging in puts the first org the user
   joined (`Auth.Login`); logging out clears it with the user.
 - **Routes that require the key.** `Projects.Index`, `Projects.Show` and `Members.Index` are
   `requires user, org`: a visitor is sent to log in, a user without an org to `Orgs.Index`
@@ -72,7 +83,9 @@ The tables (Activity, Membership, Org, Project, Todo and User) live under `app/T
 - The app's own code (35 tests): every mutant killed, `membership dropped` (the `via` check
   removed) by `Orgs.Index "a non-member's switch is refused"`, and `scope dropped` of
   `Db.scoped Activity` by `Members.Index "the members, by name, and the activity of this org
-  only"`. The `scope dropped` of the siloed tables' scoped operations is not made: the org's
+  only"`.
+
+  The `scope dropped` of the siloed tables' scoped operations is not made: the org's
   database holds that org's rows only, so the mutant is equivalent, and the run says so.
 - The generated admin (298 tests, `app/Admin/`, kept as `alder new admin` wrote them): the 11
   survivors. Five are `> 200` flipped to `>= 200` in the New routes' searches (`orgsTotal`,

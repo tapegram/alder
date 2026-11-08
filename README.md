@@ -59,9 +59,15 @@ alder new form Replies NewReply entry:Entry.EntryId message:Text.NonEmpty
 `alder new admin` writes a Django-class admin for every table, as plain Alder files with their
 browser tests: a dashboard, and per table a list (search, sort, pages), a page per row, forms
 to create and edit (references as selects of the referenced rows) and a delete page that
-counts what goes with the row and refuses what the database would. Every page `requires user,
-role Admin`. When the tables change, `alder regen admin` rewrites only the admin's owned
-regions and keeps what you changed around them. Both examples carry one, committed exactly as
+counts what goes with the row and refuses what the database would.
+
+Every page `requires user,
+role Admin`.
+
+When the tables change, `alder regen admin` rewrites only the admin's owned
+regions and keeps what you changed around them.
+
+Both examples carry one, committed exactly as
 the command wrote it, and its tests kill all of its mutants. The book's chapter 15 tours it.
 
 ## Orgs, and a database per org
@@ -80,7 +86,11 @@ table Project { id: ProjectId @id, name: Text.NonEmpty, org: Org.OrgId @ref Org 
 A page that `requires user, org` reads with `Db.scoped Project`, which never sees another org's
 rows; `via Membership` makes the runtime refuse an org the user is not a member of; and `silo
 org` gives each org its own database, checked and migrated when the running app first opens
-it. A `Task` writes to one database, which the compiler checks. `examples/workspace` is the
+it.
+
+A `Task` writes to one database, which the compiler checks.
+
+`examples/workspace` is the
 whole app, with its admin; the book's chapters 6 and 8 explain it.
 
 ## Shipping it

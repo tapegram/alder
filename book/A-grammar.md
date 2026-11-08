@@ -101,23 +101,35 @@ string      = '"' {char | "{" expr "}"} '"' ;
 ModName     = uname {"." uname} ;
 ```
 
+## Routes and qualified names
+
 A route's members are `Route.name` declarations (`Index.load`, `Index.view`,
 `Toggle.update`); what a route module may declare, and the signatures, are in
 chapter 6. A dotted name is read as the longest module path the program knows,
 then a route of that module, then a member: `Todos.Index.Index {}` is the module
 `Todos.Index`, its route `Index`, and the route's parameters.
 
+## The old form
+
 `page "…" { … }` and `msg M { … }` are the old form of a route and its writes. The
 parser still accepts them, beside `route` (a module has one form or the other,
 E0043), until they are removed; `alder fix --routes` rewrites them. They are not
 part of the grammar above, and `page` and `msg` stay reserved words meanwhile.
 
-Lexical: `lname` is `[a-z_][A-Za-z0-9_]*` other than `_` alone, `uname` is
-`[A-Z][A-Za-z0-9_]*`, and `hname` additionally allows `-`. No `lname` or
-`uname` contains two underscores in a row (`a__b` is an error), and no
-segment of a `ModName` ends with `_`: the compiler uses `__` to join the
-parts of the names it generates (chapter 13). An `hname` (an HTML tag or
-attribute name such as `data-x__y`) may contain `__`. Comments run from `--` to end of line.
+## Lexical rules
+
+- `lname` is `[a-z_][A-Za-z0-9_]*` other than `_` alone.
+- `uname` is `[A-Z][A-Za-z0-9_]*`.
+- `hname` additionally allows `-`.
+- Comments run from `--` to end of line.
+
+No `lname` or `uname` contains two underscores in a row (`a__b` is an
+error), and no segment of a `ModName` ends with `_`: the compiler uses `__`
+to join the parts of the names it generates (chapter 13).
+
+> **`__` in an `hname`.** An `hname` (an HTML tag or attribute name such as
+> `data-x__y`) may contain `__`.
+
 A `rawtext` is every character up to the closing tag (in any case), kept as
-written: no `{ … }`, tags or comments; it may not contain `</script` or
+written: no `{ … }`, tags or comments. It may not contain `</script` or
 `</style` in any case (chapter 5, "Scripts and styles").
