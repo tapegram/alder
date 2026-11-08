@@ -106,7 +106,7 @@ func Route__Index__Index() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Index__Index__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Index__Index__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -386,7 +386,7 @@ func Route__Login__Login() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Login__Login__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Login__Login__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 

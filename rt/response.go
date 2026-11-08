@@ -12,6 +12,16 @@ const (
 	RespInvalid                      // 422, the page again, form kept, Text as its error
 )
 
+// NoticeKind is the variant of a toast: Response.toast is info.
+type NoticeKind string
+
+const (
+	NoticeInfo    NoticeKind = "info"
+	NoticeSuccess NoticeKind = "success"
+	NoticeWarning NoticeKind = "warning"
+	NoticeError   NoticeKind = "error"
+)
+
 // Toast is a toast shown with a response: its variant and its text.
 type Toast struct {
 	Kind NoticeKind
@@ -35,9 +45,8 @@ type Response struct {
 	Events  []ResponseEvent
 }
 
-// RedirectTo is `Response.redirect r`. It is not named Redirect because the Nav `Redirect`
-// (rt/nav.go) holds that name until Nav goes; PR 9 of #160 may rename it.
-func RedirectTo(r Route) Response { return Response{Kind: RespRedirect, Target: r} }
+// Redirect is `Response.redirect r`.
+func Redirect(r Route) Response { return Response{Kind: RespRedirect, Target: r} }
 
 // Render is `Response.render r`.
 func Render(r Route) Response { return Response{Kind: RespRender, Target: r} }

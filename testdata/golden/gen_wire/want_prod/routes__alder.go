@@ -74,7 +74,7 @@ func Route__Wood__Wood() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Wood__Wood__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Wood__Wood__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 

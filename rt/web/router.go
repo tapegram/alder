@@ -84,8 +84,8 @@ type Options struct {
 	MaintenanceDoc func() html.Node
 	// Build is the build's id (ALDER_BUILD, set by the deploy), answered by /_alder/health.
 	Build string
-	// Rendered, when set, is called for every Datastar answer to a message that re-renders the
-	// page (a body morph or region patches; a route's refresh or invalid) and for the page a
+	// Rendered, when set, is called for every Datastar answer that re-renders the page (a
+	// route's refresh or invalid: a body morph or region patches) and for the page a
 	// boosted navigation or a followed redirect morphs in (rq nil), with the <body> a full render
 	// sends: an Alder test's browser checks the
 	// page it holds after applying the answer against it. nil in production.
@@ -195,13 +195,13 @@ type tracker struct {
 	// via names the write route's answer that caused the patches ("render Row", "redirect Index"),
 	// for the Patches tab; the first patch takes it (patchName)
 	via    string
-	notice string // a Noticed answer's toast text, patched in after the body
+	notice string // the answer's first toast's text, patched in after the body
 	// hops are the redirects follow served in this same answer, after the request the client
 	// sent (whose rq and recorder the panel keeps): each one's URL, where its steps and
 	// statements start in the recorder, and how it was answered
 	hops []hopMark
-	// alert is a Noticed answer's text for a request without Datastar (no toast without the
-	// script): rendered as an <al-alert> at the top of the page (document)
+	// alert is a toast's text for a request without Datastar (no toast without the script):
+	// rendered as an <al-alert> at the top of the page (document)
 	alert string
 	kind  rtpkg.NoticeKind // the variant of notice or alert (only one is set)
 	more  []rtpkg.Toast    // a write's answer's toasts after the first (notice), patched in after it
@@ -1166,18 +1166,11 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 		return
 	}
 	if tw, ok := w.(*tracker); ok {
-		if rq.Notice != "" && rq.Datastar {
-			tw.notice, tw.kind = rq.Notice, rq.NoticeKind
-		} else if rq.Notice != "" {
-			tw.alert, tw.kind = rq.Notice, rq.NoticeKind // a Rerender's page shows it; a Redirect's stores it (below)
-		}
 		switch {
 		case resp.Status == http.StatusSeeOther:
 			tw.setAnswer("redirect " + rt.maskRef(resp.Location))
-		case resp.Status == http.StatusOK && !resp.Patch: // a document, or a boosted GET's morph of one
+		case resp.Status == http.StatusOK: // a document, or a boosted GET's morph of one
 			tw.setAnswer("page")
-		case resp.Status == http.StatusOK:
-			tw.setAnswer("rerender")
 		case resp.Status == http.StatusNotFound:
 			tw.setAnswer("not found")
 		default:
@@ -1216,10 +1209,6 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 			w.WriteHeader(http.StatusSeeOther)
 			return
 		}
-		if st.url == "" && resp.Patch && rq.Datastar {
-			rt.rerender(w, r, rq, resp)
-			return
-		}
 		page := html.RenderWith(resp.Node, resp.State)
 		if st.url != "" {
 			rt.morph(w, r, st, http.StatusOK, page)
@@ -1244,39 +1233,6 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 	default:
 		rt.fail(w, r, st, html.None(), fmt.Errorf("handler returned a response with status %d", resp.Status), nil)
 	}
-}
-
-// rerender answers a Datastar request whose page re-renders (a message's Rerender or Reject, a
-// form that did not decode): with the regions that changed between the page as it was before the
-// message (Response.Before) and its answer (patchRegions), else with the whole body morphed in,
-// as a boosted navigation's.
-func (rt *router) rerender(w http.ResponseWriter, r *http.Request, rq *Request, resp Response) {
-	if resp.Before == nil || r.Header.Get(html.ShownHeader) == "" { // regions only when fragments may follow
-		rt.patchRegions(w, r, rq, nil, html.Rendered{Page: html.RenderWith(resp.Node, resp.State)}, http.StatusOK)
-		return
-	}
-	after := html.RenderTracked(resp.Node, resp.State)
-	var plain *html.FormState
-	if resp.State != nil {
-		plain = &html.FormState{PageParams: resp.State.PageParams}
-	}
-	var before *html.Rendered
-	if b, ok := rt.renderBefore(w, r, resp.Before, plain, len(after.Page)+len(after.Page)/16); ok {
-		before = &b
-	}
-	rt.patchRegions(w, r, rq, before, after, http.StatusOK)
-}
-
-// renderBefore renders the page as it was before the message (Response.Before) with st, in a
-// buffer of size bytes (about the after-page's); a panic in it is logged and reported as not ok.
-func (rt *router) renderBefore(w http.ResponseWriter, r *http.Request, before func() html.Node, st *html.FormState, size int) (out html.Rendered, ok bool) {
-	defer func() {
-		if p := recover(); p != nil {
-			rt.logReq(w, "error", line(w, r, fmt.Sprintf("rendering the page before the message: %v (the whole body is patched)", p)))
-			ok = false
-		}
-	}()
-	return html.RenderTrackedSized(before(), st, size), true
 }
 
 // withShown is body with the <al-shown> element carrying its hash (datastar.ShownTag) at its end.
@@ -1414,7 +1370,7 @@ func dropSignals(u *url.URL) {
 // 200, then the events — the patch of the page's <body> (the morph), of its <title> (empty when
 // it has none, so the old page's title does not stay), and the history step to st.url
 // (datastar.Navigate in st.mode). Without st.url (a POST) it is the body patch alone, as a
-// 404/500 answered to a message always was.
+// 404/500 answered to a write is.
 func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status int, page string) {
 	if status != http.StatusOK {
 		w.Header().Set(StatusHeader, strconv.Itoa(status))
@@ -1469,7 +1425,7 @@ func titleOf(page string) (string, bool) {
 
 // document writes "<!doctype html>\n" + page, with the Datastar script tag injected, as HTML,
 // its <body> ending with the <al-shown> of its hash (an alert the router adds is part of it: the
-// next message's before-view has none, so its answer morphs the body).
+// next write's before-view has none, so its answer morphs the body).
 func (rt *router) document(w http.ResponseWriter, status int, page string) {
 	if tw, ok := w.(*tracker); ok && tw.alert != "" {
 		variant, _, role := noticeLook(tw.kind)
@@ -1647,7 +1603,7 @@ func startOfBody(page, s string) string {
 	return s + page
 }
 
-// NoticeCookie carries a Noticed answer's text across the redirect of a request without
+// NoticeCookie carries a toast's text across the redirect of a request without
 // Datastar (a form posted with the script off), signed with the session key, for one page.
 const NoticeCookie = "alder_notice"
 
@@ -1799,7 +1755,7 @@ func withScript(page string) string {
 // when Datastar initialises it (data-init: Datastar v1.0.0 has no data-on-load plugin, and a div
 // fires no load event).
 //
-// The overlay box carries data-ignore-morph, so a body patch from the app (a Rerender) keeps the
+// The overlay box carries data-ignore-morph, so a body patch from the app (a refresh) keeps the
 // error in it: Datastar leaves an element alone when the old and the new one both carry the
 // attribute, while the dev server's own `inner` patches of the box still apply. The subscriber
 // names gen (?b=), so the dev server can tell a page of an older build, and keeps its stream

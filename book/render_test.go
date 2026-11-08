@@ -39,10 +39,10 @@ func TestBook_WrappedInputMarkup(t *testing.T) {
 		if len(quoted) != 2 {
 			t.Fatalf("%s should quote the al-input markup on two lines, found %d", c.file, len(quoted))
 		}
-		add := rt.MsgRef{Module: "Index", Msg: "Add"}
+		add := rt.Route{Name: "Index.Add", Method: "POST", Path: "/add"}
 		control := html.Input(html.Control{Kind: "input", Form: "Index.F", Name: c.field, Type: "text", Label: c.label, Required: true,
 			Wrap: "al-input", WrapAttrs: []html.Attr{html.A("placeholder", c.placeholder), html.A("help", c.help)}})
-		page := html.FormTo(add, nil, control)
+		page := html.FormToRoute(add, nil, control)
 		inner := func(form string) string { // the control, without its form
 			i := strings.Index(form, "<al-input")
 			j := strings.LastIndex(form, "</al-input>")
@@ -54,7 +54,7 @@ func TestBook_WrappedInputMarkup(t *testing.T) {
 		if got := inner(html.Render(page)); got != quoted[0] {
 			t.Errorf("%s: the first line is not the render:\n got %s\nbook %s", c.file, got, quoted[0])
 		}
-		st := &html.FormState{Form: "Index.F", Msg: add.Key(), Values: map[string]string{c.field: ""},
+		st := &html.FormState{Form: "Index.F", Msg: rt.RouteKey(add), Values: map[string]string{c.field: ""},
 			Errors: map[string][]string{c.field: {"must not be empty"}}}
 		if got := inner(html.RenderWith(page, st)); got != quoted[1] {
 			t.Errorf("%s: the second line is not the failed render:\n got %s\nbook %s", c.file, got, quoted[1])

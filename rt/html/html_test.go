@@ -87,31 +87,6 @@ func TestHTML_Controls(t *testing.T) {
 	}
 }
 
-func TestHTML_Form(t *testing.T) {
-	got := Render(Form("/_m/M/Save?id=1", []Attr{A("class", "f")}, El("button", nil, Text("Go"))))
-	want := `<form method="post" action="/_m/M/Save?id=1" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/M/Save?id=1&#39;, window._alderO?.(&#39;form&#39;)||{contentType: &#39;form&#39;}))" class="f"><button>Go</button></form>`
-	if got != want {
-		t.Fatalf("got %s", got)
-	}
-}
-
-// A message attribute resolves to its URL at render time, carrying the rendered page's
-// parameters under the _p. prefix; without a state it has none. (A <button> with a click
-// renders as a click button: TestRender_ClickButtons.)
-func TestMsgAttr(t *testing.T) {
-	m := rt.MsgRef{Module: "M", Msg: "Save", Params: []rt.KV{{Key: "id", Value: "1"}}}
-	n := FormTo(m, []Attr{A("class", "f")}, El("span", []Attr{MsgAttr("data-on:click", rt.MsgRef{Module: "App", Msg: "Logout"})}))
-	want := `<form method="post" action="/_m/M/Save?id=1" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/M/Save?id=1&#39;, window._alderO?.(&#39;form&#39;)||{contentType: &#39;form&#39;}))" class="f"><span data-on:click="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Logout&#39;, window._alderO?.()))"></span></form>`
-	if got := Render(n); got != want {
-		t.Errorf("Render =\n%s\nwant\n%s", got, want)
-	}
-	st := &FormState{PageParams: []rt.KV{{Key: "filter", Value: "Active"}, rt.QueryKV("q", "", "")}}
-	want = `<form method="post" action="/_m/M/Save?id=1&amp;_p.filter=Active" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/M/Save?id=1&amp;_p.filter=Active&#39;, window._alderO?.(&#39;form&#39;)||{contentType: &#39;form&#39;}))" class="f"><span data-on:click="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Logout?_p.filter=Active&#39;, window._alderO?.()))"></span></form>`
-	if got := RenderWith(n, st); got != want {
-		t.Errorf("RenderWith =\n%s\nwant\n%s", got, want)
-	}
-}
-
 // A carriage return in text or an attribute value renders as &#13;: no raw "\r" reaches the
 // page, or a Datastar patch of it (the reviewer's payload).
 func TestHTML_CarriageReturnEscaped(t *testing.T) {
@@ -242,7 +217,7 @@ func TestRootID(t *testing.T) {
 		{"raw markup", Raw(`<li id="a">x</li>`), "", false},
 		{"nothing", None(), "", false},
 		{"an empty id", li(A("id", "")), "", false},
-		{"a click button (rendered in a form of its own)", El("button", []Attr{A("id", "b"), MsgAttr("data-on:click", rt.MsgRef{Module: "M", Msg: "Go"})}, Text("Go")), "", false},
+		{"a click button (rendered in a form of its own)", El("button", []Attr{A("id", "b"), RouteAttr("data-on:click", rowRoute("7"))}, Text("Go")), "", false},
 		{"a plain button", El("button", []Attr{A("id", "b")}, Text("Go")), "b", true},
 	} {
 		id, ok := RootID(c.n)
@@ -261,6 +236,7 @@ var (
 	rowRoute = func(id string) rt.Route {
 		return rt.Route{Name: "Todos.Row", Method: "PATCH", Path: "/todos/" + rt.PathSegment(id), Query: []rt.KV{{Key: "tab", Value: "a b"}}}
 	}
+	saveRoute = rt.Route{Name: "M.Save", Method: "POST", Path: "/save"}
 	listRoute = rt.Route{Name: "Todos.Index", Method: "GET", Path: "/todos", Query: []rt.KV{{Key: "filter", Value: "Active"}, rt.QueryKV("q", "", "")}}
 )
 
@@ -305,21 +281,21 @@ func TestRender_ClickWriteRoute(t *testing.T) {
 	}
 	// inside a form: the button names the method itself (name="_method"), so no field of the
 	// enclosing form is needed
-	got = Render(FormTo(rt.MsgRef{Module: "M", Msg: "Save"}, nil, El("button", []Attr{RouteAttr("data-on:click", rowRoute("7"))}, Text("Done"))))
+	got = Render(FormToRoute(saveRoute, nil, El("button", []Attr{RouteAttr("data-on:click", rowRoute("7"))}, Text("Done"))))
 	want = `<button type="submit" formaction="` + u + `" formmethod="post" formnovalidate name="_method" value="PATCH" data-on:click__prevent="` + busyQ("@patch('"+u+"', window._alderO?.())") + `">Done</button></form>`
 	if !strings.HasSuffix(got, want) || strings.Count(got, "<form") != 1 {
 		t.Fatalf("inside a form:\n got %s\nwant …%s", got, want)
 	}
 	// inside a form, a button with a name of its own (R16): the override comes first and the
 	// author's name and value are dropped (keeping them would lose _method without JavaScript)
-	got = Render(FormTo(rt.MsgRef{Module: "M", Msg: "Save"}, nil, El("button", []Attr{A("name", "action"), A("value", "done"), RouteAttr("data-on:click", rowRoute("7"))}, Text("Done"))))
+	got = Render(FormToRoute(saveRoute, nil, El("button", []Attr{A("name", "action"), A("value", "done"), RouteAttr("data-on:click", rowRoute("7"))}, Text("Done"))))
 	if strings.Count(got, ` name="`) != 1 || strings.Count(got, ` value="`) != 1 || !strings.Contains(got, `formnovalidate name="_method" value="PATCH"`) {
 		t.Fatalf("named, inside a form: %s", got)
 	}
 	// a POST route's button has no override: its own name and value stay
 	post := rowRoute("7")
 	post.Method = "POST"
-	got = Render(FormTo(rt.MsgRef{Module: "M", Msg: "Save"}, nil, El("button", []Attr{A("name", "action"), A("value", "done"), RouteAttr("data-on:click", post)}, Text("Done"))))
+	got = Render(FormToRoute(saveRoute, nil, El("button", []Attr{A("name", "action"), A("value", "done"), RouteAttr("data-on:click", post)}, Text("Done"))))
 	if strings.Contains(got, "_method") || !strings.Contains(got, `name="action" value="done"`) {
 		t.Fatalf("named POST, inside a form: %s", got)
 	}
@@ -355,7 +331,7 @@ func TestRender_ClickGetRoute(t *testing.T) {
 	inner := []Node{Input(Control{Kind: "input", Form: "F", Name: "pw", Type: "text", Secret: true}),
 		El("button", []Attr{RouteAttr("data-on:click", listRoute), A("class", "x")}, Text("More")),
 		El("al-button", nil, El("button", []Attr{RouteAttr("data-on:click", listRoute)}, Text("All")))}
-	for _, form := range []Node{FormTo(rt.MsgRef{Module: "M", Msg: "Save"}, nil, inner...), FormToRoute(rowRoute("7"), nil, inner...)} {
+	for _, form := range []Node{FormToRoute(saveRoute, nil, inner...), FormToRoute(rowRoute("7"), nil, inner...)} {
 		got = Render(form)
 		want = `<button type="button" class="x" data-on:click="` + busyQ("@get('"+u+"', window._alderF?.())") + `">More</button>` +
 			`<al-button><button type="button" data-on:click="` + busyQ("@get('"+u+"', window._alderF?.())") + `">All</button></al-button></form>`
@@ -437,15 +413,6 @@ func TestRender_SubmitRoute(t *testing.T) {
 	if got != want {
 		t.Fatalf("POST:\n got %s\nwant %s", got, want)
 	}
-	// WithoutPageParams leaves a route's URLs alone (they carry no page parameters)
-	n := Nodes(FormToRoute(rowRoute("7"), nil, El("button", []Attr{RouteAttr("data-on:click", listRoute)})), El("li", []Attr{RouteAttr("data-on:click", rowRoute("7"))}))
-	stripped := Render(WithoutPageParams(n))
-	for _, want := range []string{`action="` + u + `"`, `@patch(&#39;` + u + `&#39;, window._alderO?.(&#39;form&#39;)`, `action="/todos?filter=Active"`,
-		`@get(&#39;/todos?filter=Active&#39;, window._alderF?.())`, `@patch(&#39;` + u + `&#39;, window._alderO?.())`} {
-		if !strings.Contains(stripped, want) {
-			t.Errorf("WithoutPageParams lost %s:\n%s", want, stripped)
-		}
-	}
 }
 
 // Two per-row forms of one PATCH route: the state (Msg = rt.RouteKey of the posted request)
@@ -464,7 +431,7 @@ func TestRender_FormStateByRouteKey(t *testing.T) {
 }
 
 // Inside a PATCH FormToRoute with its own submit button, each click button sends exactly its own
-// _method without JavaScript: a POST route's and a message's none, a DELETE route's DELETE.
+// _method without JavaScript: a POST route's none, a DELETE route's DELETE.
 func TestRender_ClickInRouteFormOwnMethod(t *testing.T) {
 	post := rowRoute("7")
 	post.Method = "POST"
@@ -472,13 +439,12 @@ func TestRender_ClickInRouteFormOwnMethod(t *testing.T) {
 	del.Method = "DELETE"
 	got := Render(FormToRoute(rowRoute("7"), nil,
 		El("button", []Attr{RouteAttr("data-on:click", post)}, Text("P")),
-		El("button", []Attr{MsgAttr("data-on:click", rt.MsgRef{Module: "M", Msg: "Go"})}, Text("M")),
 		El("button", []Attr{RouteAttr("data-on:click", del)}, Text("D")),
 		El("button", nil, Text("Save"))))
 	if strings.Contains(got, `type="hidden"`) {
 		t.Fatalf("a hidden _method field: %s", got)
 	}
-	for label, want := range map[string]int{"P": 0, "M": 0, "D": 1, "Save": 1} {
+	for label, want := range map[string]int{"P": 0, "D": 1, "Save": 1} {
 		i := strings.Index(got, ">"+label+"</button>")
 		start := strings.LastIndex(got[:i], "<button")
 		tag := got[start:i]

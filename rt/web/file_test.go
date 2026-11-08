@@ -153,7 +153,7 @@ func TestFile_RedirectIntoFileNavigates(t *testing.T) {
 // A file route is "followable"-refused only when it is the route serve would pick: a more
 // specific HTML page on a path a file pattern also matches is still followed.
 func TestFile_FollowableMirrorsServe(t *testing.T) {
-	page := func(rq *Request) Response { return PageResponse(doc("page"), nil, nil, false) }
+	page := func(rq *Request) Response { return PageResponse(doc("page"), nil, nil) }
 	file := func(rq *Request) Response { return FileResponse(rtpkg.File{Body: []byte("f")}, rq.Session) }
 	h := NewRouter([]Route{
 		{Method: "GET", Pattern: "/r/{id}", File: true, Handle: file},

@@ -317,8 +317,8 @@ type Tx interface {
 // a @unique violation or a capability failure.
 type ErrFail struct {
 	Msg string
-	// NotMember: a `via` field's membership check refused the Session.put (M15). A message's
-	// route answers it as Reject "You are not a member of that workspace." on a form, and 404
+	// NotMember: a `via` field's membership check refused the Session.put (M15). A write route
+	// answers it as `invalid` "You are not a member of that workspace." on a form, and 404
 	// otherwise, not 500; Test.run sees the failure as any other.
 	NotMember bool
 }
@@ -389,10 +389,10 @@ type Recorder struct {
 	SQL   []SQLRec
 
 	// Loads counts the Queries run on the Env (RunQuery): in a request, a page's `load` (a
-	// Rerender runs it twice, before and after update). `alder bench` reports it.
+	// `refresh` runs it twice, before and after update). `alder bench` reports it.
 	Loads int
 	// Cuts are the indexes into SQL where a Query run (a page's `load`) began and ended: the N+1
-	// rule counts each run on its own (RepeatsCut), so a Rerender, whose load runs twice, does
+	// rule counts each run on its own (RepeatsCut), so a `refresh`, whose load runs twice, does
 	// not double a load's statements, and update's own statements are counted apart from them.
 	Cuts []int
 

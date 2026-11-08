@@ -54,7 +54,7 @@ func Route__Index__Index() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Index__Index__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Index__Index__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 

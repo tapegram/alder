@@ -68,7 +68,7 @@ func Route__Edit__Edit() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Edit__Edit__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Edit__Edit__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -221,7 +221,7 @@ func Route__Other__Other() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Other__Other__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Other__Other__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -266,7 +266,7 @@ func Route__Secret__Secret() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Secret__Secret__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Secret__Secret__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 

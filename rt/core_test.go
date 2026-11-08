@@ -173,25 +173,18 @@ func sign(n int) int {
 }
 
 func TestURLs(t *testing.T) {
-	if got := PageURL(Page{Path: "/todos/3"}); got != "/todos/3" {
-		t.Errorf("PageURL = %q", got)
+	if got := RouteURL(Route{Path: "/todos/3"}); got != "/todos/3" {
+		t.Errorf("RouteURL = %q", got)
 	}
-	if got := MsgURL("Todos.Index", "Ping"); got != "/_m/Todos.Index/Ping" {
-		t.Errorf("MsgURL no params = %q", got)
+	page := Route{Path: "/t/" + PathSegment("a/b c"), Query: []KV{QueryKV("filter", "All", "All"), QueryKV("q", "x&y", ""), {Key: "n", Value: "1"}}}
+	if got, want := RouteURL(page), "/t/a%2Fb%20c?q=x%26y&n=1"; got != want {
+		t.Errorf("RouteURL = %q, want %q", got, want)
 	}
-	got := MsgURL("M", "Pick", KV{Key: "name", Value: "a b&c"}, KV{Key: "n", Value: "2"}, KV{Key: "x", Omit: true})
-	if want := "/_m/M/Pick?name=a+b%26c&n=2"; got != want {
-		t.Errorf("MsgURL = %q, want %q", got, want)
+	if got := RouteURL(Route{Path: "/", Query: []KV{QueryKV("filter", "All", "All")}}); got != "/" {
+		t.Errorf("RouteURL at defaults = %q", got)
 	}
-	page := Page{Path: "/t/" + PathSegment("a/b c"), Query: []KV{QueryKV("filter", "All", "All"), QueryKV("q", "x&y", ""), {Key: "n", Value: "1"}}}
-	if got, want := PageURL(page), "/t/a%2Fb%20c?q=x%26y&n=1"; got != want {
-		t.Errorf("PageURL = %q, want %q", got, want)
-	}
-	if got := PageURL(Page{Path: "/", Query: []KV{QueryKV("filter", "All", "All")}}); got != "/" {
-		t.Errorf("PageURL at defaults = %q", got)
-	}
-	if got, want := PageURL(Page{Path: "/", Query: Queries([]KV{{Key: "a", Value: "1"}}, QueryKVs("t", []string{"x", "y"}))}), "/?a=1&t=x&t=y"; got != want {
-		t.Errorf("PageURL with a list = %q, want %q", got, want)
+	if got, want := RouteURL(Route{Path: "/", Query: Queries([]KV{{Key: "a", Value: "1"}}, QueryKVs("t", []string{"x", "y"}))}), "/?a=1&t=x&t=y"; got != want {
+		t.Errorf("RouteURL with a list = %q, want %q", got, want)
 	}
 	if got := MaybeText(Just(int64(3)), func(n int64) string { return "n" }); got != "n" {
 		t.Errorf("MaybeText Just = %q", got)
@@ -258,29 +251,6 @@ func TestDict_AnyKey(t *testing.T) {
 	}
 	if Key(0.0) != Key(math.Copysign(0, -1)) {
 		t.Error("-0 and 0 are different keys")
-	}
-}
-
-func TestPageParams(t *testing.T) {
-	m := MsgRef{Module: "Posts.Show", Msg: "DeleteComment", Params: []KV{{Key: "id", Value: "c 1"}}}
-	if got, want := m.URL(nil), "/_m/Posts.Show/DeleteComment?id=c+1"; got != want {
-		t.Errorf("URL(nil) = %q, want %q", got, want)
-	}
-	page := []KV{{Key: "id", Value: "p/1"}, QueryKV("filter", "All", "All"), {Key: "tag", Value: "a"}, {Key: "tag", Value: "b"}}
-	u := m.URL(page)
-	if want := "/_m/Posts.Show/DeleteComment?id=c+1&_p.id=p%2F1&_p.tag=a&_p.tag=b"; u != want {
-		t.Errorf("URL(page) = %q, want %q", u, want)
-	}
-	if len(m.Params) != 1 {
-		t.Errorf("URL changed the message's params: %v", m.Params)
-	}
-	q, _ := url.ParseQuery(u[strings.Index(u, "?")+1:])
-	params, values := PageParams(q)
-	if !reflect.DeepEqual(params, map[string]string{"id": "p/1", "tag": "a"}) || values.Encode() != "id=p%2F1&tag=a&tag=b" {
-		t.Errorf("PageParams = %v, %q", params, values.Encode())
-	}
-	if params, values := PageParams(url.Values{"id": {"x"}}); len(params) != 0 || len(values) != 0 {
-		t.Errorf("PageParams without page keys = %v, %v", params, values)
 	}
 }
 
@@ -359,36 +329,16 @@ func FuzzBackURL(f *testing.F) {
 	})
 }
 
-// PageAt rebuilds a page's URL from its pattern and its parameters as text: path parameters
-// escaped into their segments, the others as the query, defaults left out (I2's PRG target).
-func TestPageAt(t *testing.T) {
-	for _, c := range []struct {
-		pattern string
-		params  []KV
-		want    string
-	}{
-		{"/", nil, "/"},
-		{"/", []KV{QueryKV("filter", "All", "All")}, "/"},
-		{"/", []KV{QueryKV("filter", "Active", "All")}, "/?filter=Active"},
-		{"/todos/{id}", []KV{{Key: "id", Value: "a/b c"}}, "/todos/a%2Fb%20c"},
-		{"/u/{u}/p/{p}", Queries([]KV{{Key: "p", Value: "2"}, {Key: "u", Value: "x"}}, QueryKVs("tag", []string{"a", "b"})), "/u/x/p/2?tag=a&tag=b"},
-	} {
-		if got := PageAt(c.pattern, c.params); got != c.want {
-			t.Errorf("PageAt(%q, %v) = %q, want %q", c.pattern, c.params, got, c.want)
-		}
+// RouteKey and URLKey agree: the form as rendered and the request as its route receives it (keys
+// in any order, defaults left out).
+func TestURLKey(t *testing.T) {
+	r := Route{Method: "POST", Path: "/items/a%20b", Query: Queries([]KV{{Key: "id", Value: "a b"}, QueryKV("n", "", "")}, QueryKVs("t", []string{"x", "y"}))}
+	q, _ := url.ParseQuery("t=x&id=a+b&t=y")
+	if got, want := "POST "+URLKey(r.Path, q), RouteKey(r); got != want || want != "POST /items/a%20b?id=a+b&t=x&t=y" {
+		t.Fatalf("URLKey %q, RouteKey %q", got, want)
 	}
-}
-
-// MsgRef.Key and MsgKey agree: the form as rendered and the message as its route receives it
-// (page parameters ignored, keys in any order).
-func TestMsgKey(t *testing.T) {
-	m := MsgRef{Module: "Items", Msg: "Rename", Params: Queries([]KV{{Key: "id", Value: "a b"}, QueryKV("n", "", "")}, QueryKVs("t", []string{"x", "y"}))}
-	q, _ := url.ParseQuery(strings.SplitN(m.URL([]KV{{Key: "filter", Value: "All"}}), "?", 2)[1])
-	if got, want := MsgKey("/_m/Items/Rename", q), m.Key(); got != want || want != "/_m/Items/Rename?id=a+b&t=x&t=y" {
-		t.Fatalf("MsgKey %q, Key %q", got, want)
-	}
-	if (MsgRef{Module: "A", Msg: "B"}).Key() != "/_m/A/B" || MsgKey("/_m/A/B", url.Values{"_p.x": {"1"}}) != "/_m/A/B" {
-		t.Fatal("a message without parameters")
+	if URLKey("/a", nil) != "/a" || URLKey("/a", url.Values{}) != "/a" {
+		t.Fatal("a request without parameters")
 	}
 }
 

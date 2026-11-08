@@ -71,7 +71,7 @@ func Route__Admin__Admin() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Admin__Admin__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Admin__Admin__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -109,7 +109,7 @@ func Route__Login__Login() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Login__Login__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Login__Login__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -154,7 +154,7 @@ func Route__Notes__Notes() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Notes__Notes__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Notes__Notes__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 

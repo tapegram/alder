@@ -30,9 +30,8 @@ func RegisterUnion(tagType reflect.Type, names []string) {
 // 2026-10-09, a Time in RFC 3339 UTC, a record { title: "Milk", _at: … } (field names are the
 // inverse of gen's Field: the Go field with its first letter lower-cased, U__at as _at), a
 // registered union Name / Name 3 / Name { w: 1.0 }, Html as its markup, <Query> / <Task>, the
-// Db builder's values as <Select> / <Table> / <Condition> / <Order>, a Page as its URL (a named
-// Route as Todos.Index /todos), a Response as its builders, a Nav
-// as Rerender / Redirect <url> / Reject "text". NaN, +Inf and -Inf are not Alder literals; they
+// Db builder's values as <Select> / <Table> / <Condition> / <Order>, a Route as its name applied
+// to its URL (Todos.Index /todos; a bare URL for Url.external), a Response as its builders. NaN, +Inf and -Inf are not Alder literals; they
 // print as is. A constructor's argument is parenthesized when it is itself an application or
 // negative: Just (Rect { w: 1.0 }), Just (-1).
 func Show(v any) (s string) {
@@ -46,9 +45,8 @@ func Show(v any) (s string) {
 }
 
 var (
-	pageType = reflect.TypeFor[Page]()
-	navType  = reflect.TypeFor[Nav]()
-	dateType = reflect.TypeFor[Date]()
+	routeType = reflect.TypeFor[Route]()
+	dateType  = reflect.TypeFor[Date]()
 )
 
 // Shower is a runtime type that prints itself as Alder (the test types Doc and Answer of
@@ -80,26 +78,11 @@ func show(v reflect.Value) (string, bool) {
 		return "<time>", false
 	case dateType:
 		return fmt.Sprintf("%04d-%02d-%02d", v.Field(0).Int(), v.Field(1).Int(), v.Field(2).Int()), false
-	case pageType: // a Route: its Name applied to its URL, or the bare URL with no Name
+	case routeType: // its Name applied to its URL, or the bare URL with no Name
 		if name := v.FieldByName("Name").String(); name != "" {
-			return name + " " + pageURL(v), true
+			return name + " " + routeURL(v), true
 		}
-		return pageURL(v), false
-	case navType:
-		switch NavTag(v.FieldByName("Tag").Uint()) {
-		case NavRerender:
-			return "Rerender", false
-		case NavRedirect:
-			return "Redirect " + pageURL(v.FieldByName("Page")), true
-		case NavReject:
-			return "Reject " + quote(v.FieldByName("Text").String()), true
-		case NavNoticed:
-			kind := ""
-			if k := v.FieldByName("Kind").String(); k != "" && k != string(NoticeInfo) {
-				kind = k + " "
-			}
-			return "Noticed " + kind + quote(v.FieldByName("Text").String()) + " " + Show(v.FieldByName("Next").Elem().Interface()), true
-		}
+		return routeURL(v), false
 	}
 	if v.Kind() == reflect.Struct && v.CanInterface() {
 		if sh, ok := v.Interface().(Shower); ok {
@@ -222,16 +205,16 @@ func showFloat(f float64) (string, bool) {
 	return s, math.Signbit(f)
 }
 
-// pageURL is PageURL of a Page value, read field by field (so it works on a value reflect cannot
-// hand out as an interface).
-func pageURL(v reflect.Value) string {
-	p := Page{Path: v.FieldByName("Path").String()}
+// routeURL is RouteURL of a Route value, read field by field (so it works on a value reflect
+// cannot hand out as an interface).
+func routeURL(v reflect.Value) string {
+	p := Route{Path: v.FieldByName("Path").String()}
 	q := v.FieldByName("Query")
 	for i := range q.Len() {
 		kv := q.Index(i)
 		p.Query = append(p.Query, KV{Key: kv.Field(0).String(), Value: kv.Field(1).String(), Omit: kv.Field(2).Bool()})
 	}
-	return PageURL(p)
+	return RouteURL(p)
 }
 
 // dictShow is implemented by every Dict instantiation.

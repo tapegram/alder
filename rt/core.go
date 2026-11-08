@@ -435,18 +435,12 @@ type HttpError struct {
 	Message string
 }
 
-// Page is a link target: a page's path with its path parameters filled in (each segment
-// escaped), and its other parameters as Query, in declaration order. Url.external is a Page
-// with the URL as Path and no Query. It is a Route (with no Name or Method) until pages go
-// (#160).
-type Page = Route
-
 // DefaultPublicURL is the public base (PublicURL) of a process that is not told its own: the
 // test runner, alder eval and the REPL, so a test's expected absolute URL is the same on every
 // machine.
 const DefaultPublicURL = "http://localhost:8080"
 
-// PublicURL is the scheme and host in front of a page's URL in `Url.absolute`. Only the served
+// PublicURL is the scheme and host in front of a route's URL in `Url.absolute`. Only the served
 // executable changes it, and before any of the app's own values are computed: its main imports
 // alder/rt/publicurl, whose initialisation (ahead of package app's, so a top-level constant
 // built with Url.absolute sees it too) sets it from the environment (ResolvePublicURL). Nothing
@@ -533,33 +527,8 @@ func DisplayAddr(addr string) string {
 	return net.JoinHostPort(host, port)
 }
 
-// PageURL is the URL a link to p points at: `href={…}` and `Redirect` render it (RouteURL).
-func PageURL(p Page) string { return RouteURL(p) }
-
-// PageAt is the URL of a page from its path pattern ("/todos/{id}") and its parameters as text
-// (the generated params__M, in declaration order): each {name} segment is the parameter of that
-// name, escaped (PathSegment); the others, but those left out (Omit), are the query, in order.
-// A message route answers a Rerender without JavaScript with a 303 to it (Post/Redirect/Get).
-func PageAt(pattern string, params []KV) string {
-	segs := strings.Split(pattern, "/")
-	var query []KV
-	for _, p := range params {
-		filled := false
-		for i, s := range segs {
-			if s == "{"+p.Key+"}" {
-				segs[i], filled = PathSegment(p.Value), true
-				break
-			}
-		}
-		if !filled {
-			query = append(query, p)
-		}
-	}
-	return PageURL(Page{Path: strings.Join(segs, "/"), Query: query})
-}
-
 // KV is one URL parameter: its name and its value as text. Omit leaves it out of the URL: a
-// page parameter at its default (QueryKV), which the page decodes back when it is absent.
+// route parameter at its default (QueryKV), which the route decodes back when it is absent.
 type KV struct {
 	Key, Value string
 	Omit       bool
@@ -569,7 +538,7 @@ type KV struct {
 // the parameter's default ("" for a Maybe without one: Nothing).
 func QueryKV(key, value, def string) KV { return KV{Key: key, Value: value, Omit: value == def} }
 
-// QueryKVs are the URL parameters of a List page parameter: key once per element, in order.
+// QueryKVs are the URL parameters of a List route parameter: key once per element, in order.
 func QueryKVs(key string, values []string) []KV {
 	out := make([]KV, len(values))
 	for i, v := range values {
@@ -578,7 +547,7 @@ func QueryKVs(key string, values []string) []KV {
 	return out
 }
 
-// Queries joins groups of URL parameters, in order (a link whose page has List parameters).
+// Queries joins groups of URL parameters, in order (a link whose route has List parameters).
 func Queries(groups ...[]KV) []KV { return slices.Concat(groups...) }
 
 // queryString is "?k=v&…" for the parameters of kvs that are not Omit, "" for none.
@@ -638,86 +607,6 @@ func URLScheme(u string) string {
 // "a%2Fb").
 func PathSegment(s string) string { return url.PathEscape(s) }
 
-// MsgURL is the URL a message is posted to: /_m/<module>/<msg>, then the message's parameters
-// (in declaration order) as an URL-encoded query string. Generated views do not call it: they
-// render a MsgRef, whose URL also carries the parameters of the page being rendered.
-func MsgURL(module, msg string, params ...KV) string {
-	return MsgRef{Module: module, Msg: msg, Params: params}.URL(nil)
-}
-
-// MsgRef is a message as a `click` or `submit` attribute names it: its module (the page's, or
-// App), its name and its parameters as text, in declaration order (a List parameter once per
-// element). rt/html resolves it to a URL when the page is rendered (URL).
-type MsgRef struct {
-	Module, Msg string
-	Params      []KV
-}
-
-// PagePrefix starts the query keys of a message URL that carry the parameters of the page the
-// message was rendered on ("_p.filter"): an Alder name never contains '.', so they never clash
-// with the message's own parameters.
-const PagePrefix = "_p."
-
-// URL is the URL m is posted to: /_m/<module>/<msg>, the message's parameters, then page, the
-// parameters of the page rendering it, each key prefixed with PagePrefix — the message's route
-// decodes the page's parameters from those (PageParams), so update and the re-render see the
-// page the user saw.
-func (m MsgRef) URL(page []KV) string {
-	kvs := m.Params
-	if len(page) > 0 {
-		kvs = slices.Clone(m.Params)
-		for _, p := range page {
-			p.Key = PagePrefix + p.Key
-			kvs = append(kvs, p)
-		}
-	}
-	return "/_m/" + m.Module + "/" + m.Msg + queryString(kvs)
-}
-
-// Key identifies m as a form posting it is rendered (FormState.Msg): MsgKey of its path and its
-// own parameters.
-func (m MsgRef) Key() string {
-	q := url.Values{}
-	for _, p := range m.Params {
-		if !p.Omit {
-			q[p.Key] = append(q[p.Key], p.Value)
-		}
-	}
-	return MsgKey("/_m/"+m.Module+"/"+m.Msg, q)
-}
-
-// MsgKey identifies a message as it was sent: its path, then its own parameters — the query's
-// keys without the PagePrefix ones — URL-encoded in key order. A message route puts it on the
-// form state of a re-render (FormState.Msg), so only the form that posted that very message (a
-// per-row form's row id included) shows the submitted values and errors; MsgRef.Key is the same
-// for the form as rendered.
-func MsgKey(path string, query url.Values) string {
-	own := url.Values{}
-	for k, vs := range query {
-		if !strings.HasPrefix(k, PagePrefix) {
-			own[k] = vs
-		}
-	}
-	if len(own) == 0 {
-		return path
-	}
-	return path + "?" + own.Encode()
-}
-
-// PageParams are the parameters of the page a message was sent from, for the message's route
-// to decode, taken from the PagePrefix keys of the message URL's query (prefix removed): as a
-// map of each key's first value (the path parameters) and as url.Values (the others).
-func PageParams(query url.Values) (map[string]string, url.Values) {
-	params, q := map[string]string{}, url.Values{}
-	for k, vs := range query {
-		if name, ok := strings.CutPrefix(k, PagePrefix); ok && len(vs) > 0 {
-			params[name] = vs[0]
-			q[name] = vs
-		}
-	}
-	return params, q
-}
-
 // BackURL is where a redirect back to the page that sent a request goes, and which page a write
 // answers for (#160): the path and query of raw — the Referer header, or Alder-Page (the path and
 // query the page's post helper sends) — or "/" when there is none. Scheme and host are dropped, so
@@ -760,7 +649,7 @@ func BackURL(raw string) string {
 // backURLMax is the longest value BackURL reads (and returns): a longer one is "/".
 const backURLMax = 2048
 
-// MaybeText is a Maybe's value as text, "" for Nothing. The generated code uses it for message
+// MaybeText is a Maybe's value as text, "" for Nothing. The generated code uses it for route
 // parameters and form values of a Maybe type.
 func MaybeText[T any](m Maybe[T], text func(T) string) string {
 	if !m.Ok {
@@ -769,7 +658,7 @@ func MaybeText[T any](m Maybe[T], text func(T) string) string {
 	return text(m.Val)
 }
 
-// TextOf is any other value as text (fmt's %v), for message parameters of a type with no text
+// TextOf is any other value as text (fmt's %v), for route parameters of a type with no text
 // form of its own (records, lists, unions with payloads).
 func TextOf(v any) string { return fmt.Sprint(v) }
 

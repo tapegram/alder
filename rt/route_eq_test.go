@@ -2,21 +2,22 @@ package rt
 
 import "testing"
 
-// A page's `==` is its URL's: a parameter at its default (Omit) equals the page read back from
-// the URL that leaves it out, inside a Nav or a record too; Key agrees, and so does Show.
-func TestPage_AlderEqual(t *testing.T) {
-	built := Page{Path: "/", Query: []KV{{Key: "filter", Value: "All", Omit: true}}}
-	read := Page{Path: "/"}
-	other := Page{Path: "/", Query: []KV{{Key: "filter", Value: "Active"}}}
+// A route's `==` is its URL's: a parameter at its default (Omit) equals the route read back
+// from the URL that leaves it out, inside a Response or a record too; Key agrees, and so does
+// Show.
+func TestRoute_AlderEqualAtDefaults(t *testing.T) {
+	built := Route{Path: "/", Query: []KV{{Key: "filter", Value: "All", Omit: true}}}
+	read := Route{Path: "/"}
+	other := Route{Path: "/", Query: []KV{{Key: "filter", Value: "Active"}}}
 	if !Eq(built, read) || Eq(built, other) {
 		t.Fatalf("Eq(built, read) = %v, Eq(built, other) = %v", Eq(built, read), Eq(built, other))
 	}
 	if !Eq(Redirect(built), Redirect(read)) || Eq(Redirect(built), Redirect(other)) {
-		t.Fatal("a Nav's page is compared as its URL")
+		t.Fatal("a Response's route is compared as its URL")
 	}
-	type rec struct{ P Page }
+	type rec struct{ P Route }
 	if !Eq(rec{built}, rec{read}) {
-		t.Fatal("a record's page is compared as its URL")
+		t.Fatal("a record's route is compared as its URL")
 	}
 	if Key(built) != Key(read) || Key(built) == Key(other) {
 		t.Fatalf("keys %q %q %q", Key(built), Key(read), Key(other))

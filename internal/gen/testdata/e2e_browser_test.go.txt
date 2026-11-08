@@ -29,8 +29,7 @@ func TestAlderBrowser(t *testing.T) {
 	// RF3: the click posts the URL the page rendered, and the refresh runs the page the browser
 	// is on, with its parameter, again (the before-view, then the page after the update)
 	want := []string{"Db.insert User", "Db.insert Note", "Test.login", "Test.get Notes.Index.Index", "Db.all Note", "Time.now",
-		"Test.click Notes.Index.Toggle", "Db.all Note", "Time.now", "Db.get Note", "Db.update Note", "Db.all Note", "Time.now",
-		"Db.all Note", "Time.now", "Db.all Note", "Time.now"}
+		"Test.click Notes.Index.Toggle", "Db.all Note", "Time.now", "Db.get Note", "Db.update Note", "Db.all Note", "Time.now"}
 	if tr := got["Notes.Index a click keeps the page's parameter"].Trace; !reflect.DeepEqual(tr, want) {
 		t.Errorf("RF3 trace %q, want %q", tr, want)
 	}

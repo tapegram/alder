@@ -12,7 +12,7 @@ func TestResponse_Codes(t *testing.T) {
 		resp Response
 		want int
 	}{
-		{"redirect", RedirectTo(r), 303},
+		{"redirect", Redirect(r), 303},
 		{"render", Render(r), 200},
 		{"refresh", Refresh(), 200},
 		{"invalid", Invalid("no"), 422},
@@ -47,21 +47,21 @@ func TestResponse_ToastAppends(t *testing.T) {
 func TestResponse_Equal(t *testing.T) {
 	r := Route{Name: "Todos.Index", Method: "GET", Path: "/todos"}
 	built := Route{Name: "Todos.Index", Method: "GET", Path: "/todos", Query: []KV{{Key: "f", Value: "All", Omit: true}}}
-	a := WithToast(NoticeInfo, "Added", RedirectTo(r))
-	b := WithToast(NoticeInfo, "Added", RedirectTo(built))
+	a := WithToast(NoticeInfo, "Added", Redirect(r))
+	b := WithToast(NoticeInfo, "Added", Redirect(built))
 	if !Eq(a, b) {
 		t.Fatal("same target URL and toasts should be equal")
 	}
-	if c := WithToast(NoticeError, "Added", RedirectTo(r)); Eq(a, c) {
+	if c := WithToast(NoticeError, "Added", Redirect(r)); Eq(a, c) {
 		t.Fatal("a different toast kind should be unequal")
 	}
-	if Eq(RedirectTo(r), Render(r)) {
+	if Eq(Redirect(r), Render(r)) {
 		t.Fatal("different kinds should be unequal")
 	}
 	if Eq(Invalid("a"), Invalid("b")) {
 		t.Fatal("different invalid texts should be unequal")
 	}
-	if Eq(RedirectTo(r), RedirectTo(Route{Name: "Todos.Index", Method: "POST", Path: "/todos"})) {
+	if Eq(Redirect(r), Redirect(Route{Name: "Todos.Index", Method: "POST", Path: "/todos"})) {
 		t.Fatal("different methods should be unequal")
 	}
 }
@@ -72,11 +72,11 @@ func TestResponse_Show(t *testing.T) {
 		resp Response
 		want string
 	}{
-		{WithToast(NoticeInfo, "Added", RedirectTo(r)), `Response.redirect (Todos.Index /todos?f=a+b) |> Response.toast "Added"`},
+		{WithToast(NoticeInfo, "Added", Redirect(r)), `Response.redirect (Todos.Index /todos?f=a+b) |> Response.toast "Added"`},
 		{Render(r), `Response.render (Todos.Index /todos?f=a+b)`},
 		{Refresh(), `Response.refresh`},
 		{WithToast(NoticeWarning, "Hm", WithToast(NoticeSuccess, "Ok", Invalid("bad"))), `Response.invalid "bad" |> Response.success "Ok" |> Response.warning "Hm"`},
-		{WithToast(NoticeError, "x", RedirectTo(Route{Path: "https://example.com/"})), `Response.redirect https://example.com/ |> Response.error "x"`},
+		{WithToast(NoticeError, "x", Redirect(Route{Path: "https://example.com/"})), `Response.redirect https://example.com/ |> Response.error "x"`},
 	} {
 		if got := Show(c.resp); got != c.want {
 			t.Errorf("Show = %s\nwant   %s", got, c.want)
@@ -101,8 +101,5 @@ func TestRoute_URLAndKey(t *testing.T) {
 	}
 	if got := RouteKey(q); got != "GET /todos?f=a+b" {
 		t.Errorf("RouteKey with query = %q", got)
-	}
-	if PageURL(q) != RouteURL(q) {
-		t.Error("PageURL should delegate to RouteURL")
 	}
 }

@@ -183,7 +183,7 @@ func (g *gen) getRoute(b *strings.Builder, p *ir.Program, r *ir.Route) {
 		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), the role (404), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
 	}
 	view := GoName(m, r.Name+".view")
-	fileField, respond := "", fmt.Sprintf("web.PageResponse(%s(model, session), rq.FormState, rq.Session, false)", view)
+	fileField, respond := "", fmt.Sprintf("web.PageResponse(%s(model, session), rq.FormState, rq.Session)", view)
 	if r.File {
 		steps = strings.Replace(steps, "view (the model", "view (its File written raw; the model", 1)
 		fileField, respond = "File: true, ", fmt.Sprintf("web.FileResponse(%s(model, session), rq.Session)", view)

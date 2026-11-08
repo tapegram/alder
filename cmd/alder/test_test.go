@@ -666,7 +666,7 @@ test "get a page that is not found" = {
 	for _, want := range []string{
 		"FAIL Notes.Index \"get a page that requires a user\"\n  error: GET /: redirected to /login (requires user)\n",
 		"FAIL Notes.Index \"click a message the page does not render\"\n  error: the page / has no button or form for Notes.Index.Toggle { id: \"zzz\" }\n",
-		"FAIL Notes.Index \"click another row's toggle\"\n  error: the page / has no button or form for Notes.Index.Toggle { id: \"zzz\" }\n",
+		"FAIL Notes.Index \"click another row's toggle\"\n  error: the page / has no button or form for Notes.Index.Toggle { id: \"zzz\" } (the page has Toggle for id: ",
 		"FAIL Notes.Index \"a set field the form has no input for\"\n  error: the page's form NewNote has no input `weight`\n",
 		"FAIL Notes.Index \"a raw field the form has no input for\"\n  error: the page's form NewNote has no input `weight`\n",
 		"FAIL Notes.Index \"a ticked box the form has no input for\"\n  error: the page's form NewNote has no input `urgent`\n",
@@ -675,7 +675,7 @@ test "get a page that is not found" = {
 		"FAIL Notes.Index \"submit a field the form does not declare\"\n  error: form NewNote has no field `colour`\n",
 		"FAIL Notes.Index \"get a page that is not found\"\n  error: GET /notes/nope: not found\n",
 		"FAIL Notes.Index \"click with no page open\"\n  error: no page is open: `Test.get` one first\n",
-		"FAIL Notes.Index \"submit to a row the page does not render\"\n  error: the page / has no form Title (Notes.Index.Rename)\n",
+		"FAIL Notes.Index \"submit to a row the page does not render\"\n  error: the page / has no form Title (Notes.Index.Rename { id: \"zzz\" })\n",
 		`trace: ["Db.insert User", "Test.login", "Test.get Notes.Index.Index", "Db.all Note", "Time.now", "Test.click Notes.Index.Toggle"]`,
 		"13 passed, 11 failed\n",
 	} {

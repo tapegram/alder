@@ -293,7 +293,7 @@ func lines(s string) []string {
 }
 
 // ShownID is the id of the <al-shown> element every page the router sends ends its <body> with
-// (ShownTag): its data-h is the html.Hash of the body the view rendered, which a message's post
+// (ShownTag): its data-h is the html.Hash of the body the view rendered, which a write's request
 // sends back (html.ShownHeader).
 const ShownID = "_alder_shown"
 
@@ -304,7 +304,7 @@ func ShownTag(hash string) string {
 }
 
 // PatchShown writes one event replacing the page's <al-shown> (#ShownID, outer) with
-// ShownTag(hash): after the region patches of a message's answer, the page shows that body.
+// ShownTag(hash): after the region patches of a write's answer, the page shows that body.
 func PatchShown(w http.ResponseWriter, hash string) error {
 	return patch(w, "#"+ShownID, "outer", ShownTag(hash))
 }

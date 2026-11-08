@@ -12,7 +12,7 @@ type Patch struct {
 	Elements string
 }
 
-// ShownHeader is the request header a message's post (ClickPost, SubmitPost) carries: the Hash
+// ShownHeader is the request header a write route's request (RouteClick, RouteSubmit) carries: the Hash
 // of the <body> the page shows, as its <al-shown> element (datastar.ShownTag) says; "" for none.
 const ShownHeader = "Alder-Shown"
 

@@ -37,22 +37,14 @@ type Node struct {
 }
 
 // Attr is one attribute. Bool attributes render bare (`disabled`); Omit
-// attributes do not render at all. An attribute made by MsgAttr has its value
-// computed at render time from its message, one made by RouteAttr from its route.
+// attributes do not render at all. An attribute made by RouteAttr has its value
+// computed at render time from its route.
 type Attr struct {
 	Name, Value string
 	Bool        bool
 	Omit        bool
-	msg         *rt.MsgRef
 	route       *rt.Route
 }
-
-// MsgAttr is an attribute naming message m, resolved when rendered: m's URL,
-// carrying the parameters of the page being rendered (FormState.PageParams; none
-// without a state). Its value is, by name: "data-on:click" → "@post('<url>')",
-// "data-on:submit" → SubmitPost(url), anything else (such as "action") → url. A
-// <button> with a "data-on:click" MsgAttr renders as a click button (RenderWith).
-func MsgAttr(name string, m rt.MsgRef) Attr { return Attr{Name: name, msg: &m} }
 
 // RouteAttr is an attribute requesting route r (#160). Its value is, by name: "data-on:click"
 // → RouteClick(r), "data-on:submit" → RouteSubmit(r), anything else (such as "href" or
@@ -61,8 +53,8 @@ func MsgAttr(name string, m rt.MsgRef) Attr { return Attr{Name: name, msg: &m} }
 // button (RenderWith).
 func RouteAttr(name string, r rt.Route) Attr { return Attr{Name: name, route: &r} }
 
-// value is a's value as rendered with st.
-func (a Attr) value(st *FormState) string {
+// value is a's value as rendered.
+func (a Attr) value() string {
 	if r := a.route; r != nil {
 		switch a.Name {
 		case "data-on:click":
@@ -72,21 +64,7 @@ func (a Attr) value(st *FormState) string {
 		}
 		return rt.RouteURL(*r)
 	}
-	if a.msg == nil {
-		return a.Value
-	}
-	var page []rt.KV
-	if st != nil {
-		page = st.PageParams
-	}
-	url := a.msg.URL(page)
-	switch a.Name {
-	case "data-on:click":
-		return ClickPost(url)
-	case "data-on:submit":
-		return SubmitPost(url)
-	}
-	return url
+	return a.Value
 }
 
 // El is an element.
@@ -149,7 +127,7 @@ func RootID(n Node) (id string, ok bool) {
 		case kElem:
 			if first {
 				first = false
-				id, seen = idOf(n.attrs, nil)
+				id, seen = idOf(n.attrs)
 				if wrapped(n) {
 					return false
 				}
@@ -166,7 +144,7 @@ func RootID(n Node) (id string, ok bool) {
 }
 
 // wrapped reports whether element n renders inside a <form> of the renderer's own when it is not
-// in a form: a click button (a <button> with a data-on:click MsgAttr or RouteAttr, or the
+// in a form: a click button (a <button> with a data-on:click RouteAttr, or the
 // <al-button> around one), whose root is then that form, without n's id.
 func wrapped(n Node) bool {
 	if n.tag == "button" {
@@ -212,27 +190,28 @@ func (n Node) AlderKey() string { return Render(n) }
 // RenderWith serialises a node like Render, filling deferred form controls from
 // st (see FormState). st may be nil.
 //
-// A `click` button — a <button> with a "data-on:click" MsgAttr — renders so that it works
+// A `click` button — a <button> with a "data-on:click" RouteAttr — renders so that it works
 // without JavaScript too. Outside a <form> it is wrapped in a form of its own:
 //
-//	<form method="post" action="<url>" class="_alder-click" data-on:submit="@post('<url>', {contentType: 'form'})"><button type="submit" …>…</button></form>
+//	<form method="post" action="<url>" class="_alder-click" data-on:submit="…@patch('<url>', window._alderO?.('form'))"><input type="hidden" name="_method" value="PATCH" /><button type="submit" …>…</button></form>
 //
-// (style form._alder-click as display: inline to keep the button in line). Inside a <form>,
-// where a form cannot nest, it is a submit button posting to its own URL instead of the form's:
-//
-//	<button type="submit" formaction="<url>" formmethod="post" formnovalidate data-on:click__prevent="@post('<url>')" …>
-//
-// Without JavaScript the browser then posts the enclosing form's fields too, which a message
-// without a form ignores; with it, Datastar posts no fields. A click button that is the one
-// child of an `<al-button>` (as the compiler renders `<al-button click={…}>`) is written the
-// same way with the form outside the `<al-button>`:
+// for a write route, the _method field only for PUT, PATCH and DELETE (the router honours it on
+// a POST); for a GET route `<form method="get" …>` with the route's query in hidden fields (a GET
+// form replaces its action's query with its fields) and an element fetch (FetchOptions), so
+// without JavaScript the button navigates to the route (style form._alder-click as display:
+// inline to keep the button in line). Inside a <form>, where a form cannot nest, a write route's
+// button carries the route as formaction and formmethod, and its _method as its own name and
+// value (an author's own name and value on it are dropped, R16: keeping them would lose the
+// override without JavaScript, which is worse than losing the author's field); a GET route's is
+// type="button" with a data-on:click and needs JavaScript (a formmethod="get" would put every
+// field of the enclosing form, a Secret one too, in the URL). A DELETE route's own form posts
+// with JavaScript too (routeRequest). A click button that is the one child of an `<al-button>`
+// (as the compiler renders `<al-button click={…}>`) is written the same way with the form
+// outside the `<al-button>`:
 //
 //	<form … class="_alder-click" …><al-button variant="…"><button type="submit" …>…</button></al-button></form>
 //
-// Any other element with a click renders data-on:click="@post('<url>')" and needs JavaScript.
-// A button with a "data-on:click" RouteAttr (#160) renders the same way for its route
-// (routeButton): a _method field for PUT, PATCH and DELETE, and `<form method="get">` for a GET
-// route.
+// Any other element with a click renders its RouteClick as data-on:click and needs JavaScript.
 func RenderWith(n Node, st *FormState) string {
 	var b strings.Builder
 	r := renderer{b: &b, st: st}
@@ -267,7 +246,7 @@ type Region struct {
 func RenderTracked(n Node, st *FormState) Rendered { return RenderTrackedSized(n, st, 0) }
 
 // RenderTrackedSized is RenderTracked with room for size bytes made up front: a page rendered
-// for comparison with another of about that size (the before-view of a message's answer) grows
+// for comparison with another of about that size (the before-view of a write's answer) grows
 // its buffer once instead of step by step.
 func RenderTrackedSized(n Node, st *FormState, size int) Rendered {
 	var b strings.Builder
@@ -303,7 +282,7 @@ type renderer struct {
 	track  *tracking // RenderTracked's record, nil otherwise
 	st     *FormState
 	inForm bool     // inside a <form> element
-	form   string   // the message key (rt.MsgRef.Key) of the enclosing <form>, "" for none
+	form   string   // the request key (rt.RouteKey) of the enclosing <form>, "" for none
 	orphan []string // the posting form's field errors no <Errors field> of it shows ("title must …")
 }
 
@@ -336,13 +315,13 @@ func (r *renderer) render(n Node) {
 	case kElem:
 		if n.tag == "button" {
 			if c := clickOf(n.attrs); c != nil {
-				r.clickButton(n, c, nil)
+				r.clickButton(n, *c.route, nil)
 				return
 			}
 		}
 		if n.tag == "al-button" && len(n.children) == 1 && n.children[0].kind == kElem && n.children[0].tag == "button" {
 			if c := clickOf(n.children[0].attrs); c != nil { // the design system's button: the form goes around it
-				r.clickButton(n.children[0], c, &n)
+				r.clickButton(n.children[0], *c.route, &n)
 				return
 			}
 		}
@@ -361,7 +340,7 @@ func (r *renderer) render(n Node) {
 				tr.repaired()
 				fixed = true
 			}
-			if id, ok := idOf(n.attrs, r.st); ok {
+			if id, ok := idOf(n.attrs); ok {
 				region = len(tr.regions)
 				tr.regions = append(tr.regions, Region{ID: id, Start: b.Len(), Inert: tr.inert > 0 || fixed})
 			}
@@ -406,11 +385,11 @@ func (r *renderer) render(n Node) {
 	}
 }
 
-// idOf is the value of attrs' id attribute as rendered with st, if it renders one.
-func idOf(attrs []Attr, st *FormState) (string, bool) {
+// idOf is the value of attrs' id attribute as rendered, if it renders one.
+func idOf(attrs []Attr) (string, bool) {
 	for _, a := range attrs {
 		if a.Name == "id" && !a.Omit && !a.Bool {
-			return a.value(st), true
+			return a.value(), true
 		}
 	}
 	return "", false
@@ -448,7 +427,7 @@ func (r *renderer) open(tag string, attrs []Attr) {
 		b.WriteByte(' ')
 		b.WriteString(a.Name)
 		if !a.Bool {
-			v := a.value(r.st)
+			v := a.value()
 			if a.Name == "href" && !rt.SafeURL(v) {
 				v = "#" // no javascript:, data: or protocol-relative link (rt.SafeURL)
 			}
@@ -464,57 +443,10 @@ func (r *renderer) open(tag string, attrs []Attr) {
 	b.WriteByte('>')
 }
 
-// clickButton writes button n, whose click is c, a "data-on:click" MsgAttr or RouteAttr (see
-// RenderWith). outer, when not nil, is the `<al-button>` whose one child n is: it is written
-// around the button, inside the form, so the stylesheet's `al-button > button` still finds the
-// button as its child.
-func (r *renderer) clickButton(n Node, c *Attr, outer *Node) {
-	if c.route != nil {
-		r.routeButton(n, *c.route, outer)
-		return
-	}
-	url := r.url(c.msg)
-	attrs := []Attr{A("type", "submit")}
-	if r.inForm {
-		attrs = append(attrs, A("formaction", url), A("formmethod", "post"), B("formnovalidate", true),
-			A("data-on:click__prevent", ClickPost(url)))
-	}
-	for _, a := range n.attrs {
-		if a.Name != "type" && a.Name != "data-on:click" {
-			attrs = append(attrs, a)
-		}
-	}
-	button := Node{kind: kElem, tag: "button", attrs: attrs, children: n.children}
-	if outer != nil {
-		o := *outer
-		o.children = []Node{button}
-		button = o
-	}
-	if r.inForm {
-		saved := *r
-		r.render(button)
-		*r = saved
-		return
-	}
-	r.render(El("form", []Attr{A("method", "post"), A("action", url), A("class", "_alder-click"), A("data-on:submit", ClickFormPost(url))}, button))
-}
-
-// routeButton writes button n, whose click requests route (#160), as clickButton does a
-// message's: outside a <form>, in a form of its own —
-//
-//	<form method="post" action="<url>" class="_alder-click" data-on:submit="…@patch('<url>', window._alderO?.('form'))"><input type="hidden" name="_method" value="PATCH" /><button type="submit" …>…</button></form>
-//
-// for a write route, the _method field only for PUT, PATCH and DELETE (the router honours it on
-// a POST); for a GET route `<form method="get" …>` with the route's query in hidden fields (a GET
-// form replaces its action's query with its fields) and an element fetch (FetchOptions), so
-// without JavaScript the button navigates to the route. Inside a <form>, a write route's button
-// carries the route as formaction and formmethod, and its _method as its own name and value (an
-// author's own name and value on it are dropped, R16: keeping them would lose the override
-// without JavaScript, which is worse than losing the author's field); a GET route's
-// is type="button" with a data-on:click and needs JavaScript (a formmethod="get" would put every
-// field of the enclosing form, a Secret one too, in the URL). A DELETE route's own form posts
-// with JavaScript too (routeRequest).
-func (r *renderer) routeButton(n Node, route rt.Route, outer *Node) {
+// clickButton writes button n, whose click requests route (see RenderWith). outer, when not
+// nil, is the `<al-button>` whose one child n is: it is written around the button, inside the
+// form, so the stylesheet's `al-button > button` still finds the button as its child.
+func (r *renderer) clickButton(n Node, route rt.Route, outer *Node) {
 	url := rt.RouteURL(route)
 	get := route.Method == "GET"
 	formMethod := "post"
@@ -602,8 +534,7 @@ func hidden(name, value string) Node {
 // without such a button (submitted by Enter in a field), or with one that has a name of its own
 // (HTML keeps the first name attribute, so the button cannot carry both), falls back to a hidden
 // _method field; a click button inside that form sends it too without JavaScript (a second
-// _method for a PUT/PATCH/DELETE route, 400; a POST route or a message then routed as the form's
-// method). With JavaScript a DELETE form posts too, the _method in its body (routeRequest).
+// _method for a PUT/PATCH/DELETE route, 400; a POST route then routed as the form's method). With JavaScript a DELETE form posts too, the _method in its body (routeRequest).
 func FormToRoute(r rt.Route, attrs []Attr, children ...Node) Node {
 	all := append([]Attr{A("method", "post"), RouteAttr("action", r), RouteAttr("data-on:submit", r)}, attrs...)
 	if m := overrideMethod(r.Method); m != "" {
@@ -673,7 +604,7 @@ func namedSubmit(ns []Node) bool {
 // attrValue is the value of attrs' plain attribute name, if it renders one.
 func attrValue(attrs []Attr, name string) (string, bool) {
 	for _, a := range attrs {
-		if a.Name == name && !a.Omit && !a.Bool && a.msg == nil && a.route == nil {
+		if a.Name == name && !a.Omit && !a.Bool && a.route == nil {
 			return a.Value, true
 		}
 	}
@@ -681,14 +612,14 @@ func attrValue(attrs []Attr, name string) (string, bool) {
 }
 
 // RouteSubmit is the data-on:submit of a form sending route r: its fields url-encoded with r's
-// method (a DELETE's posted, routeRequest) and the message options (SubmitPost's, with the
-// route's method).
+// method (a DELETE's posted, routeRequest) and the write options (PostOptions, contentType
+// 'form'; before the helper exists, the content type alone).
 func RouteSubmit(r rt.Route) string {
 	return busy("el", routeRequest(r, PostOptions+"?.('form')||{contentType: 'form'}", true))
 }
 
 // RouteClick is the Datastar action of a click requesting route r: a write route's request
-// with the message options (PostOptions), a GET route's an element fetch (FetchOptions).
+// with the write options (PostOptions), a GET route's an element fetch (FetchOptions).
 func RouteClick(r rt.Route) string {
 	if r.Method == "GET" {
 		return busy("el", routeRequest(r, FetchOptions+"?.()", false))
@@ -717,15 +648,6 @@ func routeRequest(r rt.Route, opts string, form bool) string {
 		verb = "post"
 	}
 	return "@" + verb + "('" + u + "', " + opts + ")"
-}
-
-// url is m's URL on the page being rendered (MsgAttr).
-func (r *renderer) url(m *rt.MsgRef) string {
-	var page []rt.KV
-	if r.st != nil {
-		page = r.st.PageParams
-	}
-	return m.URL(page)
 }
 
 // orphanErrors are the field errors of st that no <Errors field="…"> of its form inside form
@@ -759,39 +681,36 @@ func orphanErrors(form Node, st *FormState) []string {
 	return out
 }
 
-// clickOf is attrs' "data-on:click" MsgAttr or RouteAttr, or nil.
+// clickOf is attrs' "data-on:click" RouteAttr, or nil.
 func clickOf(attrs []Attr) *Attr {
 	for i, a := range attrs {
-		if a.Name == "data-on:click" && (a.msg != nil || a.route != nil) && !a.Omit {
+		if a.Name == "data-on:click" && a.route != nil && !a.Omit {
 			return &attrs[i]
 		}
 	}
 	return nil
 }
 
-// formKey is the message key of a <form> with attrs: its "action" MsgAttr's (FormTo) or
-// RouteAttr's (FormToRoute: rt.RouteKey), else its literal action URL's, "" for none.
+// formKey is the request key of a <form> with attrs: its "action" RouteAttr's (FormToRoute:
+// rt.RouteKey), else its literal action URL's (rt.URLKey), "" for none.
 func formKey(attrs []Attr) string {
 	for _, a := range attrs {
 		if a.Name != "action" || a.Omit {
 			continue
 		}
-		if a.msg != nil {
-			return a.msg.Key()
-		}
 		if a.route != nil {
 			return rt.RouteKey(*a.route)
 		}
 		if u, err := url.Parse(a.Value); err == nil {
-			return rt.MsgKey(u.Path, u.Query())
+			return rt.URLKey(u.Path, u.Query())
 		}
 	}
 	return ""
 }
 
 // active reports whether control c shows the request's form state: the state is a form's
-// (Form set) and c is a control of that Alder form inside the very <form> that posted the
-// message (FormState.Msg), so another form of the same type — a per-row form of another row —
+// (Form set) and c is a control of that Alder form inside the very <form> that sent the
+// request (FormState.Msg), so another form of the same type — a per-row form of another row —
 // renders its initial values.
 func (r *renderer) active(c *Control) bool {
 	st := r.st
@@ -809,42 +728,7 @@ func escape(s string) string {
 	return e
 }
 
-// Form is a `<form submit={…}>` posting to action: with JavaScript Datastar posts it, without
-// it the browser does (method="post"). Datastar sends the form's fields url-encoded, as the
-// browser would ({contentType: 'form'}; its default is the page's signals as JSON). attrs are
-// the element's other attributes.
-func Form(action string, attrs []Attr, children ...Node) Node {
-	all := append([]Attr{A("method", "post"), A("action", action), A("data-on:submit", SubmitPost(action))}, attrs...)
-	return El("form", all, children...)
-}
-
-// FormTo is a `<form submit={…}>` posting message m, like Form, with its action and
-// data-on:submit resolved when rendered (MsgAttr).
-func FormTo(m rt.MsgRef, attrs []Attr, children ...Node) Node {
-	all := append([]Attr{A("method", "post"), MsgAttr("action", m), MsgAttr("data-on:submit", m)}, attrs...)
-	return El("form", all, children...)
-}
-
-// SubmitPost is the Datastar action of a form's data-on:submit: post the form's fields
-// url-encoded to action with the message options (PostOptions, contentType 'form'; before the
-// helper exists, the content type alone).
-func SubmitPost(action string) string {
-	return busy("el", "@post('"+action+"', "+PostOptions+"?.('form')||{contentType: 'form'})")
-}
-
-// ClickFormPost is the data-on:submit of a click button's own form (RenderWith): SubmitPost
-// without the fallback options, since a click posts no fields.
-func ClickFormPost(url string) string {
-	return busy("el", "@post('"+url+"', "+PostOptions+"?.('form'))")
-}
-
-// ClickPost is the Datastar action of a click that posts a message (a data-on:click, a submit
-// button's formaction): post to url with the message options (PostOptions).
-func ClickPost(url string) string {
-	return busy("el", "@post('"+url+"', "+PostOptions+"?.())")
-}
-
-// PostOptions is the helper a message's post calls for its request options,
+// PostOptions is the helper a write route's request calls for its request options,
 // window._alderO(contentType?) (datastar.BoostInit defines it, once, in the <head>, so each
 // button of a long list carries a call of about 20 bytes): it aborts the navigation in flight
 // and starts the page's next one (Navigation), and sends ShownHeader, the hash the page's
@@ -858,7 +742,7 @@ const PostOptions = "window._alderO"
 const FetchOptions = "window._alderF"
 
 // Navigation is the request option every navigating Datastar request of a page shares — a
-// message's post (SubmitPost, ClickPost, through PostOptions) and a boosted link's or a back/forward's GET
+// write route's request (RouteSubmit, RouteClick, through PostOptions) and a boosted link's or a back/forward's GET
 // (datastar.BoostClick, BoostPopstate): one AbortController, window._alderAC, each request
 // aborting the one before it (window._alderAC?.abort()) and starting a new one. Only the latest
 // navigation's answer is applied, so a slow post's answer cannot land after (and over) the
@@ -871,7 +755,7 @@ const Navigation = "requestCancellation: window._alderAC = new AbortController()
 // bar); without the helper the request runs unwrapped.
 const BusyNull = "(window._alderBusy||((e,p)=>p))(null, "
 
-// busy wraps request, a message's post, in the wrapper of el (the element the handler runs on).
+// busy wraps request, a route's request, in the wrapper of el (the element the handler runs on).
 func busy(el, req string) string {
 	return "(window._alderBusy||((e,p)=>p))(" + el + ", " + req + ")"
 }

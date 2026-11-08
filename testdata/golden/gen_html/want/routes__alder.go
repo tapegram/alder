@@ -98,7 +98,7 @@ func Route__M__M() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(M__M__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(M__M__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -346,7 +346,7 @@ func Route__Other__Other() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Other__Other__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Other__Other__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 

@@ -49,8 +49,8 @@ func TestBrowser_RouteDeleteBody(t *testing.T) {
 		// 4: submit= whose only submit button has its own name: the hidden field
 		html.FormToRoute(del("4"), nil, input("i4", "title", "t4"),
 			html.El("button", []html.Attr{html.A("id", "b4"), html.A("name", "action"), html.A("value", "save")}, html.Text("4"))),
-		// 5: a DELETE click button inside a message's form
-		html.FormTo(rt.MsgRef{Module: "M", Msg: "Save"}, nil, input("i5", "secret", "s5"),
+		// 5: a DELETE click button inside another route's form (a POST: no _method of its own)
+		html.FormToRoute(rt.Route{Name: "M.Save", Method: "POST", Path: "/save"}, nil, input("i5", "secret", "s5"),
 			html.El("button", []html.Attr{html.A("id", "b5"), html.RouteAttr("data-on:click", del("5"))}, html.Text("5"))),
 		// 6: as 2, submitted by Enter in the field (the submitter is the default button)
 		html.FormToRoute(del("6"), nil, input("i6", "title", "t6"), html.El("button", []html.Attr{html.A("id", "b6")}, html.Text("6"))),

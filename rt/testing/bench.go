@@ -14,13 +14,13 @@ import (
 
 // Measure is what one browser step (Test.get, Test.open, Test.click, Test.submit,
 // Test.submitRaw, Test.fetch) cost the server: `alder bench`'s row. Step is its first request,
-// `GET /` or `POST /_m/Rows.Index/Toggle`; Ms, Alloc and Allocs the wall time and the bytes and
+// `GET /` or `PATCH /rows/7/toggle`; Ms, Alloc and Allocs the wall time and the bytes and
 // objects allocated (runtime.MemStats TotalAlloc and Mallocs) while the router served the step's
 // requests, summed over them (with --count, the median over the runs): the browser's own work
 // (parsing the answer, applying a patch) is left out; Bytes the answers' bodies (a document, or a
 // Datastar answer's SSE text); Requests the requests the router served (a redirect it followed
 // is a second; so is each 303 the browser followed); Loads the pages' `load` runs
-// (eff.Recorder.Loads: a Rerender runs it before and after update); Steps the effect Calls (the
+// (eff.Recorder.Loads: a `refresh` runs it before and after update); Steps the effect Calls (the
 // requests' Env.Trace); SQL the statements; Repeats what eff.RepeatsCut found in them.
 type Measure struct {
 	Step     string

@@ -2,20 +2,20 @@ package rt
 
 import "testing"
 
-// A Page value carries no Method and is a GET: Url.external (Method "GET") of one URL equals it,
+// A Route with no Method is a GET: Url.external (Method "GET") of one URL equals it,
 // and the two are one Dict key.
 func TestRoute_EmptyMethodIsGET(t *testing.T) {
-	page, ext := Route{Path: "/x"}, Route{Method: "GET", Path: "/x"}
-	if !Eq(page, ext) || !Eq(ext, page) {
+	bare, ext := Route{Path: "/x"}, Route{Method: "GET", Path: "/x"}
+	if !Eq(bare, ext) || !Eq(ext, bare) {
 		t.Errorf("Route{Path} != Route{GET, Path}")
 	}
-	if page.AlderKey() != ext.AlderKey() {
-		t.Errorf("keys differ: %q vs %q", page.AlderKey(), ext.AlderKey())
+	if bare.AlderKey() != ext.AlderKey() {
+		t.Errorf("keys differ: %q vs %q", bare.AlderKey(), ext.AlderKey())
 	}
-	if Eq(page, Route{Method: "POST", Path: "/x"}) {
-		t.Errorf("a POST route equals a page")
+	if Eq(bare, Route{Method: "POST", Path: "/x"}) {
+		t.Errorf("a POST route equals a GET")
 	}
-	if RouteKey(page) != RouteKey(ext) || RouteKey(page) != "GET /x" {
-		t.Errorf("RouteKey: %q vs %q", RouteKey(page), RouteKey(ext))
+	if RouteKey(bare) != RouteKey(ext) || RouteKey(bare) != "GET /x" {
+		t.Errorf("RouteKey: %q vs %q", RouteKey(bare), RouteKey(ext))
 	}
 }

@@ -20,22 +20,23 @@ func mustDoc(t *testing.T, s string) Doc {
 	return DocOf(n)
 }
 
-// Doc's `==` ignores the page's parameters in message URLs on both sides; Test.doc renders a
-// view and parses it back; Show prints the markup.
+// Doc's `==` compares the trees as their markup shows them (text joined, a route's URL as
+// rendered): a page held and the view rendered by Test.doc are one document; Show prints the
+// markup.
 func TestDoc_Equal(t *testing.T) {
-	held := mustDoc(t, `<main><button class="x" data-on:click="@post('/_m/P/T?id=a&amp;_p.filter=Open')">t</button><p>1 shown</p></main>`)
+	held := mustDoc(t, `<main><button class="x" data-on:click="@post('/p/a/t')">t</button><p>1 shown</p></main>`)
 	view := ViewDoc(html.El("main", nil,
-		html.El("button", []html.Attr{html.A("class", "x"), html.A("data-on:click", "@post('/_m/P/T?id=a')")}, html.Text("t")),
+		html.El("button", []html.Attr{html.A("class", "x"), html.A("data-on:click", "@post('/p/a/t')")}, html.Text("t")),
 		html.El("p", nil, html.Text("1"), html.Text(" shown"))))
 	if !rt.Eq(held, view) {
 		t.Fatalf("held %s\nview %s", held, view)
 	}
-	other := mustDoc(t, `<main><button class="x" data-on:click="@post('/_m/P/T?id=b')">t</button><p>1 shown</p></main>`)
+	other := mustDoc(t, `<main><button class="x" data-on:click="@post('/p/b/t')">t</button><p>1 shown</p></main>`)
 	if rt.Eq(held, other) {
-		t.Fatal("a message's own parameter is compared")
+		t.Fatal("a route's URL is not compared")
 	}
-	if rt.Key(held) != rt.Key(view) {
-		t.Fatal("keys differ")
+	if rt.Key(held) != rt.Key(view) || rt.Key(held) == rt.Key(other) {
+		t.Fatal("keys")
 	}
 	if got := rt.Show(other); !strings.HasPrefix(got, "<main><button") {
 		t.Fatalf("Show = %q", got)
@@ -68,12 +69,12 @@ func TestDoc_Queries(t *testing.T) {
 	}
 }
 
-// Answer's `==` compares the payload its constructor names, a page as its URL; Show prints it
+// Answer's `==` compares the payload its constructor names, a route as its URL; Show prints it
 // as Alder; a FormRejected's list converts both ways.
 func TestAnswer(t *testing.T) {
-	built := Answer{Tag: Redirected, Page: rt.Page{Path: "/", Query: []rt.KV{{Key: "filter", Value: "All", Omit: true}}}}
-	read := Answer{Tag: Redirected, Page: rt.Page{Path: "/"}, Text: "ignored"}
-	if !rt.Eq(built, read) || rt.Eq(built, Answer{Tag: Redirected, Page: rt.Page{Path: "/login"}}) || rt.Eq(built, Answer{Tag: Shown}) {
+	built := Answer{Tag: Redirected, Page: rt.Route{Path: "/", Query: []rt.KV{{Key: "filter", Value: "All", Omit: true}}}}
+	read := Answer{Tag: Redirected, Page: rt.Route{Path: "/"}, Text: "ignored"}
+	if !rt.Eq(built, read) || rt.Eq(built, Answer{Tag: Redirected, Page: rt.Route{Path: "/login"}}) || rt.Eq(built, Answer{Tag: Shown}) {
 		t.Error("Redirected")
 	}
 	rej := FormRejectedAnswer([]FieldError{{Field: "title", Message: "must not be empty"}})
@@ -89,7 +90,7 @@ func TestAnswer(t *testing.T) {
 	}
 	for a, want := range map[*Answer]string{
 		{Tag: Shown}: "Shown", &built: "Redirected /", &served: `FormRejected [{ field: "title", message: "must not be empty" }]`,
-		{Tag: RequestFailed, Text: "boom"}: `RequestFailed "boom"`, {Tag: Rerendered}: "Rerendered", {Tag: PageMissing}: "PageMissing",
+		{Tag: RequestFailed, Text: "boom"}: `RequestFailed "boom"`, {Tag: Refreshed}: "Refreshed", {Tag: PageMissing}: "PageMissing",
 	} {
 		if got := rt.Show(*a); got != want {
 			t.Errorf("Show = %q, want %q", got, want)
@@ -137,7 +138,7 @@ func TestRawFieldsAndMsgName(t *testing.T) {
 // for is left out when its value is what its absence decodes to (Absent), else the step fails
 // as a user could not send it (C1).
 func TestFieldsFor(t *testing.T) {
-	form, err := html.Parse(`<form action="/_m/M/Save"><input name="title"><select name="kind"></select><textarea name="note"></textarea><input type="checkbox" name="done" value="True"><button>Save</button></form>`)
+	form, err := html.Parse(`<form action="/save"><input name="title"><select name="kind"></select><textarea name="note"></textarea><input type="checkbox" name="done" value="True"><button>Save</button></form>`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,15 +156,51 @@ func TestFieldsFor(t *testing.T) {
 	}
 }
 
+// offered names the parameters the held page requests a route with, matched by the app's route
+// pattern of the route's method; routeLabel writes a route with its parameters.
 func TestOffered(t *testing.T) {
-	urls := []string{"/_m/M/Toggle?id=a&_p.f=x", "/_m/M/Toggle?id=b", "/_m/M/Toggle?id=a", "/_m/M/Other?id=c", "/_m/M/Rename?id=a&x=1", "/_m/M/Rename?id=b&x=2"}
-	for _, c := range []struct{ msg, want string }{
-		{"/_m/M/Toggle?id=z", "Toggle for id: a, b"},
-		{"/_m/M/Rename?id=z&x=0", "Rename for id: a, x: 1; id: b, x: 2"},
-		{"/_m/M/Delete?id=z", ""},
+	route := func(name, method, path string, query ...rt.KV) rt.Route {
+		return rt.Route{Name: "M." + name, Method: method, Path: path, Query: query}
+	}
+	toggle := func(id string) rt.Route { return route("Toggle", "PATCH", "/m/"+id+"/toggle") }
+	rename := func(id, x string) rt.Route {
+		return route("Rename", "POST", "/m/"+id+"/rename", rt.KV{Key: "x", Value: x})
+	}
+	var buttons []html.Node
+	for _, r := range []rt.Route{toggle("a"), toggle("b"), toggle("a"), route("Other", "PATCH", "/m/c/other"), rename("a", "1"), rename("b", "2")} {
+		buttons = append(buttons, html.El("button", []html.Attr{html.RouteAttr("data-on:click", r)}))
+	}
+	doc, err := html.Parse(html.Render(html.El("main", nil, buttons...)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	noop := func(*web.Request) web.Response { return web.Response{} }
+	b := &Browser{doc: doc, hasDoc: true, routes: []web.Route{
+		{Method: "PATCH", Pattern: "/m/{id}/toggle", Handle: noop},
+		{Method: "PATCH", Pattern: "/m/{id}/other", Handle: noop},
+		{Method: "POST", Pattern: "/m/{id}/rename", Handle: noop},
+		{Method: "DELETE", Pattern: "/m/{id}", Handle: noop},
+	}}
+	for _, c := range []struct {
+		r    rt.Route
+		want string
+	}{
+		{toggle("z"), "Toggle for id: a, b"},
+		{rename("z", "0"), "Rename for id: a, x: 1; id: b, x: 2"},
+		{route("Delete", "DELETE", "/m/z"), ""},
+		{route("Nowhere", "PATCH", "/n/z"), ""},
 	} {
-		if got := Offered(c.msg, urls); got != c.want {
-			t.Errorf("Offered(%s) = %q, want %q", c.msg, got, c.want)
+		if got := b.offered(c.r, false); got != c.want {
+			t.Errorf("offered(%s) = %q, want %q", rt.RouteURL(c.r), got, c.want)
 		}
+	}
+	if got := b.offered(toggle("z"), true); got != "" {
+		t.Errorf("a submit counts click buttons: %q", got)
+	}
+	if got := b.routeLabel(rename("a b", "0")); got != `M.Rename { id: "a b", x: "0" }` {
+		t.Errorf("routeLabel = %s", got)
+	}
+	if got := b.routeLabel(route("Nowhere", "PATCH", "/n/z")); got != "M.Nowhere" {
+		t.Errorf("routeLabel without a route = %s", got)
 	}
 }

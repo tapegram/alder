@@ -66,7 +66,7 @@ func Route__About__Show() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(About__Show__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(About__Show__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -119,7 +119,7 @@ func Route__Admin__Stats() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Admin__Stats__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Admin__Stats__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -157,7 +157,7 @@ func Route__Auth__Login__Login() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Auth__Login__Login__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Auth__Login__Login__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -209,7 +209,7 @@ func Route__Todos__Index() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Todos__Index__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Todos__Index__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -263,7 +263,7 @@ func Route__Todos__Row() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Todos__Row__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Todos__Row__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 

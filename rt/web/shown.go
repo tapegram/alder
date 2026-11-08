@@ -84,19 +84,6 @@ func (rq *Request) RenderShown(st *html.FormState) (*Shown, Response) {
 	return sh, resp
 }
 
-// WithPageParams is st, the form state a GET route's view renders with (Request.FormState: the
-// posted form's when a write renders the page the browser is on again), with that route's
-// parameters as its PageParams, as a page's plain state carries them; nil (the route's own
-// request) stays nil. st is not changed.
-func WithPageParams(st *html.FormState, page []rtpkg.KV) *html.FormState {
-	if st == nil {
-		return nil
-	}
-	s := *st
-	s.PageParams = page
-	return &s
-}
-
 // runShown runs the GET route that matches raw (a path and query, rt.BackURL's) for parent, a
 // write's request, with session (enc its encoding) and st as its FormState; ok is false when no
 // GET route that is not a file page's matches. The sub-request shares parent's context and

@@ -146,7 +146,7 @@ func Route__Auth__Login__Login() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Auth__Login__Login__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Auth__Login__Login__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -264,7 +264,7 @@ func Route__Notes__Index__Index() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Notes__Index__Index__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Notes__Index__Index__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -751,7 +751,7 @@ func Route__Notes__Show__Show() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Notes__Show__Show__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Notes__Show__Show__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 

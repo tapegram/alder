@@ -3,10 +3,8 @@ package html
 import (
 	"fmt"
 	"html"
-	"net/url"
 	"strings"
 
-	"alder/rt"
 	"alder/rt/selector"
 )
 
@@ -263,8 +261,11 @@ func equalNodes(a, b []Node) bool {
 	return true
 }
 
+// Normalize is n as Equal compares it (normalize), as one node.
+func Normalize(n Node) Node { return Nodes(normalize([]Node{n})...) }
+
 // normalize is ns as plain elements, text and raw nodes: fragments flattened, controls and
-// message attributes resolved (rendered and parsed back), omitted attributes dropped, adjacent
+// route attributes resolved (rendered and parsed back), omitted attributes dropped, adjacent
 // text joined, empty text and zero nodes dropped.
 func normalize(ns []Node) []Node {
 	var out []Node
@@ -304,7 +305,7 @@ func normalize(ns []Node) []Node {
 				if a.Omit {
 					continue
 				}
-				v := a.value(nil)
+				v := a.value()
 				if a.Bool {
 					v = ""
 				} else if a.Name == "href" {
@@ -452,7 +453,7 @@ func AttrOf(n Node, name string) (string, bool) {
 			if a.Bool {
 				return "", true
 			}
-			return a.value(nil), true
+			return a.value(), true
 		}
 	}
 	return "", false
@@ -510,61 +511,6 @@ func (n Node) Children() []Node {
 		return nil
 	}
 	return append([]Node{}, n.children...)
-}
-
-// WithoutPageParams is n (normalized as Equal compares it) without the page's parameters in its
-// message URLs: the `_p.` keys of every /_m/ URL in an `action` or `formaction` attribute and in
-// the `@post('…')` of a `data-on:*` attribute. A page as the browser holds it was rendered with
-// its request's state, whose message URLs carry the page's parameters; the same view rendered
-// without a state (Test.doc) has none. Comparing both without them compares the documents. A
-// route's URL (RouteAttr, #160) carries no page parameters and is left alone.
-func WithoutPageParams(n Node) Node {
-	return Nodes(stripNodes(normalize([]Node{n}))...)
-}
-
-func stripNodes(ns []Node) []Node {
-	out := make([]Node, len(ns))
-	for i, n := range ns {
-		if n.kind == kElem {
-			e := Node{kind: kElem, tag: n.tag, children: stripNodes(n.children)}
-			for _, a := range n.attrs {
-				switch {
-				case a.Name == "action" || a.Name == "formaction":
-					a.Value = stripPageParams(a.Value)
-				case strings.HasPrefix(a.Name, "data-on:"):
-					if pre, rest, ok := strings.Cut(a.Value, "@post('"); ok {
-						u, post, _ := strings.Cut(rest, "'")
-						a.Value = pre + "@post('" + stripPageParams(u) + "'" + post
-					}
-				}
-				e.attrs = append(e.attrs, a)
-			}
-			n = e
-		}
-		out[i] = n
-	}
-	return out
-}
-
-// stripPageParams is the message URL u without its rt.PagePrefix query keys; any other URL as
-// it is.
-func stripPageParams(u string) string {
-	path, query, ok := strings.Cut(u, "?")
-	if !ok || !strings.HasPrefix(path, "/_m/") {
-		return u
-	}
-	var keep []string
-	for _, kv := range strings.Split(query, "&") {
-		k, _, _ := strings.Cut(kv, "=")
-		if key, err := url.QueryUnescape(k); err == nil && strings.HasPrefix(key, rt.PagePrefix) {
-			continue
-		}
-		keep = append(keep, kv)
-	}
-	if len(keep) == 0 {
-		return path
-	}
-	return path + "?" + strings.Join(keep, "&")
 }
 
 // ReplaceByID is doc with its first element whose id is id (in document order) replaced by

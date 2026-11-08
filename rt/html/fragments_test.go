@@ -251,19 +251,6 @@ func TestWithout(t *testing.T) {
 	}
 }
 
-// A click's and a form's post send the shown hash (Shown, read by datastar.BoostInit's helper).
-func TestClickPost_SendsShownHeader(t *testing.T) {
-	if got := ClickPost("/_m/M/T"); got != "(window._alderBusy||((e,p)=>p))(el, @post('/_m/M/T', window._alderO?.()))" {
-		t.Fatal(got)
-	}
-}
-
-func TestSubmitPost_SendsShownHeader(t *testing.T) {
-	if got := SubmitPost("/_m/M/S"); got != "(window._alderBusy||((e,p)=>p))(el, @post('/_m/M/S', window._alderO?.('form')||{contentType: 'form'}))" {
-		t.Fatal(got)
-	}
-}
-
 // TestRepair_TablePartsOutsideTable: each table-part start tag outside a table is dropped by the
 // parser (its content stays, in the current node), so a region with one, and every region
 // around it, is not patched: the body is. Inside a table, and in a patch's <template>, they stay.

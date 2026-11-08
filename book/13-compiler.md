@@ -1107,7 +1107,7 @@ parameters (`rt.RouteURL` makes the URL of one).
 `rt/response.go` holds `Response`, the result of an `update`: a kind
 (`RespRedirect`, `RespRender`, `RespRefresh` or `RespInvalid`), the `Route`
 it names or the text it carries, and a list of events (so far only toasts),
-built by `rt.RedirectTo(route)`, `rt.Render(route)`, `rt.Refresh()`,
+built by `rt.Redirect(route)`, `rt.Render(route)`, `rt.Refresh()`,
 `rt.Invalid(text)` and `rt.WithToast`.
 
 > **Not yet:** `Response`'s `Status` and `Headers` are shaped for the
@@ -1644,7 +1644,7 @@ func Route__Todos__Index__Index() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Todos__Index__Index__view(model, session), web.WithPageParams(rq.FormState, params__Todos__Index__Index(params)), rq.Session, false)
+		return web.PageResponse(Todos__Index__Index__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 ```
@@ -1694,19 +1694,9 @@ is `nil` here; the write routes below show why it exists.
 node is a document, a body or one element: the router decides that from the
 request, below.
 
-The `FormState` it passes is `nil` for a request of its own
-(`WithPageParams` keeps `nil` as it is); when a write route renders this
-page again for the browser that sent the write, it passes the form the
-write posted, and the route's parameters ride in it as text:
-
-```go
-func params__Todos__Index__Index(p Todos__Index__Index__Params) []rt.KV {
-	return []rt.KV{rt.QueryKV("filter", []string{"All", "Active", "Completed"}[p.Filter.Tag], "All")}
-}
-```
-
-`rt.QueryKV` marks the pair to be left out when the value is the default,
-`All`.
+The `FormState` it passes (`rq.FormState`) is `nil` for a request of its
+own; when a write route renders this page again for the browser that sent
+the write, it is the form the write posted, with its values and errors.
 
 #### Three deliveries
 
@@ -5150,7 +5140,7 @@ held page. A page's controls are the Datastar actions its views render
 
 `routeControl` walks the held document in order, reads each action with a
 regular expression (`routeAction`: the verb, the URL, and whether it sends a
-form), and keeps the first whose `rt.RouteKey` (its method, then `rt.MsgKey`:
+form), and keeps the first whose `rt.RouteKey` (its method, then `rt.URLKey`:
 the path and the route's own parameters) equals that of the route the test
 wrote.
 

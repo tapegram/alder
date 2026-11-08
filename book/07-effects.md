@@ -368,7 +368,7 @@ type redirect struct{ location string }
   it writes, and the Go function that does the work.
 - `fail` is `Task.fail` (and a `@unique` violation, chapter 8).
 - `notFound` is `Query.notFound` or `Task.notFound`.
-- `redirect` is `Query.redirect r`, carrying `r`'s URL (`rt.PageURL`), which
+- `redirect` is `Query.redirect r`, carrying `r`'s URL (`rt.RouteURL`), which
   `Run` returns as `*eff.ErrRedirect` for the router to answer with a 303.
 
 Building a tree does nothing. Only `eff.Run` does.

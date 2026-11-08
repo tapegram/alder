@@ -21,11 +21,12 @@ import (
 	"alder/rt/web"
 )
 
-// The fixture app: what the generated code of a small app would be, written by hand. Its
-// session is { user: Text }; page Index ("/", `requires user`, parameter filter = "All") lists
-// T's rows with a Delete button each, a NewRow form (title, note) posting Add, buttons posting
-// Fail, Boom and App.Logout; page Login ("/login") has a form posting Login.Submit, which logs
-// the email in and redirects to "/".
+// The fixture app: what the generated code of a small route app would be, written by hand. Its
+// session is { user: Text }; GET / (Index, `requires user`, parameter filter = "All") lists T's
+// rows with a click of Index.Delete (DELETE /rows/{id}) each, a NewRow form (title, note) sending
+// Index.Add (POST /rows), and clicks of Index.Fail, Index.Boom, App.Logout, Index.Away and
+// Index.Hash; GET /login has a form sending Login.Submit (POST /login), which logs the email in
+// and redirects to "/".
 
 type session struct{ User string }
 
@@ -39,10 +40,6 @@ func (codec) Decode(b []byte) (any, error) {
 	return s, err
 }
 
-func msg(module, name string, params ...rt.KV) rt.MsgRef {
-	return rt.MsgRef{Module: module, Msg: name, Params: params}
-}
-
 func layout(title string, body ...html.Node) html.Node {
 	return html.El("html", nil,
 		html.El("head", nil, html.El("meta", []html.Attr{html.A("charset", "utf-8")}), html.El("title", nil, html.Text(title))),
@@ -51,44 +48,60 @@ func layout(title string, body ...html.Node) html.Node {
 
 const newRow = "Index.NewRow"
 
+// The fixture's write routes.
+var (
+	iAdd     = rt.Route{Name: "Index.Add", Method: "POST", Path: "/rows"}
+	iFail    = rt.Route{Name: "Index.Fail", Method: "POST", Path: "/fail"}
+	iBoom    = rt.Route{Name: "Index.Boom", Method: "POST", Path: "/boom"}
+	iAway    = rt.Route{Name: "Index.Away", Method: "POST", Path: "/go-away"}
+	iHash    = rt.Route{Name: "Index.Hash", Method: "POST", Path: "/to-hash"}
+	iLogout  = rt.Route{Name: "App.Logout", Method: "POST", Path: "/logout"}
+	iLogin   = rt.Route{Name: "Login.Submit", Method: "POST", Path: "/login"}
+	iToIndex = rt.Route{Name: "Index", Method: "GET", Path: "/"}
+	iToLogin = rt.Route{Name: "Login", Method: "GET", Path: "/login"}
+)
+
+func iDelete(id string) rt.Route {
+	return rt.Route{Name: "Index.Delete", Method: "DELETE", Path: "/rows/" + rt.PathSegment(id)}
+}
+
+func clickOf(r rt.Route, label string) html.Node {
+	return html.El("button", []html.Attr{html.RouteAttr("data-on:click", r)}, html.Text(label))
+}
+
 func indexView(filter string, s session, rows []row) html.Node {
 	var items []html.Node
 	for _, r := range rows {
-		items = append(items, html.El("li", []html.Attr{html.A("data-id", r.ID)}, html.Text(r.Title),
-			html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("Index", "Delete", rt.KV{Key: "id", Value: r.ID}))}, html.Text("Delete"))))
+		items = append(items, html.El("li", []html.Attr{html.A("data-id", r.ID)}, html.Text(r.Title), clickOf(iDelete(r.ID), "Delete")))
 	}
 	return layout("Index",
 		html.El("p", []html.Attr{html.A("id", "user")}, html.Text(s.User)),
 		html.El("p", []html.Attr{html.A("id", "filter")}, html.Text(filter)),
 		html.El("p", []html.Attr{html.A("id", "summary")}, html.Text(strconv.Itoa(len(rows))+" rows")),
 		html.El("ul", []html.Attr{html.A("id", "rows")}, items...),
-		html.FormTo(msg("Index", "Add"), nil,
+		html.FormToRoute(iAdd, nil,
 			html.Input(html.Control{Kind: "errors", Form: newRow}),
 			html.Input(html.Control{Kind: "input", Form: newRow, Name: "title", Label: "Title", Required: true}),
 			html.Input(html.Control{Kind: "errors", Form: newRow, Name: "title"}),
 			html.Input(html.Control{Kind: "input", Form: newRow, Name: "note", Label: "Note"}),
 			html.El("button", nil, html.Text("Add"))),
-		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("Index", "Fail"))}, html.Text("Fail")),
-		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("Index", "Boom"))}, html.Text("Boom")),
-		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("App", "Logout"))}, html.Text("Log out")),
-		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("Index", "Away"))}, html.Text("Away")),
-		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("Index", "Hash"))}, html.Text("Hash")),
+		clickOf(iFail, "Fail"),
+		clickOf(iBoom, "Boom"),
+		clickOf(iLogout, "Log out"),
+		clickOf(iAway, "Away"),
+		clickOf(iHash, "Hash"),
 		html.El("a", []html.Attr{html.A("href", "/?filter=Done")}, html.Text("Done")),
 	)
 }
 
 func loginView() html.Node {
-	return layout("Log in", html.FormTo(msg("Login", "Submit"), nil,
+	return layout("Log in", html.FormToRoute(iLogin, nil,
 		html.Input(html.Control{Kind: "errors", Form: "Login.Form"}),
 		html.Input(html.Control{Kind: "input", Form: "Login.Form", Name: "email", Type: "email", Label: "Email"}),
 		html.Input(html.Control{Kind: "errors", Form: "Login.Form", Name: "email"})))
 }
 
-func pageParams(filter string) []rt.KV {
-	return []rt.KV{rt.QueryKV("filter", filter, "All")}
-}
-
-// filterOf decodes the page's parameter from a GET's query or a message's _p. keys.
+// filterOf decodes the page's parameter from a GET's query.
 func filterOf(q url.Values) string {
 	if f := q.Get("filter"); f != "" {
 		return f
@@ -110,29 +123,34 @@ func fail(err error) web.Response {
 	return web.ErrorResponse(html.None(), err)
 }
 
-// update runs task and answers as a generated message route does (Rerender: a body patch under
-// Datastar, else a 303 to the page; Reject with a form state: the form re-rendered).
-func update(rq *web.Request, filter string, task eff.Task[rt.Nav], st *html.FormState) web.Response {
-	nav, err := eff.Run(rq.Env, eff.KTask, task)
+// update runs task, a write route's update, and answers as a generated write route does: the
+// page the browser is on rendered before it (RenderShown, under Datastar), then `refresh`, or
+// `invalid t` with the form's state st when the task gives a text t.
+func update(rq *web.Request, task eff.Task[string], st *html.FormState) web.Response {
+	var before *web.Shown
+	if rq.Datastar {
+		before, _ = rq.RenderShown(nil)
+	}
+	text, err := eff.Run(rq.Env, eff.KTask, task)
 	if err != nil {
 		return fail(err)
 	}
-	switch {
-	case nav.Tag == rt.NavRedirect:
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	case nav.Tag == rt.NavReject && st != nil:
-		st.FormError = nav.Text
-	case !rq.Datastar:
-		return web.RedirectResponse(rt.PageAt("/", pageParams(filter)), rq.Env.Session)
-	default:
-		st = &html.FormState{}
+	if text != "" {
+		resp := web.AnswerResponse(rt.Invalid(text), before, rq.Env.Session)
+		resp.State = st
+		return resp
 	}
-	st.PageParams = pageParams(filter)
-	rows, err := loadIndex(rq)
-	if err != nil {
-		return fail(err)
+	return web.AnswerResponse(rt.Refresh(), before, rq.Env.Session)
+}
+
+// invalidForm is a write route's answer to a form that did not decode: st re-rendered on the
+// page the browser is on.
+func invalidForm(rq *web.Request, st *html.FormState) web.Response {
+	resp := web.InvalidResponse(st, nil)
+	if rq.Datastar {
+		resp.Shown, _ = rq.RenderShown(nil)
 	}
-	return web.PageResponse(indexView(filter, rq.Env.Session.(session), rows), st, rq.Env.Session, true)
+	return resp
 }
 
 func insertTask(title string) eff.Task[string] {
@@ -142,7 +160,6 @@ func insertTask(title string) eff.Task[string] {
 }
 
 func fixtureRoutes() []web.Route {
-	pageFilter := func(rq *web.Request) string { _, q := rt.PageParams(rq.Query); return filterOf(q) }
 	return []web.Route{
 		{Method: "GET", Pattern: "/", Handle: func(rq *web.Request) web.Response {
 			s := rq.Session.(session)
@@ -153,11 +170,10 @@ func fixtureRoutes() []web.Route {
 			if err != nil {
 				return fail(err)
 			}
-			f := filterOf(rq.Query)
-			return web.PageResponse(indexView(f, s, rows), &html.FormState{PageParams: pageParams(f)}, nil, false)
+			return web.PageResponse(indexView(filterOf(rq.Query), s, rows), rq.FormState, nil)
 		}},
 		{Method: "GET", Pattern: "/login", Handle: func(rq *web.Request) web.Response {
-			return web.PageResponse(loginView(), nil, nil, false)
+			return web.PageResponse(loginView(), rq.FormState, nil)
 		}},
 		{Method: "GET", Pattern: "/old", Handle: func(rq *web.Request) web.Response { return web.RedirectResponse("/?filter=Old", nil) }},
 		{Method: "GET", Pattern: "/loop", Handle: func(rq *web.Request) web.Response { return web.RedirectResponse("/loop", nil) }},
@@ -169,68 +185,73 @@ func fixtureRoutes() []web.Route {
 			return web.ErrorResponse(html.None(), errors.New("bad slug"))
 		}},
 		{Method: "GET", Pattern: "/hash", Handle: func(rq *web.Request) web.Response { return web.RedirectResponse("#top", nil) }},
-		{Method: "POST", Pattern: "/_m/Index/Hash", Handle: func(rq *web.Request) web.Response {
-			return web.RedirectResponse("#", rq.Env.Session) // Redirect (Url.external "javascript:…")
+		{Method: "POST", Pattern: "/to-hash", Handle: func(rq *web.Request) web.Response {
+			return web.RedirectResponse("#", rq.Env.Session) // a handler's redirect to Url.external "javascript:…"
 		}},
-		{Method: "POST", Pattern: "/_m/Index/Away", Handle: func(rq *web.Request) web.Response {
-			return web.RedirectResponse("https://other.example/login", rq.Env.Session)
+		{Method: "POST", Pattern: "/go-away", Handle: func(rq *web.Request) web.Response {
+			return web.AnswerResponse(rt.Redirect(rt.Route{Method: "GET", Path: "https://other.example/login"}), nil, rq.Env.Session)
 		}},
 		{Method: "GET", Pattern: "/broken", Handle: func(rq *web.Request) web.Response {
 			_, err := eff.Run(rq.Env, eff.KTask, then(insertTask("broken"), eff.Fail[int]("kaput")))
 			return fail(err)
 		}},
-		{Method: "POST", Pattern: "/_m/Login/Submit", Handle: func(rq *web.Request) web.Response {
+		{Method: "POST", Pattern: "/login", Handle: func(rq *web.Request) web.Response {
 			email := rq.Form.Get("email")
 			if email == "" {
-				return web.PageResponse(loginView(), &html.FormState{Form: "Login.Form", Msg: rt.MsgKey("/_m/Login/Submit", rq.Query),
-					Values: map[string]string{"email": ""}, Errors: map[string][]string{"email": {"is required"}}}, nil, true)
+				return invalidForm(rq, &html.FormState{Form: "Login.Form", Msg: rt.RouteKey(iLogin),
+					Values: map[string]string{"email": ""}, Errors: map[string][]string{"email": {"is required"}}})
 			}
-			return web.RedirectResponse("/", session{User: email})
+			return web.AnswerResponse(rt.Redirect(iToIndex), nil, session{User: email})
 		}},
-		{Method: "POST", Pattern: "/_m/Index/Add", Handle: func(rq *web.Request) web.Response {
-			f := pageFilter(rq)
+		{Method: "POST", Pattern: "/rows", Handle: func(rq *web.Request) web.Response {
 			values := map[string]string{"title": rq.Form.Get("title"), "note": rq.Form.Get("note")}
-			key := rt.MsgKey("/_m/Index/Add", rq.Query)
+			key := rt.RouteKey(iAdd)
 			if values["title"] == "" {
-				rows, _ := loadIndex(rq)
-				return web.PageResponse(indexView(f, rq.Session.(session), rows), &html.FormState{Form: newRow, Msg: key, Values: values,
-					Errors: map[string][]string{"title": {"must not be empty"}}, PageParams: pageParams(f)}, nil, true)
+				return invalidForm(rq, &html.FormState{Form: newRow, Msg: key, Values: values,
+					Errors: map[string][]string{"title": {"must not be empty"}}})
 			}
 			st := &html.FormState{Form: newRow, Msg: key, Values: values}
 			if values["title"] == "dup" {
-				return update(rq, f, eff.Pure(rt.Reject("that title is taken")), st)
+				return update(rq, eff.Pure("that title is taken"), st)
 			}
-			return update(rq, f, eff.Map(func(string) rt.Nav { return rt.Rerender() }, insertTask(values["title"])), st)
+			return update(rq, eff.Map(func(string) string { return "" }, insertTask(values["title"])), st)
 		}},
-		{Method: "POST", Pattern: "/_m/Index/Delete", Handle: func(rq *web.Request) web.Response {
-			id := rq.Query.Get("id")
-			return update(rq, pageFilter(rq), eff.Call("Db.delete T", true, func(e *eff.Env) (rt.Nav, error) {
+		{Method: "DELETE", Pattern: "/rows/{id}", Handle: func(rq *web.Request) web.Response {
+			id := rq.Params["id"]
+			return update(rq, eff.Call("Db.delete T", true, func(e *eff.Env) (string, error) {
 				m, err := db.GetRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), tb, id)
 				if err != nil {
-					return rt.Nav{}, err
+					return "", err
 				}
 				if !m.Ok {
-					return rt.Nav{}, eff.ErrNotFound
+					return "", eff.ErrNotFound
 				}
-				return rt.Rerender(), db.DeleteRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), tb, id)
+				return "", db.DeleteRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), tb, id)
 			}), nil)
 		}},
-		{Method: "POST", Pattern: "/_m/Index/Fail", Handle: func(rq *web.Request) web.Response {
-			return update(rq, pageFilter(rq), then(insertTask("failed"), eff.Fail[rt.Nav]("nope")), nil)
+		{Method: "POST", Pattern: "/fail", Handle: func(rq *web.Request) web.Response {
+			return update(rq, then(insertTask("failed"), eff.Fail[string]("nope")), nil)
 		}},
-		{Method: "POST", Pattern: "/_m/Index/Boom", Handle: func(rq *web.Request) web.Response {
-			return update(rq, pageFilter(rq), then(insertTask("boom"), eff.Call("boom", false, func(*eff.Env) (rt.Nav, error) { panic("boom") })), nil)
+		{Method: "POST", Pattern: "/boom", Handle: func(rq *web.Request) web.Response {
+			return update(rq, then(insertTask("boom"), eff.Call("boom", false, func(*eff.Env) (string, error) { panic("boom") })), nil)
 		}},
-		{Method: "POST", Pattern: "/_m/App/Logout", Handle: func(rq *web.Request) web.Response {
-			return web.RedirectResponse("/login", session{})
+		{Method: "POST", Pattern: "/logout", Handle: func(rq *web.Request) web.Response {
+			return web.AnswerResponse(rt.Redirect(iToLogin), nil, session{})
 		}},
-		{Method: "POST", Pattern: "/_m/Index/To", Handle: func(rq *web.Request) web.Response {
+		{Method: "POST", Pattern: "/to", Handle: func(rq *web.Request) web.Response {
 			return web.RedirectResponse(rq.Query.Get("to"), nil)
 		}},
 		{Method: "GET", Pattern: "/r.csv", File: true, Handle: func(rq *web.Request) web.Response {
 			return web.FileResponse(rt.File{ContentType: "text/csv", Headers: [][2]string{{"Content-Disposition", "inline"}}, Body: []byte("a,b\n")}, nil)
 		}},
 	}
+}
+
+// post sends a write to target as a click with no form of the page's script would (a
+// Datastar POST with the script's empty JSON payload and headers), whether or not the held page
+// offers a control for it, and applies its answer.
+func post(b *Browser, target string) (Answer, error) {
+	return b.sendRoute(routeCtl{method: http.MethodPost, route: http.MethodPost, url: target}, rt.Route{}, nil)
 }
 
 func fixtureWeb() web.Options {
@@ -333,7 +354,7 @@ func TestBrowser_GetLoginAndCookie(t *testing.T) {
 		if err.Error() != "GET /: redirected to /login (requires user)" {
 			t.Errorf("with Requires: %v", err)
 		}
-		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Page{Path: "/login"}})
+		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Route{Path: "/login"}})
 		if text(t, r.Doc, "title") != "Log in" || r.Session != (session{}) || b.URL() != "/login" {
 			t.Errorf("held %s, session %v", b.URL(), r.Session)
 		}
@@ -356,15 +377,15 @@ func TestBrowser_GetLoginAndCookie(t *testing.T) {
 
 		// through the real login form: the router's Set-Cookie is kept and sent back
 		b.Open("/login")
-		r = must(b.Submit("/_m/Login/Submit", url.Values{"email": {"bob@example.com"}}))
-		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Page{Path: "/"}})
+		r = must(b.SubmitRoute(iLogin, "Login.Form", Fields{Values: url.Values{"email": {"bob@example.com"}}}))
+		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Route{Path: "/"}})
 		if r.Session != (session{User: "bob@example.com"}) || text(t, r.Doc, "#user") != "bob@example.com" {
 			t.Errorf("after the login form: session %v, page user %q", r.Session, text(t, r.Doc, "#user"))
 		}
 
 		// App.Logout through its button
-		r = must(b.Click("/_m/App/Logout"))
-		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Page{Path: "/login"}})
+		r = must(b.ClickRoute(iLogout, "App.Logout"))
+		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Route{Path: "/login"}})
 		if r.Session != (session{}) {
 			t.Errorf("after logout: %v", r.Session)
 		}
@@ -379,7 +400,7 @@ func TestBrowser_Rejected(t *testing.T) {
 		must := mustOf(t)
 		b.Login(session{User: "ann"})
 		must(b.Get("/"))
-		r := must(b.Submit("/_m/Index/Add", url.Values{"title": {""}, "note": {"keep <me>"}}))
+		r := must(b.SubmitRoute(iAdd, newRow, Fields{Values: url.Values{"title": {""}, "note": {"keep <me>"}}}))
 		wantAnswer(t, r, Answer{Tag: FormRejected, Errors: []web.FieldError{{Field: "title", Message: "must not be empty"}}})
 		note := html.Select(r.Doc, html.MustParseSelector("input[name=note]"))
 		if v, _ := html.AttrOf(note[0], "value"); v != "keep <me>" {
@@ -391,15 +412,15 @@ func TestBrowser_Rejected(t *testing.T) {
 		if r.Session != (session{User: "ann"}) || text(t, r.Doc, "#user") != "ann" {
 			t.Errorf("session %v", r.Session)
 		}
-		// the form-level Reject text
-		r = must(b.Submit("/_m/Index/Add", url.Values{"title": {"dup"}}))
+		// the form-level invalid text
+		r = must(b.SubmitRoute(iAdd, newRow, Fields{Values: url.Values{"title": {"dup"}}}))
 		wantAnswer(t, r, Answer{Tag: FormRejected, Errors: []web.FieldError{{Field: "", Message: "that title is taken"}}})
 		if v, _ := html.AttrOf(html.Select(r.Doc, html.MustParseSelector("input[name=title]"))[0], "value"); v != "dup" {
 			t.Errorf("title value = %q", v)
 		}
-		// a good one: Rerendered, the errors gone, the row listed
-		r = must(b.Submit("/_m/Index/Add", url.Values{"title": {"milk"}}))
-		wantAnswer(t, r, Answer{Tag: Rerendered})
+		// a good one: Refreshed, the errors gone, the row listed
+		r = must(b.SubmitRoute(iAdd, newRow, Fields{Values: url.Values{"title": {"milk"}}}))
+		wantAnswer(t, r, Answer{Tag: Refreshed})
 		if text(t, r.Doc, "#rows li") != "milkDelete" || text(t, r.Doc, "#summary") != "1 rows" {
 			t.Errorf("after add: %s", html.Render(r.Doc))
 		}
@@ -409,9 +430,10 @@ func TestBrowser_Rejected(t *testing.T) {
 	})
 }
 
-// TestBrowser_PageParamsRideAlong (Review Focus 3): on a page opened with a parameter, a click
-// posts the control's URL with `_p.filter`, and the Rerendered page keeps the parameter.
-func TestBrowser_PageParamsRideAlong(t *testing.T) {
+// TestBrowser_ShownPageQueryKept (Review Focus 3): on a page opened with a parameter, a write's
+// `refresh` renders the page the browser is on (its URL, sent as Alder-Page), parameter
+// included, and the held URL keeps it.
+func TestBrowser_ShownPageQueryKept(t *testing.T) {
 	browse(t, func(b *Browser, e *eff.Env) {
 		must := mustOf(t)
 		a := insertDirect(t, e, "a")
@@ -422,26 +444,20 @@ func TestBrowser_PageParamsRideAlong(t *testing.T) {
 			t.Errorf("filter = %q", text(t, r.Doc, "#filter"))
 		}
 		start := len(e.Trace)
-		r = must(b.Click("/_m/Index/Delete?id=" + url.QueryEscape(a)))
-		wantAnswer(t, r, Answer{Tag: Rerendered})
-		if text(t, r.Doc, "#filter") != "Active" || text(t, r.Doc, "#summary") != "1 rows" {
-			t.Errorf("after the click: %s", html.Render(r.Doc))
+		r = must(b.ClickRoute(iDelete(a), "Index.Delete"))
+		wantAnswer(t, r, Answer{Tag: Refreshed})
+		if text(t, r.Doc, "#filter") != "Active" || text(t, r.Doc, "#summary") != "1 rows" || b.URL() != "/?filter=Active" {
+			t.Errorf("after the click: %s %s", b.URL(), html.Render(r.Doc))
 		}
-		// the trace: the request's effects (update, then the re-load)
-		if got := e.Trace[start:]; !reflect.DeepEqual(got, []string{"Db.delete T", "Db.all T"}) {
+		// the trace: the request's effects (the page before, update, then the page again)
+		if got := e.Trace[start:]; !reflect.DeepEqual(got, []string{"Db.all T", "Db.delete T", "Db.all T"}) {
 			t.Errorf("trace = %v", got)
 		}
 		// and a submit on that page too
-		r = must(b.Submit("/_m/Index/Add", url.Values{"title": {"c"}}))
-		wantAnswer(t, r, Answer{Tag: Rerendered})
+		r = must(b.SubmitRoute(iAdd, newRow, Fields{Values: url.Values{"title": {"c"}}}))
+		wantAnswer(t, r, Answer{Tag: Refreshed})
 		if text(t, r.Doc, "#filter") != "Active" {
 			t.Errorf("after the submit: filter %q", text(t, r.Doc, "#filter"))
-		}
-		// the held page's message URLs still carry the parameter
-		if f := html.Select(r.Doc, html.MustParseSelector("form[action]")); len(f) == 0 {
-			t.Error("no form")
-		} else if a, _ := html.AttrOf(f[0], "action"); !strings.Contains(a, "_p.filter=Active") {
-			t.Errorf("action = %q", a)
 		}
 	})
 }
@@ -455,7 +471,7 @@ func TestBrowser_FailuresKeepTheTestsRows(t *testing.T) {
 		insertDirect(t, e, "mine")
 		b.Login(session{User: "ann"})
 		must(b.Get("/"))
-		r := must(b.Click("/_m/Index/Fail"))
+		r := must(b.ClickRoute(iFail, "Index.Fail"))
 		wantAnswer(t, r, Answer{Tag: RequestFailed, Text: "nope"})
 		if text(t, r.Doc, "h1") != "Something went wrong" {
 			t.Errorf("held %s", html.Render(r.Doc))
@@ -464,7 +480,7 @@ func TestBrowser_FailuresKeepTheTestsRows(t *testing.T) {
 			t.Errorf("session %v", r.Session)
 		}
 		must(b.Get("/"))
-		r = must(b.Click("/_m/Index/Boom"))
+		r = must(b.ClickRoute(iBoom, "Index.Boom"))
 		wantAnswer(t, r, Answer{Tag: RequestFailed, Text: "panic: boom"})
 		if got := titles(t, e); !reflect.DeepEqual(got, []string{"mine"}) {
 			t.Errorf("rows after the failures = %v", got)
@@ -473,10 +489,10 @@ func TestBrowser_FailuresKeepTheTestsRows(t *testing.T) {
 		// within Test.run: the steps run (nested savepoints) …
 		_, _, ok, trace, err := Inner(e, eff.Call("Test.get Index", true, func(ie *eff.Env) (int, error) {
 			r := must(BrowserOf(ie).Get("/"))
-			must(BrowserOf(ie).Submit("/_m/Index/Add", url.Values{"title": {"inner"}}))
+			must(BrowserOf(ie).SubmitRoute(iAdd, newRow, Fields{Values: url.Values{"title": {"inner"}}}))
 			return len(html.Select(r.Doc, html.MustParseSelector("#rows li"))), nil
 		}))
-		if err != nil || !ok || !reflect.DeepEqual(trace, []string{"Test.get Index", "Db.all T", "Db.insert T", "Db.all T"}) {
+		if err != nil || !ok || !reflect.DeepEqual(trace, []string{"Test.get Index", "Db.all T", "Db.all T", "Db.insert T", "Db.all T"}) {
 			t.Errorf("Inner: ok %v trace %v err %v", ok, trace, err)
 		}
 		if got := titles(t, e); !reflect.DeepEqual(got, []string{"inner", "mine"}) {
@@ -484,7 +500,7 @@ func TestBrowser_FailuresKeepTheTestsRows(t *testing.T) {
 		}
 		// … and a Test.run that fails after a step undoes the step's write
 		_, msg, ok, _, err := Inner(e, then(eff.Call("Test.submit", true, func(ie *eff.Env) (int, error) {
-			must(BrowserOf(ie).Submit("/_m/Index/Add", url.Values{"title": {"undone"}}))
+			must(BrowserOf(ie).SubmitRoute(iAdd, newRow, Fields{Values: url.Values{"title": {"undone"}}}))
 			return 0, nil
 		}), eff.Fail[int]("stop")))
 		if err != nil || ok || msg != "stop" {
@@ -499,56 +515,51 @@ func TestBrowser_FailuresKeepTheTestsRows(t *testing.T) {
 	}
 }
 
-// TestBrowser_NoControl: Submit and Click act only on controls the held page renders.
+// TestBrowser_NoControl: SubmitRoute and ClickRoute act only on controls the held page renders;
+// the error names the route as the test wrote it and the parameters the page offers it with.
 func TestBrowser_NoControl(t *testing.T) {
 	browse(t, func(b *Browser, e *eff.Env) {
 		must := mustOf(t)
-		_, err := b.Click("/_m/Index/Delete?id=zzz")
+		_, err := b.ClickRoute(iDelete("zzz"), `Index.Delete { id: "zzz" }`)
 		if err == nil || err.Error() != "no page is open: `Test.get` one first" {
 			t.Errorf("before any page: %v", err)
 		}
-		for _, sub := range []func() (Result, error){
-			func() (Result, error) { return b.Submit("/_m/Index/NewRow", nil) },
-			func() (Result, error) { return b.SubmitForm("/_m/Index/NewRow", "NewRow", Fields{}) },
-		} {
-			if _, err := sub(); err == nil || err.Error() != "no page is open: `Test.get` one first" {
-				t.Errorf("submit before any page: %v", err)
-			}
+		if _, err := b.SubmitRoute(iAdd, "NewRow", Fields{}); err == nil || err.Error() != "no page is open: `Test.get` one first" {
+			t.Errorf("submit before any page: %v", err)
 		}
 		b.Login(session{User: "ann"})
 		a := insertDirect(t, e, "a")
 		must(b.Get("/"))
 		start := len(e.Trace)
-		_, err = b.Click("/_m/Index/Delete?id=zzz")
+		_, err = b.ClickRoute(iDelete("zzz"), `Index.Delete { id: "zzz" }`)
 		var nc *NoControlError
-		if !errors.As(err, &nc) || nc.Page != "/" || nc.URL != "/_m/Index/Delete?id=zzz" ||
-			err.Error() != "the page / has no button or form for Index.Delete { id: \"zzz\" } (the page has Delete for id: "+a+")" {
+		if !errors.As(err, &nc) || nc.Page != "/" || nc.URL != "/rows/zzz" ||
+			err.Error() != `the page / has no button or form for Index.Delete { id: "zzz" } (the page has Delete for id: `+a+")" {
 			t.Errorf("click: %v", err)
 		}
-		_, err = b.Submit("/_m/Login/Submit", url.Values{})
+		_, err = b.SubmitRoute(iLogin, "", Fields{})
 		if err == nil || err.Error() != "the page / has no form for Login.Submit" {
 			t.Errorf("submit: %v", err)
 		}
-		errors.As(err, &nc)
-		nc.Form, nc.Msg = "LoginForm", "Login.Submit"
-		if err.Error() != "the page / has no form LoginForm (Login.Submit)" {
+		_, err = b.SubmitRoute(iLogin, "LoginForm", Fields{})
+		if err == nil || err.Error() != "the page / has no form LoginForm (Login.Submit)" {
 			t.Errorf("submit with Form: %v", err)
 		}
-		// a click button is not a form to submit; a form posting it is a control to click
-		if _, err := b.Submit("/_m/Index/Fail", nil); err == nil {
+		// a click button is not a form to submit
+		if _, err := b.SubmitRoute(iFail, "", Fields{}); err == nil {
 			t.Error("submitted a click button")
 		}
 		// a field the form renders no input for is not sent by a browser: the step fails (C1)
-		_, err = b.SubmitForm("/_m/Index/Add", "NewRow", Fields{Values: url.Values{"title": {"x"}, "colour": {"red"}}})
+		_, err = b.SubmitRoute(iAdd, "NewRow", Fields{Values: url.Values{"title": {"x"}, "colour": {"red"}}})
 		if err == nil || err.Error() != "the page's form NewRow has no input `colour`" {
 			t.Errorf("a field without an input: %v", err)
 		}
 		if len(e.Trace) != start {
 			t.Errorf("a refused step sent a request: %v", e.Trace[start:])
 		}
-		// the same message with its own parameters matches; the page's are not compared
-		r := must(b.Click("/_m/Index/Delete?id=" + url.QueryEscape(a) + "&_p.filter=Other"))
-		wantAnswer(t, r, Answer{Tag: Rerendered})
+		// the route with the row's own parameters matches
+		r := must(b.ClickRoute(iDelete(a), "Index.Delete"))
+		wantAnswer(t, r, Answer{Tag: Refreshed})
 	})
 }
 
@@ -591,7 +602,7 @@ func TestBrowser_MissingAndFailed(t *testing.T) {
 		}
 		b.Login(session{User: "ann"})
 		r = must(b.Open("/old"))
-		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Page{Path: "/", Query: []rt.KV{{Key: "filter", Value: "Old"}}}})
+		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Route{Path: "/", Query: []rt.KV{{Key: "filter", Value: "Old"}}}})
 		if text(t, r.Doc, "#filter") != "Old" {
 			t.Errorf("held %s", html.Render(r.Doc))
 		}
@@ -602,7 +613,7 @@ func TestBrowser_MissingAndFailed(t *testing.T) {
 		if err := db.DeleteRow(e.Ctx, e.Store.(db.Store), tx.(db.Tx), tb, id); err != nil {
 			t.Error(err)
 		}
-		r = must(b.Click("/_m/Index/Delete?id=" + url.QueryEscape(id)))
+		r = must(b.ClickRoute(iDelete(id), "Index.Delete"))
 		wantAnswer(t, r, Answer{Tag: PageMissing})
 		if r.Status != 404 { // a Datastar answer's code is its Alder-Status
 			t.Errorf("Status %d after a Datastar 404, want 404", r.Status)
@@ -623,15 +634,15 @@ func TestBrowser_BadQuery(t *testing.T) {
 		if _, err := b.Get("/?filter=a;b"); err == nil || !strings.Contains(err.Error(), `"filter"`) {
 			t.Errorf("Get: %v", err)
 		}
-		// a Datastar POST (sent directly: no page offers a control with that id): the 200 body
+		// a Datastar POST (sent directly: no page offers a control with that query): the 200 body
 		// patch's Alder-Status 400 is the same RequestFailed
 		b.Login(session{User: "ann"})
 		must(b.Get("/"))
-		ans, err := b.post("/_m/Index/Delete?id=a;b", url.Values{})
+		ans, err := post(b, "/to?to=a;b")
 		if err != nil {
 			t.Fatal(err)
 		}
-		want.Text = "400 bad request: query parameter \"id\" holds a raw \";\": encode it as %3B"
+		want.Text = "400 bad request: query parameter \"to\" holds a raw \";\": encode it as %3B"
 		wantAnswer(t, b.result(ans), want)
 		if got := titles(t, e); len(got) != 0 {
 			t.Errorf("rows %v", got)
@@ -640,7 +651,7 @@ func TestBrowser_BadQuery(t *testing.T) {
 }
 
 // TestBrowser_AnswerParsing exercises the answer parsing directly: an SSE patch replacing the
-// body, a navigate event, MsgLabel and pageOf.
+// body, a navigate event and pageOf.
 func TestBrowser_AnswerParsing(t *testing.T) {
 	events, err := sseEvents("event: datastar-patch-elements\ndata: selector body\ndata: mode outer\ndata: elements <body><p>a\ndata: elements b</p></body>\n\n" +
 		"event: datastar-patch-elements\ndata: selector body\ndata: mode append\ndata: elements <script data-effect=\"el.remove()\">window.location.assign(\"/x?a=1\\u0026b=2\")</script>\n\n")
@@ -668,13 +679,7 @@ func TestBrowser_AnswerParsing(t *testing.T) {
 	if err := b.patch(sseEvent{typ: "datastar-patch-elements", data: [][2]string{{"selector", "#x"}, {"mode", "outer"}}}); err == nil {
 		t.Fatal("patched a selector other than body")
 	}
-	if got := MsgLabel("/_m/Todos.Index/Toggle?id=a%20b&_p.filter=Active"); got != `Todos.Index.Toggle { id: "a b" }` {
-		t.Fatalf("MsgLabel = %s", got)
-	}
-	if got := MsgLabel("/_m/App/Logout"); got != "App.Logout" {
-		t.Fatalf("MsgLabel = %s", got)
-	}
-	if got := pageOf("/todos/a%2Fb?filter=Active&q=x+y"); !reflect.DeepEqual(got, rt.Page{Path: "/todos/a%2Fb", Query: []rt.KV{{Key: "filter", Value: "Active"}, {Key: "q", Value: "x y"}}}) || rt.PageURL(got) != "/todos/a%2Fb?filter=Active&q=x+y" {
+	if got := pageOf("/todos/a%2Fb?filter=Active&q=x+y"); !reflect.DeepEqual(got, rt.Route{Path: "/todos/a%2Fb", Query: []rt.KV{{Key: "filter", Value: "Active"}, {Key: "q", Value: "x y"}}}) || rt.RouteURL(got) != "/todos/a%2Fb?filter=Active&q=x+y" {
 		t.Fatalf("pageOf = %+v", got)
 	}
 }
@@ -686,7 +691,7 @@ func TestBrowser_Plain303(t *testing.T) {
 		must := mustOf(t)
 		router := b.handler
 		b.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodPost && r.URL.Path == "/_m/App/Logout" {
+			if r.Method == http.MethodPost && r.URL.Path == "/logout" {
 				http.Redirect(w, r, "/login", http.StatusSeeOther)
 				return
 			}
@@ -694,8 +699,8 @@ func TestBrowser_Plain303(t *testing.T) {
 		})
 		b.Login(session{User: "ann"})
 		must(b.Get("/"))
-		r := must(b.Click("/_m/App/Logout"))
-		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Page{Path: "/login"}})
+		r := must(b.ClickRoute(iLogout, "App.Logout"))
+		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Route{Path: "/login"}})
 		if text(t, r.Doc, "title") != "Log in" {
 			t.Errorf("held %s", html.Render(r.Doc))
 		}
@@ -758,12 +763,12 @@ func TestBrowser_ExternalRedirect(t *testing.T) {
 		must(b.Get("/"))
 		before := html.Render(b.Doc())
 		r := must(b.Open("/away"))
-		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Page{Path: "https://other.example/login?next=%2F"}})
+		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Route{Path: "https://other.example/login?next=%2F"}})
 		if b.URL() != "/" || html.Render(r.Doc) != before {
 			t.Errorf("held %s %s", b.URL(), html.Render(r.Doc))
 		}
-		r = must(b.Click("/_m/Index/Away"))
-		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Page{Path: "https://other.example/login"}})
+		r = must(b.ClickRoute(iAway, "Index.Away"))
+		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Route{Path: "https://other.example/login"}})
 		if b.URL() != "/" || html.Render(r.Doc) != before {
 			t.Errorf("held after the navigate: %s %s", b.URL(), html.Render(r.Doc))
 		}
@@ -772,7 +777,7 @@ func TestBrowser_ExternalRedirect(t *testing.T) {
 
 // TestBrowser_FragmentRedirect: a redirect to "#" (an unsafe Url.external the runtime
 // neutralised) or "#frag" stays on the page, as a browser does: Redirected with that target,
-// nothing requested, the held page and URL kept — for a GET's 303 and a message's alike.
+// nothing requested, the held page and URL kept — for a GET's 303 and a write's alike.
 func TestBrowser_FragmentRedirect(t *testing.T) {
 	browse(t, func(b *Browser, e *eff.Env) {
 		must := mustOf(t)
@@ -780,14 +785,14 @@ func TestBrowser_FragmentRedirect(t *testing.T) {
 		must(b.Get("/"))
 		before := html.Render(b.Doc())
 		r := must(b.Open("/hash"))
-		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Page{Path: "#top"}})
+		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Route{Path: "#top"}})
 		if b.URL() != "/" || html.Render(r.Doc) != before {
 			t.Errorf("held %s %s", b.URL(), html.Render(r.Doc))
 		}
-		r = must(b.Click("/_m/Index/Hash"))
-		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Page{Path: "#"}})
+		r = must(b.ClickRoute(iHash, "Index.Hash"))
+		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Route{Path: "#"}})
 		if b.URL() != "/" || html.Render(r.Doc) != before {
-			t.Errorf("held after the message: %s %s", b.URL(), html.Render(r.Doc))
+			t.Errorf("held after the write: %s %s", b.URL(), html.Render(r.Doc))
 		}
 	})
 }
@@ -833,7 +838,7 @@ func TestBrowser_TransactionErrorFailsTheStep(t *testing.T) {
 	}
 }
 
-// TestBrowser_FollowedRedirect (M13): a message's redirect to a page of this app is followed
+// TestBrowser_FollowedRedirect (M13): a write's redirect to a page of this app is followed
 // by the router (its morph, title and history push), and the browser answers as when it
 // fetched the target itself: Redirected with the target held and its URL (title included),
 // PageMissing, RequestFailed with the GET's error, and the redirect loop's text.
@@ -843,7 +848,7 @@ func TestBrowser_FollowedRedirect(t *testing.T) {
 		mustOf(t)(b.Get("/"))
 		to := func(u string) Answer {
 			t.Helper()
-			ans, err := b.post("/_m/Index/To?to="+url.QueryEscape(u), url.Values{})
+			ans, err := post(b, "/to?to="+url.QueryEscape(u))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -918,7 +923,7 @@ func TestBrowser_Fetch(t *testing.T) {
 	})
 }
 
-// A destructive toast (the markup of Notice.error) reads back as kind "error"; the other
+// A destructive toast (the markup of Response.error) reads back as kind "error"; the other
 // variants read back as they are written.
 func TestToastOf_DestructiveReadsBackAsError(t *testing.T) {
 	for variant, want := range map[string]string{
@@ -937,7 +942,7 @@ func TestToastOf_DestructiveReadsBackAsError(t *testing.T) {
 }
 
 // The route fixture (#160): what a generated route app answers, written by hand, under /r so
-// it sits beside the page fixture. GET /r (R.Index) lists rows, each `<li id="row-N">` with
+// it sits beside the fixture app. GET /r (R.Index) lists rows, each `<li id="row-N">` with
 // click buttons for R.Toggle (PATCH, render), R.Delete (DELETE, redirect), R.Row (GET, an
 // element fetch) and R.Rename (POST with `form RenameF`), and a form #add posting R.Add (POST
 // `form NewRow`: refresh, invalid) with a click of R.Purge (DELETE `form PurgeF`) inside it.
@@ -1047,7 +1052,7 @@ func (a *routeApp) routes() []web.Route {
 			if st == nil {
 				st = &html.FormState{}
 			}
-			return web.PageResponse(a.index(), st, nil, false)
+			return web.PageResponse(a.index(), st, nil)
 		}},
 		{Method: "GET", Pattern: "/r/rows/{id}", Handle: func(rq *web.Request) web.Response {
 			a.see(rq, "Row")
@@ -1060,14 +1065,14 @@ func (a *routeApp) routes() []web.Route {
 				a.rows[i-1], a.lie = a.lie, ""
 				defer func() { a.rows[i-1] = title }()
 			}
-			return web.PageResponse(a.row(i), &html.FormState{}, nil, false)
+			return web.PageResponse(a.row(i), &html.FormState{}, nil)
 		}},
 		// a page of row 1 alone, with controls for row 2 (which it does not show) and R.Gone
 		{Method: "GET", Pattern: "/r/few", Handle: func(rq *web.Request) web.Response {
 			return web.PageResponse(layout("Few",
 				html.El("ul", []html.Attr{html.A("id", "rows")}, a.row(1)),
 				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rToggle(2))}, html.Text("Toggle 2")),
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rGone())}, html.Text("Gone"))), &html.FormState{}, nil, false)
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rGone())}, html.Text("Gone"))), &html.FormState{}, nil)
 		}},
 		{Method: "PATCH", Pattern: "/r/rows/{id}", Handle: func(rq *web.Request) web.Response {
 			a.see(rq, "Toggle")
@@ -1087,7 +1092,7 @@ func (a *routeApp) routes() []web.Route {
 			a.rows[i-1] = ""
 			to := rIndex()
 			to.Query = []rt.KV{{Key: "after", Value: "delete"}}
-			return web.AnswerResponse(rt.RedirectTo(to), nil, nil)
+			return web.AnswerResponse(rt.Redirect(to), nil, nil)
 		}},
 		{Method: "POST", Pattern: "/r/rows/{id}/rename", Handle: func(rq *web.Request) web.Response {
 			a.see(rq, "Rename")
@@ -1136,7 +1141,7 @@ func (a *routeApp) routes() []web.Route {
 	}
 }
 
-// browseRoutes runs steps against app's routes, beside the page fixture's.
+// browseRoutes runs steps against app's routes, beside the fixture app's.
 func browseRoutes(t *testing.T, app *routeApp, steps ...func(b *Browser, e *eff.Env)) CaseResult {
 	t.Helper()
 	return browseOpts(t, Options{}, app.routes(), steps...)
@@ -1259,8 +1264,9 @@ func TestBrowser_InvalidStatus(t *testing.T) {
 	})
 }
 
-// A route the held page renders no control for is the NoControlError of a message, naming
-// the route as the test wrote it; nothing is sent.
+// A route the held page renders no control for is a NoControlError naming the route as the
+// test wrote it (a submit's with its parameters) and the parameters the page offers it with;
+// nothing is sent.
 func TestBrowser_NoControlRoute(t *testing.T) {
 	app := newRouteApp("one")
 	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
@@ -1268,11 +1274,11 @@ func TestBrowser_NoControlRoute(t *testing.T) {
 		must(b.Get("/r"))
 		_, err := b.ClickRoute(rToggle(9), `R.Toggle { id: "9" }`)
 		var nc *NoControlError
-		if !errors.As(err, &nc) || err.Error() != `the page /r has no button or form for R.Toggle { id: "9" }` {
+		if !errors.As(err, &nc) || err.Error() != `the page /r has no button or form for R.Toggle { id: "9" } (the page has Toggle for id: 1)` {
 			t.Errorf("click: %v", err)
 		}
 		_, err = b.SubmitRoute(rRename(1), "RenameF", Fields{Values: url.Values{"name": {"x"}}})
-		if !errors.As(err, &nc) || err.Error() != "the page /r has no form RenameF (R.Rename)" {
+		if !errors.As(err, &nc) || err.Error() != `the page /r has no form RenameF (R.Rename { id: "1" })` {
 			t.Errorf("submit: %v", err)
 		}
 		if _, ok := app.seen["Toggle"]; ok {
@@ -1461,7 +1467,7 @@ func dbRenderRoutes() []web.Route {
 				return fail(err)
 			}
 			return web.PageResponse(layout("D", html.El("ul", nil, li),
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", dTouch)}, html.Text("Touch"))), &html.FormState{}, nil, false)
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", dTouch)}, html.Text("Touch"))), &html.FormState{}, nil)
 		}},
 		{Method: "GET", Pattern: "/d/1", Handle: func(rq *web.Request) web.Response {
 			li, err := item(rq)
@@ -1471,7 +1477,7 @@ func dbRenderRoutes() []web.Route {
 			if err != nil {
 				return fail(err)
 			}
-			return web.PageResponse(li, &html.FormState{}, nil, false)
+			return web.PageResponse(li, &html.FormState{}, nil)
 		}},
 		{Method: "PATCH", Pattern: "/d/1", Handle: func(rq *web.Request) web.Response {
 			if _, err := eff.Run(rq.Env, eff.KTask, insertTask("written")); err != nil {

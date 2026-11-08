@@ -96,7 +96,7 @@ func Route__Admin__Projects__Projects() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Admin__Projects__Projects__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Admin__Projects__Projects__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -241,7 +241,7 @@ func Route__Login__Login() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Login__Login__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Login__Login__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -290,7 +290,7 @@ func Route__Notes__Index__Index() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Notes__Index__Index__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Notes__Index__Index__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -392,7 +392,7 @@ func Route__Orgs__Orgs() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Orgs__Orgs__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Orgs__Orgs__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -576,7 +576,7 @@ func Route__Projects__Index__Index() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Projects__Index__Index__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Projects__Index__Index__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 

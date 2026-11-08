@@ -42,13 +42,13 @@ func sessionCookie(t *testing.T, w *httptest.ResponseRecorder) *http.Cookie {
 
 func TestResponse_PageFullHTML(t *testing.T) {
 	key := []byte("test-secret-test-secret")
-	add := rt.MsgRef{Module: "M", Msg: "Add"}
-	st := &html.FormState{Form: "f", Msg: add.Key(), Values: map[string]string{"title": "kept"}}
+	add := rt.Route{Name: "M.Add", Method: "POST", Path: "/add"}
+	st := &html.FormState{Form: "f", Msg: rt.RouteKey(add), Values: map[string]string{"title": "kept"}}
 	page := html.El("html", nil,
 		html.El("head", []html.Attr{html.A("lang", "en")}, html.El("title", nil, html.Text("T"))),
-		html.El("body", nil, html.FormTo(add, nil, html.Input(html.Control{Kind: "input", Form: "f", Name: "title", Type: "text"}))))
+		html.El("body", nil, html.FormToRoute(add, nil, html.Input(html.Control{Kind: "input", Form: "f", Name: "title", Type: "text"}))))
 	h := NewRouter(one("GET", "/", func(rq *Request) Response {
-		return PageResponse(page, st, testSession{User: "ada"}, false)
+		return PageResponse(page, st, testSession{User: "ada"})
 	}), testOpts(func(o *Options) { o.Now = func() time.Time { return time.Unix(1000, 0) } }))
 	w := serve(h, httptest.NewRequest("GET", "/", nil))
 	body := w.Body.String()
@@ -75,7 +75,7 @@ func TestResponse_PageFullHTML(t *testing.T) {
 
 	// Session nil: no cookie. No <head>: the script goes right after the doctype.
 	h = NewRouter(one("GET", "/", func(rq *Request) Response {
-		return PageResponse(html.El("p", nil, html.Text("bare")), nil, nil, false)
+		return PageResponse(html.El("p", nil, html.Text("bare")), nil, nil)
 	}), testOpts(nil))
 	w = serve(h, httptest.NewRequest("GET", "/", nil))
 	if sessionCookie(t, w) != nil {
@@ -86,59 +86,20 @@ func TestResponse_PageFullHTML(t *testing.T) {
 	}
 	// <header> is not <head>.
 	h = NewRouter(one("GET", "/", func(rq *Request) Response {
-		return PageResponse(html.El("body", nil, html.El("header", nil), html.El("head", nil)), nil, nil, false)
+		return PageResponse(html.El("body", nil, html.El("header", nil), html.El("head", nil)), nil, nil)
 	}), testOpts(nil))
 	if got := serve(h, httptest.NewRequest("GET", "/", nil)).Body.String(); got != "<!doctype html>\n<body><header></header><head>"+script+"</head></body>" {
 		t.Fatalf("header body %q", got)
 	}
 }
 
-func TestResponse_PagePatchUnderDatastar(t *testing.T) {
-	h := NewRouter(one("POST", "/_m/Todos/Add", func(rq *Request) Response {
-		if !rq.Datastar {
-			t.Error("rq.Datastar false")
-		}
-		return PageResponse(doc("patched"), nil, testSession{User: "bo"}, true)
-	}), testOpts(nil))
-	req := httptest.NewRequest("POST", "/_m/Todos/Add", strings.NewReader("{}"))
-	req.Header.Set("Datastar-Request", "true")
-	w := serve(h, req)
-	if w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" {
-		t.Fatalf("status %d ct %q", w.Code, w.Header().Get("Content-Type"))
-	}
-	want := "event: datastar-patch-elements\ndata: selector body\ndata: mode outer\ndata: elements <body><p>patched</p></body>\n\n"
-	if w.Body.String() != want {
-		t.Fatalf("body %q", w.Body.String())
-	}
-	if c := sessionCookie(t, w); c == nil {
-		t.Fatal("no cookie on a patch")
-	}
-
-	// No <body> in the document: the whole document is wrapped in one.
-	h = NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response {
-		return PageResponse(html.El("p", nil, html.Text("x")), nil, nil, true)
-	}), testOpts(nil))
-	req = httptest.NewRequest("POST", "/_m/A/B", nil)
-	req.Header.Set("Datastar-Request", "true")
-	if got := serve(h, req).Body.String(); !strings.Contains(got, "data: elements <body><p>x</p></body>\n") {
-		t.Fatalf("bodiless patch %q", got)
-	}
-
-	// Patch without the Datastar header: a full page.
-	req = httptest.NewRequest("POST", "/_m/A/B", nil)
-	w = serve(h, req)
-	if !strings.HasPrefix(w.Body.String(), "<!doctype html>\n") || w.Header().Get("Content-Type") != "text/html; charset=utf-8" {
-		t.Fatalf("non-datastar patch %q", w.Body.String())
-	}
-}
-
-// A message's page answered without the patch flag is a whole document even under Datastar (a
+// A page a POST handler answers (PageResponse) is a whole document even under Datastar (a
 // Datastar GET is a boosted navigation instead: boost_test.go).
 func TestResponse_PageNoPatchWithoutFlag(t *testing.T) {
-	h := NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response {
-		return PageResponse(doc("full"), nil, nil, false)
+	h := NewRouter(one("POST", "/a/b", func(rq *Request) Response {
+		return PageResponse(doc("full"), nil, nil)
 	}), testOpts(nil))
-	req := httptest.NewRequest("POST", "/_m/A/B", nil)
+	req := httptest.NewRequest("POST", "/a/b", nil)
 	req.Header.Set("Datastar-Request", "true")
 	w := serve(h, req)
 	if w.Code != 200 || w.Header().Get("Content-Type") != "text/html; charset=utf-8" || !strings.HasPrefix(w.Body.String(), "<!doctype html>\n<html><head>") {
@@ -147,10 +108,10 @@ func TestResponse_PageNoPatchWithoutFlag(t *testing.T) {
 }
 
 func TestResponse_Redirect303(t *testing.T) {
-	h := NewRouter(one("POST", "/_m/Auth/Login", func(rq *Request) Response {
+	h := NewRouter(one("POST", "/auth/login", func(rq *Request) Response {
 		return RedirectResponse("/todos?f=a&b", testSession{User: "ada"})
 	}), testOpts(nil))
-	w := serve(h, httptest.NewRequest("POST", "/_m/Auth/Login", nil))
+	w := serve(h, httptest.NewRequest("POST", "/auth/login", nil))
 	if w.Code != 303 || w.Header().Get("Location") != "/todos?f=a&b" || sessionCookie(t, w) == nil || w.Body.Len() != 0 {
 		t.Fatalf("%d %q %q", w.Code, w.Header().Get("Location"), w.Body.String())
 	}
@@ -158,7 +119,7 @@ func TestResponse_Redirect303(t *testing.T) {
 	// (the client's fetch would follow it and patch the new page in place). The target is a
 	// page of this app, so the router serves it itself and answers with its morph and a history
 	// push (boost_test.go); here it has no route: the not-found page, Alder-Status 404.
-	req := httptest.NewRequest("POST", "/_m/Auth/Login", nil)
+	req := httptest.NewRequest("POST", "/auth/login", nil)
 	req.Header.Set("Datastar-Request", "true")
 	w = serve(h, req)
 	if w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" || w.Header().Get("Location") != "" || sessionCookie(t, w) == nil ||
@@ -185,13 +146,13 @@ func TestResponse_ErrorHidesTextInProd(t *testing.T) {
 	for _, ds := range []bool{false, true} {
 		for _, dev := range []bool{false, true} {
 			var logs []string
-			h := NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response {
+			h := NewRouter(one("POST", "/a/b", func(rq *Request) Response {
 				return ErrorResponse(doc("Something went wrong"), errors.New("db is -- down"))
 			}), testOpts(func(o *Options) {
 				o.Dev = dev
 				o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) }
 			}))
-			req := httptest.NewRequest("POST", "/_m/A/B", nil)
+			req := httptest.NewRequest("POST", "/a/b", nil)
 			if ds {
 				req.Header.Set("Datastar-Request", "true")
 			}
@@ -216,7 +177,7 @@ func TestResponse_ErrorHidesTextInProd(t *testing.T) {
 			} else if strings.Contains(body, "db is") || strings.Contains(body, "<!--") {
 				t.Fatalf("ds=%v prod body leaks the error: %q", ds, body)
 			}
-			if len(logs) != 1 || logs[0] != "error: POST /_m/A/B: db is -- down rid="+w.Header().Get("X-Request-Id") {
+			if len(logs) != 1 || logs[0] != "error: POST /a/b: db is -- down rid="+w.Header().Get("X-Request-Id") {
 				t.Fatalf("ds=%v dev=%v: logs %q", ds, dev, logs)
 			}
 		}
@@ -236,12 +197,12 @@ func TestResponse_ErrorHidesTextInProd(t *testing.T) {
 }
 
 func TestResponse_NotFoundPatchedUnderDatastar(t *testing.T) {
-	h := NewRouter(one("POST", "/_m/Todos/Remove", func(rq *Request) Response {
+	h := NewRouter(one("POST", "/todos/remove", func(rq *Request) Response {
 		return NotFoundResponse(doc("No such todo"))
 	}), testOpts(nil))
 	for path, want := range map[string]string{
-		"/_m/Todos/Remove": "data: elements <body><p>No such todo</p></body>\n", // handler-returned
-		"/_m/Todos/Nope":   "data: elements <body><p>Not found</p></body>\n",    // no such message
+		"/todos/remove": "data: elements <body><p>No such todo</p></body>\n", // handler-returned
+		"/todos/nope":   "data: elements <body><p>Not found</p></body>\n",    // no such message
 	} {
 		req := httptest.NewRequest("POST", path, nil)
 		req.Header.Set("Datastar-Request", "true")
@@ -288,11 +249,11 @@ func TestResponse_FailureKeepsSetSession(t *testing.T) {
 // Url.external already makes such a URL "#").
 func TestResponse_RedirectRefusesScriptURL(t *testing.T) {
 	var logs []string
-	h := NewRouter(one("POST", "/_m/F/Go", func(rq *Request) Response {
+	h := NewRouter(one("POST", "/f/go", func(rq *Request) Response {
 		return RedirectResponse("javascript:alert(document.cookie)", nil)
 	}), testOpts(func(o *Options) { o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) } }))
 	for _, ds := range []bool{false, true} {
-		req := httptest.NewRequest("POST", "/_m/F/Go", nil)
+		req := httptest.NewRequest("POST", "/f/go", nil)
 		if ds {
 			req.Header.Set("Datastar-Request", "true")
 		}

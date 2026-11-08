@@ -13,8 +13,8 @@ import (
 	"alder/rt/html"
 )
 
-// Route is one page (GET) or message (POST) endpoint. Pattern is a path such as "/" or
-// "/todos/{id}" ({name} matches one non-empty segment); messages use "/_m/<Module>/<Msg>".
+// Route is one of the app's endpoints: a GET route or a write route. Pattern is a path such as
+// "/" or "/todos/{id}" ({name} matches one non-empty segment).
 // Handle gets the request with the matched path params and returns a Response.
 type Route struct {
 	Method  string // "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; a POST is routed by its form's _method (effectiveMethod)
@@ -36,9 +36,6 @@ type Request struct {
 	Datastar bool       // sent by the Datastar client (header Datastar-Request: true)
 	Dev      bool       // Options.Dev
 	Login    string     // Options.Login: where a failed `requires` redirects
-	Notice   string     // the toast text of a Noticed answer (set by the generated update route)
-	// NoticeKind is the variant of Notice's toast (set with it; "" shows as info)
-	NoticeKind rtpkg.NoticeKind
 	// Model is the model a page's GET route rendered (set by the generated route, nil for any
 	// other request): Options.Served hands it to an Alder test's browser, so Test.get gives the
 	// model the page showed without running its load again.
@@ -66,17 +63,9 @@ type Response struct {
 	Node     html.Node       // the document for Page/NotFound/Error
 	State    *html.FormState // nil or the form state to render with
 	Location string          // Redirect
-	Patch    bool            // Page: answer a Datastar request with a body patch
 	Session  any             // to store in the cookie (nil, or equal to the request's: unchanged, not stored)
 	Err      error           // Error
 	Raw      *rtpkg.File     // a file page's answer, written as given
-	// Before, set by a message's route, renders the page as it was before the message: the view
-	// of the model loaded before update (or, for a form that did not decode, the same model),
-	// rendered with the page's plain state (FormState{PageParams}). Under Datastar the router
-	// compares it with the answer and sends only the regions that differ (html.Fragments) when
-	// the post carries html.ShownHeader (its value is not compared since #160: patchRegions).
-	// nil: the whole body is morphed.
-	Before func() html.Node
 	// Answer is a write route's answer (#160), set by AnswerResponse and InvalidResponse; nil for
 	// every other response. When it is set the router answers by its kind (answer.go) and the
 	// fields above but Session and State are not read.
@@ -87,16 +76,10 @@ type Response struct {
 	Shown *Shown
 }
 
-// WithBefore is r with Before set to before.
-func (r Response) WithBefore(before func() html.Node) Response {
-	r.Before = before
-	return r
-}
-
-// PageResponse renders doc with st (200). When patch is set and the request came from
-// Datastar, only the document's <body> is sent, as an SSE patch. A non-nil session is stored.
-func PageResponse(doc html.Node, st *html.FormState, session any, patch bool) Response {
-	return Response{Status: http.StatusOK, Node: doc, State: st, Session: session, Patch: patch}
+// PageResponse renders doc with st (200): a document, or a boosted GET's morph of one. A
+// non-nil session is stored.
+func PageResponse(doc html.Node, st *html.FormState, session any) Response {
+	return Response{Status: http.StatusOK, Node: doc, State: st, Session: session}
 }
 
 // FileResponse is a file page's answer: f written as given, with f's status.
