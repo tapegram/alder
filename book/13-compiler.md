@@ -6524,12 +6524,14 @@ Content-Length: 988\r\n
 {"id":1,"jsonrpc":"2.0","result":{"capabilities":{"codeActionProvider":{"codeActionKinds":["quickfix","refactor"]},"colorProvider":true,"completionProvider":{"triggerCharacters":[".","\u003c","?"]},"definitionProvider":true,"documentFormattingProvider":true,"executeCommandProvider":{"commands":["alder.explain","alder.fill"]},"experimental":{"alderScratch":true},"foldingRangeProvider":true,"hoverProvider":true,"inlayHintProvider":true,"positionEncoding":"utf-8","referencesProvider":true,"selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":["declaration","documentation","defaultLibrary"],"tokenTypes":["namespace","type","enumMember","function","method","parameter","variable","property","keyword","operator","string","number","comment","decorator","tag","attribute","boolean","hole"]},"range":true},"textDocumentSync":{"change":1,"openClose":true,"save":{"includeText":false}}},"serverInfo":{"name":"alder","version":"devel+4d325b96369d"}}}
 ```
 
-That is the server's answer to `initialize`, the first request. The log
-holds only the bodies; the header is what `conn.send` writes in front of
-one, and 988 is the length of this body in bytes (bytes, not characters,
-which matters as soon as a message has an `é` in it). The body is JSON. (The
-`\u003c` is Go's JSON encoder writing `<`, which it escapes by default; it
-means the same character.) `readMessage` in
+That is the server's answer to `initialize`, the first request.
+
+The log holds only the bodies; the header is what `conn.send` writes in front
+of one, and 988 is the length of this body in bytes (bytes, not characters,
+which matters as soon as a message has an `é` in it).
+
+The body is JSON. (The `\u003c` is Go's JSON encoder writing `<`, which it
+escapes by default; it means the same character.) `readMessage` in
 `internal/lsp/jsonrpc.go` is the reading side:
 
 ```go
@@ -6575,12 +6577,14 @@ type message struct {
 ```
 
 A **request** has an `id` and a `method`; the receiver must answer it with a
-**response** carrying the same `id` and either a `result` or an `error`. A
-**notification** has a `method` and no `id`: "this file changed" needs no
-answer. The `id` lets a client have several requests in flight and match
-answers to them as they come in any order. The server keeps the id as the
-JSON text it arrived in (`idKey`), so the number 1 and the string "1" stay
-different ids.
+**response** carrying the same `id` and either a `result` or an `error`.
+
+A **notification** has a `method` and no `id`: "this file changed" needs no
+answer.
+
+The `id` lets a client have several requests in flight and match answers to
+them as they come in any order. The server keeps the id as the JSON text it
+arrived in (`idKey`), so the number 1 and the string "1" stay different ids.
 
 The beginning of a session, from the log. The request, with the editor's
 capabilities cut:
@@ -6593,28 +6597,33 @@ capabilities cut:
 <- {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file://…/blog/app/Posts/Index.alder","version":0,"diagnostics":[]}}
 ```
 
-`initialize` tells the server where the project is (`rootUri`), and the
-server tells the client what it can do (`capabilities`): hover, definition,
+`initialize` tells the server where the project is (`rootUri`), and the server
+tells the client what it can do (`capabilities`): hover, definition,
 references, completion after the three characters `.`, `<` and `?`, code
 actions of two kinds, formatting, folding and selection ranges, inlay hints,
-colors, semantic tokens, and two commands (`alder.explain` and
-`alder.fill`); `experimental.alderScratch` announces the scratch files of
-"Scratch files in the language server", below. `textDocumentSync: {change:
-1}` asks the
-client to send the **whole** text of a file at each change, not a patch:
-Alder files are small, and a patch applied to a wrong base would corrupt the
-server's copy for good. After `initialized` the editor opens the file with
-`didOpen` and sends its entire text, and the server, which has now built the
-app, publishes the file's diagnostics (none). Two messages in that exchange
-are the reason for two of the server's rules, which the next paragraphs
-explain: `"positionEncoding"` and the whole `text` in `didOpen`.
+colors, semantic tokens, and two commands (`alder.explain` and `alder.fill`);
+`experimental.alderScratch` announces the scratch files of "Scratch files in
+the language server", below.
+
+`textDocumentSync: {change: 1}` asks the client to send the **whole** text of
+a file at each change, not a patch: Alder files are small, and a patch applied
+to a wrong base would corrupt the server's copy for good.
+
+After `initialized` the editor opens the file with `didOpen` and sends its
+entire text, and the server, which has now built the app, publishes the file's
+diagnostics (none).
+
+Two messages in that exchange are the reason for two of the server's rules,
+which the next paragraphs explain: `"positionEncoding"` and the whole `text`
+in `didOpen`.
 
 **Why the server chooses the position encoding.** An LSP position is a line
 and a character offset in that line, both counted from 0. The protocol's
-historical unit for the offset is the UTF-16 code unit, a unit that nothing
-in Alder uses. The compiler counts lines from 1 and columns from 1 in
-**bytes** of the UTF-8 file (`diag.Pos`), the unit Go strings index by. Since
-LSP 3.17 the client lists the units it can count in
+historical unit for the offset is the UTF-16 code unit, a unit that nothing in
+Alder uses. The compiler counts lines from 1 and columns from 1 in **bytes**
+of the UTF-8 file (`diag.Pos`), the unit Go strings index by.
+
+Since LSP 3.17 the client lists the units it can count in
 `capabilities.general.positionEncodings` and the server picks one and
 announces it as `positionEncoding`. `alder lsp` picks `utf-8` when the client
 lists it (Neovim does), and otherwise `utf-16`, the default every client must
@@ -6631,17 +6640,20 @@ func lspRange(line, col, endLine, endCol int) Range {
 ```
 
 With `utf-16` there is one more step, and it sits at the protocol boundary
-only: a position coming in is turned into a byte offset by reading the
-line's text (`fromWire`), and a range going out is turned into UTF-16 units
-the same way (`wireRange`, `toWire`). A character below U+10000 is one unit
-and a character above it, such as an emoji, is two (a surrogate pair), so
-on the line `"hé😀 {name}"` the `{` is at byte 9 and at UTF-16 character 6. A
-client that counts in UTF-16 and a server that counts in bytes disagree on
-every position after the `é`, which is why the server converts instead of
-assuming. The conversion needs the line's text, so a range is converted with
-the text it was computed from: the build's lines for diagnostics, fixes and
-locations, the current text for a cursor. With `utf-8` both directions are
-the identity, so the common case costs nothing.
+only: a position coming in is turned into a byte offset by reading the line's
+text (`fromWire`), and a range going out is turned into UTF-16 units the same
+way (`wireRange`, `toWire`).
+
+A character below U+10000 is one unit and a character above it, such as an
+emoji, is two (a surrogate pair), so on the line `"hé😀 {name}"` the `{` is at
+byte 9 and at UTF-16 character 6. A client that counts in UTF-16 and a server
+that counts in bytes disagree on every position after the `é`, which is why
+the server converts instead of assuming.
+
+The conversion needs the line's text, so a range is converted with the text it
+was computed from: the build's lines for diagnostics, fixes and locations, the
+current text for a cursor. With `utf-8` both directions are the identity, so
+the common case costs nothing.
 
 ### The overlay
 
@@ -6653,13 +6665,16 @@ the whole text there, `didClose` takes it out, and the file on disk applies
 again.
 
 The compiler, though, reads files. `names.Load` (section 4) walks `app/`,
-reads every `.alder` file and parses it. It does take a list of extra
-modules, parsed by the caller from memory, and that is how `alder eval` and
-the REPL add the scratch module that holds your expression. That hook does not work for an editor, because
-extra modules are **added** to the directory's under the duplicate rule: an
-extra `Posts.Index` next to the file `app/Posts/Index.alder` is two
-definitions of `Posts.Index`, E0009. What an editor needs is to **replace**
-the file. `names.LoadOverlay` does that:
+reads every `.alder` file and parses it. It does take a list of extra modules,
+parsed by the caller from memory, and that is how `alder eval` and the REPL
+add the scratch module that holds your expression.
+
+That hook does not work for an editor, because extra modules are **added** to
+the directory's under the duplicate rule: an extra `Posts.Index` next to the
+file `app/Posts/Index.alder` is two definitions of `Posts.Index`, E0009.
+
+What an editor needs is to **replace** the file. `names.LoadOverlay` does
+that:
 
 ```go
 		r, _ := filepath.Rel(dir, path)
@@ -6671,14 +6686,15 @@ the file. `names.LoadOverlay` does that:
 		src, err := os.ReadFile(path)
 ```
 
-`overlay` maps a path relative to the project ("app/Posts/Index.alder") to
-the text to use. The walk visits each file on disk; when the overlay has a
-text for it, it parses that and never reads the disk. An overlay file that
-the walk did not find (a new buffer, not saved yet) is added after the
-others, in path order. `names.Load` is `LoadOverlay` with a nil overlay, so
-the compiler and the server run the same code, and
-`buildkit.LoadCheckedOverlay` is `LoadChecked` with an overlay, which
-`alder check` calls with none.
+`overlay` maps a path relative to the project ("app/Posts/Index.alder") to the
+text to use. The walk visits each file on disk; when the overlay has a text
+for it, it parses that and never reads the disk.
+
+An overlay file that the walk did not find (a new buffer, not saved yet) is
+added after the others, in path order. `names.Load` is `LoadOverlay` with a
+nil overlay, so the compiler and the server run the same code, and
+`buildkit.LoadCheckedOverlay` is `LoadChecked` with an overlay, which `alder
+check` calls with none.
 
 A URI the editor sends (`file:///…/blog/app/Posts/Index.alder`) must become
 that relative path, and it must not escape the project. `server.rel` in
@@ -6717,12 +6733,13 @@ func (s *server) schedule() {
 }
 ```
 
-`tokens` is a channel with room for one value. If it is empty, the send puts
-a token in. If a token is already waiting, the `default` branch does
-nothing: a rebuild is already due, and it will see this change too. Ten
-keystrokes before the analysis goroutine wakes are one rebuild. `analyse`
-then sleeps `Debounce` (150 ms, set in `cmd/alder/lsp.go`), swallows the
-tokens that arrived meanwhile, and calls `rebuild`: typing a word is one
+`tokens` is a channel with room for one value. If it is empty, the send puts a
+token in. If a token is already waiting, the `default` branch does nothing: a
+rebuild is already due, and it will see this change too. Ten keystrokes before
+the analysis goroutine wakes are one rebuild.
+
+`analyse` then sleeps `Debounce` (150 ms, set in `cmd/alder/lsp.go`), swallows
+the tokens that arrived meanwhile, and calls `rebuild`: typing a word is one
 build, not five.
 
 The editor is not the only thing that changes files. A poller (`internal/watch`,
@@ -6748,23 +6765,29 @@ overlaid, and stores the result:
 ```
 
 (`AddSchemaDrift` adds E0019, the migrations check, so the diagnostics are
-those of `alder check`.) An `analysis` holds the program, the type
-checker's result, the diagnostics, the version of every document it was
-built from, and the text of every module as the build read it (`lines`).
+those of `alder check`.) An `analysis` holds the program, the type checker's
+result, the diagnostics, the version of every document it was built from, and
+the text of every module as the build read it (`lines`).
+
 Nobody changes it after `Store`. It is a **snapshot**, and a snapshot can be
 read by any number of goroutines without a lock; `cur` and `good` are
-`atomic.Pointer`s, so a worker picking the current snapshot never sees half
-of a new one. A request that arrives during a rebuild answers from the
-previous snapshot, and the next request sees the new one.
+`atomic.Pointer`s, so a worker picking the current snapshot never sees half of
+a new one.
 
-There are two pointers because a snapshot can be useless. If the text does
-not parse, `LoadCheckedOverlay` does not type-check (the checker needs a
-tree), so `res` is nil: the snapshot has the parse error to show, but no
-types, no resolved names, nothing to hover on. `cur` is always the newest
-snapshot, and `good` is the newest one **with** a `res`, the **last good
-build**. Diagnostics are published from the newest; hover, definition,
-references and completion answer from the last good one. Without that, every
-time you typed a half line, everything would go dark until you finished it.
+A request that arrives during a rebuild answers from the previous snapshot,
+and the next request sees the new one.
+
+There are two pointers because a snapshot can be useless. If the text does not
+parse, `LoadCheckedOverlay` does not type-check (the checker needs a tree), so
+`res` is nil: the snapshot has the parse error to show, but no types, no
+resolved names, nothing to hover on.
+
+`cur` is always the newest snapshot, and `good` is the newest one **with** a
+`res`, the **last good build**.
+
+Diagnostics are published from the newest; hover, definition, references and
+completion answer from the last good one. Without that, every time you typed a
+half line, everything would go dark until you finished it.
 
 But the last good build was made from the text as it was, not from the text
 as it is, so it can answer wrongly. If you insert a line above `lastPage`,
@@ -6789,23 +6812,27 @@ func freshLines(a *analysis, rel string, now []string, line int, inclusive bool)
 }
 ```
 
-A position is **fresh** if the lines above it are the same text in the
-build and now. Then every line number and byte column above the cursor means
-the same thing in both, and the build's answer about the cursor's line holds
-too, if that line itself is unchanged (`inclusive`). Hover, definition and
-references ask for the cursor's line to be unchanged as well. Completion
-does not, because the line under the cursor is the one being typed and is
-usually not parseable. It asks that only the lines above it are unchanged,
-and reads the line itself from the text.
+A position is **fresh** if the lines above it are the same text in the build
+and now. Then every line number and byte column above the cursor means the
+same thing in both, and the build's answer about the cursor's line holds too,
+if that line itself is unchanged (`inclusive`).
 
-Here is the rule at work, from the log. In `Index.load`, line 34,
-`let q = Text.slice 0 100 (Text.trim params.q)`, is replaced by `let q = Text.`,
-as if it were being typed. The editor sends `didChange` (version 5) with the whole
+Hover, definition and references ask for the cursor's line to be unchanged as
+well.
+
+Completion does not, because the line under the cursor is the one being typed
+and is usually not parseable. It asks that only the lines above it are
+unchanged, and reads the line itself from the text.
+
+Here is the rule at work, from the log. In `Index.load`, line 34, `let q =
+Text.slice 0 100 (Text.trim params.q)`, is replaced by `let q = Text.`, as if
+it were being typed. The editor sends `didChange` (version 5) with the whole
 new text, then asks for a hover on `lastPage` (request 3) and for completion
-after `Text.` (request 5; request 4 is the `documentColor` one). The server
-answers both from the build it made before the edit, since the 150 ms have
-not passed; then the rebuild runs and publishes the parse error, and a hover
-below the edit (request 6) gets nothing. (The `didChange` that puts the
+after `Text.` (request 5; request 4 is the `documentColor` one).
+
+The server answers both from the build it made before the edit, since the 150
+ms have not passed; then the rebuild runs and publishes the parse error, and a
+hover below the edit (request 6) gets nothing. (The `didChange` that puts the
 original line back, and the empty `documentColor` answers, are left out.)
 
 ```text
@@ -6820,22 +6847,26 @@ original line back, and the empty `documentColor` answers, are left out.)
 <- {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file://…/blog/app/Posts/Index.alder","version":6,"diagnostics":[]}}
 ```
 
-Positions are 0-based: line 24 is the file's line 25, `lastPage =
-1000000`, and line 33 is line 34, the one being typed. The new text does not
-parse (E0001), so the rebuild makes a snapshot with no `res`, and no new good
-build exists: every answer comes from the one made before the edit, and the
-freshness rule decides whether it still applies. It compares the build's lines
-with the text as it is **now**, not as it was at the last rebuild, which is
-why requests 3 and 5 are right even though the rebuild had not run yet.
+Positions are 0-based: line 24 is the file's line 25, `lastPage = 1000000`,
+and line 33 is line 34, the one being typed. The new text does not parse
+(E0001), so the rebuild makes a snapshot with no `res`, and no new good build
+exists: every answer comes from the one made before the edit, and the
+freshness rule decides whether it still applies.
+
+It compares the build's lines with the text as it is **now**, not as it was at
+the last rebuild, which is why requests 3 and 5 are right even though the
+rebuild had not run yet.
 
 - Hover on `lastPage` (request 3, line 25) is **above** the edit: lines 1 to
   25 are identical, so the position is fresh and the old build's answer is
   right, with its doc comment.
+
 - Completion after `Text.` (request 5, line 34) is **on** the edit. Lines 1
   to 33 are unchanged, which is all completion asks. The context, "a member of
   module `Text`", came from the text before the cursor (`Text.`, matched by
   the regular expression `reMember`), and the members from the module's
   declarations in the build.
+
 - Hover on line 41 (request 6) is **below** the edit. Line 34 differs from
   the build's, so nothing from the build holds at line 41, and the server
   answers `null`, "nothing here". It would be wrong to answer: had the edit
@@ -6882,25 +6913,29 @@ are in scope, which arm of a `match` it is in.
 
 `Children` needs a list of every node's children, and `Spanned` is the
 interface of every node: anything that embeds `Node`, with its `Span`. There
-are dozens of node types, and the parser adds one whenever the language gains a
-construct. A hand-written `Children` would need a case for each, and the day
+are dozens of node types, and the parser adds one whenever the language gains
+a construct. A hand-written `Children` would need a case for each, and the day
 someone adds a node and forgets the case, the node's insides become invisible
-to hover and references, silently. So `Children` finds the children by
-**reflection**, Go's ability to look at a value's type and fields at run
-time: it looks at every exported field of a node, takes a field holding a
-node, or a slice of nodes, or a plain struct that holds nodes (a string
-interpolation's part), skips nil, and sorts what it found by source
-position. A new node type with ordinary fields is covered the moment it
-exists. Reflection is slower than a hand-written walk, and a lookup walks a
-path of a few dozen nodes, not the whole tree.
+to hover and references, silently.
 
-What the reflection cannot know is whether the spans are right: a child
-must lie inside its parent, or `NodeAt` would descend into the wrong
-place. `TestChildren_SpansNest` (`internal/syntax/walk_test.go`) parses
-every module of every example app and checks it for each child of each node.
-The guarantee is that every node reachable through exported fields has a
-span inside its parent's, on every file in `examples/`; it does not
-guarantee that a new field is exported, or that a parser fills a span.
+So `Children` finds the children by **reflection**, Go's ability to look at a
+value's type and fields at run time: it looks at every exported field of a
+node, takes a field holding a node, or a slice of nodes, or a plain struct
+that holds nodes (a string interpolation's part), skips nil, and sorts what it
+found by source position. A new node type with ordinary fields is covered the
+moment it exists.
+
+Reflection is slower than a hand-written walk, and a lookup walks a path of a
+few dozen nodes, not the whole tree.
+
+What the reflection cannot know is whether the spans are right: a child must
+lie inside its parent, or `NodeAt` would descend into the wrong place.
+`TestChildren_SpansNest` (`internal/syntax/walk_test.go`) parses every module
+of every example app and checks it for each child of each node.
+
+The guarantee is that every node reachable through exported fields has a span
+inside its parent's, on every file in `examples/`; it does not guarantee that
+a new field is exported, or that a parser fills a span.
 
 ### Scope, hover and definition
 
