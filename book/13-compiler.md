@@ -5634,27 +5634,31 @@ system). The standard library's signatures already travel this way
 var Files embed.FS
 ```
 
-Three rules of `go:embed` shape it. A pattern can name only files in the
-package's own directory and below it, never `..`: so the embed is in
-package `rt` itself, the root of the runtime, and the selector parser that
-`rt/html` shares with the checker had to move into the runtime
-(`internal/selector` became `rt/selector`) to be inside. A pattern cannot
-leave files out, and `*.go` would take the tests too: so the list names
-every file. And a pattern cannot reach into another module, which a
-directory holding a file named `go.mod` is: so the runtime module's
-`go.mod` and `go.sum` are stored as `dist/go.mod.txt` and
-`dist/go.sum.txt`. An explicit list can fall behind, so a test holds it
-to the repository: `TestFiles_Complete` (`rt/embed_test.go`) compares the
-embedded files with `git ls-files rt` without the tests, `testdata/` and
-`embed.go` itself, and fails on a file added to `rt/` and not to the list.
+Three rules of `go:embed` shape it:
+
+- A pattern can name only files in the package's own directory and below
+  it, never `..`: so the embed is in package `rt` itself, the root of the
+  runtime, and the selector parser that `rt/html` shares with the checker
+  had to move into the runtime (`internal/selector` became `rt/selector`)
+  to be inside.
+- A pattern cannot leave files out, and `*.go` would take the tests too:
+  so the list names every file.
+- A pattern cannot reach into another module, which a directory holding a
+  file named `go.mod` is: so the runtime module's `go.mod` and `go.sum` are
+  stored as `dist/go.mod.txt` and `dist/go.sum.txt`.
+
+An explicit list can fall behind, so a test holds it to the repository:
+`TestFiles_Complete` (`rt/embed_test.go`) compares the embedded files with
+`git ls-files rt` without the tests, `testdata/` and `embed.go` itself, and
+fails on a file added to `rt/` and not to the list.
+
 `TestDistModule` checks that the two `dist/` files equal the repository's
 `go.mod` and `go.sum`, and that every module `go.mod` requires is used by a
 package of `rt/`: the repository's dependencies are the runtime's (the
 compiler links SQLite too, but only because it uses the runtime's
 `rt/db`: the migration generator, buildkit's migration check, eval's
-dev-database hint),
-so the copy lists nothing the runtime does not need. The embed costs the
-binary about 0.4 MB.
+dev-database hint), so the copy lists nothing the runtime does not need.
+The embed costs the binary about 0.4 MB.
 
 The design system travels the same way. `rt/al/` holds `al.css`,
 `custom-elements.json` and `VERSION`, a copy of one release of the
@@ -5667,96 +5671,116 @@ the stylesheet's first line name the same release.
 
 #### Writing it out
 
-`buildkit.WriteRuntime(dst)`
-(`internal/buildkit/buildkit.go`) writes `Files` into `dst/rt/` as the
-module `alder`: `dist/go.mod.txt` becomes `rt/go.mod`, `dist/go.sum.txt`
-`rt/go.sum`, and every other file keeps its path under `rt/rt/`. The
-doubled `rt` is how Go finds packages: an import path is the module's
-name followed by the package's directory inside the module, so with the
-module `alder` rooted at `build/todos/rt/`, the import `alder/rt/html` is
-the directory `build/todos/rt/rt/html/`. It writes `dst/go.sum` too, a
-copy of the runtime's, since the app module's only outside dependencies
-are the runtime's: with it Go can check every download, and a build
-needs no network once Go's module cache holds `modernc.org/sqlite`.
+`buildkit.WriteRuntime(dst)` (`internal/buildkit/buildkit.go`) writes `Files`
+into `dst/rt/` as the module `alder`: `dist/go.mod.txt` becomes `rt/go.mod`,
+`dist/go.sum.txt` `rt/go.sum`, and every other file keeps its path under
+`rt/rt/`.
+
+The doubled `rt` is how Go finds packages: an import path is the module's name
+followed by the package's directory inside the module, so with the module
+`alder` rooted at `build/todos/rt/`, the import `alder/rt/html` is the
+directory `build/todos/rt/rt/html/`.
+
+It writes `dst/go.sum` too, a copy of the runtime's, since the app module's
+only outside dependencies are the runtime's: with it Go can check every
+download, and a build needs no network once Go's module cache holds
+`modernc.org/sqlite`.
+
 `alder build` calls it right after writing the generated files, then
 `buildkit.DownloadDeps`, which makes sure Go's module cache holds the
-runtime's requirements before `go vet` could fail on them in a way that
-looks like the compiler's fault (chapter 11 shows its one line and its
-error); the scratch runner (`scratch.CompileCheckedWith`) does the same in its own
+runtime's requirements before `go vet` could fail on them in a way that looks
+like the compiler's fault (chapter 11 shows its one line and its error); the
+scratch runner (`scratch.CompileCheckedWith`) does the same in its own
 directory, so `alder test`, `eval` and the REPL build the same runtime as
 `alder build`.
 
 The static files go next to it: `buildkit.CopyStatic(src, dst)` replaces
 `build/<app>/static/` with a copy of the app's `static/`, then calls
-`WriteDesignSystem`, which writes `al/al.css` and
-`al/custom-elements.json` from `rt.Files` into it. Every build has them,
-whether or not the app has a `static/` directory, and `alder run` serves
-the build's copy (it copies again when a file under `static/` changes,
-before reloading the browser). The router (`serveStatic` in
-`rt/web/router.go`) answers `/static/al/al.css` and
-`/static/al/custom-elements.json` from the runtime's own embedded copy
-(`rt/al/al.go`, package `al`, which embeds the two files again so the
-written runtime has them) with `web.DesignSystemCache`,
-`Cache-Control: public, max-age=300, stale-while-revalidate=86400`, and a
-strong `ETag`, a SHA-256 of the bytes computed once; `http.ServeContent`
-answers a matching `If-None-Match` with `304 Not Modified`. An app that
-declares a `theme` (Appendix C, "Changing a token") changes one file of
-these: the checker has held every field to `internal/theme`'s table of
-tokens (E0042), the IR keeps the settings by CSS name (`ir.Theme`), and
-`theme.CSS` writes them as three one-line rules in the table's order. The
-generated `Web()` carries that text as `web.Options.Theme`, and
-`NewRouter` builds the served `al.css` once from it
-(`web.ThemedStylesheet`: the embedded bytes, a newline, the theme) with
-an ETag of its own; `buildkit.WriteDesignSystem` writes the same bytes to
-`static/al/al.css`, so the build directory and the server agree. Under
-`alder run` (`Options.Reload` set) `al.css` is sent `no-cache`, so an edit
-to the theme shows on the next load. An immutable
-header would be wrong there: the address stays `/static/al/al.css` across
-compiler upgrades, so a browser would keep an old stylesheet for a year.
-`no-cache`, what Alder sent before M13, made every page load wait for a
-round trip to revalidate the stylesheet before it could paint: in dark
-mode, a white frame. The five minutes of `max-age` let a load paint from
-the cache at once; after them, `stale-while-revalidate` lets the browser
-use its copy for up to a day while it revalidates in the background.
-The price is that for up to five minutes after an upgrade a browser may
-show the old stylesheet, and one load more after them: that load paints
-with the stale copy while the revalidation fetches the new one. The Datastar script can be immutable because its
-address, `datastar.ScriptPath`, carries `datastar.Version`.
+`WriteDesignSystem`, which writes `al/al.css` and `al/custom-elements.json`
+from `rt.Files` into it. Every build has them, whether or not the app has a
+`static/` directory, and `alder run` serves the build's copy (it copies again
+when a file under `static/` changes, before reloading the browser).
 
-The `<head>` a boosted navigation never patches has the same problem at
-a larger scale: a tab open across a deploy would keep the old build's
-stylesheet link, Datastar script and boost for as long as it is open.
-`web.HeadTags` therefore begins with `web.BuildMeta()`,
-`<meta name="alder-build" content="…">`, whose content is `web.BuildID()`:
-the first 16 hex digits of the SHA-256 of the running executable, read
-once (`sync.OnceValue`; when the executable cannot be read, a value made
-from the start time). The boost's `data-init` copies it to
-`window._alderBuild`, and its click and popstate `@get`s send it as the
-header `Alder-Build` (`datastar.BuildHeader`), and so do the options of
-every post and element fetch (`window._alderO`, `window._alderF`).
+The router (`serveStatic` in `rt/web/router.go`) answers `/static/al/al.css`
+and `/static/al/custom-elements.json` from the runtime's own embedded copy
+(`rt/al/al.go`, package `al`, which embeds the two files again so the written
+runtime has them) with `web.DesignSystemCache`, `Cache-Control: public,
+max-age=300, stale-while-revalidate=86400`, and a strong `ETag`, a SHA-256 of
+the bytes computed once; `http.ServeContent` answers a matching
+`If-None-Match` with `304 Not Modified`.
+
+An app that declares a `theme` (Appendix C, "Changing a token") changes one
+file of these: the checker has held every field to `internal/theme`'s table of
+tokens (E0042), the IR keeps the settings by CSS name (`ir.Theme`), and
+`theme.CSS` writes them as three one-line rules in the table's order.
+
+The generated `Web()` carries that text as `web.Options.Theme`, and
+`NewRouter` builds the served `al.css` once from it (`web.ThemedStylesheet`:
+the embedded bytes, a newline, the theme) with an ETag of its own;
+`buildkit.WriteDesignSystem` writes the same bytes to `static/al/al.css`, so
+the build directory and the server agree.
+
+Under `alder run` (`Options.Reload` set) `al.css` is sent `no-cache`, so an
+edit to the theme shows on the next load.
+
+An immutable header would be wrong there: the address stays
+`/static/al/al.css` across compiler upgrades, so a browser would keep an old
+stylesheet for a year. `no-cache`, what Alder sent before M13, made every page
+load wait for a round trip to revalidate the stylesheet before it could paint:
+in dark mode, a white frame.
+
+The five minutes of `max-age` let a load paint from the cache at once; after
+them, `stale-while-revalidate` lets the browser use its copy for up to a day
+while it revalidates in the background.
+
+The price is that for up to five minutes after an upgrade a browser may show
+the old stylesheet, and one load more after them: that load paints with the
+stale copy while the revalidation fetches the new one.
+
+The Datastar script can be immutable because its address,
+`datastar.ScriptPath`, carries `datastar.Version`.
+
+The `<head>` a boosted navigation never patches has the same problem at a
+larger scale: a tab open across a deploy would keep the old build's stylesheet
+link, Datastar script and boost for as long as it is open.
+
+`web.HeadTags` therefore begins with `web.BuildMeta()`, `<meta
+name="alder-build" content="…">`, whose content is `web.BuildID()`: the first
+16 hex digits of the SHA-256 of the running executable, read once
+(`sync.OnceValue`; when the executable cannot be read, a value made from the
+start time).
+
+The boost's `data-init` copies it to `window._alderBuild`, and its click and
+popstate `@get`s send it as the header `Alder-Build` (`datastar.BuildHeader`),
+and so do the options of every post and element fetch (`window._alderO`,
+`window._alderF`).
+
 `ServeHTTP` compares it with its own before routing: a Datastar `GET` of
 another build is answered by `reload`, `datastar.Navigate(w, url,
-datastar.Assign)`, so the browser loads the URL as a document and gets the
-new `<head>`, once (a load of the URL the tab already shows replaces its
-history entry). An element fetch is answered with a navigation to the page
-it was made from (`Alder-Page`), and a write from such a tab runs and is
-then answered as a reload (`staleReload`, "A request" above). Two processes
-of one binary (a restart, a second replica) agree; a request without the
-header (a hand-made one) is not checked. The same
-`reload` answers a Datastar `GET` under `/static/` or `/_alder/`, files
-that are no page to morph in (the boost leaves such links alone; an
+datastar.Assign)`, so the browser loads the URL as a document and gets the new
+`<head>`, once (a load of the URL the tab already shows replaces its history
+entry).
+
+An element fetch is answered with a navigation to the page it was made from
+(`Alder-Page`), and a write from such a tab runs and is then answered as a
+reload (`staleReload`, "A request" above). Two processes of one binary (a
+restart, a second replica) agree; a request without the header (a hand-made
+one) is not checked.
+
+The same `reload` answers a Datastar `GET` under `/static/` or `/_alder/`,
+files that are no page to morph in (the boost leaves such links alone; an
 older boost did not).
 
-It refreshes rather than adds. It first walks `dst/rt/` and deletes every
-file the embedded copy does not have (and the directories that leaves
-empty), then writes each file whose content differs, leaving the rest
-alone. Without the deletion, a file of an older runtime would stay and
-be compiled with the new ones: `TestBuild_Todos`
-(`cmd/alder/build_test.go`) plants `build/todos/rt/rt/web/gone.go`, which
-does not compile, and the build succeeds because it is gone.
-`TestWriteRuntime` (`internal/buildkit/buildkit_test.go`) checks the
-rest: stray files and directories removed, an edited file restored, an
-unchanged file not rewritten.
+It refreshes rather than adds. It first walks `dst/rt/` and deletes every file
+the embedded copy does not have (and the directories that leaves empty), then
+writes each file whose content differs, leaving the rest alone.
+
+Without the deletion, a file of an older runtime would stay and be compiled
+with the new ones: `TestBuild_Todos` (`cmd/alder/build_test.go`) plants
+`build/todos/rt/rt/web/gone.go`, which does not compile, and the build
+succeeds because it is gone. `TestWriteRuntime`
+(`internal/buildkit/buildkit_test.go`) checks the rest: stray files and
+directories removed, an edited file restored, an unchanged file not rewritten.
 
 The generated `go.mod` is a constant now (`goMod` in
 `internal/gen/gen.go`):
@@ -5779,15 +5803,16 @@ proxy for it.
 
 #### Why the module is still called `alder`
 
-A Go module's name is
-usually where it can be downloaded, such as `github.com/someone/alder`.
-The runtime is never downloaded, so its name needs to be that of no
-place, and `alder` is that: a name without a dot, which Go would not even
-try to fetch. Had the runtime taken the repository's hosting address as
-its name, every generated file would import it by that address (`import
-"github.com/someone/alder/rt/html"`), and moving the repository would
-change every app's generated code. With `alder` and a `replace`, the
-generated code names nothing outside the build directory.
+A Go module's name is usually where it can be downloaded, such as
+`github.com/someone/alder`. The runtime is never downloaded, so its name needs
+to be that of no place, and `alder` is that: a name without a dot, which Go
+would not even try to fetch.
+
+Had the runtime taken the repository's hosting address as its name, every
+generated file would import it by that address (`import
+"github.com/someone/alder/rt/html"`), and moving the repository would change
+every app's generated code. With `alder` and a `replace`, the generated code
+names nothing outside the build directory.
 
 `TestDist_OutOfTree` (`cmd/alder/dist_test.go`) tests the whole: it
 builds the `alder` binary, copies both examples to a temporary directory
