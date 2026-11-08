@@ -296,7 +296,7 @@ class BuildContextTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("\n## 11. Mutation testing\n", out)
         for kept in ("alder test --mutate [--min R] [--json] [-run re] [-timeout d] [dir]",
-                     "30 mutants: 16 killed, 14 survived  (score 0.53)", "| `requires dropped` |",
+                     "45 mutants: 21 killed, 24 survived  (score 0.47)", "| `requires dropped` |",
                      "### A surviving mutant is a test you have not written", "test \"saving changes the title and the due date\"",
                      "### Survivors that are not gaps", "### `--min` in CI"):
             self.assertIn(kept, out)
@@ -306,7 +306,7 @@ class BuildContextTests(unittest.TestCase):
                      "### The logout redirect", "### Mutants that are the same program", "### The exact score",
                      "ok   Todo \"countOpen ignores done todos\""):
             self.assertNotIn(gone, out)
-        self.assertIn("30 mutants: 30 killed, 0 survived  (score 1.00)", out)   # the run after: its score line only
+        self.assertIn("45 mutants: 45 killed, 0 survived  (score 1.00)", out)   # the run after: its score line only
         section = out[out.index("\n## 11. Mutation testing\n"):].split("\n## 12. Properties\n")[0].rstrip("\n")   # chapter 10's next section starts here
         # 6.5k until M11, whose two operators (`role dropped`, `scope dropped`) are two more rows; M15's
         # `membership dropped` is one more, with a sentence on the partition mutants; the operators table
