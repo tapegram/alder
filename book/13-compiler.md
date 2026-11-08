@@ -5780,7 +5780,7 @@ The same `reload` answers a Datastar `GET` under `/static/` or `/_alder/`,
 files that are no page to morph in (the boost leaves such links alone; an
 older boost did not).
 
-It refreshes rather than adds. It first walks `dst/rt/` and deletes every file
+`WriteRuntime` refreshes rather than adds. It first walks `dst/rt/` and deletes every file
 the embedded copy does not have (and the directories that leaves empty), then
 writes each file whose content differs, leaving the rest alone.
 
@@ -6378,7 +6378,7 @@ One more rule keeps `Args__` names apart: an entry whose name starts with
 `_` gets an `x` in front (`_raw` → `Args__M__C__x_raw`), so the part after
 the last `__` never starts with `_`.
 
-> **Where your names and generated ones meet.** The one places your names
+> **Where your names and generated ones meet.** The only places your names
 > and generated ones share a module are `App`, which generates `Session`,
 > so a type or component of yours may not use that name (E0012), and a
 > route module, whose generated types are qualified by the route
