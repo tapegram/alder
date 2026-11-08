@@ -292,6 +292,38 @@ test "logging out clears the user and the org" = {
   )
 }
 
+-- Open and Create have their own `requires user`: posted from the page still open after the
+-- session ended, each sends the visitor to log in, and no org is made.
+test "opening or creating an org after logging out is sent to log in" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Test.member ann acme
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let opened <- Test.click (Open { org: acme })
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let created <- Test.submit Create { name: Text.NonEmpty "Initech" }
+  let orgs <- Db.from Org |> Db.count
+  Task.succeed (
+    {
+      opened: opened.answer,
+      created: created.answer,
+      orgs: orgs,
+    } == {
+      opened: Redirected (Auth.Login.Login {}),
+      created: Redirected (Auth.Login.Login {}),
+      orgs: 1,
+    }
+  )
+}
+
 test "a visitor is sent to log in" = {
   let r <- Test.open (Index {})
   Task.succeed (r.answer == Redirected (Auth.Login.Login {}))

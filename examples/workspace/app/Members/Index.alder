@@ -268,6 +268,7 @@ test "removing a member logs it, and a removed member loses access at once" = {
       |> Db.count
   Task.succeed (
     {
+      answer: r.answer,
       members: Test.texts "#members .name" r.doc,
       activity: Test.texts "#activity li" r.doc,
       cyLeft: cyLeft,
@@ -275,6 +276,7 @@ test "removing a member logs it, and a removed member loses access at once" = {
       after: after.answer,
       log: log,
     } == {
+      answer: Refreshed,
       members: ["Ann"],
       activity: ["A member left.", "Acme began."],
       cyLeft: 1,
@@ -282,6 +284,54 @@ test "removing a member logs it, and a removed member loses access at once" = {
       after: PageMissing,
       log: 3,
     }
+  )
+}
+
+-- No `load` runs before Add or Remove: each begins with Membership.memberOnly, so a member
+-- removed while the page is open adds no one and removes no one (the refresh after a write would
+-- be a 404 too, so the rows tell).
+test "a removed member cannot add or remove members from a page shown before" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let cy <- Db.insert User {
+    email: Text.Email "cy@example.com",
+    name: Text.NonEmpty "Cy",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Test.member ann acme
+  let _ <- Test.member cy acme
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Test.get (Index {})
+  let rows <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq ann)
+      |> Db.all
+  let _ <- Task.all (List.map (\m -> Db.delete Membership m.id) rows)
+  let added <- Test.submit Add { email: Text.Email "bob@example.com" }
+  let _ <- Test.member ann acme
+  let _ <- Test.get (Index {})
+  let again <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq ann)
+      |> Db.all
+  let _ <- Task.all (List.map (\m -> Db.delete Membership m.id) again)
+  let removed <- Test.click (Remove { user: cy })
+  let members <- Db.from Membership |> Db.all
+  Task.succeed (
+    {
+      added: added.answer,
+      removed: removed.answer,
+      members: List.map (\m -> m.user) members,
+    } == { added: PageMissing, removed: PageMissing, members: [cy] }
   )
 }
 
