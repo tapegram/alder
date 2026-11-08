@@ -3127,7 +3127,9 @@ again. A change that is only `staticChange` skips the rebuild: the child
 serves `static/` straight from your directory (`ALDER_STATIC`), so the
 browser just has to reload.
 
-**`rebuild`.** It runs `alder check`, then the build, then starts the new
+#### `rebuild`
+
+It runs `alder check`, then the build, then starts the new
 child. Each step that fails calls `fail` and returns, and returning early
 is what keeps the old child serving:
 
@@ -3161,22 +3163,27 @@ func (d *devServer) rebuild() {
 ```
 
 `buildApp` (`cmd/alder/build.go`) is `alder build` itself, the steps of
-chapter 11, returning the executable's path. `gen` is the new child's
-*build generation*: `d.nonce`, eight random hex digits picked when the dev
-server starts, then a dash and a count of the children started so far
-(`afcb2a7d-1`, `afcb2a7d-2`, …). "The subscriber" below is what it is for.
+chapter 11, returning the executable's path.
+
+`gen` is the new child's *build generation*: `d.nonce`, eight random hex
+digits picked when the dev server starts, then a dash and a count of the
+children started so far (`afcb2a7d-1`, `afcb2a7d-2`, …). "The subscriber"
+below is what it is for.
+
 `startChild` runs the executable with
 `ALDER_ADDR=127.0.0.1:0 ALDER_DEV=1 ALDER_RELOAD=<gen>`, the database
-`build/<app>/dev.db` and your `static/`, and `ALDER_PUBLIC_URL=http://<d.addr>`,
-the dev server's own address (`childEnv`): the child's port is not the one
-the browser opens, so its `Url.absolute` would be wrong without it. A
-`ALDER_PUBLIC_URL` already in `alder run`'s environment is passed on
-instead. It reads the child's stdout
-until the line `listening on <addr>` that every generated `main` prints
-once it has its port (chapter 11, "`alder build`"). That line is how the dev server learns
-the free port the operating system picked. If the line doesn't come
-within 10 seconds, or the child exits first, the error carries the last
-40 lines of the child's stderr. Only after all that does the swap happen:
+`build/<app>/dev.db` and your `static/`, and
+`ALDER_PUBLIC_URL=http://<d.addr>`, the dev server's own address
+(`childEnv`): the child's port is not the one the browser opens, so its
+`Url.absolute` would be wrong without it. A `ALDER_PUBLIC_URL` already in
+`alder run`'s environment is passed on instead.
+
+It reads the child's stdout until the line `listening on <addr>` that every
+generated `main` prints once it has its port (chapter 11, "`alder build`").
+That line is how the dev server learns the free port the operating system
+picked. If the line doesn't come within 10 seconds, or the child exits
+first, the error carries the last 40 lines of the child's stderr. Only
+after all that does the swap happen:
 
 ```go
 	d.mu.Lock()
@@ -3207,7 +3214,9 @@ the exit status, `save a source file to rebuild it`, and the last 40
 lines of the child's stderr. It leaves `d.gen` alone: the generation
 stays that of the app that crashed until a new one comes up.
 
-**The subscriber.** Every page the child renders carries two elements
+#### The subscriber
+
+Every page the child renders carries two elements
 right after `<body>`. They come from the router, not the dev server
 (`rt/web/router.go`):
 
@@ -3239,48 +3248,65 @@ attribute that waited for one would never run; `data-init` runs as soon
 as Datastar sets the element up.) Three details of these two elements
 each fix a way the browser could miss a message:
 
-- `data-ignore-morph`. When the whole `<body>` is patched (a `refresh`
-  that cannot be cut into regions, or a `redirect`, "A request" above),
-  Datastar *morphs* the old body into the new one:
-  it walks both and changes only what differs. The new body's box is
-  empty, so without this attribute every click would wipe an error off
-  the page. Datastar 1.0.0 leaves an element alone when the old and the
-  new element both carry `data-ignore-morph`, which the box always does.
-  The dev server's own patches still reach it: they patch the box's
-  *inside* (`mode inner`, below), and the check compares only the box
-  and the element that replaces it, not what goes inside.
-- `openWhenHidden: true`. By default Datastar's `@get` closes its stream
-  while the tab is hidden and opens it again when you come back, so a
-  reload sent meanwhile would be lost. With this option the stream stays
-  open.
-- `?b=afcb2a7d-1`, the generation of the app that rendered the page. A
-  stream can still close: the network drops for a moment (Datastar
-  then retries), or you restart `alder run`. When a page reconnects,
-  `serveReload` compares its generation with `d.gen` and, when they
-  differ, sends the reload straight away; the page belongs to an older
-  build or an earlier dev server, so whatever it missed, reloading is
-  the answer. The nonce is what tells two dev servers apart: a restarted
-  one counts from 1 again.
+##### `data-ignore-morph`
 
-Why does the router add these, and not the proxy, which sees every
-answer? To add them, the proxy would have to hold back each HTML answer,
-find `<body>` in it, and fix up `Content-Length`; and it would also have
-to rewrite inside Datastar's event streams, because a body patch replaces
-the whole `<body>` ("A request" above) and would wipe out a box that
-only the first page load had. The router already knows which answers are
-pages and which are body patches, and it passes both through `dev`, so
-a patched body keeps the box and the subscriber. The proxy stays a plain
-pass-through. Run the executable without `alder run` and nothing sets
-`ALDER_RELOAD`, so its pages are exactly as before.
+When the whole `<body>` is patched (a `refresh` that cannot be cut into
+regions, or a `redirect`, "A request" above), Datastar *morphs* the old
+body into the new one: it walks both and changes only what differs. The
+new body's box is empty, so without this attribute every click would wipe
+an error off the page.
 
-**The events.** `/_dev/reload` (`serveReload`) is a server-sent event
-stream that stays open. It starts with a comment line, `: ready` (a line
-starting with `:` is a comment in the format, ignored by the browser),
-then the reload if the page's generation is not the current one, or else
-the overlay if there is an error right now, then whatever is
-broadcast, and a `: ping` comment every 15 seconds so idle connections
-are not dropped. Every event is made by one function in
-`rt/datastar/datastar.go`, the same one the router's `PatchBody` uses:
+Datastar 1.0.0 leaves an element alone when the old and the new element
+both carry `data-ignore-morph`, which the box always does. The dev server's
+own patches still reach it: they patch the box's *inside* (`mode inner`,
+below), and the check compares only the box and the element that replaces
+it, not what goes inside.
+
+##### `openWhenHidden: true`
+
+By default Datastar's `@get` closes its stream while the tab is hidden and
+opens it again when you come back, so a reload sent meanwhile would be
+lost. With this option the stream stays open.
+
+##### `?b=afcb2a7d-1`
+
+This is the generation of the app that rendered the page. A stream can
+still close: the network drops for a moment (Datastar then retries), or you
+restart `alder run`.
+
+When a page reconnects, `serveReload` compares its generation with `d.gen`
+and, when they differ, sends the reload straight away; the page belongs to
+an older build or an earlier dev server, so whatever it missed, reloading
+is the answer. The nonce is what tells two dev servers apart: a restarted
+one counts from 1 again.
+
+Why does the router add these, and not the proxy, which sees every answer?
+To add them, the proxy would have to hold back each HTML answer, find
+`<body>` in it, and fix up `Content-Length`; and it would also have to
+rewrite inside Datastar's event streams, because a body patch replaces the
+whole `<body>` ("A request" above) and would wipe out a box that only the
+first page load had.
+
+The router already knows which answers are pages and which are body
+patches, and it passes both through `dev`, so a patched body keeps the box
+and the subscriber. The proxy stays a plain pass-through. Run the
+executable without `alder run` and nothing sets `ALDER_RELOAD`, so its
+pages are exactly as before.
+
+#### The events
+
+`/_dev/reload` (`serveReload`) is a server-sent event stream that stays
+open. It sends, in order:
+
+1. a comment line, `: ready` (a line starting with `:` is a comment in the
+   format, ignored by the browser);
+2. the reload if the page's generation is not the current one, or else the
+   overlay if there is an error right now;
+3. whatever is broadcast, and a `: ping` comment every 15 seconds so idle
+   connections are not dropped.
+
+Every event is made by one function in `rt/datastar/datastar.go`, the same
+one the router's `PatchBody` uses:
 
 ```go
 func PatchEvent(selector, mode, elements string) []byte {
@@ -3333,10 +3359,12 @@ with the `<pre>`. The diagnostic is the one `alder check` prints, run
 through `html.EscapeString` (`overlayHTML`), which is why `<title>`
 arrives as `&lt;title&gt;`: your source is shown as text, never run as
 HTML. Each line of it is its own `data: elements` line, because a line
-end inside a data line would end it. A second `curl` opened while the
-error stood got the same event straight after `: ready`, and the page
-itself still answered 200 from the old child. Fixing the file then sent
-these two events, one right after the other:
+end inside a data line would end it.
+
+A second `curl` opened while the error stood got the same event straight
+after `: ready`, and the page itself still answered 200 from the old
+child. Fixing the file then sent these two events, one right after the
+other:
 
 ```
 event: datastar-patch-elements
@@ -3356,13 +3384,15 @@ line ends in a space) replaces the box's content with nothing. The second
 appends a `<script>` to `<body>`. Datastar runs a script it patches in, so
 the browser executes `location.reload()` and asks the dev server for the
 page again, which the new child now answers. (`data-effect="el.remove()"`
-removes the element once Datastar has seen it.) Datastar 1.0's events
-patch elements or signals; it has no "run this script" event, so a
-patched-in script is how a server makes the browser do something. The
-clear goes first, so even a page that misses the reload stops showing the
-old error. An edit with no
-error, and a change under `static/`, send the same reload event; the
-first also sends the clear before it. The new app is generation
+removes the element once Datastar has seen it.)
+
+Datastar 1.0's events patch elements or signals; it has no "run this
+script" event, so a patched-in script is how a server makes the browser do
+something. The clear goes first, so even a page that misses the reload
+stops showing the old error.
+
+An edit with no error, and a change under `static/`, send the same reload
+event; the first also sends the clear before it. The new app is generation
 `afcb2a7d-2`, so a third `curl` on `/_dev/reload?b=afcb2a7d-1`, opened
 after the fix, the way a page that missed all this would reconnect, got
 the reload at once:
@@ -3385,20 +3415,29 @@ reconnects after it. Since there is then no app to serve the
 Datastar script it loads, the dev server serves
 `/_alder/datastar-v1.0.0.js` (`datastar.ScriptPath`) itself in that state.
 
-**Stopping.** On Ctrl-C, `runRunTo` closes `done`, which ends the
+#### Stopping
+
+On Ctrl-C, `runRunTo` closes `done`, which ends the
 watcher, the worker's wait, the monitors and every open `/_dev/reload`
 stream; shuts down the HTTP server (5 seconds for requests in flight);
 waits for a rebuild in progress to finish, so the child it may have
 started is not left behind; and then stops the current child.
 
-**When the dev server dies.** None of that runs when the dev server is
+#### When the dev server dies
+
+None of that runs when the dev server is
 killed with `SIGKILL` (which a process cannot catch), and a child left
 running would keep its port and its database open with no one to stop it.
-So `startChild` gives each child a pipe as its standard input: it makes
-one with `os.Pipe()`, passes the read end as `cmd.Stdin` (closing its own
-copy once the child has started), keeps the write end in `child.stdinW`,
-and adds `ALDER_EXIT_ON_STDIN_EOF=1` to the child's environment. Nothing
-is ever written to the pipe. `stop` closes the write end after its
+
+So `startChild` gives each child a pipe as its standard input. It:
+
+- makes one with `os.Pipe()`;
+- passes the read end as `cmd.Stdin` (closing its own copy once the child
+  has started);
+- keeps the write end in `child.stdinW`;
+- adds `ALDER_EXIT_ON_STDIN_EOF=1` to the child's environment.
+
+Nothing is ever written to the pipe. `stop` closes the write end after its
 `SIGTERM`, and when the dev server's process ends any other way, the
 kernel closes every file it had open, the write end too. The generated
 `main` (chapter 11, "`alder build`") waits for that, right after it sets
