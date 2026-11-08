@@ -6964,11 +6964,13 @@ How the server gets from the first to the second:
    calls `NodeAt`. The path is `Module`, `ValueDecl` (`Index.load`, a route's
    member), `Block`, `LetStmt` (`matching`), `If`, `App` (`Text.isEmpty q`),
    `Var` (`q`).
+
 2. `target` (`scope.go`) says what the node names. The `Var` carries a
    `Ref`, the resolver's answer (section 4) for the name: its kind is
    `RefLocal`, "a local variable", and a local has no module or declaration
    to point at. Which local? The resolver says only that it is local; the
    server asks `scopeAt`.
+
 3. `scopeAt(path, pos)` walks the path from the outside in and collects the
    names in scope. At the `ValueDecl` it adds `Index.load`'s parameters, `params` and
    `session`. At the `Block` it adds each `let` whose statement **ends before**
@@ -6989,6 +6991,7 @@ How the server gets from the first to the second:
    The list is ordered outermost first, and `innermost` takes the **last**
    binder named `q`, so a name that is bound twice means the closer one,
    as in the language.
+
 4. The binder is `q`, a `LetStmt` on line 34 whose name is at columns 7 to 8.
    Its `Key` is the node itself, and the type checker recorded each local's
    type under that key (`check.Result.Binds`). Hover prints
@@ -6997,20 +7000,26 @@ How the server gets from the first to the second:
    `lspRange` to line 33, characters 6 to 7.
 
 The same `target` drives three features. Hover on `lastPage` finds a `Var`
-with a `RefValue` instead, looks its type up in `Result.Values`, and adds
-the doc comment (`syntax.DocOf`: the run of `--` lines directly above the
-declaration). Definition on it finds the declaration (`findDecl`) and returns
-the span of its name. A name that resolves to the standard library gets a type
-and an answer for hover, and no definition: the stdlib is embedded in the
-binary, so it has no path to open.
+with a `RefValue` instead, looks its type up in `Result.Values`, and adds the
+doc comment (`syntax.DocOf`: the run of `--` lines directly above the
+declaration).
+
+Definition on it finds the declaration (`findDecl`) and returns the span of
+its name.
+
+A name that resolves to the standard library gets a type and an answer for
+hover, and no definition: the stdlib is embedded in the binary, so it has no
+path to open.
 
 A route is a name of its own kind (`RefRoute`). `Search` in `submit={Search}`
-resolves to the route, and so does the route part of a member's name:
-`Search` in `Search.update`, in the type `Search.Params`. For such a name
-hover prints the route line without `route Name =` (`routeHover`: the method and
-path, the parameters, the form and the guard, two spaces apart) and the
-`--` comment above the route, and definition returns the span of the
-route's name in its `route` line. In the blog:
+resolves to the route, and so does the route part of a member's name: `Search`
+in `Search.update`, in the type `Search.Params`. For such a name hover prints
+the route line without `route Name =` (`routeHover`: the method and path, the
+parameters, the form and the guard, two spaces apart) and the `--` comment
+above the route, and definition returns the span of the route's name in its
+`route` line.
+
+In the blog:
 
 ```text
 -> {"jsonrpc":"2.0","id":3,"method":"textDocument/hover","params":{"position":{"line":64,"character":21},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"}}}
@@ -7020,12 +7029,13 @@ route's name in its `route` line. In the blog:
 ```
 
 (The cursor is inside `submit={Search}`, line 65, character 21. The hover is
-the route line without `route Search =`, then the two comment lines above
-it; the definition is the span of `Search` in the `route` line, line 10,
-characters 6 to 12.) Where the checker says
-a route lacks a member (E0043), a code action writes the signatures: `Row.load`
-and `Row.view` for a GET route, `Row.update` for a write route
-(`routeSignatureActions`), after the route's last member.
+the route line without `route Search =`, then the two comment lines above it;
+the definition is the span of `Search` in the `route` line, line 10,
+characters 6 to 12.)
+
+Where the checker says a route lacks a member (E0043), a code action writes
+the signatures: `Row.load` and `Row.view` for a GET route, `Row.update` for a
+write route (`routeSignatureActions`), after the route's last member.
 
 ### References
 
@@ -7058,13 +7068,19 @@ resolves to the same declaration (`uses` in `references.go`):
 The test in `useSpan` is the resolver's own answer: the node's `Ref` has the
 same module and name as the target's, in the same **namespace** (a table
 `Post` used in a type position and used as a value are the same declaration
-with different `RefKind`s). The references of a route are its `route` line
-and every place its name is used as a value: a `click`, `submit` or `href`,
-a `Response.redirect`, a test's `Test.get` or `Test.submit`. In the blog,
-`Search` is found at its `route` line, in `submit={Search}` and in one test.
-The route part of a member's name (`Search.update`) is not a node of its own
-with a `Ref`, so references do not list it; hover and definition do (above). A local compares its binder by identity, not
-its name: two `q`s in two functions are two names.
+with different `RefKind`s).
+
+The references of a route are its `route` line and every place its name is
+used as a value: a `click`, `submit` or `href`, a `Response.redirect`, a
+test's `Test.get` or `Test.submit`.
+
+In the blog, `Search` is found at its `route` line, in `submit={Search}` and
+in one test. The route part of a member's name (`Search.update`) is not a node
+of its own with a `Ref`, so references do not list it; hover and definition do
+(above).
+
+A local compares its binder by identity, not its name: two `q`s in two
+functions are two names.
 
 The cost is a walk of the whole program per request: every node of every
 module, plus a reflective `Children` call per node. There is no index to build
@@ -7080,13 +7096,23 @@ used on the line that does not parse. So it reads the context from the text,
 and the facts from the build.
 
 `completionAt` takes the line up to the cursor (`prefix`) and tries the
-contexts in order: `import `, a module member (`Text.`), a field (`params.`),
-a closing tag (`</`), an attribute's value (`variant="`), an attribute inside
-a tag, a tag (`<`), a hole (`?`), a pattern, and last everything else (names
-in scope, modules and keywords). The first that matches wins. These are text
-matches on purpose; the parser has failed on this line, and its error is no
-help deciding what the user means to write. Most of them look only at the
-prefix, with regular expressions anchored on its end:
+contexts in order:
+
+1. `import `;
+2. a module member (`Text.`);
+3. a field (`params.`);
+4. a closing tag (`</`);
+5. an attribute's value (`variant="`);
+6. an attribute inside a tag;
+7. a tag (`<`);
+8. a hole (`?`);
+9. a pattern;
+10. and last everything else (names in scope, modules and keywords).
+
+The first that matches wins. These are text matches on purpose; the parser
+has failed on this line, and its error is no help deciding what the user
+means to write. Most of them look only at the prefix, with regular
+expressions anchored on its end:
 
 ```go
 	reMember   = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.])([A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)*)\.([a-zA-Z0-9_]*)$`)
@@ -7094,24 +7120,29 @@ prefix, with regular expressions anchored on its end:
 ```
 
 `Text.` is a capitalised name, a module, so `reMember` matches and `members`
-lists the declarations of that module. `params.` is a lowercase name, a
-value, so `reField` matches, and `fields` needs the type of `params`. For
-that, the scope: on the line being typed, the scope at the **end of the line
-above**, from the last good build (`scopeNow`). That contains the names
-bound before this line, which is all this line can use, and the type of
-`params` is `Index.Params`, a record with the fields `page` and `q`, which are
-the completions.
+lists the declarations of that module. `params.` is a lowercase name, a value,
+so `reField` matches, and `fields` needs the type of `params`. For that, the
+scope: on the line being typed, the scope at the **end of the line above**,
+from the last good build (`scopeNow`).
+
+That contains the names bound before this line, which is all this line can
+use, and the type of `params` is `Index.Params`, a record with the fields
+`page` and `q`, which are the completions.
 
 A route's name is capitalised too, so `Search.` matches `reMember` as well,
 but `Search` is no module. `members` then asks `routeNamed` whether the
-written qualifier names a route of this module (or, through an import, a
-route of that module: `Index.Row` for the route `Row` of `Todos.Index`) and
-answers with what follows a route's name: the members the
-route fixes, a GET route's `load` and `view`, a write route's `update`,
-and its `Params` and `Session` types. A member the module declares shows its
-signature as written; one it lacks shows the signature it needs (`Query m`
-for a `load`, whose model only the author knows). In the blog, typing `Search.`
-where `let q = …` was answers, with the signature of `Search.update`:
+written qualifier names a route of this module (or, through an import, a route
+of that module: `Index.Row` for the route `Row` of `Todos.Index`) and answers
+with what follows a route's name: the members the route fixes, a GET route's
+`load` and `view`, a write route's `update`, and its `Params` and `Session`
+types.
+
+A member the module declares shows its signature as written; one it lacks
+shows the signature it needs (`Query m` for a `load`, whose model only the
+author knows).
+
+In the blog, typing `Search.` where `let q = …` was answers, with the
+signature of `Search.update`:
 
 ```text
 <- {"id":5,"jsonrpc":"2.0","result":{"isIncomplete":false,"items":[{"label":"update","kind":3,"detail":"update : Search.Params -\u003e Session -\u003e Task Response","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"update"}},{"label":"Params","kind":7,"detail":"type Search.Params","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"Params"}},{"label":"Session","kind":7,"detail":"type Search.Session","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"Session"}}]}}
@@ -7139,21 +7170,26 @@ attribute's value ask `startTag`, which joins the declaration's lines from its
 first (`declStart`) up to the cursor and scans that text from the start
 (`scanTags`), keeping a stack of the tags open so far: `<tag …>` pushes it,
 `</tag>` pops back to it, and `<tag … />` or a void tag such as `<br>` pushes
-nothing. When the text ends before a start tag's `>`, the cursor is inside
-that tag, and the tags still on the stack are its parents. A `slot="` looks
-at the innermost parent: under `<al-pagination>` it offers that element's
-named slots, `prev` and `next`.
+nothing.
+
+When the text ends before a start tag's `>`, the cursor is inside that tag,
+and the tags still on the stack are its parents.
+
+A `slot="` looks at the innermost parent: under `<al-pagination>` it offers
+that element's named slots, `prev` and `next`.
 
 Scanning text means guessing what the parser would see, and a `<` is not
 always a tag. `"see <b here"` is a string, `params.page <last` a comparison,
 and if either counted, every line typed after it would be "inside a tag" and
-get attribute names instead of the names in scope. The scanner therefore
-tells code from markup the way the lexer does. In code (outside any tag, or
-in a `{…}` inside one) it skips a string literal whole, with the lexer's own
-rule (`syntax.StringEnd`), and a `--` comment to the end of its line; among a
-tag's children the text is raw, and a `"` there is only a character. In code
-a `<name` on a line above the cursor's opens a tag only when the parser would
-accept the name there:
+get attribute names instead of the names in scope.
+
+The scanner therefore tells code from markup the way the lexer does.
+
+In code (outside any tag, or in a `{…}` inside one) it skips a string literal
+whole, with the lexer's own rule (`syntax.StringEnd`), and a `--` comment to
+the end of its line; among a tag's children the text is raw, and a `"` there
+is only a character. In code a `<name` on a line above the cursor's opens a
+tag only when the parser would accept the name there:
 
 ```go
 		case c == '<':
@@ -7170,20 +7206,25 @@ typing a tag the build has never seen. And a cursor inside an attribute's
 `{…}` (`<a href={Text.slice 0`) is in code again, so `startTag` says no and
 the names in scope complete there, as anywhere else in an expression.
 
-**Custom elements.** The tags and attributes of HTML are a table compiled
-into the server (`internal/markup`). Custom elements are the checker's
-(section 5, where HTML is checked): the merged manifest of `alder-ui` and the app,
-which the checker built and left on its result. Completion reads it from
-the last good build, `a.res.Elements`, so the app's manifest is the one that
-build parsed and the server never parses it a second time. When the newest build has no
-result because a file does not parse, the last good build still answers;
-with no good build yet, `elements.Builtin()` does, so `<al-` completes even in a file that has never compiled. After `<`
-the HTML tags come first, then the custom elements in tag order. Inside a
-custom element's start tag, its own attributes replace the HTML list (the
-global ones, `class`, `id` and the rest, are added after them), each with its
-type and default as the item's detail and its description as documentation.
-Inside an attribute's quotes, `Attr.Values` (the same list the checker
-checks a literal against) gives the choices; an attribute with no closed list
+**Custom elements.** The tags and attributes of HTML are a table compiled into
+the server (`internal/markup`). Custom elements are the checker's (section 5,
+where HTML is checked): the merged manifest of `alder-ui` and the app, which
+the checker built and left on its result.
+
+Completion reads it from the last good build, `a.res.Elements`, so the app's
+manifest is the one that build parsed and the server never parses it a second
+time. When the newest build has no result because a file does not parse, the
+last good build still answers; with no good build yet, `elements.Builtin()`
+does, so `<al-` completes even in a file that has never compiled.
+
+After `<` the HTML tags come first, then the custom elements in tag order.
+Inside a custom element's start tag, its own attributes replace the HTML list
+(the global ones, `class`, `id` and the rest, are added after them), each with
+its type and default as the item's detail and its description as
+documentation.
+
+Inside an attribute's quotes, `Attr.Values` (the same list the checker checks
+a literal against) gives the choices; an attribute with no closed list
 completes nothing there.
 
 Hover on a tag uses the same table (`markupHover` in `hover.go`). A tag with
@@ -7207,15 +7248,20 @@ func (cx *completion) fits(name string, want types.Type) bool {
 
 For each name in scope it takes the name's type, makes the type's type
 parameters fresh variables (`Instantiate`: a function over any list fits
-whether the hole wants a list of `Int` or of `Text`), and asks whether it can be made equal to the hole's type. Unifying
-**changes** the unifier: a type variable that was open becomes `Int`. The
-build's unifier belongs to a snapshot that other requests are reading, and a
-candidate that did not fit would leave a half-finished substitution behind.
-So each question gets `Clone`, a copy with its own substitution (it carries
-on counting fresh variables from the original's counter, so none collide),
-and the copy is thrown away. The names that fit are sorted first
-(`sortText` starting with 0) and the others after them (1). The item's edit
-replaces the whole hole, `?` included, so choosing a name fills it.
+whether the hole wants a list of `Int` or of `Text`), and asks whether it can
+be made equal to the hole's type.
+
+Unifying **changes** the unifier: a type variable that was open becomes `Int`.
+The build's unifier belongs to a snapshot that other requests are reading, and
+a candidate that did not fit would leave a half-finished substitution behind.
+
+So each question gets `Clone`, a copy with its own substitution (it carries on
+counting fresh variables from the original's counter, so none collide), and
+the copy is thrown away.
+
+The names that fit are sorted first (`sortText` starting with 0) and the
+others after them (1). The item's edit replaces the whole hole, `?` included,
+so choosing a name fills it.
 
 ### Generators
 
@@ -7236,11 +7282,12 @@ type Spec struct {
 `ID` is `"new msg"`, `Args` and `Flags` are the typed fields (`page` is a
 `page`, the module of a route, and `name` is text), `Run` is the generator,
 and `Here` says whether the generator applies at the cursor and prefills a
-form if it does. `HereCtx` is where the cursor is (module, whether it holds
-routes, the declaration around it, a hole under it; the field is still called
-`IsPage`, and the language server sets it for a module with a `page` or with
-routes, `hereCtx` in `actions.go`); `inPage`, for example, is the `Here` of
-`new msg`:
+form if it does.
+
+`HereCtx` is where the cursor is (module, whether it holds routes, the
+declaration around it, a hole under it; the field is still called `IsPage`,
+and the language server sets it for a module with a `page` or with routes,
+`hereCtx` in `actions.go`); `inPage`, for example, is the `Here` of `new msg`:
 
 ```go
 func inPage(c HereCtx) *Match {
@@ -7290,13 +7337,14 @@ writes nothing. The server calls it on a copy of the app:
 ```
 
 `Materialise` copies the project into a fresh temporary directory (not
-`build/`, `.git`, or databases), then writes the open documents over the
-copy. That is the overlay again, but here by writing files: the generators
-read a directory, not a map of texts, so the dry run gets a directory that
-looks the way the editor sees it, and the real project, which the user may be
-looking at, is never touched. The migration writer runs in the copy too. The
-`Migrate` function is passed in (`generate.App.Migrate`) so the server and the
-command line run the same one.
+`build/`, `.git`, or databases), then writes the open documents over the copy.
+That is the overlay again, but here by writing files: the generators read a
+directory, not a map of texts, so the dry run gets a directory that looks the
+way the editor sees it, and the real project, which the user may be looking
+at, is never touched.
+
+The migration writer runs in the copy too. The `Migrate` function is passed in
+(`generate.App.Migrate`) so the server and the command line run the same one.
 
 `generate.Form` turns what the user has typed (`you`) over what `Here`
 prefilled into a list of fields, each valid or not and why, and `ready` is
