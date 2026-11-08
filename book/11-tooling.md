@@ -561,9 +561,7 @@ line of the `route` line.
 
 The routes come in program order: module by module (a module after the modules
 it imports, otherwise alphabetical), and within a module in the order they are
-declared. The routes of a module still written with `page` and `msg` come
-first, sorted by path, with a message listed as the `POST` of
-`/_m/<Module>/<Msg>`, the address that form serves.
+declared.
 
 The routes come from the checked program, the same one the generated route
 table is built from, so a program that does not check prints its diagnostics,
@@ -572,14 +570,12 @@ as `alder check` does, and exits 1.
 `--json` prints one array instead, for tools:
 
 ```text
-[{"kind":"page","method":"GET","path":"/posts/{slug}","module":"Posts.Show","name":"Show","file":"app/Posts/Show.alder","line":9,"col":1}, …]
+[{"kind":"route","method":"GET","path":"/posts/{slug}","module":"Posts.Show","name":"Show","file":"app/Posts/Show.alder","line":9,"col":1}, …]
 ```
 
-`method` is the route's method; `name` is the route's name (`page` for a
-page of the old form); `line` and `col` are 1-based. `kind` is `"page"`
-for a GET and `"msg"` for any other method, as it was before routes, so
-that an editor plugin written for pages and messages keeps working until
-the old syntax is removed. The language server answers the same list as
+`method` is the route's method; `name` is the route's name; `line` and `col`
+are 1-based. `kind` is always `"route"`; an editor plugin written for the
+`"page"` and `"msg"` kinds of earlier versions reads `method` instead. The language server answers the same list as
 the request `alder/routes` (below, "Editor support"), with a file URI and a
 0-based range in place of `file`, `line` and `col`; alder.nvim uses it for
 its route picker.
@@ -680,13 +676,12 @@ standard error. The exit status says whether anything is left to do:
   - a message has a field named like one of its page's path parameters, which its route would put in the path parameter's place (rename the field);
   - or a file could not be read or written
 
-Old code that uses the words `page`, `msg`, `Nav` and `Notice` is accepted
-until the old syntax is removed, so the rewrite can be done one module at a
-time: name the files, and a module that still has a page keeps working
-beside the routes. Naming files rewrites them only when the app still
-checks with just them rewritten; a reference from another module to a page
-that became a route is a reference to a route now, and the run that
-names too few files says so and writes nothing.
+Old code that uses the words `page`, `msg` and `Nav` is E0046 wherever it
+is, but the rewrite can be done one module at a time: name the files.
+Naming files rewrites them only when the app still checks with just them
+rewritten; a reference from another module to a page that became a route is
+a reference to a route now, and the run that names too few files says so and
+writes nothing.
 
 ### `alder build`
 
@@ -1290,8 +1285,7 @@ looking does not change what you see.
 
 **The map of the app: `/_dev/map.json`.** `GET /_dev/map.json` is the page at
 `/_dev`, as data. The compiler knows the app's tables and silos (and the
-pages of a module still written with `page`; a module on routes has none, so
-`pages` is empty for it, [#190](https://github.com/tapegram/alder/issues/190)), and writes them into the program as one JSON text;
+GET routes, as `pages`: each with its path, `requires`, roles and parameters), and writes them into the program as one JSON text;
 the running app adds what only it knows: the build id, the migrations
 applied, which capabilities have a real adapter and which a fake, and the
 routes, each with its `method` and `pat` (its path pattern). A tool that wants to show your
@@ -2532,8 +2526,7 @@ path (a link when it is a GET route that needs no parameter), the tables
 (columns, the id, `@created`/`@updated`, unique columns, references and what
 deleting does to them, the owner), the capabilities and whether an adapter or
 a fake is wired, the session's fields, the migrations the database has and the
-build id; for a module still written with `page` and `msg`, also its page,
-with `requires`, roles, parameters and the messages it declares.
+build id.
 
 `ALDER_DEV_PANEL=0` turns the panel off. None of this is served without
 `ALDER_DEV=1`: no panel, no trace is recorded, and `/_dev` is a 404.
@@ -2795,7 +2788,6 @@ A route's path the router cannot serve (chapter 6):
 
 - "route path `//evil.com` has an empty segment; a path is `/` followed by segments of letters, digits, `.`, `_`, `~`, `-` or `{param}`".
 - Likewise "has a space", "has a query (`?`)", "has a fragment (`#`)", "has the character `\`", "has the segment `..`, which a browser resolves away", "has the segment `a{id}`, which is neither a name nor a whole `{param}`".
-- A path under `/_m/` is refused too (`give the route another path`).
 - A trailing `/` is allowed.
 - `alder new route` and `alder new admin --path` refuse the same paths.
 

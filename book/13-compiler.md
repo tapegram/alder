@@ -5222,8 +5222,7 @@ against the element's ancestors (any ancestor for a space, the parent for
 `>`).
 
 `TextContent` joins the text inside an element and collapses its whitespace.
-`Doc`'s `==` is `Node.Equal` of the two trees (after `html.WithoutPageParams`,
-which an address in the older message form needs and a route's does not), so a
+`Doc`'s `==` is `Node.Equal` of the two trees, so a
 page compares equal to `Test.doc (view …)`, which renders without a request.
 
 When a test's `==` of two `Doc`s is `False`, `rtesting.Eq` records `html.Diff`
@@ -5416,7 +5415,7 @@ included, which is what makes a `default changed` mutant reach every
 insert.
 
 `requires dropped` and `role dropped` are not in a function body. The
-mutator reads them from each `ir.Route` (and each older `ir.Page`), one
+mutator reads them from each `ir.Route`, one
 mutant per route, named by the route (`Save`), and the emitter keys them
 by the guard they belong to (the route's `Module.Name`). The `requires`
 mutant is a line in the route's guard before the check that sends a
@@ -6234,10 +6233,6 @@ is one `html/template` over two things:
 - what only the running server knows (the build id, the migrations the
   database has, how each capability is wired, and the routes: the method
   and pattern of every route the router holds).
-
-> **Not yet:** The generated map has no entry for a route yet
-> ([#190](https://github.com/tapegram/alder/issues/190)), so for an app on
-> routes its `pages` list is empty and the routes come from the router.
 
 Neither is served without `ALDER_DEV=1`: `/_dev` is a 404 and no page
 carries the panel or its script (a test builds an example, runs it without
@@ -7316,8 +7311,7 @@ versions as well). For the blog's `Posts.Index`:
 <- {"id":6,"jsonrpc":"2.0","result":[…,{"kind":"route","method":"GET","path":"/","module":"Posts.Index","name":"Index","uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":6,"character":0},"end":{"line":6,"character":63}}},{"kind":"route","method":"POST","path":"/_/Search","module":"Posts.Index","name":"Search","uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":9,"character":0},"end":{"line":9,"character":51}}},…]}
 ```
 
-The routes come in the order the program declares them (the older pages and
-messages are sorted by path before them), not sorted by path.
+The routes come in the order the program declares them, not sorted by path.
 
 #### A dry run on a copy
 

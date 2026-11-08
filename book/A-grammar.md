@@ -111,10 +111,9 @@ then a route of that module, then a member: `Todos.Index.Index {}` is the module
 
 ## The old form
 
-`page "…" { … }` and `msg M { … }` are the old form of a route and its writes. The
-parser still accepts them, beside `route` (a module has one form or the other,
-E0043), until they are removed; `alder fix --routes` rewrites them. They are not
-part of the grammar above, and `page` and `msg` stay reserved words meanwhile.
+`page "…" { … }` and `msg M { … }` are the old form of a route and its writes.
+The checker refuses them (E0046) and `alder fix --routes` rewrites them. They
+are not part of the grammar above.
 
 ## Lexical rules
 

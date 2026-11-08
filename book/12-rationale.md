@@ -801,7 +801,7 @@ would hold half a change.
 
 Alder refuses that program instead (E0031), at compile time, wherever the
 second write hides (a helper in another module, a `Task.all`), and says how to
-write it: in the silo, or from its own message. Reads may mix, because a read
+write it: in the silo, or from a route of its own. Reads may mix, because a read
 on another database's read-only connection cannot leave anything half done.
 
 An outbox (a write in one store that another picks up later) comes with
