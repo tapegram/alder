@@ -116,15 +116,16 @@ name, which is exactly how `examples/todos/app/App.alder` uses it in
 lexer does not know that; it sees an upper-case name, a dot and a
 lower-case name.)
 
-The **column-1 rule** settles this. Words that start a declaration
-(`module`, `import`, `type`, `route`, `form`, `table`, `capability`, `fake`,
-`session`, `login`, `test`; `page` and `msg` too, for code from before routes)
-are keywords only when they are the first thing
-on a line. Anywhere else they are ordinary names. The rule is applied as
-the parser takes each token (`advance` in `internal/syntax/parser.go`),
-which turns a declaration keyword with `Col > 1` back into a name
-(`ParserKind`, whose `declKeywords` lists them). Parsing
-the same two lines, with `module App` above them, gives:
+The **column-1 rule** settles this. Words that start a declaration (`module`,
+`import`, `type`, `route`, `form`, `table`, `capability`, `fake`, `session`,
+`login`, `test`; `page` and `msg` too, for code from before routes) are
+keywords only when they are the first thing on a line. Anywhere else they are
+ordinary names.
+
+The rule is applied as the parser takes each token (`advance` in
+`internal/syntax/parser.go`), which turns a declaration keyword with `Col > 1`
+back into a name (`ParserKind`, whose `declKeywords` lists them). Parsing the
+same two lines, with `module App` above them, gives:
 
 ```
 (session (field user (Maybe User.UserId)))
@@ -194,12 +195,15 @@ If you have never read Go: `:=` declares a variable and gives it its first
 value, a function can return two values (`m, diags`), and `if err != nil`
 checks whether reading the file failed. `syntax.ParseFile` is the parser's
 entry point; it returns the module's AST and any parse errors, which the
-command then prints to stderr. `--tokens` calls `syntax.Tokens`, which
-runs the same parser but records each token it takes from the lexer, so
-HTML text shows up as the `Text` runs the parser asked for. `--ir` runs the
-pipeline `alder check` runs (load, resolve, check) and then `ir.Lower` and
-`ir.Dump`. The golden tests do the same thing in bulk: `TestParseGolden`
-in `internal/syntax/parser_test.go` parses every
+command then prints to stderr.
+
+`--tokens` calls `syntax.Tokens`, which runs the same parser but records
+each token it takes from the lexer, so HTML text shows up as the `Text`
+runs the parser asked for. `--ir` runs the pipeline `alder check` runs
+(load, resolve, check) and then `ir.Lower` and `ir.Dump`.
+
+The golden tests do the same thing in bulk: `TestParseGolden` in
+`internal/syntax/parser_test.go` parses every
 `testdata/golden/parse_*.alder` and compares its dump with the `.dump` file
 beside it.
 
@@ -218,12 +222,16 @@ Read it from the outside in:
 - `(val area : (fn Shape -> Float) s = …)` is a value declaration: its
   name, its signature (a function type from `Shape` to `Float`), its
   parameter `s`, and its body.
+
 - `(match (var s) …)` is the `match`; `(var s)` is a reference to the name
   `s`. The parser doesn't know yet what `s` refers to.
+
 - `(arm (pctor Circle r) …)` is an arm whose pattern is a constructor
   pattern `Circle` with a variable `r` inside.
+
 - `(prec (w w) (h h))` is a record pattern: field `w` bound to `w`, field
   `h` bound to `h`.
+
 - `(* (* (float 3.14) (var r)) (var r))` is `3.14 * r * r`. The nesting
   shows that `*` groups to the left: `(3.14 * r) * r`.
 
@@ -274,12 +282,15 @@ E0005. That rule lets the compiler find a module from its name alone.
 
 Each `import` is an edge in the **module graph** (`internal/names/graph.go`).
 The graph must have no cycles: if `A` imports `B` and `B` imports `A`,
-neither can be understood first, and you get E0006. Two module names may
-not differ only in case either (`Ab` and `AB`, E0014): each module becomes
-a file named after it, and on a case-insensitive file system the two would
-be one file. With no cycles, the
-modules can be put in an order where every module comes after the modules
-it imports (`Program.Order`). Every later stage walks modules in that order.
+neither can be understood first, and you get E0006.
+
+Two module names may not differ only in case either (`Ab` and `AB`, E0014):
+each module becomes a file named after it, and on a case-insensitive file
+system the two would be one file.
+
+With no cycles, the modules can be put in an order where every module comes
+after the modules it imports (`Program.Order`). Every later stage walks
+modules in that order.
 
 Then `resolve.go` visits every name. `s` in `area` is the parameter. `List.map`
 is the stdlib function `map` in module `List`. `Circle` is the constructor
@@ -301,21 +312,25 @@ app/Index.alder:5:28: error[E0201]: module `Todo` is not imported
 
 Three things keep it to one:
 
-- The resolver reports each missing module once per module. It keeps a
-  `reported` set (`notImported` in `internal/names/resolve.go`) and skips
-  any module already in it. (This is not exact for a nested module such as
-  `Table.Todo`: some uses are keyed by the written qualifier, so one missing
-  import can be reported more than once,
-  [#192](https://github.com/tapegram/alder/issues/192).)
-- Every unresolved reference gets the **poison type**, `types.Err` in
-  `internal/types/types.go`. Poison unifies with every type without
-  complaint (`unify` in `unify.go` returns early when either side is
-  poison), so `List Todo` failing to resolve can't cause a second error
+- **Once per module.** The resolver reports each missing module once per
+  module. It keeps a `reported` set (`notImported` in
+  `internal/names/resolve.go`) and skips any module already in it.
+
+- **Poison type.** Every unresolved reference gets the **poison type**,
+  `types.Err` in `internal/types/types.go`. Poison unifies with every type
+  without complaint (`unify` in `unify.go` returns early when either side
+  is poison), so `List Todo` failing to resolve can't cause a second error
   where `model.todos` is used. Poison never appears in a message.
-- A module whose names failed to resolve has its value bodies skipped
-  (pass 4 in `internal/check/check.go`), because checking them would only
-  repeat the same problem. Every other module is still checked in full, so
-  a missing import never hides type errors elsewhere.
+
+- **Skipped bodies.** A module whose names failed to resolve has its value
+  bodies skipped (pass 4 in `internal/check/check.go`), because checking
+  them would only repeat the same problem. Every other module is still
+  checked in full, so a missing import never hides type errors elsewhere.
+
+> **Not exact for nested modules.** The once-per-module rule is not exact
+> for a nested module such as `Table.Todo`: some uses are keyed by the
+> written qualifier, so one missing import can be reported more than once,
+> [#192](https://github.com/tapegram/alder/issues/192).
 
 One cause, one diagnostic, one fix. That matters because an agent fixes
 the first error it reads; if one missing import produced five errors, it
@@ -327,12 +342,16 @@ The type checker (`internal/check`, using `internal/types`) decides what
 type every expression has and reports when two things that must agree
 don't.
 
+### Types
+
 To the checker, a **type** is a Go value from `internal/types/types.go`: a
 `Con` for a built-in like `Int` or `Float`, a `Record` or `Union` for your
 declarations, a `Fun` for a function, an `App` for things like `List Text`,
 a `Brand` for a brand, a `Param` for a type parameter (the `a` in
 `Card`'s `Html a`, which stands for any type, so one component serves every
 module's markup), or a `Var` for a type not yet known.
+
+### Unification
 
 That last kind is what makes **unification** work. When the checker meets
 something whose type it can't know yet, it invents a fresh variable, say
@@ -341,13 +360,18 @@ something whose type it can't know yet, it invents a fresh variable, say
 type, filling in variables as needed, or fail".
 
 Follow `m ?? 0` in `label`, where `m : Maybe Int`. The checker handles `??`
-in `inferBinOp` (`internal/check/expr.go`): it makes a fresh variable `t1`,
-checks the left side against `Maybe t1`, and checks the right side against
-`t1`. Unifying `Maybe Int` (the type of `m`) with `Maybe t1` succeeds and
-records `t1 = Int`. Checking `0` against `t1`, which is now `Int`,
-succeeds. The result of `??` is `t1`, which is `Int`, exactly what
-`Text.fromInt` needs. If the right side were a `Text`, the last step would
-fail. For `count m = m ?? "none"` with `count : Maybe Int -> Int`:
+in `inferBinOp` (`internal/check/expr.go`):
+
+1. It makes a fresh variable `t1`, checks the left side against `Maybe t1`,
+   and checks the right side against `t1`.
+2. Unifying `Maybe Int` (the type of `m`) with `Maybe t1` succeeds and
+   records `t1 = Int`.
+3. Checking `0` against `t1`, which is now `Int`, succeeds.
+4. The result of `??` is `t1`, which is `Int`, exactly what `Text.fromInt`
+   needs.
+
+If the right side were a `Text`, the last step would fail. For
+`count m = m ?? "none"` with `count : Maybe Int -> Int`:
 
 ```
 app/M.alder:4:16: error[E0003]: expected Int, got Text
@@ -360,16 +384,23 @@ record where `{ median: 1.0, sigma: 2.0, perDoubling: 0.5 }` is written,
 say in `let wide = { … }`, the checker can't yet know which named type it
 is, so it gives the literal a structural type carrying a **handle**
 (`Record.Flex` in `types.go`), a fresh variable that stands for "the type
-this literal will turn out to be". When `wide` is later passed where a
-`Curve` is expected, `unify` sees a structural record with an unbound
-handle on one side and a named record on the other. If the field names are
-exactly the same and every field's type unifies, it records
-`handle = Curve`, just as it recorded `t1 = Int` above; from then on
-`Apply` returns `Curve` for the literal, so the generated Go builds a
-`Curve` struct. If the names differ or a field's type is wrong, the handle
-stays unbound and the error says which field. The first named type wins,
-so a literal used as a `Point` and then as a `Vec` (same fields, different
-names) is still a mismatch: records stay nominal.
+this literal will turn out to be".
+
+When `wide` is later passed where a `Curve` is expected, `unify` sees a
+structural record with an unbound handle on one side and a named record on
+the other. If the field names are exactly the same and every field's type
+unifies, it records `handle = Curve`, just as it recorded `t1 = Int` above;
+from then on `Apply` returns `Curve` for the literal, so the generated Go
+builds a `Curve` struct.
+
+If the names differ or a field's type is wrong, the handle stays unbound
+and the error says which field.
+
+> **Records stay nominal.** The first named type wins, so a literal used as
+> a `Point` and then as a `Vec` (same fields, different names) is still a
+> mismatch.
+
+### Brands
 
 **Brands** show what the checker knows that the program doesn't. Given
 `type UserId = brand Text`, the checker refuses a `Text` where a `UserId`
@@ -378,15 +409,18 @@ Once the checker has said yes, the distinction has done its job. The next
 stage erases brands, and the generated Go uses a plain `string`. The
 checker remembers; the runtime forgets.
 
+### Checking and inferring
+
 The checker runs in two directions. **Checking** pushes an expected type
 down into an expression: in `area`, the signature says the body must be a
 `Float`, so each arm is checked against `Float`. **Inferring** works up from
 the leaves: `3.14 * r` has a type because `3.14` and `r` do. The functions
-`check` and `infer` in `expr.go` call each other. Since every top-level
-value has a signature, there is always an expected type to start from.
-That is also why a missing signature is an error. For E0007 the checker
-infers the type anyway (`inferSig`) and offers it as the fix, from
-`testdata/corpus/E0007-inferred/`:
+`check` and `infer` in `expr.go` call each other.
+
+Since every top-level value has a signature, there is always an expected
+type to start from. That is also why a missing signature is an error. For
+E0007 the checker infers the type anyway (`inferSig`) and offers it as the
+fix, from `testdata/corpus/E0007-inferred/`:
 
 ```
 app/Index.alder:15:1: error[E0007]: `rank` has no type signature; write `rank : Priority -> Int` on the line before it
@@ -394,6 +428,8 @@ app/Index.alder:15:1: error[E0007]: `rank` has no type signature; write `rank : 
   ^
   fix: rank : Priority -> Int
 ```
+
+### Exhaustiveness
 
 **Exhaustiveness** is checked per `match` (`internal/check/pattern.go`).
 The checker lists the constructors of the subject's type, marks each one
@@ -415,6 +451,8 @@ checker can't guess which fields you need, and `?todo` is a typed hole.
 Applying the fix leaves you with a warning that tells you what to write:
 `warning[W0002]: hole ?todo has type Float`.
 
+### Route members
+
 A route's members have a shape, and the checker holds them to it
 (`checkRoutes` in `internal/check/routes.go`, E0043). A GET route has
 `R.load : R.Params -> Session -> Query m` and `R.view : m -> Session -> Html`
@@ -431,136 +469,201 @@ app/Todos/Index.alder:14:14: error[E0043]: `Index.load` must have type `Index.Pa
   fix: Index.Params -> Session -> Query Model
 ```
 
-(`Model` in the fix is what `view` takes; with no `view` signature to read,
-the fix writes `m`.) The checker ties the two members together with the
-unifier of the last paragraphs: it makes a fresh variable for `m`, unifies
-`load`'s result `Query m` with the declared `load`, then unifies `view`'s
-first argument with the same variable. A `view` that takes another type is
-E0043 too, and the message says what `view` takes and what `load` gives.
-A `diag.Fix` may carry a `Title`
-and be `Preferred`: this one is titled ``Change signature to `…` `` and is
-preferred, because it is the one obvious repair. The command line ignores
-both; the language server uses the title for the code action, marks it
+> **The `Model` in the fix.** `Model` in the fix is what `view` takes; with
+> no `view` signature to read, the fix writes `m`.
+
+The checker ties the two members together with the unifier of the last
+paragraphs: it makes a fresh variable for `m`, unifies `load`'s result
+`Query m` with the declared `load`, then unifies `view`'s first argument
+with the same variable. A `view` that takes another type is E0043 too, and
+the message says what `view` takes and what `load` gives.
+
+A `diag.Fix` may carry a `Title` and be `Preferred`: this one is titled
+``Change signature to `…` `` and is preferred, because it is the one
+obvious repair. The command line ignores both.
+
+The language server uses the title for the code action, marks it
 `isPreferred`, and lists preferred fixes first, before the other fixes and
 before the generators, which are `refactor` actions and are not about the
 text under the cursor.
 
+### Whether a route needs the shown page
+
 The same pass works out something the generator will need. A write route
 whose `update` can answer `Response.refresh` or `Response.invalid` must have
 the page the browser is on rendered before the update runs, so the answer
-can be compared with it (section 8, "A request"). `needsShown` decides, once,
-per write route: does the body mention `Response.refresh` or
-`Response.invalid`, or call an app function whose type's result holds a
-`Response` (`resultHasResponse`)? A helper is judged by its type, not its
-name, so `confirmDelete : Todo -> Task Response` counts and `Text.trim`
-does not. The answer is `RouteInfo.NeedsShown`, and the IR carries it to the
-generator.
+can be compared with it (section 8, "A request").
 
-**HTML** is checked element by element (`internal/check/html.go`). A
-lower-case tag must be one of the HTML5 tags listed in `htmlTags`; an
-attribute's value is checked against the type its name calls for (a
-`Text`, a `Bool` for `disabled`, a route for `href`, `click` and `submit`,
-and a route's method must suit the attribute: `href` goes to a GET route and
-`submit` to a write route, else E0045). A tag with a hyphen is a **custom element**, and there the
-checker has no list of its own: it asks the manifests
-(`internal/check/elements.go`). Before any body is checked,
-`loadElements` builds one table of custom elements from two Custom
-Elements Manifests. The first is `alder-ui`'s, which the compiler carries
-inside itself: `rt/al/custom-elements.json` is embedded in the binary
-with the runtime (`rt/embed.go`), and `internal/elements` parses it once
-(`elements.Builtin`). The second is the app's
-`elements/custom-elements.json`, which `names.Load` reads along with the
-`.alder` files (`Program.ElementsManifest`), so the checker itself never
-touches the disk. `elements.Merge` puts them in one map by tag, the app's
-entry replacing the built-in one for a tag both declare. A manifest is a
-large format (classes, members, events, CSS parts); `internal/elements`
-decodes only the part the compiler uses: each declaration's `tagName`
-and `description`, its attributes' names, `type.text` (`boolean` marks a
-boolean attribute), defaults and descriptions, and its slots' names and
-descriptions. The checker reads the names and types; the descriptions and
-defaults are for the editor (section 10, "Completion"), and the merged table
-is kept on the check's result for it (`check.Result.Elements`). `customElement` then looks the tag up
-(E0028 when it is missing), checks each attribute against the entry or
-the short escape list of global attributes, the popover and invoker ones
-included (`elements.Escaped`; `submit`
-is refused outright), a literal value against the entry's list of
-quoted values when its type is one (`Attr.Values`), and each child's
-`slot="…"` against the entry's slots. A plain element's children are
-looked at too (`misplacedSlots` in `html.go`): a `slot` there names no
-slot of anything, so it is E0028. The one exception is a `<dialog>` the
-author writes directly inside an `<al-dialog>`: its children's slots are
-the `<al-dialog>`'s, checked against its entry (`Checker.slotted` marks
-it), and the renderer then adds nothing to that dialog.
+`needsShown` decides, once, per write route: does the body mention
+`Response.refresh` or `Response.invalid`, or call an app function whose
+type's result holds a `Response` (`resultHasResponse`)? A helper is judged
+by its type, not its name, so `confirmDelete : Todo -> Task Response`
+counts and `Text.trim` does not. The answer is `RouteInfo.NeedsShown`, and
+the IR carries it to the generator.
+
+### HTML
+
+HTML is checked element by element (`internal/check/html.go`). A
+lower-case tag must be one of the HTML5 tags listed in `htmlTags`.
+
+An attribute's value is checked against the type its name calls for:
+
+- a `Text`;
+- a `Bool` for `disabled`;
+- a route for `href`, `click` and `submit`, and the route's method must
+  suit the attribute: `href` goes to a GET route and `submit` to a write
+  route, else E0045.
+
+#### Custom elements
+
+A tag with a hyphen is a **custom element**, and there the checker has no
+list of its own: it asks the manifests (`internal/check/elements.go`).
+Before any body is checked, `loadElements` builds one table of custom
+elements from two Custom Elements Manifests:
+
+1. The first is `alder-ui`'s, which the compiler carries inside itself:
+   `rt/al/custom-elements.json` is embedded in the binary with the runtime
+   (`rt/embed.go`), and `internal/elements` parses it once
+   (`elements.Builtin`).
+2. The second is the app's `elements/custom-elements.json`, which
+   `names.Load` reads along with the `.alder` files
+   (`Program.ElementsManifest`), so the checker itself never touches the
+   disk.
+
+`elements.Merge` puts them in one map by tag, the app's entry replacing the
+built-in one for a tag both declare.
+
+A manifest is a large format (classes, members, events, CSS parts);
+`internal/elements` decodes only the part the compiler uses: each
+declaration's `tagName` and `description`, its attributes' names,
+`type.text` (`boolean` marks a boolean attribute), defaults and
+descriptions, and its slots' names and descriptions. The checker reads the
+names and types; the descriptions and defaults are for the editor (section
+10, "Completion"), and the merged table is kept on the check's result for
+it (`check.Result.Elements`).
+
+`customElement` then looks the tag up (E0028 when it is missing) and
+checks:
+
+- each attribute against the entry or the short escape list of global
+  attributes, the popover and invoker ones included (`elements.Escaped`;
+  `submit` is refused outright);
+- a literal value against the entry's list of quoted values when its type
+  is one (`Attr.Values`);
+- each child's `slot="…"` against the entry's slots.
+
+A plain element's children are looked at too (`misplacedSlots` in
+`html.go`): a `slot` there names no slot of anything, so it is E0028.
+
+> **A `<dialog>` the author writes directly inside an `<al-dialog>`.** This
+> is the one exception: its children's slots are the `<al-dialog>`'s, checked against
+> its entry (`Checker.slotted` marks it), and the renderer then adds
+> nothing to that dialog.
+
+#### Bound inputs
 
 Four of the built-in elements are more than markup. `al-input`,
 `al-textarea`, `al-select` and `al-checkbox` inside a `<form submit>` are
 Alder's bound inputs: `wrappedInput` hands their `field`, `label` and
 `value` to `formControl`, the same function that checks `<Input>`,
 `<Textarea>` and `<Select>`, so the rules and the error messages are
-shared rather than copied. The checker records each such element in
-`Result.Wrapped`, with the component it stands for. The IR stage reads
-that record and lowers the element to the same `Input` node an `<Input>`
-becomes, with `Wrap` set to the tag; the runtime's `rt/html` then draws
-the element around the control and the field's error list, setting
-`invalid` when there are errors (chapter 5, "The input elements"). The
-decision is made once, by the checker, and every later stage follows it.
-A `help` attribute becomes a `<small class="help" id="help-<field>">`
-after the label. When the field has errors, `Control.build` also gives
-the native control `aria-invalid="true"`, and the error list the `id`
-`errors-<field>`. The control's `aria-describedby` names the help, then
-the errors list, whichever are there. Those are for screen readers:
+shared rather than copied.
+
+The checker records each such element in `Result.Wrapped`, with the
+component it stands for. The IR stage reads that record and lowers the
+element to the same `Input` node an `<Input>` becomes, with `Wrap` set to
+the tag; the runtime's `rt/html` then draws the element around the control
+and the field's error list, setting `invalid` when there are errors
+(chapter 5, "The input elements"). The decision is made once, by the
+checker, and every later stage follows it.
+
+The help and the errors are wired up for screen readers:
+
+- A `help` attribute becomes a `<small class="help" id="help-<field>">`
+  after the label.
+- When the field has errors, `Control.build` also gives the native control
+  `aria-invalid="true"`, and the error list the `id` `errors-<field>`.
+- The control's `aria-describedby` names the help, then the errors list,
+  whichever are there.
+
 `aria-invalid` says the value was refused, and `aria-describedby` names
 the elements whose text describes the control, so the hint and the
-messages are read with it. The errors `id` appears only with errors,
-because a page of per-row forms repeats field names and an `id` must be
-unique in a page. The `formCtx` also records which fields a wrapped
-input shows, so an `<Errors field>` for one of them is E0028.
+messages are read with it.
+
+The errors `id` appears only with errors, because a page of per-row forms
+repeats field names and an `id` must be unique in a page. The `formCtx`
+also records which fields a wrapped input shows, so an `<Errors field>` for
+one of them is E0028.
+
+#### Buttons, alerts, dialogs and toasts
 
 Two more built-in elements get something from the renderer, recorded the
 same way in `Result.Rendered` by `rendered` (also in
 `internal/check/elements.go`). A custom element is not a button: the
 browser gives it no keyboard focus, Enter does nothing on it, and a form
-does not submit through it. So an `<al-button>` with `click`, `type` or
-`href` is recorded as `"button"` or `"a"`, and the IR stage
-(`completeBuiltin` in `internal/ir/lower_html.go`) rewrites it into two
-nested elements: the `<al-button>` with its styling attributes, and
-inside it a real `<button>` (with the `click`, a `type`, and a copy of
-`disabled`) or `<a>` (with the `href`; a disabled one gets
-`aria-disabled="true"` and no `href`, under an `HIf` when `disabled` is
-computed) holding the children. Before recording it, `alButton` checks
-that the children cannot put a control inside that control: it walks
-them through `if`, `for` and `match` and into nested elements, and
-reports E0028 for an interactive tag or an element with `click`, and for
-an `Html`-typed expression or a component (their markup is not known
-until run time; the expression's type is in `Result.Types`, since the
-children are checked first). It also refuses `href` with `click`. Everything after the IR
-sees two ordinary elements. The one place that knows about the pair is
-the renderer's click button (`clickButton` in `rt/html/html.go`; chapter 6,
-"With and without JavaScript"):
-its no-JavaScript form must wrap the whole `<al-button>`, not the
-`<button>` alone, or the stylesheet's `al-button > button` would no
-longer match. An `<al-alert>` without `role` whose `variant` is written
-as a literal is recorded as `"status"` or `"alert"`, and the IR stage
-adds that `role`, so a screen reader announces the message when it
-appears. Two more elements are completed the same way (`"dialog"` and
-`"popover"` in `Result.Rendered`, `completeDialog` in the IR's
-`lower_html.go`): an `<al-dialog>` gets the native `<dialog>` the
-library's CSS and the invoker commands act on (its `id` moves to it, the
-`heading` becomes an `<h2 slot="header">` the dialog's `aria-labelledby`
-names, a `dismissible` one gets a close form (none for a literal
-`dismissible={False}`, an `if` around it for a computed one), and
-`data-preserve-attr="open"` tells Datastar's morph to keep the `open` the
-browser wrote; one whose direct child is the author's own `<dialog>` gets
-nothing), and an `<al-toasts>` without `popover` gets
-`popover="manual"`. Each rule is checked only for the built-in entry: an app that
-redefines `al-button` in its own manifest gets its element as written.
+does not submit through it.
+
+So an `<al-button>` with `click`, `type` or `href` is recorded as
+`"button"` or `"a"`, and the IR stage (`completeBuiltin` in
+`internal/ir/lower_html.go`) rewrites it into two nested elements:
+
+- the `<al-button>` with its styling attributes;
+- inside it, holding the children, a real `<button>` (with the `click`, a
+  `type`, and a copy of `disabled`) or `<a>` (with the `href`; a disabled
+  one gets `aria-disabled="true"` and no `href`, under an `HIf` when
+  `disabled` is computed).
+
+Before recording it, `alButton` checks that the children cannot put a
+control inside that control. It walks them through `if`, `for` and `match`
+and into nested elements, and reports E0028 for an interactive tag or an
+element with `click`, and for an `Html`-typed expression or a component
+(their markup is not known until run time; the expression's type is in
+`Result.Types`, since the children are checked first). It also refuses
+`href` with `click`.
+
+Everything after the IR sees two ordinary elements.
+
+> **The click button.** The one place that knows about the pair is the
+> renderer's click button (`clickButton` in `rt/html/html.go`; chapter 6,
+> "With and without JavaScript"): its no-JavaScript form must wrap the
+> whole `<al-button>`, not the `<button>` alone, or the stylesheet's
+> `al-button > button` would no longer match.
+
+An `<al-alert>` without `role` whose `variant` is written as a literal is
+recorded as `"status"` or `"alert"`, and the IR stage adds that `role`, so
+a screen reader announces the message when it appears.
+
+Two more elements are completed the same way (`"dialog"` and `"popover"`
+in `Result.Rendered`, `completeDialog` in the IR's `lower_html.go`). An
+`<al-dialog>` gets the native `<dialog>` the library's CSS and the invoker
+commands act on:
+
+- its `id` moves to it;
+- the `heading` becomes an `<h2 slot="header">` the dialog's
+  `aria-labelledby` names;
+- a `dismissible` one gets a close form (none for a literal
+  `dismissible={False}`, an `if` around it for a computed one);
+- `data-preserve-attr="open"` tells Datastar's morph to keep the `open` the
+  browser wrote;
+- one whose direct child is the author's own `<dialog>` gets nothing.
+
+An `<al-toasts>` without `popover` gets `popover="manual"`.
+
+> **Built-in entries only.** Each rule is checked only for the built-in
+> entry: an app that redefines `al-button` in its own manifest gets its
+> element as written.
+
+### The check result
 
 The checker's output is a `check.Result` (`internal/check/result.go`). It
-records the type of every expression (`Types`, keyed by AST node), the type
-of every variable at the place it is introduced (`Binds`), every
-signature, every declared type, constructor, table, form and route
-(`Routes`, with each route's `Params`, `Session` and `NeedsShown`). The
-next stage needs all of it: to write Go, you must know that `r` is a
+records:
+
+- the type of every expression (`Types`, keyed by AST node);
+- the type of every variable at the place it is introduced (`Binds`);
+- every signature, every declared type, constructor, table, form and route
+  (`Routes`, with each route's `Params`, `Session` and `NeedsShown`).
+
+The next stage needs all of it: to write Go, you must know that `r` is a
 `float64` and `m` an `rt.Maybe[int64]`, and the only stage that worked
 that out is the checker. `Result` hands it over so nothing has to be
 worked out twice.
@@ -611,13 +714,17 @@ Here is `area` as AST and as IR. The IR is from
 The differences, one at a time:
 
 - `area` became `M.area`: the name is now fully qualified.
+
 - `match` became `match union`: the IR knows the subject is a union, so the
   emitter will switch on its tag.
+
 - Patterns are gone. `(pctor Circle r)` became `(case Circle …)`, a test of
   one tag, plus `(bind _m1 value : Float)`, which binds the payload to a
   fresh temporary `_m1`, plus `(let r : Float (var _m1) …)`, which gives it
   your name. `Rect`'s record pattern became one bind per field.
+
 - Every binding shows its type (`: Float`), from `check.Result.Binds`.
+
 - `(float 3.14)` became `3.14`: a literal's kind is now in its type.
 
 Why the temporaries, when `Circle r` could just bind `r`? Because an arm
@@ -683,7 +790,9 @@ The emitter (`internal/gen`) walks the IR and prints Go, formatted with
 Every snippet below is from `testdata/golden/gen_basic/want/M_alder.go`, which is
 byte-for-byte what `alder build --emit` writes for `gen_basic`.
 
-**`Shape`.** Go has no sum types: there is no way to say "a value that is
+### `Shape`
+
+Go has no sum types: there is no way to say "a value that is
 either a `Circle` with a float or a `Rect` with two". So a union becomes a
 struct holding a tag, which says which constructor built it, and one field
 per constructor's payload. A Go `struct` is a record type with named
@@ -721,13 +830,16 @@ func M__Shape__Circle__(v float64) M__Shape {
 The `*` in `*payload__M__Shape__Circle` makes the field a *pointer*: it
 holds the address of a payload struct stored elsewhere, or `nil` (no
 address) when another constructor built the value. Only the field matching
-`Tag` is set. Pointers are what make a recursive union possible. In
+`Tag` is set.
+
+Pointers are what make a recursive union possible. In
 `type Tree a = Leaf | Node { left: Tree a, value: a, right: Tree a }`, a
 `Node` holds two more trees; if each tree held its `Node` payload directly,
 a tree would have to contain itself and Go would reject the type as
 infinitely large. A pointer has a fixed size, so every payload is held by
 pointer, recursive or not, and the emitter never has to work out which
 unions recurse.
+
 `Circle`'s `Float` payload is wrapped in a struct with one field, `Value`,
 as the IR said: `ir_basic.ir` declares the union as
 `(union M.Shape (Circle { value: Float }) (Rect { w: Float, h: Float }))`.
@@ -736,15 +848,18 @@ The constructor `Circle` becomes a function, `func M__Shape__Circle__(v
 float64) M__Shape { … }`: it takes a `float64` named `v` and returns a
 `M__Shape`. Inside, `M__Shape{Tag: …, Circle: …}` builds a struct value,
 naming the fields it sets, and `&payload__M__Shape__Circle{Value: v}`
-builds a payload struct and takes its address with `&`. Note the
-underscores. Every part of a generated name is joined by a double `__`:
-the module, the union, the constructor. A trailing `__` marks the
+builds a payload struct and takes its address with `&`.
+
+Note the underscores. Every part of a generated name is joined by a double
+`__`: the module, the union, the constructor. A trailing `__` marks the
 constructor (`M__Shape__Circle__`), and names that are not one of your
 declarations start with a lowercase word saying what they are: `tag__` for
 the tag type, `is__` for a tag constant, `payload__` for a payload struct.
 Section 9 lists the whole scheme and why no two names can clash.
 
-**`area`.** The IR's `match union` becomes a `switch` on the tag:
+### `area`
+
+The IR's `match union` becomes a `switch` on the tag:
 
 ```go
 func M__area(s M__Shape) float64 {
@@ -772,7 +887,9 @@ that message if it ever runs. It never does, because the checker proved
 the match exhaustive, but Go requires a function that returns a value to
 end in a `return` or a `panic`.
 
-**`shift`.** A record update builds a new struct, copying every field
+### `shift`
+
+A record update builds a new struct, copying every field
 except the one you replaced. `p.X` reads field `X` of `p`:
 
 ```go
@@ -781,7 +898,9 @@ func M__shift(p M__Point) M__Point {
 }
 ```
 
-**`names`.** Stdlib calls become calls into `rt/std`, one Go function per
+### `names`
+
+Stdlib calls become calls into `rt/std`, one Go function per
 Alder function, chosen from the table in `internal/gen/stdcall.go`.
 `[]string` is a Go slice, a list of strings, and `std.TextToUpper` is
 passed as a value, without calling it, for `ListMap` to call on each
@@ -793,7 +912,9 @@ func M__names(xs []string) string {
 }
 ```
 
-**`label`.** `Maybe Int` is `rt.Maybe[int64]`, `??` is `rt.OrElse`, and
+### `label`
+
+`Maybe Int` is `rt.Maybe[int64]`, `??` is `rt.OrElse`, and
 interpolation is `rt.Concat`. `rt.Maybe` is defined in `rt/core.go`:
 
 ```go
@@ -816,6 +937,8 @@ func M__label(m rt.Maybe[int64]) string {
 	return rt.Concat("n = ", std.TextFromInt(rt.OrElse(m, 0)))
 }
 ```
+
+### Recursive records
 
 Because `Maybe` holds its value directly, a record that refers to itself
 through `Maybe` would be a struct that contains itself, which Go rejects
@@ -842,7 +965,9 @@ never change, so the pointer is never nil and two records may share it. A
 `List Node` field needs no pointer: a Go slice already holds its elements
 elsewhere, and so does a union's payload.
 
-**Partial application.** `gen_basic` has none, because the pipes in
+### Partial application
+
+`gen_basic` has none, because the pipes in
 `names` became full calls. Write `adder 1` where a function is expected,
 as in this module:
 
@@ -873,16 +998,20 @@ else in scope uses, and calls `P__adder` with the `1`
 it already has. A function literal that uses values from around it is
 called a closure.
 
-**Equality and ordering.** Go's `==` doesn't work on every struct, and
-wouldn't mean the right thing if it did (two `Dict`s with the same entries
-inserted in different orders are equal in Alder). So `==` on records,
-unions, `Maybe`, `Dict`, `Time` and `Html` calls `rt.Eq`, which compares
-structurally: a `Dict` ignoring insertion order, a `Time` as an instant.
+### Equality and ordering
+
+Go's `==` doesn't work on every struct, and wouldn't mean the right thing
+if it did (two `Dict`s with the same entries inserted in different orders
+are equal in Alder). So `==` on records, unions, `Maybe`, `Dict`, `Time`
+and `Html` calls `rt.Eq`, which compares structurally: a `Dict` ignoring
+insertion order, a `Time` as an instant.
+
 A runtime type can bring an equality of its own by implementing
 `rt.Equaler` (`AlderEqual(other any) bool`), which `rt.Eq` asks first:
 `html.Node` does, comparing the markup the two nodes render to, so
 `<p>{Html.text "a"}{Html.text "b"}</p> == <p>ab</p>` is `True` although
 one tree has two text nodes and the other one.
+
 `<` on a `Date` or `Time` calls `rt.DateCmp` or `rt.TimeCmp`. From
 `build/facts/F_alder.go`:
 
@@ -903,7 +1032,9 @@ func F__greet(id string) string {
 `F__greet` takes a `string`: that is the erased `UserId` brand from
 section 6.
 
-**`Card`.** A component becomes a function from its props to an
+### `Card`
+
+A component becomes a function from its props to an
 `html.Node`, and markup becomes calls to the `rt/html` builder. The props
 type is an anonymous `struct { … }` written in place, because `Card`'s
 props record has no name. `[]html.Attr{ … }` is a slice literal, `nil`
@@ -939,11 +1070,13 @@ The body of a `<script>` or `<style>` is the one text that is never
 escaped: `&&` escaped to `&amp;&amp;` would break the JavaScript. The parser
 reads it as raw text (`(rawtext "…")` in `alder dump`), byte for byte up to
 the closing tag, and the emitter writes it as `html.RawText("…")`, always
-with a Go string literal. The renderer writes a `RawText` unescaped only
-as a direct child of `<script>` or `<style>`, and only if it holds no
-`</script` or `</style`; it drops every other child of those two elements
-(a `Text`, an `Html.unsafe`, an element). So no Alder value can be spliced
-into script or style text, even if some future path put one there.
+with a Go string literal.
+
+The renderer writes a `RawText` unescaped only as a direct child of
+`<script>` or `<style>`, and only if it holds no `</script` or `</style`;
+it drops every other child of those two elements (a `Text`, an
+`Html.unsafe`, an element). So no Alder value can be spliced into script or
+style text, even if some future path put one there.
 `testdata/golden/render_html/` pins the rendered bytes.
 
 ## 8. The runtime
@@ -951,62 +1084,100 @@ into script or style text, even if some future path put one there.
 The generated code is short because most of the work is in the runtime: Go
 packages the generated code imports. There are seven.
 
-- **`rt`** (`rt/core.go`) holds the types the mapping table names: `Maybe`,
-  `Result`, `Dict`, `Date`. It also holds the helpers the emitter
-  calls: `Concat`, `OrElse`, `Append`, `Eq`, `DateCmp`, `TimeCmp`, and
-  `Int` and `Float`, which return their argument unchanged: a literal goes
-  through one when Go would otherwise compute an operation on constants
-  while compiling, and reject `1 / 0` or an `Int` that overflows, which
-  Alder defines to happen when the program runs (chapter 4). A `Dict` takes
-  keys of any type: it files each under `Key(k)`, a text that is the same
-  for two keys exactly when they are `==`. `rt/route.go` holds `Route`, a
-  request to one of the app's routes: its name, method, path with the path
-  parameters filled in, and the rest of its parameters (`rt.RouteURL` makes
-  the URL of one). `rt/response.go` holds `Response`, the result of an
-  `update`: a kind (`RespRedirect`, `RespRender`, `RespRefresh` or
-  `RespInvalid`), the `Route` it names or the text it carries, and a list of
-  events (so far only toasts), built by `rt.RedirectTo(route)`,
-  `rt.Render(route)`, `rt.Refresh()`, `rt.Invalid(text)` and
-  `rt.WithToast`. Its `Status` and `Headers` are shaped for the builders
-  chapter 6 says are not built yet (`status`, `header`); nothing sets them,
-  and its event list holds toasts only.
-- **`rt/html`** (`rt/html/html.go`) builds HTML trees (`El`, `Text`,
-  `Raw`, `A`, `Nodes`) and renders them. `Render` is where escaping
-  happens: a text node goes through `html.EscapeString`, and so does every
-  attribute value, and a carriage return becomes `&#13;`. A `Raw` node is
-  written as is.
-- **`rt/std`** (`rt/std/*.go`) has one Go function per stdlib function:
-  `std.ListMap` is `List.map`, `std.TextToUpper` is `Text.toUpper`. A call
-  lets Go infer a generic one's type arguments; a stdlib function used as
-  a value instead (`let r = List.reverse`) is written with them,
-  `std.ListReverse[int64]`, worked out from its type at that use
-  (`stdInstance` in `internal/gen/stdcall.go`). The effectful ones, in `rt/std/effects.go`, don't do anything: `std.TimeNow`
-  returns a one-step effect tree that reads the clock when it is run. The
-  `Response` builders are plain: `std.ResponseRefresh()` is `rt.Refresh()`.
-- **`rt/eff`** (`rt/eff/eff.go`, `run.go`) is the effect runtime: the tree
-  that a `Query` or `Task` is, and `Run`, which performs it. Chapter 7's
-  "How effects run" introduces it.
-- **`rt/db`** (`rt/db/table.go`, `store.go`, `sqlite.go`, `encode.go`)
-  is the database: a descriptor for each table, `Select` values, the
-  `Store` interface that the effect steps call, and its SQLite
-  implementation.
-- **`rt/web`** (`rt/web/router.go`, `request.go`, `shown.go`, `deliver.go`,
-  `answer.go`, `method.go`, `session.go`, `decode.go`) is the web server:
-  the router, the `Request` a handler gets and the `web.Response` it
-  returns, how a view is delivered (`deliver.go`) and how a write's
-  `rt.Response` is (`answer.go`, `shown.go`), the signed session cookie, and
-  the helpers the generated form decoders call (`web.Text`, `web.Date`,
-  `web.NonEmpty`, …). Chapter 6, "How a request runs", describes it from
-  the outside.
-- **`rt/datastar`** (`rt/datastar/datastar.go`) serves the Datastar
-  script, which is built into the binary, and writes the server-sent
-  events Alder answers with: `PatchBody`, which replaces the `<body>`;
-  `PatchRegion`, which replaces one element by its `id`; `PatchShown`,
-  which records the hash of the body the server last rendered;
-  `PatchTitle`, which replaces the `<title>`; and `Navigate`, which either
-  sends the browser to another URL or records a URL in its history. It
-  also holds the *boost* (`BoostTag`), the attributes that turn a click
-  on a link into a Datastar request.
+### The seven packages
+
+#### `rt`
+
+`rt` (`rt/core.go`) holds the types the mapping table names: `Maybe`,
+`Result`, `Dict`, `Date`. It also holds the helpers the emitter calls:
+`Concat`, `OrElse`, `Append`, `Eq`, `DateCmp`, `TimeCmp`, and `Int` and
+`Float`, which return their argument unchanged.
+
+A literal goes through `Int` or `Float` when Go would otherwise compute an
+operation on constants while compiling, and reject `1 / 0` or an `Int` that
+overflows, which Alder defines to happen when the program runs (chapter 4).
+
+A `Dict` takes keys of any type: it files each under `Key(k)`, a text that
+is the same for two keys exactly when they are `==`.
+
+`rt/route.go` holds `Route`, a request to one of the app's routes: its
+name, method, path with the path parameters filled in, and the rest of its
+parameters (`rt.RouteURL` makes the URL of one).
+
+`rt/response.go` holds `Response`, the result of an `update`: a kind
+(`RespRedirect`, `RespRender`, `RespRefresh` or `RespInvalid`), the `Route`
+it names or the text it carries, and a list of events (so far only toasts),
+built by `rt.RedirectTo(route)`, `rt.Render(route)`, `rt.Refresh()`,
+`rt.Invalid(text)` and `rt.WithToast`.
+
+> **Not yet:** `Response`'s `Status` and `Headers` are shaped for the
+> builders chapter 6 says are not built yet (`status`, `header`); nothing
+> sets them, and its event list holds toasts only.
+
+#### `rt/html`
+
+`rt/html` (`rt/html/html.go`) builds HTML trees (`El`, `Text`, `Raw`, `A`,
+`Nodes`) and renders them. `Render` is where escaping happens: a text node
+goes through `html.EscapeString`, and so does every attribute value, and a
+carriage return becomes `&#13;`. A `Raw` node is written as is.
+
+#### `rt/std`
+
+`rt/std` (`rt/std/*.go`) has one Go function per stdlib function:
+`std.ListMap` is `List.map`, `std.TextToUpper` is `Text.toUpper`.
+
+A call lets Go infer a generic one's type arguments; a stdlib function used
+as a value instead (`let r = List.reverse`) is written with them,
+`std.ListReverse[int64]`, worked out from its type at that use
+(`stdInstance` in `internal/gen/stdcall.go`).
+
+The effectful ones, in `rt/std/effects.go`, don't do anything:
+`std.TimeNow` returns a one-step effect tree that reads the clock when it
+is run. The `Response` builders are plain: `std.ResponseRefresh()` is
+`rt.Refresh()`.
+
+#### `rt/eff`
+
+`rt/eff` (`rt/eff/eff.go`, `run.go`) is the effect runtime: the tree that a
+`Query` or `Task` is, and `Run`, which performs it. Chapter 7's "How
+effects run" introduces it.
+
+#### `rt/db`
+
+`rt/db` (`rt/db/table.go`, `store.go`, `sqlite.go`, `encode.go`) is the
+database: a descriptor for each table, `Select` values, the `Store`
+interface that the effect steps call, and its SQLite implementation.
+
+#### `rt/web`
+
+`rt/web` (`rt/web/router.go`, `request.go`, `shown.go`, `deliver.go`,
+`answer.go`, `method.go`, `session.go`, `decode.go`) is the web server:
+
+- the router;
+- the `Request` a handler gets and the `web.Response` it returns;
+- how a view is delivered (`deliver.go`) and how a write's `rt.Response` is
+  (`answer.go`, `shown.go`);
+- the signed session cookie;
+- the helpers the generated form decoders call (`web.Text`, `web.Date`,
+  `web.NonEmpty`, …).
+
+Chapter 6, "How a request runs", describes it from the outside.
+
+#### `rt/datastar`
+
+`rt/datastar` (`rt/datastar/datastar.go`) serves the Datastar script, which
+is built into the binary, and writes the server-sent events Alder answers
+with:
+
+- `PatchBody` replaces the `<body>`;
+- `PatchRegion` replaces one element by its `id`;
+- `PatchShown` records the hash of the body the server last rendered;
+- `PatchTitle` replaces the `<title>`;
+- `Navigate` either sends the browser to another URL or records a URL in
+  its history.
+
+It also holds the *boost* (`BoostTag`), the attributes that turn a click on
+a link into a Datastar request.
 
 The generated program is small because the runtime is the library. All of
 `examples/todos`, with the admin `alder new admin` generated for it, emits
@@ -1016,13 +1187,14 @@ and those lines mostly call into `rt`. The largest file, `routes__alder.go`
 decoders and guards they share. The last part of this section reads them.
 
 The rest of this section follows one `load` from source to SQL, then one
-write route's `update` through a transaction. The program is
-`testdata/golden/ir_effects/app/`, whose module `Index` uses the `Todo`
-table (declared in `app/Todo.alder`: a table's module only has to end in its
-name, so the root works, though an app keeps it in `app/Table/`, chapter 8)
-and has a GET route `Index` at `"/pair/{a}/{b}"` and four write routes,
-`Add`, `Toggle`, `Remove` and `Notify`. `alder build --emit
-testdata/golden/ir_effects` writes the Go they become.
+write route's `update` through a transaction.
+
+The program is `testdata/golden/ir_effects/app/`, whose module `Index` uses
+the `Todo` table (declared in `app/Todo.alder`: a table's module only has
+to end in its name, so the root works, though an app keeps it in
+`app/Table/`, chapter 8) and has a GET route `Index` at `"/pair/{a}/{b}"`
+and four write routes, `Add`, `Toggle`, `Remove` and `Notify`. `alder build
+--emit testdata/golden/ir_effects` writes the Go they become.
 
 ### The source
 
@@ -1108,15 +1280,19 @@ are defined in `internal/ir/ir.go` and produced by
 - `bind query todos : List Todo` is `EffBind`: run the effect, call the
   result `todos`, continue. `query` is its kind; in an `update` it says
   `task`.
+
 - `db-select Todo.Todo … all` is `DbSelect`. The whole pipeline,
   `Db.from` through `Db.all`, is folded into one node that knows its
   table, its conditions, its orders, its limit, and what to do with it:
   `all`, `first`, `count`, or `select` for a pipeline that is only a value,
   like `q`.
+
 - `cond eq (col Todo.Todo owner) …` is a `Cond` on a `ColumnRef`: the
   column `owner` of table `Todo.Todo`, compared with `session.user`.
+
 - `all query (list …)` is `EffAll` (`Query.all`), `map query` is `EffMap`,
   and `pure query` is `EffPure` (`Query.succeed`).
+
 - `db-run count (var q)` is `DbRun`: running a `Select` that is not
   written in place but held in a variable or, for `Db.first
   Todo.pending`, declared elsewhere (`global Todo.pending`).
@@ -1160,6 +1336,7 @@ It is long, but it is the IR printed with Go spelling, one node at a time
 - Each `bind` is `eff.Bind(first, func(x T) eff.Task[…] { return rest })`.
   The rest of the block is a Go function literal that receives the bound
   value, so the nesting is the same as in the IR.
+
 - Each database node is `eff.Call(name, write, fn)`: a step named
   `"Db.all Todo"`, marked `false` because it doesn't write, whose `fn`
   receives the `Env` and calls a typed helper in `rt/db` (`db.All`,
@@ -1167,14 +1344,17 @@ It is long, but it is the IR printed with Go spelling, one node at a time
   and the transaction from it. `db.TxOf(_e1)` is the running `Task`'s
   transaction, which the first such step of a `Task` begins, or `nil` in
   a `Query`.
+
 - A `Select` is data. `db.Limit(10, db.OrderBy(db.Desc("created"),
   db.Where(db.CEq("owner", session.User), db.From(table__Todo__Todo))))`
   reads inside out: start from every row of `Todo`, keep `owner = …`,
   order by `created` descending, keep 10. `q :=` is a plain Go variable
   for the same reason: building a `Select` runs nothing.
+
 - Values compared with a column are encoded the way the column stores
   them: `Todo.done.eq True` is `db.CEq("done", db.EncodeBool(true))`,
   because a `Bool` is stored as `1` (chapter 8).
+
 - `eff.Bind`, `eff.Map` and `eff.All` work on `Task`s, so the emitter
   wraps the whole tree once in `eff.Q(…)` to make it a `Query` again, and
   turns the `Query` from `std.TimeNow()` into a `Task` with `eff.T(…)`.
@@ -1219,29 +1399,36 @@ var Capabilities = []string{"Todo.Stats", "Index.Mailer"}
 same file) can check at startup that each has an implementation and
 refuse to start otherwise (chapter 7, "Implementing a capability"). A call
 to one that isn't wired, which only a test that skips `Serve` can reach,
-stops with `alder: capability "Index.Mailer" is not wired`. The file's name can't clash with a module's: only a module named `app_` would
-produce `app__alder.go`, and a module name segment may not end in `_`
-(E0001, section 9).
+stops with `alder: capability "Index.Mailer" is not wired`.
+
+> **The file name.** The file's name can't clash with a module's: only a
+> module named `app_` would produce `app__alder.go`, and a module name
+> segment may not end in `_` (E0001, section 9).
 
 ### What `Run` does
 
-Calling `Index__Index__load(params, session)` performs nothing. It returns the
-tree. The caller (a request handler, as the last part of this section
-shows, or a test) hands it to `eff.RunQuery(env, …)`, which calls `eff.Run` with kind `KQuery`. Here is
-what happens, following `interpret` in `rt/eff/run.go`. `interpret` is a
-loop holding the current node and a stack of continuations: the "rest of
-the block" functions it has yet to call.
+Calling `Index__Index__load(params, session)` performs nothing. It returns
+the tree. The caller (a request handler, as the last part of this section
+shows, or a test) hands it to `eff.RunQuery(env, …)`, which calls
+`eff.Run` with kind `KQuery`.
+
+Here is what happens, following `interpret` in `rt/eff/run.go`.
+`interpret` is a loop holding the current node and a stack of
+continuations: the "rest of the block" functions it has yet to call.
 
 1. A `Query` gets no transaction: `env.Tx` is `nil`, and `db.TxOf` gives
    `nil` too. `Run` also puts `env` itself in `env.Ctx` for as long as it
    runs, so a capability can find it (chapter 7).
+
 2. The node is a `bind`. Its continuation (the function that takes
    `todos`) goes on the stack, and the loop moves to its first part.
+
 3. The node is the `call` named `Db.all Todo`. It isn't a write, so it may
    run in a `Query`. `Run` checks that the request hasn't been cancelled,
    logs `Db.all Todo` at level `effect` (the app's logger writes it as
    `debug: effect Db.all Todo`, under `ALDER_LOG=debug` only), appends the
    name to `env.Trace`, and calls `fn`.
+
 4. `fn` calls `db.All`, which renders the `Select` (`Select.SQL` in
    `rt/db/table.go`) and asks the store for the rows. The SQLite store
    runs
@@ -1254,13 +1441,16 @@ the block" functions it has yet to call.
    descriptor and every value is a `?`, so nothing from the request is
    ever pasted into SQL. Each row is turned into a `Todo__Todo` by the
    descriptor's `Decode`.
+
 5. The result becomes a `pure` node. The loop pops the continuation and
    calls it with the list. That Go function now builds the *next* part of
    the tree, the `bind` around `eff.All`, and the loop carries on with
    it.
+
 6. The two `Db.get` steps run in order, then `Time.now` reads
    `env.Now()`, then `q` is built and `Db.count` runs it, then
    `Db.first` runs `Todo.pending` with a limit of 1.
+
 7. The last continuation returns `pure` of the `Model`. The stack is
    empty, so that is the result.
 
@@ -1270,14 +1460,17 @@ Run against a database holding one todo, the trace is
 ["Db.all Todo" "Db.get Todo" "Db.get Todo" "Time.now" "Db.count Todo" "Db.first Todo"]
 ```
 
-one name per step, in source order. Step 5 is why the interpreter is
-called **eager**: a continuation is a Go function that is called only once
-the value it needs exists, so the tree after a step isn't built until the
-step has run. That is what lets a `match` on a result decide what happens
-next, and it is why two effect values can't be compared with `==`
-(chapter 12, "Effects are data, interpreted eagerly"). The stack is a Go
-slice, not Go's call stack, so a block of any length runs in constant
-stack space.
+one name per step, in source order.
+
+Step 5 is why the interpreter is called **eager**: a continuation is a Go
+function that is called only once the value it needs exists, so the tree
+after a step isn't built until the step has run. That is what lets a
+`match` on a result decide what happens next, and it is why two effect
+values can't be compared with `==` (chapter 12, "Effects are data,
+interpreted eagerly").
+
+The stack is a Go slice, not Go's call stack, so a block of any length runs
+in constant stack space.
 
 ### A `Task`: `Toggle`
 
@@ -1315,14 +1508,21 @@ after the values:
   (needs-shown))
 ```
 
-It holds the method and path, the record of parameters, the guard
-(`requires`, `role`, `silo`), the narrowed session record, its members (a GET
-route has `(load …)` and `(view …)` instead of `(update …)`), the store its
-`update` writes in an app with silos (`(store silo org)`) and `(needs-shown)`,
-the checker's answer from section 5: this `update` mentions
-`Response.refresh`, so the handler renders the page the browser is on before
-it runs (below). The generator writes one handler per `ir.Route`, and
-nothing in it reads the route's source.
+It holds:
+
+- the method and path;
+- the record of parameters;
+- the guard (`requires`, `role`, `silo`);
+- the narrowed session record;
+- its members (a GET route has `(load …)` and `(view …)` instead of
+  `(update …)`);
+- the store its `update` writes in an app with silos (`(store silo org)`);
+- `(needs-shown)`, the checker's answer from section 5: this `update`
+  mentions `Response.refresh`, so the handler renders the page the browser
+  is on before it runs (below).
+
+The generator writes one handler per `ir.Route`, and nothing in it reads
+the route's source.
 
 The `update` itself is emitted as
 
@@ -1340,23 +1540,27 @@ func Index__Toggle__update(p Index__Toggle__Params, session Index__Index__Sessio
 
 The one `bind` is an `EffBind` from this section: run the `db-update`,
 discard its result (`_`), continue with `pure task`. The kind word `task`
-(not `query`) says the bind belongs to a `Task`. The route's parameters are the
-function's first argument: `p` is an `Index__Toggle__Params`, the record the
-route declared, and `p.Id` is its field, with no `match` and no pattern in
-between (a `match` on a union would show `bind _m1` temporaries, as `Remove`
-does for its `Maybe`).
-The last argument to `db.UpdateRow`, `_e1.Now()`, is
-the time from the `Env`'s clock: the store writes it into the table's
-`@updated` column, if it has one. This `Todo` has none, so it goes
-unused, but the call looks the same for every table. The function ends in
-`std.ResponseRefresh()`, which is `rt.Refresh()`: a `Response` value of kind
-`RespRefresh`. The task does not deliver anything. It only says what the
-answer should be.
+(not `query`) says the bind belongs to a `Task`.
+
+The route's parameters are the function's first argument: `p` is an
+`Index__Toggle__Params`, the record the route declared, and `p.Id` is its
+field, with no `match` and no pattern in between (a `match` on a union
+would show `bind _m1` temporaries, as `Remove` does for its `Maybe`).
+
+The last argument to `db.UpdateRow`, `_e1.Now()`, is the time from the
+`Env`'s clock: the store writes it into the table's `@updated` column, if
+it has one. This `Todo` has none, so it goes unused, but the call looks the
+same for every table.
+
+The function ends in `std.ResponseRefresh()`, which is `rt.Refresh()`: a
+`Response` value of kind `RespRefresh`. The task does not deliver
+anything. It only says what the answer should be.
 
 This time the step is marked `true`, a write, and the caller runs it with
 `eff.Run(env, eff.KTask, …)`:
 
 1. `Run` remembers `env.Session` and begins no transaction yet.
+
 2. The `call` named `Db.update Todo` is traced and run. Its `db.TxOf(_e1)`
    finds no transaction, so it begins one (`env.Store.Begin`, through
    `env.Transaction`) and records it in `env.Tx`. `db.UpdateRow`
@@ -1378,10 +1582,11 @@ If `p.Id` names no row, step 2 fails with
 `Db.update Todo: no row with id "nope"`, an `*eff.ErrFail`. The loop
 stops at once, the continuation is never called, and `Run` rolls the
 transaction back instead of committing, and puts back the session it
-remembered. The `Remove` route shows the same
-for `Task.fail`: when `Db.get` finds nothing, `match found` picks
-`Task.fail "no such todo"`, a `fail` node, and the transaction is rolled
-back with nothing written.
+remembered.
+
+The `Remove` route shows the same for `Task.fail`: when `Db.get` finds
+nothing, `match found` picks `Task.fail "no such todo"`, a `fail` node, and
+the transaction is rolled back with nothing written.
 
 You can watch this happen. `TestGenRoute_DeleteRefresh` and
 `TestGenRoute_ToggleRender` in `internal/gen/gen_test.go` emit a small app
@@ -1394,28 +1599,38 @@ each step a test runs (`Test.run` returns it in `r.trace`).
 ### A request: `GET` and `POST`
 
 The last two parts ran `load` and `update` by hand. In the server, a
-request handler runs them. This part follows two requests through the
-to-do app (chapter 2): a `GET` of the list, then a `POST` of the Done
-button, sent by Datastar. Then it looks at the other ways a route is
-delivered and the other answers a write gives. Build the app and run it
-with the commands in chapter 11, log in as `a@b.c` with the password
-`password`, and add a todo called Milk. The bytes below are what that
-server sent. (They come from the built program started with `ALDER_DEV=1`
-and `ALDER_DEV_PANEL=0`, which keeps the dev panel and the reload overlay of
-`alder run` out of what you read, and a command-line client sent the headers
-the page's script sends, which the list below shows.) The id
-`M2PBzBsivm3srrcFIlTD` is random and differs every run, and so does the
-build id.
+request handler runs them.
 
-**`GET /?filter=Active`.** The router's `ServeHTTP` (`rt/web/router.go`)
-sees that the path is neither the Datastar script nor under `/static/`. It
-splits the path into segments (none, for `/`) and finds the first route
-with method `GET` whose pattern fits: `/`, the route `Todos.Index.Index`.
-It builds a `web.Request` with no path parameters, the query
-`filter=Active`, `Datastar: false`, and the session from the cookie, and
-gives the request a fresh `eff.Env` holding the store, the capabilities,
-the clock and the session. Then it calls the handler
-(`build/todos/routes__alder.go`):
+This part follows two requests through the to-do app (chapter 2): a `GET`
+of the list, then a `POST` of the Done button, sent by Datastar. Then it
+looks at the other ways a route is delivered and the other answers a write
+gives.
+
+To follow along, build the app and run it with the commands in chapter 11,
+log in as `a@b.c` with the password `password`, and add a todo called
+Milk. The bytes below are what that server sent.
+
+> **How the bytes were captured.** They come from the built program
+> started with `ALDER_DEV=1` and `ALDER_DEV_PANEL=0`, which keeps the dev
+> panel and the reload overlay of `alder run` out of what you read, and a
+> command-line client sent the headers the page's script sends, which the
+> list below shows. The id `M2PBzBsivm3srrcFIlTD` is random and differs
+> every run, and so does the build id.
+
+#### `GET /?filter=Active`
+
+The router's `ServeHTTP` (`rt/web/router.go`) takes it in steps:
+
+1. It sees that the path is neither the Datastar script nor under
+   `/static/`.
+2. It splits the path into segments (none, for `/`) and finds the first
+   route with method `GET` whose pattern fits: `/`, the route
+   `Todos.Index.Index`.
+3. It builds a `web.Request` with no path parameters, the query
+   `filter=Active`, `Datastar: false`, and the session from the cookie, and
+   gives the request a fresh `eff.Env` holding the store, the capabilities,
+   the clock and the session.
+4. It calls the handler (`build/todos/routes__alder.go`):
 
 ```go
 func Route__Todos__Index__Index() web.Route {
@@ -1466,20 +1681,23 @@ func page__Todos__Index__Index(rq *web.Request, params Todos__Index__Index__Para
 
 The first four lines are `requires user`. `app.User.Ok` is false when
 `user` is `Nothing`, and the answer is then a 303 to `rq.Login`, which is
-`/login` because `App.login` is `Auth.Login.Login`. Otherwise the session is
-narrowed: `session.User` is `app.User.Val`, a plain `string`, as section
-9 explains. Then `load` builds its tree and `eff.RunQuery` runs it, as
-"What `Run` does" showed. When the query stops with `Query.notFound` or
-fails, `route__fail` makes a 404 or a 500. `keep` is `nil` here; the
-write routes below show why it exists.
+`/login` because `App.login` is `Auth.Login.Login`.
+
+Otherwise the session is narrowed: `session.User` is `app.User.Val`, a
+plain `string`, as section 9 explains. Then `load` builds its tree and
+`eff.RunQuery` runs it, as "What `Run` does" showed. When the query stops
+with `Query.notFound` or fails, `route__fail` makes a 404 or a 500. `keep`
+is `nil` here; the write routes below show why it exists.
 
 `view` turns the model into an `html.Node`. The handler returns it in a
 `web.Response` made by `PageResponse`, and it has not said yet whether the
 node is a document, a body or one element: the router decides that from the
-request, below. The `FormState` it passes is `nil` for a request of its own
-(`WithPageParams` keeps `nil` as it is); when a write route renders this page
-again for the browser that sent the write, it passes the form the write
-posted, and the route's parameters ride in it as text:
+request, below.
+
+The `FormState` it passes is `nil` for a request of its own
+(`WithPageParams` keeps `nil` as it is); when a write route renders this
+page again for the browser that sent the write, it passes the form the
+write posted, and the route's parameters ride in it as text:
 
 ```go
 func params__Todos__Index__Index(p Todos__Index__Index__Params) []rt.KV {
@@ -1490,7 +1708,9 @@ func params__Todos__Index__Index(p Todos__Index__Index__Params) []rt.KV {
 `rt.QueryKV` marks the pair to be left out when the value is the default,
 `All`.
 
-**Three deliveries.** A GET route's handler is the same for every request
+#### Three deliveries
+
+A GET route's handler is the same for every request
 for it. What differs is the request, and the router (`rt/web`) reads it
 twice. In `ServeHTTP`, a Datastar `GET` that is not an element fetch is a
 navigation:
@@ -1521,25 +1741,33 @@ each gets its own delivery (chapter 6, "Delivery, decided by the request"):
 | a Datastar `GET` without `Alder-Fetch` (a boosted link) | `write`, then `morph` | the body, the title, a history step |
 | a Datastar `GET` with `Alder-Fetch: 1` (a `click` on a GET route) | `deliverElement` | one element |
 
-The plain request is this one, so the router goes on with `write`. A page
-view leaves the session as it was (`setSession` compares the answer's
-session with the one the request carried), so no cookie is set, and the
-browser keeps the one the login stored, with its issued time (chapter 6,
-"The session cookie"). Then it calls `html.RenderWith(node, state)`. Every
-route attribute in the tree is an `html.RouteAttr`, a value that is only
-turned into text now: a link's `href` is the route's URL (`rt.RouteURL`),
-a `click` is a Datastar request for the route. The URL carries the route's
-own parameters and nothing about the page it is drawn on: the request will
-name the page in a header (below). A `<button>` with a `click` is rendered as
-a click button here too: the renderer knows whether it is inside a
-`<form>`, and wraps the button in a form of its own when it is not (chapter
-6, "With and without JavaScript"); the Done button is the `<button>` the
-compiler put inside an `<al-button>` (section 5), and the form wraps the
-`<al-button>` whole. Last, `document` writes `<!doctype html>` and the page,
-with the `<al-shown>` element at the end of the body (below) and the head
-tags (`withScript`) after `<head>`. The answer begins like this (without
-the `Date` and `X-Request-Id` headers, and with the page cut after the
-Datastar script tag):
+The plain request is this one, so the router goes on with `write`:
+
+1. A page view leaves the session as it was (`setSession` compares the
+   answer's session with the one the request carried), so no cookie is set,
+   and the browser keeps the one the login stored, with its issued time
+   (chapter 6, "The session cookie").
+
+2. It calls `html.RenderWith(node, state)`. Every route attribute in the
+   tree is an `html.RouteAttr`, a value that is only turned into text now:
+   a link's `href` is the route's URL (`rt.RouteURL`), a `click` is a
+   Datastar request for the route. The URL carries the route's own
+   parameters and nothing about the page it is drawn on: the request will
+   name the page in a header (below).
+
+3. A `<button>` with a `click` is rendered as a click button here too: the
+   renderer knows whether it is inside a `<form>`, and wraps the button in
+   a form of its own when it is not (chapter 6, "With and without
+   JavaScript"). The Done button is the `<button>` the compiler put inside
+   an `<al-button>` (section 5), and the form wraps the `<al-button>`
+   whole.
+
+4. Last, `document` writes `<!doctype html>` and the page, with the
+   `<al-shown>` element at the end of the body (below) and the head tags
+   (`withScript`) after `<head>`.
+
+The answer begins like this (without the `Date` and `X-Request-Id`
+headers, and with the page cut after the Datastar script tag):
 
 ```
 HTTP/1.1 200 OK
@@ -1558,46 +1786,67 @@ and has the Done button with its route's URL:
 The `&#39;` and `&amp;` are the escaping of section 8's first part: the
 attribute holds
 `(window._alderBusy||((e,p)=>p))(el, @post('/_/Toggle?id=…', window._alderO?.('form')))`.
-`id` is a parameter of the route that is not in its path (`/_/Toggle`), so it
-rides in the query string. `window._alderO` (defined once in the page's
+
+`id` is a parameter of the route that is not in its path (`/_/Toggle`), so
+it rides in the query string. `window._alderO` (defined once in the page's
 `<head>`) returns the post's options, and the headers in them are what the
 server does not remember:
 
-- **`Alder-Page`** is `location.pathname + location.search`, the page the
-  browser is on: here `/?filter=Active`. A write route does not know which
-  page it was clicked on (`Toggle` may be used from the list and from the
-  todo's own page), and `refresh`, `invalid` and the before-view need it.
-  The router reads it with `rq.ShownURL()`, through `rt.BackURL`
-  (`rt/core.go`): the path and query of the value, never a scheme or host,
-  and `/` for anything that could name another site (a path that starts with
-  `//`, a backslash, a control byte). Without JavaScript there is no such
-  header, and `ShownURL` reads `Referer` the same way.
-- **`Alder-Build`** is the id of the build that rendered the page, from
-  `<meta name="alder-build">` in its `<head>` (`web.BuildID`: the first 16
-  hex digits of the SHA-256 of the executable). Every Datastar request
-  sends it. Datastar never patches the `<head>`, so a tab open across a
-  deploy keeps the old build's stylesheet and scripts; the router answers
-  a request from another build with a reload (below), never a patch.
-- **`Alder-Shown`** is the hash the page's `<al-shown>` element holds
-  (below): the hash of the body as the server last rendered it for this
-  page, whole or in part.
-- **`Alder-Fetch`** is not sent by a post. A `click` on a GET route is an
-  element fetch, and `window._alderF` sends it with the page and build
-  headers: `Alder-Fetch: 1`, which is what makes the request the third kind
-  in the table above.
+##### `Alder-Page`
 
-(`window._alderO` is called with `?.`: a click before the page's script has
-defined it posts without these options, and the answer morphs the whole
-body.) The options also carry a new shared `AbortController` after aborting
-the request in flight, which makes the newest navigation the only one whose
+`Alder-Page` is `location.pathname + location.search`, the page the
+browser is on: here `/?filter=Active`. A write route does not know which
+page it was clicked on (`Toggle` may be used from the list and from the
+todo's own page), and `refresh`, `invalid` and the before-view need it.
+
+The router reads it with `rq.ShownURL()`, through `rt.BackURL`
+(`rt/core.go`): the path and query of the value, never a scheme or host,
+and `/` for anything that could name another site (a path that starts with
+`//`, a backslash, a control byte). Without JavaScript there is no such
+header, and `ShownURL` reads `Referer` the same way.
+
+##### `Alder-Build`
+
+`Alder-Build` is the id of the build that rendered the page, from
+`<meta name="alder-build">` in its `<head>` (`web.BuildID`: the first 16
+hex digits of the SHA-256 of the executable). Every Datastar request sends
+it.
+
+Datastar never patches the `<head>`, so a tab open across a deploy keeps
+the old build's stylesheet and scripts; the router answers a request from
+another build with a reload (below), never a patch.
+
+##### `Alder-Shown`
+
+`Alder-Shown` is the hash the page's `<al-shown>` element holds (below):
+the hash of the body as the server last rendered it for this page, whole or
+in part.
+
+##### `Alder-Fetch`
+
+`Alder-Fetch` is not sent by a post. A `click` on a GET route is an
+element fetch, and `window._alderF` sends it with the page and build
+headers: `Alder-Fetch: 1`, which is what makes the request the third kind
+in the table above.
+
+> **`window._alderO` before the script runs.** `window._alderO` is called
+> with `?.`: a click before the page's script has defined it posts without
+> these options, and the answer morphs the whole body.
+
+The options also carry a new shared `AbortController` after aborting the
+request in flight, which makes the newest navigation the only one whose
 answer is applied (chapter 6, "Links and navigation").
 
-**`POST /_/Toggle?id=M2PBzBsivm3srrcFIlTD`.** Click Done, and the button
-submits its little form; Datastar catches the submission and runs that
-`@post`. It sends the header `Datastar-Request: true`, the three headers
-above (`Alder-Shown: 2bfef09fe1ff4b0c`, `Alder-Page: /?filter=Active`,
+#### `POST /_/Toggle?id=M2PBzBsivm3srrcFIlTD`
+
+Click Done, and the button submits its little form; Datastar catches the
+submission and runs that `@post`. It sends the header
+`Datastar-Request: true`, the three headers above
+(`Alder-Shown: 2bfef09fe1ff4b0c`, `Alder-Page: /?filter=Active`,
 `Alder-Build: 7459b858a2232e68`) and the form's fields, url-encoded: there
-are none. The router matches the `POST` route with pattern `/_/Toggle`.
+are none.
+
+The router matches the `POST` route with pattern `/_/Toggle`.
 `rq.Datastar` is true. The handler is:
 
 ```go
@@ -1630,69 +1879,91 @@ This is chapter 6's lifecycle, line by line:
    parameters are in its path, which `Toggle` has none of). If it does not
    decode, 404; `html.None()` is an empty document, which the router
    replaces with `App.notFound`.
+
 2. `guard__…` is `requires user` and the role: a 303 to `App.login` or a 404
    when the session falls short, otherwise the narrowed `Session` that
    `update` takes. A write route has no `load`, so it has no `page__…`
    function: `guard__` is what `page__` is without the load.
-3. Because `Toggle.update` mentions `Response.refresh`, the checker marked the
-   route (`NeedsShown`, section 5), and the generator wrote the lines
+
+3. Because `Toggle.update` mentions `Response.refresh`, the checker marked
+   the route (`NeedsShown`, section 5), and the generator wrote the lines
    with `before`. For a Datastar request the handler renders the page the
-   browser is on, now, before the update. `rq.RenderShown` (`rt/web/shown.go`)
-   resolves `rq.ShownURL()` (`/?filter=Active`) to a GET route with the
-   matcher a GET uses, `Todos.Index.Index`, and calls that route's own
-   handler, in-process, with a fresh `Env` (so nothing the write does reaches
-   the page and nothing the page does reaches the write) and the request's
-   session. The result, `web.Shown`, holds the URL, the status the route
-   answered and its render with the regions (below). It is nil when no GET
-   route matches the URL, or the route is a file page. A route whose `update`
-   only redirects or renders has no such lines; the golden's `Toggle`, further
-   down, is one.
+   browser is on, now, before the update.
+
+   `rq.RenderShown` (`rt/web/shown.go`) resolves `rq.ShownURL()`
+   (`/?filter=Active`) to a GET route with the matcher a GET uses,
+   `Todos.Index.Index`, and calls that route's own handler, in-process, with
+   a fresh `Env` (so nothing the write does reaches the page and nothing
+   the page does reaches the write) and the request's session.
+
+   The result, `web.Shown`, holds the URL, the status the route answered
+   and its render with the regions (below). It is nil when no GET route
+   matches the URL, or the route is a file page. A route whose `update`
+   only redirects or renders has no such lines; the golden's `Toggle`,
+   further down, is one.
+
 4. `eff.Run` with `eff.KTask` runs the `Toggle` route's `update` much as "A
-   `Task`: `Toggle`" did, as one step, `Db.updateMine Todo`: it reads the row
-   with the owner in the `WHERE` (which begins the transaction), writes it
-   with the owner in the `WHERE` again, then a commit ("The rules", below),
-   and the task's value is `Response.refresh`. If the task failed, `route__fail`
-   answers 500, or 404 for `Task.notFound` (an id that is missing or someone
-   else's), and nothing is stored, since `Run` already rolled back the writes
-   and the session.
-5. `web.AnswerResponse(resp, before, rq.Env.Session)` wraps the `rt.Response`,
-   the before-view and the session the task left in a `web.Response`:
-   `Answer`, `Shown` and `Session`, with the status `resp.Code()`. It
-   delivers nothing. The router does that.
+   `Task`: `Toggle`" did, as one step, `Db.updateMine Todo`: it reads the
+   row with the owner in the `WHERE` (which begins the transaction), writes
+   it with the owner in the `WHERE` again, then a commit ("The rules",
+   below), and the task's value is `Response.refresh`.
+
+   If the task failed, `route__fail` answers 500, or 404 for
+   `Task.notFound` (an id that is missing or someone else's), and nothing
+   is stored, since `Run` already rolled back the writes and the session.
+
+5. `web.AnswerResponse(resp, before, rq.Env.Session)` wraps the
+   `rt.Response`, the before-view and the session the task left in a
+   `web.Response`: `Answer`, `Shown` and `Session`, with the status
+   `resp.Code()`. It delivers nothing. The router does that.
+
+#### Delivering the answer
 
 The router's `write` sees a `web.Response` with `Answer` set. It checks that
 the target is one it can deliver (`targetProblem`: a `redirect` goes to a
 GET route, a `render` patches in a named GET route's view), and then
-`answer` (`rt/web/answer.go`) delivers the `Response` by its kind. The
-toasts are set first (`setToasts`), to follow the patches. A `redirect`
-goes its own way (below). For the others the session is stored if the task
-changed it (`setSession`; the task here left it as it was, so no cookie), and
-a request without Datastar is answered plainly (`answerPlain`, below).
-With Datastar, `render` has its own delivery (below) and `refresh` and
-`invalid` are `answerShown`. It runs the page the browser is on again, with
-the session the write left (`runShown` again: this is the page's second
-render), renders it with `html.RenderTracked`, which is `RenderWith` that
-also writes down, as it goes, where each element with an `id` starts and
-ends in the markup (here `<ul id="todos">` and `<p id="summary">`: the page's
-**regions**), and compares it with `before`.
+`answer` (`rt/web/answer.go`) delivers the `Response` by its kind:
+
+- The toasts are set first (`setToasts`), to follow the patches.
+- A `redirect` goes its own way (below).
+- For the others the session is stored if the task changed it
+  (`setSession`; the task here left it as it was, so no cookie), and a
+  request without Datastar is answered plainly (`answerPlain`, below).
+- With Datastar, `render` has its own delivery (below) and `refresh` and
+  `invalid` are `answerShown`.
+
+`answerShown` runs the page the browser is on again, with the session the
+write left (`runShown` again: this is the page's second render), renders it
+with `html.RenderTracked`, which is `RenderWith` that also writes down, as
+it goes, where each element with an `id` starts and ends in the markup
+(here `<ul id="todos">` and `<p id="summary">`: the page's **regions**), and
+compares it with `before`.
 
 Which of the two ways to send the change applies is decided by `regions` in
-`rt/web/shown.go`, which falls back to sending the whole body when there is no
-before-view (none was rendered, it did not answer its view, or it was a
-page other than the one now shown), when the request carries no
-`Alder-Shown` header at all (a post made before the page's script ran), or
-when a toast needs a region the page lacks. Otherwise:
+`rt/web/shown.go`. It falls back to sending the whole body when:
+
+- there is no before-view (none was rendered, it did not answer its view,
+  or it was a page other than the one now shown);
+- the request carries no `Alder-Shown` header at all (a post made before
+  the page's script ran);
+- a toast needs a region the page lacks.
+
+Otherwise:
 
 1. If the two bodies are the same string, nothing changed, and no element
    event is sent.
+
 2. Else `html.Fragments` compares the two renders region by region,
-   starting with the body. A region whose markup is the same on both sides
-   is left alone. A region whose markup differs only inside its child
-   regions (the same children, in the same order, and the same text between
-   them) is looked into, child by child. Any other changed region is sent
-   whole. A change that lies outside every region (a heading with no `id`
-   around it) can only be sent as the body itself, and then the whole body
-   is sent.
+   starting with the body:
+
+   - A region whose markup is the same on both sides is left alone.
+   - A region whose markup differs only inside its child regions (the same
+     children, in the same order, and the same text between them) is
+     looked into, child by child.
+   - Any other changed region is sent whole.
+   - A change that lies outside every region (a heading with no `id`
+     around it) can only be sent as the body itself, and then the whole
+     body is sent.
 
 Here Milk leaves the Active list, so `#todos` changed and has no child
 regions to look into; the count changed, so `#summary` did too; nothing
@@ -1720,19 +1991,26 @@ data: elements <al-shown id="_alder_shown" data-h="3e0bf51c02f9362a" hidden></al
 
 ```
 
-(without the `Date`, `X-Request-Id` and `Transfer-Encoding` headers). Each
-event is the event name, two lines that say what to replace and how, and
-one `data: elements` line for each line of the markup; the rendered page has
-no line breaks, so each is one line, and a blank line ends the event.
-(The writer turns every `\r\n` and lone `\r` into `\n` before it splits the
-lines, and the renderer writes a carriage return in text as `&#13;`: a
-line end inside your data can never end a `data:` line and start a
-field.) Datastar finds each element by its `id` and morphs it into the new
-one. The rest of the page is not touched at all: an open `<details>`, a
-half-typed input or the scroll position elsewhere stay as they were. No
-`<head>` and no doctype are sent.
+(without the `Date`, `X-Request-Id` and `Transfer-Encoding` headers).
 
-**The shown hash.** The last event records which page the browser now
+Each event is the event name, two lines that say what to replace and how,
+and one `data: elements` line for each line of the markup; the rendered
+page has no line breaks, so each is one line, and a blank line ends the
+event.
+
+> **Carriage returns.** The writer turns every `\r\n` and lone `\r` into
+> `\n` before it splits the lines, and the renderer writes a carriage
+> return in text as `&#13;`: a line end inside your data can never end a
+> `data:` line and start a field.
+
+Datastar finds each element by its `id` and morphs it into the new one. The
+rest of the page is not touched at all: an open `<details>`, a half-typed
+input or the scroll position elsewhere stay as they were. No `<head>` and
+no doctype are sent.
+
+#### The shown hash
+
+The last event records which page the browser now
 shows, for the next click. Every page the router sends whole ends its
 `<body>` with
 
@@ -1747,20 +2025,26 @@ It is the hash of the body as the server last rendered it for this page:
 the whole body, when a full body was sent, or the hash of the render the
 regions were cut from, which `PatchShown` sends last.
 
-What the server does with the header's value is nothing, since #160. It used
-to compare it with the hash of its own before-view, and send the whole body
-when they differed. But an element fetch and a `render` change the browser's DOM without the
-server rendering the page, so
-after any of them the hash in the browser is out of date, by design, and a
-rule that sent the whole body then would morph away what they loaded. Now a
-stale hash costs nothing: the server diffs its own before-view against its
-own after-view, and patches the regions it changed. Regions it did not change
-are left as the browser has them, so rows a click fetched and an inline
-edit that is open survive a `refresh` that did not touch them. The
-guarantee is the one a partial page gives you: every region the server sent
-is right. The header only has to be there (a post made before the script ran
-has none, and gets the whole body). Sending `Alder-Shown: 0000000000000000`
-with the same click gets the same three events.
+#### What the server does with the header
+
+What the server does with the header's value is nothing, since #160. It
+used to compare it with the hash of its own before-view, and send the whole
+body when they differed. But an element fetch and a `render` change the
+browser's DOM without the server rendering the page, so after any of them
+the hash in the browser is out of date, by design, and a rule that sent the
+whole body then would morph away what they loaded.
+
+Now a stale hash costs nothing: the server diffs its own before-view
+against its own after-view, and patches the regions it changed. Regions it
+did not change are left as the browser has them, so rows a click fetched
+and an inline edit that is open survive a `refresh` that did not touch
+them.
+
+The guarantee is the one a partial page gives you: every region the server
+sent is right. The header only has to be there (a post made before the
+script ran has none, and gets the whole body). Sending
+`Alder-Shown: 0000000000000000` with the same click gets the same three
+events.
 
 The tab that is behind in another way is the one from an older build. Its
 `<head>` is that build's, and the router cannot patch a head. `ServeHTTP`
@@ -1771,13 +2055,18 @@ mismatch answers a reload, never a patch:
 		if b := r.Header.Get(datastar.BuildHeader); b != "" && b != BuildID() {
 ```
 
-A link's request (`GET`) is answered with `rt.reload`, a real navigation
-to its address; an element fetch with a navigation to the page it was made
-from (`Alder-Page`); a write runs first (its decoders guard it) and then
-`staleReload` answers its `Response` as a reload: `redirect r` goes to `r`,
-anything else reloads the page the browser is on. A toast is kept in the
-notice cookie, so the page loaded shows it. Clicking Done from a tab of
-another build answers
+How a stale-build request is answered depends on what it was:
+
+- A link's request (`GET`) is answered with `rt.reload`, a real navigation
+  to its address.
+- An element fetch is answered with a navigation to the page it was made
+  from (`Alder-Page`).
+- A write runs first (its decoders guard it) and then `staleReload`
+  answers its `Response` as a reload: `redirect r` goes to `r`, anything
+  else reloads the page the browser is on. A toast is kept in the notice
+  cookie, so the page loaded shows it.
+
+Clicking Done from a tab of another build answers
 
 ```
 event: datastar-patch-elements
@@ -1790,7 +2079,9 @@ data: elements <script data-effect="el.remove()">window.location.assign("/?filte
 after the write has toggled Milk. A request with no `Alder-Build` at all (a
 hand-made one) is not checked.
 
-**`render`: one element.** Not every write needs the page. In the route
+#### `render`: one element
+
+Not every write needs the page. In the route
 handlers golden (`testdata/golden/gen_route_handlers`, the app whose Go
 `TestGenRoute_ToggleRender` runs), `Toggle` is a `PATCH` that answers
 `render` of the todo's own route, and the checker finds no `refresh` or
@@ -1818,17 +2109,23 @@ func Route__Todos__Toggle() web.Route {
 }
 ```
 
-`nil` is the before-view. The route's path has `{id}`, so `decode__…` reads it
-from `rq.Params`, the path parameters the router matched, where `Toggle`
-above read the query. `answer` sees a `render` and a Datastar request, and
-`answerRender` makes the delivery an element fetch run in the server: it
-builds a `GET` of the target's URL (`getOf`, with `Alder-Fetch: 1` set),
-marks the hop as a render (`hop.render`), and serves it with the session the
-write left. That is the same `serve` the router runs for a request from
-outside, so the target's own handler runs: `Route__Todos__Row`'s `page__…`
-(`requires`, then `Row.load`, one read by key) and `Row.view`, and the router
-delivers the result with `deliverElement`, as it would an element fetch
-from the browser:
+`nil` is the before-view. The route's path has `{id}`, so `decode__…` reads
+it from `rq.Params`, the path parameters the router matched, where `Toggle`
+above read the query.
+
+`answer` sees a `render` and a Datastar request, and `answerRender` makes
+the delivery an element fetch run in the server:
+
+1. It builds a `GET` of the target's URL (`getOf`, with `Alder-Fetch: 1`
+   set).
+2. It marks the hop as a render (`hop.render`).
+3. It serves it with the session the write left.
+
+That is the same `serve` the router runs for a request from outside, so the
+target's own handler runs: `Route__Todos__Row`'s `page__…` (`requires`,
+then `Row.load`, one read by key) and `Row.view`, and the router delivers
+the result with `deliverElement`, as it would an element fetch from the
+browser:
 
 ```
 event: datastar-patch-elements
@@ -1840,17 +2137,20 @@ data: elements <li id="todo-t1">…</li>
 
 (The request was `PATCH /todos/t1/toggle`, from the page `/`.)
 `deliverElement` finds the id with `html.RootID`: the first root element of
-the view must have one. A view
-whose root has none is not an error of the request: the router logs it
-(`route … answered an element fetch with a view whose first root element has
-no id`), notes it in the dev panel, and sends an empty event stream, so the
-page is left as it was. A view with several roots is morphed in whole, with
-the first root's `id` as the selector. Nothing else is loaded or sent: no
-before-view, no page load, and `al-shown` is not touched, so it is stale
-by design. `TestGenRoute_NoBeforeWhenUnreachable` pins both halves: this
-`Route__Todos__Toggle` has no call to `RenderShown` and the sibling `Delete`
-route, which answers `refresh`, has; the page's `load` ran once for
-the row and never for the list.
+the view must have one.
+
+A view whose root has none is not an error of the request: the router logs
+it (`route … answered an element fetch with a view whose first root element
+has no id`), notes it in the dev panel, and sends an empty event stream, so
+the page is left as it was. A view with several roots is morphed in whole,
+with the first root's `id` as the selector.
+
+Nothing else is loaded or sent: no before-view, no page load, and
+`al-shown` is not touched, so it is stale by design.
+`TestGenRoute_NoBeforeWhenUnreachable` pins both halves: this
+`Route__Todos__Toggle` has no call to `RenderShown` and the sibling
+`Delete` route, which answers `refresh`, has; the page's `load` ran once
+for the row and never for the list.
 
 A `render` whose target cannot answer its view is never patched in
 (`renderFailed`): the row was deleted between the write and the read, or its
@@ -1870,28 +2170,35 @@ went wrong". An element fetch whose route answers 404 (a `click` that asks
 for `Row { id }` of a row that is gone) is answered the same way: the
 not-found page never replaces the element.
 
-**The other answers.** `redirect`, `invalid` and the plain answers are the
+#### The other answers
+
+`redirect`, `invalid` and the plain answers are the
 same walk with another delivery:
 
 - `redirect r` (`answerRedirect`) is not diffed, even when `r` is the page
-  the browser is on, and no before-view is rendered for it. Under Datastar
-  it must not be a 303: the client's `fetch` would follow it and morph the
-  new page into the old URL. So `write` finds a 303 to a page of this app
-  (`followable`) and `follow`s it: a `GET` of the target, served by the
-  same `serve` with the session the write left, answered as a boosted link
-  is. The golden's `Create`, answering `Response.redirect (Index {…}) |>
+  the browser is on, and no before-view is rendered for it.
+
+  Under Datastar it must not be a 303: the client's `fetch` would follow it
+  and morph the new page into the old URL. So `write` finds a 303 to a page
+  of this app (`followable`) and `follow`s it: a `GET` of the target, served
+  by the same `serve` with the session the write left, answered as a
+  boosted link is.
+
+  The golden's `Create`, answering `Response.redirect (Index {…}) |>
   Response.toast "Added"`, sends four events: the body of the list, its
   `<title>`, the history step, and the toast, as a patch appended to
   `al-toasts`.
+
 - `invalid t` is `answerShown` again, with the form state of the route
   (`invalidState`: the posted values, and `t` as the form's error) and the
   status 422 in the `Alder-Status` header, not in the HTTP status, since
-  Datastar ignores answers that are not 2xx. `Create` answering
-  `Response.invalid "Already there"` committed its insert (`invalid` is a
-  successful result: its `Task` commits) and answered the list page with the
-  error in the form's `<Errors form />`. Here the form is not inside a
-  region of its own, so the change is outside every region and the whole
-  body is sent:
+  Datastar ignores answers that are not 2xx.
+
+  `Create` answering `Response.invalid "Already there"` committed its
+  insert (`invalid` is a successful result: its `Task` commits) and
+  answered the list page with the error in the form's `<Errors form />`.
+  Here the form is not inside a region of its own, so the change is outside
+  every region and the whole body is sent:
 
   ```
   HTTP/1.1 200 OK
@@ -1907,11 +2214,14 @@ same walk with another delivery:
   A form that does not decode never reaches `update`: the handler answers
   `web.InvalidResponse` with the form's state and the field errors, which is
   `answerShown` with an `invalid` that has no text of its own.
+
 - `Response.toast "Added" r` (and `success`, `warning`, `error`) is not a
   kind of answer. It appends an event to `r`: `rt.WithToast` copies `r`'s
   events and adds `Toast{Kind, Text}`, and `r`'s kind and status are
-  unchanged. The router delivers a toast after the answer's own patches, as
-  one more `datastar-patch-elements` event that appends an `<al-toast>` to
+  unchanged.
+
+  The router delivers a toast after the answer's own patches, as one more
+  `datastar-patch-elements` event that appends an `<al-toast>` to
   `al-toasts` (`notify`; the `Added` of the golden's `Create` is the last
   event of the answer above):
 
@@ -1925,19 +2235,28 @@ same walk with another delivery:
 
   The variant is `info`, `success`, `warning` or `destructive` (the
   library's name for `error`, which also stays on screen twice as long,
-  10 seconds against 5; `noticeLook`). If the answer is a `refresh` or an
-  `invalid` whose page has no `<al-toasts>`, the router cannot patch the
-  toast in by region and sends the whole body, with an empty
-  `<al-toasts popover="manual" data-ignore-morph>` added (`shellBody`). A toast
-  on a `redirect` that ends in a real navigation (another site, or a stale
-  tab's reload) rides in the notice cookie instead, and the page it loads
-  shows it.
-- Without JavaScript (`answerPlain`) each is plain HTTP, as chapter 6 lists:
-  `redirect r` a 303 to `r`; `refresh` and `render r` a 303 to the page the
-  browser is on (`ShownURL`: `Referer`); `invalid t` a 422 with that page
-  rendered as a document. A write from a page the router cannot match to a
-  GET route is answered by going to that address. Toggling Milk on
-  `/?filter=Active` without JavaScript answers
+  10 seconds against 5; `noticeLook`).
+
+  If the answer is a `refresh` or an `invalid` whose page has no
+  `<al-toasts>`, the router cannot patch the toast in by region and sends
+  the whole body, with an empty `<al-toasts popover="manual"
+  data-ignore-morph>` added (`shellBody`).
+
+  A toast on a `redirect` that ends in a real navigation (another site, or
+  a stale tab's reload) rides in the notice cookie instead, and the page it
+  loads shows it.
+
+- Without JavaScript (`answerPlain`) each is plain HTTP, as chapter 6
+  lists:
+
+  - `redirect r` a 303 to `r`;
+  - `refresh` and `render r` a 303 to the page the browser is on
+    (`ShownURL`: `Referer`);
+  - `invalid t` a 422 with that page rendered as a document.
+
+  A write from a page the router cannot match to a GET route is answered by
+  going to that address. Toggling Milk on `/?filter=Active` without
+  JavaScript answers
 
   ```
   HTTP/1.1 303 See Other
@@ -1945,28 +2264,37 @@ same walk with another delivery:
   ```
 
   The browser then `GET`s `/?filter=Active`, so its address bar shows the
-  list, not the write's URL, and a refresh does not post again. If the id
-  names no row, or another user's, `Db.updateMine` ends in `Task.notFound`,
-  and under Datastar the 404 page's body arrives as a body morph, as a 200
-  event with the real status in `Alder-Status`.
+  list, not the write's URL, and a refresh does not post again.
+
+  If the id names no row, or another user's, `Db.updateMine` ends in
+  `Task.notFound`, and under Datastar the 404 page's body arrives as a body
+  morph, as a 200 event with the real status in `Alder-Status`.
 - A `PUT`, `PATCH` or `DELETE` route is sent without JavaScript as a `POST`
   carrying `_method`. `serve` reads the body of every method but `GET` and
   `HEAD` (`readForm`), and `effectiveMethod` (`rt/web/method.go`) lets a
   `POST` whose body has exactly one `_method` of `PUT`, `PATCH` or `DELETE`
-  be routed by it. On any other method `_method` is ignored, and in the query
-  string it is never read, so a link from another site can never become a
-  write. A path some route declares, but not for the request's method, is a
-  405 with an `Allow` header: `find` returns the set of methods the routes
-  with that path declare. A `GET /todos` of the golden app, where only `POST
+  be routed by it.
+
+  On any other method `_method` is ignored, and in the query string it is
+  never read, so a link from another site can never become a write.
+
+  A path some route declares, but not for the request's method, is a 405
+  with an `Allow` header: `find` returns the set of methods the routes with
+  that path declare. A `GET /todos` of the golden app, where only `POST
   /todos` exists, answers `405` with `Allow: POST`.
 
-**A boosted link.** Every page the router writes whole carries these tags
-(`HeadTags` and `withScript` in `rt/web/router.go`): right after
-`<head>`, the `color-scheme` meta, the `alder-build` meta, the style of the
-pending bar and the Datastar script; just before `</head>`,
-`datastar.BoostTag()`, last because it is about a kilobyte and would
-otherwise push a layout's `<meta charset>` out of the first 1024 bytes,
-where the browser looks for it:
+#### A boosted link
+
+Every page the router writes whole carries these tags (`HeadTags` and
+`withScript` in `rt/web/router.go`):
+
+- right after `<head>`: the `color-scheme` meta, the `alder-build` meta, the
+  style of the pending bar and the Datastar script;
+- just before `</head>`: `datastar.BoostTag()`, last because it is about a
+  kilobyte and would otherwise push a layout's `<meta charset>` out of the
+  first 1024 bytes, where the browser looks for it.
+
+The boost tag looks like this:
 
 ```html
 <meta name="alder-boost" content="links"
@@ -1977,22 +2305,27 @@ where the browser looks for it:
 ```
 
 (shown on several lines; the quotes inside the attributes are escaped as
-`&#39;` in the real page). Datastar reads `data-*` attributes on every
-element of the document, the `<head>` included. The `data-init`
-(`datastar.BoostInit`) runs when Datastar sets the element up: it notes the
-page shown (`window._alderAt`), reads the build id from
-`<meta name="alder-build">` (`window._alderBuild`), and defines the helpers
-the page's requests call: `window._alderO`, the options of a post (the
-headers of "A request" above), `window._alderF`, those of an element
-fetch, and `window._alderBusy`, which marks the page pending while a request
-is in flight. `data-on:click__window`
-is a click listener on `window`, the outermost target, so it sees every
-click on the page after the page's own handlers have had theirs; and it
-is on an element in the `<head>`, which a body patch never touches, so
-the listener outlives every morph. Its expression, `datastar.BoostClick`,
-is plain JavaScript that Datastar compiles into a function (it rewrites
-`@get(` into a call of its `get` action, and `$name` into a signal, so the
-expression uses no `$`):
+`&#39;` in the real page).
+
+Datastar reads `data-*` attributes on every element of the document, the
+`<head>` included. The `data-init` (`datastar.BoostInit`) runs when
+Datastar sets the element up. It:
+
+- notes the page shown (`window._alderAt`);
+- reads the build id from `<meta name="alder-build">`
+  (`window._alderBuild`);
+- defines the helpers the page's requests call: `window._alderO`, the
+  options of a post (the headers of "A request" above), `window._alderF`,
+  those of an element fetch, and `window._alderBusy`, which marks the page
+  pending while a request is in flight.
+
+`data-on:click__window` is a click listener on `window`, the outermost
+target, so it sees every click on the page after the page's own handlers
+have had theirs; and it is on an element in the `<head>`, which a body
+patch never touches, so the listener outlives every morph. Its expression,
+`datastar.BoostClick`, is plain JavaScript that Datastar compiles into a
+function (it rewrites `@get(` into a call of its `get` action, and `$name`
+into a signal, so the expression uses no `$`):
 
 ```js
 if (evt.defaultPrevented || evt.button !== 0 || evt.metaKey || evt.ctrlKey || evt.shiftKey || evt.altKey) return;
@@ -2011,17 +2344,21 @@ window._alderAC?.abort();
 ```
 
 Each `return` is one of chapter 6's exceptions, left to the browser. A
-click that gets past them is cancelled (`preventDefault`), the link's
-`#fragment`, if any, is kept in `window._alderHash` (a browser never
-sends the fragment to the server, so the push adds it back), the scroll
-position is saved in the state of the history entry being left, the
-request still in flight is aborted, and
-Datastar sends `GET /posts/42?datastar=%7B%7D` with
-`Datastar-Request: true` and `Alder-Build`, and without `Alder-Fetch`.
-(Datastar always adds the page's signals to a
-`GET` as the parameter `datastar`; `payload: {}` makes them `{}`, and the
-router drops the parameter before it matches the route, so a route's
-parameters never see it.)
+click that gets past them:
+
+- is cancelled (`preventDefault`);
+- has the link's `#fragment`, if any, kept in `window._alderHash` (a browser
+  never sends the fragment to the server, so the push adds it back);
+- has the scroll position saved in the state of the history entry being
+  left;
+- has the request still in flight aborted;
+- and Datastar sends `GET /posts/42?datastar=%7B%7D` with
+  `Datastar-Request: true` and `Alder-Build`, and without `Alder-Fetch`.
+
+> **The `datastar` parameter.** Datastar always adds the page's signals to
+> a `GET` as the parameter `datastar`; `payload: {}` makes them `{}`, and
+> the router drops the parameter before it matches the route, so a route's
+> parameters never see it.
 
 `ServeHTTP` sees a Datastar `GET` that is not an element fetch and marks it
 as a navigation, as "Three deliveries" showed: the URL to
@@ -2051,21 +2388,30 @@ data: elements <script data-effect="el.remove()">(function(){var u="/";if(u.inde
 
 ```
 
-Datastar applies the three events in order. The first morphs the body, and
-its `<al-shown>` records the hash of the page now shown. The second replaces
-the `<title>`; its selector is `head > title`, so an
-SVG's `<title>` in the body is left alone (`titleOf` cuts the title out of
-the rendered page; a page without one sends `<title></title>`, so the old
-page's title does not stay). The third is `datastar.Navigate` in mode
-`Push`: a script appended to the body, which Datastar runs and which
-removes itself. It records the URL, with the clicked link's fragment
-added back when the URL has none of its own (`history.pushState`: the
-address bar changes, nothing loads), notes the
-path the page now shows in `window._alderAt`, makes the `<body>`
-focusable (`tabindex="-1"`) and focuses it, so keyboard and screen reader
-users start at the top of the new page, then scrolls to the top (or to
-the element a `#fragment` in the URL names). A 404 or 500 is answered with
-the same three events and the status in `Alder-Status`, as for a write.
+Datastar applies the three events in order:
+
+1. The first morphs the body, and its `<al-shown>` records the hash of the
+   page now shown.
+
+2. The second replaces the `<title>`; its selector is `head > title`, so an
+   SVG's `<title>` in the body is left alone (`titleOf` cuts the title out
+   of the rendered page; a page without one sends `<title></title>`, so the
+   old page's title does not stay).
+
+3. The third is `datastar.Navigate` in mode `Push`: a script appended to
+   the body, which Datastar runs and which removes itself. It:
+
+   - records the URL, with the clicked link's fragment added back when the
+     URL has none of its own (`history.pushState`: the address bar changes,
+     nothing loads);
+   - notes the path the page now shows in `window._alderAt`;
+   - makes the `<body>` focusable (`tabindex="-1"`) and focuses it, so
+     keyboard and screen reader users start at the top of the new page;
+   - then scrolls to the top (or to the element a `#fragment` in the URL
+     names).
+
+A 404 or 500 is answered with the same three events and the status in
+`Alder-Status`, as for a write.
 
 Back and Forward fire `popstate` on `window`. The boost's
 `data-on:popstate__window`, `datastar.BoostPopstate`, asks for the page
@@ -2075,39 +2421,48 @@ again unless only the fragment changed:
 if (location.pathname + location.search !== window._alderAt) {window._alderAC?.abort(); (window._alderBusy||((e,p)=>p))(null, @get(location.pathname + location.search, {payload: {}, headers: {'Alder-History': 'replace', 'Alder-Build': window._alderBuild}, requestCancellation: window._alderAC = new AbortController()}))}
 ```
 
-The header `Alder-History: replace` makes the mode *replace*: the
-history entry exists already, so the script calls `history.replaceState`
-instead (keeping the entry's fragment), and scrolls to the `alderY` in
-that entry's state (`history.scrollRestoration` is `manual`, so the
-browser does not scroll by itself before the page has come back). The
-fourth attribute, `datastar.BoostScroll`, keeps `alderY` up to date: on
-every `scroll` of the window, at most every 200 ms and once more after
-the last one (`__throttle.200ms.trailing`), it runs
-`history.replaceState(Object.assign({}, history.state, {alderY: scrollY}), '')`,
-writing the position into the current entry. So an entry has its
-position whichever way you leave it, by a click or by Back, and Back and
-Forward both return to it.
+The header `Alder-History: replace` makes the mode *replace*: the history
+entry exists already, so the script calls `history.replaceState` instead
+(keeping the entry's fragment), and scrolls to the `alderY` in that entry's
+state (`history.scrollRestoration` is `manual`, so the browser does not
+scroll by itself before the page has come back).
 
-**A redirect, followed.** A `Response.redirect` under Datastar to a route of
-this app is followed by the router itself. `answerRedirect` hands the
-target's URL to `write` as a 303, and `write` sees a 303 with
-`rq.Datastar` set and a Location that `followable` accepts (a path
-starting with `/`, not `//`, not the Datastar script, not a file under
-`/static/`), stores the session as for any 303, and calls `follow`.
-`follow` clones the request into a `GET` of the Location (no body, no
-form) and serves it through the same `serve` the router runs for a
-request from outside, with two differences: the request's session is the
-one the redirect just stored (the browser does not have the new cookie
-yet; it arrives with this answer), and the navigation to record is the
-Location, in mode push. The target's handler runs, `Options.Served` sees
-it (so a test's browser gets the target's model), and `write` answers
-with the target's morph. If the target redirects in turn, `follow`
-follows again; a GET that redirects when ten GETs of the chain are
-already behind it is a 500, logged for the request the browser sent
-(`more than 10 redirects in a row (the last to …)`), as the test browser
-counts them. Clicking "Log out" on `/?filter=Active` (the route `Logout` of
-`App`, whose `update` answers `Response.redirect (Auth.Login.Login {})`)
-answers
+The fourth attribute, `datastar.BoostScroll`, keeps `alderY` up to date: on
+every `scroll` of the window, at most every 200 ms and once more after the
+last one (`__throttle.200ms.trailing`), it runs
+`history.replaceState(Object.assign({}, history.state, {alderY: scrollY}), '')`,
+writing the position into the current entry. So an entry has its position
+whichever way you leave it, by a click or by Back, and Back and Forward
+both return to it.
+
+#### A redirect, followed
+
+A `Response.redirect` under Datastar to a route of this app is followed by
+the router itself. `answerRedirect` hands the target's URL to `write` as a
+303, and `write` sees a 303 with `rq.Datastar` set and a Location that
+`followable` accepts (a path starting with `/`, not `//`, not the Datastar
+script, not a file under `/static/`), stores the session as for any 303,
+and calls `follow`.
+
+`follow` clones the request into a `GET` of the Location (no body, no form)
+and serves it through the same `serve` the router runs for a request from
+outside, with two differences:
+
+- the request's session is the one the redirect just stored (the browser
+  does not have the new cookie yet; it arrives with this answer);
+- the navigation to record is the Location, in mode push.
+
+The target's handler runs, `Options.Served` sees it (so a test's browser
+gets the target's model), and `write` answers with the target's morph.
+
+> **Chains of redirects.** If the target redirects in turn, `follow`
+> follows again; a GET that redirects when ten GETs of the chain are
+> already behind it is a 500, logged for the request the browser sent
+> (`more than 10 redirects in a row (the last to …)`), as the test browser
+> counts them.
+
+Clicking "Log out" on `/?filter=Active` (the route `Logout` of `App`,
+whose `update` answers `Response.redirect (Auth.Login.Login {})`) answers
 
 ```
 HTTP/1.1 200 OK
@@ -2145,14 +2500,18 @@ its URL is a path of this app, never a morph, and the toast it carries
 rides in the notice cookie to the page that loads.
 
 The scenarios of this part run in the tests of the two packages involved.
-`rt/web` has `TestAnswer_Redirect`, `TestAnswer_Render`, `TestAnswer_Refresh`
-and `TestAnswer_Invalid` in `answer_test.go`, the deliveries in
-`deliver_test.go` (`TestDeliver_PlainDocument`, `_BoostMorph`,
-`_ElementPatch`, `_ElementNoRootID`), and the stale-build answers
-(`TestBuild_StaleWrite`, `_StaleFetch`). `internal/gen/gen_test.go` serves
-the generated golden app and sends it the requests of a browser:
-`TestGenRoute_GetDocument`, `_GetElement`, `_ToggleRender`, `_DeleteRefresh`,
-`_FormDecodeFails` and `_InvalidCommits`. Each runs on every `go test ./...`.
+
+- `rt/web` has `TestAnswer_Redirect`, `TestAnswer_Render`,
+  `TestAnswer_Refresh` and `TestAnswer_Invalid` in `answer_test.go`, the
+  deliveries in `deliver_test.go` (`TestDeliver_PlainDocument`,
+  `_BoostMorph`, `_ElementPatch`, `_ElementNoRootID`), and the stale-build
+  answers (`TestBuild_StaleWrite`, `_StaleFetch`).
+- `internal/gen/gen_test.go` serves the generated golden app and sends it
+  the requests of a browser: `TestGenRoute_GetDocument`, `_GetElement`,
+  `_ToggleRender`, `_DeleteRefresh`, `_FormDecodeFails` and
+  `_InvalidCommits`.
+
+Each runs on every `go test ./...`.
 
 ### The rules: scoped operations and roles
 
@@ -2161,43 +2520,59 @@ five scoped `Db` operations, and `requires user, role R` on a route. This
 part follows them through the compiler and the runtime, with the to-do
 app (`Todo.owner @owner`) and the blog (`role Author`).
 
-**The checker.** `@owner` is checked once `App`'s session is known
+#### The checker
+
+`@owner` is checked once `App`'s session is known
 (`checkOwners`, `internal/check/rules.go`): the session must have a
 `user` field, and the marked column must be a `@ref` of that field's
 type without the `Maybe`, one per table (E0024). The column's name
-becomes the table's `Owner`. A reference to one of the five operations
-is checked where it is written (`inferVar` sends `Db.mine` and the others
-to `inferScoped`), against the member being checked: it is legal in a
-member of a route that `requires user` (its `load`, `view` or `update`),
-and in a `test`; anywhere else it is E0026. A top-level value that uses one
-legally is marked, and the mark follows references to it within its module
-(`propagateScoped`, a fixpoint), so a use of the value from a module where
-the operation itself would be refused is E0026 at that use. A helper of a
-route module that no route owns may use the operation: each route member
-that refers to the helper is checked instead (`checkRouteRefs`), so the
-helper is refused at the member whose route does not `require` the key. After a body is typed,
-each operation's table argument must have an `Owner` (E0025,
-`checkScopedTables`).
+becomes the table's `Owner`.
+
+A reference to one of the five operations is checked where it is written
+(`inferVar` sends `Db.mine` and the others to `inferScoped`), against the
+member being checked: it is legal in a member of a route that
+`requires user` (its `load`, `view` or `update`), and in a `test`;
+anywhere else it is E0026.
+
+A top-level value that uses one legally is marked, and the mark follows
+references to it within its module (`propagateScoped`, a fixpoint), so a
+use of the value from a module where the operation itself would be refused
+is E0026 at that use. A helper of a route module that no route owns may
+use the operation: each route member that refers to the helper is checked
+instead (`checkRouteRefs`), so the helper is refused at the member whose
+route does not `require` the key.
+
+After a body is typed, each operation's table argument must have an
+`Owner` (E0025, `checkScopedTables`).
+
 `Db.insertMine`'s row is typed as `InsertMine T`, a type that is never
 written in source: `Insert T` without the owner column. Its literal may
 not name the owner (E0003), and a row that is not a literal in the call
-is refused, so the row can only be what is written there. The role
-clause is checked by `checkRoles`, called from `defineRoutes` for each route (E0027): `user` first, a `role` field
-of the session whose type is a union and not a `Maybe`, and each name
-one of its constructors.
+is refused, so the row can only be what is written there.
 
-**The IR.** Five nodes of their own, not flags on `DbGet` or `DbUpdate`,
+The role clause is checked by `checkRoles`, called from `defineRoutes` for
+each route (E0027): `user` first, a `role` field of the session whose type
+is a union and not a `Maybe`, and each name one of its constructors.
+
+#### The IR
+
+Five nodes of their own, not flags on `DbGet` or `DbUpdate`,
 so that every later stage has to say what it does with them:
-`DbScoped{Table}`, a `Select` value; `DbGetScoped{Table, ID}`;
-`DbUpdateScoped{Table, ID, Fn}`; `DbDeleteScoped{Table, ID}`;
-`DbInsertScoped{Table, Row}`. Each also carries `Op`, the operation as
-written (`Db.mine`, `Db.scoped`), which traces and reports use, and
-`Key`, the session field it scopes by: `user` for the `mine` family and
-for any table whose `@partition` is `user` (M15 generalised M11's
-`DbMine` nodes into these: "Partitions", below). A pipeline that starts
-from `Db.mine` is an ordinary `DbSelect` whose `Base` is the
-`DbScoped`. The to-do list's `load` (`alder dump --ir examples/todos`
-prints it, among the modules of the generated admin):
+
+- `DbScoped{Table}`, a `Select` value;
+- `DbGetScoped{Table, ID}`;
+- `DbUpdateScoped{Table, ID, Fn}`;
+- `DbDeleteScoped{Table, ID}`;
+- `DbInsertScoped{Table, Row}`.
+
+Each also carries `Op`, the operation as written (`Db.mine`, `Db.scoped`),
+which traces and reports use, and `Key`, the session field it scopes by:
+`user` for the `mine` family and for any table whose `@partition` is `user`
+(M15 generalised M11's `DbMine` nodes into these: "Partitions", below).
+
+A pipeline that starts from `Db.mine` is an ordinary `DbSelect` whose
+`Base` is the `DbScoped`. The to-do list's `load` (`alder dump --ir
+examples/todos` prints it, among the modules of the generated admin):
 
 ```
 (value Todos.Index.Index.load : Index.Params -> Index.Session -> Query Model (params session)
@@ -2223,7 +2598,9 @@ and the `update` of its `Toggle` route:
 The table records its partition, `(partition user owner)`, and a route
 its roles, `(roles Admin)` (the admin's). Nothing else in the IR changes.
 
-**The Go.** The table's descriptor (`Table__Todo_alder.go`) gets two fields:
+#### The Go
+
+The table's descriptor (`Table__Todo_alder.go`) gets two fields:
 
 ```go
 	Owner: "owner",
@@ -2261,7 +2638,9 @@ func Todos__Index__Toggle__update(p Todos__Index__Toggle__Params, session Todos_
 and `Submit`'s `Db.insertMine` builds the row without its owner, a Go
 struct of its own (`insertmine__Table__Todo__Todo`), which
 `insertminevals__Table__Todo__Todo` turns into the column values with a `nil`
-where the owner goes. Its answer, `Response.redirect (Index { filter: p.filter })`,
+where the owner goes.
+
+Its answer, `Response.redirect (Index { filter: p.filter })`,
 shows what a route value becomes in Go: an `rt.Route` literal with the route's
 name, its method, its path with the path parameters filled in and the rest
 of its parameters, each at its default left out:
@@ -2279,17 +2658,23 @@ func Todos__Index__Submit__update(p Todos__Index__Submit__Params, session Todos_
 Notice what none of these is given: the user. `update`'s `session` is
 not passed to `UpdateMineRow`, and `load`'s is not in the `Select`.
 
-**Whose user: the ambient session.** Each helper asks `owner`
-(`rt/db/store.go`) for the user. `owner` takes the `Env` that is running
-the effect from the context (`eff.EnvFrom(ctx)`, the same way a
-capability finds it: chapter 7), reads its `Session`, and hands it to the
-descriptor's `User`. In a served request `Env.Session` is the session
-from the cookie; in a test, the test's session, which `Test.login` and
-`Session.put` set (chapter 10, "Tests that use the rules"). Since
-`Session.put` writes `Env.Session`, a scoped step after it acts for the
-new user. With no `Env`, or `User` answering false, the step fails with
+#### Whose user: the ambient session
+
+Each helper asks `owner` (`rt/db/store.go`) for the user. `owner` takes the
+`Env` that is running the effect from the context (`eff.EnvFrom(ctx)`, the
+same way a capability finds it: chapter 7), reads its `Session`, and hands it
+to the descriptor's `User`.
+
+In a served request `Env.Session` is the session from the cookie; in a test,
+the test's session, which `Test.login` and `Session.put` set (chapter 10,
+"Tests that use the rules"). Since `Session.put` writes `Env.Session`, a
+scoped step after it acts for the new user.
+
+With no `Env`, or `User` answering false, the step fails with
 an `*eff.ErrFail` whose text is the operation and table: `Db.mine Todo:
-no signed-in user`. Reading the user at run time, not from an argument,
+no signed-in user`.
+
+Reading the user at run time, not from an argument,
 is what lets a helper value such as `recent = Db.mine Todo |> Db.limit
 5` (a Go package variable, built once) mean "the current user's" at each
 use.
@@ -2299,12 +2684,16 @@ yet. `All`, `First` and `CountRows` resolve it as they start (`scoped`):
 they get the user from `owner`, put `CEq(owner, user)` in front of the
 select's conditions, and call `Env.Note("Db.mine Todo")`, which logs the
 name and puts it into the trace just before the running step's own
-name. That is why a trace reads `["Db.mine Todo", "Db.all Todo"]`: the
-note is not a step (no `Call` ran for it), but it says which select the
-step ran. `Select.SQL` refuses a `Mine` select that was not resolved, so
-an unscoped query can never be made from one by mistake.
+name.
 
-**The SQL.** With the dev panel on (chapter 11), its SQL tab lists each
+That is why a trace reads `["Db.mine Todo", "Db.all Todo"]`: the note is
+not a step (no `Call` ran for it), but it says which select the step ran.
+`Select.SQL` refuses a `Mine` select that was not resolved, so an unscoped
+query can never be made from one by mistake.
+
+#### The SQL
+
+With the dev panel on (chapter 11), its SQL tab lists each
 statement a request sent; `/_dev/requests/<id>` has the same list as JSON.
 These are the to-do app's, from a request each (every value is a `?`; the
 table is `Table__Todo__Todo`, from `module Table.Todo`):
@@ -2365,25 +2754,36 @@ When a stranger pressed my todo's Toggle ("Toggle by another user is
 not found"), only the `SELECT … AND "owner" = ?` ran: it found nothing,
 and no `UPDATE` was sent.
 
-**The rows-affected check.** `UpdateMineRow` reads the row first because
+#### The rows-affected check
+
+`UpdateMineRow` reads the row first because
 `f` is a function of the row: it needs the current values to compute
 the new ones. It checks that `f` kept the id, then writes. The `UPDATE`
 carries the owner predicate again, and the store's `UpdateWhere` returns
 how many rows the statement changed (`RowsAffected` of the result). If
 that is 0 (the row was deleted or changed hands between the two
 statements), the step is `eff.ErrNotFound` like a missing row, and the
-`Task` rolls back. So ownership is decided by the statement that writes,
-on the database that writes, whatever the read saw (chapter 6, "The
-rules and a replicated database"). The `SET` list leaves out the id,
-`@created` and the owner: `UpdateMineRow` removes the owner's column and
-value before it calls `UpdateWhere`, so an `f` that changes `owner`
-writes everything else and the row stays the user's. `DeleteMineRow`
-needs no read: its one `DELETE` carries the predicate, and 0 rows
-deleted is `eff.ErrNotFound`. (`Db.delete` of a missing row is not an
-error; `Db.deleteMine`'s is, since it cannot tell missing from someone
-else's, and both must be a 404.)
+`Task` rolls back.
 
-**The role check.** A route with `role R` gets one more check in its
+So ownership is decided by the statement that writes, on the database that
+writes, whatever the read saw (chapter 6, "The rules and a replicated
+database").
+
+The `SET` list leaves out the id, `@created` and the owner:
+`UpdateMineRow` removes the owner's column and value before it calls
+`UpdateWhere`, so an `f` that changes `owner` writes everything else and
+the row stays the user's.
+
+`DeleteMineRow` needs no read: its one `DELETE` carries the predicate, and
+0 rows deleted is `eff.ErrNotFound`.
+
+> **`Db.delete` and `Db.deleteMine`.** `Db.delete` of a missing row is not
+> an error; `Db.deleteMine`'s is, since it cannot tell missing from someone
+> else's, and both must be a 404.
+
+#### The role check
+
+A route with `role R` gets one more check in its
 guard, after the `requires user` redirect and before `load` or `update`.
 The blog's `page__Write__Write` (`build/blog/routes__alder.go`), which the
 `GET /write` route runs before it renders:
@@ -2408,13 +2808,14 @@ func page__Write__Write(rq *web.Request, params Write__Write__Params, keep any) 
 `app.Role` is the session's union value; its `Tag` is compared with the
 constructor's tag (with `role Author | Admin`, the test is
 `!(… == Author || … == Admin)`). A wrong role is the not-found page,
-before any query runs: the check costs no database read. A write route
-has the same check in its `guard__` function, which has no `load` after it:
-`guard__Write__Create` returns the 404 in the same place. Every handler of
-a route with the clause, a GET route's and a write route's, goes through its
-guard first, so a write is checked before its form is decoded or its
-`update` runs. The route's `Session` carries `Role` beside the narrowed
-`User`.
+before any query runs: the check costs no database read.
+
+A write route has the same check in its `guard__` function, which has no
+`load` after it: `guard__Write__Create` returns the 404 in the same place.
+Every handler of a route with the clause, a GET route's and a write
+route's, goes through its guard first, so a write is checked before its
+form is decoded or its `update` runs. The route's `Session` carries `Role`
+beside the narrowed `User`.
 
 ### Partitions and silos
 
@@ -2423,32 +2824,45 @@ chapter 8, "Silos"). This part follows `examples/workspace` through the
 same stages: a key in the session, a table partitioned by it, a silo,
 and the runtime that keeps a database per org.
 
-**The checker.** `internal/check/partitions.go` reads `@partition k`
-(and `@owner` as `@partition user`) into the table's `PartKey` and
-`PartCol`, once the session is known (E0032); `via`, `choose` and `silo`
-declarations into `Result.Via`, `Choose` and `Silos` (E0032, E0033). A
-scoped operation is checked as in M11, with the key in place of `user`:
+#### The checker
+
+`internal/check/partitions.go` reads `@partition k` (and `@owner` as
+`@partition user`) into the table's `PartKey` and `PartCol`, once the
+session is known (E0032); `via`, `choose` and `silo` declarations into
+`Result.Via`, `Choose` and `Silos` (E0032, E0033).
+
+A scoped operation is checked as in M11, with the key in place of `user`:
 legal in a member of a route that `requires` the table's key (or has `silo
 k`, the admin form), in a test, and, through a helper, wherever the
-helper's own use is legal (E0026). An unscoped operation on a siloed
-table is held to the same rule. After every body is checked, the
-**write-set analysis** (`internal/check/writeset.go`) collects, for each
-top-level value, the tables its body writes: every mention of
-`Db.insert`, `Db.update`, `Db.delete` or a scoped form, called there or
-not (`let ins = Db.insert`, a lambda handed `Db.insert`), each with the
-table its type has at that mention — the analysis reads types, not
-spellings, so a write cannot hide behind a name. It closes that over
-every value the body refers to (a fixed point, so a helper of a helper
-counts), and gives each write route's `update` the store its writes fall
-in: the shared one, or `silo org`. An `update` with two stores is E0031.
-It over-approximates (a helper counts if it is
-referred to, called or not) and never under-approximates. What it
-proves is about `update`s (and fakes): a `test`'s own Tasks and an
-adapter's Go code are the runtime's to check, below. The answer is
-`Result.Arms`, which the IR keeps as the route's `Store`:
+helper's own use is legal (E0026). An unscoped operation on a siloed table
+is held to the same rule.
+
+##### The write-set analysis
+
+After every body is checked, the **write-set analysis**
+(`internal/check/writeset.go`) collects, for each top-level value, the
+tables its body writes: every mention of `Db.insert`, `Db.update`,
+`Db.delete` or a scoped form, called there or not (`let ins = Db.insert`, a
+lambda handed `Db.insert`), each with the table its type has at that
+mention — the analysis reads types, not spellings, so a write cannot hide
+behind a name.
+
+It closes that over every value the body refers to (a fixed point, so a
+helper of a helper counts), and gives each write route's `update` the store
+its writes fall in: the shared one, or `silo org`. An `update` with two
+stores is E0031.
+
+> **Over-approximation.** It over-approximates (a helper counts if it is
+> referred to, called or not) and never under-approximates. What it proves
+> is about `update`s (and fakes): a `test`'s own Tasks and an adapter's Go
+> code are the runtime's to check, below.
+
+The answer is `Result.Arms`, which the IR keeps as the route's `Store`:
 `(store silo org)` in `alder dump --ir`, under the route's `update`.
 
-**The Go.** The table's descriptor names its partition and its silo
+#### The Go
+
+The table's descriptor names its partition and its silo
 (`build/workspace/Table__Project_alder.go`):
 
 ```go
@@ -2461,15 +2875,18 @@ adapter's Go code are the runtime's to check, below. The answer is
 	Silo: "org",
 ```
 
-`Owner` and `User` are M11's fields, now the partition column and the
-key's value in a session; the scoped helpers (`db.Scoped`,
-`InsertScopedRow`, `DeleteScopedRow`, …) are the M11 helpers under
-general names, and emit the same SQL with `"org" = ?`. A route that
-`requires user, org` gets two checks in its guard: no `org`
-is a redirect to `choose org`'s path, and then `db.Narrow(rq.Env, "org",
-app.Org.Val)` records the request's org for the runtime. A write route's
-handler binds its `Task` to the route's store before it runs it. This is
-`Projects.Index.Remove`, between the before-view and `eff.Run`:
+`Owner` and `User` are M11's fields, now the partition column and the key's
+value in a session; the scoped helpers (`db.Scoped`, `InsertScopedRow`,
+`DeleteScopedRow`, …) are the M11 helpers under general names, and emit the
+same SQL with `"org" = ?`.
+
+A route that `requires user, org` gets two checks in its guard: no `org` is
+a redirect to `choose org`'s path, and then `db.Narrow(rq.Env, "org",
+app.Org.Val)` records the request's org for the runtime.
+
+A write route's handler binds its `Task` to the route's store before it
+runs it. This is `Projects.Index.Remove`, between the before-view and
+`eff.Run`:
 
 ```go
 		if err := db.Enter(rq.Env, "org"); err != nil {
@@ -2478,73 +2895,97 @@ handler binds its `Task` to the route's store before it runs it. This is
 		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Remove__update(params, session))
 ```
 
-`db.Enter(rq.Env, "org")` opens that org's
-database and makes it the store `eff.Run` begins the transaction on. The
-string is the route's `Store` from the IR, written into the handler by the
-generator; a route that writes the shared database has `db.Enter(rq.Env,
-"")`.
+`db.Enter(rq.Env, "org")` opens that org's database and makes it the store
+`eff.Run` begins the transaction on. The string is the route's `Store` from
+the IR, written into the handler by the generator; a route that writes the
+shared database has `db.Enter(rq.Env, "")`.
+
 `via` is one function, the router's session check (`session__via` in
 `app__alder.go`), called whenever a `Session.put` changes the session:
-a user set to `Nothing` clears the `org`; an `org` that changed to `Just
-v` needs a `Membership` row for the user and `v`, read with `db.Member`
-inside the running `Task`'s transaction, or the step fails with
-"Session.put org: no Membership for this user and org". That failure is
-marked (`eff.ErrFail`'s `NotMember`), so a write route's handler answers it
-as `Response.invalid "You are not a member of that workspace."` for a route
-with a form, and with the not-found page (404) for one without a form,
-rather than the error page (`routeUpdateFailure` in `internal/gen/routes.go`
-writes the lines); `Test.run` sees the failure as it is.
 
-**A store per silo.** `rt/db/stores.go`'s `Stores` holds the shared
-database and the silos opened so far, by key and value. Every database
-step of `rt/db` asks `route` which store it runs on: a table with no
-`Silo` runs on the shared one; a siloed table on the silo of the row's
-own `org` (an insert), else of the request's narrowed key (`Env.Keys`),
-else of the session. When that is the store the `Task` was bound to,
-the step runs in its transaction. A read of the other store runs on a
-read-only connection outside the transaction (SQLite's `query_only`,
-and a Go wrapper that refuses a write), which is how a `load` reads an
-org's name and its projects in one go. A write to another store cannot
-happen in an `update` that checked; one that reaches it anyway (a
-test's own `Task`, an adapter, a bug in gen) is refused by `route` as an
-internal error rather than written outside the `Task`.
+- a user set to `Nothing` clears the `org`;
+- an `org` that changed to `Just v` needs a `Membership` row for the user
+  and `v`, read with `db.Member` inside the running `Task`'s transaction,
+  or the step fails with "Session.put org: no Membership for this user and
+  org".
 
-**Opening a silo.** The first request for an org opens its file
-(`openSilo`): the id must be an id, the org's row must exist in the
-shared database (one read), and then the open-time check of chapter 8
-runs in one `BEGIN IMMEDIATE` on the file: create it at the build's
-schema; serve it when its `_alder_schema` row is the build's (`siloHash`:
-the app's schema hash and the tables of each silo, so a table moved
-into a silo leaves the silos made before it behind); apply the
-pending migrations (each statement whose target is a silo table, with
-references out of the silo removed) when it is behind, unless one drops
-data; refuse it when it is ahead. The outcome is cached per process. A
-silo not served is a `*MaintenanceError`, which the route answers with
-the maintenance page (503), and is checked again after a minute; one
-unused for ten minutes is closed. Only requests for the same org wait
-while it opens: the registry's lock guards the map, not the check.
+That failure is marked (`eff.ErrFail`'s `NotMember`), so a write route's
+handler answers it as `Response.invalid "You are not a member of that
+workspace."` for a route with a form, and with the not-found page (404) for
+one without a form, rather than the error page (`routeUpdateFailure` in
+`internal/gen/routes.go` writes the lines); `Test.run` sees the failure as
+it is.
 
-**The drain.** A deploy starts the new build while the old one drains
-its requests (chapter 16). The new build may migrate a silo the old one
-has open. So once the old process is told to stop, it opens no new silo
-(a request for one answers the maintenance page) and, before each
-write to a silo it has open, reads that file's `_alder_schema` row again
-inside the write's transaction: if another build migrated it, the write
-is refused and the silo answers the maintenance page for the rest of
-the drain. A process that is not draining never re-checks, which is why
-a deploy always signals the old process before it starts the new.
+#### A store per silo
 
-**Tests.** `db.NewTestStores` gives each test a `:memory:` database per
-org it touches, made on first use, each with its transaction open for
-the whole test, and the test's savepoints (`Test.run`, each browser
-request) span all of them. A browser request's `Task` is bound by the
-same `db.Enter` as production's. A `Test.run`'s `Task` is bound too
-(`rtesting.Inner` sets `Env.Pending`): to the store its first write
-lands in, or, for a route's `update`, to the route's store beforehand
-(`rtesting.InnerOn`), so a write to a second store fails it as a
-request's would. The
-test's own body is not bound: it may set up rows in the shared database and
-in several silos.
+`rt/db/stores.go`'s `Stores` holds the shared database and the silos
+opened so far, by key and value. Every database step of `rt/db` asks
+`route` which store it runs on:
+
+- a table with no `Silo` runs on the shared one;
+- a siloed table runs on the silo of the row's own `org` (an insert), else
+  of the request's narrowed key (`Env.Keys`), else of the session.
+
+When that is the store the `Task` was bound to, the step runs in its
+transaction. A read of the other store runs on a read-only connection
+outside the transaction (SQLite's `query_only`, and a Go wrapper that
+refuses a write), which is how a `load` reads an org's name and its
+projects in one go.
+
+A write to another store cannot happen in an `update` that checked; one
+that reaches it anyway (a test's own `Task`, an adapter, a bug in gen) is
+refused by `route` as an internal error rather than written outside the
+`Task`.
+
+#### Opening a silo
+
+The first request for an org opens its file (`openSilo`): the id must be an
+id, the org's row must exist in the shared database (one read), and then
+the open-time check of chapter 8 runs in one `BEGIN IMMEDIATE` on the file:
+
+- create it at the build's schema;
+- serve it when its `_alder_schema` row is the build's (`siloHash`: the
+  app's schema hash and the tables of each silo, so a table moved into a
+  silo leaves the silos made before it behind);
+- apply the pending migrations (each statement whose target is a silo
+  table, with references out of the silo removed) when it is behind,
+  unless one drops data;
+- refuse it when it is ahead.
+
+The outcome is cached per process. A silo not served is a
+`*MaintenanceError`, which the route answers with the maintenance page
+(503), and is checked again after a minute; one unused for ten minutes is
+closed. Only requests for the same org wait while it opens: the registry's
+lock guards the map, not the check.
+
+#### The drain
+
+A deploy starts the new build while the old one drains its requests
+(chapter 16). The new build may migrate a silo the old one has open.
+
+So once the old process is told to stop, it opens no new silo (a request
+for one answers the maintenance page) and, before each write to a silo it
+has open, reads that file's `_alder_schema` row again inside the write's
+transaction: if another build migrated it, the write is refused and the
+silo answers the maintenance page for the rest of the drain. A process
+that is not draining never re-checks, which is why a deploy always signals
+the old process before it starts the new.
+
+#### Tests
+
+`db.NewTestStores` gives each test a `:memory:` database per org it
+touches, made on first use, each with its transaction open for the whole
+test, and the test's savepoints (`Test.run`, each browser request) span all
+of them.
+
+A browser request's `Task` is bound by the same `db.Enter` as production's.
+A `Test.run`'s `Task` is bound too (`rtesting.Inner` sets `Env.Pending`): to
+the store its first write lands in, or, for a route's `update`, to the
+route's store beforehand (`rtesting.InnerOn`), so a write to a second store
+fails it as a request's would.
+
+The test's own body is not bound: it may set up rows in the shared database
+and in several silos.
 
 ### The dev server
 
@@ -2559,33 +3000,102 @@ browser ──HTTP──▶ dev server (alder run, ALDER_ADDR) ──proxy──
    └──/_dev/reload───┘  worker: check → build → start child → swap → clear + reload
 ```
 
-**The proxy.** The dev server's handler, `devServer.ServeHTTP`, answers
-`/_dev/reload` and the `/_dev/theme` routes itself and hands every other request to Go's
+#### The proxy
+
+The dev server's handler, `devServer.ServeHTTP`, answers `/_dev/reload` and
+the `/_dev/theme` routes itself and hands every other request to Go's
 `httputil.ReverseProxy`, aimed at the current child's address. The
 address is read once per request, under a lock, so a request that started
-before a swap finishes on the child it started on. `FlushInterval: -1`
-makes the proxy pass each piece of an answer on as soon as the app writes
-it, which a Datastar answer (a stream of server-sent events, "A request"
-above) needs. Cookies and `303`s are passed on untouched, and the
-`Host` header is kept, so the app sees the address the browser used.
+before a swap finishes on the child it started on.
 
-**The theme page.** `/_dev/theme` (`cmd/alder/theme_ui.go`, with the page's HTML, CSS and JavaScript as Go string constants in `theme_ui_assets.go`) is answered by this handler too, never proxied, so it works while the app is still building or does not build. A write is refused while the app has errors the checker cannot get past (an `App.alder` that does not parse, say); type errors elsewhere do not block it. That is also why it exists only under `alder run`: the supervisor is the one process that owns the app's directory and may write to it, and a built app carries no such routes. Before anything else each of its routes passes `themeAllowed`, which refuses a request from another site (`Sec-Fetch-Site`, `Origin`) or addressed to another name (`Host`), because a write to `App.alder` must not be reachable from a web page you merely visited. The write path has four steps. The page posts its theme as JSON; `generate.ThemeEdit` runs the checker's own theme check on it (the E0042 rules, so the page and `alder check` cannot disagree) and refuses a declaration that fails; the formatter prints the declaration (`format.Theme`, the same code `alder fmt` uses); and that text is spliced over the old `theme { … }` in `App.alder`, read afresh at that moment so an edit made in an editor since the page loaded is kept. The splice goes through `Apply`, chapter 15's copy, check, write: the result is checked in a copy before the file is touched. The watcher then sees the file change and rebuilds like for any edit. Printing the whole declaration is why a `--` comment inside `theme { … }` does not survive a write.
+`FlushInterval: -1` makes the proxy pass each piece of an answer on as soon
+as the app writes it, which a Datastar answer (a stream of server-sent
+events, "A request" above) needs. Cookies and `303`s are passed on
+untouched, and the `Host` header is kept, so the app sees the address the
+browser used.
 
-**The importer.** `theme.Import` (`internal/theme/import.go`) reads CSS with a small scanner of its own, as the repository allows no CSS library. It drops `/* … */` comments outside strings, then `nodes` cuts the text into statements and `{ … }` blocks, tracking strings, parentheses and braces so a `;` inside `url(…)` or a `}` inside a quoted string does not end one (parentheses are tracked only for `;`). A block's selector decides where its `--name: value` lines go: `.dark` (or `[data-theme=dark]`) is the dark scheme, `:root` or `html` the light one, and a rule inside `@media (prefers-color-scheme: dark)` is dark; `@media`, `@layer` and `@supports` are walked into, and Tailwind's own at-rules (`@theme`, `@import`, `@custom-variant`) are counted and skipped. Each name is looked up in the token table (`theme.ByCSS`), the value is checked against the token's kind, and bare HSL channels are wrapped in `hsl()`. Whatever cannot be placed is kept with a reason (`Unplaced`) instead of being lost; `UnplacedCSS` prints those as the block to paste into `app.css`. The importer is a pure function from text to a theme: `alder theme import` and the page's Import… button both call it, and only the first writes.
+#### The theme page
 
-**The watcher.** `watch` polls rather than asking the operating system
-for change notifications, so the compiler needs no dependency beyond Go's
-standard library. Every 300 ms, `snapshot` records the modification time
-and size of every `.alder` file under `app/`, every file under
-`adapters/` (any directory, any extension: `alder build` copies the whole
-tree, so any of it can change the build; but not an editor's files,
-which `editorNoise` recognizes by name: a name starting with `.`, ending
-in `~`, `.swp` or `.swx`, or of the form `#…#`, nor a symbolic link,
-which the build does not copy), the migration files, and every file
-under `static/`; `diff` compares two
-snapshots and says which kinds changed, `sourceChange`, `staticChange` or
-both (a `change` is a set of bits). The watcher does not report a change
-at once. It waits for a poll that finds nothing new:
+`/_dev/theme` (`cmd/alder/theme_ui.go`, with the page's HTML, CSS and
+JavaScript as Go string constants in `theme_ui_assets.go`) is answered by
+this handler too, never proxied, so it works while the app is still
+building or does not build. A write is refused while the app has errors the
+checker cannot get past (an `App.alder` that does not parse, say); type
+errors elsewhere do not block it.
+
+That is also why it exists only under `alder run`: the supervisor is the
+one process that owns the app's directory and may write to it, and a built
+app carries no such routes.
+
+Before anything else each of its routes passes `themeAllowed`, which
+refuses a request from another site (`Sec-Fetch-Site`, `Origin`) or
+addressed to another name (`Host`), because a write to `App.alder` must not
+be reachable from a web page you merely visited.
+
+The write path has four steps:
+
+1. The page posts its theme as JSON.
+2. `generate.ThemeEdit` runs the checker's own theme check on it (the E0042
+   rules, so the page and `alder check` cannot disagree) and refuses a
+   declaration that fails.
+3. The formatter prints the declaration (`format.Theme`, the same code
+   `alder fmt` uses).
+4. That text is spliced over the old `theme { … }` in `App.alder`, read
+   afresh at that moment so an edit made in an editor since the page loaded
+   is kept. The splice goes through `Apply`, chapter 15's copy, check,
+   write: the result is checked in a copy before the file is touched.
+
+The watcher then sees the file change and rebuilds like for any edit.
+
+> **Comments in `theme { … }`.** Printing the whole declaration is why a
+> `--` comment inside `theme { … }` does not survive a write.
+
+#### The importer
+
+`theme.Import` (`internal/theme/import.go`) reads CSS with a small scanner
+of its own, as the repository allows no CSS library. It drops `/* … */`
+comments outside strings, then `nodes` cuts the text into statements and
+`{ … }` blocks, tracking strings, parentheses and braces so a `;` inside
+`url(…)` or a `}` inside a quoted string does not end one (parentheses are
+tracked only for `;`).
+
+A block's selector decides where its `--name: value` lines go:
+
+- `.dark` (or `[data-theme=dark]`) is the dark scheme;
+- `:root` or `html` is the light one;
+- a rule inside `@media (prefers-color-scheme: dark)` is dark.
+
+`@media`, `@layer` and `@supports` are walked into, and Tailwind's own
+at-rules (`@theme`, `@import`, `@custom-variant`) are counted and skipped.
+
+Each name is looked up in the token table (`theme.ByCSS`), the value is
+checked against the token's kind, and bare HSL channels are wrapped in
+`hsl()`. Whatever cannot be placed is kept with a reason (`Unplaced`)
+instead of being lost; `UnplacedCSS` prints those as the block to paste
+into `app.css`.
+
+The importer is a pure function from text to a theme: `alder theme import`
+and the page's Import… button both call it, and only the first writes.
+
+#### The watcher
+
+`watch` polls rather than asking the operating system for change
+notifications, so the compiler needs no dependency beyond Go's standard
+library. Every 300 ms, `snapshot` records the modification time and size
+of:
+
+- every `.alder` file under `app/`;
+- every file under `adapters/` (any directory, any extension: `alder
+  build` copies the whole tree, so any of it can change the build; but not
+  an editor's files, which `editorNoise` recognizes by name: a name
+  starting with `.`, ending in `~`, `.swp` or `.swx`, or of the form
+  `#…#`, nor a symbolic link, which the build does not copy);
+- the migration files;
+- every file under `static/`.
+
+`diff` compares two snapshots and says which kinds changed, `sourceChange`,
+`staticChange` or both (a `change` is a set of bits). The watcher does not
+report a change at once. It waits for a poll that finds nothing new:
 
 ```go
 		cur := snapshot(dir)
@@ -2608,7 +3118,9 @@ So an editor that writes five files in a row produces one change, sent
 300 ms after the last write. This is *coalescing*: merging a burst of
 events into one.
 
-**The worker.** One goroutine, `work`, receives the changes and is the
+#### The worker
+
+One goroutine, `work`, receives the changes and is the
 only caller of `rebuild`. Because there is one worker, two rebuilds can
 never run at the same time (the rebuild is *single-flight*). While it
 rebuilds, the watcher waits on its send, and when the worker comes back it
@@ -2617,7 +3129,9 @@ again. A change that is only `staticChange` skips the rebuild: the child
 serves `static/` straight from your directory (`ALDER_STATIC`), so the
 browser just has to reload.
 
-**`rebuild`.** It runs `alder check`, then the build, then starts the new
+#### `rebuild`
+
+It runs `alder check`, then the build, then starts the new
 child. Each step that fails calls `fail` and returns, and returning early
 is what keeps the old child serving:
 
@@ -2651,22 +3165,27 @@ func (d *devServer) rebuild() {
 ```
 
 `buildApp` (`cmd/alder/build.go`) is `alder build` itself, the steps of
-chapter 11, returning the executable's path. `gen` is the new child's
-*build generation*: `d.nonce`, eight random hex digits picked when the dev
-server starts, then a dash and a count of the children started so far
-(`afcb2a7d-1`, `afcb2a7d-2`, …). "The subscriber" below is what it is for.
+chapter 11, returning the executable's path.
+
+`gen` is the new child's *build generation*: `d.nonce`, eight random hex
+digits picked when the dev server starts, then a dash and a count of the
+children started so far (`afcb2a7d-1`, `afcb2a7d-2`, …). "The subscriber"
+below is what it is for.
+
 `startChild` runs the executable with
 `ALDER_ADDR=127.0.0.1:0 ALDER_DEV=1 ALDER_RELOAD=<gen>`, the database
-`build/<app>/dev.db` and your `static/`, and `ALDER_PUBLIC_URL=http://<d.addr>`,
-the dev server's own address (`childEnv`): the child's port is not the one
-the browser opens, so its `Url.absolute` would be wrong without it. A
-`ALDER_PUBLIC_URL` already in `alder run`'s environment is passed on
-instead. It reads the child's stdout
-until the line `listening on <addr>` that every generated `main` prints
-once it has its port (chapter 11, "`alder build`"). That line is how the dev server learns
-the free port the operating system picked. If the line doesn't come
-within 10 seconds, or the child exits first, the error carries the last
-40 lines of the child's stderr. Only after all that does the swap happen:
+`build/<app>/dev.db` and your `static/`, and
+`ALDER_PUBLIC_URL=http://<d.addr>`, the dev server's own address
+(`childEnv`): the child's port is not the one the browser opens, so its
+`Url.absolute` would be wrong without it. A `ALDER_PUBLIC_URL` already in
+`alder run`'s environment is passed on instead.
+
+It reads the child's stdout until the line `listening on <addr>` that every
+generated `main` prints once it has its port (chapter 11, "`alder build`").
+That line is how the dev server learns the free port the operating system
+picked. If the line doesn't come within 10 seconds, or the child exits
+first, the error carries the last 40 lines of the child's stderr. Only
+after all that does the swap happen:
 
 ```go
 	d.mu.Lock()
@@ -2697,7 +3216,9 @@ the exit status, `save a source file to rebuild it`, and the last 40
 lines of the child's stderr. It leaves `d.gen` alone: the generation
 stays that of the app that crashed until a new one comes up.
 
-**The subscriber.** Every page the child renders carries two elements
+#### The subscriber
+
+Every page the child renders carries two elements
 right after `<body>`. They come from the router, not the dev server
 (`rt/web/router.go`):
 
@@ -2729,48 +3250,65 @@ attribute that waited for one would never run; `data-init` runs as soon
 as Datastar sets the element up.) Three details of these two elements
 each fix a way the browser could miss a message:
 
-- `data-ignore-morph`. When the whole `<body>` is patched (a `refresh`
-  that cannot be cut into regions, or a `redirect`, "A request" above),
-  Datastar *morphs* the old body into the new one:
-  it walks both and changes only what differs. The new body's box is
-  empty, so without this attribute every click would wipe an error off
-  the page. Datastar 1.0.0 leaves an element alone when the old and the
-  new element both carry `data-ignore-morph`, which the box always does.
-  The dev server's own patches still reach it: they patch the box's
-  *inside* (`mode inner`, below), and the check compares only the box
-  and the element that replaces it, not what goes inside.
-- `openWhenHidden: true`. By default Datastar's `@get` closes its stream
-  while the tab is hidden and opens it again when you come back, so a
-  reload sent meanwhile would be lost. With this option the stream stays
-  open.
-- `?b=afcb2a7d-1`, the generation of the app that rendered the page. A
-  stream can still close: the network drops for a moment (Datastar
-  then retries), or you restart `alder run`. When a page reconnects,
-  `serveReload` compares its generation with `d.gen` and, when they
-  differ, sends the reload straight away; the page belongs to an older
-  build or an earlier dev server, so whatever it missed, reloading is
-  the answer. The nonce is what tells two dev servers apart: a restarted
-  one counts from 1 again.
+##### `data-ignore-morph`
 
-Why does the router add these, and not the proxy, which sees every
-answer? To add them, the proxy would have to hold back each HTML answer,
-find `<body>` in it, and fix up `Content-Length`; and it would also have
-to rewrite inside Datastar's event streams, because a body patch replaces
-the whole `<body>` ("A request" above) and would wipe out a box that
-only the first page load had. The router already knows which answers are
-pages and which are body patches, and it passes both through `dev`, so
-a patched body keeps the box and the subscriber. The proxy stays a plain
-pass-through. Run the executable without `alder run` and nothing sets
-`ALDER_RELOAD`, so its pages are exactly as before.
+When the whole `<body>` is patched (a `refresh` that cannot be cut into
+regions, or a `redirect`, "A request" above), Datastar *morphs* the old
+body into the new one: it walks both and changes only what differs. The
+new body's box is empty, so without this attribute every click would wipe
+an error off the page.
 
-**The events.** `/_dev/reload` (`serveReload`) is a server-sent event
-stream that stays open. It starts with a comment line, `: ready` (a line
-starting with `:` is a comment in the format, ignored by the browser),
-then the reload if the page's generation is not the current one, or else
-the overlay if there is an error right now, then whatever is
-broadcast, and a `: ping` comment every 15 seconds so idle connections
-are not dropped. Every event is made by one function in
-`rt/datastar/datastar.go`, the same one the router's `PatchBody` uses:
+Datastar 1.0.0 leaves an element alone when the old and the new element
+both carry `data-ignore-morph`, which the box always does. The dev server's
+own patches still reach it: they patch the box's *inside* (`mode inner`,
+below), and the check compares only the box and the element that replaces
+it, not what goes inside.
+
+##### `openWhenHidden: true`
+
+By default Datastar's `@get` closes its stream while the tab is hidden and
+opens it again when you come back, so a reload sent meanwhile would be
+lost. With this option the stream stays open.
+
+##### `?b=afcb2a7d-1`
+
+This is the generation of the app that rendered the page. A stream can
+still close: the network drops for a moment (Datastar then retries), or you
+restart `alder run`.
+
+When a page reconnects, `serveReload` compares its generation with `d.gen`
+and, when they differ, sends the reload straight away; the page belongs to
+an older build or an earlier dev server, so whatever it missed, reloading
+is the answer. The nonce is what tells two dev servers apart: a restarted
+one counts from 1 again.
+
+Why does the router add these, and not the proxy, which sees every answer?
+To add them, the proxy would have to hold back each HTML answer, find
+`<body>` in it, and fix up `Content-Length`; and it would also have to
+rewrite inside Datastar's event streams, because a body patch replaces the
+whole `<body>` ("A request" above) and would wipe out a box that only the
+first page load had.
+
+The router already knows which answers are pages and which are body
+patches, and it passes both through `dev`, so a patched body keeps the box
+and the subscriber. The proxy stays a plain pass-through. Run the
+executable without `alder run` and nothing sets `ALDER_RELOAD`, so its
+pages are exactly as before.
+
+#### The events
+
+`/_dev/reload` (`serveReload`) is a server-sent event stream that stays
+open. It sends, in order:
+
+1. a comment line, `: ready` (a line starting with `:` is a comment in the
+   format, ignored by the browser);
+2. the reload if the page's generation is not the current one, or else the
+   overlay if there is an error right now;
+3. whatever is broadcast, and a `: ping` comment every 15 seconds so idle
+   connections are not dropped.
+
+Every event is made by one function in `rt/datastar/datastar.go`, the same
+one the router's `PatchBody` uses:
 
 ```go
 func PatchEvent(selector, mode, elements string) []byte {
@@ -2823,10 +3361,12 @@ with the `<pre>`. The diagnostic is the one `alder check` prints, run
 through `html.EscapeString` (`overlayHTML`), which is why `<title>`
 arrives as `&lt;title&gt;`: your source is shown as text, never run as
 HTML. Each line of it is its own `data: elements` line, because a line
-end inside a data line would end it. A second `curl` opened while the
-error stood got the same event straight after `: ready`, and the page
-itself still answered 200 from the old child. Fixing the file then sent
-these two events, one right after the other:
+end inside a data line would end it.
+
+A second `curl` opened while the error stood got the same event straight
+after `: ready`, and the page itself still answered 200 from the old
+child. Fixing the file then sent these two events, one right after the
+other:
 
 ```
 event: datastar-patch-elements
@@ -2846,13 +3386,15 @@ line ends in a space) replaces the box's content with nothing. The second
 appends a `<script>` to `<body>`. Datastar runs a script it patches in, so
 the browser executes `location.reload()` and asks the dev server for the
 page again, which the new child now answers. (`data-effect="el.remove()"`
-removes the element once Datastar has seen it.) Datastar 1.0's events
-patch elements or signals; it has no "run this script" event, so a
-patched-in script is how a server makes the browser do something. The
-clear goes first, so even a page that misses the reload stops showing the
-old error. An edit with no
-error, and a change under `static/`, send the same reload event; the
-first also sends the clear before it. The new app is generation
+removes the element once Datastar has seen it.)
+
+Datastar 1.0's events patch elements or signals; it has no "run this
+script" event, so a patched-in script is how a server makes the browser do
+something. The clear goes first, so even a page that misses the reload
+stops showing the old error.
+
+An edit with no error, and a change under `static/`, send the same reload
+event; the first also sends the clear before it. The new app is generation
 `afcb2a7d-2`, so a third `curl` on `/_dev/reload?b=afcb2a7d-1`, opened
 after the fix, the way a page that missed all this would reconnect, got
 the reload at once:
@@ -2875,20 +3417,29 @@ reconnects after it. Since there is then no app to serve the
 Datastar script it loads, the dev server serves
 `/_alder/datastar-v1.0.0.js` (`datastar.ScriptPath`) itself in that state.
 
-**Stopping.** On Ctrl-C, `runRunTo` closes `done`, which ends the
+#### Stopping
+
+On Ctrl-C, `runRunTo` closes `done`, which ends the
 watcher, the worker's wait, the monitors and every open `/_dev/reload`
 stream; shuts down the HTTP server (5 seconds for requests in flight);
 waits for a rebuild in progress to finish, so the child it may have
 started is not left behind; and then stops the current child.
 
-**When the dev server dies.** None of that runs when the dev server is
+#### When the dev server dies
+
+None of that runs when the dev server is
 killed with `SIGKILL` (which a process cannot catch), and a child left
 running would keep its port and its database open with no one to stop it.
-So `startChild` gives each child a pipe as its standard input: it makes
-one with `os.Pipe()`, passes the read end as `cmd.Stdin` (closing its own
-copy once the child has started), keeps the write end in `child.stdinW`,
-and adds `ALDER_EXIT_ON_STDIN_EOF=1` to the child's environment. Nothing
-is ever written to the pipe. `stop` closes the write end after its
+
+So `startChild` gives each child a pipe as its standard input. It:
+
+- makes one with `os.Pipe()`;
+- passes the read end as `cmd.Stdin` (closing its own copy once the child
+  has started);
+- keeps the write end in `child.stdinW`;
+- adds `ALDER_EXIT_ON_STDIN_EOF=1` to the child's environment.
+
+Nothing is ever written to the pipe. `stop` closes the write end after its
 `SIGTERM`, and when the dev server's process ends any other way, the
 kernel closes every file it had open, the write end too. The generated
 `main` (chapter 11, "`alder build`") waits for that, right after it sets
@@ -2910,6 +3461,7 @@ up its signal handling:
 end is closed. `stop` is the function `signal.NotifyContext` returned:
 it cancels `ctx`, which is exactly what a `SIGTERM` does, so the app
 shuts down the same graceful way (requests in flight get 5 seconds).
+
 The variable is cleared once read: a process the app starts inherits
 the app's environment, and its standard input is not the dev server's
 pipe. Without the variable the app never reads its standard input, so a
@@ -2967,60 +3519,73 @@ func Compile(appDir string, extra *Module, mainGo string, purpose, out string) B
 Here is `alder eval examples/todos 'Todo.filterLabel Active'`, step by step
 (`cmd/alder/eval.go`):
 
-1. **The scratch module.** `parseItems` (`cmd/alder/evalinput.go`)
-   splits the input into its items, the `let`s and the expression (a
-   `let`'s name must start with a lowercase letter or `_`: `let Todo = 1` would
-   otherwise be shadowed by the module `Todo`), and
-   `assemble` joins them into the source of module `Scratch`, line for
-   line (two steps, so that a REPL can keep the `let`s of earlier
-   entries and assemble them again with each new one): the expression's
-   first line
-   becomes `it = Todo.filterLabel Active`, and each `let name = expr` before it a
-   top-level `name = expr` (an annotated `let name : T = expr` becomes the
-   two lines `name : T` and `name = expr`, which is why eval keeps a map
-   from each line it wrote back to the input's). Where each item starts
-   is `snippets.Starts` (`internal/snippets`): a line at column 1 that is
-   not blank, a comment, or a closer such as `}` or `</ul>`; the book
-   verifier uses the same rule. None of the values has a signature.
-2. **Check.** `scratch.Check` adds `module Scratch` and an `import` of
-   every app module but `App` (a name an app or stdlib module already
-   has is an error, `ModuleExistsError`; `--module` picks another name), and checks the program with `check.Options{InferModule:
-   "Scratch"}`: that module's values without a signature are inferred
-   instead of being E0007, and it may use any module's brand
-   constructors, as a `test` may. A function may call itself: while its
-   body is inferred, its own name has a fresh type variable, unified
-   with the body's type at the end (let-rec); a value defined after it is
-   not known yet, and using one is E0007. Diagnostics are mapped back
-   through the inserted lines (`MapDiag`, which also maps the line an
-   E0009 message names) and the rewriting of step 1, and come out as
-   `input:1:18`.
+1. **The scratch module.** `parseItems` (`cmd/alder/evalinput.go`) splits
+   the input into its items, the `let`s and the expression (a `let`'s name
+   must start with a lowercase letter or `_`: `let Todo = 1` would
+   otherwise be shadowed by the module `Todo`), and `assemble` joins them
+   into the source of module `Scratch`, line for line (two steps, so that a
+   REPL can keep the `let`s of earlier entries and assemble them again with
+   each new one).
 
-   `--in Table.Todo` changes what step 2 builds. There is no `Scratch` module:
-   the file `app/Table/Todo.alder` is overlaid with its own text plus the
-   session, appended (a newline is added first when the file lacks one),
-   so the session is simply the end of `Table.Todo`. `Build.BaseLines` records
-   how many lines are the module's own, which is how a line of the
-   overlay is told from a line of the session. `InSession` says whether a
-   diagnostic is about the session, and `MapDiag` leaves one in the
-   module's own lines alone, still `app/Table/Todo.alder:L:C`, so that a
-   mistake in the module is not shown as a mistake in your input.
-   `Module.In` must name an app module exactly; anything else is a
-   `NoModuleError`.
+   The expression's first line becomes `it = Todo.filterLabel Active`, and
+   each `let name = expr` before it a top-level `name = expr` (an annotated
+   `let name : T = expr` becomes the two lines `name : T` and `name = expr`,
+   which is why eval keeps a map from each line it wrote back to the
+   input's).
+
+   Where each item starts is `snippets.Starts` (`internal/snippets`): a line
+   at column 1 that is not blank, a comment, or a closer such as `}` or
+   `</ul>`; the book verifier uses the same rule. None of the values has a
+   signature.
+
+2. **Check.** `scratch.Check` adds `module Scratch` and an `import` of
+   every app module but `App` (a name an app or stdlib module already has
+   is an error, `ModuleExistsError`; `--module` picks another name), and
+   checks the program with `check.Options{InferModule: "Scratch"}`: that
+   module's values without a signature are inferred instead of being E0007,
+   and it may use any module's brand constructors, as a `test` may.
+
+   A function may call itself: while its body is inferred, its own name has
+   a fresh type variable, unified with the body's type at the end
+   (let-rec); a value defined after it is not known yet, and using one is
+   E0007.
+
+   Diagnostics are mapped back through the inserted lines (`MapDiag`, which
+   also maps the line an E0009 message names) and the rewriting of step 1,
+   and come out as `input:1:18`.
+
+   `--in Table.Todo` changes what step 2 builds. There is no `Scratch`
+   module: the file `app/Table/Todo.alder` is overlaid with its own text
+   plus the session, appended (a newline is added first when the file lacks
+   one), so the session is simply the end of `Table.Todo`.
+
+   `Build.BaseLines` records how many lines are the module's own, which is
+   how a line of the overlay is told from a line of the session.
+   `InSession` says whether a diagnostic is about the session, and
+   `MapDiag` leaves one in the module's own lines alone, still
+   `app/Table/Todo.alder:L:C`, so that a mistake in the module is not shown
+   as a mistake in your input. `Module.In` must name an app module exactly;
+   anything else is a `NoModuleError`.
+
 3. **Choose a main.** The inferred type of `Scratch.it` picks the Go
    `main`, which `scratchMain` (`cmd/alder/scratchmain.go`) writes in one
-   of three kinds. `mainPure` prints `rt.Show(app.Scratch__it)`, the
-   value written as Alder (a polymorphic `it` is a generic thunk,
-   instantiated at `any`); `alder eval` uses it for every value but a
-   `Query` or a `Task`. `mainQuery` runs `it` as a Query against the
-   database named by `ALDER_EVAL_DB`; eval uses it only with `--run`
-   (`build/<app>/dev.db`), and otherwise prints `<Query>` with its type.
-   `mainTask` runs it as a Task, whose writes commit; eval refuses a
-   `Task`, and the REPL's `:run!` is what uses it. The two effect mains
-   are one template; `scratchMain(mainQuery, true, "app.Scratch__it")`
-   (an app with capabilities and a `.go` file somewhere under `adapters/`,
-   `Checked.WiresAdapters`) imports `"app/caps"`, opens the database,
-   creating it with the app's tables when absent, and then runs (from
-   `build/todos/scratch/eval/cmd/main.go`, after
+   of three kinds:
+
+   - `mainPure` prints `rt.Show(app.Scratch__it)`, the value written as
+     Alder (a polymorphic `it` is a generic thunk, instantiated at `any`);
+     `alder eval` uses it for every value but a `Query` or a `Task`.
+   - `mainQuery` runs `it` as a Query against the database named by
+     `ALDER_EVAL_DB`; eval uses it only with `--run`
+     (`build/<app>/dev.db`), and otherwise prints `<Query>` with its type.
+   - `mainTask` runs it as a Task, whose writes commit; eval refuses a
+     `Task`, and the REPL's `:run!` is what uses it.
+
+   The two effect mains are one template; `scratchMain(mainQuery, true,
+   "app.Scratch__it")` (an app with capabilities and a `.go` file
+   somewhere under `adapters/`, `Checked.WiresAdapters`) imports
+   `"app/caps"`, opens the database, creating it with the app's tables
+   when absent, and then runs (from `build/todos/scratch/eval/cmd/main.go`,
+   after
    `alder eval examples/todos --run 'Db.count (Db.from Todo.Todo)'`)
 
    ```go
@@ -3031,33 +3596,38 @@ Here is `alder eval examples/todos 'Todo.filterLabel Active'`, step by step
    with the app's default session (`TestSession`, the one `alder test`
    uses; only a test build has it, so eval and the REPL build with
    `scratch.Options{Tests: true}`, below) and the adapters' capabilities,
-   wired by the generated `caps` package as in `alder build` (chapter 7);
-   before compiling, the build checks the adapters with
+   wired by the generated `caps` package as in `alder build` (chapter 7).
+
+   Before compiling, the build checks the adapters with
    `buildkit.CheckTestAdapters`: `alder build`'s check, whose refusals are
    the build's error (a `scratch.AdapterError`, exit 1, with the same
    lines), except that a missing adapter is left unwired (out of the
    `caps` package) and listed once, as a warning (`Build.Warning`), so
-   eval goes on. Without adapters the
-   main does not import `app/caps`, `caps/` is left out of the scratch
-   module, and `Caps` is `app.Caps{}.Registry()`, every capability
-   unwired: a call to one fails with "capability … is not wired in eval"
-   (as does a call to one whose constructor returned `nil`). A failed effect
-   prints its message to stderr and exits 1.
-4. **Compile.** `scratch.CompileCheckedWith` builds what step 2
-   checked, without checking again: it takes the lock file
+   eval goes on.
+
+   Without adapters the main does not import `app/caps`, `caps/` is left
+   out of the scratch module, and `Caps` is `app.Caps{}.Registry()`, every
+   capability unwired: a call to one fails with "capability … is not wired
+   in eval" (as does a call to one whose constructor returned `nil`). A
+   failed effect prints its message to stderr and exits 1.
+
+4. **Compile.** `scratch.CompileCheckedWith` builds what step 2 checked,
+   without checking again: it takes the lock file
    `build/todos/scratch/eval.lock`, lowers and emits the whole app plus
    `Scratch` into `build/todos/scratch/eval/` as a test build (its
-   `Options.Tests`: the app's tests, `TestSession` and fakes are
-   compiled in, as for `alder test`; eval is a developer tool, never
-   deployed), and builds it. The
-   returned `Build` keeps the lock until `alder eval` closes it after
-   step 5, so another evaluation cannot replace the executable while
-   this one runs it. Taking the lock first *tries* it
-   (`flock(LOCK_EX|LOCK_NB)`, which fails at once instead of waiting
-   when another process holds it); only then does eval print `alder
-   eval: waiting for another alder eval of this app…` (the
-   `Options.Waiting` function it passes) and try again every 100 ms. A
-   blocking `flock` could not be interrupted, and the retries can: each
+   `Options.Tests`: the app's tests, `TestSession` and fakes are compiled
+   in, as for `alder test`; eval is a developer tool, never deployed), and
+   builds it.
+
+   The returned `Build` keeps the lock until `alder eval` closes it after
+   step 5, so another evaluation cannot replace the executable while this
+   one runs it. Taking the lock first *tries* it (`flock(LOCK_EX|LOCK_NB)`,
+   which fails at once instead of waiting when another process holds it);
+   only then does eval print `alder eval: waiting for another alder eval of
+   this app…` (the `Options.Waiting` function it passes) and try again
+   every 100 ms.
+
+   A blocking `flock` could not be interrupted, and the retries can: each
    checks the context first, which Ctrl-C cancels. The same context goes
    to `go vet` and `go build` (`exec.CommandContext`), so Ctrl-C during
    a build kills it. The scratch module's Go is one line:
@@ -3097,17 +3667,20 @@ Here is `alder eval examples/todos 'Todo.filterLabel Active'`, step by step
    compiling the generated package `app` again, which holds the scratch
    module and so changes with every new expression, and relinking the
    program. The same expression again finds everything in the cache.
+
    `scratch.CompileCheckedWith(ctx, …, scratch.Options{NoVet: true})`
    skips vet, for the REPL, whose app was vetted when it was built; if
    `go build` then fails, it vets after all, so the error says the same
    as with vet (the generated Go is an internal error, the main's or the
    adapters' is theirs). `alder eval` keeps vetting: it is what agents
    and the book verifier run, and there correctness is worth the 0.15 s.
+
 5. **Run.** `scratch.RunTethered` runs the executable in its own process
    group, so the terminal's Ctrl-C reaches `alder eval` alone; eval
    catches it (and SIGTERM), cancels the context, and the whole group is
    killed, as it is after `scratch.Timeout`. (Its standard input is a
    pipe that ties the program to eval; "The REPL" below explains why.)
+
    `classifyRun` turns a failure into one message, shared with the
    REPL: a stack overflow is one line instead of Go's hundreds, a panic
    its first paragraph, a timeout `the evaluation timed out after 1m0s`.
@@ -3130,29 +3703,41 @@ $ alder eval examples/todos --json 'Todo.filterLabel Active'
 {"value":"\"Active\"","type":"Text","diagnostics":[]}
 ```
 
-**The book verifier** (`go test ./book`, chapter 11) runs every block of
-this book through the same pipeline, from the outside: it builds the
-`alder` binary once and drives it. `book/snippets.go` extracts the fenced
-`alder` blocks and classifies each by its first line of code: a module
-(`module …`), declarations (a declaration keyword, `name : T` or
-`name args = …` at column 1), a table of signatures (`List.map : …`
-lines), or expressions. Declarations are wrapped the way
-`scratch.Compile` wraps a scratch module, as `module Snippet<n>` with an
-import of every example module but `App`, and a signature `Name.x : T`
-becomes `sig1 : T` and `sig1 = Name.x`, so the checker compares the
-book's type with the real one. A module shown piece by piece (`part=`
-blocks, chapter 11) is joined first. All of a chapter's modules,
-declarations and signature tables go into one copy of `examples/todos/app` and one
-`alder check --json`; only when that is not clean is each block checked
-alone, to pin every diagnostic on its block and line. Expressions are
-only parsed, with `alder dump` (each starting where `snippets.Starts`
-says), unless the fence gives `eval=` or `error=`: then they are
-evaluated with `alder eval --json -` in a working directory shared by
-all chapters, where the lock above makes the chapters take turns. An
-`error=` block passes only when the diagnostic is in the block itself
-and, when the fence quotes a part of the message, its message has it. Chapters run in
-parallel, each in its own temporary directory; the whole book takes
-about 15 seconds, almost all of it the evaluations.
+#### The book verifier
+
+The book verifier (`go test ./book`, chapter 11) runs every block of this
+book through the same pipeline, from the outside: it builds the `alder`
+binary once and drives it.
+
+`book/snippets.go` extracts the fenced `alder` blocks and classifies each
+by its first line of code:
+
+- a module (`module …`);
+- declarations (a declaration keyword, `name : T` or `name args = …` at
+  column 1);
+- a table of signatures (`List.map : …` lines);
+- or expressions.
+
+Declarations are wrapped the way `scratch.Compile` wraps a scratch module,
+as `module Snippet<n>` with an import of every example module but `App`,
+and a signature `Name.x : T` becomes `sig1 : T` and `sig1 = Name.x`, so the
+checker compares the book's type with the real one. A module shown piece
+by piece (`part=` blocks, chapter 11) is joined first.
+
+All of a chapter's modules, declarations and signature tables go into one
+copy of `examples/todos/app` and one `alder check --json`; only when that
+is not clean is each block checked alone, to pin every diagnostic on its
+block and line.
+
+Expressions are only parsed, with `alder dump` (each starting where
+`snippets.Starts` says), unless the fence gives `eval=` or `error=`: then
+they are evaluated with `alder eval --json -` in a working directory shared
+by all chapters, where the lock above makes the chapters take turns. An
+`error=` block passes only when the diagnostic is in the block itself and,
+when the fence quotes a part of the message, its message has it.
+
+Chapters run in parallel, each in its own temporary directory; the whole
+book takes about 15 seconds, almost all of it the evaluations.
 
 ### Running tests
 
@@ -3160,12 +3745,16 @@ about 15 seconds, almost all of it the evaluations.
 `cmd/alder/test.go` calls `scratch.CompileCheckedWith` with purpose
 `"test"` and `scratch.Options{Tests: true}`, so the app is compiled as
 it is, into `build/<app>/scratch/test/`, under the lock
-`build/<app>/scratch/test.lock`, as a test build. What makes it a test
-program is what the compiler emits for `test` declarations, which only
-a test build has (`gen.Options.Tests`; a production build, `alder
-build`'s, emits none of what this section shows), and the main.
+`build/<app>/scratch/test.lock`, as a test build.
 
-**Each test is a function.** Section 7's emitter turns the N-th `test`
+What makes it a test program is what the compiler emits for `test`
+declarations, which only a test build has (`gen.Options.Tests`; a
+production build, `alder build`'s, emits none of what this section shows),
+and the main.
+
+#### Each test is a function
+
+Section 7's emitter turns the N-th `test`
 of module M into `test__M__N`. `Table.Todo`'s first test,
 `test "countOpen ignores done todos" = countOpen [ … ] == 2` (three todos,
 one done), is emitted into `build/todos/scratch/test/Table__Todo_alder.go` as
@@ -3179,14 +3768,17 @@ func test__Table__Todo__1() bool {
 
 The `==` is not `rt.Eq`, as it would be anywhere else, but
 `rtesting.Eq`: the same comparison, which also records both sides as
-`rt.Show` text, so that the report can print `left:` and `right:`. Only
-one `==` is recorded: the test's body when it is an `==`, or, in an
-effect test, the value of the `Task.succeed` that ends its block
-(`recordEq` in `internal/ir/lower.go`). An effect test's function
-returns an `eff.Task[bool]` instead of a `bool`, built like any other
-task (section 8, "A `Task`: `Toggle`").
+`rt.Show` text, so that the report can print `left:` and `right:`.
 
-**The table of tests.** `app__alder.go` lists them, with the session a
+Only one `==` is recorded: the test's body when it is an `==`, or, in an
+effect test, the value of the `Task.succeed` that ends its block
+(`recordEq` in `internal/ir/lower.go`). An effect test's function returns
+an `eff.Task[bool]` instead of a `bool`, built like any other task
+(section 8, "A `Task`: `Toggle`").
+
+#### The table of tests
+
+`app__alder.go` lists them, with the session a
 test starts from:
 
 ```go
@@ -3230,7 +3822,9 @@ production module has no `Tests`, no `TestSession` and no `test__`
 function, and does not import `alder/rt/testing` (`TestGen_ProdHasNoTests`
 in `internal/gen/gen_test.go` checks it).
 
-**The main.** `testMain` in `cmd/alder/test.go` writes the scratch
+#### The main
+
+`testMain` in `cmd/alder/test.go` writes the scratch
 program's `cmd/main.go`. For the to-do app, which has adapters
 (`build/todos/scratch/test/cmd/main.go`):
 
@@ -3257,82 +3851,107 @@ app's one fake, `Password`'s, has none, so its test build has
 `var FakeTables = []db.TableDesc{}`), and `app.Routes` and `app.Web()`
 the app's routes and router options, for the browser ("The browser",
 below).
-(The local `caps` takes the package's name from that line on, which Go
-allows: `caps.Caps()` on the right is still the package.) A capability
-whose adapter is missing has no line in the test build's `caps` package
-(`gen.Options.Unwired`), so its field is `nil`, and `alder test` prints
-the warning `Build.Warning` holds before running the tests. Without
-adapters the main does not import `app/caps` and the capabilities are
-`app.Caps{}.Registry()`: every
-capability's key is there with no implementation, and a call to one
-fails with "capability … is not wired", which the report turns into
-"… is not wired in tests". `alder test` runs the program with
-`scratch.RunStream`, which, unlike eval's `RunTethered`, hands the
-program's output over as it is written instead of collecting it, so each
-test's line appears as the test finishes. The runner passes an
-environment, not arguments, so `alder test` hands its settings over as
-variables, which `rtesting.Main` reads:
 
-- `ALDER_TEST_RUN` and `ALDER_TEST_JSON=1`: `-run` and `--json`, as its
-  flags' defaults.
-- `ALDER_TEST_DEADLINE` (an RFC 3339 time) and `ALDER_TEST_TIMEOUT`:
-  `-timeout` (default `5m`) as a moment, and the duration for the
-  message. `Main` runs each case in a goroutine of its own and waits for
-  it, for the deadline, or for a ten-second tick (which prints
-  `still running M "name" (10s)` on standard error). At the deadline it
-  reports the running case as `timed out after 5m0s`, prints the summary
-  and returns 1 without waiting: `os.Exit` in the main then stops the
-  goroutine. A task case's `context` carries the deadline too, 100 ms later, so a
-  database step waiting on something stops then, and `Main`'s timer,
-  not the step's error, reports the timeout.
-- `ALDER_TEST_STATUS`: a file. Before each case `Main` writes
-  `Module<tab>Name` to it, and it empties it when it returns. A Go panic
-  in a test is recovered and fails that test, but some failures cannot
-  be recovered: a stack overflow is a fatal error that ends the process
-  with exit code 2 and a long dump on standard error. When the program
-  exits with anything but 0 or 1, `alder test` reads the file to learn
-  which test was running, prints a `FAIL` for it (an object under
-  `--json`) whose `error:` is the first lines of the dump (the
-  `fatal error:` line and the top frame of the running goroutine), then
-  the summary line the program never printed (it counts the results it
-  passed through, and this failure), and exits 1. It passes the program's standard error through line by line
-  until a line that starts a Go crash report (`fatal error:`, `panic:`,
-  `runtime:`, `goroutine …`), and keeps the rest, so the dump is never
-  printed.
-- `ALDER_TEST_STDIN_EOF=1`: the program's standard input is the read end
-  of a pipe whose write end only `alder test` holds. `Main` reads it in
-  a goroutine and exits when it reaches end of file. The program runs
-  in a process group of its own (so a terminal's Ctrl-C reaches
-  `alder test` alone, which then kills the group), which means a
-  `kill -9` of `alder test` would not reach it; but the kernel closes a
-  dead process's files, the pipe's write end among them, so the program
-  sees end of file and exits too.
+> **The local `caps`.** The local `caps` takes the package's name from that
+> line on, which Go allows: `caps.Caps()` on the right is still the
+> package.
+
+A capability whose adapter is missing has no line in the test build's
+`caps` package (`gen.Options.Unwired`), so its field is `nil`, and
+`alder test` prints the warning `Build.Warning` holds before running the
+tests. Without adapters the main does not import `app/caps` and the
+capabilities are `app.Caps{}.Registry()`: every capability's key is there
+with no implementation, and a call to one fails with "capability … is not
+wired", which the report turns into "… is not wired in tests".
+
+`alder test` runs the program with `scratch.RunStream`, which, unlike
+eval's `RunTethered`, hands the program's output over as it is written
+instead of collecting it, so each test's line appears as the test
+finishes. The runner passes an environment, not arguments, so `alder test`
+hands its settings over as variables, which `rtesting.Main` reads:
+
+##### `ALDER_TEST_RUN` and `ALDER_TEST_JSON=1`
+
+These are `-run` and `--json`, as its flags' defaults.
+
+##### `ALDER_TEST_DEADLINE` and `ALDER_TEST_TIMEOUT`
+
+These are `-timeout` (default `5m`) as a moment (an RFC 3339 time), and the
+duration for the message. `Main` runs each case in a goroutine of its own
+and waits for it, for the deadline, or for a ten-second tick (which prints
+`still running M "name" (10s)` on standard error).
+
+At the deadline it reports the running case as `timed out after 5m0s`,
+prints the summary and returns 1 without waiting: `os.Exit` in the main
+then stops the goroutine. A task case's `context` carries the deadline too,
+100 ms later, so a database step waiting on something stops then, and
+`Main`'s timer, not the step's error, reports the timeout.
+
+##### `ALDER_TEST_STATUS`
+
+This is a file. Before each case `Main` writes `Module<tab>Name` to it, and
+it empties it when it returns.
+
+A Go panic in a test is recovered and fails that test, but some failures
+cannot be recovered: a stack overflow is a fatal error that ends the process
+with exit code 2 and a long dump on standard error.
+
+When the program exits with anything but 0 or 1, `alder test` reads the file
+to learn which test was running, prints a `FAIL` for it (an object under
+`--json`) whose `error:` is the first lines of the dump (the `fatal error:`
+line and the top frame of the running goroutine), then the summary line the
+program never printed (it counts the results it passed through, and this
+failure), and exits 1.
+
+It passes the program's standard error through line by line until a line
+that starts a Go crash report (`fatal error:`, `panic:`, `runtime:`,
+`goroutine …`), and keeps the rest, so the dump is never printed.
+
+##### `ALDER_TEST_STDIN_EOF=1`
+
+With this, the program's standard input is the read end of a pipe whose
+write end only `alder test` holds. `Main` reads it in a goroutine and exits
+when it reaches end of file.
+
+The program runs in a process group of its own (so a terminal's Ctrl-C
+reaches `alder test` alone, which then kills the group), which means a
+`kill -9` of `alder test` would not reach it; but the kernel closes a dead
+process's files, the pipe's write end among them, so the program sees end
+of file and exits too.
 
 `alder test` waits five seconds past the deadline (`testGrace`) before
 it kills a program that has not stopped by itself, and then reports the
 running test as timed out.
 
-**One world per test.** `rtesting.Run` (`rt/testing/testing.go`) runs
-the cases one after another (`Main` does the same, one goroutine per
-case, as above). A pure case is called, with a `recover` so
-a Go panic fails that test and the next one still runs. A task case
-gets its own environment: `db.OpenSQLite(":memory:")`, a database that
-exists only in this process; the app's tables, made by `store.Migrate`
-with the app's migrations when it has them and by `store.Ensure` with
-its `Tables` when it has none; then the fakes' tables
-(`store.CreateTables`, "Fakes", below); and an `eff.Env` with a copy of
-the capabilities (`maps.Clone`, so a `Test.fake` changes only this
-test's), the session from
-`TestSession()`, and a clock that starts at `2026-01-01T00:00:00Z` and
-moves one second on each read (`rtesting.Ticking`), so rows a test
-inserts get distinct, ordered `created` times.
+#### One world per test
+
+`rtesting.Run` (`rt/testing/testing.go`) runs the cases one after another
+(`Main` does the same, one goroutine per case, as above). A pure case is
+called, with a `recover` so a Go panic fails that test and the next one
+still runs.
+
+A task case gets its own environment:
+
+1. `db.OpenSQLite(":memory:")`, a database that exists only in this
+   process;
+2. the app's tables, made by `store.Migrate` with the app's migrations when
+   it has them and by `store.Ensure` with its `Tables` when it has none;
+3. then the fakes' tables (`store.CreateTables`, "Fakes", below);
+4. and an `eff.Env` with a copy of the capabilities (`maps.Clone`, so a
+   `Test.fake` changes only this test's), the session from `TestSession()`,
+   and a clock that starts at `2026-01-01T00:00:00Z` and moves one second
+   on each read (`rtesting.Ticking`), so rows a test inserts get distinct,
+   ordered `created` times.
+
 Then `eff.Run(env, eff.KTask, c.Task())` runs it exactly as the server
 runs an `update` (section 8, "What `Run` does"): one transaction, begun
 by the first database step, committed when the task succeeds. The
 report's trace is `env.Trace`. Then the database is closed, and with
 `:memory:` that is the end of it.
 
-**`Test.run` is a step.** Section 6 lowers `Test.run t` to a node of its
+#### `Test.run` is a step
+
+Section 6 lowers `Test.run t` to a node of its
 own, and the emitter makes it a `Call` named `"Test.run"`, marked as a
 write, whose function hands `t` to `rtesting.Inner` and packs the five
 results into the record Alder sees. From `test__Todos__Index__1`
@@ -3399,31 +4018,35 @@ because the emitter wraps it: a capability `Call`'s function ends
 are and wraps any other error with the call's name; the router answers
 it like any other error, with a 500.
 
-`eff.RunInner` (`rt/eff/run.go`) runs `t` with the same `Env`, inside
-the running task: same transaction, same trace (which is why the inner
-steps also appear in the test's trace, after `"Test.run"`). `Inner`
-copies the part of the trace added since it started; that is `r.trace`.
-The savepoint itself is three SQL statements on the open transaction,
-in `rt/db/sqlite.go`: `SAVEPOINT alder_t1` before `t`, then
-`RELEASE alder_t1` when `t` succeeded, or `ROLLBACK TO alder_t1` and
-`RELEASE alder_t1` when it failed (`ROLLBACK TO` undoes the writes but
-keeps the mark open, so it is released too). Each `Inner` takes the next
-number from a counter, so nested and successive savepoints never share a
-name. `Test.trace` is a smaller `Call` whose function returns
-`rtesting.Trace(env)`: the trace so far without its own step.
+`eff.RunInner` (`rt/eff/run.go`) runs `t` with the same `Env`, inside the
+running task: same transaction, same trace (which is why the inner steps also
+appear in the test's trace, after `"Test.run"`). `Inner` copies the part of
+the trace added since it started; that is `r.trace`.
+
+The savepoint itself is three SQL statements on the open transaction, in
+`rt/db/sqlite.go`: `SAVEPOINT alder_t1` before `t`, then `RELEASE alder_t1`
+when `t` succeeded, or `ROLLBACK TO alder_t1` and `RELEASE alder_t1` when it
+failed (`ROLLBACK TO` undoes the writes but keeps the mark open, so it is
+released too). Each `Inner` takes the next number from a counter, so nested
+and successive savepoints never share a name. `Test.trace` is a smaller `Call`
+whose function returns `rtesting.Trace(env)`: the trace so far without its own
+step.
 
 ### The REPL
 
-`alder repl` (chapter 11) is the scratch runner kept open. `alder eval`
-builds one scratch module from its input and throws it away; the REPL
-keeps a list of the `let`s you typed and builds a new scratch module
-from that list every time you type a line. The code is
-`cmd/alder/repl.go`, and nothing in it is new compiler machinery: it
-calls the same `parseItems`, `assemble`, `scratch.Check`,
+`alder repl` (chapter 11) is the scratch runner kept open. `alder eval` builds
+one scratch module from its input and throws it away; the REPL keeps a list of
+the `let`s you typed and builds a new scratch module from that list every time
+you type a line.
+
+The code is `cmd/alder/repl.go`, and nothing in it is new compiler machinery:
+it calls the same `parseItems`, `assemble`, `scratch.Check`,
 `scratch.CompileCheckedWith`, `scratch.RunTethered` and `classifyRun` as
 `alder eval`.
 
-**The session is a list of items.** An *item* (`cmd/alder/evalinput.go`)
+#### The session is a list of items
+
+An *item* (`cmd/alder/evalinput.go`)
 is one `let` or the expression, already rewritten as the lines it
 contributes to a module: `let xs = [3, 1, 2]` becomes the top-level
 definition `xs = [3, 1, 2]`, and the expression `total * 2` becomes
@@ -3440,18 +4063,20 @@ it = total * 2
 
 `scratch.Check` puts `module Scratch` and an `import` of every app module
 above that, and checks it with the app, exactly as for `alder eval`. The
-signatures are inferred (no `let` needs one), and the type of `it` is
-the type the REPL prints. A `let` is checked the same way, as the kept
-`let`s plus the new one, with no `it`. Only when that check is clean
-does the new `let` join the list, so the list always checks. Defining a
-name again replaces the old item where it stands, so the `let`s after
-it that use the name now use the new definition: a `let` is a
-top-level definition, not a snapshot of a value. That is also why `let
-x = x + 1` does not mean "one more than the old `x`": it is a
-definition of `x` in terms of itself, which the checker refuses (E0007),
-and the old `x` stays. A redefinition that a later `let` no longer
-checks with is refused the same way, and the message names that `let`:
-`a not redefined: let b (line 2) uses it: …`.
+signatures are inferred (no `let` needs one), and the type of `it` is the type
+the REPL prints. A `let` is checked the same way, as the kept `let`s plus the
+new one, with no `it`. Only when that check is clean does the new `let` join
+the list, so the list always checks.
+
+Defining a name again replaces the old item where it stands, so the `let`s
+after it that use the name now use the new definition: a `let` is a top-level
+definition, not a snapshot of a value.
+
+That is also why `let x = x + 1` does not mean "one more than the old `x`": it
+is a definition of `x` in terms of itself, which the checker refuses (E0007),
+and the old `x` stays. A redefinition that a later `let` no longer checks with
+is refused the same way, and the message names that `let`: `a not redefined:
+let b (line 2) uses it: …`.
 
 One entry is always one item. `parseItems` would start a new item at a
 continuation line that begins at column 1 (`+ 10` typed after `let total
@@ -3459,7 +4084,9 @@ continuation line that begins at column 1 (`+ 10` typed after `let total
 parsing, and records a shift of -2 for it so its columns still match what
 you typed.
 
-**Why every line re-checks everything.** The session could remember what
+#### Why every line re-checks everything
+
+The session could remember what
 each `let` checked to and check only the new line. It does not, because
 checking the whole app plus the session is cheap: on `examples/todos` a
 check takes a millisecond or two, against half a second for a build. A
@@ -3467,87 +4094,111 @@ full check also means the REPL needs no state of its own about types.
 The checker's answer is always about the app as it is on disk and the
 session as it is now, so nothing can go stale.
 
-**Mapping a diagnostic back.** A diagnostic of the scratch module names
-a line of the joined source, after `scratch.Check` inserted its import
-lines. `Checked.MapDiag` undoes the inserted lines, which leaves a line
-of the joined items. The REPL walks the items' lengths to find which
-item it falls in: an item's `InLine` numbers count from the start of the
-entry it came from, so they cannot say which item a line is in. It then
-subtracts where that item starts, and hands the diagnostic to
-`evalDiags`, the printer `alder eval` uses, with the item's own text as
-the source to show and underline. `evalDiags` labels the position
-`input:L:C`, and the REPL rewrites that label: `expr:L:C` for the
-expression, `let total (line 10)` for a `let` (its REPL line plus the
-line within it). Errors are printed wherever they are, but warnings only
-for the line just typed: an old `let`'s warning would otherwise repeat on
-every line.
+#### Mapping a diagnostic back
 
-**Evaluating.** When the check is clean, the type of `it` decides. A
+A diagnostic of the scratch module names a line of the joined source, after
+`scratch.Check` inserted its import lines. `Checked.MapDiag` undoes the
+inserted lines, which leaves a line of the joined items.
+
+The REPL walks the items' lengths to find which item it falls in: an item's
+`InLine` numbers count from the start of the entry it came from, so they
+cannot say which item a line is in. It then subtracts where that item starts,
+and hands the diagnostic to `evalDiags`, the printer `alder eval` uses, with
+the item's own text as the source to show and underline.
+
+`evalDiags` labels the position `input:L:C`, and the REPL rewrites that label:
+`expr:L:C` for the expression, `let total (line 10)` for a `let` (its REPL
+line plus the line within it).
+
+Errors are printed wherever they are, but warnings only for the line just
+typed: an old `let`'s warning would otherwise repeat on every line.
+
+#### Evaluating
+
+When the check is clean, the type of `it` decides. A
 `Query`, `Task` or `Select` is shown with a hint unless the command
 asked to run it (`:run` a `Query`, `:run!` a `Task`). Anything else is
 built with the pure main, which prints `rt.Show(it)`.
 
-The module that is built holds only the `let`s the expression uses.
-Every `let` is a top-level value, which Go computes as a package
-variable when the program starts, used or not; a session with a `let`
-that fails (`let boom = loop 0`, with a `loop` that calls itself
-forever) or takes a minute would make every
-later line fail or take a minute. So `reachable` scans the expression's
-text for identifiers that are names of `let`s, then the text of those
-`let`s, and so on until nothing new turns up, and the REPL checks and
-builds the session with just those (in their order). The scan is
-textual, so it can take a `let` that is not really used (its name
-inside a string, or a record field of the same name), which costs a
-little time, but never misses one. When the run fails, the message ends
-with the `let`s it computed (`(the lets it uses — loop, boom — are
-computed with it)`), since the failure may be theirs.
+The module that is built holds only the `let`s the expression uses. Every
+`let` is a top-level value, which Go computes as a package variable when the
+program starts, used or not; a session with a `let` that fails (`let boom =
+loop 0`, with a `loop` that calls itself forever) or takes a minute would make
+every later line fail or take a minute.
 
-The build goes into `build/<app>/scratch/repl-<pid>/`, a directory of
-this REPL's own (`<pid>` is its process id), under its lock, held until
-the program has finished. With one shared directory a second REPL on the
-same app would wait on the lock for as long as the first one's
-evaluation ran; with one each, nothing waits, and Go's build cache,
-which is shared, keeps the first build in a new directory about as fast
-as any other. The REPL removes its directory when it ends, on `:quit`,
-end of input, SIGTERM or SIGHUP. A REPL killed with SIGKILL cannot, so
-`alder repl` starts by removing every `repl-<pid>` directory whose
-process no longer exists (`kill(pid, 0)`, signal 0, which only asks
-whether the process is there). `:run` and `:run!` use the effect mains of "The scratch
-runner": a `Task` main runs `eff.Run`, which commits the transaction when
-the task succeeds and rolls it back when it fails, so a failed `:run!`
-leaves the database as it was.
+So `reachable` scans the expression's text for identifiers that are names of
+`let`s, then the text of those `let`s, and so on until nothing new turns up,
+and the REPL checks and builds the session with just those (in their order).
 
-**The no-vet build.** `go vet` checks the generated Go before it is
-built, so that an emitter bug shows up as an internal error and not as a
-confusing build failure. The first build of a session is vetted, and so
-is the first after a reload, so a bug in the generated Go is still
-caught. Later builds pass `scratch.Options{NoVet: true}`. On
-`examples/todos`, warm, the first evaluation takes about 0.6 s and later
-ones about 0.47 s (the table in "The scratch runner"): each new
-expression changes the generated package, so Go compiles and links it
-again.
+The scan is textual, so it can take a `let` that is not really used (its name
+inside a string, or a record field of the same name), which costs a little
+time, but never misses one.
 
-**`:reload`.** The app's files may have changed since the `let`s were
-checked. `:reload` checks the app alone first; if that has errors, they
-are printed and the session is left as it is. The REPL remembers the
-app's errors it last printed and, while they stay the same, says only
-that the app has errors on later lines, instead of the whole block each
-time. Otherwise it rebuilds the
-list: each `let` in order is checked with the ones kept so far and kept
-if clean, else dropped with the first error (`dropped let greeting:
-error[E0002]: …`). A `let` that used a dropped one is dropped too: it is
-checked after it, without it, and fails with `unknown name`. It also
-marks the next build to be vetted.
+When the run fails, the message ends with the `let`s it computed (`(the lets
+it uses — loop, boom — are computed with it)`), since the failure may be
+theirs.
 
-**The loop.** Reading a line from the terminal blocks, but the REPL also
-has to notice an edited file or a Ctrl-C while it waits. So a goroutine
-reads standard input with a `bufio.Reader` and sends each line on a
-channel. A line longer than 1 MB is read to its end and dropped, and the
-REPL says `line too long (limit 1 MB); ignored` and reads on; any other
-read error is printed, and the REPL exits 1. A second goroutine runs `watch`, the polling
-loop of `alder run` ("The dev server"), which sends on another channel
-when `app/` or `adapters/` change. The main loop prints the prompt and
-`select`s on the two channels and the interrupt channel:
+The build goes into `build/<app>/scratch/repl-<pid>/`, a directory of this
+REPL's own (`<pid>` is its process id), under its lock, held until the program
+has finished.
+
+With one shared directory a second REPL on the same app would wait on the lock
+for as long as the first one's evaluation ran; with one each, nothing waits,
+and Go's build cache, which is shared, keeps the first build in a new
+directory about as fast as any other.
+
+The REPL removes its directory when it ends, on `:quit`, end of input, SIGTERM
+or SIGHUP. A REPL killed with SIGKILL cannot, so `alder repl` starts by
+removing every `repl-<pid>` directory whose process no longer exists
+(`kill(pid, 0)`, signal 0, which only asks whether the process is there).
+
+`:run` and `:run!` use the effect mains of "The scratch runner": a `Task` main
+runs `eff.Run`, which commits the transaction when the task succeeds and rolls
+it back when it fails, so a failed `:run!` leaves the database as it was.
+
+#### The no-vet build
+
+`go vet` checks the generated Go before it is built, so that an emitter bug
+shows up as an internal error and not as a confusing build failure. The first
+build of a session is vetted, and so is the first after a reload, so a bug in
+the generated Go is still caught.
+
+Later builds pass `scratch.Options{NoVet: true}`. On `examples/todos`, warm,
+the first evaluation takes about 0.6 s and later ones about 0.47 s (the table
+in "The scratch runner"): each new expression changes the generated package,
+so Go compiles and links it again.
+
+#### `:reload`
+
+The app's files may have changed since the `let`s were checked. `:reload`
+checks the app alone first; if that has errors, they are printed and the
+session is left as it is.
+
+The REPL remembers the app's errors it last printed and, while they stay the
+same, says only that the app has errors on later lines, instead of the whole
+block each time.
+
+Otherwise it rebuilds the list: each `let` in order is checked with the ones
+kept so far and kept if clean, else dropped with the first error (`dropped let
+greeting: error[E0002]: …`). A `let` that used a dropped one is dropped too:
+it is checked after it, without it, and fails with `unknown name`.
+
+It also marks the next build to be vetted.
+
+#### The loop
+
+Reading a line from the terminal blocks, but the REPL also has to notice an
+edited file or a Ctrl-C while it waits. So a goroutine reads standard input
+with a `bufio.Reader` and sends each line on a channel.
+
+A line longer than 1 MB is read to its end and dropped, and the REPL says
+`line too long (limit 1 MB); ignored` and reads on; any other read error is
+printed, and the REPL exits 1.
+
+A second goroutine runs `watch`, the polling loop of `alder run` ("The dev
+server"), which sends on another channel when `app/` or `adapters/` change.
+The main loop prints the prompt and `select`s on the two channels and the
+interrupt channel:
 
 - a line is handled;
 - a change runs `:reload` (`app changed: session re-checked`);
@@ -3556,44 +4207,51 @@ when `app/` or `adapters/` change. The main loop prints the prompt and
 A change that arrives during an evaluation waits in its channel and is
 handled before the next prompt.
 
-Ctrl-C arrives as a signal. `main.go` asks for it with
-`signal.Notify(…, os.Interrupt)`, so it no longer kills `alder`; each
-one becomes a value on the interrupt channel. During an evaluation a
-goroutine waits on that channel and cancels the evaluation's context. As
-for `alder eval`, the program runs in its own process group, out of the
-terminal's reach, and `RunTethered` kills the group when the context is
-cancelled. A Ctrl-C during the build cancels the same context, which
-kills `go build`. The REPL prints `alder repl: interrupted` and keeps the
-session. SIGTERM and SIGHUP close a second channel, `terminate`: the
-evaluation is cancelled the same way, and the REPL exits 1.
+Ctrl-C arrives as a signal. `main.go` asks for it with `signal.Notify(…,
+os.Interrupt)`, so it no longer kills `alder`; each one becomes a value on the
+interrupt channel.
+
+During an evaluation a goroutine waits on that channel and cancels the
+evaluation's context. As for `alder eval`, the program runs in its own process
+group, out of the terminal's reach, and `RunTethered` kills the group when the
+context is cancelled. A Ctrl-C during the build cancels the same context,
+which kills `go build`.
+
+The REPL prints `alder repl: interrupted` and keeps the session. SIGTERM and
+SIGHUP close a second channel, `terminate`: the evaluation is cancelled the
+same way, and the REPL exits 1.
 
 A REPL killed with SIGKILL runs no code at all, so it cannot kill the
-program's group, and the program, in a group of its own, gets no
-signal either. So the program watches its parent another way. Its
-standard input is a pipe (`scratch.RunTethered`) whose write end only
-the REPL holds. When `ALDER_SCRATCH_STDIN_EOF=1`, the runtime package
-`alder/rt` starts a goroutine in its `init` (`rt/tether.go`) that reads
-standard input until end of file, then prints `alder: parent gone` and
-exits 2. When the REPL dies, the kernel closes its end of the pipe, the
-read returns, and the program exits. `init` clears the variable once it
-has read it, so a process the program starts does not inherit it (that
-process's standard input is not the tether). `alder eval` uses
-`RunTethered` too.
+program's group, and the program, in a group of its own, gets no signal
+either.
 
-Why in `rt`, and not in the scratch main? The generated package
-computes a plain value, such as `it = List.sum …` or a `let`, as a Go
-package variable, while the package initializes. Go initializes every
-package a program imports before the main package's `init` runs. A
-goroutine started in the main would therefore start only after a
-never-ending evaluation had finished, which is never. `rt` is
-initialized before the app's variables by a rule of the Go spec: a
-package's imports are initialized before the package itself. So the
-generated package imports `alder/rt` always. An app with a union already
-uses it (`rt.RegisterUnion`); for one that does not, `app__alder.go` has
-a blank import, which runs a package's `init` without naming anything in
-it (`testdata/golden/gen_generic/want/app__alder.go`, a production
-build, which imports nothing else; a test build adds
-`rtesting "alder/rt/testing"`):
+So the program watches its parent another way. Its standard input is a pipe
+(`scratch.RunTethered`) whose write end only the REPL holds.
+
+When `ALDER_SCRATCH_STDIN_EOF=1`, the runtime package `alder/rt` starts a
+goroutine in its `init` (`rt/tether.go`) that reads standard input until end
+of file, then prints `alder: parent gone` and exits 2.
+
+When the REPL dies, the kernel closes its end of the pipe, the read returns,
+and the program exits. `init` clears the variable once it has read it, so a
+process the program starts does not inherit it (that process's standard input
+is not the tether). `alder eval` uses `RunTethered` too.
+
+Why in `rt`, and not in the scratch main? The generated package computes a
+plain value, such as `it = List.sum …` or a `let`, as a Go package variable,
+while the package initializes. Go initializes every package a program imports
+before the main package's `init` runs. A goroutine started in the main would
+therefore start only after a never-ending evaluation had finished, which is
+never.
+
+`rt` is initialized before the app's variables by a rule of the Go spec: a
+package's imports are initialized before the package itself.
+
+So the generated package imports `alder/rt` always. An app with a union
+already uses it (`rt.RegisterUnion`); for one that does not, `app__alder.go`
+has a blank import, which runs a package's `init` without naming anything in
+it (`testdata/golden/gen_generic/want/app__alder.go`, a production build,
+which imports nothing else; a test build adds `rtesting "alder/rt/testing"`):
 
 ```go
 import (
@@ -3608,16 +4266,20 @@ Chapter 8 shows migrations from the outside. Three pieces of code make
 them: `internal/migrate` writes a migration, `alder build` puts the files
 into the executable, and `db.Migrate` in `rt/db/migrate.go` applies them.
 
-**Writing one.** `alder migrate` (`cmd/alder/migrate.go`) checks the app
-and lowers it to the IR, as a build does. `migrate.FromProgram`
-(`internal/migrate/schema.go`) turns the IR's tables into a `Schema`: one
-`Table` per `table`, named `Post.Post` (module, then table), with its
-columns in declaration order and each column's type, `Maybe`-ness,
-constructors, `@unique`, `@ref`, delete rule and default as SQL text
-(`False` is `0`). `schema.json` is that value written as JSON with the
-tables sorted by name, and `Schema.Hash` is the same hash `Ensure`
-records: SHA-256 over the sorted `CREATE TABLE` statements. A file's
-`from` and `to` lines are the first 12 hex digits of the hashes on
+#### Writing one
+
+`alder migrate` (`cmd/alder/migrate.go`) checks the app and lowers it to the
+IR, as a build does. `migrate.FromProgram` (`internal/migrate/schema.go`)
+turns the IR's tables into a `Schema`: one `Table` per `table`, named
+`Post.Post` (module, then table), with its columns in declaration order and
+each column's type, `Maybe`-ness, constructors, `@unique`, `@ref`, delete rule
+and default as SQL text (`False` is `0`).
+
+`schema.json` is that value written as JSON with the tables sorted by name,
+and `Schema.Hash` is the same hash `Ensure` records: SHA-256 over the sorted
+`CREATE TABLE` statements.
+
+A file's `from` and `to` lines are the first 12 hex digits of the hashes on
 either side of it.
 
 `migrate.Diff(old, new)` (`internal/migrate/diff.go`) pairs the tables
@@ -3632,24 +4294,29 @@ steps in a fixed order, so the same change always gives the same file:
 5. rebuild the tables `ALTER TABLE` cannot change;
 6. drop, then create, `@ref` indexes.
 
-A table needs a rebuild when no `ALTER TABLE` gives it the new
-`CREATE TABLE` text byte for byte: SQLite stores that text, and the
-start-up check compares hashes of it. `ADD COLUMN` only appends a
-nullable column without `UNIQUE`; anything else (a new column that needs
-a default, a changed type, a reordered table) is a rebuild, which
-carries the table's renames, drops and additions in one step.
-`migrate.SQL` (`internal/migrate/sqlite.go`) writes each step's
-statements. A rebuild is SQLite's documented procedure: create
-`T__alder__new` with the new statement, `INSERT INTO … SELECT` one
-expression per new column (the default for an added column, the old name
-for a renamed one, a conversion such as `CAST("x" AS REAL)` for a changed
-type, with a `WHERE` that keeps only the rows the new column can hold),
-drop `T`, rename `T__alder__new` to `T`, and create its `@ref` indexes
-again. A conversion that loses values sets the step's `DropsData`.
-`migrate.Plan` is `Diff` plus `SQL` plus the hashes; `migrate.Render`
-writes the file, and `migrate.NextName` numbers it.
+A table needs a rebuild when no `ALTER TABLE` gives it the new `CREATE TABLE`
+text byte for byte: SQLite stores that text, and the start-up check compares
+hashes of it. `ADD COLUMN` only appends a nullable column without `UNIQUE`;
+anything else (a new column that needs a default, a changed type, a reordered
+table) is a rebuild, which carries the table's renames, drops and additions in
+one step.
 
-**Building it in.** `alder build` copies `migrations/*.sql` (not
+`migrate.SQL` (`internal/migrate/sqlite.go`) writes each step's statements.
+
+A rebuild is SQLite's documented procedure: create `T__alder__new` with the
+new statement, `INSERT INTO … SELECT` one expression per new column (the
+default for an added column, the old name for a renamed one, a conversion such
+as `CAST("x" AS REAL)` for a changed type, with a `WHERE` that keeps only the
+rows the new column can hold), drop `T`, rename `T__alder__new` to `T`, and
+create its `@ref` indexes again.
+
+A conversion that loses values sets the step's `DropsData`. `migrate.Plan` is
+`Diff` plus `SQL` plus the hashes; `migrate.Render` writes the file, and
+`migrate.NextName` numbers it.
+
+#### Building it in
+
+`alder build` copies `migrations/*.sql` (not
 `schema.json`) into `build/<app>/migrations/`
 (`buildkit.CopyMigrations`), and the generated `app__alder.go` embeds
 them with Go's `//go:embed`, which makes files part of the compiled
@@ -3670,57 +4337,84 @@ without migrations gets `var Migrations []db.Migration`, and `Serve` calls
 `FromProgram`'s hash with the snapshot's, so every command that checks
 the app refuses one whose tables are ahead of its migrations.
 
-**Applying them.** `db.ReadMigrations` parses each embedded file with
+#### Applying them
+
+`db.ReadMigrations` parses each embedded file with
 `db.ParseMigration` into a `Migration`: its name, its `from` and `to`
 hashes, and its statements (the header stripped). `Serve` passes them to
 `store.MigrateLog` (`rt/db/migrate.go`), which works on one connection
 (`database/sql` otherwise hands each statement whichever pooled
 connection is free, and a `PRAGMA` holds only for its own connection):
 
-1. It sets `PRAGMA foreign_keys = OFF`, outside any transaction (SQLite
-   ignores it inside one), and restores the old value when done. With
-   it on, a rebuild's `DROP TABLE "Post__Post"` would delete every
-   comment through `ON DELETE CASCADE`. `legacy_alter_table` stays off,
-   so `RENAME TO` also rewrites the `REFERENCES` of other tables.
-2. It opens one transaction for the read phase (`prepare`). On a file
-   database every transaction starts with `BEGIN IMMEDIATE` (the DSN's
-   `_txlock=immediate`), which takes the write lock at once, so two
-   processes starting together take turns, and each sees the other's
-   work whole: the recorded names, the tables and the recorded hash are
-   read in one snapshot, never between another process's file and its
-   record. (Read outside a transaction, a second process could see a
-   file's tables before its record, call that drift, and in dev mode
-   recreate a database full of rows.)
-3. Inside it: `_alder_migrations` (name, time applied) is read. A
-   database with app tables but no such table was made by `Ensure`: it
-   is adopted at the file whose `to` is its hash (the files up to it
-   recorded, in this same transaction), or refused (dev: recreated). A
-   recorded name with no file is refused (the newest recorded name past
-   every file means the executable is older than the database), and so
-   is a pending file numbered before a recorded one; the live hash is
-   compared with the one recorded after the last migration (drift); and
-   the chain is checked: the first pending file's `from` is the live
-   hash, each next `from` the previous `to`, the last `to` the app's
-   hash. Any refusal rolls the transaction back, adoption included, so
-   the database is as it was.
-4. The read phase commits, and each pending file runs in its own
-   transaction (`applyMigration`): it skips the file if another process
-   recorded it meanwhile; checks that the live hash is the file's `from`;
-   runs the statements; runs `PRAGMA foreign_key_check` (which lists
-   rows whose reference points at nothing, since nothing was enforced
-   during the statements); and checks that the live hash is now the
-   file's `to`. Only then the row in `_alder_migrations` and the live
-   schema and hash in `_alder_meta`, then `COMMIT`. A failure rolls that
-   file back. The `to` check is what catches a file whose statements were
-   edited after `alder migrate` wrote them (its header still chains, so
-   `alder check` cannot see it): `DROP COLUMN "views"` under a header
-   that says the column stays is rolled back with the rows intact, not
-   committed and discovered at the next start.
-5. Last (`finish`, in the transaction of the last applied file, or in
-   the preparation's own when nothing was pending), the live hash must equal
-   the app's, the app's schema is recorded, and `IndexStmts` creates
-   every `@ref` index that is missing (`CREATE INDEX IF NOT EXISTS`, not
-   part of the hash), so an adopted database gets its indexes too.
+##### Step 1: foreign keys off
+
+It sets `PRAGMA foreign_keys = OFF`, outside any transaction (SQLite
+ignores it inside one), and restores the old value when done. With it on,
+a rebuild's `DROP TABLE "Post__Post"` would delete every comment through
+`ON DELETE CASCADE`. `legacy_alter_table` stays off, so `RENAME TO` also
+rewrites the `REFERENCES` of other tables.
+
+##### Step 2: the read phase
+
+It opens one transaction for the read phase (`prepare`). On a file
+database every transaction starts with `BEGIN IMMEDIATE` (the DSN's
+`_txlock=immediate`), which takes the write lock at once, so two processes
+starting together take turns, and each sees the other's work whole: the
+recorded names, the tables and the recorded hash are read in one snapshot,
+never between another process's file and its record.
+
+> **Why a transaction.** Read outside a transaction, a second process could
+> see a file's tables before its record, call that drift, and in dev mode
+> recreate a database full of rows.
+
+##### Step 3: the checks
+
+Inside the read phase, `_alder_migrations` (name, time applied) is read. A
+database with app tables but no such table was made by `Ensure`: it is
+adopted at the file whose `to` is its hash (the files up to it recorded, in
+this same transaction), or refused (dev: recreated).
+
+Then these are checked:
+
+- A recorded name with no file is refused (the newest recorded name past
+  every file means the executable is older than the database), and so is a
+  pending file numbered before a recorded one.
+- The live hash is compared with the one recorded after the last migration
+  (drift).
+- The chain is checked: the first pending file's `from` is the live hash,
+  each next `from` the previous `to`, the last `to` the app's hash.
+
+Any refusal rolls the transaction back, adoption included, so the database
+is as it was.
+
+##### Step 4: each pending file
+
+The read phase commits, and each pending file runs in its own transaction
+(`applyMigration`). It:
+
+- skips the file if another process recorded it meanwhile;
+- checks that the live hash is the file's `from`;
+- runs the statements;
+- runs `PRAGMA foreign_key_check` (which lists rows whose reference points
+  at nothing, since nothing was enforced during the statements);
+- checks that the live hash is now the file's `to`.
+
+Only then the row in `_alder_migrations` and the live schema and hash in
+`_alder_meta`, then `COMMIT`. A failure rolls that file back.
+
+> **The `to` check.** The `to` check is what catches a file whose
+> statements were edited after `alder migrate` wrote them (its header still
+> chains, so `alder check` cannot see it): `DROP COLUMN "views"` under a
+> header that says the column stays is rolled back with the rows intact,
+> not committed and discovered at the next start.
+
+##### Step 5: finishing
+
+Last (`finish`, in the transaction of the last applied file, or in the
+preparation's own when nothing was pending), the live hash must equal the
+app's, the app's schema is recorded, and `IndexStmts` creates every `@ref`
+index that is missing (`CREATE INDEX IF NOT EXISTS`, not part of the
+hash), so an adopted database gets its indexes too.
 
 A start that finds the database locked for longer than `busy_timeout`
 (five seconds: another process is in a long rebuild) is refused with a
@@ -3737,29 +4431,37 @@ Chapter 10, section 12, shows properties from the outside. Inside, a
 property is a test whose generators the compiler wrote, a runner that
 draws values from them, and a shrinker.
 
-**Resolving `Fuzz.any`.** `Fuzz.any : Fuzzer a` is not a function in
-`stdlib/Fuzz.alder` but a special form, like `Test.fake`. While the
-checker (section 5) infers a declaration, each use gets a `Fuzzer a` with
-a fresh `a` (`inferFuzzAny` in `internal/check/fuzz.go`) and remembers the
-reference. At the end of the declaration `resolveFuzzAny` looks at what
-`a` has become. If it is a type with a generator it is recorded in
-`Result.FuzzAny`; if it is still a variable, or a type with no generator
-(a function, a `Task`, `Html`), the reference is E0038. The same pass
-handles a property test's parameters: it records their types in
-`Result.Props`, defaulting a variable still open to `Int` and noting that
-it did (the `Defaulted` flag the report shows as `(xs : List Int)`), and
-E0038 if one has no generator. A `Fuzz.forAll` anywhere but a test body
-is E0039; the checker allows it in exactly one place, the head of the
-application that is the body, or the last stage of a `|>`.
+#### Resolving `Fuzz.any`
 
-**The generators are built in lowering.** Lowering (section 6) is the
-last place that still sees brands, so it is where a type becomes a
-`GenTree` (`internal/ir/fuzz.go`): a tree whose nodes say "an `Int`", "a
-list of", "a record of these fields", "a union with these constructors,
-of which these are recursive", "a brand of the app, with its `where`", or
-"one of the six standard brands". Trees are shared by the type's
-spelling, so a recursive type's tree is a graph that reaches itself. A
-`Fuzz.any` becomes a `FuzzDerive` holding its tree, and a property test a
+`Fuzz.any : Fuzzer a` is not a function in `stdlib/Fuzz.alder` but a special
+form, like `Test.fake`. While the checker (section 5) infers a declaration,
+each use gets a `Fuzzer a` with a fresh `a` (`inferFuzzAny` in
+`internal/check/fuzz.go`) and remembers the reference.
+
+At the end of the declaration `resolveFuzzAny` looks at what `a` has become.
+If it is a type with a generator it is recorded in `Result.FuzzAny`; if it is
+still a variable, or a type with no generator (a function, a `Task`, `Html`),
+the reference is E0038.
+
+The same pass handles a property test's parameters: it records their types in
+`Result.Props`, defaulting a variable still open to `Int` and noting that it
+did (the `Defaulted` flag the report shows as `(xs : List Int)`), and E0038 if
+one has no generator.
+
+A `Fuzz.forAll` anywhere but a test body is E0039; the checker allows it in
+exactly one place, the head of the application that is the body, or the last
+stage of a `|>`.
+
+#### The generators are built in lowering
+
+Lowering (section 6) is the last place that still sees brands, so it is where
+a type becomes a `GenTree` (`internal/ir/fuzz.go`): a tree whose nodes say "an
+`Int`", "a list of", "a record of these fields", "a union with these
+constructors, of which these are recursive", "a brand of the app, with its
+`where`", or "one of the six standard brands". Trees are shared by the type's
+spelling, so a recursive type's tree is a graph that reaches itself.
+
+A `Fuzz.any` becomes a `FuzzDerive` holding its tree, and a property test a
 `TestProp` holding one tree for each parameter.
 
 The emitter (section 7) then writes one Go generator and one literal
@@ -3779,14 +4481,16 @@ func fuzz__Todo_Slug(c *fuzz.Choices, depth int) string {
 }
 ```
 
-It draws the base type, then runs the brand's own `where` check, the
-function that `Slug`'s constructor and a form decoder also use; a value
-that fails is a `Reject` panic, which the runner counts for the health
-check and discards. A record is `Todo__Todo{Title: fuzz.NonEmpty(c), Due:
-fuzz__Maybe_Date(c, depth), …}`, each field drawn in order. A union calls
-`fuzz.Ctor(c, []bool{false, true}, depth)`, which draws the constructor
-(non-recursive ones first, so the simplest value is the first of them)
-and, for the recursive payload, passes `depth-1`; at depth 0 only the
+It draws the base type, then runs the brand's own `where` check, the function
+that `Slug`'s constructor and a form decoder also use; a value that fails is a
+`Reject` panic, which the runner counts for the health check and discards.
+
+A record is `Todo__Todo{Title: fuzz.NonEmpty(c), Due: fuzz__Maybe_Date(c,
+depth), …}`, each field drawn in order.
+
+A union calls `fuzz.Ctor(c, []bool{false, true}, depth)`, which draws the
+constructor (non-recursive ones first, so the simplest value is the first of
+them) and, for the recursive payload, passes `depth-1`; at depth 0 only the
 others can be drawn. `depth` starts at `fuzz.Depth`, 4.
 
 A property is a test that returns a value instead of a `bool`. The
@@ -3816,57 +4520,82 @@ func test__Todo__4() *rtesting.Property {
 }
 ```
 
-`Draw` makes all the arguments from one `Choices`; `Pure` (or `Task` for a
-block body) is the lambda with its parameters unpacked; `Lit` prints the
-values as Alder, in the names the test's own module would write
-(`fuzz.Quals`); and `Case` is the paste-ready test as a template, with a
-marker where each literal goes and whether it needs parentheses there
-(`a` for an argument, `p` for a position that does not). The template is
-cut from the test's syntax tree and printed by the formatter, so it is
-Alder as `alder fmt` would write it, and `internal/names/qualify.go`
-rewrites its names for the module the test is in. A parameter used
-inside `"…{n}…"` or markup has no place for a literal, so the compiler
-leaves `Case` out and the report says to paste the values.
+The fields of a `Property`:
 
-**The run.** `rtesting.Main` calls `runProperty` (`rt/testing/property.go`)
-for a `Case` with a `Prop`. It replays the saved failure of the test if
-there is one, then makes up to `--fuzz` runs: attempt *i* gets
-`fuzz.Fresh(seed')`, a PCG generator seeded from `--seed` and *i* by
-splitmix64, so the attempts are unrelated but the whole run is a function
-of the seed. An attempt draws, runs the body in a fresh `Env` (for a
-`Task`: its own in-memory store, migrated, with the fakes and the session,
-as in "Fakes" below), and is one of four things: a run that passed or
-failed; *rejected* (a `Reject` panic from a brand or `Fuzz.filter`);
-*overrun* (the draw asked for more than `fuzz.MaxChoices`, 8192, which is
-64 KiB of 8-byte choices, or, on a replay, for more than the sequence had).
+- `Draw` makes all the arguments from one `Choices`;
+- `Pure` (or `Task` for a block body) is the lambda with its parameters
+  unpacked;
+- `Lit` prints the values as Alder, in the names the test's own module
+  would write (`fuzz.Quals`);
+- `Case` is the paste-ready test as a template, with a marker where each
+  literal goes and whether it needs parentheses there (`a` for an
+  argument, `p` for a position that does not).
+
+The template is cut from the test's syntax tree and printed by the
+formatter, so it is Alder as `alder fmt` would write it, and
+`internal/names/qualify.go` rewrites its names for the module the test is
+in.
+
+> **No place for a literal.** A parameter used inside `"…{n}…"` or markup
+> has no place for a literal, so the compiler leaves `Case` out and the
+> report says to paste the values.
+
+#### The run
+
+`rtesting.Main` calls `runProperty` (`rt/testing/property.go`) for a `Case`
+with a `Prop`. It replays the saved failure of the test if there is one,
+then makes up to `--fuzz` runs: attempt *i* gets `fuzz.Fresh(seed')`, a PCG
+generator seeded from `--seed` and *i* by splitmix64, so the attempts are
+unrelated but the whole run is a function of the seed.
+
+An attempt draws, runs the body in a fresh `Env` (for a `Task`: its own
+in-memory store, migrated, with the fakes and the session, as in "Fakes"
+below), and is one of four things:
+
+- a run that passed;
+- a run that failed;
+- *rejected* (a `Reject` panic from a brand or `Fuzz.filter`);
+- *overrun* (the draw asked for more than `fuzz.MaxChoices`, 8192, which
+  is 64 KiB of 8-byte choices, or, on a replay, for more than the sequence
+  had).
+
 Rejected attempts do not count as runs but are counted per predicate; at
-the 50th attempt `filterTooTight` fails the property if more than 90%
-were rejected. An overrun on a fresh attempt is the "generator draws too
-much" failure; on a replay it only means the candidate is not a value the
-generator can make, and the shrinker discards it. An attempt that took
-over 5 seconds fails too, which is checked after it finishes, since a Go
-function cannot be interrupted: a body that never returns is caught by
-the test timeout (`-timeout`, chapter 10). The slow case is saved like a
-failing one, and a shrink candidate that is slow ends the shrinking with
-the best case so far.
+the 50th attempt `filterTooTight` fails the property if more than 90% were
+rejected. An overrun on a fresh attempt is the "generator draws too much"
+failure; on a replay it only means the candidate is not a value the
+generator can make, and the shrinker discards it.
 
-**The shrinker.** `fuzz.Shrink` (`rt/fuzz/shrink.go`) gets the recorded
-choices of the failing run and a function that replays a candidate and
-says whether it still fails. It never builds a value: the same generator
-reads the candidate. The passes are those of minithesis: delete blocks of
-8, 4, 3, 2 and 1 choices (3 is one `Int` element of a list: its
-continue bit, magnitude and sign); set blocks of 8, 4, 2 and 1 to zero;
-lower each choice by binary search toward zero; sort adjacent pairs; and
-move a choice's value onto one of the next four (so `a + b >= 100`
-ends at 0 and 100, and not at 40 and 60). A candidate is kept only if it
-is smaller (shorter, then lexicographically) and still fails, and the
-passes repeat until a round changes nothing or the budget of 1000
-replays is spent. The shrunk sequence is replayed once more, so that
-the values, the `left:` and `right:` sides and the trace are those of the
-shrunk case, and written to `build/<app>/fuzz/<Module>/<sha1 of the test
-name, first 16 hex digits>` as bytes (`fuzz.Encode`). The `savedRun` run
-number marks the replay of that file for the crash report, which is why a
-crash can say "the saved case" without knowing any arguments.
+An attempt that took over 5 seconds fails too, which is checked after it
+finishes, since a Go function cannot be interrupted: a body that never
+returns is caught by the test timeout (`-timeout`, chapter 10). The slow
+case is saved like a failing one, and a shrink candidate that is slow ends
+the shrinking with the best case so far.
+
+#### The shrinker
+
+`fuzz.Shrink` (`rt/fuzz/shrink.go`) gets the recorded choices of the
+failing run and a function that replays a candidate and says whether it
+still fails. It never builds a value: the same generator reads the
+candidate. The passes are those of minithesis:
+
+- delete blocks of 8, 4, 3, 2 and 1 choices (3 is one `Int` element of a
+  list: its continue bit, magnitude and sign);
+- set blocks of 8, 4, 2 and 1 to zero;
+- lower each choice by binary search toward zero;
+- sort adjacent pairs;
+- move a choice's value onto one of the next four (so `a + b >= 100` ends
+  at 0 and 100, and not at 40 and 60).
+
+A candidate is kept only if it is smaller (shorter, then
+lexicographically) and still fails, and the passes repeat until a round
+changes nothing or the budget of 1000 replays is spent.
+
+The shrunk sequence is replayed once more, so that the values, the `left:`
+and `right:` sides and the trace are those of the shrunk case, and written
+to `build/<app>/fuzz/<Module>/<sha1 of the test name, first 16 hex digits>`
+as bytes (`fuzz.Encode`). The `savedRun` run number marks the replay of
+that file for the crash report, which is why a crash can say "the saved
+case" without knowing any arguments.
 
 A fatal crash (a stack overflow in the body) cannot be caught by the
 runner, so before each attempt `Main` writes the test's module, name, seed
@@ -3879,26 +4608,33 @@ Chapter 10 shows a `fake` from the outside. Here is what each stage
 does with chapter 10's `Payments` module, built by `alder test` as the
 app `shop`.
 
-**Parsing, names and checking.** `fake` is a declaration keyword, like
-`capability` (column 1 only). The parser reads `fake Stripe { … }` into
-a `FakeDecl` holding its `TableDecl`s and its entries, each a
-`ValueDecl` with no signature (`internal/syntax`). Names
-(`internal/names/resolve.go`) resolve `Stripe` to the capability, which
-must be in scope, and register the fake's tables as tables of the
-module, so `Payments.Charge` and, from another module,
-`Payments.Charge.cents` resolve as an app table's would. The checker
-(`internal/check/fakes.go`) reports E0020 when the capability is in
-another module, then checks each entry as a value whose signature is
-the entry's type in the capability (a missing or extra entry is E0003).
-It records which tables belong to a fake, and E0021 is a check on every
-use of such a table, its type or a column: allowed inside a `test`, or
-inside the fake's own entries, and nowhere else. `Test.fake Stripe` is
-typed by the checker itself, not by its signature in
-`stdlib/Test.alder` (`fake : Capability -> Task Unit`, where
-`Capability` is a name only that file may write): the argument must be
-a capability with a fake, and the result is `Task Unit`.
+#### Parsing, names and checking
 
-**The IR.** `ir.Program.Fakes` holds one `ir.Fake` per fake: its
+`fake` is a declaration keyword, like `capability` (column 1 only). The parser
+reads `fake Stripe { … }` into a `FakeDecl` holding its `TableDecl`s and its
+entries, each a `ValueDecl` with no signature (`internal/syntax`).
+
+Names (`internal/names/resolve.go`) resolve `Stripe` to the capability, which
+must be in scope, and register the fake's tables as tables of the module, so
+`Payments.Charge` and, from another module, `Payments.Charge.cents` resolve as
+an app table's would.
+
+The checker (`internal/check/fakes.go`) reports E0020 when the capability is
+in another module, then checks each entry as a value whose signature is the
+entry's type in the capability (a missing or extra entry is E0003).
+
+It records which tables belong to a fake, and E0021 is a check on every use of
+such a table, its type or a column: allowed inside a `test`, or inside the
+fake's own entries, and nowhere else.
+
+`Test.fake Stripe` is typed by the checker itself, not by its signature in
+`stdlib/Test.alder` (`fake : Capability -> Task Unit`, where `Capability` is a
+name only that file may write): the argument must be a capability with a fake,
+and the result is `Task Unit`.
+
+#### The IR
+
+`ir.Program.Fakes` holds one `ir.Fake` per fake: its
 module, a pointer to the `ir.Capability` it implements, its tables, and
 its entries as `ir.Value`s in the capability's entry order. The tables
 are lowered by the same code as the app's, but kept out of
@@ -3907,7 +4643,9 @@ never sees them: the schema, `migrate.FromProgram`, E0019 and the
 production build. `Test.fake Stripe` lowers to an `ir.TestFake` node
 naming the fake.
 
-**A fake becomes a Go struct.** `gen.Emit` takes `Options.Tests`, which
+#### A fake becomes a Go struct
+
+`gen.Emit` takes `Options.Tests`, which
 `alder test` sets (`scratch.Options{Tests: true}`), and so do `alder
 eval` and the REPL, whose mains need `TestSession`. With it, the
 module's Go file gets the fake's table, as a record type and a
@@ -3932,13 +4670,16 @@ func (fake__Payments__Stripe) Charge(ctx context.Context, args Args__Payments__S
 }
 ```
 
-`Refund` is the same with its own types. The struct has no fields: a
-fake's state is in its tables, not in Go. It has one method per entry,
-with the signature of the capability's interface,
+`Refund` is the same with its own types. The struct has no fields: a fake's
+state is in its tables, not in Go.
+
+It has one method per entry, with the signature of the capability's interface,
 `Cap__Payments__Stripe`, so to the rest of the program it is one more
-implementation of that interface, like the adapter's. Each entry's body
-is emitted as an ordinary function returning an effect (an entry with
-no parameters, such as a `balance : Query Int`, is a package `var`):
+implementation of that interface, like the adapter's.
+
+Each entry's body is emitted as an ordinary function returning an effect (an
+entry with no parameters, such as a `balance : Query Int`, is a package
+`var`):
 
 ```go
 func fakeentry__Payments__Stripe__Charge(args struct{ Cents int64 }) eff.Task[rt.Result[string, string]] {
@@ -3953,20 +4694,25 @@ func fakeentry__Payments__Stripe__Charge(args struct{ Cents int64 }) eff.Task[rt
 }
 ```
 
-The method is how the Go world (a capability call) gets back into the
-Alder world (an effect to interpret). A capability call's `Call`
-passes `_e.Ctx` to the method, and `eff.Run` put the running `Env` in
-that context, so `eff.EnvFrom(ctx)` finds it. `eff.RunInner(env, t)`
-(`rt/eff/run.go`) then interprets the entry's effect inside the effect
-that is already running, under its kind: the same transaction, the same
-trace, the same session. This is why the trace shows `Stripe.charge`
-(the capability call's own step) followed by `Db.insert Charge` (the
-entry's step), why the insert is part of the test's transaction, and
-why a `Test.run` savepoint around the call undoes it. A failure, such
-as `eff.Fail` with `"card declined"`, comes back out of `RunInner` as
-the method's error. `CapError` leaves an `*eff.ErrFail` as it is, so the
-test sees `card declined`, not `Stripe.charge: card declined`. Called
-from a `Query`, the entry runs as a `Query`, and a write it reaches is
+The method is how the Go world (a capability call) gets back into the Alder
+world (an effect to interpret). A capability call's `Call` passes `_e.Ctx` to
+the method, and `eff.Run` put the running `Env` in that context, so
+`eff.EnvFrom(ctx)` finds it.
+
+`eff.RunInner(env, t)` (`rt/eff/run.go`) then interprets the entry's effect
+inside the effect that is already running, under its kind: the same
+transaction, the same trace, the same session.
+
+This is why the trace shows `Stripe.charge` (the capability call's own step)
+followed by `Db.insert Charge` (the entry's step), why the insert is part of
+the test's transaction, and why a `Test.run` savepoint around the call undoes
+it.
+
+A failure, such as `eff.Fail` with `"card declined"`, comes back out of
+`RunInner` as the method's error. `CapError` leaves an `*eff.ErrFail` as it
+is, so the test sees `card declined`, not `Stripe.charge: card declined`.
+
+Called from a `Query`, the entry runs as a `Query`, and a write it reaches is
 the usual internal error.
 
 `app__alder.go` gets two variables:
@@ -4003,33 +4749,40 @@ Each case's `Env.Caps` is its own copy of the app's capabilities
 again. A `Test.run` savepoint covers the database, not this map, so a
 fake installed inside a failing run stays installed.
 
-**The fakes' tables in a test's database.** `rtesting.Main` passes
-`FakeTables` on as `Options.TestTables`. For each case, after the app's
-tables exist (by `Migrate` or `Ensure`), `ensure` calls
-`store.CreateTables(ctx, o.TestTables, o.Tables)` (`rt/db/sqlite.go`):
-in one transaction it runs a plain `CREATE TABLE` for each fake table,
-resolving its `@ref`s against both lists, and its indexes. It records
-nothing in `_alder_meta`, where `Ensure` and `Migrate` keep the app's
-schema hash. The order matters: `Migrate` ends by checking that the
-live tables are exactly the app's, so it runs before the fakes' tables
-exist, never after.
+#### The fakes' tables in a test's database
 
-**Production.** Without `Options.Tests` (`alder build` and `alder
-run`) none of this is emitted: no fake struct, no entry functions, no
-fake table, no `FakeTables` or `Fakes`. Nor are the tests (section 8,
-"Running tests"): no `test__` functions, no `Tests`, no `TestSession`,
-so nothing in a production build uses a fake, a fake's table or
-`Test.fake`, and nothing imports `alder/rt/testing`. The `Test` nodes
-(`ir.TestRun`, `ir.TestTrace`, `ir.TestFake` and a test's recorded `==`,
-`ir.TestEq`) occur only in `test` bodies and test helpers, and a
-production build omits every test helper (`ir.Value.TestOnly`, from the
-checker's `Result.TestOnly`, which `internal/check/helpers.go` computes
-from the values' references after every body is checked; it has refused,
-with E0040, each reference to a helper from code that runs in
-production). So the emitter treats a test node reaching it in a
-production build as a bug in the compiler: `testNode` in
-`internal/gen/effects.go` panics, and `Emit` returns that as its
-internal error instead of writing Go.
+`rtesting.Main` passes `FakeTables` on as `Options.TestTables`. For each case,
+after the app's tables exist (by `Migrate` or `Ensure`), `ensure` calls
+`store.CreateTables(ctx, o.TestTables, o.Tables)` (`rt/db/sqlite.go`): in one
+transaction it runs a plain `CREATE TABLE` for each fake table, resolving its
+`@ref`s against both lists, and its indexes.
+
+It records nothing in `_alder_meta`, where `Ensure` and `Migrate` keep the
+app's schema hash.
+
+The order matters: `Migrate` ends by checking that the live tables are exactly
+the app's, so it runs before the fakes' tables exist, never after.
+
+#### Production
+
+Without `Options.Tests` (`alder build` and `alder run`) none of this is
+emitted: no fake struct, no entry functions, no fake table, no `FakeTables` or
+`Fakes`.
+
+Nor are the tests (section 8, "Running tests"): no `test__` functions, no
+`Tests`, no `TestSession`, so nothing in a production build uses a fake, a
+fake's table or `Test.fake`, and nothing imports `alder/rt/testing`.
+
+The `Test` nodes (`ir.TestRun`, `ir.TestTrace`, `ir.TestFake` and a test's
+recorded `==`, `ir.TestEq`) occur only in `test` bodies and test helpers, and
+a production build omits every test helper (`ir.Value.TestOnly`, from the
+checker's `Result.TestOnly`, which `internal/check/helpers.go` computes from
+the values' references after every body is checked; it has refused, with
+E0040, each reference to a helper from code that runs in production).
+
+So the emitter treats a test node reaching it in a production build as a bug
+in the compiler: `testNode` in `internal/gen/effects.go` panics, and `Emit`
+returns that as its internal error instead of writing Go.
 
 ### The browser
 
@@ -4039,34 +4792,47 @@ compiler and the runtime makes that happen, from the to-do app's test
 build (`build/todos/scratch/test/`, what `alder test examples/todos`
 compiles).
 
-**Checking.** The browser steps are special forms, like `Test.fake`: the
-checker types them itself (`internal/check/browser.go`), and their lines
-in `stdlib/Test.alder` are documentation. `Test.get r` and `Test.open r`
-need `r` written as a route value in place (a route's name applied to its
-parameters' record, `Todos.Index.Index {}`), so the checker knows which
-route it is (`routeTarget`) and can give `Test.get`'s `model` that route's
-model, what its `load` returns (`routeModel`, read from `load`'s
-signature). A write route there is E0045 ("use `Test.click`" or, with a
-form, "`Test.submit`"), a file route needs `Test.fetch`, and a model that
-is a union cannot be named in the result (use `Test.open`).
-`Test.fetch r` is the one step that may take a file route, and `Test.refresh`
-takes no argument at all.
-`Test.submit r f` needs a write route with a `form F`: it checks `f`
-against the form's record the way a form value is checked, defaults
-included; a route without `form` is E0045 ("use `Test.click`"), and so is a
-GET route. `Test.click r` needs a route that has no form (a form is
-`Test.submit`'s), a GET route or a write route. `Test.login s` checks `s`
-against `App`'s session. Each result is the record type chapter 10 gives, which `stepResult` builds as
-`{ answer, session, doc, notices, toasts, url, status }` (`notices` and
-`toasts` are the toasts the step's requests showed), with `Session`
-being `App`'s session type and `Doc` and `Answer` types of the Prelude that
-the checker lets only a test name (E0003 elsewhere). The queries are
-ordinary functions of `stdlib/Test.alder`, with one extra check: a selector
-argument written as a literal is parsed with the runtime's own selector
-parser (`rt/selector`, shared by the checker and `rt/html`), and a text
-that does not parse is E0023, at the literal.
+#### Checking
 
-**The IR.** Each step lowers to a node of its own (`internal/ir`):
+The browser steps are special forms, like `Test.fake`: the checker types
+them itself (`internal/check/browser.go`), and their lines in
+`stdlib/Test.alder` are documentation.
+
+`Test.get r` and `Test.open r` need `r` written as a route value in place
+(a route's name applied to its parameters' record, `Todos.Index.Index {}`),
+so the checker knows which route it is (`routeTarget`) and can give
+`Test.get`'s `model` that route's model, what its `load` returns
+(`routeModel`, read from `load`'s signature). A write route there is E0045
+("use `Test.click`" or, with a form, "`Test.submit`"), a file route needs
+`Test.fetch`, and a model that is a union cannot be named in the result
+(use `Test.open`).
+
+The other steps have rules of their own:
+
+- `Test.fetch r` is the one step that may take a file route.
+- `Test.refresh` takes no argument at all.
+- `Test.submit r f` needs a write route with a `form F`: it checks `f`
+  against the form's record the way a form value is checked, defaults
+  included; a route without `form` is E0045 ("use `Test.click`"), and so
+  is a GET route.
+- `Test.click r` needs a route that has no form (a form is
+  `Test.submit`'s), a GET route or a write route.
+- `Test.login s` checks `s` against `App`'s session.
+
+Each result is the record type chapter 10 gives, which `stepResult` builds
+as `{ answer, session, doc, notices, toasts, url, status }` (`notices` and
+`toasts` are the toasts the step's requests showed), with `Session` being
+`App`'s session type and `Doc` and `Answer` types of the Prelude that the
+checker lets only a test name (E0003 elsewhere).
+
+The queries are ordinary functions of `stdlib/Test.alder`, with one extra
+check: a selector argument written as a literal is parsed with the
+runtime's own selector parser (`rt/selector`, shared by the checker and
+`rt/html`), and a text that does not parse is E0023, at the literal.
+
+#### The IR
+
+Each step lowers to a node of its own (`internal/ir`):
 `TestLogin{Session}`, `TestGet{Route, Params, Open, Fetch}` (`Open` for
 `Test.open`, `Fetch` for `Test.fetch`), `TestSubmit{Form, Route, Params,
 Record}`, `TestSubmitRaw{…, Fields}`, `TestClick{Route, Params}` and
@@ -4075,7 +4841,9 @@ record of its parameters, nil when the test wrote the route bare (an old
 `page` or `msg` is the same node with `Page` and `Msg` set instead). The queries stay
 ordinary calls.
 
-**A step is a `Call`.** Section 8's `Call` is a named step with a
+#### A step is a `Call`
+
+Section 8's `Call` is a named step with a
 function to run; every browser step is one, named as the trace shows it,
 marked as a write, whose function asks the test's browser to do the
 step and packs its result into the record Alder sees. From
@@ -4201,7 +4969,9 @@ it when the query runs and matches nothing when it does not parse.
 constructors) and the payload's fields; a `match` on it switches on the
 tag. `Doc` is `rtesting.Doc`, which holds the parsed tree.
 
-**The test program gets the routes.** The test build's `main` (section
+#### The test program gets the routes
+
+The test build's `main` (section
 8, "Running tests") passes `app.Routes` and `app.Web()` to
 `rtesting.Main`. `Web` is generated in every build, production's
 included, with the router options that do not depend on how the app
@@ -4232,23 +5002,34 @@ test program builds its router from the same two values, so the
 routes, the cookie's codec, the error pages and the login page are
 production's.
 
-**One browser per test.** For each task test, `rtesting.Run` puts a slot
-in the test's `context` holding the routes and options.
-`rtesting.BrowserOf(env)` finds the slot and makes the browser the first
-time a step asks (`rt/testing/browser.go`, `NewBrowser`). A context
-value, not a global, so each test's browser is its own, and a step
-inside `Test.run` (which runs on the same `Env`) finds the same one.
-`NewBrowser` calls `web.NewRouter(routes, opts)`, replacing a few
-options: the test's store and capabilities; a clock for the cookie that
-stands still; dev mode off; a fixed key for signing cookies; a log that
-keeps the router's last error line, which becomes `RequestFailed`'s text; and
-four hooks the router has for this: `EnvFor` and `Served`, below, `Rendered`,
-which hands the browser the full render of the page a Datastar answer was
-cut from, and `Answered`, which hands it the `rt.Response` a write route
-gave. The last two let a step check the answer it applied and name it
+#### One browser per test
+
+For each task test, `rtesting.Run` puts a slot in the test's `context`
+holding the routes and options. `rtesting.BrowserOf(env)` finds the slot
+and makes the browser the first time a step asks (`rt/testing/browser.go`,
+`NewBrowser`). A context value, not a global, so each test's browser is its
+own, and a step inside `Test.run` (which runs on the same `Env`) finds the
+same one.
+
+`NewBrowser` calls `web.NewRouter(routes, opts)`, replacing a few options:
+
+- the test's store and capabilities;
+- a clock for the cookie that stands still;
+- dev mode off;
+- a fixed key for signing cookies;
+- a log that keeps the router's last error line, which becomes
+  `RequestFailed`'s text;
+- four hooks the router has for this: `EnvFor` and `Served`, below,
+  `Rendered`, which hands the browser the full render of the page a
+  Datastar answer was cut from, and `Answered`, which hands it the
+  `rt.Response` a write route gave.
+
+The last two let a step check the answer it applied and name it
 (`Rendered r`, `Refreshed`) without parsing the events for it.
 
-**`EnvFor`: a request inside the test's transaction.** In production
+#### `EnvFor`: a request inside the test's transaction
+
+In production
 the router gives each request a fresh `eff.Env` (section 8, "What `Run`
 does"), and `eff.Run` begins a transaction on the store. A test's
 store is an in-memory SQLite with one connection, on which the test
@@ -4270,29 +5051,37 @@ type Within struct {
 ```
 
 `Tx` is the test's transaction, begun by the browser if no step has yet
-(`env.Transaction()`). With `Within` set, `eff.Run` (`rt/eff/run.go`)
-never begins or commits: a `Query` (a route's `load`) reads through
-`Tx`; a `Task` (an `update`) takes `SAVEPOINT alder_tN` as it starts,
-then `RELEASE` when it succeeds, or `ROLLBACK TO` and `RELEASE` when it
-fails, the same three statements as `Test.run`'s. The savepoint is taken
-at once rather than at the first step, so that writes made by effects
-the task starts on other `Env`s are inside it too. The request's `Env`
-shares the test's store, capabilities (read at each request, so a
-`Test.fake` installed later applies), clock and log, and after each
-request the browser appends that `Env`'s trace to the test's: the
-step's name first (the `Call`), then the request's effects.
+(`env.Transaction()`).
 
-**`Served` and `Request.Model`: the model.** `Test.get` gives the model
-the page rendered, so it must come from the request itself. Each GET
-route's handler sets it on the request before rendering, `rq.Model =
-model` (section 8, "A request"), in every build; production ignores
-it. `web.Options.Served`, when set, is called with each request after
-its handler answers. The browser's keeps `rq.Model`, and `ModelOf`
-returns it with its Go type, or fails "GET /: the page gave no model".
-`load` runs once, so a route that reads the clock in `load` shows the
-time its model holds.
+With `Within` set, `eff.Run` (`rt/eff/run.go`) never begins or commits: a
+`Query` (a route's `load`) reads through `Tx`; a `Task` (an `update`) takes
+`SAVEPOINT alder_tN` as it starts, then `RELEASE` when it succeeds, or
+`ROLLBACK TO` and `RELEASE` when it fails, the same three statements as
+`Test.run`'s. The savepoint is taken at once rather than at the first step, so
+that writes made by effects the task starts on other `Env`s are inside it too.
 
-**Requests in memory.** A step makes an `http.Request` with
+The request's `Env` shares the test's store, capabilities (read at each
+request, so a `Test.fake` installed later applies), clock and log, and after
+each request the browser appends that `Env`'s trace to the test's: the step's
+name first (the `Call`), then the request's effects.
+
+#### `Served` and `Request.Model`: the model
+
+`Test.get` gives the model the page rendered, so it must come from the request
+itself. Each GET route's handler sets it on the request before rendering,
+`rq.Model = model` (section 8, "A request"), in every build; production
+ignores it.
+
+`web.Options.Served`, when set, is called with each request after its handler
+answers. The browser's keeps `rq.Model`, and `ModelOf` returns it with its Go
+type, or fails "GET /: the page gave no model".
+
+`load` runs once, so a route that reads the clock in `load` shows the time its
+model holds.
+
+#### Requests in memory
+
+A step makes an `http.Request` with
 `httptest.NewRequest`: a plain `GET` for `get`, `open` and `refresh`; for
 `submit` and `click` the Datastar request the held page's control makes,
 with the headers its script adds (below). Each request carries the cookie
@@ -4300,138 +5089,183 @@ and, as `Referer`, the held page's address. `router.ServeHTTP` writes the
 answer into an `httptest.ResponseRecorder`, and the browser reads it:
 
 - `200` with HTML: the page is shown; the browser parses it and holds it.
+
 - `303`: followed with a `GET` (at most ten in a row), and the answer is
-  `Redirected` with the page it ends on. A target with a scheme or a
-  host is another site: `Redirected` with that address, nothing
-  fetched, the held page kept.
-- `404` and `500`: `PageMissing` and `RequestFailed`, holding the page served.
+  `Redirected` with the page it ends on. A target with a scheme or a host
+  is another site: `Redirected` with that address, nothing fetched, the
+  held page kept.
+
+- `404` and `500`: `PageMissing` and `RequestFailed`, holding the page
+  served.
+
 - A Datastar answer (`text/event-stream`) is a list of events, applied in
-  order. A `datastar-patch-elements` event whose selector is `body`
-  replaces the held `<body>` with the one it carries, and one whose
-  selector is `head > title` the held `<title>`. One whose selector is
-  `#<id>` in mode `outer` replaces the held element with that `id`: the
-  regions of a `refresh` or an `invalid`, the one element of a `render` or
-  an element fetch. The held page without an element of that id cannot take
-  it, and the step fails ("the answer patched `#row-1`, which the page does
-  not have"), where a real browser would drop the patch silently. One
-  whose selector is `#_alder_shown` records the hash of the body shown
-  (`Browser.shown`, sent with the next write). One that appends to
-  `al-toasts` is read into the step's `notices` and `toasts`. An event that
-  runs `window.location.assign(…)`, Datastar's way of navigating, is
-  followed with a `GET`, as above. An event that runs `history.pushState`
-  (the router followed a redirect itself, "A redirect, followed") makes its
-  URL the held page's address, and the answer is what the `GET` of it would
-  have given: `Redirected` with that page, or `PageMissing` or
-  `RequestFailed` by `Alder-Status`. After a patch, the router's
-  `Alder-Status` header (set on a Datastar answer that is a 404 or a 500,
-  which is otherwise a `200` patch like any other) gives `PageMissing` or
-  `RequestFailed`.
+  order. A `datastar-patch-elements` event is applied by its selector:
+
+  - `body` replaces the held `<body>` with the one it carries.
+  - `head > title` replaces the held `<title>`.
+  - `#<id>` in mode `outer` replaces the held element with that `id`: the
+    regions of a `refresh` or an `invalid`, the one element of a `render`
+    or an element fetch.
+  - `#_alder_shown` records the hash of the body shown (`Browser.shown`,
+    sent with the next write).
+  - Appending to `al-toasts` is read into the step's `notices` and
+    `toasts`.
+
+  The held page without an element of that id cannot take a patch, and the
+  step fails ("the answer patched `#row-1`, which the page does not
+  have"), where a real browser would drop the patch silently.
+
+  Other events are handled as well:
+
+  - An event that runs `window.location.assign(…)`, Datastar's way of
+    navigating, is followed with a `GET`, as above.
+  - An event that runs `history.pushState` (the router followed a redirect
+    itself, "A redirect, followed") makes its URL the held page's address,
+    and the answer is what the `GET` of it would have given: `Redirected`
+    with that page, or `PageMissing` or `RequestFailed` by `Alder-Status`.
+  - After a patch, the router's `Alder-Status` header (set on a Datastar
+    answer that is a 404 or a 500, which is otherwise a `200` patch like
+    any other) gives `PageMissing` or `RequestFailed`.
 
 Which `Answer` a patch comes to is not read from the events. The router's
-`Answered` hook gave the browser the `rt.Response` the write route
-answered, and `sendRoute` reads its kind: a `render r` is `Rendered r` (once
-the element check below has passed), a `refresh` is `Refreshed`, an
-`invalid` is `FormRejected`, with the errors the page now shows in its
-`<ul class="errors" data-errors="…">` lists, in page order
-(`data-errors="form"` as the field `""`). A click on a GET route is an
-element fetch and is `Rendered r` too. A redirect is `Redirected`; a 404 or
-a 500 is `PageMissing` or `RequestFailed`. `Rerendered` is what a patch with
-no `Answered` response comes to, the older form's re-render.
+`Answered` hook gave the browser the `rt.Response` the write route answered,
+and `sendRoute` reads its kind: a `render r` is `Rendered r` (once the element
+check below has passed), a `refresh` is `Refreshed`, an `invalid` is
+`FormRejected`, with the errors the page now shows in its `<ul class="errors"
+data-errors="…">` lists, in page order (`data-errors="form"` as the field
+`""`).
 
-**Controls.** Before a `submit` or `click` is sent, the browser looks
-for the control on the held page. A page's controls are the Datastar
-actions its views render (`rt/html` `RouteClick` and `RouteSubmit`): a
-`<form>`'s `data-on:submit="…@post('/_/Submit?filter=Active', …)"`, or a
-button's `data-on:click`. `routeControl` walks the held document in
-order, reads each action with a regular expression (`routeAction`: the
-verb, the URL, and whether it sends a form), and keeps the first whose
-`rt.RouteKey` (its method, then `rt.MsgKey`: the path and the route's own
-parameters) equals that of the route the test wrote. A form that posts a
-`_method` field (a `PUT`, `PATCH` or `DELETE` route) has that as its method.
+A click on a GET route is an element fetch and is `Rendered r` too. A redirect
+is `Redirected`; a 404 or a 500 is `PageMissing` or `RequestFailed`.
+`Rerendered` is what a patch with no `Answered` response comes to, the older
+form's re-render.
+
+#### Controls
+
+Before a `submit` or `click` is sent, the browser looks for the control on the
+held page. A page's controls are the Datastar actions its views render
+(`rt/html` `RouteClick` and `RouteSubmit`): a `<form>`'s
+`data-on:submit="…@post('/_/Submit?filter=Active', …)"`, or a button's
+`data-on:click`.
+
+`routeControl` walks the held document in order, reads each action with a
+regular expression (`routeAction`: the verb, the URL, and whether it sends a
+form), and keeps the first whose `rt.RouteKey` (its method, then `rt.MsgKey`:
+the path and the route's own parameters) equals that of the route the test
+wrote.
+
+A form that posts a `_method` field (a `PUT`, `PATCH` or `DELETE` route) has
+that as its method.
+
 A `submit` does not count a click button's own little form
-(`class="_alder-click"`) as a form; a `click` counts it, and any element
-whose `data-on:click` requests the route. With no match it sends nothing
-and returns a `*NoControlError`, whose text the test fails with; it names
-the held page's URL and the route as the test wrote it. A submit then sends only the
-fields the matched form has an `input`, `select` or `textarea` for, by
-`name`, as Datastar's form serialization does (`Fields.For`). The generated
-`encode__M__F` returns the encoded fields together with `Absent`, the
-names whose value is what the decoder makes of a missing field (a
-`Maybe` without a default that is `Nothing`, a field equal to its
-default); such a field without an input is left out, and any other one
-is a `*NoInputError`, "the page's form F has no input `n`".
+(`class="_alder-click"`) as a form; a `click` counts it, and any element whose
+`data-on:click` requests the route.
+
+With no match it sends nothing and returns a `*NoControlError`, whose text the
+test fails with; it names the held page's URL and the route as the test wrote
+it.
+
+A submit then sends only the fields the matched form has an `input`, `select`
+or `textarea` for, by `name`, as Datastar's form serialization does
+(`Fields.For`).
+
+The generated `encode__M__F` returns the encoded fields together with
+`Absent`, the names whose value is what the decoder makes of a missing field
+(a `Maybe` without a default that is `Nothing`, a field equal to its default);
+such a field without an input is left out, and any other one is a
+`*NoInputError`, "the page's form F has no input `n`".
 
 The request is then the one the page's script would make (`sendRoute`):
 Datastar's verb for the route (`PATCH` for a `PATCH` route; a `DELETE` that
 sends a form is a `POST`), `Datastar-Request: true`, `Alder-Page`, the held
-page's address, and `Alder-Build`, the build the held page names. A GET
-route is an element fetch, with `Alder-Fetch: 1` and no hash; a write sends
-`Alder-Shown`, the hash of the body held. The body is the form's fields
-url-encoded (a click button's own form sends only its `_method`), or
-else the script's empty payload: `{}` as a JSON body, or, for a `GET` or a
-`DELETE`, `datastar={}` in the query, which the router drops. The test
-never writes the body of a `click`: a route with `form F` clicked gets what
-the page sends, and `F` decodes as it can.
+page's address, and `Alder-Build`, the build the held page names.
 
-**The checks.** After a patch the browser compares what it holds with what
-the server would have sent whole. The `Rendered` hook gave it the full
-render the router cut the answer from (`refresh`, `invalid`, a followed
-redirect), and `checkPatched` parses that render the way a browser's parser
-builds a page (`html.Repair`) and compares it with the page now held: the
-whole body when the answer replaced the body, else only the regions the
-answer patched, each by its `id`. If they differ the step fails with a
-`DriftError` that names where. This is the region check, chapter 6's
-guarantee ("every region the server sent is right") made a test. For a
-`render` or an element fetch `checkElement` fetches the route's own address
-once more, as an element fetch, inside a savepoint it rolls back
-(`quietly`), and compares the element the held page now has with the
-element that comes back; the two are equal by construction, and the check
-is what proves it (an `ElementError` otherwise). `Test.refresh` is the
-whole-page check, and is the developer's: it sends a plain `GET` for the
-address held, as a reload does, and compares the body it gets with the body
-held (`refreshBody`: without the toasts, which a reload may fill from a
-notice), failing with a `RefreshError` that gives the first difference.
+A GET route is an element fetch, with `Alder-Fetch: 1` and no hash; a write
+sends `Alder-Shown`, the hash of the body held.
 
-**Parsing the page.** `rt/html` already renders a view to text. For the
-browser it gained `Parse` (`rt/html/parse.go`), which reads that text
-back into the same `Node` tree: elements with their attributes in order,
-text with its entities decoded, the contents of `<script>` and
-`<style>` kept as they are. It is written for the renderer's own
-output, which is always regular (lower-case names, quoted values, `<br
-/>`), and tested on it: every page of both examples, rendered by the
-built apps, parses and renders back byte for byte. The browser drops
-the `<!doctype html>` line and the Datastar `<script>` tag the router
-adds, so the held tree is what `view` made. `Select(node, selector)`
-walks the tree in document order and keeps each element that matches
-the selector's last compound, checking the ones before it against the
-element's ancestors (any ancestor for a space, the parent for `>`).
-`TextContent` joins the text inside an element and collapses its
-whitespace. `Doc`'s `==` is `Node.Equal` of the two trees (after
-`html.WithoutPageParams`, which an address in the older message form
-needs and a route's does not), so a page compares equal to
-`Test.doc (view …)`, which renders without a request. When a test's `==` of two `Doc`s is
-`False`, `rtesting.Eq` records `html.Diff` instead of the two markups:
-the path of the first element whose content differs and that element on
-each side, cut to 120 characters, which the report prints as `left:`,
-`right:` and `note:`.
+The body is the form's fields url-encoded (a click button's own form sends
+only its `_method`), or else the script's empty payload: `{}` as a JSON body,
+or, for a `GET` or a `DELETE`, `datastar={}` in the query, which the router
+drops.
 
-**Production.** None of this is in an app's binary. The step nodes, like
-`Test.run`'s, reach the emitter only from `test` bodies, which a
-production build does not emit (a step that reached it anyway would be
-the emitter's internal error, `testNode`); the `encode__` functions and
-the `selector__` variables are emitted only in test builds; and
-`TestGen_ProdHasNoTests` (`internal/gen/gen_test.go`) checks that a
-production build of a fixture app using every step has none of
-`encode__`, `selector__` or `BrowserOf`. What production gains is
-`Web()`, the routes' `rq.Model = model`, the router's four hooks, left
-unset, and the `Alder-Status` header on a Datastar answer that is a 404
-or a 500, which Datastar's client ignores. `rt/html` imports
-`rt/selector` (for `Select`), so the package is part of every
-app's build, but nothing in production calls `Parse` or `Select`, and
+The test never writes the body of a `click`: a route with `form F` clicked
+gets what the page sends, and `F` decodes as it can.
+
+#### The checks
+
+After a patch the browser compares what it holds with what the server would
+have sent whole. The `Rendered` hook gave it the full render the router cut
+the answer from (`refresh`, `invalid`, a followed redirect), and
+`checkPatched` parses that render the way a browser's parser builds a page
+(`html.Repair`) and compares it with the page now held: the whole body when
+the answer replaced the body, else only the regions the answer patched, each
+by its `id`. If they differ the step fails with a `DriftError` that names
+where.
+
+This is the region check, chapter 6's guarantee ("every region the server sent
+is right") made a test.
+
+For a `render` or an element fetch `checkElement` fetches the route's own
+address once more, as an element fetch, inside a savepoint it rolls back
+(`quietly`), and compares the element the held page now has with the element
+that comes back; the two are equal by construction, and the check is what
+proves it (an `ElementError` otherwise).
+
+`Test.refresh` is the whole-page check, and is the developer's: it sends a
+plain `GET` for the address held, as a reload does, and compares the body it
+gets with the body held (`refreshBody`: without the toasts, which a reload may
+fill from a notice), failing with a `RefreshError` that gives the first
+difference.
+
+#### Parsing the page
+
+`rt/html` already renders a view to text. For the browser it gained `Parse`
+(`rt/html/parse.go`), which reads that text back into the same `Node` tree:
+elements with their attributes in order, text with its entities decoded, the
+contents of `<script>` and `<style>` kept as they are. It is written for the
+renderer's own output, which is always regular (lower-case names, quoted
+values, `<br />`), and tested on it: every page of both examples, rendered by
+the built apps, parses and renders back byte for byte.
+
+The browser drops the `<!doctype html>` line and the Datastar `<script>` tag
+the router adds, so the held tree is what `view` made.
+
+`Select(node, selector)` walks the tree in document order and keeps each
+element that matches the selector's last compound, checking the ones before it
+against the element's ancestors (any ancestor for a space, the parent for
+`>`).
+
+`TextContent` joins the text inside an element and collapses its whitespace.
+`Doc`'s `==` is `Node.Equal` of the two trees (after `html.WithoutPageParams`,
+which an address in the older message form needs and a route's does not), so a
+page compares equal to `Test.doc (view …)`, which renders without a request.
+
+When a test's `==` of two `Doc`s is `False`, `rtesting.Eq` records `html.Diff`
+instead of the two markups: the path of the first element whose content
+differs and that element on each side, cut to 120 characters, which the report
+prints as `left:`, `right:` and `note:`.
+
+#### Production
+
+None of this is in an app's binary. The step nodes, like `Test.run`'s, reach
+the emitter only from `test` bodies, which a production build does not emit (a
+step that reached it anyway would be the emitter's internal error,
+`testNode`); the `encode__` functions and the `selector__` variables are
+emitted only in test builds; and `TestGen_ProdHasNoTests`
+(`internal/gen/gen_test.go`) checks that a production build of a fixture app
+using every step has none of `encode__`, `selector__` or `BrowserOf`.
+
+What production gains is `Web()`, the routes' `rq.Model = model`, the router's
+four hooks, left unset, and the `Alder-Status` header on a Datastar answer
+that is a 404 or a 500, which Datastar's client ignores.
+
+`rt/html` imports `rt/selector` (for `Select`), so the package is part of
+every app's build, but nothing in production calls `Parse` or `Select`, and
 the linker leaves their code out: `go tool nm` on a built app lists no
-`rt/selector` symbol. (The selector package keeps the HTML element
-names in a string rather than a map for the same reason: a map would be
-built when the binary starts.)
+`rt/selector` symbol.
+
+(The selector package keeps the HTML element names in a string rather than a
+map for the same reason: a map would be built when the binary starts.)
 
 ### Mutation testing
 
@@ -4440,7 +5274,9 @@ Inside, it is three pieces: `internal/mutate` decides the mutants, the
 emitter compiles all of them into one test program, and `rt/testing`
 runs the suite once per mutant.
 
-**Which mutants.** `mutate.Collect(p *ir.Program)` walks the typed IR
+#### Which mutants
+
+`mutate.Collect(p *ir.Program)` walks the typed IR
 (section 6) and returns the mutants and the refused ones. A mutant is a
 `mutate.Mutant`. It has:
 
@@ -4462,19 +5298,23 @@ write. Since the replacement has the node's type, every mutant is
 well-typed, and the checker's work is not undone. The schema operators
 carry `Table`, a clone of the table with the change.
 
-To say where a survivor is, the lowerer records each mutated node's
-source position (`ir.Pos`, a line and a column). The IR dump leaves
-positions out, so its goldens did not change. Collect visits the
-modules in the program's order (imports first, otherwise alphabetical).
-In each module it takes the tables field by field, then each value's
-body in pre-order, numbering from 1. A route's `load` and `update` are
-values like any other (`Index.load`, `Toggle.update`), so their bodies
-are walked; its `view` is not, nor a `test`, a `fake`, a component, or
-a value whose result has `Html` in it. A change it refuses is a
-`mutate.Suppressed` with a `Category` (`equivalent` or `skipped`) and a
-`Why`.
+To say where a survivor is, the lowerer records each mutated node's source
+position (`ir.Pos`, a line and a column). The IR dump leaves positions out, so
+its goldens did not change.
 
-**Mutant schemata: every mutant in one build.** Building the app once
+Collect visits the modules in the program's order (imports first, otherwise
+alphabetical). In each module it takes the tables field by field, then each
+value's body in pre-order, numbering from 1.
+
+A route's `load` and `update` are values like any other (`Index.load`,
+`Toggle.update`), so their bodies are walked; its `view` is not, nor a `test`,
+a `fake`, a component, or a value whose result has `Html` in it. A change it
+refuses is a `mutate.Suppressed` with a `Category` (`equivalent` or `skipped`)
+and a `Why`.
+
+#### Mutant schemata: every mutant in one build
+
+Building the app once
 per mutant would cost a `go build` each, seconds times 32. Instead,
 `gen.Options{Tests: true, Mutate: true}` (which only `alder test
 --mutate` sets) makes the emitter compile each mutated node with its
@@ -4510,14 +5350,18 @@ the filter keeps the done todos instead. This is the mutant that the
 strengthened "countOpen ignores done todos" kills: its three todos then
 give 1, not 2.
 
-**In place, not per subtree.** A replacement can share the node's
-subtrees: a negated `if` has the same branches, a flipped `&&` the same
-operands. Emitting each replacement in full would emit those subtrees
-once per mutant, and their own mutants' switches inside each copy: an
-`else if` chain nine levels deep, with two mutants per level, became 3
-MB of Go that took a minute and 1.7 GB to compile. So the mutants of an
-`if` switch only its condition, and its branches are emitted once. The
-blog's page clamp, in `Index.load` of `Posts.Index`,
+#### In place, not per subtree
+
+A replacement can share the node's subtrees: a negated `if` has the same
+branches, a flipped `&&` the same operands. Emitting each replacement in full
+would emit those subtrees once per mutant, and their own mutants' switches
+inside each copy: an `else if` chain nine levels deep, with two mutants per
+level, became 3 MB of Go that took a minute and 1.7 GB to compile.
+
+So the mutants of an `if` switch only its condition, and its branches are
+emitted once.
+
+The blog's page clamp, in `Index.load` of `Posts.Index`,
 
 ```alder fragment
   let page = if params.page < 1 then 1 else if params.page > lastPage then lastPage else params.page
@@ -4549,21 +5393,24 @@ is in the mutate build
 	}()
 ```
 
-where 166 and 168 are `condition negated` (`(Mutant == 166) != c` is `not
-c` under 166 and `c` otherwise) and 167 and 169 the flipped comparisons. A
-`guard dropped` on an `if` is `Mutant != k && c` (or `Mutant == k ||
-c`). A `match` with mutants emits each arm's body once: it first finds
-the arm, and an arm that a mutant moves gives its number instead of its
-value; `guard dropped` and `arm swapped` then change the number (under
-an arm swap, arm 1 becomes 2 and 2 becomes 1), and a switch on the number
-returns the body. For the other operators, the children a replacement
-shares (the operands of a flipped operator, the argument of a dropped
-`not`, an update's fields, a select's steps) are computed once into Go
-variables before the switch, and the original and each replacement use
-those (the right operand of `&&` and `||` becomes a function, called
-only when needed). The mutate build is then a few hundred bytes per
-mutant larger than the test build, and `TestGen_MutateNested` checks
-that on twelve-deep chains.
+where 166 and 168 are `condition negated` (`(Mutant == 166) != c` is `not c`
+under 166 and `c` otherwise) and 167 and 169 the flipped comparisons.
+
+A `guard dropped` on an `if` is `Mutant != k && c` (or `Mutant == k || c`).
+
+A `match` with mutants emits each arm's body once: it first finds the arm, and
+an arm that a mutant moves gives its number instead of its value; `guard
+dropped` and `arm swapped` then change the number (under an arm swap, arm 1
+becomes 2 and 2 becomes 1), and a switch on the number returns the body.
+
+For the other operators, the children a replacement shares (the operands of a
+flipped operator, the argument of a dropped `not`, an update's fields, a
+select's steps) are computed once into Go variables before the switch, and the
+original and each replacement use those (the right operand of `&&` and `||`
+becomes a function, called only when needed).
+
+The mutate build is then a few hundred bytes per mutant larger than the test
+build, and `TestGen_MutateNested` checks that on twelve-deep chains.
 
 The emitter switches a node in three places, and all three do nothing
 when `Mutate` is unset:
@@ -4582,14 +5429,17 @@ every record literal that leaves the field out, tests' literals
 included, which is what makes a `default changed` mutant reach every
 insert.
 
-`requires dropped` and `role dropped` are not in a function body, but
-they exist only for the older `page` form, and not for routes. The mutator
-reads them from `ir.Page` (`Collect` loops over `p.Pages`), a list route
-modules are not in, so a route's `requires user, role Author` has no mutant,
-and nothing in the score says whether a test would notice the clause
-dropped ([alder#187](https://github.com/tapegram/alder/issues/187)). The
-same is true of the older redirect and reject operators. For a `page`
-module, the `requires` mutant is a line in the page's function
+`requires dropped` and `role dropped` are not in a function body, but they
+exist only for the older `page` form, and not for routes.
+
+> **Not yet:** The mutator reads them from `ir.Page` (`Collect` loops over
+> `p.Pages`), a list route modules are not in, so a route's
+> `requires user, role Author` has no mutant, and nothing in the score says
+> whether a test would notice the clause dropped
+> ([alder#187](https://github.com/tapegram/alder/issues/187)). The same is
+> true of the older redirect and reject operators.
+
+For a `page` module, the `requires` mutant is a line in the page's function
 (`page__Todos__Index` of the pre-routes to-do app, `testdata/fix/todos`)
 before the check that sends a visitor to log in:
 
@@ -4669,7 +5519,9 @@ again at each use, so a constant that is costly to compute makes the
 mutate run slower (never the plain test run or the production build,
 where it is still a package variable).
 
-**The table of mutants.** `app__alder.go` also gets
+#### The table of mutants
+
+`app__alder.go` also gets
 
 ```go
 // Mutant is the mutant the running suite switches on (alder test --mutate): an id of Mutants, 0 for none.
@@ -4704,20 +5556,25 @@ examples and the corpus apps with `Mutate`, and vets each. It checks
 that every mutant has its switch and that no production build mentions
 `Mutant`.
 
-**How a kill is decided.** `rtesting.Main` with `--mutate` first runs
+#### How a kill is decided
+
+`rtesting.Main` with `--mutate` first runs
 the suite as usual. If a test fails, it prints `tests fail: fix them
 before measuring mutants` and stops. Otherwise `runMutant`
 (`rt/testing/mutate.go`) does this for each mutant in turn:
 
 1. It sets `Mutant` to the mutant's id (and back to 0 afterwards).
+
 2. For a schema mutant, it replaces the tables each test's database is
    made from with the mutant's `Tables`, made by `db.Ensure`, and drops
    the migrations, so the changed rule is what the test meets (the JSON
    says `"tables":"ensure"`).
+
 3. It starts one timer for the mutant: `-timeout` (10 s by default), or
    three times the suite's own run when that is longer, so a slow suite
    does not time out on a slow moment of the machine. (The suite's run
    is logged, so a later program that goes on from a mutant has it.)
+
 4. It runs the selected tests in order, each in a goroutine with its
    own fresh database, as plain `alder test` does. The first test that
    fails kills the mutant, and is its `by`. A test that panics (a Go
@@ -4730,7 +5587,9 @@ The score is the number of killed mutants divided by the number of
 mutants that ran (1 when none ran), and `--min` compares that exact
 number.
 
-**When a mutant ends the program.** Some mutants cannot be caught in a
+#### When a mutant ends the program
+
+Some mutants cannot be caught in a
 goroutine. A stack overflow is a Go fatal error, which no `recover`
 sees, and a test that loops for ever cannot be stopped from outside its
 goroutine. So `alder test` runs the program with two files in
@@ -4742,14 +5601,16 @@ goroutine. So `alder test` runs the program with two files in
   `mutants.log` (`ALDER_TEST_MUTATE_LOG`).
 
 A timed-out mutant is logged, and then the program exits with code 3
-(`rtesting.ExitMutantTimedOut`). If instead the program dies while the
-status file names a mutant, `alder test` logs that mutant as killed,
-`crashed`, by the test the status names. Either way `alder test` runs
-the program again with `ALDER_TEST_MUTATE_FROM` set to the next id,
-which skips the suite's own run and starts there. The run that reaches
-the last mutant reads the log and prints the whole report. A crash in
-the suite's own run is reported as plain `alder test` reports one,
-followed by `tests fail: fix them before measuring mutants`.
+(`rtesting.ExitMutantTimedOut`). If instead the program dies while the status
+file names a mutant, `alder test` logs that mutant as killed, `crashed`, by
+the test the status names.
+
+Either way `alder test` runs the program again with `ALDER_TEST_MUTATE_FROM`
+set to the next id, which skips the suite's own run and starts there.
+
+The run that reaches the last mutant reads the log and prints the whole
+report. A crash in the suite's own run is reported as plain `alder test`
+reports one, followed by `tests fail: fix them before measuring mutants`.
 
 ### The runtime travels with the compiler
 
@@ -4760,7 +5621,9 @@ included. Until M10 the generated `go.mod` said `replace alder =>
 was checked out. Now the runtime is inside the `alder` binary, and every
 build writes it out.
 
-**Embedding.** Go can put files into a program while compiling it: a
+#### Embedding
+
+Go can put files into a program while compiling it: a
 `//go:embed` comment above a variable names files of the package's
 directory, and the compiler stores their bytes in the binary, readable at
 run time through the variable (an `embed.FS`, a small read-only file
@@ -4780,27 +5643,31 @@ system). The standard library's signatures already travel this way
 var Files embed.FS
 ```
 
-Three rules of `go:embed` shape it. A pattern can name only files in the
-package's own directory and below it, never `..`: so the embed is in
-package `rt` itself, the root of the runtime, and the selector parser that
-`rt/html` shares with the checker had to move into the runtime
-(`internal/selector` became `rt/selector`) to be inside. A pattern cannot
-leave files out, and `*.go` would take the tests too: so the list names
-every file. And a pattern cannot reach into another module, which a
-directory holding a file named `go.mod` is: so the runtime module's
-`go.mod` and `go.sum` are stored as `dist/go.mod.txt` and
-`dist/go.sum.txt`. An explicit list can fall behind, so a test holds it
-to the repository: `TestFiles_Complete` (`rt/embed_test.go`) compares the
-embedded files with `git ls-files rt` without the tests, `testdata/` and
-`embed.go` itself, and fails on a file added to `rt/` and not to the list.
+Three rules of `go:embed` shape it:
+
+- A pattern can name only files in the package's own directory and below
+  it, never `..`: so the embed is in package `rt` itself, the root of the
+  runtime, and the selector parser that `rt/html` shares with the checker
+  had to move into the runtime (`internal/selector` became `rt/selector`)
+  to be inside.
+- A pattern cannot leave files out, and `*.go` would take the tests too:
+  so the list names every file.
+- A pattern cannot reach into another module, which a directory holding a
+  file named `go.mod` is: so the runtime module's `go.mod` and `go.sum` are
+  stored as `dist/go.mod.txt` and `dist/go.sum.txt`.
+
+An explicit list can fall behind, so a test holds it to the repository:
+`TestFiles_Complete` (`rt/embed_test.go`) compares the embedded files with
+`git ls-files rt` without the tests, `testdata/` and `embed.go` itself, and
+fails on a file added to `rt/` and not to the list.
+
 `TestDistModule` checks that the two `dist/` files equal the repository's
 `go.mod` and `go.sum`, and that every module `go.mod` requires is used by a
 package of `rt/`: the repository's dependencies are the runtime's (the
 compiler links SQLite too, but only because it uses the runtime's
 `rt/db`: the migration generator, buildkit's migration check, eval's
-dev-database hint),
-so the copy lists nothing the runtime does not need. The embed costs the
-binary about 0.4 MB.
+dev-database hint), so the copy lists nothing the runtime does not need.
+The embed costs the binary about 0.4 MB.
 
 The design system travels the same way. `rt/al/` holds `al.css`,
 `custom-elements.json` and `VERSION`, a copy of one release of the
@@ -4811,96 +5678,118 @@ assets into the app's static directory (below). `TestDesignSystemVersion`
 (`rt/embed_test.go`) checks that `VERSION`, the manifest's `version` and
 the stylesheet's first line name the same release.
 
-**Writing it out.** `buildkit.WriteRuntime(dst)`
-(`internal/buildkit/buildkit.go`) writes `Files` into `dst/rt/` as the
-module `alder`: `dist/go.mod.txt` becomes `rt/go.mod`, `dist/go.sum.txt`
-`rt/go.sum`, and every other file keeps its path under `rt/rt/`. The
-doubled `rt` is how Go finds packages: an import path is the module's
-name followed by the package's directory inside the module, so with the
-module `alder` rooted at `build/todos/rt/`, the import `alder/rt/html` is
-the directory `build/todos/rt/rt/html/`. It writes `dst/go.sum` too, a
-copy of the runtime's, since the app module's only outside dependencies
-are the runtime's: with it Go can check every download, and a build
-needs no network once Go's module cache holds `modernc.org/sqlite`.
+#### Writing it out
+
+`buildkit.WriteRuntime(dst)` (`internal/buildkit/buildkit.go`) writes `Files`
+into `dst/rt/` as the module `alder`: `dist/go.mod.txt` becomes `rt/go.mod`,
+`dist/go.sum.txt` `rt/go.sum`, and every other file keeps its path under
+`rt/rt/`.
+
+The doubled `rt` is how Go finds packages: an import path is the module's name
+followed by the package's directory inside the module, so with the module
+`alder` rooted at `build/todos/rt/`, the import `alder/rt/html` is the
+directory `build/todos/rt/rt/html/`.
+
+It writes `dst/go.sum` too, a copy of the runtime's, since the app module's
+only outside dependencies are the runtime's: with it Go can check every
+download, and a build needs no network once Go's module cache holds
+`modernc.org/sqlite`.
+
 `alder build` calls it right after writing the generated files, then
 `buildkit.DownloadDeps`, which makes sure Go's module cache holds the
-runtime's requirements before `go vet` could fail on them in a way that
-looks like the compiler's fault (chapter 11 shows its one line and its
-error); the scratch runner (`scratch.CompileCheckedWith`) does the same in its own
+runtime's requirements before `go vet` could fail on them in a way that looks
+like the compiler's fault (chapter 11 shows its one line and its error); the
+scratch runner (`scratch.CompileCheckedWith`) does the same in its own
 directory, so `alder test`, `eval` and the REPL build the same runtime as
 `alder build`.
 
 The static files go next to it: `buildkit.CopyStatic(src, dst)` replaces
 `build/<app>/static/` with a copy of the app's `static/`, then calls
-`WriteDesignSystem`, which writes `al/al.css` and
-`al/custom-elements.json` from `rt.Files` into it. Every build has them,
-whether or not the app has a `static/` directory, and `alder run` serves
-the build's copy (it copies again when a file under `static/` changes,
-before reloading the browser). The router (`serveStatic` in
-`rt/web/router.go`) answers `/static/al/al.css` and
-`/static/al/custom-elements.json` from the runtime's own embedded copy
-(`rt/al/al.go`, package `al`, which embeds the two files again so the
-written runtime has them) with `web.DesignSystemCache`,
-`Cache-Control: public, max-age=300, stale-while-revalidate=86400`, and a
-strong `ETag`, a SHA-256 of the bytes computed once; `http.ServeContent`
-answers a matching `If-None-Match` with `304 Not Modified`. An app that
-declares a `theme` (Appendix C, "Changing a token") changes one file of
-these: the checker has held every field to `internal/theme`'s table of
-tokens (E0042), the IR keeps the settings by CSS name (`ir.Theme`), and
-`theme.CSS` writes them as three one-line rules in the table's order. The
-generated `Web()` carries that text as `web.Options.Theme`, and
-`NewRouter` builds the served `al.css` once from it
-(`web.ThemedStylesheet`: the embedded bytes, a newline, the theme) with
-an ETag of its own; `buildkit.WriteDesignSystem` writes the same bytes to
-`static/al/al.css`, so the build directory and the server agree. Under
-`alder run` (`Options.Reload` set) `al.css` is sent `no-cache`, so an edit
-to the theme shows on the next load. An immutable
-header would be wrong there: the address stays `/static/al/al.css` across
-compiler upgrades, so a browser would keep an old stylesheet for a year.
-`no-cache`, what Alder sent before M13, made every page load wait for a
-round trip to revalidate the stylesheet before it could paint: in dark
-mode, a white frame. The five minutes of `max-age` let a load paint from
-the cache at once; after them, `stale-while-revalidate` lets the browser
-use its copy for up to a day while it revalidates in the background.
-The price is that for up to five minutes after an upgrade a browser may
-show the old stylesheet, and one load more after them: that load paints
-with the stale copy while the revalidation fetches the new one. The Datastar script can be immutable because its
-address, `datastar.ScriptPath`, carries `datastar.Version`.
+`WriteDesignSystem`, which writes `al/al.css` and `al/custom-elements.json`
+from `rt.Files` into it. Every build has them, whether or not the app has a
+`static/` directory, and `alder run` serves the build's copy (it copies again
+when a file under `static/` changes, before reloading the browser).
 
-The `<head>` a boosted navigation never patches has the same problem at
-a larger scale: a tab open across a deploy would keep the old build's
-stylesheet link, Datastar script and boost for as long as it is open.
-`web.HeadTags` therefore begins with `web.BuildMeta()`,
-`<meta name="alder-build" content="…">`, whose content is `web.BuildID()`:
-the first 16 hex digits of the SHA-256 of the running executable, read
-once (`sync.OnceValue`; when the executable cannot be read, a value made
-from the start time). The boost's `data-init` copies it to
-`window._alderBuild`, and its click and popstate `@get`s send it as the
-header `Alder-Build` (`datastar.BuildHeader`), and so do the options of
-every post and element fetch (`window._alderO`, `window._alderF`).
+The router (`serveStatic` in `rt/web/router.go`) answers `/static/al/al.css`
+and `/static/al/custom-elements.json` from the runtime's own embedded copy
+(`rt/al/al.go`, package `al`, which embeds the two files again so the written
+runtime has them) with `web.DesignSystemCache`, `Cache-Control: public,
+max-age=300, stale-while-revalidate=86400`, and a strong `ETag`, a SHA-256 of
+the bytes computed once; `http.ServeContent` answers a matching
+`If-None-Match` with `304 Not Modified`.
+
+An app that declares a `theme` (Appendix C, "Changing a token") changes one
+file of these: the checker has held every field to `internal/theme`'s table of
+tokens (E0042), the IR keeps the settings by CSS name (`ir.Theme`), and
+`theme.CSS` writes them as three one-line rules in the table's order.
+
+The generated `Web()` carries that text as `web.Options.Theme`, and
+`NewRouter` builds the served `al.css` once from it (`web.ThemedStylesheet`:
+the embedded bytes, a newline, the theme) with an ETag of its own;
+`buildkit.WriteDesignSystem` writes the same bytes to `static/al/al.css`, so
+the build directory and the server agree.
+
+Under `alder run` (`Options.Reload` set) `al.css` is sent `no-cache`, so an
+edit to the theme shows on the next load.
+
+An immutable header would be wrong there: the address stays
+`/static/al/al.css` across compiler upgrades, so a browser would keep an old
+stylesheet for a year. `no-cache`, what Alder sent before M13, made every page
+load wait for a round trip to revalidate the stylesheet before it could paint:
+in dark mode, a white frame.
+
+The five minutes of `max-age` let a load paint from the cache at once; after
+them, `stale-while-revalidate` lets the browser use its copy for up to a day
+while it revalidates in the background.
+
+The price is that for up to five minutes after an upgrade a browser may show
+the old stylesheet, and one load more after them: that load paints with the
+stale copy while the revalidation fetches the new one.
+
+The Datastar script can be immutable because its address,
+`datastar.ScriptPath`, carries `datastar.Version`.
+
+The `<head>` a boosted navigation never patches has the same problem at a
+larger scale: a tab open across a deploy would keep the old build's stylesheet
+link, Datastar script and boost for as long as it is open.
+
+`web.HeadTags` therefore begins with `web.BuildMeta()`, `<meta
+name="alder-build" content="…">`, whose content is `web.BuildID()`: the first
+16 hex digits of the SHA-256 of the running executable, read once
+(`sync.OnceValue`; when the executable cannot be read, a value made from the
+start time).
+
+The boost's `data-init` copies it to `window._alderBuild`, and its click and
+popstate `@get`s send it as the header `Alder-Build` (`datastar.BuildHeader`),
+and so do the options of every post and element fetch (`window._alderO`,
+`window._alderF`).
+
 `ServeHTTP` compares it with its own before routing: a Datastar `GET` of
 another build is answered by `reload`, `datastar.Navigate(w, url,
-datastar.Assign)`, so the browser loads the URL as a document and gets the
-new `<head>`, once (a load of the URL the tab already shows replaces its
-history entry). An element fetch is answered with a navigation to the page
-it was made from (`Alder-Page`), and a write from such a tab runs and is
-then answered as a reload (`staleReload`, "A request" above). Two processes
-of one binary (a restart, a second replica) agree; a request without the
-header (a hand-made one) is not checked. The same
-`reload` answers a Datastar `GET` under `/static/` or `/_alder/`, files
-that are no page to morph in (the boost leaves such links alone; an
+datastar.Assign)`, so the browser loads the URL as a document and gets the new
+`<head>`, once (a load of the URL the tab already shows replaces its history
+entry).
+
+An element fetch is answered with a navigation to the page it was made from
+(`Alder-Page`), and a write from such a tab runs and is then answered as a
+reload (`staleReload`, "A request" above). Two processes of one binary (a
+restart, a second replica) agree; a request without the header (a hand-made
+one) is not checked.
+
+The same `reload` answers a Datastar `GET` under `/static/` or `/_alder/`,
+files that are no page to morph in (the boost leaves such links alone; an
 older boost did not).
 
-It refreshes rather than adds. It first walks `dst/rt/` and deletes every
-file the embedded copy does not have (and the directories that leaves
-empty), then writes each file whose content differs, leaving the rest
-alone. Without the deletion, a file of an older runtime would stay and
-be compiled with the new ones: `TestBuild_Todos`
-(`cmd/alder/build_test.go`) plants `build/todos/rt/rt/web/gone.go`, which
-does not compile, and the build succeeds because it is gone.
-`TestWriteRuntime` (`internal/buildkit/buildkit_test.go`) checks the
-rest: stray files and directories removed, an edited file restored, an
-unchanged file not rewritten.
+It refreshes rather than adds. It first walks `dst/rt/` and deletes every file
+the embedded copy does not have (and the directories that leaves empty), then
+writes each file whose content differs, leaving the rest alone.
+
+Without the deletion, a file of an older runtime would stay and be compiled
+with the new ones: `TestBuild_Todos` (`cmd/alder/build_test.go`) plants
+`build/todos/rt/rt/web/gone.go`, which does not compile, and the build
+succeeds because it is gone. `TestWriteRuntime`
+(`internal/buildkit/buildkit_test.go`) checks the rest: stray files and
+directories removed, an edited file restored, an unchanged file not rewritten.
 
 The generated `go.mod` is a constant now (`goMod` in
 `internal/gen/gen.go`):
@@ -4921,15 +5810,18 @@ relative to the `go.mod`, so the directory can move. A `replace` to a
 directory is final: Go reads the module from there and never asks a
 proxy for it.
 
-**Why the module is still called `alder`.** A Go module's name is
-usually where it can be downloaded, such as `github.com/someone/alder`.
-The runtime is never downloaded, so its name needs to be that of no
-place, and `alder` is that: a name without a dot, which Go would not even
-try to fetch. Had the runtime taken the repository's hosting address as
-its name, every generated file would import it by that address (`import
-"github.com/someone/alder/rt/html"`), and moving the repository would
-change every app's generated code. With `alder` and a `replace`, the
-generated code names nothing outside the build directory.
+#### Why the module is still called `alder`
+
+A Go module's name is usually where it can be downloaded, such as
+`github.com/someone/alder`. The runtime is never downloaded, so its name needs
+to be that of no place, and `alder` is that: a name without a dot, which Go
+would not even try to fetch.
+
+Had the runtime taken the repository's hosting address as its name, every
+generated file would import it by that address (`import
+"github.com/someone/alder/rt/html"`), and moving the repository would change
+every app's generated code. With `alder` and a `replace`, the generated code
+names nothing outside the build directory.
 
 `TestDist_OutOfTree` (`cmd/alder/dist_test.go`) tests the whole: it
 builds the `alder` binary, copies both examples to a temporary directory
@@ -4945,71 +5837,90 @@ round: instead of reading source to make Go, they make source. They live
 in `internal/generate/`, and every one ends in the same function,
 `generate.Apply(appDir, edits, options)`.
 
-A generator first loads the app as `alder check` does (`generate.Load`:
-the names of section 4 and the checker of section 5) and turns what it
-needs into plain facts, a `generate.Program`: the tables with their
-columns, types and attributes, the routes with their methods, paths,
-parameters and `requires`, the session's `user` and `role`. From those facts it
-computes a list of **edits**: a file to create, with its text; a file to
-change, with its whole new text; or, for the admin, new bodies for the
-owned regions of a file. The small generators fill templates
-(`internal/generate/templates/*.tmpl`, Go's `text/template`, embedded in
-the binary with `embed` like the runtime; their delimiters are `[[ ]]`,
-since Alder's own braces would read as template actions). The admin
-builds its text in Go (`internal/generate/admin.go`): it needs
-decisions per column (a select for a reference, a checkbox for a
-`Bool`, a count for a `@unique`) that templates express badly. Code
-that goes into an existing file is placed by looking at the parsed
-module: a new route's line after the module's last `route` line, its
-`update` before the module's first `test` (or at the end of the file), a
-button at the end of the view or inside a `for` loop, a form inside the
-view's last `al-card`.
+A generator first loads the app as `alder check` does (`generate.Load`: the
+names of section 4 and the checker of section 5) and turns what it needs into
+plain facts, a `generate.Program`: the tables with their columns, types and
+attributes, the routes with their methods, paths, parameters and `requires`,
+the session's `user` and `role`.
 
-`Apply` then does what chapter 15 calls copy, check, write. It copies
-the app into a temporary directory (all but `build/`, `.git` and the
-databases), applies the edits there, runs the migration generator on
-the copy when the command changed a table, and checks the copy with the
-same loader and checker. If the copy has an error, `Apply` returns a
-refusal carrying the copy's diagnostics, and the app was never touched.
-Otherwise it writes each file the copy changed back into the app, and
-returns what it did: the files, a unified diff of each edited one
-(`generate.UnifiedDiff`, a longest-common-subsequence diff with three
-lines of context), the diagnostics in the files the command changed, and
-the holes. With `--dry-run` it stops before writing.
+From those facts it computes a list of **edits**: a file to create, with its
+text; a file to change, with its whole new text; or, for the admin, new bodies
+for the owned regions of a file.
 
-**Holes.** A hole `?name` parses as an expression of its own (section
-3), and the checker gives it the type its place demands and reports it
-as W0002 with that type. `generate.HoleIndex` turns those warnings into
-addresses: the module and the declaration that encloses the hole's
-position (a route's member by its full name, `Toggle.update`). `alder fill` parses
-standard input with `syntax.ParseExpr`, refuses anything after one
-expression, puts the expression where the hole's span is (wrapped in
-parentheses where it would otherwise bind differently, indented to its
-place), and hands that edit to `Apply`: the checker then decides.
+The small generators fill templates (`internal/generate/templates/*.tmpl`,
+Go's `text/template`, embedded in the binary with `embed` like the runtime;
+their delimiters are `[[ ]]`, since Alder's own braces would read as template
+actions).
 
-**Regions.** A region is found by scanning a file's lines for its
-markers (`generate.Regions`): a `-- @admin begin <name>` line, the lines
-after it, and the next `-- @admin end`. A missing or doubled marker is
-an error before anything else happens. `alder regen admin` generates the
-whole admin again in memory from the app as it is now, then for each
-file on disk builds an edit that replaces the body of each named region
-with the same region's body from the fresh version; lines outside the
-regions are never part of an edit. A file whose regions are already
-equal produces no edit, which is why a second run says there is nothing
-to do. Errors in the admin's own files do not stop it (a renamed field
-breaks them, inside the regions it is about to rewrite), but the result
-goes through `Apply` like every other command's, and must check.
+The admin builds its text in Go (`internal/generate/admin.go`): it needs
+decisions per column (a select for a reference, a checkbox for a `Bool`, a
+count for a `@unique`) that templates express badly.
 
-**Options checked on submit.** A `<Select options={…}>` offers values the
-server worked out, such as the ids of the rows a user may pick, so a posted
-value has to be checked against what the page offered. The checker records,
-for each write route with a `form F`, the GET routes whose view draws a
-select of `F`, written in the view itself or in a view it reaches through
-the values it refers to (`RouteInfo.OptionRoutes`: `Row.view` called by
-`Index.view`). The write route's handler checks the value after the form
-has decoded and before the `update` (this is `Move` of
-`testdata/golden/gen_route_handlers`, which answers `render` and so has no
-before-view of its own):
+Code that goes into an existing file is placed by looking at the parsed
+module: a new route's line after the module's last `route` line, its `update`
+before the module's first `test` (or at the end of the file), a button at the
+end of the view or inside a `for` loop, a form inside the view's last
+`al-card`.
+
+`Apply` then does what chapter 15 calls copy, check, write. It copies the app
+into a temporary directory (all but `build/`, `.git` and the databases),
+applies the edits there, runs the migration generator on the copy when the
+command changed a table, and checks the copy with the same loader and checker.
+If the copy has an error, `Apply` returns a refusal carrying the copy's
+diagnostics, and the app was never touched.
+
+Otherwise it writes each file the copy changed back into the app, and returns
+what it did: the files, a unified diff of each edited one
+(`generate.UnifiedDiff`, a longest-common-subsequence diff with three lines of
+context), the diagnostics in the files the command changed, and the holes.
+
+With `--dry-run` it stops before writing.
+
+#### Holes
+
+A hole `?name` parses as an expression of its own (section 3), and the checker
+gives it the type its place demands and reports it as W0002 with that type.
+`generate.HoleIndex` turns those warnings into addresses: the module and the
+declaration that encloses the hole's position (a route's member by its full
+name, `Toggle.update`).
+
+`alder fill` parses standard input with `syntax.ParseExpr`, refuses anything
+after one expression, puts the expression where the hole's span is (wrapped in
+parentheses where it would otherwise bind differently, indented to its place),
+and hands that edit to `Apply`: the checker then decides.
+
+#### Regions
+
+A region is found by scanning a file's lines for its markers
+(`generate.Regions`): a `-- @admin begin <name>` line, the lines after it, and
+the next `-- @admin end`. A missing or doubled marker is an error before
+anything else happens.
+
+`alder regen admin` generates the whole admin again in memory from the app as
+it is now, then for each file on disk builds an edit that replaces the body of
+each named region with the same region's body from the fresh version; lines
+outside the regions are never part of an edit.
+
+A file whose regions are already equal produces no edit, which is why a second
+run says there is nothing to do. Errors in the admin's own files do not stop
+it (a renamed field breaks them, inside the regions it is about to rewrite),
+but the result goes through `Apply` like every other command's, and must
+check.
+
+#### Options checked on submit
+
+A `<Select options={…}>` offers values the server worked out, such as the ids
+of the rows a user may pick, so a posted value has to be checked against what
+the page offered.
+
+The checker records, for each write route with a `form F`, the GET routes
+whose view draws a select of `F`, written in the view itself or in a view it
+reaches through the values it refers to (`RouteInfo.OptionRoutes`: `Row.view`
+called by `Index.view`).
+
+The write route's handler checks the value after the form has decoded and
+before the `update` (this is `Move` of `testdata/golden/gen_route_handlers`,
+which answers `render` and so has no before-view of its own):
 
 ```go
 		params.Form = form
@@ -5025,16 +5936,19 @@ before-view of its own):
 
 `rq.RenderShown(nil)` renders the page the browser is on (`Alder-Page`, else
 `Referer`) as "A request" showed, and `CheckOptions` (`rt/web/options.go`)
-looks in that render. It finds the `<form>` that sent the request (the
-form's `rt.RouteKey` is the write route's) and compares each posted value
-with the choices of the selects the render draws for it (`html.Offers`,
-`html.Offered`; the empty value only when the select offers an empty
-option). A value no select offered is a field error, `web.MsgOption`
-("must be one of the options"), answered like a decoder's error. A post
-from a page that is not one of those routes, one that no longer renders (a
-404, a redirect), or one without that form (its row is gone) is a 400,
-logged at warn with the reason. Because the choices are read from the
-rendered page, the server keeps no second copy of the `options` expression.
+looks in that render.
+
+It finds the `<form>` that sent the request (the form's `rt.RouteKey` is the
+write route's) and compares each posted value with the choices of the selects
+the render draws for it (`html.Offers`, `html.Offered`; the empty value only
+when the select offers an empty option). A value no select offered is a field
+error, `web.MsgOption` ("must be one of the options"), answered like a
+decoder's error.
+
+A post from a page that is not one of those routes, one that no longer renders
+(a 404, a redirect), or one without that form (its row is gone) is a 400,
+logged at warn with the reason. Because the choices are read from the rendered
+page, the server keeps no second copy of the `options` expression.
 
 ### Deploying: the pipeline, the health check, the backup shipper
 
@@ -5043,165 +5957,232 @@ source to Go; it is a program that drives the compiler's other commands
 and then talks to a server. Its code is in `internal/deploy/`, with the
 command itself in `cmd/alder/deploy.go`.
 
-**The gate reuses the commands.** `deploy.Runner` is an interface with
-four methods, `Check`, `Build`, `Test` and `Mutate`; the command
-implements it (`deployRunner`) by calling the same functions `alder
-check`, `alder build` and `alder test` run, capturing what each prints.
-`alder test --mutate --json` prints the score as one JSON object, which
-the runner reads. The check step also hands back the lowered program,
-whose `ir.Deploy` is the declaration (section 6): the environments, the
-floor, the checks, the `requires` names. `deploy.GateCheck` and
-`deploy.GateRest` (`gate.go`) run the steps in order, print one line per
-step, and return a `*deploy.Refusal` (its text, and the step's output as
-detail) for the first that fails.
+#### The gate reuses the commands
 
-**The artifact and the build id.** `MakeArtifact` (`artifact.go`)
-builds the executable into a temporary directory with `go build` and
-`GOOS`/`GOARCH` set to the target's platform (with `CGO_ENABLED=0`: the
-SQLite driver, modernc.org/sqlite, is Go, so any platform can build for
-any other), hashes it with SHA-256, and renames the directory to the
-first 16 hex digits. The runtime computes the same number for itself
-(`web.BuildID`: it hashes `os.Executable()` once, the first time it is
-asked) and writes it into every page's `<meta name="alder-build">`, as
-"The runtime travels with the compiler" above describes. Nothing records the id anywhere in between: the
-same bytes give the same id on both sides.
+`deploy.Runner` is an interface with four methods, `Check`, `Build`, `Test`
+and `Mutate`; the command implements it (`deployRunner`) by calling the same
+functions `alder check`, `alder build` and `alder test` run, capturing what
+each prints. `alder test --mutate --json` prints the score as one JSON object,
+which the runner reads.
 
-**The plan.** Each migration file starts with a header naming the
-schema hash it starts from and the one it leads to (`-- from`, `-- to`;
-section "Migrations"). `MakePlan` (`plan.go`) hashes the live database's
-`schema.json`, which the target hands back, finds the build's file whose
-`-- to` is that hash, and lists the files after it as pending, with
-their `-- step:` lines and the `DROPS DATA` lines `alder migrate` wrote
-into the header. A live hash no file leads to is a refusal: the server
-runs a newer schema than this build knows.
+The check step also hands back the lowered program, whose `ir.Deploy` is the
+declaration (section 6): the environments, the floor, the checks, the
+`requires` names.
 
-**The engine and the targets.** `deploy.Deploy` (`deploy.go`) is the
-sequence of chapter 16, written once: it calls a `deploy.Target`
-(`target.go`) step by step, `Connect`, `Requires`, `Schema`, `Upload`,
-`Backup`, `Migrate`, `Start`, `Health`, `Switch`, `Record`, `Stop`,
-`Prune`, and decides by itself what to refuse and what to print. A
-target knows how to do each step at its kind of place and nothing about
-the order, so the rules (no upload before the plan is accepted, no switch
-before the health check, the previous build left serving on a failure)
-hold for every target because they live in one function. On the
-experimental Fly target the last rule holds only because it refuses a
-deploy with a pending migration (`MigrationRefuser`): its previous image,
-put back on a migrated database, would refuse to start. The
-engine's tests drive it with a fake target that records its calls.
+`deploy.GateCheck` and `deploy.GateRest` (`gate.go`) run the steps in order,
+print one line per step, and return a `*deploy.Refusal` (its text, and the
+step's output as detail) for the first that fails.
+
+#### The artifact and the build id
+
+`MakeArtifact` (`artifact.go`) builds the executable into a temporary
+directory with `go build` and `GOOS`/`GOARCH` set to the target's platform
+(with `CGO_ENABLED=0`: the SQLite driver, modernc.org/sqlite, is Go, so any
+platform can build for any other), hashes it with SHA-256, and renames the
+directory to the first 16 hex digits.
+
+The runtime computes the same number for itself (`web.BuildID`: it hashes
+`os.Executable()` once, the first time it is asked) and writes it into every
+page's `<meta name="alder-build">`, as "The runtime travels with the compiler"
+above describes. Nothing records the id anywhere in between: the same bytes
+give the same id on both sides.
+
+#### The plan
+
+Each migration file starts with a header naming the schema hash it starts from
+and the one it leads to (`-- from`, `-- to`; section "Migrations"). `MakePlan`
+(`plan.go`) hashes the live database's `schema.json`, which the target hands
+back, finds the build's file whose `-- to` is that hash, and lists the files
+after it as pending, with their `-- step:` lines and the `DROPS DATA` lines
+`alder migrate` wrote into the header.
+
+A live hash no file leads to is a refusal: the server runs a newer schema than
+this build knows.
+
+#### The engine and the targets
+
+`deploy.Deploy` (`deploy.go`) is the sequence of chapter 16, written once: it
+calls a `deploy.Target` (`target.go`) step by step, `Connect`, `Requires`,
+`Schema`, `Upload`, `Backup`, `Migrate`, `Start`, `Health`, `Switch`,
+`Record`, `Stop`, `Prune`, and decides by itself what to refuse and what to
+print.
+
+A target knows how to do each step at its kind of place and nothing about the
+order, so the rules (no upload before the plan is accepted, no switch before
+the health check, the previous build left serving on a failure) hold for every
+target because they live in one function.
+
+On the experimental Fly target the last rule holds only because it refuses a
+deploy with a pending migration (`MigrationRefuser`): its previous image, put
+back on a migrated database, would refuse to start.
+
+The engine's tests drive it with a fake target that records its calls.
 
 What a target can do beyond the core is a small optional interface the
-engine asks for with a type assertion: `Locker` (the environment's
-lock, taken by deploy, rollback and restore), `Preflighter` (the unit
-and Caddy prepared before anything is uploaded), `DataLossAllower` (the
-run's `--allow-data-loss`), `BackupRestorer` (put a pre-migration copy
-back: `rollback --restore-backup`, and the automatic restore after a
-failed deploy whose migrations dropped data), `Rerouter` (check that
-the traffic reaches the build already serving), `StreamChecker` (the
-environment file streams the backup) and `MigrationRefuser` (the Fly
-target, which refuses a migrating deploy for now). A target without one
-gets the plain behaviour, and the refusals name only the commands that
-target has.
+engine asks for with a type assertion:
 
-The `Ssh` target (`ssh.go`) runs every step as a small POSIX shell
-script sent over the system's `ssh` to `sh -s` on standard input, after
-a prelude defining the root directory and a function `alive` that says
-whether a build's process runs. There is no agent on the server and no
-library: `ssh`, `sh`, `tar` and `curl` are the whole protocol. The
-upload is a tar stream Go writes (`archive/tar`) into a `.part`
-directory, renamed when complete. Each build gets a generated `run`
-wrapper that sources the operator's environment file and sets
-`ALDER_DB`, `ALDER_STATIC`, `ALDER_ADDR` and `ALDER_BACKUP_URL`, and
-defaults `ALDER_PUBLIC_URL` to `https://<domain>` with the shell's
-`: "${ALDER_PUBLIC_URL:=…}"`, which keeps a value the environment file
-set (no default for a wildcard domain without `--host`); the
-wrapper holds names and paths, never a value, and `Requires` checks the
+- `Locker`: the environment's lock, taken by deploy, rollback and restore;
+- `Preflighter`: the unit and Caddy prepared before anything is uploaded;
+- `DataLossAllower`: the run's `--allow-data-loss`;
+- `BackupRestorer`: put a pre-migration copy back: `rollback
+  --restore-backup`, and the automatic restore after a failed deploy whose
+  migrations dropped data;
+- `Rerouter`: check that the traffic reaches the build already serving;
+- `StreamChecker`: the environment file streams the backup;
+- `MigrationRefuser`: the Fly target, which refuses a migrating deploy for
+  now.
+
+A target without one gets the plain behaviour, and the refusals name only
+the commands that target has.
+
+##### The `Ssh` target
+
+The `Ssh` target (`ssh.go`) runs every step as a small POSIX shell script
+sent over the system's `ssh` to `sh -s` on standard input, after a prelude
+defining the root directory and a function `alive` that says whether a
+build's process runs. There is no agent on the server and no library:
+`ssh`, `sh`, `tar` and `curl` are the whole protocol.
+
+The upload is a tar stream Go writes (`archive/tar`) into a `.part`
+directory, renamed when complete.
+
+Each build gets a generated `run` wrapper that sources the operator's
+environment file and sets `ALDER_DB`, `ALDER_STATIC`, `ALDER_ADDR` and
+`ALDER_BACKUP_URL`, and defaults `ALDER_PUBLIC_URL` to `https://<domain>`
+with the shell's `: "${ALDER_PUBLIC_URL:=…}"`, which keeps a value the
+environment file set (no default for a wildcard domain without `--host`);
+the wrapper holds names and paths, never a value, and `Requires` checks the
 environment file with `grep -Eq` so that only an exit status crosses the
-connection. Caddy is driven through its admin API on `localhost:2019`
-with `curl`: one route per environment, its `@id` the unit's name, its
-upstream port changed by a `PATCH` on switch. The lock is one more
-`ssh` session, kept open for the run: its script takes `flock` on
-`<path>/deploy.lock` (or creates `deploy.lock.d`) and then reads its
-standard input until alder closes it, so the lock lives exactly as long
-as the run's connection. Replacing the database (`RestoreBackup`,
-`Restore`) first stops every build that runs, cancelling the delayed
-stop of one still draining: a process that kept the old file open would
-go on serving it, renamed aside. Three Caddy caveats follow from
-driving it only through the admin API (chapter 16, "Caddy"): the routes
-live in Caddy's running configuration, so a Caddy alder did not install
-(no `--resume` drop-in) forgets them when it restarts from its
-Caddyfile; a server of the box's own already on `:443` conflicts with
-the `alder` server at `Switch`; and the admin API on localhost answers
-every local user of the box. The `Fly` target (`fly.go`)
-does the same steps through Fly's Machines API with `net/http`, running
-its shell scripts in the machine through the API's `exec`, and `flyctl`
-for the image build, the public addresses and the secrets. The `Script`
-target (`script.go`) is not a `Target` at all: after the artifact, the
-engine runs it and is done.
+connection.
 
-**The health check by build id.** `Health` asks the new build for `/`,
-following redirects (a page that `requires user` answers `/` with the
-login page, which is a page of the same build), until the answer is a
-200 whose HTML contains `name="alder-build" content="<id>"`, or the
-build's process has exited, or the timeout passes. The 200 matters: a
-build started on a database that is ahead of it serves the maintenance
-page, which carries the same meta, with 503, and must not be switched to. On the `Ssh` target that is `curl` in a loop at
-the box, against the new build's own port; on Fly it is Go's HTTP client
-against the public address, which is the only way in. The id is the
-point: a check that only asked "does something answer on port 443?"
-would pass against the old build.
+Caddy is driven through its admin API on `localhost:2019` with `curl`: one
+route per environment, its `@id` the unit's name, its upstream port
+changed by a `PATCH` on switch.
 
-**The binary's maintenance arguments.** The generated `main` (section
-7) takes two arguments besides serving: `--migrate-only` checks
-`ALDER_SECRET`, opens the database, applies the pending migrations
-(printing `migrated <name>` for each, which the engine reads into the
-record; a pending migration marked DROPS DATA on a database that had
-migrations is refused, `db.ErrDropsData`, unless
-`ALDER_ALLOW_DATA_LOSS=1`, so the data-loss rule holds where the
-migration runs, whatever drove it) and exits; `--backup-to FILE` writes a consistent copy with
-`VACUUM INTO` while another process serves the same file. Both run
-without constructing a single adapter, so a migration can run on a box
-where the mail server is down. An app with a `silo` (chapter 8) has four
-more, which the silo commands run at the target (chapter 16):
-`--silo-status` prints one JSON line per silo file
-(`{"key":"org","id":"…","state":"ok|migrating|pending-data-loss|ahead|failed|orphaned","detail":"…"}`)
-and changes nothing; `--migrate-silos [--allow-data-loss]` opens and
-checks every silo file now, printing `org/<id>: ok`, `org/<id>: migrated
-0002_x` or the state and why, and exits 1 when any is not served;
-`--verify-silos N` tries the pending migrations on the N largest silos in
-transactions it rolls back (a deploy's preflight); `--prune-silos …`
-removes the orphaned silos it is given, each checked again first.
+The lock is one more `ssh` session, kept open for the run: its script
+takes `flock` on `<path>/deploy.lock` (or creates `deploy.lock.d`) and
+then reads its standard input until alder closes it, so the lock lives
+exactly as long as the run's connection.
 
-**The backup shipper.** `rt/backup` is a small Litestream. SQLite in
-WAL mode appends every committed change to `app.db-wal` as **frames**
-(a page of the database and a header), and only a **checkpoint** copies
-them back into `app.db`. With `ALDER_BACKUP_URL` set, the runtime opens
-its connections with `wal_autocheckpoint(0)`, so nothing checkpoints
-behind the shipper's back, and starts a goroutine (`Shipper`) that
-wakes every ten seconds: it takes the write lock (`BEGIN IMMEDIATE`:
-writers wait for a moment, readers do not), copies the frames committed
-since its last offset (it reads the WAL's header and walks frames to
-the last one whose commit field is set), runs a `PASSIVE` checkpoint,
-releases the lock, and uploads the copied frames as one segment. A new
-generation starts with a snapshot: the database file copied outside the
-write lock but inside a read transaction (only the shipper checkpoints,
-and it does not until the copy is done, so the file cannot change under
-it). The pre-migration copy a deploy takes is the other kind
-(`snapshot.go`: `VACUUM INTO`, while another process serves). One
-shipper runs per database (`flock` on `<db>-backup.lock`: the new
-build's waits for the old build's to exit). Uploads that fail stay
-queued on disk and are retried in order with a doubling wait; the queue
-is capped at 256 MB of WAL segments (the generation's snapshot is not
-counted, or a database larger than the cap would never ship), and past
-it the queue is dropped for a fresh generation. The
-upload is a plain HTTP `PUT` signed with AWS's Signature Version 4,
+Replacing the database (`RestoreBackup`, `Restore`) first stops every
+build that runs, cancelling the delayed stop of one still draining: a
+process that kept the old file open would go on serving it, renamed aside.
+
+Three Caddy caveats follow from driving it only through the admin API
+(chapter 16, "Caddy"):
+
+- the routes live in Caddy's running configuration, so a Caddy alder did
+  not install (no `--resume` drop-in) forgets them when it restarts from
+  its Caddyfile;
+- a server of the box's own already on `:443` conflicts with the `alder`
+  server at `Switch`;
+- the admin API on localhost answers every local user of the box.
+
+##### The `Fly` target
+
+The `Fly` target (`fly.go`) does the same steps through Fly's Machines API
+with `net/http`, running its shell scripts in the machine through the
+API's `exec`, and `flyctl` for the image build, the public addresses and
+the secrets.
+
+##### The `Script` target
+
+The `Script` target (`script.go`) is not a `Target` at all: after the
+artifact, the engine runs it and is done.
+
+#### The health check by build id
+
+`Health` asks the new build for `/`, following redirects (a page that
+`requires user` answers `/` with the login page, which is a page of the same
+build), until the answer is a 200 whose HTML contains `name="alder-build"
+content="<id>"`, or the build's process has exited, or the timeout passes.
+
+The 200 matters: a build started on a database that is ahead of it serves the
+maintenance page, which carries the same meta, with 503, and must not be
+switched to.
+
+On the `Ssh` target that is `curl` in a loop at the box, against the new
+build's own port; on Fly it is Go's HTTP client against the public address,
+which is the only way in.
+
+The id is the point: a check that only asked "does something answer on port
+443?" would pass against the old build.
+
+#### The binary's maintenance arguments
+
+The generated `main` (section 7) takes two arguments besides serving:
+
+- `--migrate-only` checks `ALDER_SECRET`, opens the database, applies the
+  pending migrations (printing `migrated <name>` for each, which the
+  engine reads into the record; a pending migration marked DROPS DATA on a
+  database that had migrations is refused, `db.ErrDropsData`, unless
+  `ALDER_ALLOW_DATA_LOSS=1`, so the data-loss rule holds where the
+  migration runs, whatever drove it) and exits;
+- `--backup-to FILE` writes a consistent copy with `VACUUM INTO` while
+  another process serves the same file.
+
+Both run without constructing a single adapter, so a migration can run on
+a box where the mail server is down.
+
+An app with a `silo` (chapter 8) has four more, which the silo commands
+run at the target (chapter 16):
+
+- `--silo-status` prints one JSON line per silo file
+  (`{"key":"org","id":"…","state":"ok|migrating|pending-data-loss|ahead|failed|orphaned","detail":"…"}`)
+  and changes nothing;
+- `--migrate-silos [--allow-data-loss]` opens and checks every silo file
+  now, printing `org/<id>: ok`, `org/<id>: migrated 0002_x` or the state
+  and why, and exits 1 when any is not served;
+- `--verify-silos N` tries the pending migrations on the N largest silos
+  in transactions it rolls back (a deploy's preflight);
+- `--prune-silos …` removes the orphaned silos it is given, each checked
+  again first.
+
+#### The backup shipper
+
+`rt/backup` is a small Litestream. SQLite in WAL mode appends every
+committed change to `app.db-wal` as **frames** (a page of the database and
+a header), and only a **checkpoint** copies them back into `app.db`.
+
+With `ALDER_BACKUP_URL` set, the runtime opens its connections with
+`wal_autocheckpoint(0)`, so nothing checkpoints behind the shipper's back,
+and starts a goroutine (`Shipper`) that wakes every ten seconds. It:
+
+1. takes the write lock (`BEGIN IMMEDIATE`: writers wait for a moment,
+   readers do not);
+2. copies the frames committed since its last offset (it reads the WAL's
+   header and walks frames to the last one whose commit field is set);
+3. runs a `PASSIVE` checkpoint;
+4. releases the lock;
+5. and uploads the copied frames as one segment.
+
+A new generation starts with a snapshot: the database file copied outside
+the write lock but inside a read transaction (only the shipper
+checkpoints, and it does not until the copy is done, so the file cannot
+change under it). The pre-migration copy a deploy takes is the other kind
+(`snapshot.go`: `VACUUM INTO`, while another process serves).
+
+One shipper runs per database (`flock` on `<db>-backup.lock`: the new
+build's waits for the old build's to exit).
+
+Uploads that fail stay queued on disk and are retried in order with a
+doubling wait; the queue is capped at 256 MB of WAL segments (the
+generation's snapshot is not counted, or a database larger than the cap
+would never ship), and past it the queue is dropped for a fresh
+generation.
+
+The upload is a plain HTTP `PUT` signed with AWS's Signature Version 4,
 written out in `s3.go` (about 250 lines) instead of pulling in an SDK.
-Restoring (`restore.go`) downloads the newest snapshot before the
-asked-for time, writes each run of segments next to it as an
-`-wal` file and lets SQLite itself apply them (`PRAGMA
-wal_checkpoint(TRUNCATE)`), then checks the page count against the last
-commit frame: SQLite is the only program that ever interprets the WAL.
 
-**The workflow.** `alder ci init` (`cmd/alder/ci.go`) is a string
+Restoring (`restore.go`) downloads the newest snapshot before the
+asked-for time, writes each run of segments next to it as an `-wal` file
+and lets SQLite itself apply them (`PRAGMA wal_checkpoint(TRUNCATE)`),
+then checks the page count against the last commit frame: SQLite is the
+only program that ever interprets the WAL.
+
+#### The workflow
+
+`alder ci init` (`cmd/alder/ci.go`) is a string
 builder over the declaration: which of `production` and `preview` exist,
 their kinds (an `Ssh` environment needs an SSH key in CI, a `Fly` one a
 token and its values), the floor. Its output is compared with golden
@@ -5218,53 +6199,80 @@ testing and M10 the embedded runtime (above). See the design spec,
 
 ### The dev trace, the panel and `/_dev`
 
+#### The recorder
+
 In developer mode the router gives each request's `eff.Env` a `Recorder`
-(`rt/eff`): `Run` adds a step (name, milliseconds, and "adapter" or "fake" for a
-capability's call) around every `Call`, and `rt/db` wraps its querier so each
-statement is added with its arguments, time and rows touched (a read's rows
-are counted by its caller once they are read, `Recorder.SetRows`). A nil
-recorder costs nothing. A redirect the router follows in the same answer
-(`follow`, chapter 6) serves the target page with the first request's
-recorder: the hop notes where its steps and statements begin
-(`tracker.hops`), the panel prints "then GET <url>" there, and each request
-keeps its own answer (`tracker.setAnswer`), so the panel stays the write's
-(the Patches tab names what was sent, `tracker.patchName`, such as
-`#todos`, `body` or `toast`, and the answer by its route, `tracker.via`:
-`render Row`, `redirect Index`).
+(`rt/eff`): `Run` adds a step (name, milliseconds, and "adapter" or "fake"
+for a capability's call) around every `Call`, and `rt/db` wraps its
+querier so each statement is added with its arguments, time and rows
+touched (a read's rows are counted by its caller once they are read,
+`Recorder.SetRows`). A nil recorder costs nothing.
+
+A redirect the router follows in the same answer (`follow`, chapter 6)
+serves the target page with the first request's recorder: the hop notes
+where its steps and statements begin (`tracker.hops`), the panel prints
+"then GET <url>" there, and each request keeps its own answer
+(`tracker.setAnswer`), so the panel stays the write's (the Patches tab
+names what was sent, `tracker.patchName`, such as `#todos`, `body` or
+`toast`, and the answer by its route, `tracker.via`: `render Row`,
+`redirect Index`).
+
+#### The panel
+
 After the answer the router renders the panel from it
 (`rt/web/devpanel.go`): inlined before `</body>` on a full document; on a
-Datastar answer the body patch carries an empty `<al-devpanel id="_alder_panel"
-data-ignore-morph>` (kept by the morph, with its open state) and the panel's
-contents follow as one more `datastar-patch-elements` event, selector
-`#_alder_panel`, mode inner. The panel's script (`panelScript`, a constant of
-`rt/web/devpanel.go`) is written once, after the panel of a full document, and a
-morph leaves it running: it keeps the tab last chosen on the shell
-(`data-tab`) and, after each patch of the panel (whose sections but Request
-arrive `hidden`), shows that tab's section again; a `MutationObserver` on the
-panel files each request
-(its `data-rid`, bar line and sections) in `sessionStorage`, the last 20 of the
-tab, and lists them in the History tab; "Copy as curl" copies the line the
-server built (`curlLine`, with a `<your session cookie>` placeholder). `/_dev`
-is a route the router answers itself when `ALDER_DEV=1`. Its page is one
-`html/template` over two things: `Options.DevMap`, a compact JSON the
-generator wrote into `Web()` (`internal/gen/devmap.go`: the tables with columns
-and attributes, the capability names, the session's fields, and, for a module
-with an older `page`, its path, `requires`, roles, parameters and messages),
-and what only the running server knows (the build id, the migrations the
-database has, how each capability is wired, and the routes: the method and
-pattern of every route the router holds). The generated map has no entry for a
-route yet ([#190](https://github.com/tapegram/alder/issues/190)), so for an app on routes its `pages` list is empty and the routes
-come from the router. Neither is served without `ALDER_DEV=1`:
-`/_dev` is a 404 and no page carries the panel or its script (a test builds
-an example, runs it without `ALDER_DEV` and checks both). A toast is an event
-of the `rt.Response` (`Response.toast`, `rt.WithToast`). `setToasts` in the
-router makes the first one the answer's (`tracker.notice` and `kind`) and keeps
-the rest (`tracker.more`), and `notify` patches each after the answer's own
-patches, as `<al-toast variant="…" timeout="…">` appended to `al-toasts`
+Datastar answer the body patch carries an empty
+`<al-devpanel id="_alder_panel" data-ignore-morph>` (kept by the morph,
+with its open state) and the panel's contents follow as one more
+`datastar-patch-elements` event, selector `#_alder_panel`, mode inner.
+
+The panel's script (`panelScript`, a constant of `rt/web/devpanel.go`) is
+written once, after the panel of a full document, and a morph leaves it
+running:
+
+- it keeps the tab last chosen on the shell (`data-tab`) and, after each
+  patch of the panel (whose sections but Request arrive `hidden`), shows
+  that tab's section again;
+- a `MutationObserver` on the panel files each request (its `data-rid`,
+  bar line and sections) in `sessionStorage`, the last 20 of the tab, and
+  lists them in the History tab;
+- "Copy as curl" copies the line the server built (`curlLine`, with a
+  `<your session cookie>` placeholder).
+
+#### The `/_dev` page
+
+`/_dev` is a route the router answers itself when `ALDER_DEV=1`. Its page
+is one `html/template` over two things:
+
+- `Options.DevMap`, a compact JSON the generator wrote into `Web()`
+  (`internal/gen/devmap.go`: the tables with columns and attributes, the
+  capability names, the session's fields, and, for a module with an older
+  `page`, its path, `requires`, roles, parameters and messages);
+- what only the running server knows (the build id, the migrations the
+  database has, how each capability is wired, and the routes: the method
+  and pattern of every route the router holds).
+
+> **Not yet:** The generated map has no entry for a route yet
+> ([#190](https://github.com/tapegram/alder/issues/190)), so for an app on
+> routes its `pages` list is empty and the routes come from the router.
+
+Neither is served without `ALDER_DEV=1`: `/_dev` is a 404 and no page
+carries the panel or its script (a test builds an example, runs it without
+`ALDER_DEV` and checks both).
+
+#### Toasts in the panel
+
+A toast is an event of the `rt.Response` (`Response.toast`,
+`rt.WithToast`). `setToasts` in the router makes the first one the
+answer's (`tracker.notice` and `kind`) and keeps the rest (`tracker.more`),
+and `notify` patches each after the answer's own patches, as
+`<al-toast variant="…" timeout="…">` appended to `al-toasts`
 (`datastar.PatchToast`; `shellBody` adds an empty `<al-toasts>` to a body
-patch when the page has none). Without Datastar the first toast of a 303 rides in the
-signed cookie `alder_notice` as `notice:<kind>:<text>` to the page it
-goes to (`storeNotice`, `takeNotice`), which shows it once as an `<al-alert>`.
+patch when the page has none).
+
+Without Datastar the first toast of a 303 rides in the signed cookie
+`alder_notice` as `notice:<kind>:<text>` to the page it goes to
+(`storeNotice`, `takeNotice`), which shows it once as an `<al-alert>`.
 
 
 ## 9. Reading generated code
@@ -5286,33 +6294,39 @@ hand, and git ignores it.
 
 `build/todos/` has one Go file per module, named after the module with `.`
 replaced by `__` and `_alder.go` added (`Todos__Index_alder.go` for
-`Todos.Index`), plus two app-wide files and a `go.mod` that finds the
-runtime in `rt/` beside it (section 8, "The runtime travels with the
-compiler"). `app__alder.go` holds the lists of section 8
-(`Tables`, `Capabilities`), the `Caps` struct the generated `caps` package fills, `Options`,
-`Serve` (which checks the capabilities, opens the database, creates the
-tables and returns `web.NewRouter(Routes, …)`), `Web` (the router's
-options that do not depend on how the app runs, which `Serve` starts
-from), and `session__codec`, the cookie's JSON. `routes__alder.go` holds `Routes` and every handler of
-section 8's last part. An app with capabilities also gets
-`caps/caps__alder.go`, the package `caps` that wires them (chapter 7
-quotes the blog's). A full `alder build` (without `--emit`) adds
-`cmd/main.go`, which reads the environment and calls
-`Serve(caps.Caps(), …)` (or `Serve(app.Caps{}, …)` for an app without
-capabilities); `adapters/` and `static/`, copies of the app's own; and
-the executable.
+`Todos.Index`), plus two app-wide files and a `go.mod` that finds the runtime
+in `rt/` beside it (section 8, "The runtime travels with the compiler").
+
+`app__alder.go` holds the lists of section 8 (`Tables`, `Capabilities`), the
+`Caps` struct the generated `caps` package fills, `Options`, `Serve` (which
+checks the capabilities, opens the database, creates the tables and returns
+`web.NewRouter(Routes, …)`), `Web` (the router's options that do not depend on
+how the app runs, which `Serve` starts from), and `session__codec`, the
+cookie's JSON.
+
+`routes__alder.go` holds `Routes` and every handler of section 8's last part.
+An app with capabilities also gets `caps/caps__alder.go`, the package `caps`
+that wires them (chapter 7 quotes the blog's).
+
+A full `alder build` (without `--emit`) adds `cmd/main.go`, which reads the
+environment and calls `Serve(caps.Caps(), …)` (or `Serve(app.Caps{}, …)` for
+an app without capabilities); `adapters/` and `static/`, copies of the app's
+own; and the executable.
 
 The fixed ending is there because Go reads meaning into file names: a file
 ending in `_test.go` is a test, and one whose name ends in `_linux` or
 `_amd64` (before the first `.`) is compiled only on Linux or only on that
 processor. A module named `Foo_test` or `Bar_linux` is a fine Alder module,
 and `Foo_test_alder.go` and `Bar_linux_alder.go` are ordinary files to Go.
+
 Every Go file starts with `// Code generated by alder; DO NOT EDIT.`
 (`app__alder.go`'s names the compiler's version too: `// Code generated by
-alder devel+0be85a2f5d31; DO NOT EDIT.`, chapter 11), and the build runs `go vet` on the package before saying `wrote`. Before
-writing, the build deletes the `.go` files in `build/<app>/` that start
-with that line (and `go.mod`), so a module you removed or renamed leaves
-no file behind; files you put there yourself are kept.
+alder devel+0be85a2f5d31; DO NOT EDIT.`, chapter 11), and the build runs `go
+vet` on the package before saying `wrote`.
+
+Before writing, the build deletes the `.go` files in `build/<app>/` that start
+with that line (and `go.mod`), so a module you removed or renamed leaves no
+file behind; files you put there yourself are kept.
 
 Every generated name follows one scheme (`internal/gen/names.go`), and its
 parts are always joined by a double underscore, `__`:
@@ -5338,90 +6352,109 @@ parts are always joined by a double underscore, `__`:
 | `title` → `Title`, `_at` → `U__at` | a record field, exported (a capital first letter, or `U__` for a leading `_`) so that adapters, and the runtime's `Show`, `Eq` and `Key`, see it | |
 | `type` → `type__` | a local whose name Go reserves, or that names `rt`, `html`, `std` | |
 
-Why `__`? Your names may not contain it: the compiler rejects `max__len`
-(E0001), and a module name segment may not end with `_`. So `__` can only
-be a joint, and a generated name can be read back into its parts:
+### Why `__`
+
+Your names may not contain it: the compiler rejects `max__len` (E0001),
+and a module name segment may not end with `_`. So `__` can only be a
+joint, and a generated name can be read back into its parts:
 `Todos__Index__view` is module `Todos.Index` and name `view`, never module
 `Todos` and a name `Index__view`. Modules `A.B` and `A_B` become
 `A__B_alder.go` and `A_B_alder.go`, so they cannot overwrite each other's
-file. Names the compiler adds
-start with a lowercase word (`tag__`, `is__`, `payload__`, `widen__`,
-`page__`, `guard__`, `decode__`, …), which no module name does, so they never clash
-with yours either. The names your adapters use must be exported, so they
-start with a capital: `Cap__`, `Args__` and `Route__`, and the fixed
-`Caps`, `Serve`, `Options`, `Routes`, `Tables` and `Capabilities`. A
-type `Password` in a module `Cap.Auth.Login` would be
-`Cap__Auth__Login__Password`, the interface of capability `Password` in
-`Auth.Login`, so a module whose first segment is exactly `Route`, `Cap` or
-`Args` is refused (E0015). The fixed names contain no `__`, so no
-declaration of yours can produce them. One more rule keeps `Args__` names
-apart: an entry whose name starts with `_` gets an `x` in front
-(`_raw` → `Args__M__C__x_raw`), so the part after the last `__` never
-starts with `_`. The one
-places your names and generated ones share a module are `App`, which
-generates `Session`, so a type or component of yours may not use that name
-(E0012), and a route module, whose generated types are qualified by the
-route (`Toggle.Params`, `Index.Session`) and so need no reserved word. The
-route's own name is kept apart from the module names, the import qualifiers
-and the constructors in scope by E0044. A generated name can never be a Go keyword or clash with `rt`,
-`html` or `std`.
+file.
 
-**The build, in order** (`runBuildTo` in `cmd/alder/build.go`):
+Names the compiler adds start with a lowercase word (`tag__`, `is__`,
+`payload__`, `widen__`, `page__`, `guard__`, `decode__`, …), which no
+module name does, so they never clash with yours either.
+
+The names your adapters use must be exported, so they start with a
+capital: `Cap__`, `Args__` and `Route__`, and the fixed `Caps`, `Serve`,
+`Options`, `Routes`, `Tables` and `Capabilities`. A type `Password` in a
+module `Cap.Auth.Login` would be `Cap__Auth__Login__Password`, the
+interface of capability `Password` in `Auth.Login`, so a module whose
+first segment is exactly `Route`, `Cap` or `Args` is refused (E0015). The
+fixed names contain no `__`, so no declaration of yours can produce them.
+
+One more rule keeps `Args__` names apart: an entry whose name starts with
+`_` gets an `x` in front (`_raw` → `Args__M__C__x_raw`), so the part after
+the last `__` never starts with `_`.
+
+> **Where your names and generated ones meet.** The one places your names
+> and generated ones share a module are `App`, which generates `Session`,
+> so a type or component of yours may not use that name (E0012), and a
+> route module, whose generated types are qualified by the route
+> (`Toggle.Params`, `Index.Session`) and so need no reserved word. The
+> route's own name is kept apart from the module names, the import
+> qualifiers and the constructors in scope by E0044. A generated name can
+> never be a Go keyword or clash with `rt`, `html` or `std`.
+
+### The build, in order
+
+The build runs in these steps (`runBuildTo` in `cmd/alder/build.go`):
 
 1. Check the program (section 5), and lower it to the IR (section 6).
+
 2. Check the adapters, before anything is written:
-   `buildkit.CheckAdapters` (`internal/buildkit/adapters.go`). It turns
-   each capability of the IR's `Program.Caps` into a `Need`: the module,
-   the capability, the directory (`gen.AdapterPkg`: the module's first
-   segment, lower-cased), the function (`gen.AdapterFunc`: the other
-   segments and the capability's name, joined) and the interface. Two
-   needs with the same directory and function are the "internal naming
+   `buildkit.CheckAdapters` (`internal/buildkit/adapters.go`).
+
+   It turns each capability of the IR's `Program.Caps` into a `Need`: the
+   module, the capability, the directory (`gen.AdapterPkg`: the module's
+   first segment, lower-cased), the function (`gen.AdapterFunc`: the other
+   segments and the capability's name, joined) and the interface.
+
+   Two needs with the same directory and function are the "internal naming
    error" (`gen.AdapterCollision`), checked first; then a directory named
    `internal` or `testdata` is refused, and so is an `adapters/go.mod`.
-   Then the scan. It lists `adapters/` and wants each needed directory
-   by its exact name, as a real directory: a symbolic link is skipped
-   (as the copy below skips it), and a directory that differs only in
-   letter case is refused by name, since on a case-insensitive file
-   system it would pass the scan and then confuse Go. In each directory
-   it parses, with Go's own parser (`go/parser`, which reads a file's
-   declarations without type-checking anything), every regular `.go`
-   file that is not a test and that Go would build here
+
+   Then the scan. It lists `adapters/` and wants each needed directory by
+   its exact name, as a real directory: a symbolic link is skipped (as the
+   copy below skips it), and a directory that differs only in letter case
+   is refused by name, since on a case-insensitive file system it would
+   pass the scan and then confuse Go.
+
+   In each directory it parses, with Go's own parser (`go/parser`, which
+   reads a file's declarations without type-checking anything), every
+   regular `.go` file that is not a test and that Go would build here
    (`build.Default.MatchFile` applies build tags and `_linux`-style file
-   names), and collects the functions that are exported, have no
-   receiver, no type parameters and no parameters. A need whose function
-   is not among them is missing; when the package declares the name as
-   something else (a function with parameters, a variable, a type), the
-   `Need` keeps that near miss in `Found` for its line. A file that does
-   not parse counts as having every function, so that Go, later, reports
-   the syntax error itself. Every missing need is printed, and the build
-   exits 1.
+   names), and collects the functions that are exported, have no receiver,
+   no type parameters and no parameters.
+
+   A need whose function is not among them is missing; when the package
+   declares the name as something else (a function with parameters, a
+   variable, a type), the `Need` keeps that near miss in `Found` for its
+   line. A file that does not parse counts as having every function, so
+   that Go, later, reports the syntax error itself. Every missing need is
+   printed, and the build exits 1.
+
 3. Emit the Go (section 7); `gen.Emit` adds the `caps` file
    (`gen.CapsPackage`) when the program has capabilities. Write it
    (`buildkit.WriteGenerated`, which also removes a stale `caps/`).
+
 4. Copy `migrations/`, then the whole `adapters/` tree
-   (`buildkit.CopyAdapters`, which first removes, by exact name, what
-   the app no longer has, so a directory renamed only in its case is not
-   lost on macOS, then copies, skipping a file whose content is
-   unchanged, so Go's build cache stays warm) and `static/`, and write
-   `cmd/main.go` (`gen.Main`).
+   (`buildkit.CopyAdapters`, which first removes, by exact name, what the
+   app no longer has, so a directory renamed only in its case is not lost
+   on macOS, then copies, skipping a file whose content is unchanged, so
+   Go's build cache stays warm) and `static/`, and write `cmd/main.go`
+   (`gen.Main`).
+
 5. `go vet ./...` on the module, then `go build ./cmd`. When vet fails,
-   the build vets the generated package alone to decide whose fault it
-   is: if that fails too, it is an internal error (exit 2); otherwise the
-   adapters (or the wiring of their constructors) do not compile, which
-   is your Go, and exit 1 with Go's output
+   the build vets the generated package alone to decide whose fault it is:
+   if that fails too, it is an internal error (exit 2); otherwise the
+   adapters (or the wiring of their constructors) do not compile, which is
+   your Go, and exit 1 with Go's output
    (`buildkit.AdaptersCompileMessage`).
 
-The test builds of `alder test`, `alder eval` and the REPL (section
-"Running tests", above) follow the same steps through `scratch.CompileCheckedWith`,
-with two differences. Step 2 is `buildkit.CheckTestAdapters`: every
-refusal stands, but a missing need is returned instead, its key goes into
-`gen.Options.Unwired`, `gen.CapsPackage` leaves that field of `Caps` out
-(with a comment) and does not import a package nothing else needs, and
-the warning goes into `Build.Warning` for the command to print. In step 5,
-when the generated package vets but the module does not, the scratch
-runner vets `./caps` and `./adapters/...` alone: if they fail it is a
-`scratch.AdapterError` with step 5's message (the commands exit 1),
-otherwise the fault is the scratch `main`'s.
+The test builds of `alder test`, `alder eval` and the REPL (section "Running
+tests", above) follow the same steps through `scratch.CompileCheckedWith`,
+with two differences. Step 2 is `buildkit.CheckTestAdapters`: every refusal
+stands, but a missing need is returned instead, its key goes into
+`gen.Options.Unwired`, `gen.CapsPackage` leaves that field of `Caps` out (with
+a comment) and does not import a package nothing else needs, and the warning
+goes into `Build.Warning` for the command to print.
+
+In step 5, when the generated package vets but the module does not, the
+scratch runner vets `./caps` and `./adapters/...` alone: if they fail it is a
+`scratch.AdapterError` with step 5's message (the commands exit 1), otherwise
+the fault is the scratch `main`'s.
 
 Because every name follows the scheme, finding a route's view is a search:
 
@@ -5449,14 +6482,15 @@ func Todos__Index__Index__view(model Todos__Index__Model, session Todos__Index__
 
 Compare it with the `view` in chapter 2. `session` has type
 `Todos__Index__Index__Session`, not the app's session: the route `requires
-user`, so it gets its own session record in which `user` is a `UserId`, not
-a `Maybe UserId`. The routes of a module that narrow the same fields share
-one record, named after the first of them, so `Index`'s `view` and
-`Toggle`'s `update` take the same type. Where the code passes `session` to
-code that expects the app's session, the call goes through
-`widen__Todos__Index__Index__Session`, which the emitter writes into
-`Todos__Index_alder.go`: it copies the fields and wraps `user` back in
-`rt.Just`.
+user`, so it gets its own session record in which `user` is a `UserId`, not a
+`Maybe UserId`. The routes of a module that narrow the same fields share one
+record, named after the first of them, so `Index`'s `view` and `Toggle`'s
+`update` take the same type.
+
+Where the code passes `session` to code that expects the app's session, the
+call goes through `widen__Todos__Index__Index__Session`, which the emitter
+writes into `Todos__Index_alder.go`: it copies the fields and wraps `user`
+back in `rt.Just`.
 
 ## 10. The language server
 
@@ -5471,18 +6505,22 @@ this section is the inside.
 
 The transcripts below are real. They were recorded by running Neovim 0.12.5
 with alder.nvim on a copy of `examples/blog`, with `ALDER_LSP_LOG` set to a
-file: `alder lsp` copies every message it receives (`->`) and sends (`<-`)
-to that file, one JSON object per line. Long values are trimmed, and
-each cut is marked `…`; whole messages are left out only where the text
-says so; and the directory the copy lived in is written `…`. Nothing else is changed:
-the lines are the log's, byte for byte, apart from those cuts. (Neovim
-asks `textDocument/documentColor` after every change, and `alder lsp`
+file: `alder lsp` copies every message it receives (`->`) and sends (`<-`) to
+that file, one JSON object per line.
+
+Long values are trimmed, and each cut is marked `…`; whole messages are left
+out only where the text says so; and the directory the copy lived in is
+written `…`. Nothing else is changed: the lines are the log's, byte for byte,
+apart from those cuts.
+
+(Neovim asks `textDocument/documentColor` after every change, and `alder lsp`
 answers with an empty list; those requests and their answers are left out
-everywhere, which is why some ids below skip a number. Several sessions are
-quoted, each a fresh run on a fresh copy of the blog, so the ids start
-again at 1 in each. The generator requests of "Generators" were sent by a
-script in the same Neovim, with the parameters the editor's generator modal
-sends.)
+everywhere, which is why some ids below skip a number.
+
+Several sessions are quoted, each a fresh run on a fresh copy of the blog, so
+the ids start again at 1 in each. The generator requests of "Generators" were
+sent by a script in the same Neovim, with the parameters the editor's
+generator modal sends.)
 
 ### The wire
 
@@ -5497,12 +6535,14 @@ Content-Length: 988\r\n
 {"id":1,"jsonrpc":"2.0","result":{"capabilities":{"codeActionProvider":{"codeActionKinds":["quickfix","refactor"]},"colorProvider":true,"completionProvider":{"triggerCharacters":[".","\u003c","?"]},"definitionProvider":true,"documentFormattingProvider":true,"executeCommandProvider":{"commands":["alder.explain","alder.fill"]},"experimental":{"alderScratch":true},"foldingRangeProvider":true,"hoverProvider":true,"inlayHintProvider":true,"positionEncoding":"utf-8","referencesProvider":true,"selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":["declaration","documentation","defaultLibrary"],"tokenTypes":["namespace","type","enumMember","function","method","parameter","variable","property","keyword","operator","string","number","comment","decorator","tag","attribute","boolean","hole"]},"range":true},"textDocumentSync":{"change":1,"openClose":true,"save":{"includeText":false}}},"serverInfo":{"name":"alder","version":"devel+4d325b96369d"}}}
 ```
 
-That is the server's answer to `initialize`, the first request. The log
-holds only the bodies; the header is what `conn.send` writes in front of
-one, and 988 is the length of this body in bytes (bytes, not characters,
-which matters as soon as a message has an `é` in it). The body is JSON. (The
-`\u003c` is Go's JSON encoder writing `<`, which it escapes by default; it
-means the same character.) `readMessage` in
+That is the server's answer to `initialize`, the first request.
+
+The log holds only the bodies; the header is what `conn.send` writes in front
+of one, and 988 is the length of this body in bytes (bytes, not characters,
+which matters as soon as a message has an `é` in it).
+
+The body is JSON. (The `\u003c` is Go's JSON encoder writing `<`, which it
+escapes by default; it means the same character.) `readMessage` in
 `internal/lsp/jsonrpc.go` is the reading side:
 
 ```go
@@ -5548,12 +6588,14 @@ type message struct {
 ```
 
 A **request** has an `id` and a `method`; the receiver must answer it with a
-**response** carrying the same `id` and either a `result` or an `error`. A
-**notification** has a `method` and no `id`: "this file changed" needs no
-answer. The `id` lets a client have several requests in flight and match
-answers to them as they come in any order. The server keeps the id as the
-JSON text it arrived in (`idKey`), so the number 1 and the string "1" stay
-different ids.
+**response** carrying the same `id` and either a `result` or an `error`.
+
+A **notification** has a `method` and no `id`: "this file changed" needs no
+answer.
+
+The `id` lets a client have several requests in flight and match answers to
+them as they come in any order. The server keeps the id as the JSON text it
+arrived in (`idKey`), so the number 1 and the string "1" stay different ids.
 
 The beginning of a session, from the log. The request, with the editor's
 capabilities cut:
@@ -5566,28 +6608,35 @@ capabilities cut:
 <- {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file://…/blog/app/Posts/Index.alder","version":0,"diagnostics":[]}}
 ```
 
-`initialize` tells the server where the project is (`rootUri`), and the
-server tells the client what it can do (`capabilities`): hover, definition,
+`initialize` tells the server where the project is (`rootUri`), and the server
+tells the client what it can do (`capabilities`): hover, definition,
 references, completion after the three characters `.`, `<` and `?`, code
 actions of two kinds, formatting, folding and selection ranges, inlay hints,
-colors, semantic tokens, and two commands (`alder.explain` and
-`alder.fill`); `experimental.alderScratch` announces the scratch files of
-"Scratch files in the language server", below. `textDocumentSync: {change:
-1}` asks the
-client to send the **whole** text of a file at each change, not a patch:
-Alder files are small, and a patch applied to a wrong base would corrupt the
-server's copy for good. After `initialized` the editor opens the file with
-`didOpen` and sends its entire text, and the server, which has now built the
-app, publishes the file's diagnostics (none). Two messages in that exchange
-are the reason for two of the server's rules, which the next paragraphs
-explain: `"positionEncoding"` and the whole `text` in `didOpen`.
+colors, semantic tokens, and two commands (`alder.explain` and `alder.fill`);
+`experimental.alderScratch` announces the scratch files of "Scratch files in
+the language server", below.
 
-**Why the server chooses the position encoding.** An LSP position is a line
+`textDocumentSync: {change: 1}` asks the client to send the **whole** text of
+a file at each change, not a patch: Alder files are small, and a patch applied
+to a wrong base would corrupt the server's copy for good.
+
+After `initialized` the editor opens the file with `didOpen` and sends its
+entire text, and the server, which has now built the app, publishes the file's
+diagnostics (none).
+
+Two messages in that exchange are the reason for two of the server's rules,
+which the next paragraphs explain: `"positionEncoding"` and the whole `text`
+in `didOpen`.
+
+#### Why the server chooses the position encoding
+
+An LSP position is a line
 and a character offset in that line, both counted from 0. The protocol's
-historical unit for the offset is the UTF-16 code unit, a unit that nothing
-in Alder uses. The compiler counts lines from 1 and columns from 1 in
-**bytes** of the UTF-8 file (`diag.Pos`), the unit Go strings index by. Since
-LSP 3.17 the client lists the units it can count in
+historical unit for the offset is the UTF-16 code unit, a unit that nothing in
+Alder uses. The compiler counts lines from 1 and columns from 1 in **bytes**
+of the UTF-8 file (`diag.Pos`), the unit Go strings index by.
+
+Since LSP 3.17 the client lists the units it can count in
 `capabilities.general.positionEncodings` and the server picks one and
 announces it as `positionEncoding`. `alder lsp` picks `utf-8` when the client
 lists it (Neovim does), and otherwise `utf-16`, the default every client must
@@ -5604,17 +6653,20 @@ func lspRange(line, col, endLine, endCol int) Range {
 ```
 
 With `utf-16` there is one more step, and it sits at the protocol boundary
-only: a position coming in is turned into a byte offset by reading the
-line's text (`fromWire`), and a range going out is turned into UTF-16 units
-the same way (`wireRange`, `toWire`). A character below U+10000 is one unit
-and a character above it, such as an emoji, is two (a surrogate pair), so
-on the line `"hé😀 {name}"` the `{` is at byte 9 and at UTF-16 character 6. A
-client that counts in UTF-16 and a server that counts in bytes disagree on
-every position after the `é`, which is why the server converts instead of
-assuming. The conversion needs the line's text, so a range is converted with
-the text it was computed from: the build's lines for diagnostics, fixes and
-locations, the current text for a cursor. With `utf-8` both directions are
-the identity, so the common case costs nothing.
+only: a position coming in is turned into a byte offset by reading the line's
+text (`fromWire`), and a range going out is turned into UTF-16 units the same
+way (`wireRange`, `toWire`).
+
+A character below U+10000 is one unit and a character above it, such as an
+emoji, is two (a surrogate pair), so on the line `"hé😀 {name}"` the `{` is at
+byte 9 and at UTF-16 character 6. A client that counts in UTF-16 and a server
+that counts in bytes disagree on every position after the `é`, which is why
+the server converts instead of assuming.
+
+The conversion needs the line's text, so a range is converted with the text it
+was computed from: the build's lines for diagnostics, fixes and locations, the
+current text for a cursor. With `utf-8` both directions are the identity, so
+the common case costs nothing.
 
 ### The overlay
 
@@ -5626,13 +6678,16 @@ the whole text there, `didClose` takes it out, and the file on disk applies
 again.
 
 The compiler, though, reads files. `names.Load` (section 4) walks `app/`,
-reads every `.alder` file and parses it. It does take a list of extra
-modules, parsed by the caller from memory, and that is how `alder eval` and
-the REPL add the scratch module that holds your expression. That hook does not work for an editor, because
-extra modules are **added** to the directory's under the duplicate rule: an
-extra `Posts.Index` next to the file `app/Posts/Index.alder` is two
-definitions of `Posts.Index`, E0009. What an editor needs is to **replace**
-the file. `names.LoadOverlay` does that:
+reads every `.alder` file and parses it. It does take a list of extra modules,
+parsed by the caller from memory, and that is how `alder eval` and the REPL
+add the scratch module that holds your expression.
+
+That hook does not work for an editor, because extra modules are **added** to
+the directory's under the duplicate rule: an extra `Posts.Index` next to the
+file `app/Posts/Index.alder` is two definitions of `Posts.Index`, E0009.
+
+What an editor needs is to **replace** the file. `names.LoadOverlay` does
+that:
 
 ```go
 		r, _ := filepath.Rel(dir, path)
@@ -5644,14 +6699,15 @@ the file. `names.LoadOverlay` does that:
 		src, err := os.ReadFile(path)
 ```
 
-`overlay` maps a path relative to the project ("app/Posts/Index.alder") to
-the text to use. The walk visits each file on disk; when the overlay has a
-text for it, it parses that and never reads the disk. An overlay file that
-the walk did not find (a new buffer, not saved yet) is added after the
-others, in path order. `names.Load` is `LoadOverlay` with a nil overlay, so
-the compiler and the server run the same code, and
-`buildkit.LoadCheckedOverlay` is `LoadChecked` with an overlay, which
-`alder check` calls with none.
+`overlay` maps a path relative to the project ("app/Posts/Index.alder") to the
+text to use. The walk visits each file on disk; when the overlay has a text
+for it, it parses that and never reads the disk.
+
+An overlay file that the walk did not find (a new buffer, not saved yet) is
+added after the others, in path order. `names.Load` is `LoadOverlay` with a
+nil overlay, so the compiler and the server run the same code, and
+`buildkit.LoadCheckedOverlay` is `LoadChecked` with an overlay, which `alder
+check` calls with none.
 
 A URI the editor sends (`file:///…/blog/app/Posts/Index.alder`) must become
 that relative path, and it must not escape the project. `server.rel` in
@@ -5690,12 +6746,13 @@ func (s *server) schedule() {
 }
 ```
 
-`tokens` is a channel with room for one value. If it is empty, the send puts
-a token in. If a token is already waiting, the `default` branch does
-nothing: a rebuild is already due, and it will see this change too. Ten
-keystrokes before the analysis goroutine wakes are one rebuild. `analyse`
-then sleeps `Debounce` (150 ms, set in `cmd/alder/lsp.go`), swallows the
-tokens that arrived meanwhile, and calls `rebuild`: typing a word is one
+`tokens` is a channel with room for one value. If it is empty, the send puts a
+token in. If a token is already waiting, the `default` branch does nothing: a
+rebuild is already due, and it will see this change too. Ten keystrokes before
+the analysis goroutine wakes are one rebuild.
+
+`analyse` then sleeps `Debounce` (150 ms, set in `cmd/alder/lsp.go`), swallows
+the tokens that arrived meanwhile, and calls `rebuild`: typing a word is one
 build, not five.
 
 The editor is not the only thing that changes files. A poller (`internal/watch`,
@@ -5721,23 +6778,29 @@ overlaid, and stores the result:
 ```
 
 (`AddSchemaDrift` adds E0019, the migrations check, so the diagnostics are
-those of `alder check`.) An `analysis` holds the program, the type
-checker's result, the diagnostics, the version of every document it was
-built from, and the text of every module as the build read it (`lines`).
+those of `alder check`.) An `analysis` holds the program, the type checker's
+result, the diagnostics, the version of every document it was built from, and
+the text of every module as the build read it (`lines`).
+
 Nobody changes it after `Store`. It is a **snapshot**, and a snapshot can be
 read by any number of goroutines without a lock; `cur` and `good` are
-`atomic.Pointer`s, so a worker picking the current snapshot never sees half
-of a new one. A request that arrives during a rebuild answers from the
-previous snapshot, and the next request sees the new one.
+`atomic.Pointer`s, so a worker picking the current snapshot never sees half of
+a new one.
 
-There are two pointers because a snapshot can be useless. If the text does
-not parse, `LoadCheckedOverlay` does not type-check (the checker needs a
-tree), so `res` is nil: the snapshot has the parse error to show, but no
-types, no resolved names, nothing to hover on. `cur` is always the newest
-snapshot, and `good` is the newest one **with** a `res`, the **last good
-build**. Diagnostics are published from the newest; hover, definition,
-references and completion answer from the last good one. Without that, every
-time you typed a half line, everything would go dark until you finished it.
+A request that arrives during a rebuild answers from the previous snapshot,
+and the next request sees the new one.
+
+There are two pointers because a snapshot can be useless. If the text does not
+parse, `LoadCheckedOverlay` does not type-check (the checker needs a tree), so
+`res` is nil: the snapshot has the parse error to show, but no types, no
+resolved names, nothing to hover on.
+
+`cur` is always the newest snapshot, and `good` is the newest one **with** a
+`res`, the **last good build**.
+
+Diagnostics are published from the newest; hover, definition, references and
+completion answer from the last good one. Without that, every time you typed a
+half line, everything would go dark until you finished it.
 
 But the last good build was made from the text as it was, not from the text
 as it is, so it can answer wrongly. If you insert a line above `lastPage`,
@@ -5762,23 +6825,27 @@ func freshLines(a *analysis, rel string, now []string, line int, inclusive bool)
 }
 ```
 
-A position is **fresh** if the lines above it are the same text in the
-build and now. Then every line number and byte column above the cursor means
-the same thing in both, and the build's answer about the cursor's line holds
-too, if that line itself is unchanged (`inclusive`). Hover, definition and
-references ask for the cursor's line to be unchanged as well. Completion
-does not, because the line under the cursor is the one being typed and is
-usually not parseable. It asks that only the lines above it are unchanged,
-and reads the line itself from the text.
+A position is **fresh** if the lines above it are the same text in the build
+and now. Then every line number and byte column above the cursor means the
+same thing in both, and the build's answer about the cursor's line holds too,
+if that line itself is unchanged (`inclusive`).
 
-Here is the rule at work, from the log. In `Index.load`, line 34,
-`let q = Text.slice 0 100 (Text.trim params.q)`, is replaced by `let q = Text.`,
-as if it were being typed. The editor sends `didChange` (version 5) with the whole
+Hover, definition and references ask for the cursor's line to be unchanged as
+well.
+
+Completion does not, because the line under the cursor is the one being typed
+and is usually not parseable. It asks that only the lines above it are
+unchanged, and reads the line itself from the text.
+
+Here is the rule at work, from the log. In `Index.load`, line 34, `let q =
+Text.slice 0 100 (Text.trim params.q)`, is replaced by `let q = Text.`, as if
+it were being typed. The editor sends `didChange` (version 5) with the whole
 new text, then asks for a hover on `lastPage` (request 3) and for completion
-after `Text.` (request 5; request 4 is the `documentColor` one). The server
-answers both from the build it made before the edit, since the 150 ms have
-not passed; then the rebuild runs and publishes the parse error, and a hover
-below the edit (request 6) gets nothing. (The `didChange` that puts the
+after `Text.` (request 5; request 4 is the `documentColor` one).
+
+The server answers both from the build it made before the edit, since the 150
+ms have not passed; then the rebuild runs and publishes the parse error, and a
+hover below the edit (request 6) gets nothing. (The `didChange` that puts the
 original line back, and the empty `documentColor` answers, are left out.)
 
 ```text
@@ -5793,22 +6860,26 @@ original line back, and the empty `documentColor` answers, are left out.)
 <- {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file://…/blog/app/Posts/Index.alder","version":6,"diagnostics":[]}}
 ```
 
-Positions are 0-based: line 24 is the file's line 25, `lastPage =
-1000000`, and line 33 is line 34, the one being typed. The new text does not
-parse (E0001), so the rebuild makes a snapshot with no `res`, and no new good
-build exists: every answer comes from the one made before the edit, and the
-freshness rule decides whether it still applies. It compares the build's lines
-with the text as it is **now**, not as it was at the last rebuild, which is
-why requests 3 and 5 are right even though the rebuild had not run yet.
+Positions are 0-based: line 24 is the file's line 25, `lastPage = 1000000`,
+and line 33 is line 34, the one being typed. The new text does not parse
+(E0001), so the rebuild makes a snapshot with no `res`, and no new good build
+exists: every answer comes from the one made before the edit, and the
+freshness rule decides whether it still applies.
+
+It compares the build's lines with the text as it is **now**, not as it was at
+the last rebuild, which is why requests 3 and 5 are right even though the
+rebuild had not run yet.
 
 - Hover on `lastPage` (request 3, line 25) is **above** the edit: lines 1 to
   25 are identical, so the position is fresh and the old build's answer is
   right, with its doc comment.
+
 - Completion after `Text.` (request 5, line 34) is **on** the edit. Lines 1
   to 33 are unchanged, which is all completion asks. The context, "a member of
   module `Text`", came from the text before the cursor (`Text.`, matched by
   the regular expression `reMember`), and the members from the module's
   declarations in the build.
+
 - Hover on line 41 (request 6) is **below** the edit. Line 34 differs from
   the build's, so nothing from the build holds at line 41, and the server
   answers `null`, "nothing here". It would be wrong to answer: had the edit
@@ -5855,25 +6926,29 @@ are in scope, which arm of a `match` it is in.
 
 `Children` needs a list of every node's children, and `Spanned` is the
 interface of every node: anything that embeds `Node`, with its `Span`. There
-are dozens of node types, and the parser adds one whenever the language gains a
-construct. A hand-written `Children` would need a case for each, and the day
+are dozens of node types, and the parser adds one whenever the language gains
+a construct. A hand-written `Children` would need a case for each, and the day
 someone adds a node and forgets the case, the node's insides become invisible
-to hover and references, silently. So `Children` finds the children by
-**reflection**, Go's ability to look at a value's type and fields at run
-time: it looks at every exported field of a node, takes a field holding a
-node, or a slice of nodes, or a plain struct that holds nodes (a string
-interpolation's part), skips nil, and sorts what it found by source
-position. A new node type with ordinary fields is covered the moment it
-exists. Reflection is slower than a hand-written walk, and a lookup walks a
-path of a few dozen nodes, not the whole tree.
+to hover and references, silently.
 
-What the reflection cannot know is whether the spans are right: a child
-must lie inside its parent, or `NodeAt` would descend into the wrong
-place. `TestChildren_SpansNest` (`internal/syntax/walk_test.go`) parses
-every module of every example app and checks it for each child of each node.
-The guarantee is that every node reachable through exported fields has a
-span inside its parent's, on every file in `examples/`; it does not
-guarantee that a new field is exported, or that a parser fills a span.
+So `Children` finds the children by **reflection**, Go's ability to look at a
+value's type and fields at run time: it looks at every exported field of a
+node, takes a field holding a node, or a slice of nodes, or a plain struct
+that holds nodes (a string interpolation's part), skips nil, and sorts what it
+found by source position. A new node type with ordinary fields is covered the
+moment it exists.
+
+Reflection is slower than a hand-written walk, and a lookup walks a path of a
+few dozen nodes, not the whole tree.
+
+What the reflection cannot know is whether the spans are right: a child must
+lie inside its parent, or `NodeAt` would descend into the wrong place.
+`TestChildren_SpansNest` (`internal/syntax/walk_test.go`) parses every module
+of every example app and checks it for each child of each node.
+
+The guarantee is that every node reachable through exported fields has a span
+inside its parent's, on every file in `examples/`; it does not guarantee that
+a new field is exported, or that a parser fills a span.
 
 ### Scope, hover and definition
 
@@ -5902,11 +6977,13 @@ How the server gets from the first to the second:
    calls `NodeAt`. The path is `Module`, `ValueDecl` (`Index.load`, a route's
    member), `Block`, `LetStmt` (`matching`), `If`, `App` (`Text.isEmpty q`),
    `Var` (`q`).
+
 2. `target` (`scope.go`) says what the node names. The `Var` carries a
    `Ref`, the resolver's answer (section 4) for the name: its kind is
    `RefLocal`, "a local variable", and a local has no module or declaration
    to point at. Which local? The resolver says only that it is local; the
    server asks `scopeAt`.
+
 3. `scopeAt(path, pos)` walks the path from the outside in and collects the
    names in scope. At the `ValueDecl` it adds `Index.load`'s parameters, `params` and
    `session`. At the `Block` it adds each `let` whose statement **ends before**
@@ -5927,6 +7004,7 @@ How the server gets from the first to the second:
    The list is ordered outermost first, and `innermost` takes the **last**
    binder named `q`, so a name that is bound twice means the closer one,
    as in the language.
+
 4. The binder is `q`, a `LetStmt` on line 34 whose name is at columns 7 to 8.
    Its `Key` is the node itself, and the type checker recorded each local's
    type under that key (`check.Result.Binds`). Hover prints
@@ -5935,20 +7013,26 @@ How the server gets from the first to the second:
    `lspRange` to line 33, characters 6 to 7.
 
 The same `target` drives three features. Hover on `lastPage` finds a `Var`
-with a `RefValue` instead, looks its type up in `Result.Values`, and adds
-the doc comment (`syntax.DocOf`: the run of `--` lines directly above the
-declaration). Definition on it finds the declaration (`findDecl`) and returns
-the span of its name. A name that resolves to the standard library gets a type
-and an answer for hover, and no definition: the stdlib is embedded in the
-binary, so it has no path to open.
+with a `RefValue` instead, looks its type up in `Result.Values`, and adds the
+doc comment (`syntax.DocOf`: the run of `--` lines directly above the
+declaration).
+
+Definition on it finds the declaration (`findDecl`) and returns the span of
+its name.
+
+A name that resolves to the standard library gets a type and an answer for
+hover, and no definition: the stdlib is embedded in the binary, so it has no
+path to open.
 
 A route is a name of its own kind (`RefRoute`). `Search` in `submit={Search}`
-resolves to the route, and so does the route part of a member's name:
-`Search` in `Search.update`, in the type `Search.Params`. For such a name
-hover prints the route line without `route Name =` (`routeHover`: the method and
-path, the parameters, the form and the guard, two spaces apart) and the
-`--` comment above the route, and definition returns the span of the
-route's name in its `route` line. In the blog:
+resolves to the route, and so does the route part of a member's name: `Search`
+in `Search.update`, in the type `Search.Params`. For such a name hover prints
+the route line without `route Name =` (`routeHover`: the method and path, the
+parameters, the form and the guard, two spaces apart) and the `--` comment
+above the route, and definition returns the span of the route's name in its
+`route` line.
+
+In the blog:
 
 ```text
 -> {"jsonrpc":"2.0","id":3,"method":"textDocument/hover","params":{"position":{"line":64,"character":21},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"}}}
@@ -5958,12 +7042,13 @@ route's name in its `route` line. In the blog:
 ```
 
 (The cursor is inside `submit={Search}`, line 65, character 21. The hover is
-the route line without `route Search =`, then the two comment lines above
-it; the definition is the span of `Search` in the `route` line, line 10,
-characters 6 to 12.) Where the checker says
-a route lacks a member (E0043), a code action writes the signatures: `Row.load`
-and `Row.view` for a GET route, `Row.update` for a write route
-(`routeSignatureActions`), after the route's last member.
+the route line without `route Search =`, then the two comment lines above it;
+the definition is the span of `Search` in the `route` line, line 10,
+characters 6 to 12.)
+
+Where the checker says a route lacks a member (E0043), a code action writes
+the signatures: `Row.load` and `Row.view` for a GET route, `Row.update` for a
+write route (`routeSignatureActions`), after the route's last member.
 
 ### References
 
@@ -5996,13 +7081,19 @@ resolves to the same declaration (`uses` in `references.go`):
 The test in `useSpan` is the resolver's own answer: the node's `Ref` has the
 same module and name as the target's, in the same **namespace** (a table
 `Post` used in a type position and used as a value are the same declaration
-with different `RefKind`s). The references of a route are its `route` line
-and every place its name is used as a value: a `click`, `submit` or `href`,
-a `Response.redirect`, a test's `Test.get` or `Test.submit`. In the blog,
-`Search` is found at its `route` line, in `submit={Search}` and in one test.
-The route part of a member's name (`Search.update`) is not a node of its own
-with a `Ref`, so references do not list it; hover and definition do (above). A local compares its binder by identity, not
-its name: two `q`s in two functions are two names.
+with different `RefKind`s).
+
+The references of a route are its `route` line and every place its name is
+used as a value: a `click`, `submit` or `href`, a `Response.redirect`, a
+test's `Test.get` or `Test.submit`.
+
+In the blog, `Search` is found at its `route` line, in `submit={Search}` and
+in one test. The route part of a member's name (`Search.update`) is not a node
+of its own with a `Ref`, so references do not list it; hover and definition do
+(above).
+
+A local compares its binder by identity, not its name: two `q`s in two
+functions are two names.
 
 The cost is a walk of the whole program per request: every node of every
 module, plus a reflective `Children` call per node. There is no index to build
@@ -6018,13 +7109,23 @@ used on the line that does not parse. So it reads the context from the text,
 and the facts from the build.
 
 `completionAt` takes the line up to the cursor (`prefix`) and tries the
-contexts in order: `import `, a module member (`Text.`), a field (`params.`),
-a closing tag (`</`), an attribute's value (`variant="`), an attribute inside
-a tag, a tag (`<`), a hole (`?`), a pattern, and last everything else (names
-in scope, modules and keywords). The first that matches wins. These are text
-matches on purpose; the parser has failed on this line, and its error is no
-help deciding what the user means to write. Most of them look only at the
-prefix, with regular expressions anchored on its end:
+contexts in order:
+
+1. `import `;
+2. a module member (`Text.`);
+3. a field (`params.`);
+4. a closing tag (`</`);
+5. an attribute's value (`variant="`);
+6. an attribute inside a tag;
+7. a tag (`<`);
+8. a hole (`?`);
+9. a pattern;
+10. and last everything else (names in scope, modules and keywords).
+
+The first that matches wins. These are text matches on purpose; the parser
+has failed on this line, and its error is no help deciding what the user
+means to write. Most of them look only at the prefix, with regular
+expressions anchored on its end:
 
 ```go
 	reMember   = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.])([A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)*)\.([a-zA-Z0-9_]*)$`)
@@ -6032,24 +7133,29 @@ prefix, with regular expressions anchored on its end:
 ```
 
 `Text.` is a capitalised name, a module, so `reMember` matches and `members`
-lists the declarations of that module. `params.` is a lowercase name, a
-value, so `reField` matches, and `fields` needs the type of `params`. For
-that, the scope: on the line being typed, the scope at the **end of the line
-above**, from the last good build (`scopeNow`). That contains the names
-bound before this line, which is all this line can use, and the type of
-`params` is `Index.Params`, a record with the fields `page` and `q`, which are
-the completions.
+lists the declarations of that module. `params.` is a lowercase name, a value,
+so `reField` matches, and `fields` needs the type of `params`. For that, the
+scope: on the line being typed, the scope at the **end of the line above**,
+from the last good build (`scopeNow`).
+
+That contains the names bound before this line, which is all this line can
+use, and the type of `params` is `Index.Params`, a record with the fields
+`page` and `q`, which are the completions.
 
 A route's name is capitalised too, so `Search.` matches `reMember` as well,
 but `Search` is no module. `members` then asks `routeNamed` whether the
-written qualifier names a route of this module (or, through an import, a
-route of that module: `Index.Row` for the route `Row` of `Todos.Index`) and
-answers with what follows a route's name: the members the
-route fixes, a GET route's `load` and `view`, a write route's `update`,
-and its `Params` and `Session` types. A member the module declares shows its
-signature as written; one it lacks shows the signature it needs (`Query m`
-for a `load`, whose model only the author knows). In the blog, typing `Search.`
-where `let q = …` was answers, with the signature of `Search.update`:
+written qualifier names a route of this module (or, through an import, a route
+of that module: `Index.Row` for the route `Row` of `Todos.Index`) and answers
+with what follows a route's name: the members the route fixes, a GET route's
+`load` and `view`, a write route's `update`, and its `Params` and `Session`
+types.
+
+A member the module declares shows its signature as written; one it lacks
+shows the signature it needs (`Query m` for a `load`, whose model only the
+author knows).
+
+In the blog, typing `Search.` where `let q = …` was answers, with the
+signature of `Search.update`:
 
 ```text
 <- {"id":5,"jsonrpc":"2.0","result":{"isIncomplete":false,"items":[{"label":"update","kind":3,"detail":"update : Search.Params -\u003e Session -\u003e Task Response","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"update"}},{"label":"Params","kind":7,"detail":"type Search.Params","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"Params"}},{"label":"Session","kind":7,"detail":"type Search.Session","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"Session"}}]}}
@@ -6063,7 +7169,9 @@ Both are gated on freshness: if the lines above the cursor have changed since
 the build, the build's scope would be about different code and the server
 offers nothing from it.
 
-**Inside a tag.** The tag contexts cannot look at the prefix alone, because a
+#### Inside a tag
+
+The tag contexts cannot look at the prefix alone, because a
 start tag can run over several lines:
 
 ```text
@@ -6077,21 +7185,26 @@ attribute's value ask `startTag`, which joins the declaration's lines from its
 first (`declStart`) up to the cursor and scans that text from the start
 (`scanTags`), keeping a stack of the tags open so far: `<tag …>` pushes it,
 `</tag>` pops back to it, and `<tag … />` or a void tag such as `<br>` pushes
-nothing. When the text ends before a start tag's `>`, the cursor is inside
-that tag, and the tags still on the stack are its parents. A `slot="` looks
-at the innermost parent: under `<al-pagination>` it offers that element's
-named slots, `prev` and `next`.
+nothing.
+
+When the text ends before a start tag's `>`, the cursor is inside that tag,
+and the tags still on the stack are its parents.
+
+A `slot="` looks at the innermost parent: under `<al-pagination>` it offers
+that element's named slots, `prev` and `next`.
 
 Scanning text means guessing what the parser would see, and a `<` is not
 always a tag. `"see <b here"` is a string, `params.page <last` a comparison,
 and if either counted, every line typed after it would be "inside a tag" and
-get attribute names instead of the names in scope. The scanner therefore
-tells code from markup the way the lexer does. In code (outside any tag, or
-in a `{…}` inside one) it skips a string literal whole, with the lexer's own
-rule (`syntax.StringEnd`), and a `--` comment to the end of its line; among a
-tag's children the text is raw, and a `"` there is only a character. In code
-a `<name` on a line above the cursor's opens a tag only when the parser would
-accept the name there:
+get attribute names instead of the names in scope.
+
+The scanner therefore tells code from markup the way the lexer does.
+
+In code (outside any tag, or in a `{…}` inside one) it skips a string literal
+whole, with the lexer's own rule (`syntax.StringEnd`), and a `--` comment to
+the end of its line; among a tag's children the text is raw, and a `"` there
+is only a character. In code a `<name` on a line above the cursor's opens a
+tag only when the parser would accept the name there:
 
 ```go
 		case c == '<':
@@ -6108,20 +7221,27 @@ typing a tag the build has never seen. And a cursor inside an attribute's
 `{…}` (`<a href={Text.slice 0`) is in code again, so `startTag` says no and
 the names in scope complete there, as anywhere else in an expression.
 
-**Custom elements.** The tags and attributes of HTML are a table compiled
-into the server (`internal/markup`). Custom elements are the checker's
-(section 5, where HTML is checked): the merged manifest of `alder-ui` and the app,
-which the checker built and left on its result. Completion reads it from
-the last good build, `a.res.Elements`, so the app's manifest is the one that
-build parsed and the server never parses it a second time. When the newest build has no
-result because a file does not parse, the last good build still answers;
-with no good build yet, `elements.Builtin()` does, so `<al-` completes even in a file that has never compiled. After `<`
-the HTML tags come first, then the custom elements in tag order. Inside a
-custom element's start tag, its own attributes replace the HTML list (the
-global ones, `class`, `id` and the rest, are added after them), each with its
-type and default as the item's detail and its description as documentation.
-Inside an attribute's quotes, `Attr.Values` (the same list the checker
-checks a literal against) gives the choices; an attribute with no closed list
+#### Custom elements
+
+The tags and attributes of HTML are a table compiled into
+the server (`internal/markup`). Custom elements are the checker's (section 5,
+where HTML is checked): the merged manifest of `alder-ui` and the app, which
+the checker built and left on its result.
+
+Completion reads it from the last good build, `a.res.Elements`, so the app's
+manifest is the one that build parsed and the server never parses it a second
+time. When the newest build has no result because a file does not parse, the
+last good build still answers; with no good build yet, `elements.Builtin()`
+does, so `<al-` completes even in a file that has never compiled.
+
+After `<` the HTML tags come first, then the custom elements in tag order.
+Inside a custom element's start tag, its own attributes replace the HTML list
+(the global ones, `class`, `id` and the rest, are added after them), each with
+its type and default as the item's detail and its description as
+documentation.
+
+Inside an attribute's quotes, `Attr.Values` (the same list the checker checks
+a literal against) gives the choices; an attribute with no closed list
 completes nothing there.
 
 Hover on a tag uses the same table (`markupHover` in `hover.go`). A tag with
@@ -6131,7 +7251,9 @@ description, and a line of slots. An attribute of a custom element gets its
 own line. A capitalised tag is a component, a function the resolver knows,
 and hover shows its signature like any other declaration's.
 
-**Fitting a hole.** Put the cursor on `?n` in `Db.limit ?n`. The hole has a
+#### Fitting a hole
+
+Put the cursor on `?n` in `Db.limit ?n`. The hole has a
 type the checker inferred, here `Int`, and the useful completions are the
 names whose type fits. `fits` asks the unifier (section 5):
 
@@ -6145,15 +7267,20 @@ func (cx *completion) fits(name string, want types.Type) bool {
 
 For each name in scope it takes the name's type, makes the type's type
 parameters fresh variables (`Instantiate`: a function over any list fits
-whether the hole wants a list of `Int` or of `Text`), and asks whether it can be made equal to the hole's type. Unifying
-**changes** the unifier: a type variable that was open becomes `Int`. The
-build's unifier belongs to a snapshot that other requests are reading, and a
-candidate that did not fit would leave a half-finished substitution behind.
-So each question gets `Clone`, a copy with its own substitution (it carries
-on counting fresh variables from the original's counter, so none collide),
-and the copy is thrown away. The names that fit are sorted first
-(`sortText` starting with 0) and the others after them (1). The item's edit
-replaces the whole hole, `?` included, so choosing a name fills it.
+whether the hole wants a list of `Int` or of `Text`), and asks whether it can
+be made equal to the hole's type.
+
+Unifying **changes** the unifier: a type variable that was open becomes `Int`.
+The build's unifier belongs to a snapshot that other requests are reading, and
+a candidate that did not fit would leave a half-finished substitution behind.
+
+So each question gets `Clone`, a copy with its own substitution (it carries on
+counting fresh variables from the original's counter, so none collide), and
+the copy is thrown away.
+
+The names that fit are sorted first (`sortText` starting with 0) and the
+others after them (1). The item's edit replaces the whole hole, `?` included,
+so choosing a name fills it.
 
 ### Generators
 
@@ -6174,11 +7301,12 @@ type Spec struct {
 `ID` is `"new msg"`, `Args` and `Flags` are the typed fields (`page` is a
 `page`, the module of a route, and `name` is text), `Run` is the generator,
 and `Here` says whether the generator applies at the cursor and prefills a
-form if it does. `HereCtx` is where the cursor is (module, whether it holds
-routes, the declaration around it, a hole under it; the field is still called
-`IsPage`, and the language server sets it for a module with a `page` or with
-routes, `hereCtx` in `actions.go`); `inPage`, for example, is the `Here` of
-`new msg`:
+form if it does.
+
+`HereCtx` is where the cursor is (module, whether it holds routes, the
+declaration around it, a hole under it; the field is still called `IsPage`,
+and the language server sets it for a module with a `page` or with routes,
+`hereCtx` in `actions.go`); `inPage`, for example, is the `Here` of `new msg`:
 
 ```go
 func inPage(c HereCtx) *Match {
@@ -6209,7 +7337,9 @@ plugin keeps working. For the blog's `Posts.Index`:
 The routes come in the order the program declares them (the older pages and
 messages are sorted by path before them), not sorted by path.
 
-**A dry run on a copy.** A generator edits files, checks the result, and
+#### A dry run on a copy
+
+A generator edits files, checks the result, and
 refuses if it does not check. `Run(…, dryRun=true)` does all of that and
 writes nothing. The server calls it on a copy of the app:
 
@@ -6228,13 +7358,14 @@ writes nothing. The server calls it on a copy of the app:
 ```
 
 `Materialise` copies the project into a fresh temporary directory (not
-`build/`, `.git`, or databases), then writes the open documents over the
-copy. That is the overlay again, but here by writing files: the generators
-read a directory, not a map of texts, so the dry run gets a directory that
-looks the way the editor sees it, and the real project, which the user may be
-looking at, is never touched. The migration writer runs in the copy too. The
-`Migrate` function is passed in (`generate.App.Migrate`) so the server and the
-command line run the same one.
+`build/`, `.git`, or databases), then writes the open documents over the copy.
+That is the overlay again, but here by writing files: the generators read a
+directory, not a map of texts, so the dry run gets a directory that looks the
+way the editor sees it, and the real project, which the user may be looking
+at, is never touched.
+
+The migration writer runs in the copy too. The `Migrate` function is passed in
+(`generate.App.Migrate`) so the server and the command line run the same one.
 
 `generate.Form` turns what the user has typed (`you`) over what `Here`
 prefilled into a list of fields, each valid or not and why, and `ready` is
@@ -6242,17 +7373,20 @@ true when all are valid. The editor calls `alder/preview` as the form is
 filled, once per field.
 
 Each field also carries `help`, one line on what it means, and `example`, a
-value it accepts. Both are written once, on the `generate.Field` in
-`specs.go` (`Help`, `Example`; a flag's `help` is its `Summary` unless it
-has its own), so the command line's help and the editor's form cannot
-drift. A required field the cursor and the user leave empty starts filled
-(`startValue`): at the first choice when it names something that must exist
-(a page, a table, a declaration, one of its fixed choices), else at its
-example. So the form is usually ready as it opens and the preview shows a
-change at once; the user edits from there. A flag marked `Agent` (where
-`new msg` puts its button, `--strict` on a table edit) comes back with
-`"agent":true`, and the editor's form leaves it out: an agent needs that
-precision on the command line, a person sees the preview and edits by hand.
+value it accepts. Both are written once, on the `generate.Field` in `specs.go`
+(`Help`, `Example`; a flag's `help` is its `Summary` unless it has its own),
+so the command line's help and the editor's form cannot drift.
+
+A required field the cursor and the user leave empty starts filled
+(`startValue`): at the first choice when it names something that must exist (a
+page, a table, a declaration, one of its fixed choices), else at its example.
+So the form is usually ready as it opens and the preview shows a change at
+once; the user edits from there.
+
+A flag marked `Agent` (where `new msg` puts its button, `--strict` on a table
+edit) comes back with `"agent":true`, and the editor's form leaves it out: an
+agent needs that precision on the command line, a person sees the preview and
+edits by hand.
 
 Here is the walk-through of the spec: `new msg` on `Posts.Index`, with the
 cursor on line 26. The first request has no values; the form comes back with
@@ -6315,27 +7449,32 @@ the editor shows (here with its `\n` turned into line breaks):
 ```
 
 That is a write route, `Delete`, with its `update` answering
-`Response.refresh`, a button that sends it, and a test that presses it,
-which is chapter 15's `alder new msg` on a route module. The route line goes
-after the module's last `route` line, the `update` before the first `test`,
-the button at the end of the view and the new test at the end of the file.
+`Response.refresh`, a button that sends it, and a test that presses it, which
+is chapter 15's `alder new msg` on a route module. The route line goes after
+the module's last `route` line, the `update` before the first `test`, the
+button at the end of the view and the new test at the end of the file.
+
 Its `diagnostics` and `holes` are empty: nothing in this change needs the
 author's input (a `msg` whose button carries a value, such as a row's id,
-would leave a typed hole there, and the response would list it with its
-type, so that the editor can offer to fill it). The copy's diagnostics are
-the copy's, and the server publishes them nowhere: they describe the
-dry-run copy, not the buffers.
+would leave a typed hole there, and the response would list it with its type,
+so that the editor can offer to fill it).
 
-The slow worker runs `alder/preview`, so it cannot stall hover, and a
-second guard keeps previews in order. While the user types the name, the
-editor sends a preview for each keystroke; a dry run takes longer than a
-keystroke; so the answers could return out of order and a stale diff would
-land on top of a fresh one. `dispatch` remembers the id of the newest
-`alder/preview` (`latestPreview`), and `handle` answers an older one with
-`-32800`, "cancelled", before it runs, or after it has run if a newer one
-arrived meanwhile.
+The copy's diagnostics are the copy's, and the server publishes them nowhere:
+they describe the dry-run copy, not the buffers.
 
-**Why the plan carries the texts.** `alder/preview` answers with a diff,
+The slow worker runs `alder/preview`, so it cannot stall hover, and a second
+guard keeps previews in order. While the user types the name, the editor sends
+a preview for each keystroke; a dry run takes longer than a keystroke; so the
+answers could return out of order and a stale diff would land on top of a
+fresh one.
+
+`dispatch` remembers the id of the newest `alder/preview` (`latestPreview`),
+and `handle` answers an older one with `-32800`, "cancelled", before it runs,
+or after it has run if a newer one arrived meanwhile.
+
+#### Why the plan carries the texts
+
+`alder/preview` answers with a diff,
 which is for a person to read. Applying a change needs more. The editor
 puts text into its buffers, and a diff tells it which lines changed in a
 file as the copy had it, not whether the buffer still looks like that. So
@@ -6351,15 +7490,19 @@ type planFile struct {
 }
 ```
 
-`generate.FileChange` (`internal/generate/apply.go`) records both texts as the
-generator wrote the copy. The client does three things with them that a
-diff would not allow. It compares `before` with the buffer, and if they
-differ, someone edited the file since the plan, and it refuses:
-`alder: app/Posts/Index.alder changed since planning; nothing applied`. It
-replaces the buffer's text with `after`, a whole-file replacement with no
-patch to misapply. And the two pointers tell it the action: `before` null
-means "create this file" (an unsaved buffer), `after` null means "remove
-it". The server writes nothing in your project at any point. The editor writes
+`generate.FileChange` (`internal/generate/apply.go`) records both texts as
+the generator wrote the copy. The client does three things with them that a
+diff would not allow:
+
+- It compares `before` with the buffer, and if they differ, someone edited
+  the file since the plan, and it refuses:
+  `alder: app/Posts/Index.alder changed since planning; nothing applied`.
+- It replaces the buffer's text with `after`, a whole-file replacement
+  with no patch to misapply.
+- The two pointers tell it the action: `before` null means "create this
+  file" (an unsaved buffer), `after` null means "remove it".
+
+The server writes nothing in your project at any point. The editor writes
 when you save.
 
 The whole chain, for the story of one keystroke: the editor sends the
@@ -6380,89 +7523,121 @@ make it work: the loop that checks the model's answers, the code action
 that offers it, a command the server runs in the background, and requests
 that go the other way, from the server to the editor.
 
-**The loop.** `internal/fill` holds what `alder fill --ai` and the server
+#### The loop
+
+`internal/fill` holds what `alder fill --ai` and the server
 share. `fill.Run` loads the app with `generate.Load`, finds the hole with
 `generate.FindHole` (the same address `alder fill` takes, a route's
-member, `App.Logout.update`), and builds the first message with `fill.Prompt`:
-where the hole is and its type, the comment above its declaration, the
-module's source, one `name : Type` line for each name in scope (the
-binders at the hole, read from the checker's `Binds` as hover reads them,
-the module's values, the values and types of the app modules it imports;
-the ones whose type unifies with the hole's on a clone of the unifier
-come first, as in completion), and the standard library's signature
-files that the module names. The system prompt is `internal/fill/card.md`,
-embedded in the binary: a page on what a hole is, the expression syntax and
-the idioms of a write route's `update` and of tests. Then, up to three times: send the
-conversation to the backend, strip a code fence if the model wrote one,
-place the expression with `generate.Fill`, and run `generate.Apply` as a
-dry run, the same copy-and-check every generator ends in. An answer that
-checks is the result; a refused one goes back to the model as a new turn,
-`The checker refused it:` and the errors exactly as `alder check` prints
-them. `Run` writes nothing: it returns the edits and, for each changed
-file, the text before and after.
+member, `App.Logout.update`), and builds the first message with
+`fill.Prompt`:
 
-The expression lands in the middle of a line, between the text before the
-hole and the text after it, and that text must keep its meaning. Two things
-in an answer could change it. A comment would comment out the rest of the
-line: `n -- ` in `bump n = ?a + 1 * n` would leave `bump n = n -- + 1 * n`,
-which checks, and has lost `+ 1 * n`. And an operator could bind
-differently from the hole: `1 + 1` in `?a * 2` would read `1 + 1 * 2`. So
-`generate.Fill` asks the lexer for the expression's comments and cuts them
+- where the hole is and its type;
+- the comment above its declaration;
+- the module's source;
+- one `name : Type` line for each name in scope (the binders at the hole,
+  read from the checker's `Binds` as hover reads them, the module's
+  values, the values and types of the app modules it imports; the ones
+  whose type unifies with the hole's on a clone of the unifier come first,
+  as in completion);
+- and the standard library's signature files that the module names.
+
+The system prompt is `internal/fill/card.md`, embedded in the binary: a
+page on what a hole is, the expression syntax and the idioms of a write
+route's `update` and of tests.
+
+Then, up to three times:
+
+1. send the conversation to the backend;
+2. strip a code fence if the model wrote one;
+3. place the expression with `generate.Fill`;
+4. and run `generate.Apply` as a dry run, the same copy-and-check every
+   generator ends in.
+
+An answer that checks is the result; a refused one goes back to the model
+as a new turn, `The checker refused it:` and the errors exactly as
+`alder check` prints them. `Run` writes nothing: it returns the edits and,
+for each changed file, the text before and after.
+
+The expression lands in the middle of a line, between the text before the hole
+and the text after it, and that text must keep its meaning. Two things in an
+answer could change it. A comment would comment out the rest of the line: `n
+-- ` in `bump n = ?a + 1 * n` would leave `bump n = n -- + 1 * n`, which
+checks, and has lost `+ 1 * n`.
+
+And an operator could bind differently from the hole: `1 + 1` in `?a * 2`
+would read `1 + 1 * 2`.
+
+So `generate.Fill` asks the lexer for the expression's comments and cuts them
 (`syntax.StripComments`: a regular expression would cut a `--` inside a
 string), and parenthesises any expression that is not atomic (a name, a
 literal, one bracketed whole). The formatter, which runs on every file a
-generator writes, drops the parentheses that are not needed, so
-`Delete.update params session = (Task.succeed Response.refresh)` is written
-without them.
+generator writes, drops the parentheses that are not needed, so `Delete.update
+params session = (Task.succeed Response.refresh)` is written without them.
 
 A backend is one method, `Complete(ctx, system, messages) (text, error)`.
+
 `fill.Anthropic` posts the Messages API's JSON with `net/http`; the system
 prompt goes in a block marked `cache_control`, so the card is read from the
-API's cache on the second and third attempts. Its HTTP client follows no redirect (Go would
-send the `x-api-key` header on to whatever host a redirect names), and it
-refuses an `ALDER_ANTHROPIC_API` that is not `https`, except on the loopback
-host the tests use. `fill.Command` runs
-`ALDER_FILL_COMMAND` with `sh -c`, writing the conversation as plain text to
-its standard input and reading the expression from its standard output
-(at most 1 MB). It must be a plain text completer: with tools, the prompt's
-comments become instructions to an agent that can act on them. The command
-runs in a process group of its own: when the
-attempt's time is up, or once the command has answered, the whole group is
-killed, so nothing it started in the background outlives the attempt or
-holds the server's shutdown.
+API's cache on the second and third attempts. Its HTTP client follows no
+redirect (Go would send the `x-api-key` header on to whatever host a
+redirect names), and it refuses an `ALDER_ANTHROPIC_API` that is not
+`https`, except on the loopback host the tests use.
+
+`fill.Command` runs `ALDER_FILL_COMMAND` with `sh -c`, writing the
+conversation as plain text to its standard input and reading the
+expression from its standard output (at most 1 MB). It must be a plain
+text completer: with tools, the prompt's comments become instructions to an
+agent that can act on them. The command runs in a process group of its
+own: when the attempt's time is up, or once the command has answered, the
+whole group is killed, so nothing it started in the background outlives the
+attempt or holds the server's shutdown.
+
 The command backend is also how the tests run the whole loop without a
 model: the backend is a shell script, or a Go function, that answers what
 the test needs.
 
-**The action.** `codeActionReq` already finds the hole under the cursor
-for the generators (`hereCtx`). When there is one, and the client said in
-`initialize` that it applies workspace edits (`workspace.applyEdit`, now a
-field of `initializeParams`), it adds a quick fix whose `diagnostics` are
-the hole's W0002 and whose `command` is `alder.fill`, with the document,
-the address and the hole as its argument. Unlike `alder.generate`, which
-the plugin runs, the server lists `alder.fill` in its
-`executeCommandProvider`, so the editor sends it back as
+#### The action
+
+`codeActionReq` already finds the hole under the cursor for the generators
+(`hereCtx`). When there is one, and the client said in `initialize` that it
+applies workspace edits (`workspace.applyEdit`, now a field of
+`initializeParams`), it adds a quick fix whose `diagnostics` are the hole's
+W0002 and whose `command` is `alder.fill`, with the document, the address and
+the hole as its argument.
+
+Unlike `alder.generate`, which the plugin runs, the server lists `alder.fill`
+in its `executeCommandProvider`, so the editor sends it back as
 `workspace/executeCommand`.
 
-**The command.** `executeCommandReq` runs on the slow worker, and a fill
-would hold it for minutes, blocking every preview and plan behind it. So
-`fillCommand` only checks the argument, refuses a second fill while one
+#### The command
+
+`executeCommandReq` runs on the slow worker, and a fill would hold it for
+minutes, blocking every preview and plan behind it.
+
+So `fillCommand` only checks the argument, refuses a second fill while one
 runs (an atomic flag; one at a time per server), starts a goroutine under
 `s.bg`, the group the scratch runs use, and answers `{"started": true}` at
-once. The goroutine takes the open documents and their versions in one
-snapshot, writes them over a temporary copy of the app with
-`generate.Materialise` (as a generator's dry run does, so the model sees
-the unsaved buffer), and calls `fill.Run` there.
+once.
 
-**Requests from the server.** Until now the server only answered requests
-and sent notifications. The fill needs two answers from the editor: a
-progress token, and whether the edit was applied. `s.request(method,
-params)` sends a request with an id of its own (`"alder-3"`), puts a channel
-in a map of pending requests under that id, and waits on the channel. On
-the reader goroutine, a message with an id and no method is a response;
-`dispatch` looks its id up in the map and hands it to the waiting
-goroutine. That is why `request` is never called on the reader goroutine:
-the reader is the one that would deliver the answer.
+The goroutine takes the open documents and their versions in one snapshot,
+writes them over a temporary copy of the app with `generate.Materialise` (as a
+generator's dry run does, so the model sees the unsaved buffer), and calls
+`fill.Run` there.
+
+#### Requests from the server
+
+Until now the server only answered requests and sent notifications. The fill
+needs two answers from the editor: a progress token, and whether the edit was
+applied.
+
+`s.request(method, params)` sends a request with an id of its own
+(`"alder-3"`), puts a channel in a map of pending requests under that id, and
+waits on the channel. On the reader goroutine, a message with an id and no
+method is a response; `dispatch` looks its id up in the map and hands it to
+the waiting goroutine.
+
+That is why `request` is never called on the reader goroutine: the reader is
+the one that would deliver the answer.
 
 With the first, `window/workDoneProgress/create`, the server gets a token
 and then sends `$/progress` notifications on it: `begin` with the title
@@ -6475,49 +7650,69 @@ With the second, `workspace/applyEdit`, the server sends the result. It does
 not send the whole file: `generate.LineEdits` runs the diff behind
 `UnifiedDiff` without context and turns each run of changed lines into one
 `TextEdit` (lines `[start, end)` replaced by the new lines), so the filled
-hole and the import it needed are two small edits and the rest of the
-buffer is not touched. The edit names the document's version from the
-snapshot the fill read. If you typed in that buffer meanwhile, its version
-is higher, and the server does not send the edit at all: it shows the
-model's expression in a warning, for you to paste. It cannot leave that to
-the editor: Neovim, given an edit for an older version, prints `Buffer …
-newer than edits` and answers `applied: true` without applying it. (A client
-that answers `applied: false` gets the same warning.) Each of the server's
-requests waits at most 30 seconds for its answer, so an editor that never
-answers cannot hold the one fill forever. An edit the
-editor applies is one undo step.
+hole and the import it needed are two small edits and the rest of the buffer
+is not touched.
 
-Before the edit goes, two more checks. The hole's type bounds what the
-expression returns, not what it does: an answer the module's own text talked
-the model into (a comment is part of the prompt) can be a `Task Response` that
-deletes every row and still checks. So `fill.Run` checks the result once
-more with `generate.Probe`, which returns the checked copy, and
-`fill.Effects` reads the expression there: `generate.FillAt` says where the
-fill put it, and every name in it carries the resolver's answer (a
-`syntax.Ref`: a value of the app, a standard library value, a capability).
-Text would not do: an alias, or a helper in another module, hides a name
-from a search. It flags three things. A capability's entry, Query or Task
-alike, since each runs host Go (`capability Email.send`). The standard
-library's effects that reach beyond the page and its user's rows: `Http.*`,
-`Session.put`, `Html.unsafe`, `Task.sleep`, and `Db.insert`, `Db.update`,
-`Db.delete` (the `…Mine` and `…Scoped` ones keep to the session's rows). And
-any value of the app whose body reaches one of those, through as many other
-values as it takes, with the path (`Mail.notify → Email.send`). The walk
-over the values' bodies remembers each value's answer, and a value it is
-already inside counts as having none, so mutual recursion ends. With any of
-them, the server asks `window/showMessageRequest` with `Apply` and
-`Discard` (the whole expression when it is shorter than 40 lines, else the
-lines that hold a flagged name), and sends the edit only on `Apply`; a client that did not declare
-`window.showMessage` cannot be asked, so it gets the expression in a warning
-and no edit. And every edit applied is followed by a message that shows the
-expression, so nothing a model wrote lands unseen. `alder fill --ai` prints
-the expression and the same warning on the command line.
+The edit names the document's version from the snapshot the fill read. If you
+typed in that buffer meanwhile, its version is higher, and the server does not
+send the edit at all: it shows the model's expression in a warning, for you to
+paste.
+
+It cannot leave that to the editor: Neovim, given an edit for an older
+version, prints `Buffer … newer than edits` and answers `applied: true`
+without applying it. (A client that answers `applied: false` gets the same
+warning.)
+
+Each of the server's requests waits at most 30 seconds for its answer, so an
+editor that never answers cannot hold the one fill forever.
+
+An edit the editor applies is one undo step.
+
+Before the edit goes, two more checks.
+
+The hole's type bounds what the expression returns, not what it does: an
+answer the module's own text talked the model into (a comment is part of the
+prompt) can be a `Task Response` that deletes every row and still checks.
+
+So `fill.Run` checks the result once more with `generate.Probe`, which returns
+the checked copy, and `fill.Effects` reads the expression there:
+`generate.FillAt` says where the fill put it, and every name in it carries the
+resolver's answer (a `syntax.Ref`: a value of the app, a standard library
+value, a capability). Text would not do: an alias, or a helper in another
+module, hides a name from a search.
+
+It flags three things:
+
+- A capability's entry, Query or Task alike, since each runs host Go
+  (`capability Email.send`).
+- The standard library's effects that reach beyond the page and its user's
+  rows: `Http.*`, `Session.put`, `Html.unsafe`, `Task.sleep`, and
+  `Db.insert`, `Db.update`, `Db.delete` (the `…Mine` and `…Scoped` ones
+  keep to the session's rows).
+- Any value of the app whose body reaches one of those, through as many
+  other values as it takes, with the path (`Mail.notify → Email.send`).
+
+The walk over the values' bodies remembers each value's answer, and a value
+it is already inside counts as having none, so mutual recursion ends.
+
+With any of them, the server asks `window/showMessageRequest` with `Apply`
+and `Discard` (the whole expression when it is shorter than 40 lines, else
+the lines that hold a flagged name), and sends the edit only on `Apply`; a
+client that did not declare `window.showMessage` cannot be asked, so it
+gets the expression in a warning and no edit.
+
+And every edit applied is followed by a message that shows the expression,
+so nothing a model wrote lands unseen. `alder fill --ai` prints the
+expression and the same warning on the command line.
 
 What leaves the machine is exactly the prompt: one module's source (its
 comments and string literals too), names and types, the standard library's
-signatures (the core modules List, Maybe, Result, Text, Int, Float, Dict, Bool, Task and Prelude always, any other module the hole's type or the source names) and, on retries, the errors, which quote lines of that module. `alder fill <address> --prompt` prints
-it. With `ALDER_LSP_LOG` set, the server also writes each request body and
-each answer to the log, never a header, so never the key.
+signatures (the core modules List, Maybe, Result, Text, Int, Float, Dict,
+Bool, Task and Prelude always, any other module the hole's type or the
+source names) and, on retries, the errors, which quote lines of that
+module. `alder fill <address> --prompt` prints it. With `ALDER_LSP_LOG`
+set, the server also writes each request body and each answer to the log,
+never a header, so never the key.
 
 ### Highlighting from the server
 
@@ -6526,11 +7721,12 @@ function, parameter, field. Most editors learn the kinds from a grammar of
 their own. Alder's server can tell them instead, through the protocol's
 **semantic tokens**: a list in which each entry is a place in the file (line,
 column, length) and a kind from a fixed list the server announced at
-`initialize`, its *legend*. The legend is in `internal/semtok/legend.go`:
-eighteen kinds (`namespace`, `type`, ... `tag`, `attribute`, `boolean`,
-`hole`) and three modifiers (`declaration` on a name where it is bound,
-`documentation` on a comment block above a declaration, and
-`defaultLibrary`, reserved and never set yet).
+`initialize`, its *legend*.
+
+The legend is in `internal/semtok/legend.go`: eighteen kinds (`namespace`,
+`type`, ... `tag`, `attribute`, `boolean`, `hole`) and three modifiers
+(`declaration` on a name where it is bound, `documentation` on a comment block
+above a declaration, and `defaultLibrary`, reserved and never set yet).
 
 The kinds come from one parse of the text on screen
 (`syntax.ParseTokens`), in two layers:
@@ -6583,12 +7779,14 @@ scratch` does (chapter 11, "`alder scratch`"), with `scratch.RunFile`, from
   loop never waits for a build. The run's goroutine reads the document's text
   from the overlay as its first step, not the handler that started it, so an
   edit that arrives in between is part of the run.
+
 - **One save, one run.** An editor save of an app file is seen twice: as
   `didSave` at once, and by the poll a moment later, when it finds the file's
   new modification time. So the save's rerun records the stamps of the watched
   files (`watch.Snapshot`), and the poll reruns only when the files differ from
   the last stamps recorded; the write the save already covered is nothing new.
   A file changed on disk with no save, by `git checkout` say, still reruns.
+
 - **Superseded by `seq`.** Each run takes the next number of one counter, shared
   by all scratch documents, and cancels the document's previous run. A run that
   was cancelled may still be on its way to a send, so a send checks, under the
@@ -6596,11 +7794,13 @@ scratch` does (chapter 11, "`alder scratch`"), with `scratch.RunFile`, from
   (and that the document is still open and the server not stopping); if not, it
   sends nothing. An old result can therefore never overwrite a newer one on the
   editor's screen, and a closed document leaves no run behind.
+
 - **Two notifications.** `RunFile` calls back as soon as the file has checked,
   and the server sends `alder/scratch` with `phase: "types"`: each watch's
   line range, expression and type. When the build and the run end it sends
   `phase: "values"`, with the values. Each is sent after publishing the file's
   diagnostics, under the same mutex, so the editor sees both in order.
+
 - **The same build directory and lock as the command.** The run builds into
   `build/<app>/scratch/file-<hash>/` of the project root, the directory `alder
   scratch` uses for that file when it runs from the project root, unless
@@ -6609,6 +7809,7 @@ scratch` does (chapter 11, "`alder scratch`"), with `scratch.RunFile`, from
   through a link still names one directory. Two runs of one file, one from the
   editor and one from a terminal, wait for each other instead of writing into
   one directory at once.
+
 - **Values are not diagnostics.** A diagnostic is a problem at a place, and
   the editor lists it, counts it and marks the line. A value is neither a
   problem nor a place to fix; as diagnostics, a scratch file of ten watches
@@ -6635,77 +7836,96 @@ double n = n * 2             line 2
 ```
 
 `scratch.ParseFile` rewrites line 4 as `it1 = double 21`, so on that line a
-column of the module is 4 more than the file's (`it1 = ` is six bytes where
-`> ` was two; the file's `SourceMap.Shift` records -4 for the line). Then
-`scratch.Check` puts `module Scratch` and an `import` for every app module in
-front, say 21 lines, so file line 4 is module line 25. After an `in
-Table.Todo` header the module's own text goes in front instead: the file
-continues the module. A view records where the inserted lines start and how
-many there are (`Checked.InsertLine`, `Checked.LineOffset`), and two small
-functions turn a position one way and back: `toModule` adds the lines and
-undoes the shift, `fromModule` does the opposite, and has no answer for an
-inserted line, which the user never wrote. A request maps the cursor into the
-module, asks the same code an app module uses (`hoverText`, `definition`,
-completion's contexts), and maps any place in the answer back: a definition in
-the scratch module becomes a place in the file, one in an app module stays
-where it is, and a completion's edit gets the shift of its line.
+column of the module is 4 more than the file's (`it1 = ` is six bytes where `>
+` was two; the file's `SourceMap.Shift` records -4 for the line).
+
+Then `scratch.Check` puts `module Scratch` and an `import` for every app
+module in front, say 21 lines, so file line 4 is module line 25.
+
+After an `in Table.Todo` header the module's own text goes in front instead:
+the file continues the module.
+
+A view records where the inserted lines start and how many there are
+(`Checked.InsertLine`, `Checked.LineOffset`), and two small functions turn a
+position one way and back: `toModule` adds the lines and undoes the shift,
+`fromModule` does the opposite, and has no answer for an inserted line, which
+the user never wrote.
+
+A request maps the cursor into the module, asks the same code an app module
+uses (`hoverText`, `definition`, completion's contexts), and maps any place in
+the answer back: a definition in the scratch module becomes a place in the
+file, one in an app module stays where it is, and a completion's edit gets the
+shift of its line.
 
 The freshness rule (above) carries over. While you type a watch, the text
 often does not parse (`> Todo.` is not an expression yet), and that text has
 no program to ask. The view of the last text that checked is used instead,
-compared with the module text the current file would make (the current
-lines with the same inserted lines in front): when the lines above the cursor
-are the same, its scopes and types still hold there. That view is retired as
-soon as the app's sources change on disk: its program is the old app, and an
-answer from it could name what the app no longer declares. Code actions are the
-exception, as for an app module: they come from the current text's own
-diagnostics, positioned in the file as a run positions them
+compared with the module text the current file would make (the current lines
+with the same inserted lines in front): when the lines above the cursor are
+the same, its scopes and types still hold there.
+
+That view is retired as soon as the app's sources change on disk: its program
+is the old app, and an answer from it could name what the app no longer
+declares.
+
+Code actions are the exception, as for an app module: they come from the
+current text's own diagnostics, positioned in the file as a run positions them
 (`File.Positioned`), with their fixes.
 
-**Inlay hints** come from the runs, not the view. Each `alder/scratch` the
+#### Inlay hints
+
+Inlay hints come from the runs, not the view. Each `alder/scratch` the
 server sends is also kept, with the text it was run on; a
 `textDocument/inlayHint` request turns each watch's result into one label at
 the end of its last line, but only while those lines are the same in the
 current text, so an edited watch never shows a value it no longer has. Inlay
 hints are pulled: the editor asks when it redraws, and a run that ends between
-two redraws would not show until the next. An editor that says, at
-`initialize`, that it supports `workspace/inlayHint/refresh` is therefore sent
-that request (the one request the server ever sends) after each phase, and
-asks again.
+two redraws would not show until the next.
+
+An editor that says, at `initialize`, that it supports
+`workspace/inlayHint/refresh` is therefore sent that request (the one request
+the server ever sends) after each phase, and asks again.
 
 ## 11. Exercises
 
 1. **Dump an AST.** Write `module X` and `x : Int` / `x = 1 + 2 * 3` in a
    file, and print its dump with `alder dump` (section 3). Before you run
    it, predict where the parentheses go.
+
 2. **One error for three uses.** Write a module that uses another module
    three times without importing it, and confirm `alder check` prints one
    E0201. `testdata/corpus/E0201-dedupe/` is one answer; explain which of
    the mechanisms in section 4 kept the other two uses quiet.
+
 3. **Predict the Go for a union.** Take `type Switch = On | Off`. Using
    section 7, write down the Go you expect, then run `alder build --emit`
    and compare. Hint: neither constructor has a payload, so look for
    something other than a constructor function (section 9's table).
+
 4. **Find the escaping.** Find the line in `rt/html/html.go` that turns
    `<` in a text node into `&lt;`. Then find the test in
    `rt/html/html_test.go` that proves it happens exactly once.
+
 5. **Why only `Html.unsafe`?** `html.Raw` writes its text unescaped. Find
    every place generated code can reach it (start from `Html.unsafe` in
    `internal/gen/stdcall.go`, then `rt/std/html.go`). Explain why the
    emitter never calls `html.Raw` itself, what would break if literal
    text in a view were emitted as `html.Raw`, and why a `<script>` body is
    `html.RawText` and not `html.Raw`.
+
 6. **Read a wire log.** Start Neovim on a file of `examples/blog` (a copy)
    with `ALDER_LSP_LOG=/tmp/wire.log` set, hover on a name, and quit. Find the
    `textDocument/hover` request in the log and the answer with its `id`.
    Convert the request's `line` and `character` into the line and column
    `alder check` would print for that place (section 10), and say why no
    further conversion is needed when the line contains an `é`.
+
 7. **Break the freshness rule.** Read `TestFresh_TypingBreaksTheLine` in
    `internal/lsp/analysis_test.go`. For each position it asks about, say which
    of the lines above it differ from the build, and what `freshLines` answers
    with `inclusive` true and false. Then say which request would give a wrong
    answer if `freshLines` compared only the cursor's own line.
+
 8. **Follow a request.** Build `testdata/golden/gen_route_handlers` with
    `alder build` and run it with `ALDER_DEV=1` and `ALDER_DEV_PANEL=0`. It
    has no login, so sign a session cookie with the development key
