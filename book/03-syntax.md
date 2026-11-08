@@ -13,19 +13,26 @@ import Layout
 ```
 
 `import X` brings module `X` into scope under a short name, its
-*qualifier*: `X.foo`, `X.SomeType`, `<X.Component>`. Modules from the
-standard library (`List`, `Text`, `Db`, ...) are always in scope and never
-imported. For the same reason no module of the app may take a
-standard-library module's name: an app module `Test` would be hidden behind
-the stdlib's `Test`, so it is refused (E0017); call it `TestHelpers` or
-`Todos.Fixtures` instead.
+*qualifier*: `X.foo`, `X.SomeType`, `<X.Component>`.
 
-**The qualifier.** A module is named by the last segment of its path:
-after `import Table.Todo` you write `Todo.find`, never `Table.Todo.find`.
+Modules from the standard library (`List`, `Text`, `Db`, ...) are always in
+scope and never imported.
+
+> **Stdlib names are taken.** No module of the app may take a
+> standard-library module's name: an app module `Test` would be hidden
+> behind the stdlib's `Test`, so it is refused (E0017); call it
+> `TestHelpers` or `Todos.Fixtures` instead.
+
+### The qualifier
+
+A module is named by the last segment of its path: after `import Table.Todo`
+you write `Todo.find`, never `Table.Todo.find`.
+
 Most imports in an app have no neighbour that ends the same way, so the
-qualifier is the last segment and the import line is plain `import
-Table.Todo`. When two imports would share a qualifier, or the qualifier
-would hide something, the import gets a longer one and says so with `as`:
+qualifier is the last segment and the import line is plain
+`import Table.Todo`. When two imports would share a qualifier, or the
+qualifier would hide something, the import gets a longer one and says so
+with `as`:
 
 ```alder fragment
 module Todos
@@ -41,19 +48,26 @@ declares a `type Todo` of its own and `Todo` is already spoken for.
 
 There is no choice in the spelling. The compiler computes exactly one
 qualifier for each import, the *canonical* one, and the `as` must match it:
-an import whose qualifier is its last segment has no `as` (a redundant one
-is E0204), and any other import must spell the canonical `as` (a missing
-or different one is E0204 as well, and the error's fix rewrites the line).
-You never invent an alias; you copy the one the error shows, or run
-`alder fmt`. The compiler looks every import up by its canonical
-qualifier whatever alias was written, so a file with `as AL` and uses of
-`AL.x` reports E0204 and unknown names until the alias is fixed.
 
-**How the compiler computes it.** The resolver works on one file's imports
-at a time. Every import starts with a one-segment candidate, the last
-segment: `Table.Todo` starts as `Todo`. It lengthens a candidate by one
-segment from the right (`Todo` becomes `TableTodo`, the segments joined
-with no separator) while either of these holds:
+- An import whose qualifier is its last segment has no `as` (a redundant
+  one is E0204).
+- Any other import must spell the canonical `as` (a missing or different
+  one is E0204 as well, and the error's fix rewrites the line).
+
+You never invent an alias; you copy the one the error shows, or run
+`alder fmt`.
+
+> **A wrong alias.** The compiler looks every import up by its canonical
+> qualifier whatever alias was written, so a file with `as AL` and uses of
+> `AL.x` reports E0204 and unknown names until the alias is fixed.
+
+### How the compiler computes it
+
+The resolver works on one file's imports at a time. Every import starts
+with a one-segment candidate, the last segment: `Table.Todo` starts as
+`Todo`. It lengthens a candidate by one segment from the right (`Todo`
+becomes `TableTodo`, the segments joined with no separator) while either of
+these holds:
 
 - another import of the file has the same candidate (two imports ending in
   `Layout`, or two ending in `Index`); or
@@ -61,92 +75,145 @@ with no separator) while either of these holds:
   last segment of the file's own module name, or the name of a type,
   table, capability or fake table the file declares.
 
-It stops when the candidate is free or when the whole path is in it. The
-imports of one file, worked:
+It stops when the candidate is free or when the whole path is in it.
 
-| imports | qualifiers | why |
-|---|---|---|
-| `Table.Todo` | `Todo` | nothing else ends in `Todo` |
-| `Layout`, `Admin.Layout` | `Layout`, `AdminLayout` | both start as `Layout`; `Layout` is already its whole path and keeps it, so only `Admin.Layout` grows |
-| `Posts.Index`, `Admin.Posts.Index` | `PostsIndex`, `AdminPostsIndex` | both start as `Index`, then both read `PostsIndex`; `Posts.Index` has no more segments, so only the other grows |
-| `Utils.List` | `UtilsList` | `List` is a standard-library module |
-| `Data.MnSos` in module `Sites.MnSos` | `DataMnSos` | `MnSos` is the module's own last segment |
-| `Table.Todo`, with a `type Todo` declared in the file | `TableTodo` | `Todo` is a declared name |
-| `Todos.Index`, `Projects.Index`, `Blog.Show` | `TodosIndex`, `ProjectsIndex`, `Show` | only the two `Index` imports collide |
+#### Worked examples
 
-Two details. The file's own last segment blocks a candidate only while
-the path can still grow: inside module `Admin.Layout`, `import Layout` is
-legal and keeps `Layout`, since its whole path is all there is. Mind what
-that means to a reader: inside `Admin.Layout`, `Layout.Page` names the
-*other* module, the plain layout, not the file you are in. And some imports
-cannot be saved. `A.X` and `AX` alone are fine (`X` and `AX`), but add
-`B.X`: then `A.X` and `B.X` both start as `X` and grow to `AX` and `BX`,
-and `A.X` now ends as the whole join `AX`, the same as the import `AX`,
-which cannot grow either. Neither has a usable qualifier (`B.X` keeps
-`BX`). That is E0206, and its message suggests renaming a module. The
-generators of chapter 15 and the language server's completions use this
+The imports of one file, worked:
+
+| imports | qualifiers |
+|---|---|
+| `Table.Todo` | `Todo` |
+| `Layout`, `Admin.Layout` | `Layout`, `AdminLayout` |
+| `Posts.Index`, `Admin.Posts.Index` | `PostsIndex`, `AdminPostsIndex` |
+| `Utils.List` | `UtilsList` |
+| `Data.MnSos` in module `Sites.MnSos` | `DataMnSos` |
+| `Table.Todo`, with a `type Todo` declared in the file | `TableTodo` |
+| `Todos.Index`, `Projects.Index`, `Blog.Show` | `TodosIndex`, `ProjectsIndex`, `Show` |
+
+Why, row by row:
+
+- **`Table.Todo`** is `Todo`: nothing else ends in `Todo`.
+- **`Layout` and `Admin.Layout`** both start as `Layout`. `Layout` is
+  already its whole path and keeps it, so only `Admin.Layout` grows.
+- **`Posts.Index` and `Admin.Posts.Index`** both start as `Index`, then both
+  read `PostsIndex`. `Posts.Index` has no more segments, so only the other
+  grows.
+- **`Utils.List`** is `UtilsList`: `List` is a standard-library module.
+- **`Data.MnSos` in module `Sites.MnSos`** is `DataMnSos`: `MnSos` is the
+  module's own last segment.
+- **`Table.Todo`, with a `type Todo` declared in the file,** is `TableTodo`:
+  `Todo` is a declared name.
+- **`Todos.Index`, `Projects.Index` and `Blog.Show`:** only the two `Index`
+  imports collide.
+
+#### Two details
+
+The file's own last segment blocks a candidate only while the path can still
+grow: inside module `Admin.Layout`, `import Layout` is legal and keeps
+`Layout`, since its whole path is all there is.
+
+> **Mind the reader.** Inside `Admin.Layout`, `Layout.Page` names the
+> *other* module, the plain layout, not the file you are in.
+
+And some imports cannot be saved. `A.X` and `AX` alone are fine (`X` and
+`AX`), but add `B.X`: then `A.X` and `B.X` both start as `X` and grow to
+`AX` and `BX`, and `A.X` now ends as the whole join `AX`, the same as the
+import `AX`, which cannot grow either. Neither has a usable qualifier
+(`B.X` keeps `BX`). That is E0206, and its message suggests renaming a
+module.
+
+The generators of chapter 15 and the language server's completions use this
 same computation, so what they write is always canonical.
 
-**Always the qualifier, never the path.** Writing the full path of an
-imported module where its qualifier belongs is E0205: `Table.Todo.find`
-for `import Table.Todo` must be `Todo.find`, and `<Admin.Layout.Page>`
-must be `<AdminLayout.Page>`. The compiler still understands the name, so
-that one error is the only one, and its fix is the qualified spelling. The
-same holds for the members of an imported module, those of its routes
-included: with `import Todos.Index`, its helper is `Index.helper` and a member
-of its route `Row` is `Index.Row.view`, not `Todos.Index.Row.view`.
+### Always the qualifier, never the path
+
+Writing the full path of an imported module where its qualifier belongs is
+E0205: `Table.Todo.find` for `import Table.Todo` must be `Todo.find`, and
+`<Admin.Layout.Page>` must be `<AdminLayout.Page>`. The compiler still
+understands the name, so that one error is the only one, and its fix is the
+qualified spelling.
+
+The same holds for the members of an imported module, those of its routes
+included: with `import Todos.Index`, its helper is `Index.helper` and a
+member of its route `Row` is `Index.Row.view`, not `Todos.Index.Row.view`.
+
 `alder fmt` applies the E0204 and E0205 fixes for a file of an app project
 (chapter 11), so one run migrates an older project.
 
-A declaration named like the module's last segment is referred to by
-the module's qualifier alone: module `Todo` defining `type Todo` (or
-`table Todo`) is used as `Todo`, not `Todo.Todo`; module `Layout`
-defining a component `Layout` is used as `<Layout>`. With `import
-Table.Todo` that is `Todo` for the `type Todo` in `app/Table/Todo.alder`,
-and with `import Table.Todo as TableTodo` the same type is `TableTodo`.
+### A declaration named like its module
 
-**Addresses in prose.** When the book or a compiler message names a
-declaration by where it lives, it writes the whole address:
-`Todos.Index.Index.load` (the module `Todos.Index`, its route `Index`, the
-member `load`) or `Todos.Index.recent`. That is a name for the reader, not
-code to type: in a file you write `Index.recent` after `import
-Todos.Index`.
+A declaration named like the module's last segment is referred to by the
+module's qualifier alone: module `Todo` defining `type Todo` (or
+`table Todo`) is used as `Todo`, not `Todo.Todo`; module `Layout` defining a
+component `Layout` is used as `<Layout>`.
 
-**Route values are global.** A route value (`Todos.Show.Show { id: id }`: the
-module `Todos.Show`, its route `Show`, the parameters) and an app-level route
-(`App.Logout`) can be used from any module without an import. Everything else
-a module uses, a route's members (`Index.Row.view`) included, must be
-imported, and imports may not form a cycle. Chapter 6, "Names", says how a
-dotted name is read.
+With `import Table.Todo` that is `Todo` for the `type Todo` in
+`app/Table/Todo.alder`, and with `import Table.Todo as TableTodo` the same
+type is `TableTodo`.
 
-**Constructors are never qualified.** If `Todo` defines `type Priority = Low
-| Normal | High`, a module that imports `Todo` writes `Normal`, not
-`Todo.Normal`, while the type is still `Todo.Priority`. Constructor names
-must therefore be unique across a module's imports and the standard library;
-a clash is a compile error.
+### Addresses in prose
+
+When the book or a compiler message names a declaration by where it lives,
+it writes the whole address: `Todos.Index.Index.load` (the module
+`Todos.Index`, its route `Index`, the member `load`) or
+`Todos.Index.recent`.
+
+That is a name for the reader, not code to type: in a file you write
+`Index.recent` after `import Todos.Index`.
+
+### Route values are global
+
+A route value (`Todos.Show.Show { id: id }`: the module `Todos.Show`, its
+route `Show`, the parameters) and an app-level route (`App.Logout`) can be
+used from any module without an import.
+
+Everything else a module uses, a route's members (`Index.Row.view`)
+included, must be imported, and imports may not form a cycle. Chapter 6,
+"Names", says how a dotted name is read.
+
+### Constructors are never qualified
+
+If `Todo` defines `type Priority = Low | Normal | High`, a module that
+imports `Todo` writes `Normal`, not `Todo.Normal`, while the type is still
+`Todo.Priority`. Constructor names must therefore be unique across a
+module's imports and the standard library; a clash is a compile error.
+
+#### A constructor named like a table
 
 A constructor may share its name with a table, which a role makes likely
 (`type Role = Reader | Member` beside `table Member`). Then the type
-expected decides: where a table is expected, as the first argument of a
-`Db.` operation (`Db.from Member`) or a `Table Member` parameter, it is
-the table; where the union is expected (`role: Member` in a session
-record, `session.role == Member`), the constructor. Anywhere else (an
-unannotated `let who = Member`) it is an error naming both: "`Member` is
-both a constructor of `User.Role` and a table: write `Member` for the
-constructor only where a `User.Role` is expected, or qualify the table
-`Member.Member`".
+expected decides:
+
+- Where a table is expected, as the first argument of a `Db.` operation
+  (`Db.from Member`) or a `Table Member` parameter, it is the table.
+- Where the union is expected (`role: Member` in a session record,
+  `session.role == Member`), it is the constructor.
+- Anywhere else (an unannotated `let who = Member`) it is an error naming
+  both: "`Member` is both a constructor of `User.Role` and a table: write
+  `Member` for the constructor only where a `User.Role` is expected, or
+  qualify the table `Member.Member`".
+
+### Names that hide each other
 
 A route may not take the name of a constructor, brand or table in scope in
 its module (E0044, chapter 6, "Names"): `Active { … }` could not mean both.
+
 Another pair of names can hide each other, because of the order in which a
-name is looked up: a qualifier is looked up before a capability, so `import
-Clarity` beside a module whose `capability Clarity` has the entry `latest`
-makes `Clarity.latest` a name in module `Clarity`. The capability is still
-reached through its own module's qualifier (`Feeds.Clarity.latest`, or
-`DataClarity.final` for a capability named like its module). A call that
-module `Clarity` lacks is an error whose fix is that spelling; a call it has
-compiles to the module's value, and the import gets a warning (W0010) that
-says so.
+name is looked up: a qualifier is looked up before a capability. So
+`import Clarity` beside a module whose `capability Clarity` has the entry
+`latest` makes `Clarity.latest` a name in module `Clarity`.
+
+The capability is still reached through its own module's qualifier
+(`Feeds.Clarity.latest`, or `DataClarity.final` for a capability named like
+its module).
+
+- A call that module `Clarity` lacks is an error whose fix is that
+  spelling.
+- A call it has compiles to the module's value, and the import gets a
+  warning (W0010) that says so.
+
+### Visibility
 
 Everything a module defines is visible to other modules, with one exception:
 a brand's constructor (see chapter 4). There is no `export` list.
@@ -155,24 +222,37 @@ a brand's constructor (see chapter 4). There is no `export` list.
 
 Names are letters, digits and `_`. A name that starts with a lowercase
 letter or `_` is a value, a field or a type parameter; one that starts with
-an uppercase letter is a type, a constructor, a module or a component. A
-name may not contain two underscores in a row (`max__len` is an error), and
-a module name segment may not end with `_`: the compiler joins the parts of
-the Go names it generates with `__` (chapter 13), so these are the names it
-keeps for itself.
+an uppercase letter is a type, a constructor, a module or a component.
+
+A name may not contain two underscores in a row (`max__len` is an error),
+and a module name segment may not end with `_`: the compiler joins the parts
+of the Go names it generates with `__` (chapter 13), so these are the names
+it keeps for itself.
+
+### Generated types
 
 For each route the compiler also generates types named after it:
-`Index.Params`, the route's parameter record, and `Index.Session`, its session
-(chapter 6, "Qualified declarations"). They are qualified by the route, so
-they never meet a type of your own. A type, table, form or union of any
-module may not take the name of a Prelude type that programs write (`Query`,
-`Task`, `Html`, `Maybe`, `Result`, `Response`, `Route`, `File`, `List`,
-`Dict`, `Int`, `Float`, `Text`, `Bool`, `Unit`, `Date`, `Time`, `Never`,
-`Error`), which every module uses unqualified (E0012). Nor may one take `Doc`
-or `Answer`, the Prelude's types for tests (chapter 10), and no constructor
-may be named like one of `Answer`'s: `Shown`, `Rendered`, `Refreshed`,
-`Redirected`, `FormRejected`, `PageMissing`, `RequestFailed`. Db's own types, such as `Order` and `Page`, stay
-free: `table Order` is fine.
+`Index.Params`, the route's parameter record, and `Index.Session`, its
+session (chapter 6, "Qualified declarations"). They are qualified by the
+route, so they never meet a type of your own.
+
+### Reserved type names
+
+A type, table, form or union of any module may not take the name of a
+Prelude type that programs write, which every module uses unqualified
+(E0012):
+
+`Query`, `Task`, `Html`, `Maybe`, `Result`, `Response`, `Route`, `File`,
+`List`, `Dict`, `Int`, `Float`, `Text`, `Bool`, `Unit`, `Date`, `Time`,
+`Never`, `Error`.
+
+Nor may one take `Doc` or `Answer`, the Prelude's types for tests
+(chapter 10), and no constructor may be named like one of `Answer`'s:
+`Shown`, `Rendered`, `Refreshed`, `Redirected`, `FormRejected`,
+`PageMissing`, `RequestFailed`.
+
+> **Db's own types stay free.** Db's own types, such as `Order` and `Page`,
+> stay free: `table Order` is fine.
 
 ## Comments
 
@@ -329,12 +409,17 @@ annotated and plain parameters mix freely:
 Precedence, highest first: function application; `* / %`; `+ - ++`;
 `== != < <= > >=`; `&&`; `||`; `??`; `|>`. There is no user-defined operator.
 
-Two places in that order surprise people. `??` binds looser than `&&` and
-`||`, so `ready && m ?? True` is `(ready && m) ?? True`: the default
-applies to the whole Bool, and the checker answers "expected Maybe _, got
-Bool". Write `ready && (m ?? True)`. And `|>` binds looser than the
-comparisons, so `x |> f == y` is `x |> (f == y)`: a Bool on the right of
-the pipe, "right side of `|>` must be a function". Write `(x |> f) == y`.
+Two places in that order surprise people:
+
+- **`??`** binds looser than `&&` and `||`, so `ready && m ?? True` is
+  `(ready && m) ?? True`: the default applies to the whole Bool, and the
+  checker answers "expected Maybe _, got Bool". Write
+  `ready && (m ?? True)`.
+
+- **`|>`** binds looser than the comparisons, so `x |> f == y` is
+  `x |> (f == y)`: a Bool on the right of the pipe, "right side of `|>` must
+  be a function". Write `(x |> f) == y`.
+
 In both cases the error carries a hint that spells out how the line was
 read and the parenthesized form, built from the expressions you wrote.
 
@@ -518,38 +603,52 @@ with a comparison:
 code, run `alder fmt`, then `alder check` (chapter 11, "Formatting"). The
 rules, so that the first draft already matches:
 
-- 2-space indent, no trailing whitespace, one blank line between
+- **Layout.** 2-space indent, no trailing whitespace, one blank line between
   declarations, a signature directly above its value. Lines break at 100
   columns where no rule below decides.
-- Imports are sorted, one per line.
-- A record, record type, form, table, `session`, `deploy` or `theme` (and
-  each record inside it) with 3 or more fields is always vertical, one field
-  per line with a trailing comma; with 1 or 2 it stays on one line if it
-  fits. A `route` line is never wrapped, and the `route` lines that follow
-  each other are aligned in columns: name, method, path, parameters, then
-  `form` and `requires`. The
-  record type of a function's signature, a capability or a fake breaks
-  only when too wide. An empty record expression or pattern is `{}`; an
-  empty record type, form or declaration body is `{ }`.
-- A record update `{ r | a: x }` follows the same field-count rule, but
+
+- **Imports** are sorted, one per line.
+
+- **Records.** A record, record type, form, table, `session`, `deploy` or
+  `theme` (and each record inside it) with 3 or more fields is always
+  vertical, one field per line with a trailing comma; with 1 or 2 it stays
+  on one line if it fits.
+
+  - A `route` line is never wrapped, and the `route` lines that follow each
+    other are aligned in columns: name, method, path, parameters, then
+    `form` and `requires`.
+  - The record type of a function's signature, a capability or a fake
+    breaks only when too wide.
+  - An empty record expression or pattern is `{}`; an empty record type,
+    form or declaration body is `{ }`.
+
+- **A record update** `{ r | a: x }` follows the same field-count rule, but
   never takes a trailing comma (the grammar forbids it): vertical, it is
   `{ r |` on the opening line, one field per line, `}` alone.
-- A `match` has one arm per line, each ending in a comma. A sum type that
-  does not fit on a line puts the first constructor bare on the line after
-  `=`, and each of the rest on its own line led by `|`:
+
+- **A `match`** has one arm per line, each ending in a comma.
+
+- **A sum type** that does not fit on a line puts the first constructor bare
+  on the line after `=`, and each of the rest on its own line led by `|`:
   `type Msg =` / `  Increment` / `  | Decrement` / `  | SetValue Int`.
-- `if` that does not fit on a line is `if c then` / `else` with the
+
+- **`if`** that does not fit on a line is `if c then` / `else` with the
   branches indented; `else if` chains stay at one indent. A block branch is
   `if c then {` ... `} else {` ... `}`.
-- A pipeline with 2 or more `|>` is always vertical: it starts on the line
-  after the `=` (or `let x =`, `let x <-`), and each `|>` leads a line of
-  its own, indented 2 more. A lambda argument is parenthesised:
+
+- **A pipeline** with 2 or more `|>` is always vertical: it starts on the
+  line after the `=` (or `let x =`, `let x <-`), and each `|>` leads a line
+  of its own, indented 2 more. A lambda argument is parenthesised:
   `List.map (\x -> x + 1) xs`.
-- A block with statements is vertical. Parentheses are only the ones
+
+- **A block** with statements is vertical. Parentheses are only the ones
   precedence needs, except around a lambda argument.
-- Markup: an element with 2 or more element children (a `{for}` counts as 2)
-  puts each child on its own line.
-- Comments stay where they are; a trailing comment keeps its list vertical.
+
+- **Markup:** an element with 2 or more element children (a `{for}` counts
+  as 2) puts each child on its own line.
+
+- **Comments** stay where they are; a trailing comment keeps its list
+  vertical.
 
 A record type of nine fields, written on one line:
 

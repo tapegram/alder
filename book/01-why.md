@@ -39,23 +39,30 @@ Alder makes those parts language constructs (`route`, `form`, `table`,
 An Alder app is a set of **routes**. Every URL is a route: one `route` line
 with an HTTP method and a path. A module may declare any number of them.
 
-- A route that reads (`GET`) has a `load`, which describes what to read, and
-  a `view`, which turns what `load` returned into HTML. A page is a GET
+- **A route that reads** (`GET`) has a `load`, which describes what to read,
+  and a `view`, which turns what `load` returned into HTML. A page is a GET
   route whose view includes the layout; the language has no word for it.
-- A route that changes something (`POST`, `PUT`, `PATCH`, `DELETE`) has an
-  `update`, which describes what to write and answers with a `Response`:
-  go to another route (`Response.redirect`), show a route again in place
-  (`Response.render`), reload the page (`Response.refresh`), or refuse a
-  form (`Response.invalid`).
-- A button or a form names the write route it sends, a link names the GET
+
+- **A route that changes something** (`POST`, `PUT`, `PATCH`, `DELETE`) has
+  an `update`, which describes what to write and answers with a `Response`:
+
+  - go to another route (`Response.redirect`);
+  - show a route again in place (`Response.render`);
+  - reload the page (`Response.refresh`);
+  - or refuse a form (`Response.invalid`).
+
+- **A button or a form** names the write route it sends, a link names the GET
   route it goes to, and the compiler checks that each exists and has the
   parameters it is given.
 
 There is no stored model. What `load` returns is rebuilt from the route's
 parameters, the session and the database for each request, so there is
-nothing to invalidate and nothing to get out of sync. The server remembers
-nothing between requests: state lives in the URL, in the HTML, in the
-session or in the database, and nowhere else (chapter 6, "The state rule").
+nothing to invalidate and nothing to get out of sync.
+
+The server remembers nothing between requests: state lives in the URL, in the
+HTML, in the session or in the database, and nowhere else (chapter 6, "The
+state rule").
+
 Because a row's route can be fetched on its own, toggling one todo reads that
 one todo and sends that one `<li>`, not the page.
 
@@ -91,16 +98,20 @@ Put `~/bin` on your `PATH` (or pick another directory that is on it).
 `alder version` then prints `devel+<commit>` (the commit you built)
 instead of a version. Pull and run the `go build` again to update.
 
-**Once a release is published:**
+**Once a release is published**, three more ways install it:
 
 - **A release archive.** Each release on GitHub
   (`github.com/tapegram/alder`, under Releases) has an archive per
-  platform, named `alder_<version>_<os>_<arch>.tar.gz`: `darwin` (macOS)
-  and `linux`, each for `amd64` (Intel and AMD) and `arm64` (Apple silicon,
-  ARM servers), and a `.zip` for `windows_amd64`, which builds but is
-  untested. Unpack it and put `alder` in a directory on your `PATH`
+  platform, named `alder_<version>_<os>_<arch>.tar.gz`:
+
+  - `darwin` (macOS) and `linux`, each for `amd64` (Intel and AMD) and
+    `arm64` (Apple silicon, ARM servers);
+  - a `.zip` for `windows_amd64`, which builds but is untested.
+
+  Unpack it and put `alder` in a directory on your `PATH`
   (`/usr/local/bin`, or `~/bin`). A checksums file sits next to the
   archives.
+
 - **Homebrew** (macOS and Linux): the tap is
   `tapegram/homebrew-alder`.
 
@@ -109,6 +120,7 @@ instead of a version. Pull and run the `go build` again to update.
   ```
 
   Homebrew installs Go with it.
+
 - **The container image**, for CI: `ghcr.io/tapegram/alder:<version>`
   (the version without its `v`, such as `:0.1.0`) is Go's official image
   with `alder` added, so a pipeline can check, test and build an app
@@ -119,22 +131,26 @@ instead of a version. Pull and run the `go build` again to update.
   ```
 
   A fresh container has an empty Go module cache, so each run would
-  download `modernc.org/sqlite` again (below); mount a cache directory at
-  `/go/pkg/mod` (`-v "$HOME/go/pkg/mod":/go/pkg/mod`, or your CI's cache)
-  to keep later runs offline.
+  download `modernc.org/sqlite` again (below).
+
+  Mount a cache directory at `/go/pkg/mod`
+  (`-v "$HOME/go/pkg/mod":/go/pkg/mod`, or your CI's cache) to keep later
+  runs offline.
 
 There is no `go install`: the compiler's Go module is named `alder`, not
 its GitHub address, so the go command cannot fetch it by that address
 (chapter 13, "The runtime travels with the compiler", says why the name
 stays).
 
-**Go is the one prerequisite**, whichever way you install. `alder` turns your app into Go and runs
-`go build` on it, so `alder build`, `alder test`, `alder run`, `alder eval`
-and `alder repl` need the `go` command on your `PATH`, version **1.27 or
-newer** (from `go.dev/dl`, or your package manager). `alder new`, `alder
-check`, `alder migrate` and `alder dump` do not use it. Nothing else is
-needed: the runtime your app is built on is inside the `alder` binary,
-and SQLite is compiled into every app.
+**Go is the one prerequisite**, whichever way you install. `alder` turns
+your app into Go and runs `go build` on it, so `alder build`, `alder test`,
+`alder run`, `alder eval` and `alder repl` need the `go` command on your
+`PATH`, version **1.27 or newer** (from `go.dev/dl`, or your package
+manager).
+
+`alder new`, `alder check`, `alder migrate` and `alder dump` do not use it.
+Nothing else is needed: the runtime your app is built on is inside the
+`alder` binary, and SQLite is compiled into every app.
 
 Check what you have (here, a binary of the release `v0.1.0`):
 
@@ -163,10 +179,10 @@ error that says what it needed (chapter 11).
 
 ### Editor support
 
-Neovim gets highlighting, indentation, folds and `alder check` diagnostics on save from
-[alder.nvim](https://github.com/tapegram/alder.nvim), and the generators run inside the
-editor with a preview of the diff. It needs Neovim 0.11, nvim-treesitter's `main` branch and
-the `tree-sitter` CLI:
+Neovim gets highlighting, indentation, folds and `alder check` diagnostics
+on save from [alder.nvim](https://github.com/tapegram/alder.nvim), and the
+generators run inside the editor with a preview of the diff. It needs
+Neovim 0.11, nvim-treesitter's `main` branch and the `tree-sitter` CLI:
 
 ```
 brew install tree-sitter-cli
@@ -178,13 +194,14 @@ With lazy.nvim:
 { 'tapegram/alder.nvim', lazy = false, dependencies = { 'nvim-treesitter/nvim-treesitter' }, opts = {} }
 ```
 
-then `:TSInstall alder` inside Neovim. The grammar the editor uses lives in this repository
-(`tree-sitter-alder/`) and is tested against the compiler's own parser, so the two cannot
-drift apart.
+then `:TSInstall alder` inside Neovim. The grammar the editor uses lives in
+this repository (`tree-sitter-alder/`) and is tested against the compiler's
+own parser, so the two cannot drift apart.
 
-With the plugin, Neovim also runs `alder lsp`, Alder's language server: diagnostics as you type,
-hover, go to definition, references, completion and code actions. Chapter 11, "Editor support",
-describes what you get, and chapter 13, section 10, how the server works.
+With the plugin, Neovim also runs `alder lsp`, Alder's language server:
+diagnostics as you type, hover, go to definition, references, completion and
+code actions. Chapter 11, "Editor support", describes what you get, and
+chapter 13, section 10, how the server works.
 
 ## Your first app
 
@@ -218,8 +235,13 @@ next:
 The name is the directory, and the name of the server `alder build`
 makes, so it is letters, digits and `-`, starting with a letter; `alder
 new` will not write into a directory that already has something in it.
-Run the five commands it prints, from the new directory: the app checks,
-its two tests pass, every mutant `alder test --mutate` makes is killed
-(score 1.00), and
-`alder run` serves it at `http://localhost:8080`. Chapter 2 reads every
-file `alder new` wrote; chapter 11 has the details of each command.
+
+Run the five commands it prints, from the new directory. You should see:
+
+- the app checks;
+- its two tests pass;
+- every mutant `alder test --mutate` makes is killed (score 1.00);
+- `alder run` serves it at `http://localhost:8080`.
+
+Chapter 2 reads every file `alder new` wrote; chapter 11 has the details of
+each command.

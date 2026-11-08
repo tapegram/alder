@@ -12,21 +12,32 @@
 | `List a` | `[1, 2, 3]` |
 | `Maybe a` | `Just x`, `Nothing` |
 | `Result e a` | `Ok x`, `Err e` |
-| `Dict k v` | built with `Dict.fromList`; `k` may be any type that can be compared with `==` (no functions or effect values in it, including inside a union's payloads), and two keys are the same key when they are `==` (so `Html` keys are compared by their markup) |
+| `Dict k v` | built with `Dict.fromList` (keys: see below) |
 | `Date`, `Time` | calendar date; instant (chapter 9) |
 
 There is no `Char` and no `String`: text is `Text`. There is no tuple: use
 a record.
 
+### Dict keys
+
+`k` may be any type that can be compared with `==`: no functions or effect
+values in it, including inside a union's payloads.
+
+Two keys are the same key when they are `==` (so `Html` keys are compared by
+their markup).
+
 ## Int
 
-`Int` is a 64-bit two's-complement integer. Arithmetic that goes past the
-largest or smallest `Int` wraps around: `9223372036854775807 + 1` is
-`-9223372036854775808`. `/` truncates toward zero (`-7 / 2` is `-3`), and
-`%` has the sign of the dividend (`-7 % 2` is `-1`). Dividing an `Int` by
-zero, with `/` or `%`, is a runtime failure: the program stops where it
-happens (later milestones turn it into a failed task). This holds for
-constants too; `1 / 0` compiles and fails when it runs.
+`Int` is a 64-bit two's-complement integer.
+
+- Arithmetic that goes past the largest or smallest `Int` wraps around:
+  `9223372036854775807 + 1` is `-9223372036854775808`.
+- `/` truncates toward zero (`-7 / 2` is `-3`), and `%` has the sign of the
+  dividend (`-7 % 2` is `-1`).
+- Dividing an `Int` by zero, with `/` or `%`, is a runtime failure: the
+  program stops where it happens (later milestones turn it into a failed
+  task). This holds for constants too; `1 / 0` compiles and fails when it
+  runs.
 
 `Float` is a 64-bit IEEE float: `1.0 / 0.0` is infinity, not a failure.
 
@@ -53,11 +64,14 @@ type Point = { x: Float, y: Float }
 ```
 
 Record types are **nominal**: a `Point` is not interchangeable with another
-record type that happens to have the same fields. An anonymous record
-literal `{ x: 1.0, y: 2.0 }` is given the type the context expects, even
-when the context is seen later (a `let`, one side of `==`, a lambda in a
-pipeline): it becomes the first record type it meets with exactly its
-field names. A signature may spell out a record type inline when it is used only once:
+record type that happens to have the same fields.
+
+An anonymous record literal `{ x: 1.0, y: 2.0 }` is given the type the
+context expects, even when the context is seen later (a `let`, one side of
+`==`, a lambda in a pipeline): it becomes the first record type it meets
+with exactly its field names.
+
+A signature may spell out a record type inline when it is used only once:
 
 ```alder
 area : { w: Float, h: Float } -> Float
@@ -101,30 +115,42 @@ Rules:
 
 1. **Widening is implicit.** A `TodoId` can be used anywhere a `Text` is
    expected, with no conversion.
-2. **Narrowing is explicit and local.** The constructor `TodoId : Text ->
-   TodoId` exists only inside the module that declares the brand. Other
-   modules receive brand values from boundaries (route parameters, forms,
-   database rows) or from functions the declaring module exports.
+
+2. **Narrowing is explicit and local.** The constructor
+   `TodoId : Text -> TodoId` exists only inside the module that declares the
+   brand. Other modules receive brand values from boundaries (route
+   parameters, forms, database rows) or from functions the declaring module
+   exports.
+
 3. **Operations return the base type.** `Text.trim id` is a `Text`, not a
-   `TodoId`. Exception: `+`, `-`, `*`, `/`, `%` on two values of the same
-   numeric brand return that brand (`Cents + Cents : Cents`).
+   `TodoId`.
+
+   > **Arithmetic on a numeric brand.** `+`, `-`, `*`, `/`, `%` on two
+   > values of the same numeric brand return that brand
+   > (`Cents + Cents : Cents`).
+
 4. **Equality requires identical types.** `id == text` is an error even
    though `id` widens to `Text`.
+
 5. **A brand's base is a built-in type**, never another brand.
+
+### Two different brands
 
 Rules 1 and 3 together decide arithmetic on two *different* brands of one
 base: both widen to the base, and the result is the base. An
-`Int.NonNegative` times an `Int.Positive` is an `Int`, and so is `Cents +
-Int.Positive`; only `Cents + Cents` stays `Cents`.
+`Int.NonNegative` times an `Int.Positive` is an `Int`, and so is
+`Cents + Int.Positive`; only `Cents + Cents` stays `Cents`.
 
 ```alder eval=6
 -- 6 : Int, neither brand
 (Int.NonNegative 2) * (Int.Positive 3)
 ```
 
-(`Int.NonNegative 2` narrows outside the brand's module, which rule 2
-forbids in a program: in `alder eval`, as in a `test`, any brand
-constructor may be used; chapter 11.)
+> **Constructors in `alder eval`.** `Int.NonNegative 2` narrows outside the
+> brand's module, which rule 2 forbids in a program: in `alder eval`, as in
+> a `test`, any brand constructor may be used; chapter 11.
+
+### Comparing brands
 
 Comparison follows rule 1 too: `<`, `<=`, `>` and `>=` on two different
 brands of one numeric base compare them as the base, as they compare a
