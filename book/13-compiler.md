@@ -6617,7 +6617,9 @@ Two messages in that exchange are the reason for two of the server's rules,
 which the next paragraphs explain: `"positionEncoding"` and the whole `text`
 in `didOpen`.
 
-**Why the server chooses the position encoding.** An LSP position is a line
+#### Why the server chooses the position encoding
+
+An LSP position is a line
 and a character offset in that line, both counted from 0. The protocol's
 historical unit for the offset is the UTF-16 code unit, a unit that nothing in
 Alder uses. The compiler counts lines from 1 and columns from 1 in **bytes**
@@ -7156,7 +7158,9 @@ Both are gated on freshness: if the lines above the cursor have changed since
 the build, the build's scope would be about different code and the server
 offers nothing from it.
 
-**Inside a tag.** The tag contexts cannot look at the prefix alone, because a
+#### Inside a tag
+
+The tag contexts cannot look at the prefix alone, because a
 start tag can run over several lines:
 
 ```text
@@ -7206,7 +7210,9 @@ typing a tag the build has never seen. And a cursor inside an attribute's
 `{…}` (`<a href={Text.slice 0`) is in code again, so `startTag` says no and
 the names in scope complete there, as anywhere else in an expression.
 
-**Custom elements.** The tags and attributes of HTML are a table compiled into
+#### Custom elements
+
+The tags and attributes of HTML are a table compiled into
 the server (`internal/markup`). Custom elements are the checker's (section 5,
 where HTML is checked): the merged manifest of `alder-ui` and the app, which
 the checker built and left on its result.
@@ -7234,7 +7240,9 @@ description, and a line of slots. An attribute of a custom element gets its
 own line. A capitalised tag is a component, a function the resolver knows,
 and hover shows its signature like any other declaration's.
 
-**Fitting a hole.** Put the cursor on `?n` in `Db.limit ?n`. The hole has a
+#### Fitting a hole
+
+Put the cursor on `?n` in `Db.limit ?n`. The hole has a
 type the checker inferred, here `Int`, and the useful completions are the
 names whose type fits. `fits` asks the unifier (section 5):
 
@@ -7318,7 +7326,9 @@ plugin keeps working. For the blog's `Posts.Index`:
 The routes come in the order the program declares them (the older pages and
 messages are sorted by path before them), not sorted by path.
 
-**A dry run on a copy.** A generator edits files, checks the result, and
+#### A dry run on a copy
+
+A generator edits files, checks the result, and
 refuses if it does not check. `Run(…, dryRun=true)` does all of that and
 writes nothing. The server calls it on a copy of the app:
 
@@ -7352,17 +7362,20 @@ true when all are valid. The editor calls `alder/preview` as the form is
 filled, once per field.
 
 Each field also carries `help`, one line on what it means, and `example`, a
-value it accepts. Both are written once, on the `generate.Field` in
-`specs.go` (`Help`, `Example`; a flag's `help` is its `Summary` unless it
-has its own), so the command line's help and the editor's form cannot
-drift. A required field the cursor and the user leave empty starts filled
-(`startValue`): at the first choice when it names something that must exist
-(a page, a table, a declaration, one of its fixed choices), else at its
-example. So the form is usually ready as it opens and the preview shows a
-change at once; the user edits from there. A flag marked `Agent` (where
-`new msg` puts its button, `--strict` on a table edit) comes back with
-`"agent":true`, and the editor's form leaves it out: an agent needs that
-precision on the command line, a person sees the preview and edits by hand.
+value it accepts. Both are written once, on the `generate.Field` in `specs.go`
+(`Help`, `Example`; a flag's `help` is its `Summary` unless it has its own),
+so the command line's help and the editor's form cannot drift.
+
+A required field the cursor and the user leave empty starts filled
+(`startValue`): at the first choice when it names something that must exist (a
+page, a table, a declaration, one of its fixed choices), else at its example.
+So the form is usually ready as it opens and the preview shows a change at
+once; the user edits from there.
+
+A flag marked `Agent` (where `new msg` puts its button, `--strict` on a table
+edit) comes back with `"agent":true`, and the editor's form leaves it out: an
+agent needs that precision on the command line, a person sees the preview and
+edits by hand.
 
 Here is the walk-through of the spec: `new msg` on `Posts.Index`, with the
 cursor on line 26. The first request has no values; the form comes back with
@@ -7425,27 +7438,32 @@ the editor shows (here with its `\n` turned into line breaks):
 ```
 
 That is a write route, `Delete`, with its `update` answering
-`Response.refresh`, a button that sends it, and a test that presses it,
-which is chapter 15's `alder new msg` on a route module. The route line goes
-after the module's last `route` line, the `update` before the first `test`,
-the button at the end of the view and the new test at the end of the file.
+`Response.refresh`, a button that sends it, and a test that presses it, which
+is chapter 15's `alder new msg` on a route module. The route line goes after
+the module's last `route` line, the `update` before the first `test`, the
+button at the end of the view and the new test at the end of the file.
+
 Its `diagnostics` and `holes` are empty: nothing in this change needs the
 author's input (a `msg` whose button carries a value, such as a row's id,
-would leave a typed hole there, and the response would list it with its
-type, so that the editor can offer to fill it). The copy's diagnostics are
-the copy's, and the server publishes them nowhere: they describe the
-dry-run copy, not the buffers.
+would leave a typed hole there, and the response would list it with its type,
+so that the editor can offer to fill it).
 
-The slow worker runs `alder/preview`, so it cannot stall hover, and a
-second guard keeps previews in order. While the user types the name, the
-editor sends a preview for each keystroke; a dry run takes longer than a
-keystroke; so the answers could return out of order and a stale diff would
-land on top of a fresh one. `dispatch` remembers the id of the newest
-`alder/preview` (`latestPreview`), and `handle` answers an older one with
-`-32800`, "cancelled", before it runs, or after it has run if a newer one
-arrived meanwhile.
+The copy's diagnostics are the copy's, and the server publishes them nowhere:
+they describe the dry-run copy, not the buffers.
 
-**Why the plan carries the texts.** `alder/preview` answers with a diff,
+The slow worker runs `alder/preview`, so it cannot stall hover, and a second
+guard keeps previews in order. While the user types the name, the editor sends
+a preview for each keystroke; a dry run takes longer than a keystroke; so the
+answers could return out of order and a stale diff would land on top of a
+fresh one.
+
+`dispatch` remembers the id of the newest `alder/preview` (`latestPreview`),
+and `handle` answers an older one with `-32800`, "cancelled", before it runs,
+or after it has run if a newer one arrived meanwhile.
+
+#### Why the plan carries the texts
+
+`alder/preview` answers with a diff,
 which is for a person to read. Applying a change needs more. The editor
 puts text into its buffers, and a diff tells it which lines changed in a
 file as the copy had it, not whether the buffer still looks like that. So
@@ -7461,15 +7479,19 @@ type planFile struct {
 }
 ```
 
-`generate.FileChange` (`internal/generate/apply.go`) records both texts as the
-generator wrote the copy. The client does three things with them that a
-diff would not allow. It compares `before` with the buffer, and if they
-differ, someone edited the file since the plan, and it refuses:
-`alder: app/Posts/Index.alder changed since planning; nothing applied`. It
-replaces the buffer's text with `after`, a whole-file replacement with no
-patch to misapply. And the two pointers tell it the action: `before` null
-means "create this file" (an unsaved buffer), `after` null means "remove
-it". The server writes nothing in your project at any point. The editor writes
+`generate.FileChange` (`internal/generate/apply.go`) records both texts as
+the generator wrote the copy. The client does three things with them that a
+diff would not allow:
+
+- It compares `before` with the buffer, and if they differ, someone edited
+  the file since the plan, and it refuses:
+  `alder: app/Posts/Index.alder changed since planning; nothing applied`.
+- It replaces the buffer's text with `after`, a whole-file replacement
+  with no patch to misapply.
+- The two pointers tell it the action: `before` null means "create this
+  file" (an unsaved buffer), `after` null means "remove it".
+
+The server writes nothing in your project at any point. The editor writes
 when you save.
 
 The whole chain, for the story of one keystroke: the editor sends the
@@ -7490,61 +7512,82 @@ make it work: the loop that checks the model's answers, the code action
 that offers it, a command the server runs in the background, and requests
 that go the other way, from the server to the editor.
 
-**The loop.** `internal/fill` holds what `alder fill --ai` and the server
+#### The loop
+
+`internal/fill` holds what `alder fill --ai` and the server
 share. `fill.Run` loads the app with `generate.Load`, finds the hole with
 `generate.FindHole` (the same address `alder fill` takes, a route's
-member, `App.Logout.update`), and builds the first message with `fill.Prompt`:
-where the hole is and its type, the comment above its declaration, the
-module's source, one `name : Type` line for each name in scope (the
-binders at the hole, read from the checker's `Binds` as hover reads them,
-the module's values, the values and types of the app modules it imports;
-the ones whose type unifies with the hole's on a clone of the unifier
-come first, as in completion), and the standard library's signature
-files that the module names. The system prompt is `internal/fill/card.md`,
-embedded in the binary: a page on what a hole is, the expression syntax and
-the idioms of a write route's `update` and of tests. Then, up to three times: send the
-conversation to the backend, strip a code fence if the model wrote one,
-place the expression with `generate.Fill`, and run `generate.Apply` as a
-dry run, the same copy-and-check every generator ends in. An answer that
-checks is the result; a refused one goes back to the model as a new turn,
-`The checker refused it:` and the errors exactly as `alder check` prints
-them. `Run` writes nothing: it returns the edits and, for each changed
-file, the text before and after.
+member, `App.Logout.update`), and builds the first message with
+`fill.Prompt`:
 
-The expression lands in the middle of a line, between the text before the
-hole and the text after it, and that text must keep its meaning. Two things
-in an answer could change it. A comment would comment out the rest of the
-line: `n -- ` in `bump n = ?a + 1 * n` would leave `bump n = n -- + 1 * n`,
-which checks, and has lost `+ 1 * n`. And an operator could bind
-differently from the hole: `1 + 1` in `?a * 2` would read `1 + 1 * 2`. So
-`generate.Fill` asks the lexer for the expression's comments and cuts them
+- where the hole is and its type;
+- the comment above its declaration;
+- the module's source;
+- one `name : Type` line for each name in scope (the binders at the hole,
+  read from the checker's `Binds` as hover reads them, the module's
+  values, the values and types of the app modules it imports; the ones
+  whose type unifies with the hole's on a clone of the unifier come first,
+  as in completion);
+- and the standard library's signature files that the module names.
+
+The system prompt is `internal/fill/card.md`, embedded in the binary: a
+page on what a hole is, the expression syntax and the idioms of a write
+route's `update` and of tests.
+
+Then, up to three times:
+
+1. send the conversation to the backend;
+2. strip a code fence if the model wrote one;
+3. place the expression with `generate.Fill`;
+4. and run `generate.Apply` as a dry run, the same copy-and-check every
+   generator ends in.
+
+An answer that checks is the result; a refused one goes back to the model
+as a new turn, `The checker refused it:` and the errors exactly as
+`alder check` prints them. `Run` writes nothing: it returns the edits and,
+for each changed file, the text before and after.
+
+The expression lands in the middle of a line, between the text before the hole
+and the text after it, and that text must keep its meaning. Two things in an
+answer could change it. A comment would comment out the rest of the line: `n
+-- ` in `bump n = ?a + 1 * n` would leave `bump n = n -- + 1 * n`, which
+checks, and has lost `+ 1 * n`.
+
+And an operator could bind differently from the hole: `1 + 1` in `?a * 2`
+would read `1 + 1 * 2`.
+
+So `generate.Fill` asks the lexer for the expression's comments and cuts them
 (`syntax.StripComments`: a regular expression would cut a `--` inside a
 string), and parenthesises any expression that is not atomic (a name, a
 literal, one bracketed whole). The formatter, which runs on every file a
-generator writes, drops the parentheses that are not needed, so
-`Delete.update params session = (Task.succeed Response.refresh)` is written
-without them.
+generator writes, drops the parentheses that are not needed, so `Delete.update
+params session = (Task.succeed Response.refresh)` is written without them.
 
 A backend is one method, `Complete(ctx, system, messages) (text, error)`.
+
 `fill.Anthropic` posts the Messages API's JSON with `net/http`; the system
 prompt goes in a block marked `cache_control`, so the card is read from the
-API's cache on the second and third attempts. Its HTTP client follows no redirect (Go would
-send the `x-api-key` header on to whatever host a redirect names), and it
-refuses an `ALDER_ANTHROPIC_API` that is not `https`, except on the loopback
-host the tests use. `fill.Command` runs
-`ALDER_FILL_COMMAND` with `sh -c`, writing the conversation as plain text to
-its standard input and reading the expression from its standard output
-(at most 1 MB). It must be a plain text completer: with tools, the prompt's
-comments become instructions to an agent that can act on them. The command
-runs in a process group of its own: when the
-attempt's time is up, or once the command has answered, the whole group is
-killed, so nothing it started in the background outlives the attempt or
-holds the server's shutdown.
+API's cache on the second and third attempts. Its HTTP client follows no
+redirect (Go would send the `x-api-key` header on to whatever host a
+redirect names), and it refuses an `ALDER_ANTHROPIC_API` that is not
+`https`, except on the loopback host the tests use.
+
+`fill.Command` runs `ALDER_FILL_COMMAND` with `sh -c`, writing the
+conversation as plain text to its standard input and reading the
+expression from its standard output (at most 1 MB). It must be a plain
+text completer: with tools, the prompt's comments become instructions to an
+agent that can act on them. The command runs in a process group of its
+own: when the attempt's time is up, or once the command has answered, the
+whole group is killed, so nothing it started in the background outlives the
+attempt or holds the server's shutdown.
+
 The command backend is also how the tests run the whole loop without a
 model: the backend is a shell script, or a Go function, that answers what
 the test needs.
 
-**The action.** `codeActionReq` already finds the hole under the cursor
+#### The action
+
+`codeActionReq` already finds the hole under the cursor
 for the generators (`hereCtx`). When there is one, and the client said in
 `initialize` that it applies workspace edits (`workspace.applyEdit`, now a
 field of `initializeParams`), it adds a quick fix whose `diagnostics` are
@@ -7554,7 +7597,9 @@ the plugin runs, the server lists `alder.fill` in its
 `executeCommandProvider`, so the editor sends it back as
 `workspace/executeCommand`.
 
-**The command.** `executeCommandReq` runs on the slow worker, and a fill
+#### The command
+
+`executeCommandReq` runs on the slow worker, and a fill
 would hold it for minutes, blocking every preview and plan behind it. So
 `fillCommand` only checks the argument, refuses a second fill while one
 runs (an atomic flag; one at a time per server), starts a goroutine under
@@ -7564,7 +7609,9 @@ snapshot, writes them over a temporary copy of the app with
 `generate.Materialise` (as a generator's dry run does, so the model sees
 the unsaved buffer), and calls `fill.Run` there.
 
-**Requests from the server.** Until now the server only answered requests
+#### Requests from the server
+
+Until now the server only answered requests
 and sent notifications. The fill needs two answers from the editor: a
 progress token, and whether the edit was applied. `s.request(method,
 params)` sends a request with an id of its own (`"alder-3"`), puts a channel
@@ -7585,43 +7632,59 @@ With the second, `workspace/applyEdit`, the server sends the result. It does
 not send the whole file: `generate.LineEdits` runs the diff behind
 `UnifiedDiff` without context and turns each run of changed lines into one
 `TextEdit` (lines `[start, end)` replaced by the new lines), so the filled
-hole and the import it needed are two small edits and the rest of the
-buffer is not touched. The edit names the document's version from the
-snapshot the fill read. If you typed in that buffer meanwhile, its version
-is higher, and the server does not send the edit at all: it shows the
-model's expression in a warning, for you to paste. It cannot leave that to
-the editor: Neovim, given an edit for an older version, prints `Buffer …
-newer than edits` and answers `applied: true` without applying it. (A client
-that answers `applied: false` gets the same warning.) Each of the server's
-requests waits at most 30 seconds for its answer, so an editor that never
-answers cannot hold the one fill forever. An edit the
-editor applies is one undo step.
+hole and the import it needed are two small edits and the rest of the buffer
+is not touched.
 
-Before the edit goes, two more checks. The hole's type bounds what the
-expression returns, not what it does: an answer the module's own text talked
-the model into (a comment is part of the prompt) can be a `Task Response` that
-deletes every row and still checks. So `fill.Run` checks the result once
-more with `generate.Probe`, which returns the checked copy, and
-`fill.Effects` reads the expression there: `generate.FillAt` says where the
-fill put it, and every name in it carries the resolver's answer (a
-`syntax.Ref`: a value of the app, a standard library value, a capability).
-Text would not do: an alias, or a helper in another module, hides a name
-from a search. It flags three things. A capability's entry, Query or Task
-alike, since each runs host Go (`capability Email.send`). The standard
-library's effects that reach beyond the page and its user's rows: `Http.*`,
-`Session.put`, `Html.unsafe`, `Task.sleep`, and `Db.insert`, `Db.update`,
-`Db.delete` (the `…Mine` and `…Scoped` ones keep to the session's rows). And
-any value of the app whose body reaches one of those, through as many other
-values as it takes, with the path (`Mail.notify → Email.send`). The walk
-over the values' bodies remembers each value's answer, and a value it is
-already inside counts as having none, so mutual recursion ends. With any of
-them, the server asks `window/showMessageRequest` with `Apply` and
-`Discard` (the whole expression when it is shorter than 40 lines, else the
-lines that hold a flagged name), and sends the edit only on `Apply`; a client that did not declare
-`window.showMessage` cannot be asked, so it gets the expression in a warning
-and no edit. And every edit applied is followed by a message that shows the
-expression, so nothing a model wrote lands unseen. `alder fill --ai` prints
-the expression and the same warning on the command line.
+The edit names the document's version from the snapshot the fill read. If you
+typed in that buffer meanwhile, its version is higher, and the server does not
+send the edit at all: it shows the model's expression in a warning, for you to
+paste.
+
+It cannot leave that to the editor: Neovim, given an edit for an older
+version, prints `Buffer … newer than edits` and answers `applied: true`
+without applying it. (A client that answers `applied: false` gets the same
+warning.)
+
+Each of the server's requests waits at most 30 seconds for its answer, so an
+editor that never answers cannot hold the one fill forever.
+
+An edit the editor applies is one undo step.
+
+Before the edit goes, two more checks.
+
+The hole's type bounds what the expression returns, not what it does: an
+answer the module's own text talked the model into (a comment is part of
+the prompt) can be a `Task Response` that deletes every row and still
+checks. So `fill.Run` checks the result once more with `generate.Probe`,
+which returns the checked copy, and `fill.Effects` reads the expression
+there: `generate.FillAt` says where the fill put it, and every name in it
+carries the resolver's answer (a `syntax.Ref`: a value of the app, a
+standard library value, a capability). Text would not do: an alias, or a
+helper in another module, hides a name from a search.
+
+It flags three things:
+
+- A capability's entry, Query or Task alike, since each runs host Go
+  (`capability Email.send`).
+- The standard library's effects that reach beyond the page and its user's
+  rows: `Http.*`, `Session.put`, `Html.unsafe`, `Task.sleep`, and
+  `Db.insert`, `Db.update`, `Db.delete` (the `…Mine` and `…Scoped` ones
+  keep to the session's rows).
+- Any value of the app whose body reaches one of those, through as many
+  other values as it takes, with the path (`Mail.notify → Email.send`).
+
+The walk over the values' bodies remembers each value's answer, and a value
+it is already inside counts as having none, so mutual recursion ends.
+
+With any of them, the server asks `window/showMessageRequest` with `Apply`
+and `Discard` (the whole expression when it is shorter than 40 lines, else
+the lines that hold a flagged name), and sends the edit only on `Apply`; a
+client that did not declare `window.showMessage` cannot be asked, so it
+gets the expression in a warning and no edit.
+
+And every edit applied is followed by a message that shows the expression,
+so nothing a model wrote lands unseen. `alder fill --ai` prints the
+expression and the same warning on the command line.
 
 What leaves the machine is exactly the prompt: one module's source (its
 comments and string literals too), names and types, the standard library's
@@ -7636,11 +7699,12 @@ function, parameter, field. Most editors learn the kinds from a grammar of
 their own. Alder's server can tell them instead, through the protocol's
 **semantic tokens**: a list in which each entry is a place in the file (line,
 column, length) and a kind from a fixed list the server announced at
-`initialize`, its *legend*. The legend is in `internal/semtok/legend.go`:
-eighteen kinds (`namespace`, `type`, ... `tag`, `attribute`, `boolean`,
-`hole`) and three modifiers (`declaration` on a name where it is bound,
-`documentation` on a comment block above a declaration, and
-`defaultLibrary`, reserved and never set yet).
+`initialize`, its *legend*.
+
+The legend is in `internal/semtok/legend.go`: eighteen kinds (`namespace`,
+`type`, ... `tag`, `attribute`, `boolean`, `hole`) and three modifiers
+(`declaration` on a name where it is bound, `documentation` on a comment block
+above a declaration, and `defaultLibrary`, reserved and never set yet).
 
 The kinds come from one parse of the text on screen
 (`syntax.ParseTokens`), in two layers:
@@ -7693,12 +7757,14 @@ scratch` does (chapter 11, "`alder scratch`"), with `scratch.RunFile`, from
   loop never waits for a build. The run's goroutine reads the document's text
   from the overlay as its first step, not the handler that started it, so an
   edit that arrives in between is part of the run.
+
 - **One save, one run.** An editor save of an app file is seen twice: as
   `didSave` at once, and by the poll a moment later, when it finds the file's
   new modification time. So the save's rerun records the stamps of the watched
   files (`watch.Snapshot`), and the poll reruns only when the files differ from
   the last stamps recorded; the write the save already covered is nothing new.
   A file changed on disk with no save, by `git checkout` say, still reruns.
+
 - **Superseded by `seq`.** Each run takes the next number of one counter, shared
   by all scratch documents, and cancels the document's previous run. A run that
   was cancelled may still be on its way to a send, so a send checks, under the
@@ -7706,11 +7772,13 @@ scratch` does (chapter 11, "`alder scratch`"), with `scratch.RunFile`, from
   (and that the document is still open and the server not stopping); if not, it
   sends nothing. An old result can therefore never overwrite a newer one on the
   editor's screen, and a closed document leaves no run behind.
+
 - **Two notifications.** `RunFile` calls back as soon as the file has checked,
   and the server sends `alder/scratch` with `phase: "types"`: each watch's
   line range, expression and type. When the build and the run end it sends
   `phase: "values"`, with the values. Each is sent after publishing the file's
   diagnostics, under the same mutex, so the editor sees both in order.
+
 - **The same build directory and lock as the command.** The run builds into
   `build/<app>/scratch/file-<hash>/` of the project root, the directory `alder
   scratch` uses for that file when it runs from the project root, unless
@@ -7719,6 +7787,7 @@ scratch` does (chapter 11, "`alder scratch`"), with `scratch.RunFile`, from
   through a link still names one directory. Two runs of one file, one from the
   editor and one from a terminal, wait for each other instead of writing into
   one directory at once.
+
 - **Values are not diagnostics.** A diagnostic is a problem at a place, and
   the editor lists it, counts it and marks the line. A value is neither a
   problem nor a place to fix; as diagnostics, a scratch file of ten watches
@@ -7745,8 +7814,8 @@ double n = n * 2             line 2
 ```
 
 `scratch.ParseFile` rewrites line 4 as `it1 = double 21`, so on that line a
-column of the module is 4 more than the file's (`it1 = ` is six bytes where
-`> ` was two; the file's `SourceMap.Shift` records -4 for the line). Then
+column of the module is 4 more than the file's (`it1 = ` is six bytes where `>
+` was two; the file's `SourceMap.Shift` records -4 for the line). Then
 `scratch.Check` puts `module Scratch` and an `import` for every app module in
 front, say 21 lines, so file line 4 is module line 25. After an `in
 Table.Todo` header the module's own text goes in front instead: the file
@@ -7754,68 +7823,83 @@ continues the module. A view records where the inserted lines start and how
 many there are (`Checked.InsertLine`, `Checked.LineOffset`), and two small
 functions turn a position one way and back: `toModule` adds the lines and
 undoes the shift, `fromModule` does the opposite, and has no answer for an
-inserted line, which the user never wrote. A request maps the cursor into the
-module, asks the same code an app module uses (`hoverText`, `definition`,
-completion's contexts), and maps any place in the answer back: a definition in
-the scratch module becomes a place in the file, one in an app module stays
-where it is, and a completion's edit gets the shift of its line.
+inserted line, which the user never wrote.
+
+A request maps the cursor into the module, asks the same code an app module
+uses (`hoverText`, `definition`, completion's contexts), and maps any place in
+the answer back: a definition in the scratch module becomes a place in the
+file, one in an app module stays where it is, and a completion's edit gets the
+shift of its line.
 
 The freshness rule (above) carries over. While you type a watch, the text
 often does not parse (`> Todo.` is not an expression yet), and that text has
 no program to ask. The view of the last text that checked is used instead,
-compared with the module text the current file would make (the current
-lines with the same inserted lines in front): when the lines above the cursor
-are the same, its scopes and types still hold there. That view is retired as
-soon as the app's sources change on disk: its program is the old app, and an
-answer from it could name what the app no longer declares. Code actions are the
-exception, as for an app module: they come from the current text's own
-diagnostics, positioned in the file as a run positions them
+compared with the module text the current file would make (the current lines
+with the same inserted lines in front): when the lines above the cursor are
+the same, its scopes and types still hold there.
+
+That view is retired as soon as the app's sources change on disk: its program
+is the old app, and an answer from it could name what the app no longer
+declares.
+
+Code actions are the exception, as for an app module: they come from the
+current text's own diagnostics, positioned in the file as a run positions them
 (`File.Positioned`), with their fixes.
 
-**Inlay hints** come from the runs, not the view. Each `alder/scratch` the
+#### Inlay hints
+
+Inlay hints come from the runs, not the view. Each `alder/scratch` the
 server sends is also kept, with the text it was run on; a
 `textDocument/inlayHint` request turns each watch's result into one label at
 the end of its last line, but only while those lines are the same in the
 current text, so an edited watch never shows a value it no longer has. Inlay
 hints are pulled: the editor asks when it redraws, and a run that ends between
-two redraws would not show until the next. An editor that says, at
-`initialize`, that it supports `workspace/inlayHint/refresh` is therefore sent
-that request (the one request the server ever sends) after each phase, and
-asks again.
+two redraws would not show until the next.
+
+An editor that says, at `initialize`, that it supports
+`workspace/inlayHint/refresh` is therefore sent that request (the one request
+the server ever sends) after each phase, and asks again.
 
 ## 11. Exercises
 
 1. **Dump an AST.** Write `module X` and `x : Int` / `x = 1 + 2 * 3` in a
    file, and print its dump with `alder dump` (section 3). Before you run
    it, predict where the parentheses go.
+
 2. **One error for three uses.** Write a module that uses another module
    three times without importing it, and confirm `alder check` prints one
    E0201. `testdata/corpus/E0201-dedupe/` is one answer; explain which of
    the mechanisms in section 4 kept the other two uses quiet.
+
 3. **Predict the Go for a union.** Take `type Switch = On | Off`. Using
    section 7, write down the Go you expect, then run `alder build --emit`
    and compare. Hint: neither constructor has a payload, so look for
    something other than a constructor function (section 9's table).
+
 4. **Find the escaping.** Find the line in `rt/html/html.go` that turns
    `<` in a text node into `&lt;`. Then find the test in
    `rt/html/html_test.go` that proves it happens exactly once.
+
 5. **Why only `Html.unsafe`?** `html.Raw` writes its text unescaped. Find
    every place generated code can reach it (start from `Html.unsafe` in
    `internal/gen/stdcall.go`, then `rt/std/html.go`). Explain why the
    emitter never calls `html.Raw` itself, what would break if literal
    text in a view were emitted as `html.Raw`, and why a `<script>` body is
    `html.RawText` and not `html.Raw`.
+
 6. **Read a wire log.** Start Neovim on a file of `examples/blog` (a copy)
    with `ALDER_LSP_LOG=/tmp/wire.log` set, hover on a name, and quit. Find the
    `textDocument/hover` request in the log and the answer with its `id`.
    Convert the request's `line` and `character` into the line and column
    `alder check` would print for that place (section 10), and say why no
    further conversion is needed when the line contains an `é`.
+
 7. **Break the freshness rule.** Read `TestFresh_TypingBreaksTheLine` in
    `internal/lsp/analysis_test.go`. For each position it asks about, say which
    of the lines above it differ from the build, and what `freshLines` answers
    with `inclusive` true and false. Then say which request would give a wrong
    answer if `freshLines` compared only the cursor's own line.
+
 8. **Follow a request.** Build `testdata/golden/gen_route_handlers` with
    `alder build` and run it with `ALDER_DEV=1` and `ALDER_DEV_PANEL=0`. It
    has no login, so sign a session cookie with the development key
