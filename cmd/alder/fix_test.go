@@ -336,6 +336,24 @@ func TestFix_RoutesParamClash(t *testing.T) {
 // does not run it: the rewrite puts a comment above each write route's `update` saying so, prints
 // a line per such route and exits 1, though `Wipe`'s arm does not read the model and leaves no
 // typed hole. The note is the first run's: a second run has nothing to rewrite and exits 0.
+// TestFix_RoutesFileAppMsg: a page whose button sends one of App's old messages
+// (`click={App.Logout}`) is rewritten on its own: App, still on messages, is E0046 alone, and the
+// rewritten route's reference to `App.Logout` resolves quietly until App is rewritten too.
+func TestFix_RoutesFileAppMsg(t *testing.T) {
+	t.Parallel()
+	dir := todosOnPages(t)
+	bye := "module Bye\n\npage \"/bye\" { }\n\ntype Model = { n: Int }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { n: 1 }\n\n" +
+		"view : Model -> Session -> Html Msg\nview model session = <button click={App.Logout}>log out</button>\n"
+	f := filepath.Join(dir, "app/Bye.alder")
+	if err := os.WriteFile(f, []byte(bye), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errs := runFix("--routes", "--dir", dir, f)
+	if code > 1 || !strings.Contains(out, "rewrote app/Bye.alder\n") || strings.Contains(errs, "E0002") {
+		t.Fatalf("Bye alone: code %d\nstdout:\n%s\nstderr:\n%s", code, out, errs)
+	}
+}
+
 func TestFix_RoutesLoadCheck(t *testing.T) {
 	t.Parallel()
 	dir := todosOnPages(t)

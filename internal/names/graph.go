@@ -26,8 +26,11 @@ type Program struct {
 	// one from another module resolves (RefPage) instead of adding an error of its own, so an app
 	// part-way through `alder fix --routes` reports only its old syntax.
 	oldPages map[string]bool
-	Std      map[string]*syntax.Module
-	scopes   map[string]*moduleScope
+	// oldAppMsgs are App's old `msg` declarations (E0046), quiet in the same way: `App.Logout`
+	// resolves (RefPage) while App is still on messages.
+	oldAppMsgs map[string]bool
+	Std        map[string]*syntax.Module
+	scopes     map[string]*moduleScope
 	// ctorIndex maps a constructor (or brand) name to the app modules declaring it, and
 	// tableIndex a table name to the app modules declaring it that are not named after it;
 	// both are built before any body is resolved, for the hints of names not imported.
@@ -161,7 +164,7 @@ var ReservedModules = []string{"Args", "Cap", "Route"}
 
 func Build(mods []*syntax.Module, std map[string]*syntax.Module) (*Program, *diag.Bag) {
 	bag := &diag.Bag{}
-	p := &Program{Modules: map[string]*syntax.Module{}, routes: map[string]map[string]*syntax.RouteDecl{}, oldPages: map[string]bool{}, Std: std, scopes: map[string]*moduleScope{},
+	p := &Program{Modules: map[string]*syntax.Module{}, routes: map[string]map[string]*syntax.RouteDecl{}, oldPages: map[string]bool{}, oldAppMsgs: map[string]bool{}, Std: std, scopes: map[string]*moduleScope{},
 		stdNamed: map[string]bool{}, quiet: map[string]bool{}}
 	folded := map[string]*syntax.Module{} // by lower-cased name
 	for _, m := range mods {
@@ -206,6 +209,10 @@ func Build(mods []*syntax.Module, std map[string]*syntax.Module) (*Program, *dia
 				}
 			case *syntax.PageDecl:
 				p.oldPages[m.Name] = true
+			case *syntax.MsgDecl:
+				if m.Name == "App" {
+					p.oldAppMsgs[d.Name] = true
+				}
 			}
 		}
 	}

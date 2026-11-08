@@ -1,0 +1,11 @@
+module Home
+
+-- a route module whose button still sends App's old message: only the `msg` is reported (E0046),
+-- not the reference to it
+route Home = GET "/" { }
+
+Home.load : Home.Params -> Session -> Query Int
+Home.load params session = Query.succeed 1
+
+Home.view : Int -> Session -> Html
+Home.view n session = <button click={App.Logout}>log out</button>

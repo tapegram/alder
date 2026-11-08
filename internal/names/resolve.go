@@ -1489,6 +1489,10 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 		c.Ref = syntax.Ref{Kind: syntax.RefPage, Module: full}
 		return
 	}
+	if c.Module == "App" && r.p.oldAppMsgs[c.Name] && r.p.Route("App", c.Name) == nil { // App's old message (E0046 there)
+		c.Ref = syntax.Ref{Kind: syntax.RefPage, Module: "App", Name: c.Name}
+		return
+	}
 	// another module's route, written with the module's path and no import (plan call 5)
 	if c.Module != r.m.Name && r.p.Modules[c.Module] != nil && r.p.Route(c.Module, c.Name) != nil {
 		c.Ref = syntax.Ref{Kind: syntax.RefRoute, Module: c.Module, Name: c.Name}
