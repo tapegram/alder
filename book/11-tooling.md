@@ -3051,10 +3051,10 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   the element's attributes, such as `variant`, hover shows that attribute's
   line alone. A component such as `<Layout.Page` is a function, not an
   element, so hover shows its signature as for any other declaration. On a
-  `load`, `view` or `update` of a module written with `page`, hover also says
-  what the hook does and what it must return; on the `page` line it shows the
-  route, the parameter record and the `requires` clauses. The members of a
-  `route` (`Toggle.update`) show their signature as any declaration does.
+  route's members (`Index.load`, `Index.view`, `Toggle.update`) hover shows
+  the signature, as for any declaration. On a use of a route (`Toggle` in
+  `click={Toggle { … }}`), it shows the route as declared: its method and
+  path, the parameter record, the `form` and the `requires` clauses.
 - **Go to definition.** On a use of `lastPage` it jumps to `lastPage : Int`;
   on a local, to the `let` or the parameter that binds it; on the `title` of
   `post.title` to the field in `app/Table/Post.alder`. Neovim's own key for it is
