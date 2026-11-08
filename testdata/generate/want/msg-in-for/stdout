@@ -35,7 +35,7 @@ edited app/Home.alder
  test "signing adds an entry" = {
    let _ <- Test.get (Home {})
    let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
-@@ -61,3 +72,14 @@
+@@ -68,3 +79,14 @@
    let page <- Test.get (Home {})
    Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
  }
@@ -50,6 +50,6 @@ edited app/Home.alder
 +  let r <- Test.click (Hide { id: ?hideId })
 +  Task.succeed (r.answer == Refreshed)
 +}
-app/Home.alder:83:35: warning[W0002]: hole ?hideId has type Entry.EntryId
+app/Home.alder:90:35: warning[W0002]: hole ?hideId has type Entry.EntryId
     let r <- Test.click (Hide { id: ?hideId })
                                     ^^^^^^^

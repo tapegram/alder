@@ -3508,7 +3508,7 @@ edited app/Home.alder
  test "signing adds an entry" = {
    let _ <- Test.get (Home {})
    let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
-@@ -69,3 +80,14 @@
+@@ -76,3 +87,14 @@
    let n = perPage
    Task.succeed (n == 20)
  }
@@ -3523,7 +3523,7 @@ edited app/Home.alder
 +  let r <- Test.click (Hide { id: ?hideId })
 +  Task.succeed (r.answer == Refreshed)
 +}
-app/Home.alder:91:35: warning[W0002]: hole ?hideId has type Entry.EntryId
+app/Home.alder:98:35: warning[W0002]: hole ?hideId has type Entry.EntryId
     let r <- Test.click (Hide { id: ?hideId })
                                     ^^^^^^^
 `alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`

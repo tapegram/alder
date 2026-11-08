@@ -187,8 +187,15 @@ test "signing adds an entry" = {
   let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
   let page <- Test.get (Home {})
   Task.succeed (
-    { answer: signed.answer, entries: Test.count "#entries li" page.doc }
-      == { answer: Redirected (Home {}), entries: 1 }
+    {
+      answer: signed.answer,
+      notices: signed.notices,
+      entries: Test.count "#entries li" page.doc,
+    } == {
+      answer: Redirected (Home {}),
+      notices: ["Signed"],
+      entries: 1,
+    }
   )
 }
 ```
@@ -196,8 +203,8 @@ test "signing adds an entry" = {
 The page ends with its two tests. The first goes through the page the way a person
 would, in an in-memory browser: it opens `/` (`Test.get`), fills in and
 posts the form (`Test.submit Submit { … }`), and opens the page again. The
-answer to the post must be the redirect `update` makes, and the page must
-then list one entry: `Test.count "#entries li"` counts the `<li>` inside
+answer to the post must be the redirect `update` makes, with its toast
+in `notices`, and the page must then list one entry: `Test.count "#entries li"` counts the `<li>` inside
 `<ul id="entries">`. Each test runs against a fresh, empty database, so
 the one entry is the one the test signed. Chapter 10 explains every
 `Test.` function.
@@ -461,7 +468,8 @@ after that it takes a second or two.
 
 `alder test --mutate` measures the tests. It makes small changes to the
 program, called **mutants**, each one a plausible mistake (here: the
-insert replaced by nothing and the order reversed), and runs the
+insert replaced by nothing, the order reversed, the redirect answered as
+a refresh, the toast left out), and runs the
 tests against each. A mutant the tests notice is killed; one they do not
 notice survived, and each survivor names a test that is missing:
 
@@ -470,12 +478,12 @@ $ alder test --mutate
 ok   Home "signing adds an entry"
 ok   Home "entries are listed newest first"
 2 passed, 0 failed
-2 mutants: 2 killed, 0 survived  (score 1.00)
+4 mutants: 4 killed, 0 survived  (score 1.00)
 ```
 
 Without the second test, the order reversed (`Entry.created.desc`
-changed to `.asc`) would survive, and the run would end `2 mutants: 1
-killed, 1 survived  (score 0.50)` with that survivor named under
+changed to `.asc`) would survive, and the run would end `4 mutants: 3
+killed, 1 survived  (score 0.75)` with that survivor named under
 `survived:`. Chapter 10, "Mutation testing", explains the rest.
 
 `alder build` writes the server, one executable with SQLite inside it, and
