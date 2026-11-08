@@ -165,6 +165,10 @@ number, never an exponent (`2.0` is `"2"`, `3.5` is `"3.5"`). Infinity is
 `Text.toInt` and `Text.toFloat` give `Nothing` for anything else than a
 plain decimal number (spaces, overflow, `"NaN"`).
 
+```alder eval=["de", "2", "3.5"]
+[Text.slice (-3) (-1) "abcdef", Text.fromFloat 2.0, Text.fromFloat 3.5]
+```
+
 #### Padding, lines and offsets
 
 `Text.padLeft n pad s` makes `s` at least `n` code points long: a pad of
@@ -190,10 +194,6 @@ seeds (see "Random"), buckets and cache keys.
 
 > **Not cryptographic.** Never use it for passwords, tokens or anything an
 > attacker may choose.
-
-```alder eval=["de", "2", "3.5"]
-[Text.slice (-3) (-1) "abcdef", Text.fromFloat 2.0, Text.fromFloat 3.5]
-```
 
 ### Building a large Text
 
