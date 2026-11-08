@@ -12,9 +12,9 @@ import (
 // HereCtx is where the cursor is.
 type HereCtx struct {
 	Module   string // the module at the cursor ("Posts.Index")
-	IsPage   bool   // the module declares a page
+	IsRoute  bool   // the module declares a route
 	Decl     string // the enclosing declaration's name, "" between declarations
-	DeclKind string // "value", "type", "table", "page", "msg", "form", "capability", "test", "" (none)
+	DeclKind string // "value", "type", "table", "form", "capability", "test", "" (none)
 	Hole     string // the hole's name when the cursor is on ?name
 }
 
@@ -40,11 +40,11 @@ type FieldState struct {
 	Agent    bool     `json:"agent,omitempty"`   // an agent-oriented flag the editor's form leaves out
 }
 
-func inPage(c HereCtx) *Match {
-	if !c.IsPage {
+func inRoute(c HereCtx) *Match {
+	if !c.IsRoute {
 		return nil
 	}
-	return &Match{Sets: map[string]string{"page": c.Module}, Why: "the page at the cursor"}
+	return &Match{Sets: map[string]string{"page": c.Module}, Why: "the route module at the cursor"}
 }
 
 func onTable(c HereCtx) *Match {
@@ -55,7 +55,7 @@ func onTable(c HereCtx) *Match {
 }
 
 func onDecl(c HereCtx) *Match {
-	if c.Decl == "" || c.DeclKind == "table" || c.DeclKind == "page" {
+	if c.Decl == "" || c.DeclKind == "table" {
 		return nil
 	}
 	return &Match{Sets: map[string]string{"address": c.Module + "." + c.Decl}, Why: "the declaration at the cursor"}
@@ -183,9 +183,6 @@ func choices(f Field, p *Program) []string {
 	var out []string
 	switch f.Kind {
 	case ArgPage:
-		for _, pg := range p.Pages {
-			out = append(out, pg.Module)
-		}
 		for _, r := range p.Routes {
 			if r.Module == "App" && !f.AppOK {
 				continue

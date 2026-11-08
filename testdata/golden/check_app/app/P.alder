@@ -1,21 +1,18 @@
 module P
 
-page "/p" { }
+route P  = GET  "/p"      { }
+route Go = POST "/p/_/Go" { }
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+P.load : P.Params -> Session -> Query Model
+P.load params session = Query.succeed {}
 
-msg Go
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Go p -> {
-    let _ <- Session.put (\s -> s)
-    Task.succeed Rerender
-  },
+Go.update : Go.Params -> Session -> Task Response
+Go.update p session = {
+  let _ <- Session.put (\s -> s)
+  Task.succeed Response.refresh
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>p</p>
+P.view : Model -> Session -> Html
+P.view model session = <p>p</p>

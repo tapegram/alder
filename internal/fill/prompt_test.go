@@ -12,9 +12,9 @@ import (
 
 const fixture = "../../testdata/generate/fixture"
 
-// holeApp copies the generate fixture to a temporary directory with Home.update.Submit's last
-// line a hole `?done`, a value `stay : Task Nav` with a comment above `update`, and the extra
-// files (path relative to the app → text). It returns the app's directory.
+// holeApp copies the generate fixture to a temporary directory with Home.Submit.update's last
+// line a hole `?done`, a value `stay : Task Response` with a comment above `Submit.update`, and
+// the extra files (path relative to the app → text). It returns the app's directory.
 func holeApp(t *testing.T, extra map[string]string) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "app")
@@ -40,8 +40,8 @@ func holeApp(t *testing.T, extra map[string]string) string {
 	}
 	home := filepath.Join(dir, "app", "Home.alder")
 	b, _ := os.ReadFile(home)
-	src := strings.Replace(string(b), "    Task.succeed (Redirect (Home {}))\n", "    ?done\n", 1)
-	src = strings.Replace(src, "update : Msg", "stay : Task Nav\nstay = Task.succeed Rerender\n\n-- What the page does with a message.\n-- Submit writes the post.\nupdate : Msg", 1)
+	src := strings.Replace(string(b), "  Task.succeed (Response.redirect (Home {}))\n", "  ?done\n", 1)
+	src = strings.Replace(src, "Submit.update : ", "stay : Task Response\nstay = Task.succeed Response.refresh\n\n-- What the page does when its form is posted.\n-- Submit writes the post.\nSubmit.update : ", 1)
 	os.WriteFile(home, []byte(src), 0o644)
 	for rel, text := range extra {
 		p := filepath.Join(dir, filepath.FromSlash(rel))
@@ -67,15 +67,15 @@ func loadHole(t *testing.T, dir, address, hole string) (*generate.Program, gener
 
 func TestPrompt_Contents(t *testing.T) {
 	dir := holeApp(t, nil)
-	p, h := loadHole(t, dir, "Home.update.Submit", "")
+	p, h := loadHole(t, dir, "Home.Submit.update", "")
 	got := Prompt(p, h)
 	for _, want := range []string{
-		"Fill the typed hole ?done in update.Submit of module Home (app/Home.alder).\nIt must have type: Task Nav\n",
-		"The comment above the declaration:\n-- What the page does with a message.\n-- Submit writes the post.\n",
+		"Fill the typed hole ?done in Submit.update of module Home (app/Home.alder).\nIt must have type: Task Response\n",
+		"The comment above the declaration:\n-- What the page does when its form is posted.\n-- Submit writes the post.\n",
 		"The module, app/Home.alder:\n```alder\nmodule Home\n",
-		"    ?done\n", // the hole as written
-		"Names in scope (those whose type fits the hole first):\nstay : Task Nav\n",
-		"p : ", // the arm's binder
+		"  ?done\n", // the hole as written
+		"Names in scope (those whose type fits the hole first):\nstay : Task Response\n",
+		"p : ", // the update's binder
 		"type Post.Status = Draft | Published",
 		"module Task\n",
 		"module Db\n",
@@ -86,9 +86,9 @@ func TestPrompt_Contents(t *testing.T) {
 			t.Errorf("the prompt has no %q:\n%s", want, got)
 		}
 	}
-	// fits first: stay (Task Nav) before load, though load sorts first
+	// fits first: stay (Task Response) before Home.load, though Home.load sorts first
 	scope := got[strings.Index(got, "Names in scope"):]
-	if i, j := strings.Index(scope, "stay : Task Nav"), strings.Index(scope, "\nload : "); i < 0 || j < 0 || i > j {
+	if i, j := strings.Index(scope, "stay : Task Response"), strings.Index(scope, "\nHome.load : "); i < 0 || j < 0 || i > j {
 		t.Errorf("a fitting name is not first:\n%s", got)
 	}
 	for _, not := range []string{
@@ -123,7 +123,7 @@ func TestPrompt_TestHoleIncludesTest(t *testing.T) {
 	dir := holeApp(t, nil)
 	home := filepath.Join(dir, "app", "Home.alder")
 	b, _ := os.ReadFile(home)
-	os.WriteFile(home, []byte(strings.Replace(string(b), "Task.succeed (r.answer == Redirected (Auth.Login {}))", "Task.succeed ?expected", 1)), 0o644)
+	os.WriteFile(home, []byte(strings.Replace(string(b), "Task.succeed (r.answer == Redirected (Auth.Login.Login {}))", "Task.succeed ?expected", 1)), 0o644)
 	p, h := loadHole(t, dir, `Home."a visitor is sent to log in"`, "")
 	got := Prompt(p, h)
 	for _, want := range []string{"It must have type: Bool", "module Test\n", "r : { answer: Answer"} {

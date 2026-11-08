@@ -196,7 +196,7 @@ func TestAdminRoutes(t *testing.T) {
 		for _, path := range order {
 			src := files[path]
 			code, _, _ := strings.Cut(src, RegionBegin+"tests\n")
-			for _, old := range []string{"\npage ", "\nmsg ", "Task Nav", "Html Msg", "Redirect (", "Reject ", "Notice."} {
+			for _, old := range []string{"\npage ", "\nmsg ", "Task Nav", "Html Msg", "Html a", "Html Never", "Redirect (", "Reject ", "Notice."} {
 				if strings.Contains(code, old) {
 					t.Errorf("%s/%s still has %q", app, path, strings.TrimSpace(old))
 				}

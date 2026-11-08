@@ -1,11 +1,9 @@
 module Index
 
-page "/" { }
+route Index = GET "/" { }
 
-type Model = { n: Int }
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { n: 1 }
-
-view : Model -> Session -> Html Msg
-view model session = <button click={App.Logout}>Log out</button>
+Index.view : Int -> Session -> Html
+Index.view n session = <button click={App.Logout}>Log out</button>

@@ -1,0 +1,11 @@
+module Q
+
+route Q = GET "/q" { }
+
+type Model = { }
+
+Q.load : Q.Params -> Query Model
+Q.load params = Query.succeed {}
+
+Q.view : Model -> Session -> Html
+Q.view model session = <p>q</p>

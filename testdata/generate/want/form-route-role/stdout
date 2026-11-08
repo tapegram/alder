@@ -1,0 +1,128 @@
+edited app/Tags/Index.alder
+--- a/app/Tags/Index.alder
++++ b/app/Tags/Index.alder
+@@ -5,7 +5,8 @@
+ import Table.Tag
+ import Table.User
+ 
+-route Index = GET "/tags" { page: Int = 1 } requires user, role Admin
++route Index       = GET  "/tags"               { page: Int = 1 } requires user, role Admin
++route SubmitQuick = POST "/tags/_/SubmitQuick" { } form Quick    requires user, role Admin
+ 
+ type Model = {
+   rows: List Tag,
+@@ -74,8 +75,26 @@
+       else
+         <span slot="next" aria-disabled="true">Next</span>}
+     </al-pagination>
++
++    <al-card>
++      <h2 slot="header">Quick</h2>
++      <form submit={SubmitQuick}>
++        <al-input field="name" label="Name" />
++        <al-input field="post" label="Post" />
++        <al-alert variant="destructive"><Errors form /></al-alert>
++        <al-button type="submit">Quick</al-button>
++      </form>
++    </al-card>
+   </Layout.Page>
+ 
++form Quick = { name: Text.NonEmpty, post: Post.PostId }
++
++SubmitQuick.update : SubmitQuick.Params -> Session -> Task Response
++SubmitQuick.update params session = {
++  let _ <- Db.insert Tag { name: params.form.name, post: params.form.post }
++  Task.succeed (Response.redirect (Index {}) |> Response.success "Saved")
++}
++
+ test "the list shows the rows, newest first" = {
+   let me <- Db.insert User {
+     email: Text.Email "email-1@example.com",
+@@ -143,3 +162,87 @@
+   let r <- Test.open (Index {})
+   Task.succeed (r.answer == PageMissing)
+ }
++
++test "submitting Quick adds a row" = {
++  let me <- Db.insert User {
++    email: Text.Email "email-1@example.com",
++    name: Text.NonEmpty "name-1",
++    role: Admin,
++  }
++  let _ <- Test.login { user: Just me, role: Admin }
++  let post1 <- Db.insert Post {
++    title: Text.NonEmpty "title-1",
++    body: "body-1",
++    author: me,
++  }
++  let _ <- Test.get (Index {})
++  let r <- Test.submit SubmitQuick { name: Text.NonEmpty "name-1", post: post1 }
++  let rows <- Db.from Tag |> Db.all
++  Task.succeed (
++    {
++      answer: r.answer,
++      notices: r.notices,
++      rows: List.map (\row -> { name: row.name, post: row.post }) rows,
++    } == {
++      answer: Redirected (Index {}),
++      notices: ["Saved"],
++      rows: [{ name: Text.NonEmpty "name-1", post: post1 }],
++    }
++  )
++}
++
++test "Quick refuses an empty name" = {
++  let me <- Db.insert User {
++    email: Text.Email "email-1@example.com",
++    name: Text.NonEmpty "name-1",
++    role: Admin,
++  }
++  let _ <- Test.login { user: Just me, role: Admin }
++  let _ <- Test.get (Index {})
++  let r <- Test.submitRaw SubmitQuick [{ name: "name", value: "" }, { name: "post", value: "x" }]
++  let rows <- Db.from Tag |> Db.count
++  Task.succeed (
++    { answer: r.answer, rows: rows }
++      == { answer: FormRejected [{ field: "name", message: "must not be empty" }], rows: 0 }
++  )
++}
++
++test "a visitor cannot submit Quick" = {
++  let me <- Db.insert User {
++    email: Text.Email "email-1@example.com",
++    name: Text.NonEmpty "name-1",
++    role: Admin,
++  }
++  let _ <- Test.login { user: Just me, role: Admin }
++  let post1 <- Db.insert Post {
++    title: Text.NonEmpty "title-1",
++    body: "body-1",
++    author: me,
++  }
++  let _ <- Test.get (Index {})
++  let _ <- Test.login { user: Nothing }
++  let r <- Test.submit SubmitQuick { name: Text.NonEmpty "name-1", post: post1 }
++  let rows <- Db.from Tag |> Db.count
++  Task.succeed (
++    { answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login.Login {}), rows: 0 }
++  )
++}
++
++test "a Reader cannot submit Quick" = {
++  let me <- Db.insert User {
++    email: Text.Email "email-1@example.com",
++    name: Text.NonEmpty "name-1",
++    role: Admin,
++  }
++  let _ <- Test.login { user: Just me, role: Admin }
++  let post1 <- Db.insert Post {
++    title: Text.NonEmpty "title-1",
++    body: "body-1",
++    author: me,
++  }
++  let _ <- Test.get (Index {})
++  let _ <- Test.login { user: Just me, role: Reader }
++  let r <- Test.submit SubmitQuick { name: Text.NonEmpty "name-1", post: post1 }
++  let rows <- Db.from Tag |> Db.count
++  Task.succeed ({ answer: r.answer, rows: rows } == { answer: PageMissing, rows: 0 })
++}

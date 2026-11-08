@@ -56,9 +56,6 @@ func (rt *router) deliverElement(w http.ResponseWriter, r *http.Request, st hop,
 		return
 	}
 	tw, _ := w.(*tracker)
-	if tw != nil && rq.Notice != "" {
-		tw.notice, tw.kind = rq.Notice, rq.NoticeKind
-	}
 	id, ok := html.RootID(resp.Node)
 	if !ok {
 		rt.logReq(w, "error", line(w, r, fmt.Sprintf("route %s answered an element fetch with a view whose first root element has no id: "+

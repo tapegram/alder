@@ -2,7 +2,10 @@ module Items
 
 import Item
 
-page "/items" { } requires user
+route Items  = GET  "/items"          { }                 requires user
+route Add    = POST "/items/_/Add"    { }                 requires user
+route Rename = POST "/items/_/Rename" { id: Item.ItemId } requires user
+route Remove = POST "/items/_/Remove" { id: Item.ItemId } requires user
 
 type Model = { items: List Item, n: Int }
 
@@ -10,37 +13,35 @@ type Model = { items: List Item, n: Int }
 latest : Select Item
 latest = Db.mine Item |> Db.limit 3
 
-load : Params -> Session -> Query Model
-load params session = {
+Items.load : Items.Params -> Session -> Query Model
+Items.load params session = {
   let items <- latest |> Db.all
   let n <- Db.mine Item |> Db.count
   Query.succeed { items: items, n: n }
 }
 
-msg Add
-msg Rename { id: Item.ItemId }
-msg Remove { id: Item.ItemId }
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insertMine Item { title: "new" }
+  Task.succeed Response.refresh
+}
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add p -> {
-    let _ <- Db.insertMine Item { title: "new" }
-    Task.succeed Rerender
-  },
-  Rename p -> {
-    let item <- Db.getMine Item p.id
-    let _ <- Db.updateMine Item item.id (\i -> { i | title: "renamed" })
-    Task.succeed Rerender
-  },
-  Remove p -> {
-    let _ <- wipe p.id
-    Task.succeed Rerender
-  },
+Rename.update : Rename.Params -> Session -> Task Response
+Rename.update p session = {
+  let item <- Db.getMine Item p.id
+  let _ <- Db.updateMine Item item.id (\i -> { i | title: "renamed" })
+  Task.succeed Response.refresh
+}
+
+Remove.update : Remove.Params -> Session -> Task Response
+Remove.update p session = {
+  let _ <- wipe p.id
+  Task.succeed Response.refresh
 }
 
 -- the function as a value: its Lambda's body is the scoped node
 wipe : Item.ItemId -> Task Unit
 wipe = Db.deleteMine Item
 
-view : Model -> Session -> Html Msg
-view model session = <p>Items</p>
+Items.view : Model -> Session -> Html
+Items.view model session = <p>Items</p>

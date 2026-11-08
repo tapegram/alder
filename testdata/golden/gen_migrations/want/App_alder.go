@@ -13,12 +13,6 @@ type App__Session struct {
 	Visits int64
 }
 
-type App__Msg struct {
-	Tag tag__App__Msg
-}
-
-type tag__App__Msg uint8
-
 type App__Logout__Params struct{}
 
 func App__Logout__update(params App__Logout__Params, session App__Session) eff.Task[rt.Response] {

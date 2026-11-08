@@ -55,7 +55,7 @@ r3 r = 1
 rLong : {
   address: Text,
   subject: Text,
-  body: Html Never,
+  body: Html,
   replyTo: Maybe Text.Email,
   cc: List Text,
 } -> Task Unit

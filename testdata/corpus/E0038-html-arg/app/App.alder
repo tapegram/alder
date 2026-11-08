@@ -2,10 +2,10 @@ module App
 
 session { n: Int = 0 }
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>not found</p>
 
-test "renders" = \(h : Html Msg) -> True
+test "renders" = \(h : Html) -> True

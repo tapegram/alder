@@ -115,13 +115,13 @@ func Index__Index__view(model Index__Model, session App__Session) html.Node {
 			),
 			html.El("div", []html.Attr{html.A("slot", "actions")},
 				html.El("al-button", []html.Attr{html.A("variant", "ghost"), html.B("disabled", true)}, html.El("button", []html.Attr{html.A("type", "button"), html.RouteAttr("data-on:click", rt.Route{Name: "Index.Clear", Method: "POST", Path: "/_/Clear"}), html.B("disabled", true)}, html.Text("Clear"))),
-				html.El("al-button", []html.Attr{html.A("variant", "outline")}, html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Home"))),
+				html.El("al-button", []html.Attr{html.A("variant", "outline")}, html.El("a", []html.Attr{html.A("href", rt.RouteURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Home"))),
 				html.El("al-button", []html.Attr{html.B("disabled", true)}, html.El("a", []html.Attr{html.A("aria-disabled", "true")}, html.Text("Gone"))),
 				html.El("al-button", []html.Attr{html.B("disabled", model.Saving)}, func() html.Node {
 					if model.Saving {
 						return html.El("a", []html.Attr{html.A("aria-disabled", "true")}, html.Text("Maybe"))
 					}
-					return html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Maybe"))
+					return html.El("a", []html.Attr{html.A("href", rt.RouteURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Maybe"))
 				}()),
 				html.El("al-button", []html.Attr{html.A("variant", "secondary")}, html.El("button", []html.Attr{html.A("type", "button"), html.RouteAttr("data-on:click", rt.Route{Name: "Index.Clear", Method: "POST", Path: "/_/Clear"})}, html.Text("Own"))),
 				html.El("al-button", []html.Attr{html.A("variant", "ghost")}, html.Text("Presentational")),
@@ -139,8 +139,8 @@ func Index__Index__view(model Index__Model, session App__Session) html.Node {
 		),
 		html.El("al-table", []html.Attr{html.B("striped", true), html.B("dense", model.Saving), html.A("style", "width: 100%")}, html.El("table", nil, html.El("tr", nil, html.El("td", nil, html.Text("1"))))),
 		html.El("al-pagination", []html.Attr{html.A("page", "1"), html.A("pages", "3"), html.A("lang", "en"), html.A("dir", "ltr"), html.A("tabindex", "0"), html.B("hidden", false)},
-			html.El("a", []html.Attr{html.A("slot", "prev"), html.A("href", rt.PageURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Previous")),
-			html.El("a", []html.Attr{html.A("slot", "next"), html.A("href", rt.PageURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Next")),
+			html.El("a", []html.Attr{html.A("slot", "prev"), html.A("href", rt.RouteURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Previous")),
+			html.El("a", []html.Attr{html.A("slot", "next"), html.A("href", rt.RouteURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Next")),
 		),
 		html.El("al-input", []html.Attr{html.M("label", model.Label)}, html.El("input", []html.Attr{html.A("name", "q")})),
 		html.El("al-button", []html.Attr{html.A("variant", "outline")}, html.El("button", []html.Attr{html.A("type", "button"), html.A("commandfor", "sure"), html.A("command", "show-modal")}, html.Text("Delete"))),
@@ -176,7 +176,7 @@ func Index__Index__view(model Index__Model, session App__Session) html.Node {
 		html.El("al-button", []html.Attr{html.A("variant", "outline")}, html.El("button", []html.Attr{html.A("type", "button"), html.A("popovertarget", "who"), html.A("popovertargetaction", "toggle")}, html.Text("Who?"))),
 		html.El("al-popover", []html.Attr{html.A("id", "who"), html.B("popover", true), html.A("placement", "bottom")}, html.Text("Only people with the link.")),
 		html.El("al-menu", []html.Attr{html.A("id", "more"), html.B("popover", true)},
-			html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Home")),
+			html.El("a", []html.Attr{html.A("href", rt.RouteURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Home")),
 			html.El("button", []html.Attr{html.A("type", "button"), html.RouteAttr("data-on:click", rt.Route{Name: "Index.Clear", Method: "POST", Path: "/_/Clear"})}, html.Text("Clear")),
 		),
 		html.El("al-toasts", []html.Attr{html.A("popover", "manual"), html.A("position", "top-right")}),

@@ -1,15 +1,15 @@
 module Ui
 
-Each : { items: List a, render: a -> Html m, children: List (Html m) } -> Html m
+Each : { items: List a, render: a -> Html, children: List Html } -> Html
 Each props = <ul>{List.map props.render props.items}{props.children}</ul>
 
-Opt : { label: Text, hint: Maybe Text, children: List (Html a) } -> Html a
+Opt : { label: Text, hint: Maybe Text, children: List Html } -> Html
 Opt props = <span title={props.hint}>{props.label}{props.children}</span>
 
-Raw : { html: Text } -> Html a
+Raw : { html: Text } -> Html
 Raw props = Html.unsafe props.html
 
-Pair : { a: x, b: y, show: x -> y -> Text } -> Html m
+Pair : { a: x, b: y, show: x -> y -> Text } -> Html
 Pair props = <i>{props.show props.a props.b}</i>
 
 who : Session -> Text

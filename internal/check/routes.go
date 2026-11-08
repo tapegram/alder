@@ -25,7 +25,7 @@ type RouteInfo struct {
 	// same fields share one record, named after the first of them, so their members can call
 	// each other with the session they have.
 	Session *types.Record
-	// Requires, Roles and Silo are the route's guard as PageInfo has a page's: the `requires`
+	// Requires, Roles and Silo are the route's guard: the `requires`
 	// fields, the roles of a well-formed `role` clause, the key of a valid `silo k`.
 	Requires []string
 	Roles    []string
@@ -105,13 +105,10 @@ func (c *Checker) routeFile(r *RouteInfo) bool {
 }
 
 // inShownView reports whether the markup being checked is in the view the runtime renders
-// again from the model to check a submitted `<Select options>` value (plan call 11): a page's
-// `view`, or a GET route's `R.view`.
+// again from the model to check a submitted `<Select options>` value (plan call 11): a GET
+// route's `R.view`.
 func (mc *modCtx) inShownView() bool {
-	if mc.route != nil {
-		return !isWrite(mc.route.Method) && mc.value == mc.route.Name+".view"
-	}
-	return mc.page != nil && mc.value == "view"
+	return mc.route != nil && !isWrite(mc.route.Method) && mc.value == mc.route.Name+".view"
 }
 
 // recordOptions notes that the view being checked, a GET route's, writes a `<Select options>`
@@ -181,12 +178,6 @@ func (mc *modCtx) defineRoutes() {
 		if rd, ok := d.(*syntax.RouteDecl); ok && c.prog.Route(mc.m.Name, rd.Name) == rd {
 			decls = append(decls, rd)
 		}
-	}
-	if c.prog.IsPageModule(mc.m.Name) {
-		for _, d := range decls {
-			c.errorf(diag.RouteDecl, d.NameSpan, "module `%s` declares a `page`; a module holds a page and its messages, or routes, not both: move route `%s` to a module of its own", mc.m.Name, d.Name)
-		}
-		return
 	}
 	sessions := map[string]*types.Record{} // narrowed fields → the module's record for them
 	for _, d := range decls {
@@ -449,8 +440,7 @@ func fixSig(d *diag.Diagnostic, span diag.Span, sig string) {
 	d.Fix.Title, d.Fix.Preferred = "Change signature to `"+sig+"`", true
 }
 
-// sigReturnsFile reports whether d's declared signature returns File (as viewReturnsFile reads
-// a page's `view`).
+// sigReturnsFile reports whether d's declared signature returns File.
 func sigReturnsFile(d *syntax.ValueDecl) bool {
 	if d.Sig == nil {
 		return false
@@ -498,4 +488,35 @@ func (c *Checker) checkRouteRefs() {
 			}
 		}
 	}
+}
+
+// bareRoute reports E0301 when e is a route with parameters (other than its form) written bare
+// where a request goes (`click={Toggle}`, `href={Row}`, `Test.click Toggle`): the route is a
+// function of its parameters there, not a Route. The fix writes the record with a `?hole` for
+// each parameter, in parentheses when paren is set (a Test step's argument). It reports whether
+// it did; e is then recorded as a Route.
+func (mc *modCtx) bareRoute(e syntax.Expr, paren bool) bool {
+	ct, ok := e.(*syntax.CtorRef)
+	if !ok || ct.Ref.Kind != syntax.RefRoute {
+		return false
+	}
+	r := mc.c.route(ct.Ref.Module, ct.Ref.Name)
+	if r == nil || r.Params == nil || messageLike(r.Params) {
+		return false
+	}
+	var parts []string
+	for _, f := range r.Params.Fields {
+		if f.Name != "form" {
+			parts = append(parts, f.Name+": ?"+f.Name)
+		}
+	}
+	full := mc.source(ct.Span) + " { " + strings.Join(parts, ", ") + " }"
+	d := mc.c.errorf("E0301", ct.Span, "route `%s` needs its parameters: `%s`", ct.Name, full)
+	if paren {
+		full = "(" + full + ")"
+	}
+	d.Fix = diag.ReplaceSpan(ct.Span, full)
+	d.Fix.Preferred = true
+	mc.c.record(ct, types.Route)
+	return true
 }

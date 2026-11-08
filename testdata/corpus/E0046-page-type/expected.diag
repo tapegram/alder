@@ -1,0 +1,1 @@
+app/Links.alder:4:8 E0046 `Page` is gone: a link's type is `Route`; run `alder fix --routes` to rewrite this module

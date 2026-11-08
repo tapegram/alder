@@ -6,7 +6,7 @@ import "alder/rt"
 // function; the toast ones fix the kind.
 
 // ResponseRedirect is `Response.redirect`.
-func ResponseRedirect(r rt.Route) rt.Response { return rt.RedirectTo(r) }
+func ResponseRedirect(r rt.Route) rt.Response { return rt.Redirect(r) }
 
 // ResponseRender is `Response.render`.
 func ResponseRender(r rt.Route) rt.Response { return rt.Render(r) }

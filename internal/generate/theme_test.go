@@ -17,7 +17,7 @@ const appFile = "app/App.alder"
 func blogCopy(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	if err := copyApp("../../testdata/fix/blog", dir, nil); err != nil {
+	if err := copyApp("../../examples/blog", dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	return dir
@@ -84,7 +84,7 @@ func TestThemeEdit_InsertAfterSession(t *testing.T) {
 	if e == nil || len(edits) != 1 {
 		t.Fatalf("edits = %+v", edits)
 	}
-	want := "session { }\n\n" + radiusPrint + "\n\nerror : Error -> Html Never\n"
+	want := "session { }\n\n" + radiusPrint + "\n\nerror : Error -> Html\n"
 	if !strings.Contains(e.Body, want) {
 		t.Fatalf("body:\n%s\nwant it to contain:\n%s", e.Body, want)
 	}
@@ -102,27 +102,27 @@ func insertCase(t *testing.T, src string) string {
 }
 
 func TestThemeEdit_InsertAfterDeploy(t *testing.T) {
-	src := "module App\n\nimport Layout\n\nsession { }\n\ndeploy { local: Script \"./d.sh\" }\n\nnotFound : Html Never\nnotFound = <Layout.Page title=\"Not found\"><h1>Not found</h1></Layout.Page>\n"
+	src := "module App\n\nimport Layout\n\nsession { }\n\ndeploy { local: Script \"./d.sh\" }\n\nnotFound : Html\nnotFound = <Layout.Page title=\"Not found\"><h1>Not found</h1></Layout.Page>\n"
 	got := insertCase(t, src)
-	want := "deploy { local: Script \"./d.sh\" }\n\n" + radiusPrint + "\n\nnotFound : Html Never\n"
+	want := "deploy { local: Script \"./d.sh\" }\n\n" + radiusPrint + "\n\nnotFound : Html\n"
 	if !strings.Contains(got, want) {
 		t.Fatalf("written:\n%s", got)
 	}
 }
 
 func TestThemeEdit_InsertAfterImports(t *testing.T) {
-	src := "module App\n\nimport Layout\n\nnotFound : Html Never\nnotFound = <Layout.Page title=\"Not found\"><h1>Not found</h1></Layout.Page>\n"
+	src := "module App\n\nimport Layout\n\nnotFound : Html\nnotFound = <Layout.Page title=\"Not found\"><h1>Not found</h1></Layout.Page>\n"
 	got := insertCase(t, src)
-	want := "module App\n\nimport Layout\n\n" + radiusPrint + "\n\nnotFound : Html Never\n"
+	want := "module App\n\nimport Layout\n\n" + radiusPrint + "\n\nnotFound : Html\n"
 	if !strings.HasPrefix(got, want) {
 		t.Fatalf("written:\n%s", got)
 	}
 }
 
 func TestThemeEdit_InsertAfterModule(t *testing.T) {
-	src := "module App\n\nnotFound : Html Never\nnotFound = <h1>Not found</h1>\n"
+	src := "module App\n\nnotFound : Html\nnotFound = <h1>Not found</h1>\n"
 	got := insertCase(t, src)
-	want := "module App\n\n" + radiusPrint + "\n\nnotFound : Html Never\n"
+	want := "module App\n\n" + radiusPrint + "\n\nnotFound : Html\n"
 	if !strings.HasPrefix(got, want) {
 		t.Fatalf("written:\n%s", got)
 	}
@@ -173,13 +173,13 @@ func TestThemeEdit_ReplaceKeepsLeadingComment(t *testing.T) {
 	}
 	body := editAt(edits, appFile).Body
 	bl, al := strings.Split(before, "\n"), strings.Split(body, "\n")
-	for i := 0; i < 37; i++ { // lines 1–37: everything above `theme`, its comment among them
+	for i := 0; i < 35; i++ { // lines 1–35: everything above `theme`, its comment among them
 		if bl[i] != al[i] {
 			t.Fatalf("line %d: %q → %q", i+1, bl[i], al[i])
 		}
 	}
-	if !strings.HasPrefix(bl[35], "-- The look") || al[37] != "theme {" {
-		t.Fatalf("lines 36, 38: %q, %q", al[35], al[37])
+	if !strings.HasPrefix(bl[33], "-- The look") || al[35] != "theme {" {
+		t.Fatalf("lines 34, 36: %q, %q", al[33], al[35])
 	}
 }
 
@@ -215,18 +215,18 @@ func TestThemeEdit_EmptyDeletes(t *testing.T) {
 	dir := blogCopy(t)
 	before := strings.Split(readApp(t, dir), "\n")
 	after := writeTheme(t, dir, theme.Theme{})
-	// lines 38–42 go; with no blank line after them (the end of the file), none before the
-	// declaration either (the comment's line 37 is right above it): the comment stays
-	want := strings.Join(before[:37], "\n") + "\n"
+	// lines 36–40 go; with no blank line after them (the end of the file), none before the
+	// declaration either (the comment's line 35 is right above it): the comment stays
+	want := strings.Join(before[:35], "\n") + "\n"
 	if after != want {
 		t.Fatalf("after:\n%s\nwant:\n%s", after, want)
 	}
 
 	// a blank line after the declaration goes with it
-	src := "module App\n\nimport Layout\n\nsession { }\n\n" + radiusPrint + "\n\nnotFound : Html Never\nnotFound = <Layout.Page title=\"Not found\"><h1>Not found</h1></Layout.Page>\n"
+	src := "module App\n\nimport Layout\n\nsession { }\n\n" + radiusPrint + "\n\nnotFound : Html\nnotFound = <Layout.Page title=\"Not found\"><h1>Not found</h1></Layout.Page>\n"
 	dir = scaffoldApp(t, map[string]string{appFile: src})
 	after = writeTheme(t, dir, theme.Theme{})
-	want = "module App\n\nimport Layout\n\nsession { }\n\nnotFound : Html Never\n"
+	want = "module App\n\nimport Layout\n\nsession { }\n\nnotFound : Html\n"
 	if !strings.HasPrefix(after, want) {
 		t.Fatalf("after:\n%s", after)
 	}
@@ -270,7 +270,7 @@ func TestThemeEdit_Refused(t *testing.T) {
 	// on the blog, located on its declaration
 	_, err := themeEdits(t, blogCopy(t), theme.Theme{Root: map[string]string{"radius": "-1px"}})
 	var inv *ThemeInvalid
-	if !errors.As(err, &inv) || inv.Diags[0].Span.Start.Line != 38 || inv.Diags[0].Span.End.Line != 42 {
+	if !errors.As(err, &inv) || inv.Diags[0].Span.Start.Line != 36 || inv.Diags[0].Span.End.Line != 40 {
 		t.Fatalf("err = %v", err)
 	}
 	// several: the first message and how many more

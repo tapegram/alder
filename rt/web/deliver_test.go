@@ -23,7 +23,7 @@ func elementGet(target string) *http.Request {
 
 // todoRoute is GET /todos/{id} answering view.
 func todoRoute(view html.Node) []Route {
-	return one("GET", "/todos/{id}", func(rq *Request) Response { return PageResponse(view, nil, nil, false) })
+	return one("GET", "/todos/{id}", func(rq *Request) Response { return PageResponse(view, nil, nil) })
 }
 
 func todoItem(attrs ...html.Attr) html.Node {
@@ -170,7 +170,7 @@ func TestDeliver_ElementDropsSignals(t *testing.T) {
 	var got string
 	h := NewRouter(one("GET", "/todos/{id}", func(rq *Request) Response {
 		got = rq.Query.Encode()
-		return PageResponse(todoItem(html.A("id", "todo-7")), nil, nil, false)
+		return PageResponse(todoItem(html.A("id", "todo-7")), nil, nil)
 	}), testOpts(nil))
 	serve(h, elementGet("/todos/7?b=2&datastar=%7B%7D&a=1"))
 	if got != "a=1&b=2" {
@@ -183,7 +183,7 @@ func TestDeliver_ElementDropsSignals(t *testing.T) {
 func TestDeliver_ElementRedirectNavigates(t *testing.T) {
 	routes := append(one("GET", "/todos/{id}", func(rq *Request) Response {
 		return Response{Status: http.StatusSeeOther, Location: "/login"}
-	}), one("GET", "/login", func(rq *Request) Response { return PageResponse(doc("Log in"), nil, nil, false) })...)
+	}), one("GET", "/login", func(rq *Request) Response { return PageResponse(doc("Log in"), nil, nil) })...)
 	h := NewRouter(routes, testOpts(nil))
 	w := serve(h, elementGet("/todos/7"))
 	ev := events(w.Body.String())

@@ -100,7 +100,9 @@ test "a visitor cannot create an org" = {
   let _ <- Test.login { user: Nothing, org: Nothing }
   let r <- Test.submit Create { name: Text.NonEmpty "name-1" }
   let rows <- Db.from Org |> Db.count
-  Task.succeed ({ answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login {}), rows: 0 })
+  Task.succeed (
+    { answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login.Login {}), rows: 0 }
+  )
 }
 
 test "a Member cannot create an org, even one made Admin since logging in" = {
@@ -145,7 +147,7 @@ test "a demoted Admin cannot create an org" = {
 
 test "a visitor is sent to log in" = {
   let r <- Test.open (New {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Member gets no page, even one made Admin since logging in" = {

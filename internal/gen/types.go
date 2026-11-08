@@ -14,7 +14,7 @@ import (
 //	Int Float Bool Text Unit         int64 float64 bool string struct{}
 //	Date Time Route Error Never      rt.Date time.Time rt.Route error struct{}
 //	File, Bytes                      rt.File, []byte
-//	HttpError, Nav                   rt.HttpError, rt.Nav
+//	HttpError                        rt.HttpError
 //	Doc, Answer (test builds only)   rtesting.Doc, rtesting.Answer
 //	Fuzz.Fuzzer a, Fuzz.Property     fuzz.Fuzzer[A], *rtesting.Property
 //	Random.Generator a, Random.Seed  std.Generator[A], std.Seed
@@ -138,8 +138,6 @@ func GoType(t types.Type) string {
 				return "rt.Maybe[" + GoType(t.Args[0]) + "]"
 			case "Result":
 				return "rt.Result[" + GoType(t.Args[0]) + ", " + GoType(t.Args[1]) + "]"
-			case "Nav":
-				return "rt.Nav"
 			case "Answer":
 				return "rtesting.Answer"
 			}

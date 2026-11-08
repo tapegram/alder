@@ -17,25 +17,10 @@ type Auth__Login__Credentials struct {
 	Password string
 }
 
-type Auth__Login__Params struct{}
+type Auth__Login__Login__Params struct{}
 
-type Auth__Login__SubmitParams struct {
+type Auth__Login__Submit__Params struct {
 	Form Auth__Login__Credentials
-}
-
-type Auth__Login__Msg struct {
-	Tag    tag__Auth__Login__Msg
-	Submit *Auth__Login__SubmitParams
-}
-
-type tag__Auth__Login__Msg uint8
-
-const (
-	is__Auth__Login__Msg__Submit tag__Auth__Login__Msg = 0
-)
-
-func Auth__Login__Msg__Submit__(v Auth__Login__SubmitParams) Auth__Login__Msg {
-	return Auth__Login__Msg{Tag: is__Auth__Login__Msg__Submit, Submit: &v}
 }
 
 // Cap__Auth__Login__Password is capability Password of module Auth.Login, implemented by
@@ -51,43 +36,38 @@ type Args__Auth__Login__Password__Verify struct {
 	Password string
 }
 
-func Auth__Login__load(params Auth__Login__Params, session App__Session) eff.Query[Auth__Login__Model] {
+func Auth__Login__Login__load(params Auth__Login__Login__Params, session App__Session) eff.Query[Auth__Login__Model] {
 	return eff.Q(eff.Pure(Auth__Login__Model{}))
 }
 
-func Auth__Login__update(msg Auth__Login__Msg, model Auth__Login__Model, session App__Session) eff.Task[rt.Nav] {
-	switch msg.Tag {
-	case is__Auth__Login__Msg__Submit:
-		p := *msg.Submit
-		return eff.Bind(eff.Call("Password.verify", true, func(_e1 *eff.Env) (rt.Maybe[string], error) {
-			_c2, _ok3 := _e1.Caps["Auth.Login.Password"].(Cap__Auth__Login__Password)
-			if !_ok3 {
-				panic("alder: capability \"Auth.Login.Password\" is not wired")
-			}
-			_v4, _err5 := _c2.Verify(_e1.Ctx, struct {
-				Email    string
-				Password string
-			}{Email: p.Form.Email, Password: p.Form.Password})
-			return _v4, eff.CapError("Password.verify", _err5)
-		}), func(found rt.Maybe[string]) eff.Task[rt.Nav] {
-			if found.Ok {
-				id := found.Val
-				return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
-					return App__Session{User: rt.Just[string](id), Visits: s.Visits}
-				}), func(_ struct{}) eff.Task[rt.Nav] {
-					return eff.Pure(rt.Redirect(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}))
-				})
-			}
-			return eff.Pure(rt.Reject("Email or password is incorrect."))
-		})
-	}
-	panic("unreachable")
+func Auth__Login__Submit__update(p Auth__Login__Submit__Params, session App__Session) eff.Task[rt.Response] {
+	return eff.Bind(eff.Call("Password.verify", true, func(_e1 *eff.Env) (rt.Maybe[string], error) {
+		_c2, _ok3 := _e1.Caps["Auth.Login.Password"].(Cap__Auth__Login__Password)
+		if !_ok3 {
+			panic("alder: capability \"Auth.Login.Password\" is not wired")
+		}
+		_v4, _err5 := _c2.Verify(_e1.Ctx, struct {
+			Email    string
+			Password string
+		}{Email: p.Form.Email, Password: p.Form.Password})
+		return _v4, eff.CapError("Password.verify", _err5)
+	}), func(found rt.Maybe[string]) eff.Task[rt.Response] {
+		if found.Ok {
+			id := found.Val
+			return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
+				return App__Session{User: rt.Just[string](id), Visits: s.Visits}
+			}), func(_ struct{}) eff.Task[rt.Response] {
+				return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Notes.Index.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}))
+			})
+		}
+		return eff.Pure(std.ResponseInvalid("Email or password is incorrect."))
+	})
 }
 
-func Auth__Login__view(model Auth__Login__Model, session App__Session) html.Node {
+func Auth__Login__Login__view(model Auth__Login__Model, session App__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("h1", nil, html.Text("Log in")),
-		html.FormTo(rt.MsgRef{Module: "Auth.Login", Msg: "Submit"}, nil,
+		html.FormToRoute(rt.Route{Name: "Auth.Login.Submit", Method: "POST", Path: "/login/_/Submit"}, nil,
 			html.Input(html.Control{Kind: "errors", Form: "Auth.Login.Credentials"}),
 			html.Input(html.Control{Kind: "input", Form: "Auth.Login.Credentials", Name: "email", Type: "email", Label: "Email", Required: true}),
 			html.Input(html.Control{Kind: "errors", Form: "Auth.Login.Credentials", Name: "email"}),

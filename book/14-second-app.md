@@ -894,13 +894,13 @@ test "saving changes the title and the body" = {
 ## A capability in `load`: `Posts.Show`
 
 `app/Markdown.alder` declares `capability Markdown` with one entry,
-`render : Text -> Query (Html Never)` (chapter 7 shows the module).
+`render : Text -> Query Html` (chapter 7 shows the module).
 `Posts.Show`'s `load` finds the post with `Post.bySlug`, answers
 `Query.notFound` when `Post.visible` says the session may not see it, so a
 reader cannot tell a draft from an unused slug, renders the body, and reads the
 comments oldest first.
 
-`view` embeds the body, an `Html Never`, as `{model.body}` (chapter 5). The Go
+`view` embeds the body, an `Html`, as `{model.body}` (chapter 5). The Go
 side builds it with `html.El` and `html.Text`, never `html.Raw`, so a post
 cannot inject markup; a link is kept only for an `http:` or `https:` address.
 That Go is the adapter `examples/blog/adapters/markdown/markdown.go`: module
@@ -1671,21 +1671,21 @@ cannot keep an org, and the runtime clears it. `Leave` clears the org
 alone, back to the list.
 
 ```alder part=workspace/App
-error : Error -> Html Never
+error : Error -> Html
 error err =
   <Layout.Page title="Error">
     <h1>Something went wrong</h1>
     <p>Please try again.</p>
   </Layout.Page>
 
-notFound : Html Never
+notFound : Html
 notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 ```
 
 ```alder part=workspace/App
 -- What a request answers when its org's database cannot be served (behind by a migration that
 -- drops data, or ahead of this build: book 08, "Silos"): a 503, for that org only.
-maintenance : Html Never
+maintenance : Html
 maintenance =
   <Layout.Page title="Down for maintenance">
     <h1>Down for maintenance</h1>

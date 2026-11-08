@@ -1,0 +1,1 @@
+app/App.alder:6:1 E0046 `msg` declarations are gone: a message is a write route now (`route Logout = POST "/path" { … }`); run `alder fix --routes` to rewrite this module

@@ -244,11 +244,10 @@ show.
 `requires`. Where a route's `Session` is named from outside its members (a
 helper that takes it), it is `R.Session`.
 
-A module with one GET route is a page file without a `page` line and without
-a `Model` slot, which is most files. A module with a `route` line is a route
-module; one with a `page` line (the old form of a page and its messages) is
-not, and a module is one or the other (E0043). `alder fix --routes` rewrites a
-page module as a route module.
+A module with one GET route is a page file without a `Model` slot, which is
+most files. A module with a `route` line is a route module. The old form, a
+module with a `page` line and its messages, is E0046, and `alder fix --routes`
+rewrites it as a route module.
 
 ## Names
 
@@ -496,8 +495,8 @@ Logout.update p session = {
 <button click={App.Logout}>Log out</button>
 ```
 
-An `App` route's value is accepted in `Html a` for every `a`, so a layout
-component typed `Html a` can contain `click={App.Logout}`.
+An `App` route's value can be written in any markup, so a layout component
+typed `Html` can contain `click={App.Logout}`.
 
 ### Example: a theme switch
 
@@ -562,13 +561,13 @@ is still the way to keep the choice in the session.
 The layout cannot read the session; it takes the theme as a prop, sets a
 class on `<html>` for the stylesheet, and shows the button. Also an
 excerpt, of `app/Layout.alder` (the examples write their layouts as
-`Html a`, which serves a route's markup too):
+`Html`, like any markup):
 
 ```alder fragment
 -- in Layout
 import Theme
 
-Page : { title: Text, theme: Theme, children: List (Html a) } -> Html a
+Page : { title: Text, theme: Theme, children: List Html } -> Html
 Page props =
   <html class={if props.theme == Dark then "dark" else ""}>
     ...
@@ -772,7 +771,7 @@ router already does:
 
 A literal name outside the list is E0035:
 
-```alder error=E0035 "`Set-Cookie` cannot be set from a page"
+```alder error=E0035 "`Set-Cookie` cannot be set from a file route"
 module Todos.Cookie
 
 route Cookie = GET "/cookie" { }
@@ -1769,14 +1768,14 @@ Logout.update p session = {
   Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
 
-error : Error -> Html Never
+error : Error -> Html
 error err =
   <Layout.Page title="Error">
     <h1>Something went wrong</h1>
     <p>Please try again.</p>
   </Layout.Page>
 
-notFound : Html Never
+notFound : Html
 notFound =
   <Layout.Page title="Not found">
     <h1>Not found</h1>
@@ -1788,7 +1787,7 @@ notFound =
   (chapter 7) changes it; a `Task` that fails leaves it as it was.
 - `login` names the route to redirect to when `requires` fails.
 - `error` and `notFound` render failure pages; an app with a `silo` may
-  add `maintenance : Html Never`, the 503 page of a silo not served.
+  add `maintenance : Html`, the 503 page of a silo not served.
 - `route` lines and their `update`s declare app-level routes (above). They
   are optional.
 
@@ -1819,9 +1818,10 @@ per kind of toast:
   five seconds. A form's own problems are better told with `invalid`, next
   to the form.
 
-> **Old names.** `Notice.with`, `Notice.success`, `Notice.warning` and
-> `Notice.error` are the old names of these, for the page-and-message syntax;
-> `alder fix --routes` rewrites them.
+> **Old names.** `Notice.*` is deprecated (W0012). `Notice.with`,
+> `Notice.success`, `Notice.warning` and `Notice.error` are the old names of
+> `Response.toast`, `Response.success`, `Response.warning` and
+> `Response.error`; `alder fix --routes` rewrites them.
 
 ### Notices without JavaScript
 

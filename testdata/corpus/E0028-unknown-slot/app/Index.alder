@@ -1,21 +1,18 @@
 module Index
 
-page "/" { }
+route Index = GET  "/"     { }
+route Go    = POST "/_/Go" { }
 
 type Model = { n: Int }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { n: 1 }
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { n: 1 }
 
-msg Go
+Go.update : Go.Params -> Session -> Task Response
+Go.update p session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Go p -> Task.succeed Rerender,
-}
-
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <al-card>
     <h2 slot="header">Title</h2>
     <p slot="aside">Side</p>

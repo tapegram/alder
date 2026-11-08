@@ -53,7 +53,7 @@ type Options struct {
 	// Mutate, with Tests (alder test --mutate), compiles every mutant mutate.Collect finds
 	// into the test build as a switch on the package variable Mutant (mutation.go): each
 	// mutated node is emitted as `switch Mutant { case id: <its replacement> }` before the
-	// original, a page's `requires` serves a placeholder under its id, and app__alder.go
+	// original, a route's `requires` serves a placeholder under its id, and app__alder.go
 	// holds Mutant, Mutants (the table rtesting runs, with each schema mutant's tables) and
 	// the refused counts. Every constant becomes a thunk, so a mutant reaches it at run time.
 	// Without it nothing of this is emitted.
@@ -218,7 +218,6 @@ const goMod = "module app\n\ngo 1.27\n\nrequire alder v0.0.0\n\nreplace alder =>
 
 // gen holds what emission needs across modules.
 type gen struct {
-	pages   map[string]*ir.Page    // by module
 	routes  map[string][]*ir.Route // by module, in declaration order
 	session *ir.RecordType         // App's Session
 	values  map[string]*ir.Value   // "Module.name" → value or component
@@ -266,7 +265,7 @@ func (g *gen) indexFakes(p *ir.Program, tests bool) {
 // (Options.Thunks).
 func newGen(p *ir.Program, thunks map[string]bool) *gen {
 	g := &gen{values: map[string]*ir.Value{}, thunks: map[*ir.Value]bool{}, tparams: map[*ir.Value][]string{},
-		pages: map[string]*ir.Page{}, routes: map[string][]*ir.Route{}, session: p.Session, boxed: boxedFields(p), payloads: map[string]*ir.RecordType{},
+		routes: map[string][]*ir.Route{}, session: p.Session, boxed: boxedFields(p), payloads: map[string]*ir.RecordType{},
 		tables: map[string][]*ir.Table{}, caps: map[string][]*ir.Capability{}, brands: map[string][]*ir.Brand{}, enums: storedEnums(p),
 		selectors: map[string]string{}, siloOf: map[string]string{}, prog: p}
 	for k, ts := range p.Silos {
@@ -294,9 +293,6 @@ func newGen(p *ir.Program, thunks map[string]bool) *gen {
 				}
 			}
 		}
-	}
-	for _, pg := range p.Pages {
-		g.pages[pg.Module] = pg
 	}
 	for _, r := range p.Routes {
 		g.routes[r.Module] = append(g.routes[r.Module], r)
@@ -458,9 +454,6 @@ func (g *gen) module(m *ir.Module, gofmt bool) ([]byte, error) {
 		if b.Check != nil {
 			g.checkDecl(&body, b)
 		}
-	}
-	if pg := g.pages[m.Name]; pg != nil && len(pg.Requires) > 0 && pg.Session != g.session {
-		widenFunc(&body, pg.Module, "Session", pg.Requires, pg.Silo, g.session, g.boxed)
 	}
 	widened := map[*ir.RecordType]bool{} // routes of a module that narrow alike share their record
 	for _, r := range g.routes[m.Name] {
@@ -667,10 +660,10 @@ func (g *gen) checkDecl(w *strings.Builder, b *ir.Brand) {
 }
 
 // widenFunc emits the function that widens the narrowed Session record rec of module module (a
-// `requires` page's "Session", a route's "Index.Session") to App's: each field in requires, and
-// the silo key, becomes Just of its value, the others are copied.
+// `requires` route's "Index.Session") to App's: each field in requires, and the silo key,
+// becomes Just of its value, the others are copied.
 //
-//	func widen__Home__Session(s Home__Session) App__Session {
+//	func widen__Home__Index__Session(s Home__Index__Session) App__Session {
 //		return App__Session{User: rt.Just(s.User), N: s.N}
 //	}
 func widenFunc(w *strings.Builder, module, rec string, requires []string, silo string, app *ir.RecordType, boxed boxedSet) {

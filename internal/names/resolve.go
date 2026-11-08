@@ -91,10 +91,6 @@ func (p *Program) index(m *syntax.Module) *moduleScope {
 					s.capEntries[e.Name] = true
 				}
 			}
-		case *syntax.MsgDecl:
-			s.ctors[d.Name] = "Msg"
-		case *syntax.PageDecl:
-			s.types["Params"] = true
 		case *syntax.RouteDecl:
 			s.routes[d.Name] = true
 		}
@@ -178,9 +174,7 @@ func (p *Program) Resolve(bag *diag.Bag) {
 	for _, name := range p.Order {
 		s := p.scopes[name]
 		for c, typ := range s.ctors {
-			if typ != "Msg" { // a page's messages are its own; no import makes them usable elsewhere
-				p.ctorIndex[c] = append(p.ctorIndex[c], ctorOwner{Module: name, Type: typ})
-			}
+			p.ctorIndex[c] = append(p.ctorIndex[c], ctorOwner{Module: name, Type: typ})
 		}
 		for b := range s.brands {
 			p.ctorIndex[b] = append(p.ctorIndex[b], ctorOwner{Module: name, Type: b})
@@ -201,7 +195,6 @@ func (p *Program) Resolve(bag *diag.Bag) {
 		r := &resolver{p: p, bag: bag, m: p.Modules[name], ms: p.scopes[name]}
 		r.module()
 	}
-	p.pageShadows(bag)
 	// stdlib signatures: resolve their type names so the checker can read them
 	var std []string
 	for name := range p.Std {
@@ -290,19 +283,10 @@ func (r *resolver) module() {
 			if d.Brand != nil && d.Brand.Check != nil {
 				r.expr(d.Brand.Check, &Scope{names: map[string]bool{}})
 			}
-		case *syntax.PageDecl:
-			r.recordType(d.Params)
 		case *syntax.RouteDecl:
 			r.recordType(d.Params)
 			if d.Form != "" && !r.ms.types[d.Form] {
 				r.bag.Error(diag.UnknownName, d.FormSpan, "unknown form `%s`", d.Form)
-			}
-		case *syntax.MsgDecl:
-			if d.Params != nil {
-				r.recordType(d.Params)
-			}
-			if d.Form != "" && !r.ms.types[d.Form] {
-				r.bag.Error(diag.UnknownName, d.Span, "unknown form `%s`", d.Form)
 			}
 		case *syntax.FormDecl:
 			r.fields(d.Fields)
@@ -321,13 +305,13 @@ func (r *resolver) module() {
 			r.fake(d)
 		case *syntax.SessionDecl:
 			r.fields(d.Fields)
-		case *syntax.LoginDecl: // a page module, or a route written `Module.Route` (#160)
-			if !r.p.IsPageModule(d.Page) && r.p.RouteAt(d.Page) == nil {
-				r.bag.Error(diag.UnknownName, d.Span, "unknown page `%s`", d.Page)
+		case *syntax.LoginDecl: // a route written `Module.Route` (an old page: E0046 there)
+			if r.p.RouteAt(d.Page) == nil && !r.p.oldPages[d.Page] {
+				r.bag.Error(diag.UnknownName, d.Span, "unknown route `%s`", d.Page)
 			}
-		case *syntax.ChooseDecl: // a page module, or a route written `Module.Route`
-			if !r.p.IsPageModule(d.Page) && r.p.RouteAt(d.Page) == nil {
-				r.bag.Error(diag.UnknownName, d.Span, "unknown page `%s`", d.Page)
+		case *syntax.ChooseDecl: // a route written `Module.Route` (an old page: E0046 there)
+			if r.p.RouteAt(d.Page) == nil && !r.p.oldPages[d.Page] {
+				r.bag.Error(diag.UnknownName, d.Span, "unknown route `%s`", d.Page)
 			}
 		case *syntax.TestDecl:
 			r.inTest = true
@@ -592,16 +576,15 @@ func (r *resolver) testFakeArg(a syntax.Expr, sc *Scope) {
 	r.bag.Error(diag.UnknownName, ct.Span, "`Test.fake %s`: there is no capability `%s` in scope", full, full)
 }
 
-// testFormArg resolves the first argument of `Test.submit` and `Test.submitRaw`: a form, `NewTodo`
-// (of this module) or `Todos.Index.NewTodo` (of any module, imported or not, as a page needs no
-// import), resolved as a type; or a message posting one, resolved as testClickArg does. A form
-// of another module written unqualified, or through a page import's qualifier
-// (`Login.Credentials`), gets the full name as a fix. Any other argument is resolved as an
-// expression (the checker refuses it).
-func (r *resolver) testFormArg(a syntax.Expr, step string, sc *Scope) {
+// testFormArg resolves the first argument of `Test.submit` and `Test.submitRaw`: a write route
+// with a form, resolved as an expression; or a form written by mistake, `NewTodo` (of this
+// module) or `Todos.Index.NewTodo` (of any module, through its import's qualifier or its full
+// path), resolved as a type so the checker can name the route posting it. A form of another
+// module written unqualified gets the full name as a fix.
+func (r *resolver) testFormArg(a syntax.Expr, sc *Scope) {
 	ct, ok := a.(*syntax.CtorRef)
 	if !ok {
-		r.testClickArg(a, sc) // a message with its parameters: `(Save { id: id })`
+		r.expr(a, sc) // a route with its parameters: `(Move { id: id })`
 		return
 	}
 	if ct.Module == "" && r.ms.types[ct.Name] { // a form, or another type (the checker refuses it)
@@ -609,13 +592,7 @@ func (r *resolver) testFormArg(a syntax.Expr, step string, sc *Scope) {
 		return
 	}
 	if ct.Module != "" {
-		if path, ok := r.pageByQualifier(ct.Module); ok {
-			if s := r.p.scopes[path]; s != nil && s.forms[ct.Name] {
-				r.pageMemberShort(ct, path, syntax.RefType, "form")
-				return
-			}
-		}
-		path := ct.Module // a page's full path, or the qualifier of an imported non-page module
+		path := ct.Module // a module's full path, or the qualifier of an imported module
 		if im, ok := r.ms.imports[path]; ok {
 			path = im.Module
 		}
@@ -623,7 +600,7 @@ func (r *resolver) testFormArg(a syntax.Expr, step string, sc *Scope) {
 			ct.Ref = syntax.Ref{Kind: syntax.RefType, Module: path, Name: ct.Name}
 			return
 		}
-	} else {
+	} else if !r.ms.routes[ct.Name] {
 		var owners []string
 		for _, x := range r.p.Order {
 			if s := r.p.scopes[x]; s != nil && s.forms[ct.Name] {
@@ -636,65 +613,7 @@ func (r *resolver) testFormArg(a syntax.Expr, step string, sc *Scope) {
 			return
 		}
 	}
-	r.testClickArg(a, sc) // a message: `Save`, `App.Send`, `Todos.Index.Save`
-}
-
-// testClickArg resolves the argument of `Test.click`: a message, `Toggle { id: id }` or
-// `App.Logout`, or from another module a page's message written with its page,
-// `Todos.Index.Toggle { id: id }` (a page's messages are otherwise its own; through the page
-// import's qualifier, `Index.Toggle`, it gets the full name as a fix). Anything else is
-// resolved as an expression.
-func (r *resolver) testClickArg(a syntax.Expr, sc *Scope) {
-	head, rest := a, []syntax.Expr(nil)
-	if app, ok := a.(*syntax.App); ok {
-		head, rest = app.Fn, app.Args
-	}
-	ct, ok := head.(*syntax.CtorRef)
-	if ok && ct.Module != "" {
-		if path, isPage := r.pageByQualifier(ct.Module); isPage && path != r.m.Name {
-			if s := r.p.scopes[path]; s != nil && s.ctors[ct.Name] == "Msg" {
-				r.pageMemberShort(ct, path, syntax.RefCtor, "message")
-				for _, x := range rest {
-					r.expr(x, sc)
-				}
-				return
-			}
-		}
-	}
-	if !ok || ct.Module == "" || ct.Module == r.m.Name || !r.p.IsPageModule(ct.Module) {
-		r.expr(a, sc)
-		return
-	}
-	if s := r.p.scopes[ct.Module]; s != nil && s.ctors[ct.Name] == "Msg" {
-		ct.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: ct.Module, Name: ct.Name}
-		for _, x := range rest {
-			r.expr(x, sc)
-		}
-		return
-	}
-	r.expr(a, sc)
-}
-
-// pageByQualifier reports the path of the imported page module whose qualifier is q, when q is
-// not that path itself (`Login` for `import Auth.Login`).
-func (r *resolver) pageByQualifier(q string) (string, bool) {
-	im, ok := r.ms.imports[q]
-	if !ok || im.Module == q || !r.p.IsPageModule(im.Module) {
-		return "", false
-	}
-	return im.Module, true
-}
-
-// pageMemberShort reports a page's form or message written through the page import's qualifier
-// in a test step (`Test.submit Login.Credentials`): like page values, a page's forms and
-// messages are written with its full path (design rule 6). The fix writes the full path, and
-// the reference resolves to the member so nothing else is reported.
-func (r *resolver) pageMemberShort(ct *syntax.CtorRef, path string, kind syntax.RefKind, what string) {
-	r.ms.used[path] = true // one error, not a W0001 besides
-	full := path + "." + ct.Name
-	d := r.bag.Error(diag.UnknownName, ct.Span, "write `%s`: a page's %ss are written with its full path, like the page itself", full, what)
-	d.Fix = diag.ReplaceSpan(ct.Span, full)
-	ct.Ref = syntax.Ref{Kind: kind, Module: path, Name: ct.Name}
+	r.expr(a, sc) // a route: `Create`, `Todos.Index.Create`
 }
 
 func (r *resolver) fields(fs []*syntax.Field) {
@@ -735,7 +654,7 @@ func (r *resolver) importedScope(q string) (string, *moduleScope, bool) {
 // the source; an element's closing tag is a second place), with a fix writing the qualifier in
 // the path's place, and returns the name as the qualifier writes it and the module's path; the
 // caller resolves that short name, so nothing else is reported. Only the longest prefix that is
-// a module counts. A page value's full path is never E0205: callers resolve page values (design
+// a module counts. A route value's full path is never E0205: callers resolve route values (design
 // rule 6) before calling it.
 func (r *resolver) fullPath(written string, starts ...diag.Pos) (short, path string, ok bool) {
 	for _, im := range r.m.Imports {
@@ -978,10 +897,6 @@ func (r *resolver) typ(t syntax.Type) {
 				t.Ref = syntax.Ref{Kind: syntax.RefType, Module: t.Module, Name: t.Name}
 				return
 			}
-			if r.p.IsPageModule(t.Module + "." + t.Name) { // a page: always its full path (design rule 6)
-				t.Ref = syntax.Ref{Kind: syntax.RefPage, Module: t.Module + "." + t.Name}
-				return
-			}
 			mod, name := t.Module, t.Name
 			if short, path, ok := r.fullPath(mod+"."+name, t.Span.Start); ok {
 				mod, name = r.splitShort(short, path)
@@ -1000,19 +915,15 @@ func (r *resolver) typ(t syntax.Type) {
 				r.routeMember(t.Span, mod, path, route, name, func(ref syntax.Ref) { t.Ref = ref }, true)
 				return
 			}
-			if r.p.IsPageModule(t.Module) {
-				t.Ref = syntax.Ref{Kind: syntax.RefPage, Module: t.Module + "." + t.Name}
-				return
-			}
-			if t.Module == "App" { // App needs no import; only App.Msg is a usable type
+			if t.Module == "App" { // App needs no import, and has no type other modules can use
 				switch t.Name {
-				case "Msg": // the type of app-level messages
+				case "Msg": // the old app-level messages' type: E0046 (the checker)
 					t.Ref = syntax.Ref{Kind: syntax.RefType, Module: "App", Name: "Msg"}
 				case "Session":
 					d := r.bag.Error(diag.UnknownName, t.Span, "`Session` is not qualified; write `Session`")
 					d.Fix = diag.ReplaceSpan(t.Span, "Session")
 				default:
-					r.bag.Error(diag.UnknownName, t.Span, "`App` has no type `%s` other modules can use; only `App.Msg` is global", t.Name)
+					r.bag.Error(diag.UnknownName, t.Span, "`App` has no type `%s` other modules can use", t.Name)
 				}
 				return
 			}
@@ -1047,8 +958,6 @@ func (r *resolver) typ(t syntax.Type) {
 			t.Ref = syntax.Ref{Kind: syntax.RefType, Module: mod, Name: t.Name}
 		case preludeTypes[t.Name]:
 			t.Ref = syntax.Ref{Kind: syntax.RefType, Module: "Prelude", Name: t.Name}
-		case r.p.IsPageModule(t.Name):
-			t.Ref = syntax.Ref{Kind: syntax.RefPage, Module: t.Name}
 		default:
 			// unqualified type that lives in an imported module → E0202 with fix
 			for _, x := range r.importNames() {
@@ -1145,11 +1054,6 @@ func (r *resolver) expr(e syntax.Expr, sc *Scope) {
 		r.expr(e.Expr, sc)
 	case *syntax.App:
 		r.expr(e.Fn, sc)
-		if ct, ok := e.Fn.(*syntax.CtorRef); ok && len(e.Args) == 1 {
-			if _, rec := e.Args[0].(*syntax.RecordLit); rec {
-				r.pageUse(ct)
-			}
-		}
 		for i, a := range e.Args {
 			if v, ok := e.Fn.(*syntax.Var); ok && i == 0 && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" {
 				switch v.Ref.Name {
@@ -1157,10 +1061,7 @@ func (r *resolver) expr(e syntax.Expr, sc *Scope) {
 					r.testFakeArg(a, sc)
 					continue
 				case "submit", "submitRaw":
-					r.testFormArg(a, v.Ref.Name, sc)
-					continue
-				case "click":
-					r.testClickArg(a, sc)
+					r.testFormArg(a, sc)
 					continue
 				}
 			}
@@ -1347,16 +1248,12 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 		r.bag.Error(diag.UnknownName, v.Span, "`%s` is a table of `fake %s` in module `%s`: write `%s.%s.%s`", mod, fake, owner, r.qualFor(owner), mod, v.Name)
 		return
 	}
-	if mod == "App" { // App needs no import; only its messages are usable values
-		if app := r.p.scopes["App"]; v.Name == "update" && r.p.Modules["App"] != nil && app != nil && app.values["update"] {
-			r.bag.Error(diag.UnknownName, v.Span, "`App.update` is called by the runtime, not by code; a test of it belongs in `app/App.alder`")
-			return
-		}
+	if mod == "App" { // App needs no import, and has no values other modules can use
 		if v.Name == "login" {
-			r.bag.Error(diag.UnknownName, v.Span, "`App` has no `login`; `login` is a declaration, not a value — link to the page with `href={%s {}}`", r.loginPage())
+			r.bag.Error(diag.UnknownName, v.Span, "`App` has no `login`; `login` is a declaration, not a value — link to the login route with `href={%s {}}`", r.loginPage())
 			return
 		}
-		r.bag.Error(diag.UnknownName, v.Span, "`App` has no `%s`; only app-level messages such as `App.Logout` can be used from other modules", v.Name)
+		r.bag.Error(diag.UnknownName, v.Span, "`App` has no `%s` other modules can use; only its routes, such as `App.Logout`, are", v.Name)
 		return
 	}
 	r.notImported(v.Span, mod)
@@ -1407,11 +1304,19 @@ func (r *resolver) ownQualified(span diag.Span, name string, declared, fix bool)
 	}
 }
 
+// removedNav maps each constructor of the old `Nav` (#160) to the `Response` builder that
+// replaces it: unresolved, it is E0046.
+var removedNav = map[string]string{"Rerender": "Response.refresh", "Redirect": "Response.redirect", "Reject": "Response.invalid"}
+
 // unresolvedCtor reports an unqualified constructor (or table) found nowhere this module can
 // see. A table of another module gets the table's message (E5 problem 2); a constructor some
 // app module declares names that module (message 4); a name no module declares is silent when
 // an import of this module names no module, since that import's error stands for it (message 3).
 func (r *resolver) unresolvedCtor(c *syntax.CtorRef) {
+	if b, ok := removedNav[c.Name]; ok && c.Module == "" {
+		r.bag.Error(diag.RemovedSyntax, c.Span, "`%s` is gone: write `%s`; %s", c.Name, b, diag.RemovedHint)
+		return
+	}
 	if owner, table, ok := r.tableInOtherModule(c.Name); ok {
 		r.tableMisplaced(c.Span, owner, table)
 		return
@@ -1440,11 +1345,6 @@ func (r *resolver) unresolvedCtor(c *syntax.CtorRef) {
 		}
 		list := strings.Join(of[:len(of)-1], ", ") + " and " + of[len(of)-1]
 		r.bag.Error(diag.UnknownName, c.Span, "`%s` is a constructor %s; import one of them", c.Name, list)
-		return
-	}
-	if _, ok := r.p.AppMsgs[c.Name]; ok && r.m.Name != "App" { // `Logout` in a page
-		d := r.bag.Error(diag.UnknownName, c.Span, "`%s` is an app-level message: write `App.%s`", c.Name, c.Name)
-		d.Fix = diag.ReplaceSpan(c.Span, "App."+c.Name)
 		return
 	}
 	if len(r.missing) > 0 {
@@ -1477,7 +1377,7 @@ func (r *resolver) missingCause(name string) string {
 	if len(mods) == 0 {
 		return ""
 	}
-	for _, m := range r.p.Order { // a page's message, say, is declared: the cause is elsewhere
+	for _, m := range r.p.Order { // a constructor of another module, say, is declared: the cause is elsewhere
 		if s := r.p.scopes[m]; s != nil {
 			if _, ok := s.ctors[name]; ok || s.types[name] {
 				return ""
@@ -1507,7 +1407,7 @@ func (r *resolver) loginPage() string {
 			}
 		}
 	}
-	return "Auth.Login"
+	return "Auth.Login.Login"
 }
 
 // tableAlt is the table a bare name also names, as the resolver would resolve it were it no
@@ -1557,11 +1457,11 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 			c.Table = r.tableAlt(c.Name)
 			return
 		}
-		if r.ms.routes[c.Name] { // after constructors, as a page: E0044 refuses the clash
+		if r.ms.routes[c.Name] { // after constructors: E0044 refuses the clash
 			c.Ref = syntax.Ref{Kind: syntax.RefRoute, Module: r.m.Name, Name: c.Name}
 			return
 		}
-		if r.p.IsPageModule(c.Name) {
+		if r.p.oldPages[c.Name] { // an old page's value (E0046 in its module)
 			c.Ref = syntax.Ref{Kind: syntax.RefPage, Module: c.Name}
 			return
 		}
@@ -1585,8 +1485,12 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 		return
 	}
 
-	if r.p.IsPageModule(full) {
+	if r.p.oldPages[full] { // an old page's value (E0046 in its module)
 		c.Ref = syntax.Ref{Kind: syntax.RefPage, Module: full}
+		return
+	}
+	if c.Module == "App" && r.p.oldAppMsgs[c.Name] && r.p.Route("App", c.Name) == nil { // App's old message (E0046 there)
+		c.Ref = syntax.Ref{Kind: syntax.RefPage, Module: "App", Name: c.Name}
 		return
 	}
 	// another module's route, written with the module's path and no import (plan call 5)
@@ -1597,23 +1501,10 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 	if path, ok := r.routeByQualifier(c.Module, c.Name); ok {
 		r.ms.used[path] = true // one error, not a W0001 besides
 		full := path + "." + c.Name
-		d := r.bag.Error(diag.UnknownName, c.Span, "write `%s`: a route is written with its module's full path, like a page", full)
+		d := r.bag.Error(diag.UnknownName, c.Span, "write `%s`: a route is written with its module's full path", full)
 		d.Fix = diag.ReplaceSpan(c.Span, full)
 		c.Ref = syntax.Ref{Kind: syntax.RefRoute, Module: path, Name: c.Name}
 		return
-	}
-	if c.Module == "App" {
-		if _, ok := r.p.AppMsgs[c.Name]; ok {
-			c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: "App", Name: c.Name}
-			return
-		}
-	}
-	// another page's message: `click={Auth.Login.Logout}`
-	if r.p.IsPageModule(c.Module) && c.Module != r.m.Name {
-		if s := r.p.scopes[c.Module]; s != nil && s.ctors[c.Name] == "Msg" {
-			r.bag.Error(diag.UnknownName, c.Span, "`%s` belongs to page `%s`; a page can only send its own messages and `App` messages", c.Name, c.Module)
-			return
-		}
 	}
 	if c.Module == r.m.Name { // `Notes.Show.Save` inside Notes.Show
 		_, isCtor := r.ms.ctors[c.Name]
@@ -1633,10 +1524,6 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 			return
 		}
 		if _, isCtor := s.ctors[name]; isCtor {
-			if s.ctors[name] == "Msg" && r.p.IsPageModule(path) { // an imported page's message, through its qualifier
-				r.bag.Error(diag.UnknownName, c.Span, "`%s` belongs to page `%s`; a page can only send its own messages and `App` messages", name, path)
-				return
-			}
 			d := r.bag.Error("E0203", c.Span, "constructors are not qualified; write `%s`", name)
 			d.Fix = diag.ReplaceSpan(c.Span, name)
 			c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: path, Name: name}
@@ -1657,7 +1544,7 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 	}
 	// `Theme.Light` where app module Theme declares Light but is not imported
 	if s := r.p.scopes[c.Module]; s != nil && r.p.Modules[c.Module] != nil {
-		if _, isCtor := s.ctors[c.Name]; isCtor && s.ctors[c.Name] != "Msg" {
+		if _, isCtor := s.ctors[c.Name]; isCtor {
 			if path := r.p.importPath(c.Module, r.m.Name); path != nil {
 				r.bag.Error("E0203", c.Span, "constructors are not qualified; write `%s`, but `%s` %s, so `%s` cannot import it; %s", c.Name, c.Module, importsPhrase(path), r.m.Name, r.cycleRemedy(c.Module))
 				return
@@ -1824,7 +1711,7 @@ func (r *resolver) routeMember(span diag.Span, mod, path, route, name string, se
 
 // routeByQualifier reports the path of the imported module whose qualifier q is not its path and
 // that declares route name (`Todos.Row` for `import Admin.Todos`): a route constructor is
-// written with its module's full path, like a page (design rule 6).
+// written with its module's full path (design rule 6).
 func (r *resolver) routeByQualifier(q, name string) (string, bool) {
 	im, ok := r.ms.imports[q]
 	if !ok || im.Module == q || r.p.Route(im.Module, name) == nil {

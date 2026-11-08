@@ -3,20 +3,19 @@
 // Each operator is named by the behaviour it breaks; a mutant its tests do not notice is a test
 // that is missing.
 //
-// Collect walks every non-test module in IR order: per module, a page's `requires` first, then
+// Collect walks every non-test module in IR order: per module, its routes' `requires` first, then
 // its tables (field by field), then its values in declaration order, each body in pre-order.
 // Mutant ids are 1-based in that order, so they are stable across runs of the same program; an
 // edit renumbers the mutants after it. Module order is the program's (names.Program.Order):
 // import-topological, dependencies first, roots alphabetical. So adding an import can move a
 // module, renumbering the mutants of modules the edit never touched.
 //
-// Never mutated: test bodies, fake entries, a page's `view` (a file page's is mutated: see
-// below), components and any value whose result is
-// Html, any value whose result is a Fuzzer (a generator), HTML nodes inside other values, brands' `where` checks, the stdlib. A node Lower shares
-// between several places (a record field's default filled into a literal, a match's shared
-// fallback) is mutated once, at its first occurrence; a default is mutated only as a schema
-// mutant (`default changed`). A file page's `view` returns File, not Html, so it is
-// mutated like any value.
+// Never mutated: test bodies, fake entries, components and any value whose result is Html (a
+// route's `view` among them), any value whose result is a Fuzzer (a generator), HTML nodes inside
+// other values, brands' `where` checks, the stdlib. A node Lower shares between several places
+// (a record field's default filled into a literal, a match's shared fallback) is mutated once,
+// at its first occurrence; a default is mutated only as a schema mutant (`default changed`). A
+// file route's `view` returns File, not Html, so it is mutated like any value.
 package mutate
 
 import (
@@ -39,8 +38,6 @@ const (
 	OffsetDropped      = "offset dropped"
 	WriteReplaced      = "write replaced"
 	UpdateFieldDropped = "update field dropped"
-	RedirectRerender   = "redirect → rerender"
-	RejectRerender     = "reject → rerender"
 	ArmSwapped         = "arm swapped"
 	ConditionNegated   = "condition negated"
 	OperatorFlipped    = "operator flipped"
@@ -54,6 +51,7 @@ const (
 	MembershipDropped  = "membership dropped"
 	RedirectRefresh    = "redirect → refresh"
 	RenderRedirect     = "render → redirect"
+	RenderRefresh      = "render → refresh"
 	InvalidRefresh     = "invalid → refresh"
 	RefreshInvalid     = "refresh → invalid"
 	ToastDropped       = "toast dropped"
@@ -61,7 +59,7 @@ const (
 )
 
 // Mutant is one mutation point. Module and Decl name where it is (Decl is the value's name,
-// "requires" for a page's requires, the table's name for a schema mutant), File is the module's
+// the route's name for its requires, the table's name for a schema mutant), File is the module's
 // source file and Line and Col the mutated code's position in it (for a schema mutant, the
 // field's); Before and After are one-line renderings of the code and of the change (elided at 80
 // columns; After describes the change where a rendering would mislead).
@@ -72,11 +70,10 @@ const (
 //     of the same type built only from existing IR node kinds. Replacement never contains Node
 //     itself; it may share Node's subexpressions (which may carry mutants of their own). A Node
 //     may occur in several places of the IR (a shared default): every occurrence is replaced.
-//   - requires dropped: Page is the page, or Route the route (#160), and Field its `requires`
-//     field (a brand over Text); Node is nil and Replacement is the placeholder the field gets
-//     when the session lacks it (a Text Lit "mutant", the brand being erased). A route's Decl
-//     is its name.
-//   - role dropped: Page is the page, or Route the route, whose `requires user, role R | …` is
+//   - requires dropped: Route is the route and Field its `requires` field (a brand over Text);
+//     Node is nil and Replacement is the placeholder the field gets when the session lacks it (a
+//     Text Lit "mutant", the brand being erased). Decl is the route's name.
+//   - role dropped: Route is the route whose `requires user, role R | …` is
 //     dropped to `requires user` (any signed-in user is served); Node and Replacement are nil.
 //     Either is suppressed for a write route without a form whose update only redirects to a
 //     GET route whose own guard refuses the same requests, in the same order (redirectOnly).
@@ -86,10 +83,7 @@ const (
 //     `Db.from T` (a DbSelect); `Db.getMine T id` → `Db.get T id` bound and matched, Nothing →
 //     Query.notFound; `Db.updateMine`/`Db.deleteMine` → `Db.get T id`, then on Just the unscoped
 //     write, on Nothing Task.notFound (not found only when the row is missing). `Db.insertMine`
-//     is skipped: the owner comes from the session either way. A `Db.updateMine`/`Db.deleteMine`
-//     in a page's update whose id is `model.f.id`, where the page's load filled f with a row of
-//     the same table read by `Db.getMine`, is suppressed as equivalent ("load fetched it with
-//     getMine"): every message runs load first, so the id is always the user's own row.
+//     is skipped: the owner comes from the session either way.
 //   - default changed: Node is the table field's Default expression (the one node every record
 //     literal that omits the field shares) and Replacement the changed literal; Table is a clone
 //     of the table whose field Field has that Default (and DefaultLit).
@@ -108,7 +102,6 @@ type Mutant struct {
 	Before, After      string
 	Node               ir.Expr
 	Replacement        ir.Expr
-	Page               *ir.Page
 	Route              *ir.Route
 	Table              *ir.Table
 	Field              string
@@ -140,19 +133,8 @@ const (
 func Collect(p *ir.Program) ([]Mutant, []Suppressed) {
 	c := &collector{p: p, seen: map[ir.Expr]bool{}}
 	c.defaultUses = countDefaults(p)
-	pages := map[string]*ir.Page{}
-	for _, pg := range p.Pages {
-		pages[pg.Module] = pg
-	}
 	for _, m := range p.Modules {
 		c.module = m.Name
-		if pg := pages[m.Name]; pg != nil && len(pg.Requires) > 0 {
-			g := guard{page: pg, decl: "requires", requires: pg.Requires, roles: pg.Roles, requiresPos: pg.RequiresPos, rolesPos: pg.RolesPos}
-			c.requires(g)
-			if pg.Roles != nil {
-				c.roles(g)
-			}
-		}
 		for _, r := range p.Routes {
 			if r.Module == m.Name && len(r.Requires) > 0 {
 				g := guard{route: r, decl: r.Name, requires: r.Requires, roles: r.Roles, requiresPos: r.RequiresPos, rolesPos: r.RolesPos}
@@ -168,14 +150,10 @@ func Collect(p *ir.Program) ([]Mutant, []Suppressed) {
 			}
 		}
 		for _, v := range m.Values {
-			if v.IsComponent || isHtml(v.Type) || isFuzzer(v.Type) || v.TestOnly || (pages[m.Name] != nil && !pages[m.Name].File && pages[m.Name].View == v) {
+			if v.IsComponent || isHtml(v.Type) || isFuzzer(v.Type) || v.TestOnly {
 				continue
 			}
 			c.decl = v.Name
-			c.loaded, c.modelParam = nil, ""
-			if pg := pages[m.Name]; pg != nil && pg.Update == v && len(v.Params) >= 2 && binds(v.Body, v.Params[1].Name) == 0 && !putsSession(v.Body) {
-				c.loaded, c.modelParam = loadedMine(pg), v.Params[1].Name
-			}
 			c.walk(v.Body)
 		}
 	}
@@ -194,10 +172,6 @@ type collector struct {
 	defaultUses  map[ir.Expr]int // a table field's Default → its occurrences in expressions
 	out          []Mutant
 	supp         []Suppressed
-	// loaded and modelParam, while the walk is in a page's update: the model fields its load
-	// fills with a row read by Db.getMine (loadedMine), and update's model parameter
-	loaded     map[string]*ir.Table
-	modelParam string
 }
 
 func (c *collector) add(kind string, at ir.Pos, node, repl ir.Expr, before, after string) {
@@ -225,11 +199,10 @@ func wrapped(prefix, suffix string) func(string) string {
 
 // ---- requires and the schema
 
-// guard is the `requires` (and role) clause of a page or of a route (#160), which requires
-// dropped and role dropped drop. decl names it in the mutant table: "requires" for a page, the
-// route's name for a route (a module declares several routes, each with its own clause).
+// guard is the `requires` (and role) clause of a route, which requires dropped and role dropped
+// drop. decl names it in the mutant table: the route's name (a module declares several routes,
+// each with its own clause).
 type guard struct {
-	page                  *ir.Page
 	route                 *ir.Route
 	decl                  string
 	requires, roles       []string
@@ -241,13 +214,9 @@ func (c *collector) requires(g guard) {
 	c.decl = g.decl
 	line := g.requiresPos.Line
 	req := g.requires[0]
-	what := "page"
-	if g.route != nil {
-		what = "route"
-	}
 	for _, k := range g.requires[1:] {
 		if req == "user" && c.p.Via[k] != nil {
-			c.suppress(RequiresDropped, line, "the "+what+" also requires "+k+", which is `via`: no session has it without a user")
+			c.suppress(RequiresDropped, line, "the route also requires "+k+", which is `via`: no session has it without a user")
 			return
 		}
 	}
@@ -276,7 +245,7 @@ func (c *collector) requires(g guard) {
 	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RequiresDropped, Line: line, Col: g.requiresPos.Col,
 		Before: "requires " + req,
 		After:  "served without " + req + " (" + req + " = " + placeholder + ")",
-		Page:   g.page, Route: g.route, Field: req,
+		Route:  g.route, Field: req,
 		Replacement: &ir.Lit{Typed: ir.Typed{Ty: types.Text}, Kind: ir.LitText, Text: "mutant"}})
 }
 
@@ -322,7 +291,7 @@ func (c *collector) memberships() {
 	}
 }
 
-// roles drops g's `role R | …`: the page or route serves any signed-in user.
+// roles drops g's `role R | …`: the route serves any signed-in user.
 func (c *collector) roles(g guard) {
 	c.decl = g.decl
 	// redirect-only (redirectOnly): the target requires nothing the route does not (a field it
@@ -335,7 +304,7 @@ func (c *collector) roles(g guard) {
 	}
 	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RoleDropped, Line: g.rolesPos.Line, Col: g.rolesPos.Col,
 		Before: "requires " + strings.Join(g.requires, ", ") + ", role " + strings.Join(g.roles, " | "),
-		After:  "requires " + strings.Join(g.requires, ", "), Page: g.page, Route: g.route})
+		After:  "requires " + strings.Join(g.requires, ", "), Route: g.route})
 }
 
 func (c *collector) table(t *ir.Table) {
@@ -570,8 +539,6 @@ func (c *collector) walk(e ir.Expr) {
 		c.refresh(x)
 	case *ir.Update:
 		c.updateFields(x)
-	case *ir.Ctor:
-		c.nav(x)
 	case *ir.DbScoped, *ir.DbGetScoped, *ir.DbUpdateScoped, *ir.DbDeleteScoped, *ir.DbInsertScoped:
 		c.scope(e)
 	}
@@ -899,18 +866,10 @@ func (c *collector) scope(e ir.Expr) {
 		})
 		c.add(ScopeDropped, x.Pos, x, body, c.show(x), line(c.module, get, wrapped("", ", not found when missing")))
 	case *ir.DbUpdateScoped:
-		if c.fetchedMine(x.Table, x.ID) {
-			c.suppress(ScopeDropped, x.Pos.Line, "load fetched it with getMine")
-			return
-		}
 		w := &ir.DbUpdate{Typed: x.Typed, Pos: x.Pos, Table: x.Table, ID: x.ID, Fn: x.Fn}
 		_, body := gotOrNotFound(x.Table, x.ID, x.Ty, func(ir.Expr) ir.Expr { return w })
 		c.add(ScopeDropped, x.Pos, x, body, c.show(x), line(c.module, w, wrapped("", ", not found when missing")))
 	case *ir.DbDeleteScoped:
-		if c.fetchedMine(x.Table, x.ID) {
-			c.suppress(ScopeDropped, x.Pos.Line, "load fetched it with getMine")
-			return
-		}
 		w := &ir.DbDelete{Typed: x.Typed, Pos: x.Pos, Table: x.Table, ID: x.ID}
 		_, body := gotOrNotFound(x.Table, x.ID, x.Ty, func(ir.Expr) ir.Expr { return w })
 		c.add(ScopeDropped, x.Pos, x, body, c.show(x), line(c.module, w, wrapped("", ", not found when missing")))
@@ -959,178 +918,6 @@ func scopedTable(e ir.Expr) (*ir.Table, ir.Pos) {
 		return x.Table, x.Pos
 	}
 	return nil, ir.Pos{}
-}
-
-// fetchedMine reports whether id, the id of a scoped write to tb in a page's update, is
-// `model.f.id` where the page's load filled f with a row of tb it read with Db.getMine. Every
-// message runs load first, so that row is the signed-in user's: the unscoped write could reach
-// no other row, and its `scope dropped` mutant is the same program (equivalent).
-func (c *collector) fetchedMine(tb *ir.Table, id ir.Expr) bool {
-	outer, ok := id.(*ir.Field)
-	if !ok || c.loaded == nil || outer.Name != tb.IDField {
-		return false
-	}
-	inner, ok := outer.Expr.(*ir.Field)
-	if !ok {
-		return false
-	}
-	v, ok := inner.Expr.(*ir.Var)
-	if !ok || v.Kind != ir.VarLocal || v.Name != c.modelParam {
-		return false
-	}
-	t := c.loaded[inner.Name]
-	return t != nil && t.Module == tb.Module && t.Name == tb.Name
-}
-
-// loadedMine is, for page pg, the model fields its load fills with a row it read with
-// Db.getMine, and that row's table: a field f such that every record of the page's Model type
-// that load builds sets f to a local bound once, by `let x <- Db.getMine T …`. Load building no
-// such record (a helper makes the model), or a record update of the model, gives none.
-func loadedMine(pg *ir.Page) map[string]*ir.Table {
-	if pg.Load == nil || pg.Model == nil {
-		return nil
-	}
-	mine := map[string]*ir.Table{} // a local bound by Db.getMine → its table
-	var models []*ir.Record
-	updated := false
-	var visit func(e ir.Expr)
-	visit = func(e ir.Expr) {
-		if isNil(e) {
-			return
-		}
-		switch x := e.(type) {
-		case *ir.EffBind:
-			if g, ok := x.Effect.(*ir.DbGetScoped); ok && x.Param != nil {
-				mine[x.Param.Name] = g.Table
-			}
-		case *ir.Record:
-			if isModel(pg.Model, x.T) {
-				models = append(models, x)
-			}
-		case *ir.Update:
-			if r, ok := x.Ty.(*types.Record); ok && r.Module == pg.Model.Module && r.Name == pg.Model.Name {
-				updated = true
-			}
-		}
-		for _, k := range ir.Children(e) {
-			visit(k)
-		}
-	}
-	visit(pg.Load.Body)
-	if updated || len(models) == 0 {
-		return nil
-	}
-	out := map[string]*ir.Table{}
-	for _, f := range pg.Model.Fields {
-		var tb *ir.Table
-		for i, r := range models {
-			var t *ir.Table
-			for _, fi := range r.Fields {
-				if v, ok := fi.Value.(*ir.Var); ok && fi.Name == f.Name && v.Kind == ir.VarLocal && binds(pg.Load.Body, v.Name) == 1 {
-					t = mine[v.Name]
-				}
-			}
-			if t == nil || (i > 0 && t != tb) {
-				tb = nil
-				break
-			}
-			tb = t
-		}
-		if tb != nil {
-			out[f.Name] = tb
-		}
-	}
-	return out
-}
-
-// putsSession reports whether e may put the session: it calls Session.put, or uses a value of
-// the app whose type is a Task (or a function to one), which may put it (conservatively, any such
-// helper). A scoped write after a put acts for the session it put, which may not be the user load
-// read the row for.
-func putsSession(e ir.Expr) bool {
-	if isNil(e) {
-		return false
-	}
-	if isStd(e, "Session", "put") {
-		return true
-	}
-	if v, ok := e.(*ir.Var); ok && v.Kind == ir.VarGlobal && isTaskType(v.Ty) {
-		return true
-	}
-	for _, k := range ir.Children(e) {
-		if putsSession(k) {
-			return true
-		}
-	}
-	return false
-}
-
-// isTaskType reports whether t is a Task or a function whose result (after all its parameters)
-// is one.
-func isTaskType(t types.Type) bool {
-	for {
-		switch x := t.(type) {
-		case *types.Fun:
-			t = x.Result
-		case *types.App:
-			return x.Con == "Task"
-		default:
-			return false
-		}
-	}
-}
-
-func isModel(model, t *ir.RecordType) bool {
-	return t != nil && (t == model || (t.Module == model.Module && t.Name == model.Name))
-}
-
-// binds counts the bindings of local name in e: lets, lambda parameters, pattern bindings, for
-// variables and `let … <-`.
-func binds(e ir.Expr, name string) int {
-	if isNil(e) {
-		return 0
-	}
-	n := 0
-	switch x := e.(type) {
-	case *ir.Let:
-		if x.Name == name {
-			n++
-		}
-	case *ir.Lambda:
-		for _, p := range x.Params {
-			if p.Name == name {
-				n++
-			}
-		}
-	case *ir.Match:
-		n += bindsCases(x.Cases, name)
-	case *ir.HMatch:
-		n += bindsCases(x.Cases, name)
-	case *ir.HFor:
-		if x.Var == name {
-			n++
-		}
-	case *ir.EffBind:
-		if x.Param != nil && x.Param.Name == name {
-			n++
-		}
-	}
-	for _, k := range ir.Children(e) {
-		n += binds(k, name)
-	}
-	return n
-}
-
-func bindsCases(cs []ir.Case, name string) int {
-	n := 0
-	for _, c := range cs {
-		for _, b := range c.Binds {
-			if b.Name == name {
-				n++
-			}
-		}
-	}
-	return n
 }
 
 // gotOrNotFound is `Db.get tb id` (get) and the effect of type ty running it: on `Just row` the
@@ -1215,23 +1002,6 @@ func (c *collector) updateFields(x *ir.Update) {
 	}
 }
 
-func (c *collector) nav(x *ir.Ctor) {
-	if x.U == nil || x.U.Module != "Prelude" || x.U.Name != "Nav" {
-		return
-	}
-	kind := ""
-	switch x.Name {
-	case "Redirect":
-		kind = RedirectRerender
-	case "Reject":
-		kind = RejectRerender
-	default:
-		return
-	}
-	r := &ir.Ctor{Typed: x.Typed, Pos: x.Pos, U: x.U, Name: "Rerender"}
-	c.add(kind, x.Pos, x, r, c.show(x), "Rerender")
-}
-
 // ---- a route's Response (#160)
 
 // responseStd is the stdlib value Response.name, of type ty.
@@ -1239,10 +1009,11 @@ func responseStd(ty types.Type, name string) *ir.Var {
 	return &ir.Var{Typed: ir.Typed{Ty: ty}, Kind: ir.VarStd, Module: "Response", Name: name}
 }
 
-// answer swaps a write's answer for another of type Response, as nav does a Nav's: `redirect
-// r` → refresh (the write stays on the page it was sent from), `render r` → `redirect r` (the
-// same route, but a 303 to it), `invalid t` → refresh (a refused write answered as a done one);
-// and drops a notice (`toast`, `success`, `warning`, `error`), leaving the Response it decorates.
+// answer swaps a write's answer for another of type Response: `redirect r` → refresh (the write
+// stays on the page it was sent from), `render r` → `redirect r` (the same route, but a 303 to
+// it) and → refresh (the whole page rendered again, not r's element), `invalid t` → refresh (a
+// refused write answered as a done one); and drops a notice (`toast`, `success`, `warning`,
+// `error`), leaving the Response it decorates.
 func (c *collector) answer(x *ir.Call) {
 	v, ok := x.Fn.(*ir.Var)
 	if !ok || v.Kind != ir.VarStd || v.Module != "Response" {
@@ -1255,6 +1026,7 @@ func (c *collector) answer(x *ir.Call) {
 	case v.Name == "render" && len(x.Args) == 1:
 		r := &ir.Call{Typed: x.Typed, Pos: x.Pos, Fn: responseStd(v.Ty, "redirect"), Args: x.Args}
 		c.add(RenderRedirect, x.Pos, x, r, c.show(x), c.show(r))
+		c.add(RenderRefresh, x.Pos, x, refresh, c.show(x), "Response.refresh")
 	case v.Name == "invalid" && len(x.Args) == 1:
 		c.add(InvalidRefresh, x.Pos, x, refresh, c.show(x), "Response.refresh")
 	case (v.Name == "toast" || v.Name == "success" || v.Name == "warning" || v.Name == "error") && len(x.Args) == 2:

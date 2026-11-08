@@ -16,13 +16,13 @@ route Row = GET "/todos/{id}" { id: Int }
 Index.load : Index.Params -> Session -> Query Int
 Index.load params session = Query.succeed 1
 
-Index.view : Int -> Session -> Html a
+Index.view : Int -> Session -> Html
 Index.view n session = <ul>{Row.view n session}</ul>
 
 Row.load : Row.Params -> Session -> Query Int
 Row.load params session = Query.succeed params.id
 
-Row.view : Int -> Session -> Html a
+Row.view : Int -> Session -> Html
 Row.view n session = <a href={Row { id: n }}>row</a>
 `
 
@@ -51,9 +51,9 @@ func TestResolve_OwnRouteCtorAndMembers(t *testing.T) {
 
 // From another module a route's constructor needs no import; its members do.
 func TestResolve_CrossModuleRoute(t *testing.T) {
-	home := "module Home\n\nlink : Html a\nlink = <a href={Todos.Row { id: 1 }}>row</a>\n"
-	list := "module List2\n\nimport Todos\n\nrow : Todos.Row.Params -> Html a\nrow p = Todos.Row.view p.id {}\n"
-	bare := "module Bare\n\nrow : Int -> Html a\nrow n = Todos.Row.view n {}\n"
+	home := "module Home\n\nlink : Html\nlink = <a href={Todos.Row { id: 1 }}>row</a>\n"
+	list := "module List2\n\nimport Todos\n\nrow : Todos.Row.Params -> Html\nrow p = Todos.Row.view p.id {}\n"
+	bare := "module Bare\n\nrow : Int -> Html\nrow n = Todos.Row.view n {}\n"
 	_, bag, mods := resolveMods(t, std(t), todosRoutes, home, list, bare)
 	wantRef(t, mods["Home"], "Todos.Row", syntax.Ref{Kind: syntax.RefRoute, Module: "Todos", Name: "Row"})
 	wantRef(t, mods["List2"], "Todos.Row.view", syntax.Ref{Kind: syntax.RefValue, Module: "Todos", Name: "Row.view"})
@@ -72,7 +72,7 @@ func TestResolve_CrossModuleRoute(t *testing.T) {
 
 // Inside its module a route is written unqualified; a member the route lacks is reported.
 func TestResolve_RouteMisuses(t *testing.T) {
-	src := todosRoutes + "\nx : Html a\nx = <a href={Todos.Row { id: 1 }}>{Row.nope}</a>\n\ny : Row.Model -> Int\ny m = 1\n"
+	src := todosRoutes + "\nx : Html\nx = <a href={Todos.Row { id: 1 }}>{Row.nope}</a>\n\ny : Row.Model -> Int\ny m = 1\n"
 	_, bag, _ := resolveMods(t, std(t), src)
 	got := codes(bag)
 	for _, want := range []string{
@@ -117,9 +117,9 @@ func TestResolve_RouteNamedLikeStdModule(t *testing.T) {
 // qualifier it gets the full path as a fix.
 func TestResolve_RouteCtorThroughQualifier(t *testing.T) {
 	admin := "module Admin.Users\n\nroute Edit = GET \"/users/{id}\" { id: Int }\n"
-	home := "module Home\n\nimport Admin.Users\n\nlink : Html a\nlink = <a href={Users.Edit { id: 1 }}>{Admin.Users.Edit { id: 2 }}</a>\n"
+	home := "module Home\n\nimport Admin.Users\n\nlink : Html\nlink = <a href={Users.Edit { id: 1 }}>{Admin.Users.Edit { id: 2 }}</a>\n"
 	_, bag, mods := resolveMods(t, std(t), admin, home)
-	if got, want := codes(bag), "E0002:write `Admin.Users.Edit`: a route is written with its module's full path, like a page"; got != want {
+	if got, want := codes(bag), "E0002:write `Admin.Users.Edit`: a route is written with its module's full path"; got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}
 	if d := bag.Items[0]; d.Fix == nil || d.Fix.Replace != "Admin.Users.Edit" {

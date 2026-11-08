@@ -2,6 +2,6 @@ app/Props.alder:16:20 E0003 test "ret": expected Bool, got Int; a property must 
 app/Props.alder:20:3 E0003 expected Task Bool, got Bool; a block test is a Task: end it with `Task.succeed (…)`
 app/Props.alder:23:29 E0038 `Int -> Int` cannot be generated; use `Fuzz.forAll` with a generator you write
 app/Props.alder:31:18 E0038 `Int -> Int` in constructor `Custom` of `Shape` cannot be generated; use `Fuzz.forAll` with a generator you write
-app/Props.alder:33:16 E0038 `Nav` cannot be generated; use `Fuzz.forAll` with a generator you write
-app/Props.alder:33:26 E0038 `Task Int` cannot be generated; use `Fuzz.forAll` with a generator you write
+app/Props.alder:33:21 E0038 `Response` cannot be generated; use `Fuzz.forAll` with a generator you write
+app/Props.alder:33:36 E0038 `Task Int` cannot be generated; use `Fuzz.forAll` with a generator you write
 app/Props.alder:35:33 E0003 test "task ret": expected Bool, got Task Bool; a property that returns a Task Bool needs a block body `{ … }`

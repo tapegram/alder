@@ -259,7 +259,7 @@ func qualifiers(p *Program, expr string, ctors ...string) []string {
 				// App and the pages are named without an import (`App.Logout`, `Teams.Show.Remove`),
 				// and so is a route (`Notes.Index.Index { … }`, #160)
 				route := k == len(segs)-1 && routeDecl(p.Modules[name].Syntax, segs[k]) != nil
-				if !seen[name] && name != "App" && p.PageNamed(name) == nil && !route {
+				if !seen[name] && name != "App" && !route {
 					seen[name] = true
 					out = append(out, name)
 				}
@@ -346,7 +346,7 @@ func shortModules(p *Program, m *Module, expr string) ([]string, error) {
 	cands := map[string][]string{} // qualifier -> the not-yet-imported modules that would get it
 	var all []string
 	for x := range p.Modules {
-		if !have[x] && !p.Std[x] && x != "App" && p.PageNamed(x) == nil { // a page is never named by a short qualifier for a member
+		if !have[x] && !p.Std[x] && x != "App" {
 			all = append(all, x)
 		}
 	}

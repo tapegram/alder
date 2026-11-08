@@ -164,26 +164,26 @@ func TestFixesApply(t *testing.T) {
 func TestUnshownErrorsWarning(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
-		"App.alder": "module App\n\nerror : Error -> Html Never\nerror err = <p>e</p>\n\nnotFound : Html Never\nnotFound = <p>nf</p>\n",
+		"App.alder": "module App\n\nerror : Error -> Html\nerror err = <p>e</p>\n\nnotFound : Html\nnotFound = <p>nf</p>\n",
 		"P.alder": `module P
 
-page "/" { }
-
-type Model = { }
+route Index = GET  "/"     { }
+route Add   = POST "/add"  { } form F
+route Keep  = POST "/keep" { } form F
 
 form F = { title: Text, size: Int, done: Bool }
 
-msg Add form F
-msg Keep form F
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Add.update : Add.Params -> Session -> Task Response
+Add.update params session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = Task.succeed Rerender
+Keep.update : Keep.Params -> Session -> Task Response
+Keep.update params session = Task.succeed Response.refresh
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Int -> Session -> Html
+Index.view n session =
   <div>
     <form submit={Add}><Input field="title" /><Errors field="title" /><Input field="size" /><Input field="done" /></form>
     <form submit={Keep}><Errors form /><Input field="size" /></form>
@@ -292,7 +292,7 @@ func TestReservedPreludeNames(t *testing.T) {
 		{"form", "form Query = {\n  q: Text,\n}\n\nx : Query Int\nx = Query.succeed 1\n", "E0012 `Query` is a Prelude type; name the form differently (for example `QueryForm`)"},
 		{"type", "type Task = { n: Int }\n", "E0012 `Task` is a Prelude type; name the type differently (for example `TaskType`)"},
 		{"union", "type Maybe = Yes | No\n", "E0012 `Maybe` is a Prelude type; name the type differently (for example `MaybeType`)"},
-		{"table", "type NavId = brand Text\n\ntable Nav {\n  id: NavId @id,\n}\n", "E0012 `Nav` is a Prelude type; name the table differently (for example `NavTable`)"},
+		{"table", "type UnitId = brand Text\n\ntable Unit {\n  id: UnitId @id,\n}\n", "E0012 `Unit` is a Prelude type; name the table differently (for example `UnitTable`)"},
 		// Db's plumbing types are not reserved: they are free for domain names
 		{"Page", "type Page a = { items: List a, total: Int }\n\nfirst : Page Int -> Int\nfirst p = p.total\n", ""},
 	}
@@ -301,7 +301,7 @@ func TestReservedPreludeNames(t *testing.T) {
 			var got []string
 			module := "M"
 			if c.name == "table" {
-				module = "Nav" // a table is declared in its own module
+				module = "Unit" // a table is declared in its own module
 			}
 			for _, d := range checkModule(t, "module "+module+"\n\n"+c.src) {
 				got = append(got, d.Code+" "+d.Message)

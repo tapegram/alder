@@ -29,7 +29,7 @@ func codes(b *diag.Bag) string {
 var prelude = map[string]*syntax.Module{} // filled by Task 7; tests here use syntax.ParseSignatures directly
 
 func std(t *testing.T) map[string]*syntax.Module {
-	m, _ := syntax.ParseSignatures("Prelude.alder", []byte("module Prelude\ntype Int\ntype Text\ntype Bool = True | False\ntype List a\ntype Maybe a = Just a | Nothing\ntype Html a\ntype Query a\ntype Task a\ntype Nav = Rerender | Redirect Text\nnot : Bool -> Bool\n"))
+	m, _ := syntax.ParseSignatures("Prelude.alder", []byte("module Prelude\ntype Int\ntype Text\ntype Bool = True | False\ntype List a\ntype Maybe a = Just a | Nothing\ntype Html\ntype Query a\ntype Task a\ntype Nav = Rerender | Redirect Text\nnot : Bool -> Bool\n"))
 	l, _ := syntax.ParseSignatures("List.alder", []byte("module List\nmap : (a -> b) -> List a -> List b\n"))
 	q, _ := syntax.ParseSignatures("Query.alder", []byte("module Query\nsucceed : a -> Query a\n"))
 	tk, _ := syntax.ParseSignatures("Task.alder", []byte("module Task\nsucceed : a -> Task a\n"))
@@ -38,7 +38,7 @@ func std(t *testing.T) map[string]*syntax.Module {
 
 func TestResolve_Basics(t *testing.T) {
 	todo := parse(t, "app/Todo.alder", "module Todo\n\ntype TodoId = brand Text\n\ntype Filter = All | Active\n\ntable Todo {\n  id: TodoId @id,\n  done: Bool = False,\n}\n")
-	idx := parse(t, "app/Todos/Index.alder", "module Todos.Index\n\nimport Todo\n\npage \"/\" { filter: Todo.Filter = All }\n\ntype Model = { todos: List Todo }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { todos: [] }\n\nview : Model -> Session -> Html Msg\nview model session = <ul>{for t in model.todos -> <li>{Todo.filterLabel All}</li>}</ul>\n\nf : Todo.Filter -> Bool\nf x = match x { All -> True, Active -> not False }\n")
+	idx := parse(t, "app/Todos/Index.alder", "module Todos.Index\n\nimport Todo\n\npage \"/\" { filter: Todo.Filter = All }\n\ntype Model = { todos: List Todo }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { todos: [] }\n\nview : Model -> Session -> Html\nview model session = <ul>{for t in model.todos -> <li>{Todo.filterLabel All}</li>}</ul>\n\nf : Todo.Filter -> Bool\nf x = match x { All -> True, Active -> not False }\n")
 	prog, bag := Build([]*syntax.Module{todo, idx}, std(t))
 	prog.Resolve(bag)
 	for _, d := range bag.Items {
@@ -98,8 +98,8 @@ func TestResolve_ImportCycle(t *testing.T) {
 }
 
 func TestResolve_GlobalsAndModulePath(t *testing.T) {
-	app := parse(t, "app/App.alder", "module App\n\nsession { user: Maybe Text }\n\nlogin = Auth.Login\n\nmsg Logout\n\nupdate : Msg -> Session -> Task Nav\nupdate msg session = Task.succeed Rerender\n")
-	login := parse(t, "app/Auth/Login.alder", "module Auth.Login\n\npage \"/login\" { }\n\ntype Model = { }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { }\n\nview : Model -> Session -> Html Msg\nview model session = <a href={Auth.Login {}}><button click={App.Logout}>x</button></a>\n")
+	app := parse(t, "app/App.alder", "module App\n\nsession { user: Maybe Text }\n\nlogin = Auth.Login.Login\n\nroute Logout = POST \"/_/Logout\" { }\n\nLogout.update : Logout.Params -> Session -> Task Response\nLogout.update p session = Task.succeed ()\n")
+	login := parse(t, "app/Auth/Login.alder", "module Auth.Login\n\nroute Login = GET \"/login\" { }\n\ntype Model = { }\n\nLogin.load : Login.Params -> Session -> Query Model\nLogin.load params session = Query.succeed { }\n\nLogin.view : Model -> Session -> Html\nLogin.view model session = <a href={Login {}}><button click={App.Logout}>x</button></a>\n")
 	wrong := parse(t, "app/Misc/Wrong.alder", "module Wrong\n\nx : Int\nx = 1\n")
 	prog, bag := Build([]*syntax.Module{app, login, wrong}, std(t))
 	prog.Resolve(bag)
@@ -112,8 +112,8 @@ func TestResolve_GlobalsAndModulePath(t *testing.T) {
 			t.Fatalf("unexpected error: %s", codes(bag))
 		}
 	}
-	if prog.AppMsgs["Logout"] == nil || prog.Pages["Auth.Login"] == nil {
-		t.Fatal("globals not collected")
+	if prog.Route("App", "Logout") == nil || prog.Route("Auth.Login", "Login") == nil {
+		t.Fatal("routes not collected")
 	}
 }
 
@@ -168,8 +168,8 @@ func TestResolve_ModuleNameRuleBeatsPrelude(t *testing.T) {
 
 // `App` is global and never imported: no App-qualified name is reported as E0201.
 func TestResolve_AppQualifierNeverE0201(t *testing.T) {
-	app := parse(t, "app/App.alder", "module App\n\nmsg Logout\n")
-	lay := parse(t, "app/Layout.alder", "module Layout\n\nPage : { children: List (Html App.Msg) } -> Html App.Msg\nPage props = <main>{props.children}</main>\n\nx : App.Session\nx = ?x\n\ny : App.Theme\ny = ?y\n\nz : Int\nz = App.login\n\nw : Int\nw = App.update\n")
+	app := parse(t, "app/App.alder", "module App\n\nroute Logout = POST \"/_/Logout\" { }\n")
+	lay := parse(t, "app/Layout.alder", "module Layout\n\nPage : { children: List Html } -> Html\nPage props = <main>{props.children}</main>\n\nx : App.Session\nx = ?x\n\ny : App.Theme\ny = ?y\n\nz : Int\nz = App.login\n\nw : Int\nw = App.update\n")
 	prog, bag := Build([]*syntax.Module{app, lay}, std(t))
 	prog.Resolve(bag)
 	got := codes(bag)
@@ -178,16 +178,16 @@ func TestResolve_AppQualifierNeverE0201(t *testing.T) {
 	}
 	for _, want := range []string{
 		"E0002:`Session` is not qualified; write `Session`",
-		"E0002:`App` has no type `Theme` other modules can use; only `App.Msg` is global",
-		"E0002:`App` has no `login`; `login` is a declaration, not a value — link to the page with `href={Auth.Login {}}`",
-		"E0002:`App` has no `update`; only app-level messages such as `App.Logout` can be used from other modules", // App declares no `update` here
+		"E0002:`App` has no type `Theme` other modules can use",
+		"E0002:`App` has no `login`; `login` is a declaration, not a value — link to the login route with `href={Auth.Login.Login {}}`",
+		"E0002:`App` has no `update` other modules can use; only its routes, such as `App.Logout`, are",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
 	}
 	if n := strings.Count(got, "\n") + 1; n != 4 {
-		t.Errorf("want exactly 4 diagnostics (App.Msg resolves), got %d:\n%s", n, got)
+		t.Errorf("want exactly 4 diagnostics, got %d:\n%s", n, got)
 	}
 }
 
@@ -327,7 +327,7 @@ func testStd(t *testing.T) map[string]*syntax.Module {
 		t.Fatal(ds[0].Message)
 	}
 	s["Test"] = tm
-	m, _ := syntax.ParseSignatures("Prelude.alder", []byte("module Prelude\ntype Int\ntype Text\ntype Unit\ntype Bool = True | False\ntype List a\ntype Maybe a = Just a | Nothing\ntype Html a\ntype Query a\ntype Task a\ntype Result e a = Ok a | Err e\n"))
+	m, _ := syntax.ParseSignatures("Prelude.alder", []byte("module Prelude\ntype Int\ntype Text\ntype Unit\ntype Bool = True | False\ntype List a\ntype Maybe a = Just a | Nothing\ntype Html\ntype Query a\ntype Task a\ntype Result e a = Ok a | Err e\n"))
 	s["Prelude"] = m
 	return s
 }

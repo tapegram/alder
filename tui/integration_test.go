@@ -231,7 +231,7 @@ func TestLive_Screens(t *testing.T) {
 	}
 	found := false
 	for _, rt := range rs {
-		found = found || rt.Kind == "page" && rt.Path == "/books/{id}"
+		found = found || rt.MethodOf() == "GET" && rt.Path == "/books/{id}"
 	}
 	if !found {
 		t.Errorf("alder routes --json lacks the page /books/{id}: %+v", rs)

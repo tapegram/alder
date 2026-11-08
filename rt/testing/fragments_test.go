@@ -11,13 +11,18 @@ import (
 	"alder/rt/web"
 )
 
-// The rows fixture: a page of n rows, each `<li id="row-N">` with a Toggle button, its state in
-// a slice the routes share (no table: the fragment path is about markup). Toggle answers as the
-// generated update route does: Before is the view of the model before update.
+// The rows fixture: a page of n rows, each `<li id="row-N">` with a click of Rows.Toggle (PATCH
+// /rows/{id}), its state in a slice the routes share (no table: the fragment path is about
+// markup). Toggle answers `refresh` as the generated write route does: the page the browser is
+// on rendered before the update (RenderShown).
 
 type rowsApp struct {
 	done  []bool
 	shown []string // the Alder-Shown header of each Toggle
+}
+
+func rowsToggle(i int) rt.Route {
+	return rt.Route{Name: "Rows.Toggle", Method: "PATCH", Path: "/rows/" + strconv.Itoa(i)}
 }
 
 func (a *rowsApp) view(done []bool) html.Node {
@@ -29,7 +34,7 @@ func (a *rowsApp) view(done []bool) html.Node {
 		}
 		items = append(items, html.El("li", []html.Attr{html.A("id", "row-"+strconv.Itoa(i+1)), html.A("class", class)},
 			html.El("span", nil, html.Text("Row "+strconv.Itoa(i+1))),
-			html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("Rows", "Toggle", rt.KV{Key: "id", Value: strconv.Itoa(i + 1)}))}, html.Text("Toggle"))))
+			html.El("button", []html.Attr{html.RouteAttr("data-on:click", rowsToggle(i+1))}, html.Text("Toggle"))))
 	}
 	return html.El("html", nil, html.El("head", nil, html.El("title", nil, html.Text("Rows"))),
 		html.El("body", nil, html.El("h1", nil, html.Text("Rows")), html.El("ul", []html.Attr{html.A("id", "rows")}, items...)))
@@ -38,16 +43,14 @@ func (a *rowsApp) view(done []bool) html.Node {
 func (a *rowsApp) routes() []web.Route {
 	return []web.Route{
 		{Method: "GET", Pattern: "/", Handle: func(rq *web.Request) web.Response {
-			return web.PageResponse(a.view(a.done), &html.FormState{}, nil, false)
+			return web.PageResponse(a.view(a.done), &html.FormState{}, nil)
 		}},
-		{Method: "POST", Pattern: "/_m/Rows/Toggle", Handle: func(rq *web.Request) web.Response {
-			before := append([]bool(nil), a.done...)
+		{Method: "PATCH", Pattern: "/rows/{id}", Handle: func(rq *web.Request) web.Response {
+			before, _ := rq.RenderShown(nil)
 			a.shown = append(a.shown, rq.HTTP.Header.Get(html.ShownHeader))
-			i, _ := strconv.Atoi(rq.Query.Get("id"))
+			i, _ := strconv.Atoi(rq.Params["id"])
 			a.done[i-1] = !a.done[i-1]
-			resp := web.PageResponse(a.view(a.done), &html.FormState{}, nil, true)
-			resp.Before = func() html.Node { return a.view(before) }
-			return resp
+			return web.AnswerResponse(rt.Refresh(), before, nil)
 		}},
 	}
 }
@@ -86,11 +89,11 @@ func TestBrowser_PatchedPageEqualsFullRender(t *testing.T) {
 	res := browseRows(app,
 		func(b *Browser, e *eff.Env) error { _, err := b.Open("/"); return err },
 		func(b *Browser, e *eff.Env) error {
-			r, err := b.Click("/_m/Rows/Toggle?id=7")
+			r, err := b.ClickRoute(rowsToggle(7), "Rows.Toggle")
 			if err != nil {
 				return err
 			}
-			if r.Answer.Tag != Rerendered {
+			if r.Answer.Tag != Refreshed {
 				t.Errorf("answer = %+v", r.Answer)
 			}
 			clicked = heldBody(t, b.Doc())
@@ -120,7 +123,7 @@ func TestBrowser_PatchedPageEqualsFullRender(t *testing.T) {
 	}
 }
 
-// TestBrowser_SendsShown: each post carries the hash of the page held, which a fragment answer
+// TestBrowser_SendsShown: each write carries the hash of the page held, which a fragment answer
 // moves on (its #_alder_shown patch); a page held without one (no al-shown) sends none.
 func TestBrowser_SendsShown(t *testing.T) {
 	app := &rowsApp{done: make([]bool, 3)}
@@ -129,8 +132,8 @@ func TestBrowser_SendsShown(t *testing.T) {
 	}
 	res := browseRows(app,
 		func(b *Browser, e *eff.Env) error { _, err := b.Open("/"); return err },
-		func(b *Browser, e *eff.Env) error { _, err := b.Click("/_m/Rows/Toggle?id=1"); return err },
-		func(b *Browser, e *eff.Env) error { _, err := b.Click("/_m/Rows/Toggle?id=2"); return err })
+		func(b *Browser, e *eff.Env) error { _, err := b.ClickRoute(rowsToggle(1), "Rows.Toggle"); return err },
+		func(b *Browser, e *eff.Env) error { _, err := b.ClickRoute(rowsToggle(2), "Rows.Toggle"); return err })
 	if !res.OK {
 		t.Fatalf("the test failed: %s", res.Error)
 	}
@@ -154,7 +157,7 @@ func TestBrowser_ReportsFragmentDrift(t *testing.T) {
 			b.dom, _ = html.ReplaceByID(b.dom, "row-3", li)
 			return nil
 		},
-		func(b *Browser, e *eff.Env) error { _, err := b.Click("/_m/Rows/Toggle?id=7"); return err })
+		func(b *Browser, e *eff.Env) error { _, err := b.ClickRoute(rowsToggle(7), "Rows.Toggle"); return err })
 	if !res.OK {
 		t.Fatalf("a region the answer did not send was compared: %s", res.Error)
 	}
@@ -166,7 +169,7 @@ func TestBrowser_ReportsFragmentDrift(t *testing.T) {
 			done := make([]bool, 10)
 			done[6] = true
 			b.rendered = html.BodyOf(html.RenderWith(app.view(done), &html.FormState{}))
-			b.reqHead, b.domBefore, b.regions = "POST /_m/Rows/Toggle: ", b.dom, nil
+			b.reqHead, b.domBefore, b.regions = "PATCH /rows/7: ", b.dom, nil
 			ev, err := sseEvents("event: datastar-patch-elements\ndata: selector #row-7\ndata: mode outer\ndata: elements <li id=\"row-7\" class=\"open\"><span>Row 7</span></li>\n\n")
 			if err != nil {
 				return err
@@ -179,28 +182,31 @@ func TestBrowser_ReportsFragmentDrift(t *testing.T) {
 	if res.OK {
 		t.Fatal("the drift was not reported")
 	}
-	if !strings.Contains(res.Error, "POST /_m/Rows/Toggle: the patched page differs from a full render at body > ul#rows > li#row-7") {
+	if !strings.Contains(res.Error, "PATCH /rows/7: the patched page differs from a full render at body > ul#rows > li#row-7") {
 		t.Fatalf("error: %s", res.Error)
 	}
 }
+
+// mInc is the write route msgPage's button requests.
+var mInc = rt.Route{Name: "M.Inc", Method: "POST", Path: "/m/inc"}
 
 // msgPage is a page whose only region (#msg) holds a <div> in a <p>, which the browser's parser
 // restructures: <p id="msg">n</p><div>x</div><p></p>.
 func msgPage(n int) html.Node {
 	return html.El("html", nil, html.El("head", nil, html.El("title", nil, html.Text("M"))), html.El("body", nil,
 		html.El("p", []html.Attr{html.A("id", "msg")}, html.Text(strconv.Itoa(n)), html.El("div", nil, html.Text("x"))),
-		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("M", "Inc"))}, html.Text("Inc"))))
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", mInc)}, html.Text("Inc"))))
 }
 
 func msgRoutes(n *int) []web.Route {
 	return []web.Route{
 		{Method: "GET", Pattern: "/", Handle: func(rq *web.Request) web.Response {
-			return web.PageResponse(msgPage(*n), &html.FormState{}, nil, false)
+			return web.PageResponse(msgPage(*n), &html.FormState{}, nil)
 		}},
-		{Method: "POST", Pattern: "/_m/M/Inc", Handle: func(rq *web.Request) web.Response {
-			before := *n
+		{Method: "POST", Pattern: "/m/inc", Handle: func(rq *web.Request) web.Response {
+			before, _ := rq.RenderShown(nil)
 			*n++
-			return web.PageResponse(msgPage(*n), &html.FormState{}, nil, true).WithBefore(func() html.Node { return msgPage(before) })
+			return web.AnswerResponse(rt.Refresh(), before, nil)
 		}},
 	}
 }
@@ -223,7 +229,7 @@ func browseMsg(n *int, steps ...func(b *Browser) error) CaseResult {
 // is caught: on the DOM the browser built it adds another <div> and <p>.
 func TestBrowser_RepairedPageFallsBack(t *testing.T) {
 	n := 1
-	click := func(b *Browser) error { _, err := b.Click("/_m/M/Inc"); return err }
+	click := func(b *Browser) error { _, err := b.ClickRoute(mInc, "M.Inc"); return err }
 	res := browseMsg(&n, func(b *Browser) error { _, err := b.Open("/"); return err }, click, click)
 	if !res.OK {
 		t.Fatalf("the test failed: %s", res.Error)

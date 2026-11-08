@@ -18,19 +18,17 @@ type Result struct {
 	Decls   map[string]types.Type            // "Module.Type" → declared type (records, unions, brands, tables, forms)
 	Tables  map[string]*types.TableInfo      // "Module.Table"
 	Forms   map[string]*types.Record         // "Module.Form"
-	Pages   map[string]*PageInfo             // page module name → its generated Params and Msg
 	Routes  map[string][]*RouteInfo          // route module name → its routes, in declaration order
 	Ctors   map[string]*CtorInfo             // "Module.Ctor" → {Union, Arg}
 	Caps    map[string]map[string]types.Type // capability module → name → type
 	Session *types.Record
-	AppMsg  *types.Union
 	// Elements is the merged custom-elements manifest the checker used (the built-in
 	// `alder-ui` one and the app's), for the editor's completion and hover.
 	Elements *elements.Manifest
 	// DefaultModules maps the default expression of every anonymous-record field written in
 	// source (types.Field.Default) to the module it is written in, where it is lowered.
 	DefaultModules map[syntax.Expr]string
-	// Widened maps each expression whose value is a `requires` page's narrowed Session used
+	// Widened maps each expression whose value is a `requires` route's narrowed Session used
 	// where App's Session is expected to App's Session record: the expression's own recorded
 	// type is the narrowed record, and Lower wraps it in a widening conversion.
 	Widened map[syntax.Expr]*types.Record
@@ -46,13 +44,13 @@ type Result struct {
 	Rendered map[*syntax.Element]string
 	// Via, Silos and Choose are App's valid M15 declarations: each `via` session field's
 	// membership table ("Membership.Membership"), each silo key's tables in the order written
-	// ("Project.Project"), each `choose` key's page module, or GET route as `Module.Route`. Nil
-	// when there are none.
+	// ("Project.Project"), each `choose` key's GET route as `Module.Route`. Nil when there are
+	// none.
 	Via    map[string]string
 	Silos  map[string][]string
 	Choose map[string]string
-	// Arms are the arms of each `update` with their stores, from the one-store analysis
-	// (writeset.go), by page module ("App" for App's update).
+	// Arms are the write routes of each module with their stores, from the one-store analysis
+	// (writeset.go): one arm per write route, named after it.
 	Arms map[string][]ArmStore
 	// Props are the property tests (a function or `Fuzz.forAll` body), by declaration; a plain
 	// test has no entry.
@@ -98,31 +96,7 @@ type CtorInfo struct {
 	Arg   types.Type
 }
 
-// PageInfo is a page module's generated types and declarations.
-type PageInfo struct {
-	Params *types.Record
-	Msg    *types.Union
-	// Requires are the session fields of the page's `requires` (["user", "org"]), nil for none.
-	Requires []string
-	// Roles are the page's `requires user, role R | S` constructors, nil for none (or when the
-	// clause is in error: E0027).
-	Roles []string
-	// Silo is the key of the admin form `requires user, role R, silo k` (M15), "" for none (or
-	// when the clause is in error).
-	Silo string
-	// File is true when the page's `view` returns File (chapter 6, "File pages"): a file page
-	// has no messages, forms or `update` (E0034).
-	File bool
-	// Session is the narrowed session of a `requires` page (<page>.Session, see narrow), nil
-	// for a page without `requires`, whose code sees App's session.
-	Session *types.Record
-	Decl    *syntax.PageDecl
-	Msgs    map[string]*syntax.MsgDecl
-	Module  string
-}
-
 type ctorInfo = CtorInfo
-type pageInfo = PageInfo
 
 // record notes e's type and returns it, so a walker can record on its return path.
 func (c *Checker) record(e syntax.Expr, t types.Type) types.Type {
@@ -150,7 +124,7 @@ func (c *Checker) result() *Result {
 		r.FuzzAny[v] = c.u.Apply(t)
 	}
 	r.Values, r.Decls, r.Tables, r.Forms, r.Caps = c.values, c.types, c.tables, c.forms, c.caps
-	r.Pages, r.Routes, r.Ctors, r.Session, r.AppMsg, r.U = c.pages, c.routes, c.ctors, c.session, c.appMsg, c.u
+	r.Routes, r.Ctors, r.Session, r.U = c.routes, c.ctors, c.session, c.u
 	r.Via, r.Silos, r.Choose = c.via, c.silos, c.choose
 	r.Elements = c.elements
 	return r

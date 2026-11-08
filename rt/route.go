@@ -16,7 +16,7 @@ type Route struct {
 func RouteURL(r Route) string { return r.Path + queryString(r.Query) }
 
 // RouteKey identifies the request r makes, as a form's FormState: its Method ("GET" when empty,
-// as AlderEqual reads it), a space, and MsgKey of its Path and its own query (the parameters
+// as AlderEqual reads it), a space, and URLKey of its Path and its own query (the parameters
 // that are not Omit), so only the form that sent this very request (a per-row form's row id
 // included) shows its values and errors.
 func RouteKey(r Route) string {
@@ -26,7 +26,16 @@ func RouteKey(r Route) string {
 			q[kv.Key] = append(q[kv.Key], kv.Value)
 		}
 	}
-	return routeMethod(r) + " " + MsgKey(r.Path, q)
+	return routeMethod(r) + " " + URLKey(r.Path, q)
+}
+
+// URLKey identifies a request by its URL: its path, then its query URL-encoded in key order
+// ("" query: the path alone).
+func URLKey(path string, query url.Values) string {
+	if len(query) == 0 {
+		return path
+	}
+	return path + "?" + query.Encode()
 }
 
 // AlderEqual is Route's equality (Equaler): two routes are equal when they have the same Method (empty is GET)
@@ -38,12 +47,12 @@ func (r Route) AlderEqual(other any) bool {
 }
 
 // AlderKey is Route's Dict key (Keyer): its Method and URL, so two routes equal under
-// AlderEqual are one key. An empty Method is "GET", so a Page value and Url.external of one URL are one key.
+// AlderEqual are one key. An empty Method is "GET", so a route and Url.external of one URL are one key.
 func (r Route) AlderKey() string {
 	return routeMethod(r) + " " + RouteURL(r)
 }
 
-// routeMethod is r's Method, "GET" when empty: a Page value carries no Method and is a GET.
+// routeMethod is r's Method, "GET" when empty: Url.external carries no Method and is a GET.
 func routeMethod(r Route) string {
 	if r.Method == "" {
 		return "GET"
@@ -52,7 +61,7 @@ func routeMethod(r Route) string {
 }
 
 // showRoute is r as Alder: its Name applied to its URL ("Todos.Index /todos"), or the bare URL
-// for a route with no Name (a Page, Url.external), and whether that is an application.
+// for a route with no Name (Url.external), and whether that is an application.
 func showRoute(r Route) (string, bool) {
 	if r.Name == "" {
 		return RouteURL(r), false

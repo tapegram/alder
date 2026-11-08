@@ -79,7 +79,7 @@ func TestBoost_GetMorphsTitlePush(t *testing.T) {
 	var got url.Values
 	h := NewRouter(one("GET", "/posts", func(rq *Request) Response {
 		got = rq.Query
-		return PageResponse(doc("Posts &amp; more"), nil, rq.Session, false)
+		return PageResponse(doc("Posts &amp; more"), nil, rq.Session)
 	}), testOpts(nil))
 	w := serve(h, dsGet("/posts?b=2&datastar=%7B%7D&a=1"))
 	if w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" || w.Header().Get(StatusHeader) != "" || sessionCookie(t, w) != nil {
@@ -106,7 +106,7 @@ func TestBoost_GetMorphsTitlePush(t *testing.T) {
 // empty one, so the old page's title does not stay.
 func TestBoost_PopstateReplaces(t *testing.T) {
 	h := NewRouter(one("GET", "/a", func(rq *Request) Response {
-		return PageResponse(html.El("html", nil, html.El("body", nil, html.Text("A"))), nil, nil, false)
+		return PageResponse(html.El("html", nil, html.El("body", nil, html.Text("A"))), nil, nil)
 	}), testOpts(nil))
 	req := dsGet("/a?datastar=%7B%7D")
 	req.Header.Set(datastar.HistoryHeader, "replace")
@@ -143,8 +143,8 @@ func TestBoost_GetFailures(t *testing.T) {
 		historyEvent(t, evs[2], pushOpen, `"`+c.path+`"`)
 	}
 	// a message's failure under Datastar is the body patch alone, as before
-	h = NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response { return NotFoundResponse(doc("Gone")) }), testOpts(nil))
-	req := httptest.NewRequest("POST", "/_m/A/B", nil)
+	h = NewRouter(one("POST", "/a/b", func(rq *Request) Response { return NotFoundResponse(doc("Gone")) }), testOpts(nil))
+	req := httptest.NewRequest("POST", "/a/b", nil)
 	req.Header.Set("Datastar-Request", "true")
 	if evs := events(serve(h, req).Body.String()); len(evs) != 1 || evs[0] != bodyEvent("<p>Gone</p>") {
 		t.Fatalf("message 404 %q", evs)
@@ -158,7 +158,7 @@ func TestBoost_GetFailures(t *testing.T) {
 func TestBoost_RedirectMorphsTarget(t *testing.T) {
 	var served []string
 	h := NewRouter([]Route{
-		{Method: "POST", Pattern: "/_m/Auth/Login", Handle: func(rq *Request) Response {
+		{Method: "POST", Pattern: "/auth/login", Handle: func(rq *Request) Response {
 			return RedirectResponse("/home?tab=1#top", testSession{User: "ada"})
 		}},
 		{Method: "GET", Pattern: "/home", Handle: func(rq *Request) Response {
@@ -167,12 +167,12 @@ func TestBoost_RedirectMorphsTarget(t *testing.T) {
 			if rq.Form != nil || rq.HTTP.Method != "GET" || rq.Query.Get("tab") != "1" || !rq.Datastar {
 				t.Errorf("target request: form %v method %s query %v", rq.Form, rq.HTTP.Method, rq.Query)
 			}
-			return PageResponse(doc("Hello "+u), nil, rq.Session, false)
+			return PageResponse(doc("Hello "+u), nil, rq.Session)
 		}},
 	}, testOpts(func(o *Options) {
 		o.Served = func(rq *Request) { served = append(served, rq.HTTP.Method+" "+rq.HTTP.URL.Path) }
 	}))
-	req := httptest.NewRequest("POST", "/_m/Auth/Login", strings.NewReader("a=1"))
+	req := httptest.NewRequest("POST", "/auth/login", strings.NewReader("a=1"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Datastar-Request", "true")
 	w := serve(h, req)
@@ -185,11 +185,11 @@ func TestBoost_RedirectMorphsTarget(t *testing.T) {
 	if c := sessionCookie(t, w); c == nil || len(w.Result().Cookies()) != 1 {
 		t.Fatalf("cookies %v", w.Result().Cookies())
 	}
-	if strings.Join(served, ",") != "POST /_m/Auth/Login,GET /home" {
+	if strings.Join(served, ",") != "POST /auth/login,GET /home" {
 		t.Fatalf("served %q", served)
 	}
 	// without Datastar: the 303
-	w = serve(h, httptest.NewRequest("POST", "/_m/Auth/Login", nil))
+	w = serve(h, httptest.NewRequest("POST", "/auth/login", nil))
 	if w.Code != 303 || w.Header().Get("Location") != "/home?tab=1#top" || w.Body.Len() != 0 {
 		t.Fatalf("plain %d %q", w.Code, w.Header().Get("Location"))
 	}
@@ -204,7 +204,7 @@ func TestBoost_GetRedirectMorphsTarget(t *testing.T) {
 			return RedirectResponse("/builder?seed=7", nil)
 		}},
 		{Method: "GET", Pattern: "/builder", Handle: func(rq *Request) Response {
-			return PageResponse(doc("Builder "+rq.Query.Get("seed")), nil, rq.Session, false)
+			return PageResponse(doc("Builder "+rq.Query.Get("seed")), nil, rq.Session)
 		}},
 	}, testOpts(nil))
 	w := serve(h, dsGet("/start?go=builder"))
@@ -223,10 +223,10 @@ func TestBoost_RedirectChains(t *testing.T) {
 	var logs []string
 	h := NewRouter([]Route{
 		{Method: "GET", Pattern: "/secret", Handle: func(rq *Request) Response { return RedirectResponse(rq.Login, nil) }},
-		{Method: "GET", Pattern: "/login", Handle: func(rq *Request) Response { return PageResponse(doc("Sign in"), nil, nil, false) }},
+		{Method: "GET", Pattern: "/login", Handle: func(rq *Request) Response { return PageResponse(doc("Sign in"), nil, nil) }},
 		{Method: "GET", Pattern: "/loop/{n}", Handle: func(rq *Request) Response { return RedirectResponse("/loop/"+rq.Params["n"]+"x", nil) }},
-		{Method: "POST", Pattern: "/_m/A/Gone", Handle: func(rq *Request) Response { return RedirectResponse("/nowhere", nil) }},
-		{Method: "POST", Pattern: "/_m/A/Loop", Handle: func(rq *Request) Response { return RedirectResponse("/loop/x", nil) }},
+		{Method: "POST", Pattern: "/a/gone", Handle: func(rq *Request) Response { return RedirectResponse("/nowhere", nil) }},
+		{Method: "POST", Pattern: "/a/loop", Handle: func(rq *Request) Response { return RedirectResponse("/loop/x", nil) }},
 	}, testOpts(func(o *Options) { o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) } }))
 	evs := events(serve(h, dsGet("/secret")).Body.String())
 	if len(evs) != 3 || evs[0] != bodyEvent("<p>Sign in</p>") {
@@ -238,7 +238,7 @@ func TestBoost_RedirectChains(t *testing.T) {
 	evs = events(serve(h, req).Body.String())
 	historyEvent(t, evs[2], replaceOpen, `"/login"`)
 
-	req = httptest.NewRequest("POST", "/_m/A/Gone", nil)
+	req = httptest.NewRequest("POST", "/a/gone", nil)
 	req.Header.Set("Datastar-Request", "true")
 	w := serve(h, req)
 	if evs := events(w.Body.String()); w.Header().Get(StatusHeader) != "404" || evs[0] != bodyEvent("<p>Not found</p>") {
@@ -247,12 +247,12 @@ func TestBoost_RedirectChains(t *testing.T) {
 		historyEvent(t, evs[2], pushOpen, `"/nowhere"`)
 	}
 
-	req = httptest.NewRequest("POST", "/_m/A/Loop", nil)
+	req = httptest.NewRequest("POST", "/a/loop", nil)
 	req.Header.Set("Datastar-Request", "true")
 	w = serve(h, req)
 	evs = events(w.Body.String())
 	last := "/loop/x" + strings.Repeat("x", redirectLimit+1)
-	want := "error: POST /_m/A/Loop: more than 10 redirects in a row (the last to " + last + ") rid=" + w.Header().Get("X-Request-Id")
+	want := "error: POST /a/loop: more than 10 redirects in a row (the last to " + last + ") rid=" + w.Header().Get("X-Request-Id")
 	if w.Header().Get(StatusHeader) != "500" || len(evs) != 1 || evs[0] != bodyEvent("<p>Something went wrong</p>") || logs[len(logs)-1] != want {
 		t.Fatalf("loop %q %q %q", w.Header().Get(StatusHeader), evs, logs)
 	}
@@ -262,8 +262,8 @@ func TestBoost_RedirectChains(t *testing.T) {
 // a real navigation under Datastar; a protocol-relative one is refused (500), as before.
 func TestBoost_ExternalRedirectNavigates(t *testing.T) {
 	for _, loc := range []string{"https://example.com/x?a=1", "#", "//evil.example/x"} {
-		h := NewRouter(one("POST", "/_m/A/Go", func(rq *Request) Response { return RedirectResponse(loc, nil) }), testOpts(nil))
-		req := httptest.NewRequest("POST", "/_m/A/Go", nil)
+		h := NewRouter(one("POST", "/a/go", func(rq *Request) Response { return RedirectResponse(loc, nil) }), testOpts(nil))
+		req := httptest.NewRequest("POST", "/a/go", nil)
 		req.Header.Set("Datastar-Request", "true")
 		w := serve(h, req)
 		body := w.Body.String()
@@ -276,7 +276,7 @@ func TestBoost_ExternalRedirectNavigates(t *testing.T) {
 func TestBoost_Followable(t *testing.T) {
 	rt := NewRouter(nil, testOpts(nil)).(*router)
 	for loc, want := range map[string]bool{
-		"/": true, "/posts/1?x=y#c": true, "/_m/A/B": true,
+		"/": true, "/posts/1?x=y#c": true, "/a/b": true,
 		"#": false, "": false, "posts": false, "//evil.com/x": false, `/\evil.com`: false, "https://ex.com/": false,
 		"/static/app.css": false, "/static/al/al.css": false, datastar.ScriptPath: false, datastar.ScriptPath + "?v": false,
 	} {
@@ -379,7 +379,7 @@ func TestBoost_ClickHandlerExclusions(t *testing.T) {
 // the Datastar script, so the first frame is painted in the OS's scheme; the boost goes last,
 // before </head>, so a layout's <meta charset> stays in the first 1024 bytes.
 func TestBoost_ColorSchemeMeta(t *testing.T) {
-	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("Home"), nil, nil, false) }), testOpts(nil))
+	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("Home"), nil, nil) }), testOpts(nil))
 	body := serve(h, httptest.NewRequest("GET", "/", nil)).Body.String()
 	want := "<!doctype html>\n<html><head>" + `<meta name="color-scheme" content="light dark" />` + `<meta name="alder-build" content="` + BuildID() + `" />` + pendingStyle + html.Render(datastar.ScriptTag()) + "<title>Home</title>" + datastar.BoostTag() + "</head>"
 	if !strings.HasPrefix(body, want) {
@@ -396,7 +396,7 @@ func TestBoost_FileLinkNavigates(t *testing.T) {
 	}
 	opts := testOpts(nil)
 	opts.StaticDir = dir
-	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("Home"), nil, nil, false) }), opts)
+	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("Home"), nil, nil) }), opts)
 	for _, path := range []string{"/static/x.pdf", "/static/al/al.css", datastar.ScriptPath} {
 		r := httptest.NewRequest("GET", path+"?datastar=%7B%7D", nil)
 		r.Header.Set("Datastar-Request", "true")
@@ -415,7 +415,7 @@ func TestBoost_FileLinkNavigates(t *testing.T) {
 // real navigation to the URL, so the tab reloads once and gets this build's <head>; the same
 // build, or no header (a hand-made request), is the usual morph.
 func TestBoost_BuildMismatchReloads(t *testing.T) {
-	h := NewRouter(one("GET", "/p", func(rq *Request) Response { return PageResponse(doc("P"), nil, nil, false) }), testOpts(nil))
+	h := NewRouter(one("GET", "/p", func(rq *Request) Response { return PageResponse(doc("P"), nil, nil) }), testOpts(nil))
 	get := func(build string) string {
 		r := httptest.NewRequest("GET", "/p?a=1&datastar=%7B%7D", nil)
 		r.Header.Set("Datastar-Request", "true")

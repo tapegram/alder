@@ -12,9 +12,8 @@ import (
 	"net/url"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
-// write routes, in declaration order), then every message of the pages and of App (POST), in module
-// order.
+// Routes are the app's endpoints for web.NewRouter: every route (GET and write routes), in module
+// order, then declaration order.
 var Routes = []web.Route{
 	Route__Admin__Admin(),
 	Route__Login__Login(),
@@ -61,12 +60,6 @@ func page__Admin__Admin(rq *web.Request, params Admin__Admin__Params, keep any) 
 	return model, session, nil
 }
 
-// params__Admin__Admin are route Admin.Admin's parameters as text (html.FormState.PageParams), for
-// the posted form's state its view renders with when a write renders it again.
-func params__Admin__Admin(_ Admin__Admin__Params) []rt.KV {
-	return nil
-}
-
 // Route__Admin__Admin serves route Admin.Admin, GET /admin: decode the parameters (404 when they do
 // not), `requires` (303 to App.login), the role (404), load (404 on Query.notFound, 303 on
 // Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser
@@ -82,7 +75,7 @@ func Route__Admin__Admin() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Admin__Admin__view(model, session), web.WithPageParams(rq.FormState, params__Admin__Admin(params)), rq.Session, false)
+		return web.PageResponse(Admin__Admin__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -106,12 +99,6 @@ func page__Login__Login(rq *web.Request, params Login__Login__Params, keep any) 
 	return model, session, nil
 }
 
-// params__Login__Login are route Login.Login's parameters as text (html.FormState.PageParams), for
-// the posted form's state its view renders with when a write renders it again.
-func params__Login__Login(_ Login__Login__Params) []rt.KV {
-	return nil
-}
-
 // Route__Login__Login serves route Login.Login, GET /login: decode the parameters (404 when they do
 // not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
 // in rq.Model, which a test's browser reads).
@@ -126,7 +113,7 @@ func Route__Login__Login() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Login__Login__view(model, session), web.WithPageParams(rq.FormState, params__Login__Login(params)), rq.Session, false)
+		return web.PageResponse(Login__Login__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -160,12 +147,6 @@ func page__Notes__Notes(rq *web.Request, params Notes__Notes__Params, keep any) 
 	return model, session, nil
 }
 
-// params__Notes__Notes are route Notes.Notes's parameters as text (html.FormState.PageParams), for
-// the posted form's state its view renders with when a write renders it again.
-func params__Notes__Notes(_ Notes__Notes__Params) []rt.KV {
-	return nil
-}
-
 // Route__Notes__Notes serves route Notes.Notes, GET /notes: decode the parameters (404 when they do
 // not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500 on a
 // failure), view (the model also in rq.Model, which a test's browser reads).
@@ -180,7 +161,7 @@ func Route__Notes__Notes() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Notes__Notes__view(model, session), web.WithPageParams(rq.FormState, params__Notes__Notes(params)), rq.Session, false)
+		return web.PageResponse(Notes__Notes__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 

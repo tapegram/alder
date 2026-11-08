@@ -24,10 +24,10 @@ Send.update p session = Task.succeed (Response.refresh |> Response.success "Than
 Forget.update : Forget.Params -> Session -> Task Response
 Forget.update p session = Task.succeed Response.refresh
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <html><body><h1>Something went wrong</h1></body></html>
 
-notFound : Html Never
+notFound : Html
 notFound = <html><body><h1>Not found</h1></body></html>
 
 test "Logout forgets the user" = {

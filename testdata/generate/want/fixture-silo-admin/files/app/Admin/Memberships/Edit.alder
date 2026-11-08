@@ -348,7 +348,7 @@ test "a long list of users offers 50, and the search narrows it" = {
       total: 203,
       found: True,
       answer: Redirected (Edit { id: membership1, findUser: "zz" }),
-      visitor: Redirected (Auth.Login {}),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -466,7 +466,7 @@ test "a long list of orgs offers 50, and the search narrows it" = {
       total: 203,
       found: True,
       answer: Redirected (Edit { id: membership1, findOrg: "zz" }),
-      visitor: Redirected (Auth.Login {}),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -537,7 +537,7 @@ test "a visitor cannot save a membership" = {
   let r <- Test.submit (Save { id: membership1 }) { user: user2, org: org2 }
   let after <- Db.get Membership membership1
   Task.succeed (
-    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login {}), row: before }
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login.Login {}), row: before }
   )
 }
 
@@ -619,7 +619,7 @@ test "a visitor is sent to log in" = {
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let membership1 <- Db.insert Membership { user: me, org: org1 }
   let r <- Test.open (Edit { id: membership1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Member gets no page, even one made Admin since logging in" = {

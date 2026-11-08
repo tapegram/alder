@@ -13,9 +13,8 @@ import (
 	"net/url"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
-// write routes, in declaration order), then every message of the pages and of App (POST), in module
-// order.
+// Routes are the app's endpoints for web.NewRouter: every route (GET and write routes), in module
+// order, then declaration order.
 var Routes = []web.Route{
 	Route__Admin__Projects__Projects(),
 	Route__Admin__Projects__Remove(),
@@ -82,13 +81,6 @@ func page__Admin__Projects__Projects(rq *web.Request, params Admin__Projects__Pr
 	return model, session, nil
 }
 
-// params__Admin__Projects__Projects are route Admin.Projects.Projects's parameters as text
-// (html.FormState.PageParams), for the posted form's state its view renders with when a write
-// renders it again.
-func params__Admin__Projects__Projects(p Admin__Projects__Projects__Params) []rt.KV {
-	return []rt.KV{{Key: "org", Value: p.Org}}
-}
-
 // Route__Admin__Projects__Projects serves route Admin.Projects.Projects, GET
 // /admin/orgs/{org}/projects: decode the parameters (404 when they do not), `requires` (303 to
 // App.login), the role (404), load (404 on Query.notFound, 303 on Query.redirect, 500 on a
@@ -104,7 +96,7 @@ func Route__Admin__Projects__Projects() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Admin__Projects__Projects__view(model, session), web.WithPageParams(rq.FormState, params__Admin__Projects__Projects(params)), rq.Session, false)
+		return web.PageResponse(Admin__Projects__Projects__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -235,12 +227,6 @@ func page__Login__Login(rq *web.Request, params Login__Login__Params, keep any) 
 	return model, session, nil
 }
 
-// params__Login__Login are route Login.Login's parameters as text (html.FormState.PageParams), for
-// the posted form's state its view renders with when a write renders it again.
-func params__Login__Login(_ Login__Login__Params) []rt.KV {
-	return nil
-}
-
 // Route__Login__Login serves route Login.Login, GET /login: decode the parameters (404 when they do
 // not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
 // in rq.Model, which a test's browser reads).
@@ -255,7 +241,7 @@ func Route__Login__Login() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Login__Login__view(model, session), web.WithPageParams(rq.FormState, params__Login__Login(params)), rq.Session, false)
+		return web.PageResponse(Login__Login__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -289,13 +275,6 @@ func page__Notes__Index__Index(rq *web.Request, params Notes__Index__Index__Para
 	return model, session, nil
 }
 
-// params__Notes__Index__Index are route Notes.Index.Index's parameters as text
-// (html.FormState.PageParams), for the posted form's state its view renders with when a write
-// renders it again.
-func params__Notes__Index__Index(_ Notes__Index__Index__Params) []rt.KV {
-	return nil
-}
-
 // Route__Notes__Index__Index serves route Notes.Index.Index, GET /notes: decode the parameters (404
 // when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on
 // Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser
@@ -311,7 +290,7 @@ func Route__Notes__Index__Index() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Notes__Index__Index__view(model, session), web.WithPageParams(rq.FormState, params__Notes__Index__Index(params)), rq.Session, false)
+		return web.PageResponse(Notes__Index__Index__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -399,12 +378,6 @@ func page__Orgs__Orgs(rq *web.Request, params Orgs__Orgs__Params, keep any) (Org
 	return model, session, nil
 }
 
-// params__Orgs__Orgs are route Orgs.Orgs's parameters as text (html.FormState.PageParams), for the
-// posted form's state its view renders with when a write renders it again.
-func params__Orgs__Orgs(_ Orgs__Orgs__Params) []rt.KV {
-	return nil
-}
-
 // Route__Orgs__Orgs serves route Orgs.Orgs, GET /orgs: decode the parameters (404 when they do
 // not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500 on a
 // failure), view (the model also in rq.Model, which a test's browser reads).
@@ -419,7 +392,7 @@ func Route__Orgs__Orgs() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Orgs__Orgs__view(model, session), web.WithPageParams(rq.FormState, params__Orgs__Orgs(params)), rq.Session, false)
+		return web.PageResponse(Orgs__Orgs__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -588,13 +561,6 @@ func page__Projects__Index__Index(rq *web.Request, params Projects__Index__Index
 	return model, session, nil
 }
 
-// params__Projects__Index__Index are route Projects.Index.Index's parameters as text
-// (html.FormState.PageParams), for the posted form's state its view renders with when a write
-// renders it again.
-func params__Projects__Index__Index(_ Projects__Index__Index__Params) []rt.KV {
-	return nil
-}
-
 // Route__Projects__Index__Index serves route Projects.Index.Index, GET /projects: decode the
 // parameters (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound,
 // 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's
@@ -610,7 +576,7 @@ func Route__Projects__Index__Index() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Projects__Index__Index__view(model, session), web.WithPageParams(rq.FormState, params__Projects__Index__Index(params)), rq.Session, false)
+		return web.PageResponse(Projects__Index__Index__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 

@@ -382,8 +382,8 @@ func (rt *router) inlinePanel(w http.ResponseWriter, page string, status int) st
 	return endOfBody(page, `<al-devpanel id="`+datastar.PanelID+`" data-ignore-morph>`+rt.panelInner(tw, status)+`</al-devpanel>`+panelScript+panelUI)
 }
 
-// shellBody adds to a body patch the panel's element (dev) and, when a Noticed answer has a toast
-// and the page has no <al-toasts> region of its own, the implicit region (kept across morphs).
+// shellBody adds to a body patch the panel's element (dev) and, when the answer has a toast and
+// the page has no <al-toasts> region of its own, the implicit region (kept across morphs).
 func (rt *router) shellBody(w http.ResponseWriter, body string) string {
 	if tw, ok := w.(*tracker); ok && tw.notice != "" && !strings.Contains(body, "<al-toasts") {
 		body = endOfBody(body, `<al-toasts popover="manual" data-ignore-morph></al-toasts>`)
@@ -405,9 +405,8 @@ func (rt *router) patchPanel(w http.ResponseWriter, status int) {
 	}
 }
 
-// notify patches the toast of a Noticed answer (and a write's answer's further toasts) into the
-// page's <al-toasts> region, each as its own event after the body's, so a later morph does not
-// show it again.
+// notify patches the toasts of a write's answer into the page's <al-toasts> region, each as its
+// own event after the body's, so a later morph does not show it again.
 func (rt *router) notify(w http.ResponseWriter) {
 	tw, ok := w.(*tracker)
 	if !ok || tw.notice == "" {
@@ -438,8 +437,8 @@ var devPage = template.Must(template.New("dev").Parse(`<!doctype html><html><hea
 <h2>Pages</h2>
 {{range .Map.Pages}}<h3>{{if .Link}}<a href="{{.Path}}">{{.Path}}</a>{{else}}<code>{{.Path}}</code>{{end}} <small>{{.Module}}</small></h3>
 <ul>{{if .Requires}}<li>requires {{.Requires}}{{if .Roles}}, role {{range $i, $r := .Roles}}{{if $i}} | {{end}}{{$r}}{{end}}{{end}}</li>{{end}}
-{{range .Params}}<li>param <code>{{.}}</code></li>{{end}}{{range .Msgs}}<li>message <code>{{.}}</code></li>{{end}}</ul>
-{{end}}{{if .Map.AppMsgs}}<h3>App messages</h3><ul>{{range .Map.AppMsgs}}<li><code>{{.}}</code></li>{{end}}</ul>{{end}}
+{{range .Params}}<li>param <code>{{.}}</code></li>{{end}}</ul>
+{{end}}
 <h2>Tables</h2>
 {{range .Map.Tables}}<h3>{{.Name}}</h3><ul>{{range .Columns}}<li><code>{{.}}</code></li>{{end}}
 {{if .ID}}<li>id: {{.ID}}</li>{{end}}{{if .Created}}<li>created: {{.Created}}</li>{{end}}{{if .Updated}}<li>updated: {{.Updated}}</li>{{end}}{{if .Owner}}<li>owner: {{.Owner}}</li>{{end}}
@@ -462,7 +461,6 @@ type devMapData struct {
 	Tables  []devMapTable `json:"tables"`
 	Caps    []string      `json:"caps,omitempty"`
 	Session []string      `json:"session"`
-	AppMsgs []string      `json:"appMsgs,omitempty"`
 	Silos   []devMapSilo  `json:"silos,omitempty"`
 }
 
@@ -472,7 +470,6 @@ type devMapPage struct {
 	Requires string   `json:"requires,omitempty"`
 	Roles    []string `json:"roles,omitempty"`
 	Params   []string `json:"params,omitempty"`
-	Msgs     []string `json:"msgs,omitempty"`
 	Link     bool     `json:"-"`
 }
 
@@ -573,7 +570,7 @@ func (rt *router) devMapView() devMapView {
 	return data
 }
 
-// devMap serves /_dev: the running app's pages, messages, tables, capabilities (adapter or fake
+// devMap serves /_dev: the running app's pages, tables, capabilities (adapter or fake
 // wired), session shape, migrations applied, routes and build id.
 func (rt *router) devMap(w http.ResponseWriter, r *http.Request) {
 	var b bytes.Buffer

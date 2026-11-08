@@ -658,17 +658,17 @@ func TestUrlExternalSanitizes(t *testing.T) {
 	}
 }
 
-// Url.absolute is the public base in front of a page's URL (rt.PageURL: defaulted parameters
+// Url.absolute is the public base in front of a route's URL (rt.RouteURL: defaulted parameters
 // left out, the query encoded); a page whose URL is not a path of this site is its URL.
 func TestUrlAbsolute(t *testing.T) {
 	const base = rt.DefaultPublicURL
-	withQuery := rt.Page{Path: "/r/" + rt.PathSegment("t0=1,key=k"), Query: []rt.KV{rt.QueryKV("date", "2026-11-03", ""), rt.QueryKV("q", "a b", "")}}
+	withQuery := rt.Route{Path: "/r/" + rt.PathSegment("t0=1,key=k"), Query: []rt.KV{rt.QueryKV("date", "2026-11-03", ""), rt.QueryKV("q", "a b", "")}}
 	for name, c := range map[string]struct {
-		p    rt.Page
+		p    rt.Route
 		want string
 	}{
 		"path parameter and query": {withQuery, base + "/r/t0=1%2Ckey=k?date=2026-11-03&q=a+b"},
-		"defaulted parameter":      {rt.Page{Path: "/todos", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}, base + "/todos"},
+		"defaulted parameter":      {rt.Route{Path: "/todos", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}, base + "/todos"},
 		"external https":           {UrlExternal("https://ex.com/a?b=1"), "https://ex.com/a?b=1"},
 		"static file":              {UrlExternal("/static/app.css"), base + "/static/app.css"},
 		"fragment":                 {UrlExternal("#top"), "#top"},
@@ -678,7 +678,7 @@ func TestUrlAbsolute(t *testing.T) {
 			t.Errorf("%s: UrlAbsolute = %q, want %q", name, got, c.want)
 		}
 	}
-	if UrlAbsolute(rt.Page{Path: "/todos", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}) != UrlAbsolute(rt.Page{Path: "/todos"}) {
+	if UrlAbsolute(rt.Route{Path: "/todos", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}) != UrlAbsolute(rt.Route{Path: "/todos"}) {
 		t.Error("equal pages, different absolute URLs")
 	}
 }

@@ -122,10 +122,6 @@ a nested module, one directory per dot: `alder new route Sites.Clarity.Index
 like `About`, writes `app/About.alder`). `alder new route --help` says so, and
 `alder routes` (chapter 11) lists where every route ended up.
 
-> **The old name.** `alder new page` is the old name of the command; it still
-> works, and prints "`alder new page` is now `alder new route`" after doing
-> what `new route` does.
-
 The file:
 
 ```alder written=guestbook/app/About.alder
@@ -498,7 +494,7 @@ edited app/Replies.alder
  test "the list shows the rows, newest first" = {
    let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
    let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
-@@ -115,3 +134,42 @@
+@@ -115,3 +134,44 @@
      }
    )
  }
@@ -511,6 +507,7 @@ edited app/Replies.alder
 +  Task.succeed (
 +    {
 +      answer: r.answer,
++      notices: r.notices,
 +      rows: List.map (\row -> {
 +        entry: row.entry,
 +        message: row.message,
@@ -518,6 +515,7 @@ edited app/Replies.alder
 +      }) rows,
 +    } == {
 +      answer: Redirected (Replies {}),
++      notices: ["Saved"],
 +      rows: [
 +        {
 +          entry: entry1,
@@ -564,8 +562,13 @@ The generator wrote these into the module:
   form's errors in an `al-alert`, and the button.
 
 - **Two tests**: one submits the form and compares the stored row, the
-  defaults of the fields the form leaves out included (`hidden: False`); the
-  other submits an empty `message` and expects the decoder's `FormRejected`.
+  defaults of the fields the form leaves out included (`hidden: False`), and
+  the message the answer shows (`notices: ["Saved"]`); the other submits an
+  empty `message` and expects the decoder's `FormRejected`. When the route
+  `requires user` (the page does), a third test opens the page logged in,
+  logs out and submits: a write route runs no `load`, so its own `requires`
+  sends the visitor to log in, and nothing is written. A route with `role R`
+  gets one more, a user of another role answered `PageMissing`.
 
 The input for a field depends on its type:
 
@@ -658,7 +661,7 @@ page and no button) is made with `alder new route … --method POST` instead.
   Reply.ReplyId }`.
 
 - **Its path** is its module's route path with `/_/` and its name on the end
-  (the `<path>/_/<Msg>` convention), and it takes the parameters of the route
+  (the `<path>/_/<Name>` convention), and it takes the parameters of the route
   it was added to.
 
 - **Its `Delete.update`** answers with a `Response` (chapter 6), and starts as
@@ -1115,7 +1118,7 @@ import Table.User
 -- @admin end
 
 -- The admin's frame: the app's layout around a nav of every table's list.
-Page : { title: Text, children: List (Html a) } -> Html a
+Page : { title: Text, children: List Html } -> Html
 Page props =
   <Layout.Page title={props.title ++ " · Admin"}>
     <nav aria-label="Admin">
@@ -3401,12 +3404,12 @@ edited migrations/schema.json
 +
 +route Logout = POST "/_/Logout" { }
 +
- error : Error -> Html Never
+ error : Error -> Html
  error err =
    <Layout.Page title="Error">
 @@ -13,3 +18,28 @@
  
- notFound : Html Never
+ notFound : Html
  notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 +
 +-- Logout empties the session's user and goes to log in: a `POST`, sent by a button
@@ -3987,9 +3990,6 @@ comments once their holes are filled.
 `alder edit route <Route> add-param <name>:<Type>[=default]` adds a
 parameter to a route: a query parameter, such as a search box's `q`.
 
-> **The old name.** `alder edit page` is the old name, and prints that it is
-> now `alder edit route`.
-
 The command:
 
 ```text command=guestbook
@@ -4146,7 +4146,7 @@ edited app/Notes/Index.alder
  
  type Model = { }
  
-@@ -10,9 +12,50 @@
+@@ -10,9 +12,63 @@
  Index.load params session = Query.succeed {}
  
  Index.view : Model -> Session -> Html
@@ -4197,6 +4197,19 @@ edited app/Notes/Index.alder
 +  let _ <- Test.get (Index {})
 +  let r <- Test.submitRaw Add [{ name: "title", value: "" }]
 +  Task.succeed (r.answer == FormRejected [{ field: "title", message: "must not be empty" }])
++}
++
++test "a visitor cannot submit NewNote" = {
++  let me <- Db.insert User {
++    email: Text.Email "email-1@example.com",
++    name: Text.NonEmpty "name-1",
++    passwordHash: "passwordhash-1",
++  }
++  let _ <- Test.login { user: Just me }
++  let _ <- Test.get (Index {})
++  let _ <- Test.login { user: Nothing }
++  let r <- Test.submit Add { title: Text.NonEmpty "title-1" }
++  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 +}
 app/Notes/Index.alder:32:29: warning[W0002]: hole ?answer has type Task Response
   Add.update params session = ?answer
@@ -4366,8 +4379,7 @@ refuses the edit with the checker's errors, and nothing is written.
 
 ### Removing
 
-`alder remove route <Module>` removes the route module's file (`alder
-remove page` is the old name). `alder remove table <T>` removes the
+`alder remove route <Module>` removes the route module's file. `alder remove table <T>` removes the
 table's declaration, its id type and its module's tests (the whole file,
 when the module holds nothing else), and writes the migration that drops
 the table, marked `DROPS DATA`.
@@ -5056,8 +5068,8 @@ E11 (below) found four things the commands could not do.
 ### A button in `App`
 
 The first was a button that is on every page (`click={App.Logout}` is one):
-`alder new msg App <Name> [fields]` declared a message in `App` for it. On
-routes, `App` holds write routes like any module: `route Logout = POST
+`alder new msg App <Name> [fields]` makes one. `App` holds write routes like
+any module: `route Logout = POST
 "/_/Logout"` is one, written by `alder new auth`.
 
 So `alder new msg App <Name>` writes a route there too, `route <Name> =
@@ -5078,7 +5090,7 @@ edited app/App.alder
 +route Logout      = POST "/_/Logout"      { }
 +route ToggleTheme = POST "/_/ToggleTheme" { dark: Bool }
  
- error : Error -> Html Never
+ error : Error -> Html
  error err =
 @@ -27,6 +28,9 @@
    Task.succeed (Response.redirect (Auth.Login.Login {}))
@@ -5114,10 +5126,6 @@ button is for you to say. The test opens the first plain page of the app
 and presses the route, so it fails ("the click finds no control") until
 that page has the button, as the comment above it says.
 
-> **An older `App`.** An `App` written before routes, with a `msg` and an
-> `update` of its own, keeps the old form of the command until it is moved
-> to routes.
-
 ### A prop
 
 `alder edit decl Layout.Page add-prop <name>:<Type>=<default>` adds a
@@ -5133,8 +5141,8 @@ edited app/Layout.alder
 @@ -1,6 +1,6 @@
  module Layout
  
--Page : { title: Text, children: List (Html a) } -> Html a
-+Page : { title: Text, children: List (Html a), dark: Bool = False } -> Html a
+-Page : { title: Text, children: List Html } -> Html
++Page : { title: Text, children: List Html, dark: Bool = False } -> Html
  Page props =
    <html>
      <head>

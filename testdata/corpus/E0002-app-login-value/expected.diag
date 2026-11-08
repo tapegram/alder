@@ -1,1 +1,1 @@
-app/Profile.alder:11:31 E0002 `App` has no `login`; `login` is a declaration, not a value — link to the page with `href={Auth.Login {}}`
+app/Profile.alder:11:39 E0002 `App` has no `login`; `login` is a declaration, not a value — link to the login route with `href={Auth.Login.Login {}}`

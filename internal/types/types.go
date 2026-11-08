@@ -79,19 +79,16 @@ func (*Fun) isType()    {}
 func (*Param) isType()  {}
 
 var (
-	Int   = &Con{Name: "Int"}
-	Float = &Con{Name: "Float"}
-	Bool  = &Con{Name: "Bool"}
-	Text  = &Con{Name: "Text"}
-	Unit  = &Con{Name: "Unit"}
-	Date  = &Con{Name: "Date"}
-	Time  = &Con{Name: "Time"}
-	Never = &Con{Name: "Never"}
-	Error = &Con{Name: "Error"}
-	Route = &Con{Name: "Route"}
-	// Page is Route until PR 9 of #160 removes `page`: one canonical type, so a page value and a
-	// route value are the same type (the Prelude's `Page` names it too, see declareStd)
-	Page     = Route
+	Int      = &Con{Name: "Int"}
+	Float    = &Con{Name: "Float"}
+	Bool     = &Con{Name: "Bool"}
+	Text     = &Con{Name: "Text"}
+	Unit     = &Con{Name: "Unit"}
+	Date     = &Con{Name: "Date"}
+	Time     = &Con{Name: "Time"}
+	Never    = &Con{Name: "Never"}
+	Error    = &Con{Name: "Error"}
+	Route    = &Con{Name: "Route"}
 	Response = &Con{Name: "Response"}
 	File     = &Con{Name: "File"}
 	Bytes    = &Con{Name: "Bytes"}
@@ -206,6 +203,9 @@ func str(t Type, paren bool, home printer) string {
 		}
 		return s
 	case *App:
+		if t.Con == "Html" { // written with no argument: markup links and clicks routes (#160)
+			return "Html"
+		}
 		s := t.Con
 		for _, a := range t.Args {
 			s += " " + str(a, true, home)

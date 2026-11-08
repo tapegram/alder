@@ -1,11 +1,11 @@
 module About
 
-page "/about" { }
+route About = GET "/about" { }
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+About.load : About.Params -> Session -> Query Model
+About.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Never
-view model session = <h1>About</h1>
+About.view : Model -> Session -> Html
+About.view model session = <h1>About</h1>

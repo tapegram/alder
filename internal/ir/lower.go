@@ -56,7 +56,7 @@ func LowerTables(prog *names.Program, res *check.Result) (p *Program, err error)
 func newLowerer(prog *names.Program, res *check.Result) *lowerer {
 	return &lowerer{prog: prog, res: res, out: &Program{},
 		records: map[string]*RecordType{}, unions: map[string]*UnionType{}, values: map[string]*Value{},
-		pages: map[string]*Page{}, routes: map[string]*Route{}, routeOf: map[*check.RouteInfo]*Route{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, fakes: map[*syntax.FakeDecl]*Fake{}, fakesByCap: map[string]*Fake{}, inserts: map[*types.Record]insertOf{}, insertRTs: map[insertOf]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, brands: map[string]*Brand{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
+		routes: map[string]*Route{}, routeOf: map[*check.RouteInfo]*Route{}, forms: map[string]*Form{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, fakes: map[*syntax.FakeDecl]*Fake{}, fakesByCap: map[string]*Fake{}, inserts: map[*types.Record]insertOf{}, insertRTs: map[insertOf]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, brands: map[string]*Brand{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
 }
 
 // lowerTests lowers every module's `test` declarations into Module.Tests, marking the `==` each
@@ -133,11 +133,9 @@ type lowerer struct {
 	records map[string]*RecordType // "Module.Name" → nominal record
 	unions  map[string]*UnionType  // "Module.Name" → union (Prelude unions created on first use)
 	values  map[string]*Value      // "Module.name"
-	pages   map[string]*Page       // page module name
 	routes  map[string]*Route      // "Module.Route"
 	routeOf map[*check.RouteInfo]*Route
 	forms   map[string]*Form       // "Module.Form"
-	msgs    map[string]*Msg        // "Owner.Msg": owner is the page module or App
 	tables  map[string]*Table      // "Module.Table"
 	caps    map[string]*Capability // "Module.Capability"
 	// fakes are the lowered `fake` declarations (made with their tables in declareTypes),
@@ -153,8 +151,8 @@ type lowerer struct {
 	erasedU   map[*types.Union]*types.Union
 	// wrappers are the { value: T } payload records made for non-record constructor arguments
 	wrappers map[*RecordType]bool
-	// msgPayloads are the generated `<Msg>Params` records and a form route's `R.Params`, whose
-	// `form` field a literal omits
+	// msgPayloads are the `R.Params` records of the routes with a form, whose `form` field a
+	// literal omits
 	msgPayloads map[*RecordType]bool
 	// anonDefaults are the lowered defaults of anonymous record fields (anonDefault)
 	anonDefaults map[syntax.Expr]Expr
@@ -434,21 +432,18 @@ func (l *lowerer) union(u *types.Union) *UnionType {
 	}
 	ut := &UnionType{Module: u.Module, Name: u.Name, Params: decl.Params}
 	l.unions[k] = ut
-	l.fillUnion(ut, decl, false)
+	l.fillUnion(ut, decl)
 	return ut
 }
 
-// fillUnion sets ut's constructors from the declaration. A message union's constructor whose
-// payload record has no fields has no payload.
-func (l *lowerer) fillUnion(ut *UnionType, decl *types.Union, isMsg bool) {
+// fillUnion sets ut's constructors from the declaration.
+func (l *lowerer) fillUnion(ut *UnionType, decl *types.Union) {
 	for _, c := range decl.Constructors() {
 		ct := CtorT{Name: c.Name}
 		if c.Arg != nil {
 			if rec, ok := c.Arg.(*types.Record); ok {
-				if !(isMsg && len(rec.Fields) == 0) {
-					ct.PayloadType = l.erase(rec)
-					ct.Payload = l.recordType(ct.PayloadType)
-				}
+				ct.PayloadType = l.erase(rec)
+				ct.Payload = l.recordType(ct.PayloadType)
 			} else {
 				ct.Payload = &RecordType{Fields: []FieldT{{Name: "value", Type: l.erase(c.Arg)}}}
 				ct.PayloadType = &types.Record{Anonymous: true, Fields: []types.Field{{Name: "value", Type: ct.Payload.Fields[0].Type}}}
@@ -607,27 +602,9 @@ func (l *lowerer) declareTypes() {
 			}
 		}
 		if name == "App" {
-			if l.out.Session == nil { // pages still name the (empty) Session type
+			if l.out.Session == nil { // routes still name the (empty) Session type
 				l.out.Session = addRecord("Session", l.res.Session, nil)
 			}
-			l.out.AppMsgs = l.declareMsgs(mod, "App", l.res.AppMsg, m)
-		}
-		if info := l.res.Pages[name]; info != nil {
-			pg := &Page{Module: name, Path: info.Decl.Path, Requires: info.Requires, Silo: info.Silo, File: info.File}
-			if len(info.Requires) > 0 {
-				pg.RequiresPos = posOf(info.Decl.RequiresSpan)
-			}
-			if info.Silo != "" {
-				pg.SiloPos = posOf(info.Decl.SiloSpan)
-			}
-			if len(info.Roles) > 0 {
-				pg.Roles, pg.RolesPos = info.Roles, posOf(info.Decl.RolesSpan)
-			}
-			pg.Params = addRecord("Params", info.Params, info.Decl.Params.Fields)
-			pg.Msgs = l.declareMsgs(mod, name, info.Msg, m)
-			pg.Model = l.records[key(name, "Model")]
-			l.pages[name] = pg
-			l.out.Pages = append(l.out.Pages, pg)
 		}
 		for _, info := range l.res.Routes[name] {
 			d := info.Decl
@@ -659,7 +636,6 @@ func (l *lowerer) declareTypes() {
 			l.out.Routes = append(l.out.Routes, r)
 		}
 	}
-	l.declarePageSessions()
 	l.declareRouteSessions()
 	for info, r := range l.routeOf {
 		for _, o := range info.OptionRoutes {
@@ -669,10 +645,7 @@ func (l *lowerer) declareTypes() {
 	if app := l.prog.Modules["App"]; app != nil {
 		for _, d := range app.Decls {
 			if ld, ok := d.(*syntax.LoginDecl); ok {
-				switch pg, r := l.pages[ld.Page], l.routes[ld.Page]; {
-				case pg != nil:
-					l.out.Login = pg.Path
-				case r != nil: // `login = Auth.Login.Login`, a GET route (#160)
+				if r := l.routes[ld.Page]; r != nil { // `login = Auth.Login.Login`, a GET route
 					l.out.Login = r.Path
 				}
 			}
@@ -692,36 +665,22 @@ func (l *lowerer) declareTypes() {
 			l.out.Silos[k] = append(l.out.Silos[k], l.tables[t])
 		}
 	}
-	for name, arms := range l.res.Arms {
-		out := make([]*Arm, len(arms))
-		for i, a := range arms {
-			out[i] = &Arm{Msg: a.Msg, Store: StoreSilo(a.Silo), Pos: posOf(a.Span)}
-		}
-		switch pg := l.pages[name]; {
-		case name == "App":
-			l.out.AppArms = out
-		case pg != nil:
-			pg.Arms = out
-		default: // a route module: one arm per write route, named after it
-			for _, a := range out {
-				if r := l.routes[key(name, a.Msg)]; r != nil {
-					r.Store = a.Store
-				}
+	for name, arms := range l.res.Arms { // one arm per write route, named after it
+		for _, a := range arms {
+			if r := l.routes[key(name, a.Msg)]; r != nil {
+				r.Store = StoreSilo(a.Silo)
 			}
 		}
 	}
 	for k, target := range l.res.Choose {
 		if l.out.Choose == nil {
-			l.out.Choose = map[string]ChooseTarget{}
+			l.out.Choose = map[string]*Route{}
 		}
-		switch pg, r := l.pages[target], l.routes[target]; {
-		case pg != nil:
-			l.out.Choose[k] = pg
-		case r != nil:
-			l.out.Choose[k] = r
-		default:
-			panic(fmt.Sprintf("ir: choose %s names no page or route %s (checker bug)", k, target))
+		r := l.routes[target]
+		if r == nil {
+			panic(fmt.Sprintf("ir: choose %s names no route %s (checker bug)", k, target))
 		}
+		l.out.Choose[k] = r
 	}
 	for _, r := range refs {
 		cands := []string{r.m.Name}
@@ -743,31 +702,7 @@ func (l *lowerer) declareTypes() {
 	}
 	// constructors last: a payload may name a record of any module
 	for _, u := range unions {
-		l.fillUnion(u.ut, u.decl, false)
-	}
-}
-
-// declarePageSessions gives each page its Session: App's record, or for a `requires f` page the
-// checker's narrowed record `Session` of the page module, with field f narrowed from `Maybe T`
-// to `T`. The page's code names that record; where it is used as App's session, Lower wraps the
-// value in a Widen.
-func (l *lowerer) declarePageSessions() {
-	for i, name := range l.prog.Order {
-		pg := l.pages[name]
-		if pg == nil {
-			continue
-		}
-		pg.Session = l.out.Session
-		info := l.res.Pages[name]
-		if info == nil || info.Session == nil || l.out.Session == nil {
-			continue
-		}
-		rt := &RecordType{Module: name, Name: "Session"}
-		l.recordFields(name, rt, info.Session, nil)
-		l.records[key(name, "Session")] = rt
-		mod := l.out.Modules[i]
-		mod.Types = append(mod.Types, &TypeDecl{Module: name, Name: "Session", Record: rt})
-		pg.Session = rt
+		l.fillUnion(u.ut, u.decl)
 	}
 }
 
@@ -845,49 +780,12 @@ func (l *lowerer) fieldBrand(t types.Type) *Brand {
 	return nil
 }
 
-// declareMsgs declares the message payload records and the Msg union of a page module or App.
-func (l *lowerer) declareMsgs(mod *Module, owner string, u *types.Union, m *syntax.Module) []*Msg {
-	decls := map[string]*syntax.MsgDecl{}
-	for _, d := range m.Decls {
-		if md, ok := d.(*syntax.MsgDecl); ok {
-			decls[md.Name] = md
-		}
-	}
-	ut := &UnionType{Module: owner, Name: "Msg"}
-	l.unions[key(owner, "Msg")] = ut
-	var out []*Msg
-	for _, c := range u.Constructors() {
-		md := decls[c.Name]
-		msg := &Msg{Name: c.Name}
-		if md.Form != "" {
-			msg.Form = l.forms[key(owner, md.Form)]
-		}
-		rec := c.Arg.(*types.Record)
-		if len(rec.Fields) > 0 {
-			var fields []*syntax.Field
-			if md.Params != nil {
-				fields = md.Params.Fields
-			}
-			msg.Params = &RecordType{Module: owner, Name: rec.Name}
-			l.msgPayloads[msg.Params] = true
-			l.records[key(owner, rec.Name)] = msg.Params
-			mod.Types = append(mod.Types, &TypeDecl{Module: owner, Name: rec.Name, Record: msg.Params})
-			l.recordFields(owner, msg.Params, rec, fields)
-		}
-		l.msgs[key(owner, c.Name)] = msg
-		out = append(out, msg)
-	}
-	l.fillUnion(ut, u, true)
-	mod.Types = append(mod.Types, &TypeDecl{Module: owner, Name: "Msg", Union: ut})
-	return out
-}
-
 // declareValues creates every value with its signature and parameters; bodies are lowered once
 // all values exist, since a body may use a component declared later.
 func (l *lowerer) declareValues() {
 	for i, name := range l.prog.Order {
 		mod := l.out.Modules[i]
-		l.enter(name) // signatures of a `requires` page name its narrowed Session
+		l.enter(name)
 		for _, d := range l.prog.Modules[name].Decls {
 			vd, ok := d.(*syntax.ValueDecl)
 			if !ok || vd.Body == nil {
@@ -920,18 +818,6 @@ func (l *lowerer) declareValues() {
 				case "update":
 					r.Update = v
 				}
-			} else if pg := l.pages[name]; pg != nil {
-				switch vd.Name {
-				case "view":
-					pg.View = v
-				case "load":
-					pg.Load = v
-				case "update":
-					pg.Update = v
-				}
-			}
-			if name == "App" && vd.Name == "update" {
-				l.out.AppUpdate = v
 			}
 		}
 	}

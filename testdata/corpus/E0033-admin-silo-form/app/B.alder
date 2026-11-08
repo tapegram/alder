@@ -1,12 +1,11 @@
 module B
 
-
-page "/b" { } requires user, role Admin, silo org
+route B = GET "/b" { } requires user, role Admin, silo org
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+B.load : B.Params -> Session -> Query Model
+B.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <p>x</p>
+B.view : Model -> Session -> Html
+B.view model session = <p>x</p>

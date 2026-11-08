@@ -1,0 +1,14 @@
+module App
+
+session { user: Maybe Text }
+
+route Logout = POST "/_/Logout" { }
+
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing })
+  Task.succeed Response.refresh
+}
+
+notFound : Html
+notFound = <h1>x</h1>

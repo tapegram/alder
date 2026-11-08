@@ -21,15 +21,15 @@ func infoMessage(t *testing.T, c *client) (int, string) {
 	return p.Type, p.Message
 }
 
-const sessionPut = "{\n  let _ <- Session.put (\\s -> s)\n  Task.succeed (Redirect (Auth.Login {}))\n}"
+const sessionPut = "{\n  let _ <- Session.put (\\s -> s)\n  Task.succeed (Response.redirect (Auth.Login.Login {}))\n}"
 
 var askCaps = map[string]any{"workspace": map[string]any{"applyEdit": true}, "window": map[string]any{"showMessage": map[string]any{}}}
 
 func TestFill_ShowsAppliedExpression(t *testing.T) {
-	c := fillClient(t, fillRoot(t), &answers{list: []string{"Task.succeed (Redirect (Auth.Login {}))"}}, map[string]any{"workspace": map[string]any{"applyEdit": true}})
+	c := fillClient(t, fillRoot(t), &answers{list: []string{"Task.succeed (Response.redirect (Auth.Login.Login {}))"}}, map[string]any{"workspace": map[string]any{"applyEdit": true}})
 	startFill(t, c)
 	applyEdit(t, c, true)
-	if typ, msg := infoMessage(t, c); typ != 3 || msg != "alder fill ?out: Task.succeed (Redirect (Auth.Login {}))" {
+	if typ, msg := infoMessage(t, c); typ != 3 || msg != "alder fill ?out: Task.succeed (Response.redirect (Auth.Login.Login {}))" {
 		t.Errorf("message %d %q", typ, msg)
 	}
 }

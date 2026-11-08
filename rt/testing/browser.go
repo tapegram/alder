@@ -29,7 +29,6 @@ type AnswerTag int
 
 const (
 	Shown         AnswerTag = iota // a GET showed its page
-	Rerendered                     // a message re-rendered the page (the body patch was applied)
 	Redirected                     // the answer was a redirect; the browser fetched Answer.Page
 	FormRejected                   // a form came back with errors (Answer.Errors)
 	PageMissing                    // 404: the not-found document is held
@@ -42,8 +41,6 @@ func (t AnswerTag) String() string {
 	switch t {
 	case Shown:
 		return "Shown"
-	case Rerendered:
-		return "Rerendered"
 	case Redirected:
 		return "Redirected"
 	case FormRejected:
@@ -65,7 +62,7 @@ func (t AnswerTag) String() string {
 // of RequestFailed.
 type Answer struct {
 	Tag    AnswerTag
-	Page   rt.Page
+	Page   rt.Route
 	Errors []web.FieldError
 	Text   string
 }
@@ -77,7 +74,7 @@ type Result struct {
 	Answer  Answer
 	Session any
 	Doc     html.Node
-	// Notices are the toasts the step's answer showed (a Noticed answer), in order: their text.
+	// Notices are the toasts the step's answer showed, in order: their text.
 	Notices []string
 	// Toasts are the same toasts with their kind (rt.NoticeKind: info, success, warning, error).
 	Toasts []Toast
@@ -122,6 +119,7 @@ type Browser struct {
 	codec   web.SessionCodec
 	key     []byte
 	login   string
+	routes  []web.Route // the app's routes: what a NoControlError's hint matches controls by (offered)
 
 	cookie string    // the session cookie's value, "" for none
 	url    string    // the URL of the page held, "" before the first
@@ -175,7 +173,7 @@ type Browser struct {
 // Test.fake installed since applies), Now and Log, and runs Within env's transaction, begun
 // when the first request needs it (env.Transaction).
 func NewBrowser(env *eff.Env, routes []web.Route, opts web.Options) *Browser {
-	b := &Browser{env: env, codec: opts.Session, login: opts.Login, heads: map[*eff.Env]string{}}
+	b := &Browser{env: env, codec: opts.Session, login: opts.Login, routes: routes, heads: map[*eff.Env]string{}}
 	if len(opts.Secret) < 16 {
 		opts.Secret = TestSecret
 	}
@@ -329,7 +327,7 @@ func (e *NotShownError) Error() string {
 	case PageMissing:
 		return head + "not found"
 	case Redirected:
-		s := head + "redirected to " + rt.PageURL(e.Answer.Page)
+		s := head + "redirected to " + rt.RouteURL(e.Answer.Page)
 		if e.Requires != "" {
 			s += " (requires " + e.Requires + ")"
 		}
@@ -341,10 +339,9 @@ func (e *NotShownError) Error() string {
 }
 
 // NoControlError is the error of a Submit or Click the held page offers no control for. Msg is
-// the message as the test wrote it — the browser fills it from the URL (MsgLabel); the
-// generated code may replace it with the message's Alder form (`Todos.Index.Toggle { id: "…"
-// }`) — and Form the form's name for a Submit ("" when not known). Page is the held page's URL;
-// Offers, when the page renders the same message with other parameters, says which (Offered).
+// the route as the test wrote it (`Todos.Index.Toggle { id: "…" }`) and Form the form's name for
+// a Submit ("" when not known). Page is the held page's URL; Offers, when the page requests the
+// same route with other parameters, says which (offered).
 type NoControlError struct {
 	Submit bool
 	Form   string
@@ -358,7 +355,7 @@ type NoControlError struct {
 // else "the page / has no form NewTodo (Todos.Index.Submit)" for a Submit ("the page / has no
 // form for Todos.Index.Submit" without Form) and "the page / has no button or form for
 // Todos.Index.Toggle { id: "…" }" for a Click, each followed by " (the page has Toggle for id:
-// a, b)" when the page renders the message with other parameters.
+// a, b)" when the page requests the route with other parameters.
 func (e *NoControlError) Error() string {
 	if e.Page == "" {
 		return "no page is open: `Test.get` one first"
@@ -395,34 +392,6 @@ func (e *NoInputError) Error() string {
 	return form + "has no input `" + e.Name + "`"
 }
 
-// MsgLabel is a message URL (/_m/<Module>/<Msg>?k=v) as the test would write the message:
-// `Module.Msg`, then its own parameters (not the page's `_p.` ones) as a record of text values
-// in URL order, `Todos.Index.Toggle { id: "a" }`.
-func MsgLabel(msgURL string) string {
-	u, err := url.Parse(msgURL)
-	if err != nil {
-		return msgURL
-	}
-	name := strings.TrimPrefix(u.Path, "/_m/")
-	if i := strings.LastIndexByte(name, '/'); i >= 0 {
-		name = name[:i] + "." + name[i+1:]
-	}
-	var fields []string
-	for _, kv := range strings.Split(u.RawQuery, "&") {
-		k, v, _ := strings.Cut(kv, "=")
-		k, _ = url.QueryUnescape(k)
-		v, _ = url.QueryUnescape(v)
-		if k == "" || strings.HasPrefix(k, rt.PagePrefix) {
-			continue
-		}
-		fields = append(fields, k+": "+strconv.Quote(v))
-	}
-	if len(fields) == 0 {
-		return name
-	}
-	return name + " { " + strings.Join(fields, ", ") + " }"
-}
-
 // Open requests the page at url with a plain GET and the browser's cookie, follows a redirect
 // (to at most redirectLimit in a row) and holds what it ends on: Shown, Redirected (the page
 // reached), PageMissing (the not-found document held) or RequestFailed (the error document held, Text the
@@ -455,7 +424,7 @@ func (b *Browser) Fetch(u string) (Fetched, error) {
 	defer b.track()()
 	toasts, model := b.toasts, b.model
 	defer func() { b.toasts, b.model = toasts, model }()
-	w, err := b.serve(http.MethodGet, u, nil, false)
+	w, err := b.get(u)
 	if err != nil {
 		return Fetched{}, err
 	}
@@ -482,36 +451,6 @@ func (b *Browser) Get(u string) (Result, error) {
 		return r, &NotShownError{URL: u, Answer: r.Answer}
 	}
 	return r, nil
-}
-
-// Submit posts fields to the form on the held page whose action is msgURL — compared as the
-// message and its own parameters, so the page's `_p.` parameters the rendered URL carries are
-// sent as rendered — as Datastar does (url-encoded, Datastar-Request: true), and applies the
-// answer: Rerendered (the body patch replaces the held body), FormRejected (the same, when the
-// re-rendered page shows errors), Redirected (the target fetched and held), PageMissing, RequestFailed.
-// With no such form the error is a *NoControlError, and with a field the form has no input for
-// a *NoInputError (Fields.For); either way nothing is sent.
-func (b *Browser) Submit(msgURL string, fields url.Values) (Result, error) {
-	return b.submit(msgURL, "", Fields{Values: fields})
-}
-
-// submit is Submit of fields, form the form's name for the errors.
-func (b *Browser) submit(msgURL, form string, fields Fields) (Result, error) {
-	defer b.track()()
-	target, f, ok := b.formFor(msgURL)
-	if !ok {
-		return Result{}, &NoControlError{Submit: true, Form: form, Msg: MsgLabel(msgURL), URL: msgURL, Page: b.url,
-			Offers: Offered(msgURL, b.controlURLs(true))}
-	}
-	send, err := fields.For(f, form)
-	if err != nil {
-		return Result{}, err
-	}
-	ans, err := b.post(target, send)
-	if err != nil {
-		return Result{}, err
-	}
-	return b.result(ans), nil
 }
 
 // Fields is a form's record as Test.submit posts it (the generated encode__M__F): Values, the
@@ -551,80 +490,9 @@ func (fs Fields) For(f html.Node, form string) (url.Values, error) {
 	return out, nil
 }
 
-// Offered is what the held page offers for the message of msgURL with other parameters, from
-// the URLs its controls post (urls): the message's name, then each control's own parameters in
-// page order, each set once — "Toggle for id: a, b" when every control has the same single
-// parameter, else "Rename for id: a, x: 1; id: b, x: 2"; "" when no control posts the message
-// with parameters.
-func Offered(msgURL string, urls []string) string {
-	want, err := url.Parse(msgURL)
-	if err != nil {
-		return ""
-	}
-	type set struct{ keys, text, value string }
-	var sets []set
-	for _, u := range urls {
-		p, err := url.Parse(u)
-		if err != nil || p.Path != want.Path {
-			continue
-		}
-		var keys, own []string
-		value := ""
-		for _, kv := range strings.Split(p.RawQuery, "&") {
-			k, v, _ := strings.Cut(kv, "=")
-			k, _ = url.QueryUnescape(k)
-			v, _ = url.QueryUnescape(v)
-			if k == "" || strings.HasPrefix(k, rt.PagePrefix) {
-				continue
-			}
-			keys, own, value = append(keys, k), append(own, k+": "+v), v
-		}
-		s := set{strings.Join(keys, ","), strings.Join(own, ", "), value}
-		if len(own) > 0 && !slices.Contains(sets, s) {
-			sets = append(sets, s)
-		}
-	}
-	if len(sets) == 0 {
-		return ""
-	}
-	name := want.Path[strings.LastIndexByte(want.Path, '/')+1:]
-	var texts, values []string
-	single := !strings.Contains(sets[0].keys, ",")
-	for _, s := range sets {
-		texts, values = append(texts, s.text), append(values, s.value)
-		single = single && s.keys == sets[0].keys
-	}
-	if single {
-		return name + " for " + sets[0].keys + ": " + strings.Join(values, ", ")
-	}
-	return name + " for " + strings.Join(texts, "; ")
-}
-
-// Click posts the message msgURL as the held page's control for it would: a `click` button (its
-// formaction, or its own form's action), a form posting it, or any element whose data-on:click
-// posts it — compared as the message and its own parameters; the control's URL, with the page's
-// `_p.` parameters, is what is posted. The answer is applied as for Submit. With no such control
-// the error is a *NoControlError and nothing is sent.
-func (b *Browser) Click(msgURL string) (Result, error) {
-	defer b.track()()
-	target, ok := b.control(msgURL)
-	if !ok {
-		return Result{}, &NoControlError{Msg: MsgLabel(msgURL), URL: msgURL, Page: b.url, Offers: Offered(msgURL, b.controlURLs(false))}
-	}
-	ans, err := b.post(target, url.Values{})
-	if err != nil {
-		return Result{}, err
-	}
-	return b.result(ans), nil
-}
-
 var (
 	selBody     = html.MustParseSelector("body")
 	selShown    = html.MustParseSelector("al-shown")
-	selForm     = html.MustParseSelector("form")
-	selAction   = html.MustParseSelector("[formaction]")
-	selClick    = html.MustParseSelector("[data-on:click]")
-	selClickP   = html.MustParseSelector("[data-on:click__prevent]")
 	selErrors   = html.MustParseSelector("ul[data-errors]")
 	selLi       = html.MustParseSelector("li")
 	selInput    = html.MustParseSelector("input")
@@ -632,94 +500,10 @@ var (
 	selTextarea = html.MustParseSelector("textarea")
 )
 
-// control is the URL the held page's control for msgURL posts: a <form>'s action or
-// data-on:submit, a [formaction] button's or any data-on:click's.
-func (b *Browser) control(msgURL string) (string, bool) {
-	want, ok := msgKey(msgURL)
-	if !ok {
-		return "", false
-	}
-	for _, u := range b.controlURLs(false) {
-		if k, ok := msgKey(u); ok && k == want {
-			return u, true
-		}
-	}
-	return "", false
-}
-
-// formFor is the URL the held page's form for msgURL posts, and the form (a form to submit:
-// not a click button's own).
-func (b *Browser) formFor(msgURL string) (string, html.Node, bool) {
-	want, ok := msgKey(msgURL)
-	if !b.hasDoc || !ok {
-		return "", html.Node{}, false
-	}
-	for _, f := range html.Select(b.doc, selForm) {
-		if clickForm(f) {
-			continue
-		}
-		for _, u := range formURLs(f) {
-			if k, ok := msgKey(u); ok && k == want {
-				return u, f, true
-			}
-		}
-	}
-	return "", html.Node{}, false
-}
-
 // clickForm reports whether form f is a click button's own form, which is not a form to submit.
 func clickForm(f html.Node) bool {
 	class, _ := html.AttrOf(f, "class")
 	return slices.Contains(strings.Fields(class), "_alder-click")
-}
-
-// controlURLs are the URLs the held page's controls post: its forms' (for a submit only those,
-// and not a click button's own form), then a [formaction] button's and any data-on:click's.
-func (b *Browser) controlURLs(submit bool) []string {
-	if !b.hasDoc {
-		return nil
-	}
-	var urls []string
-	for _, f := range html.Select(b.doc, selForm) {
-		if !submit || !clickForm(f) {
-			urls = append(urls, formURLs(f)...)
-		}
-	}
-	if !submit {
-		for _, n := range html.Select(b.doc, selAction) {
-			a, _ := html.AttrOf(n, "formaction")
-			urls = append(urls, a)
-		}
-		for _, sel := range []html.Selector{selClick, selClickP} {
-			for _, n := range html.Select(b.doc, sel) {
-				for _, name := range []string{"data-on:click", "data-on:click__prevent"} {
-					if a, ok := html.AttrOf(n, name); ok {
-						urls = append(urls, postURL(a))
-					}
-				}
-			}
-		}
-	}
-	return urls
-}
-
-// msgKey is rt.MsgKey of a message URL: its path and own parameters.
-func msgKey(u string) (string, bool) {
-	p, err := url.Parse(u)
-	if err != nil || p.Path == "" {
-		return "", false
-	}
-	return rt.MsgKey(p.Path, p.Query()), true
-}
-
-// postURL is the URL of a Datastar action `@post('<url>'…)`, "" for another.
-func postURL(action string) string {
-	_, rest, ok := strings.Cut(action, "@post('")
-	if !ok {
-		return ""
-	}
-	u, _, _ := strings.Cut(rest, "'")
-	return u
 }
 
 // result is ans with the session the cookie now carries and the document held.
@@ -731,18 +515,9 @@ func (b *Browser) result(ans Answer) Result {
 	return Result{Answer: ans, Session: b.Session(), Doc: b.doc, Model: b.model, Notices: notices, Toasts: b.toasts, URL: b.url, Status: b.status}
 }
 
-// serve sends one request through the router: with the cookie, the held page as Referer (an App
-// message redirects back to it), and for a Datastar request its header; it then keeps the cookie
-// the answer sets and appends the effects the request ran to the test's trace.
-func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httptest.ResponseRecorder, error) {
-	o := outgoing{method: method, target: target, ds: ds}
-	if method == http.MethodPost {
-		o.body, o.ctype = form.Encode(), "application/x-www-form-urlencoded"
-		if ds && b.shown != "" {
-			o.header = http.Header{html.ShownHeader: {b.shown}}
-		}
-	}
-	return b.send(o)
+// get sends a plain GET of u through the router (send).
+func (b *Browser) get(u string) (*httptest.ResponseRecorder, error) {
+	return b.send(outgoing{method: http.MethodGet, target: u})
 }
 
 // outgoing is one request the browser sends: its method and target, its body of type ctype
@@ -755,7 +530,9 @@ type outgoing struct {
 	ds             bool
 }
 
-// send is serve of request o.
+// send sends request o through the router: with the cookie, the held page as Referer, and for
+// a Datastar request its header; it then keeps the cookie the answer sets and appends the
+// effects the request ran to the test's trace.
 func (b *Browser) send(o outgoing) (*httptest.ResponseRecorder, error) {
 	b.toasts = nil
 	cur, err := b.within()
@@ -789,7 +566,12 @@ func (b *Browser) send(o outgoing) (*httptest.ResponseRecorder, error) {
 	b.reqHead = req.Method + " " + req.URL.Path + ": "
 	w := httptest.NewRecorder()
 	b.serveHTTP(w, req)
+	recs := map[*eff.Recorder]bool{}
 	for _, e := range b.reqEnvs {
+		if e.Rec != nil && recs[e.Rec] {
+			continue // the shown page of a write (web's runShown): its steps are on the write's trace already
+		}
+		recs[e.Rec] = true
 		b.env.Trace = append(b.env.Trace, e.Trace...)
 	}
 	b.account(req.Method+" "+req.URL.Path, w.Body.Len())
@@ -819,14 +601,14 @@ func (b *Browser) navigate(u string, redirected bool) (Answer, error) {
 			// another site (Url.external): the browser does not leave the app, so nothing is
 			// served and the held page and URL stay as they were; the answer names the target
 			// as Url.external builds it
-			return Answer{Tag: Redirected, Page: rt.Page{Path: u}}, nil
+			return Answer{Tag: Redirected, Page: rt.Route{Path: u}}, nil
 		}
 		if redirected && strings.HasPrefix(u, "#") {
 			// "#" (an unsafe URL Url.external neutralised) or "#frag": a browser stays on the
 			// page it has, so nothing is requested and the held page and URL stay
-			return Answer{Tag: Redirected, Page: rt.Page{Path: u}}, nil
+			return Answer{Tag: Redirected, Page: rt.Route{Path: u}}, nil
 		}
-		w, err := b.serve(http.MethodGet, u, nil, false)
+		w, err := b.get(u)
 		if err != nil {
 			return Answer{}, err
 		}
@@ -965,10 +747,10 @@ func isShown(n html.Node) bool {
 }
 
 // DriftError is a step whose answer, applied to the page the browser held, did not give the
-// page a full render shows: the router's fragments (html.Fragments) or the page's Before are
+// page a full render shows: the router's fragments (html.Fragments) or the before-view are
 // wrong. Every click and submit of every test checks it.
 type DriftError struct {
-	Step string // "POST /_m/…"
+	Step string // "PATCH /todos/7"
 	Diff html.Difference
 }
 
@@ -1063,19 +845,11 @@ func (b *Browser) failText() string {
 	return msg
 }
 
-// post sends a Datastar POST of form to target and applies its answer.
-func (b *Browser) post(target string, form url.Values) (Answer, error) {
-	w, err := b.serve(http.MethodPost, target, form, true)
-	if err != nil {
-		return Answer{}, err
-	}
-	return b.apply(w)
-}
-
 // apply applies w, the answer to a Datastar request, to the held page: a redirect followed, a
 // navigation made, the patches applied (and checked: checkPatched). Its Answer is RequestFailed
 // or PageMissing for the error an Alder-Status names, Redirected for a redirect, else
-// FormRejected when the page shows errors and Rerendered when it does not.
+// FormRejected when the page shows errors and Refreshed when it does not (sendRoute then reads
+// what the route answered).
 func (b *Browser) apply(w *httptest.ResponseRecorder) (Answer, error) {
 	if w.Code == http.StatusSeeOther { // not under Datastar, but a client follows it all the same
 		return b.navigate(w.Header().Get("Location"), true)
@@ -1138,7 +912,7 @@ func (b *Browser) apply(w *httptest.ResponseRecorder) (Answer, error) {
 	if errs := pageErrors(b.doc); len(errs) > 0 {
 		return Answer{Tag: FormRejected, Errors: errs}, nil
 	}
-	return Answer{Tag: Rerendered}, nil
+	return Answer{Tag: Refreshed}, nil
 }
 
 // sendRoute sends c's request for route r (routeControl) as the page's script does, with
@@ -1177,7 +951,7 @@ func (b *Browser) sendRoute(c routeCtl, r rt.Route, fields url.Values) (Answer, 
 		return Answer{}, err
 	}
 	ans, err := b.apply(w)
-	if err != nil || (ans.Tag != Rerendered && ans.Tag != FormRejected) {
+	if err != nil || (ans.Tag != Refreshed && ans.Tag != FormRejected) {
 		return ans, err // a redirect followed, a navigation, a failure
 	}
 	if c.fetch {
@@ -1569,13 +1343,14 @@ func external(u string) bool {
 	return err == nil && (p.Scheme != "" || p.Host != "")
 }
 
-// pageOf is the Page a URL of this site links to: its escaped path and its query in order.
-func pageOf(u string) rt.Page {
+// pageOf is the Route a URL of this site links to: its escaped path and its query in order,
+// with no name or method.
+func pageOf(u string) rt.Route {
 	p, err := url.Parse(u)
 	if err != nil {
-		return rt.Page{Path: u}
+		return rt.Route{Path: u}
 	}
-	page := rt.Page{Path: p.EscapedPath()}
+	page := rt.Route{Path: p.EscapedPath()}
 	if p.RawQuery == "" {
 		return page
 	}

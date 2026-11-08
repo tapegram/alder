@@ -412,7 +412,7 @@ test "a long list of posts offers 50, and the search narrows it" = {
       total: 203,
       found: True,
       answer: Redirected (Edit { id: comment1, findPost: "zz" }),
-      visitor: Redirected (Auth.Login {}),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -553,7 +553,7 @@ test "a long list of users offers 50, and the search narrows it" = {
       total: 203,
       found: True,
       answer: Redirected (Edit { id: comment1, findAuthor: "zz" }),
-      visitor: Redirected (Auth.Login {}),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -643,7 +643,7 @@ test "a visitor cannot save a comment" = {
   }
   let after <- Db.get Comment comment1
   Task.succeed (
-    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login {}), row: before }
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login.Login {}), row: before }
   )
 }
 
@@ -749,7 +749,7 @@ test "a visitor is sent to log in" = {
     body: Text.NonEmpty "body-1",
   }
   let r <- Test.open (Edit { id: comment1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {

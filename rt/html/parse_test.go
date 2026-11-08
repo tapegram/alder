@@ -12,7 +12,8 @@ import (
 // goldenNodes are the trees whose rendering the html tests pin (html_test.go, state_test.go),
 // rebuilt here: every one must survive Render → Parse → Render unchanged.
 func goldenNodes() map[string]Node {
-	form := FormTo(rt.MsgRef{Module: "Todos.Index", Msg: "Submit"}, []Attr{A("class", "new")},
+	submit := rt.Route{Name: "Todos.Index.Submit", Method: "POST", Path: "/todos"}
+	form := FormToRoute(submit, []Attr{A("class", "new")},
 		Input(Control{Kind: "errors", Form: "Todos.Index.NewTodo"}),
 		Input(Control{Kind: "input", Form: "Todos.Index.NewTodo", Name: "title", Label: "Title", Required: true}),
 		Input(Control{Kind: "errors", Form: "Todos.Index.NewTodo", Name: "title"}),
@@ -22,7 +23,7 @@ func goldenNodes() map[string]Node {
 		Input(Control{Kind: "textarea", Form: "Todos.Index.NewTodo", Name: "body", Value: "line 1\nline 2\r\n<tag>"}),
 		Input(Control{Kind: "select", Form: "Todos.Index.NewTodo", Name: "colour", Options: []string{"Red", "Green"}}),
 		Input(Control{Kind: "select", Form: "Todos.Index.NewTodo", Name: "size", Required: true, Options: []string{"S", "M"}, Value: "M"}),
-		El("button", []Attr{MsgAttr("data-on:click", rt.MsgRef{Module: "Todos.Index", Msg: "Clear"})}, Text("Clear")),
+		El("button", []Attr{RouteAttr("data-on:click", rt.Route{Name: "Todos.Index.Clear", Method: "DELETE", Path: "/todos/done"})}, Text("Clear")),
 		El("button", []Attr{A("type", "submit")}, Text("Add")),
 	)
 	page := El("html", []Attr{A("lang", "en")},
@@ -34,7 +35,7 @@ func goldenNodes() map[string]Node {
 			Raw("<!-- error: boom -->"),
 			El("ul", []Attr{A("class", "todos")},
 				El("li", []Attr{A("class", "done")}, Text("one"),
-					El("button", []Attr{MsgAttr("data-on:click", rt.MsgRef{Module: "Todos.Index", Msg: "Toggle", Params: []rt.KV{{Key: "id", Value: "a b&c"}}}), A("class", "toggle")}, Text("Toggle"))),
+					El("button", []Attr{RouteAttr("data-on:click", rt.Route{Name: "Todos.Index.Toggle", Method: "PATCH", Path: "/todos/" + rt.PathSegment("a b&c"), Query: []rt.KV{{Key: "tab", Value: "x&y"}}}), A("class", "toggle")}, Text("Toggle"))),
 				El("li", nil, Nodes(Text("tw"), Text("o")), None())),
 			El("a", []Attr{A("href", "javascript:alert(1)")}, Text("bad")),
 			El("a", []Attr{A("href", "/?filter=Active&page=2")}, Text("next")),
@@ -61,11 +62,10 @@ func TestParse_RoundTripsGoldenPages(t *testing.T) {
 		var st *FormState
 		if name == "state" {
 			st = &FormState{
-				Form: "Todos.Index.NewTodo", Msg: "/_m/Todos.Index/Submit",
-				Values:     map[string]string{"title": `<b>"x" & y</b>`, "done": "True", "colour": "Red", "body": "a\r\nb"},
-				Errors:     map[string][]string{"title": {"must not be empty", "is < 3 & > 1"}, "due": {"is not a date"}},
-				FormError:  "that's \"taken\"",
-				PageParams: []rt.KV{{Key: "filter", Value: "Active"}, {Key: "q", Value: "a&b c"}},
+				Form: "Todos.Index.NewTodo", Msg: "POST /todos",
+				Values:    map[string]string{"title": `<b>"x" & y</b>`, "done": "True", "colour": "Red", "body": "a\r\nb"},
+				Errors:    map[string][]string{"title": {"must not be empty", "is < 3 & > 1"}, "due": {"is not a date"}},
+				FormError: "that's \"taken\"",
 			}
 		}
 		want := RenderWith(n, st)
@@ -169,7 +169,7 @@ func TestNode_Equal(t *testing.T) {
 	if pc, _ := Parse(Render(c)); !c.Equal(pc) {
 		t.Fatal("control")
 	}
-	b := El("button", []Attr{MsgAttr("data-on:click", rt.MsgRef{Module: "M", Msg: "Go"})}, Text("Go"))
+	b := El("button", []Attr{RouteAttr("data-on:click", rt.Route{Name: "M.Go", Method: "PATCH", Path: "/go"})}, Text("Go"))
 	if pb, _ := Parse(Render(b)); !b.Equal(pb) {
 		t.Fatal("click button")
 	}

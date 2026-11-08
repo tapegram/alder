@@ -1,11 +1,11 @@
 module Admin2
 
-page "/admin/2" { } requires user, role Admin | Admin
+route Admin2 = GET "/admin/2" { } requires user, role Admin | Admin
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Admin2.load : Admin2.Params -> Session -> Query Model
+Admin2.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <p>admin</p>
+Admin2.view : Model -> Session -> Html
+Admin2.view model session = <p>admin</p>

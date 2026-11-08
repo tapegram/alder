@@ -3,31 +3,29 @@ module New
 import Todo
 import User
 
-page "/new/{id}" { id: Todo.TodoId }
+route New = GET  "/new/{id}"       { id: Todo.TodoId }
+route Add = POST "/new/{id}/_/Add" { id: Todo.TodoId } form NewTodo
 
 type Model = { id: Todo.TodoId }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { id: params.id }
+New.load : New.Params -> Session -> Query Model
+New.load params session = Query.succeed { id: params.id }
 
-form NewTodo = {
-  title: Text.NonEmpty,
-  owner: User.UserId,
+form NewTodo = { title: Text.NonEmpty, owner: User.UserId }
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insert Todo {
+    id: p.id,
+    title: p.form.title,
+    owner: p.form.owner,
+  }
+  Task.succeed Response.refresh
 }
 
-msg Add form NewTodo
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add p -> {
-    let _ <- Db.insert Todo { id: model.id, title: p.form.title, owner: p.form.owner }
-    Task.succeed Rerender
-  },
-}
-
-view : Model -> Session -> Html Msg
-view model session =
-  <form submit={Add}>
+New.view : Model -> Session -> Html
+New.view model session =
+  <form submit={Add { id: model.id }}>
     <Input field="title" label="Title" />
     <Input field="owner" label="Owner" />
     <button>Add</button>

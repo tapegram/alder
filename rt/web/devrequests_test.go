@@ -40,7 +40,7 @@ func summaries(t *testing.T, h *router) []ReqSummary {
 }
 
 func pageRoute(pattern string) Route {
-	return Route{Method: "GET", Pattern: pattern, Handle: func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil, false) }}
+	return Route{Method: "GET", Pattern: pattern, Handle: func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil) }}
 }
 
 // The ring holds the requests the dev panel recorded, newest first, each under the id its
@@ -83,7 +83,7 @@ func TestDevRequests_Detail(t *testing.T) {
 		if _, err := eff.RunQuery(rq.Env, eff.Q(call("Db.second", 5))); err != nil {
 			panic(err)
 		}
-		return PageResponse(doc("d"), nil, nil, false)
+		return PageResponse(doc("d"), nil, nil)
 	}}}, func(o *Options) { o.Log = func(string, string) {} })
 	rid := serve(h, httptest.NewRequest("GET", "/d/7", nil)).Header().Get("X-Request-Id")
 

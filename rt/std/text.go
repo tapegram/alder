@@ -130,32 +130,16 @@ func UrlExternal(u string) rt.Route {
 	return rt.Route{Method: "GET", Path: u}
 }
 
-// UrlAbsolute is `Url.absolute`: the page's URL (rt.PageURL, what `href` renders) with the
-// public base (rt.PublicURL) in front when it is a path of this site; any other page (an
+// UrlAbsolute is `Url.absolute`: the route's URL (rt.RouteURL, what `href` renders) with the
+// public base (rt.PublicURL) in front when it is a path of this site; any other route (an
 // external URL, a fragment, a sanitised "#") is its URL unchanged.
-func UrlAbsolute(p rt.Page) string {
-	u := rt.PageURL(p)
+func UrlAbsolute(r rt.Route) string {
+	u := rt.RouteURL(r)
 	if strings.HasPrefix(u, "/") {
 		return rt.PublicURL + u
 	}
 	return u
 }
-
-// NavNoticed is nav's answer with a toast of kind k showing text: `Notice.with` (info),
-// `Notice.success`, `Notice.warning` and `Notice.error` (below).
-func NavNoticed(k rt.NoticeKind, t string, n rt.Nav) rt.Nav { return rt.Noticed(k, t, n) }
-
-// NoticeWith is `Notice.with text nav`, an info toast.
-func NoticeWith(t string, n rt.Nav) rt.Nav { return NavNoticed(rt.NoticeInfo, t, n) }
-
-// NoticeSuccess is `Notice.success text nav`.
-func NoticeSuccess(t string, n rt.Nav) rt.Nav { return NavNoticed(rt.NoticeSuccess, t, n) }
-
-// NoticeWarning is `Notice.warning text nav`.
-func NoticeWarning(t string, n rt.Nav) rt.Nav { return NavNoticed(rt.NoticeWarning, t, n) }
-
-// NoticeError is `Notice.error text nav`.
-func NoticeError(t string, n rt.Nav) rt.Nav { return NavNoticed(rt.NoticeError, t, n) }
 
 // TextToBytes is the text's UTF-8 bytes.
 func TextToBytes(s string) []byte { return []byte(s) }

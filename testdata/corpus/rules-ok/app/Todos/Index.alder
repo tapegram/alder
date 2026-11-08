@@ -3,79 +3,90 @@ module Todos.Index
 import Todo
 import User
 
-page "/" { } requires user
+route Index     = GET  "/"            { }                 requires user
+route Add       = POST "/_/Add"       { } form NewTodo    requires user
+route Toggle    = POST "/_/Toggle"    { id: Todo.TodoId } requires user
+route Rename    = POST "/_/Rename"    { id: Todo.TodoId } requires user
+route Remove    = POST "/_/Remove"    { id: Todo.TodoId } requires user
+route Duplicate = POST "/_/Duplicate" { id: Todo.TodoId } requires user
 
 type Model = { todos: List Todo, open: Int }
 
 -- A helper value of a `requires user` page module may use the scoped operations; they act for
 -- the signed-in user of the running request (or test).
 recent : Select Todo
-recent = Db.mine Todo |> Db.orderBy Todo.created.desc |> Db.limit 2
+recent =
+  Db.mine Todo
+    |> Db.orderBy Todo.created.desc
+    |> Db.limit 2
 
-load : Params -> Session -> Query Model
-load params session = {
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
   let todos <- recent |> Db.all
-  let open <- Db.mine Todo |> Db.where (Todo.done.eq False) |> Db.count
+  let open <-
+    Db.mine Todo
+      |> Db.where (Todo.done.eq False)
+      |> Db.count
   Query.succeed { todos: todos, open: open }
 }
 
-form NewTodo = {
-  title: Text,
+form NewTodo = { title: Text }
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insertMine Todo { title: p.form.title }
+  Task.succeed Response.refresh
 }
 
-msg Add form NewTodo
-msg Toggle { id: Todo.TodoId }
-msg Rename { id: Todo.TodoId }
-msg Remove { id: Todo.TodoId }
-msg Duplicate { id: Todo.TodoId }
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add p -> {
-    let _ <- Db.insertMine Todo { title: p.form.title }
-    Task.succeed Rerender
-  },
-  Toggle p -> {
-    let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
-    Task.succeed Rerender
-  },
-  Rename p -> {
-    let t <- Db.getMine Todo p.id
-    let _ <- Db.update Todo t.id (\x -> { x | title: "renamed" })
-    Task.succeed Rerender
-  },
-  Remove p -> {
-    let _ <- p.id |> Db.deleteMine Todo
-    Task.succeed Rerender
-  },
-  -- a write, then a scoped write: a row that is not mine undoes both
-  Duplicate p -> {
-    let _ <- Db.insertMine Todo { title: "copy" }
-    let _ <- Db.updateMine Todo p.id (\t -> { t | done: True })
-    Task.succeed Rerender
-  },
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
+  Task.succeed Response.refresh
 }
 
-view : Model -> Session -> Html Msg
-view model session =
-  <html><body>
-    <form submit={Add}>
-      <Input field="title" label="Title" />
-      <Errors form />
-      <button>Add</button>
-    </form>
-    <p id="open">{Text.fromInt model.open}</p>
-    <ul>
-      {for t in model.todos ->
-        <li>
-          <span>{t.title}</span>
-          <button click={Toggle { id: t.id }}>toggle</button>
-          <button click={Rename { id: t.id }}>rename</button>
-          <button click={Remove { id: t.id }}>remove</button>
-          <button click={Duplicate { id: t.id }}>duplicate</button>
-        </li>}
-    </ul>
-  </body></html>
+Rename.update : Rename.Params -> Session -> Task Response
+Rename.update p session = {
+  let t <- Db.getMine Todo p.id
+  let _ <- Db.update Todo t.id (\x -> { x | title: "renamed" })
+  Task.succeed Response.refresh
+}
+
+Remove.update : Remove.Params -> Session -> Task Response
+Remove.update p session = {
+  let _ <- p.id |> Db.deleteMine Todo
+  Task.succeed Response.refresh
+}
+
+-- a write, then a scoped write: a row that is not mine undoes both
+Duplicate.update : Duplicate.Params -> Session -> Task Response
+Duplicate.update p session = {
+  let _ <- Db.insertMine Todo { title: "copy" }
+  let _ <- Db.updateMine Todo p.id (\t -> { t | done: True })
+  Task.succeed Response.refresh
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <html>
+    <body>
+      <form submit={Add}>
+        <Input field="title" label="Title" />
+        <Errors form />
+        <button>Add</button>
+      </form>
+      <p id="open">{Text.fromInt model.open}</p>
+      <ul>
+        {for t in model.todos ->
+          <li>
+            <span>{t.title}</span>
+            <button click={Toggle { id: t.id }}>toggle</button>
+            <button click={Rename { id: t.id }}>rename</button>
+            <button click={Remove { id: t.id }}>remove</button>
+            <button click={Duplicate { id: t.id }}>duplicate</button>
+          </li>}
+      </ul>
+    </body>
+  </html>
 
 titleOf : Maybe Todo -> Text
 titleOf found = match found {
@@ -92,16 +103,23 @@ test "recent lists my two newest todos" = {
   let _ <- Db.insert Todo { title: "c", owner: me }
   let _ <- Db.insert Todo { title: "bob's", owner: bob }
   let _ <- Test.login { user: Just me }
-  let r <- Test.run { let ts <- recent |> Db.all
-    Task.succeed (List.map (\t -> t.title) ts) }
+  let r <- Test.run {
+    let ts <- recent |> Db.all
+    Task.succeed (List.map (\t -> t.title) ts)
+  }
   Task.succeed (r.value == Ok ["c", "b"])
 }
 
 -- Without Test.login the test's session has no user: a helper using a scoped operation fails.
 test "a scoped helper needs a signed-in user" = {
-  let r <- Test.run { let ts <- recent |> Db.all
-    Task.succeed (List.length ts) }
-  Task.succeed ({ value: r.value, trace: r.trace } == { value: Err "Db.mine Todo: no signed-in user", trace: ["Db.mine Todo", "Db.all Todo"] })
+  let r <- Test.run {
+    let ts <- recent |> Db.all
+    Task.succeed (List.length ts)
+  }
+  Task.succeed (
+    { value: r.value, trace: r.trace }
+      == { value: Err "Db.mine Todo: no signed-in user", trace: ["Db.mine Todo", "Db.all Todo"] }
+  )
 }
 
 test "the open count is of my open todos" = {
@@ -109,66 +127,129 @@ test "the open count is of my open todos" = {
   let bob <- Db.insert User { name: "Bob" }
   let _ <- Db.insert Todo { title: "a", owner: me }
   let _ <- Db.insert Todo { title: "b", owner: me }
-  let _ <- Db.insert Todo { title: "c", done: True, owner: me }
+  let _ <- Db.insert Todo {
+    title: "c",
+    done: True,
+    owner: me,
+  }
   let _ <- Db.insert Todo { title: "d", owner: bob }
   let _ <- Test.login { user: Just me }
-  let page <- Test.get (Todos.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (page.model.open == 2)
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Todos.Index {})
-  Task.succeed (r.answer == Redirected (Login {}))
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Login.Login {}))
 }
 
 test "adding a todo stores an open todo of mine" = {
   let me <- Db.insert User { name: "Me" }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
-  let _ <- Test.submit NewTodo { title: "Milk" }
-  let mine <- Db.from Todo |> Db.where (Todo.owner.eq me) |> Db.all
-  Task.succeed (List.map (\t -> { title: t.title, done: t.done }) mine == [{ title: "Milk", done: False }])
+  let _ <- Test.get (Index {})
+  let r <- Test.submit Add { title: "Milk" }
+  let mine <-
+    Db.from Todo
+      |> Db.where (Todo.owner.eq me)
+      |> Db.all
+  Task.succeed (
+    { answer: r.answer, todos: List.map (\t -> { title: t.title, done: t.done }) mine }
+      == { answer: Refreshed, todos: [{ title: "Milk", done: False }] }
+  )
+}
+
+-- a write route requires a user as its page does: a visitor is sent to log in, and nothing is written
+test "a visitor is sent to log in from every write" = {
+  let me <- Db.insert User { name: "Me" }
+  let id <- Db.insert Todo { title: "Milk", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let added <- Test.submit Add { title: "Eggs" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let toggled <- Test.click (Toggle { id: id })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let renamed <- Test.click (Rename { id: id })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let removed <- Test.click (Remove { id: id })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let copied <- Test.click (Duplicate { id: id })
+  let todos <- Db.from Todo |> Db.all
+  let login = Redirected (Login.Login {})
+  Task.succeed (
+    [added.answer, toggled.answer, renamed.answer, removed.answer, copied.answer]
+      == [login, login, login, login, login]
+      && List.map (\t -> { title: t.title, done: t.done }) todos == [{ title: "Milk", done: False }]
+  )
 }
 
 test "toggling my todo" = {
   let me <- Db.insert User { name: "Me" }
   let id <- Db.insert Todo { title: "Milk", owner: me }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.get (Index {})
   let r <- Test.click (Toggle { id: id })
   let after <- Db.get Todo id
-  Task.succeed ({ answer: r.answer, done: Maybe.map (\t -> t.done) after } == { answer: Rerendered, done: Just True })
+  Task.succeed (
+    { answer: r.answer, done: Maybe.map (\t -> t.done) after }
+      == { answer: Refreshed, done: Just True }
+  )
 }
 
 test "renaming my todo" = {
   let me <- Db.insert User { name: "Me" }
   let id <- Db.insert Todo { title: "Milk", owner: me }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.get (Index {})
   let r <- Test.click (Rename { id: id })
   let after <- Db.get Todo id
-  Task.succeed ({ answer: r.answer, title: titleOf after } == { answer: Rerendered, title: "renamed" })
+  Task.succeed (
+    { answer: r.answer, title: titleOf after } == { answer: Refreshed, title: "renamed" }
+  )
 }
 
 test "removing my todo" = {
   let me <- Db.insert User { name: "Me" }
   let id <- Db.insert Todo { title: "Milk", owner: me }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.get (Index {})
   let r <- Test.click (Remove { id: id })
   let after <- Db.get Todo id
-  Task.succeed ({ answer: r.answer, title: titleOf after } == { answer: Rerendered, title: "(gone)" })
+  Task.succeed (
+    { answer: r.answer, title: titleOf after } == { answer: Refreshed, title: "(gone)" }
+  )
 }
 
 test "duplicating my todo" = {
   let me <- Db.insert User { name: "Me" }
   let id <- Db.insert Todo { title: "Milk", owner: me }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.get (Index {})
   let r <- Test.click (Duplicate { id: id })
   let after <- Db.get Todo id
-  let n <- Db.from Todo |> Db.where (Todo.owner.eq me) |> Db.count
-  Task.succeed ({ answer: r.answer, done: Maybe.map (\t -> t.done) after, n: n } == { answer: Rerendered, done: Just True, n: 2 })
+  let n <-
+    Db.from Todo
+      |> Db.where (Todo.owner.eq me)
+      |> Db.count
+  Task.succeed (
+    {
+      answer: r.answer,
+      done: Maybe.map (\t -> t.done) after,
+      n: n,
+    } == {
+      answer: Refreshed,
+      done: Just True,
+      n: 2,
+    }
+  )
 }
 
 -- A stale page: I opened my list, then someone else signed in in this browser and clicks my
@@ -178,11 +259,14 @@ test "a stranger's toggle on a stale page is not found" = {
   let bob <- Db.insert User { name: "Bob" }
   let id <- Db.insert Todo { title: "Milk", owner: me }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.get (Index {})
   let _ <- Test.login { user: Just bob }
   let r <- Test.click (Toggle { id: id })
   let after <- Db.get Todo id
-  Task.succeed ({ answer: r.answer, done: Maybe.map (\t -> t.done) after } == { answer: PageMissing, done: Just False })
+  Task.succeed (
+    { answer: r.answer, done: Maybe.map (\t -> t.done) after }
+      == { answer: PageMissing, done: Just False }
+  )
 }
 
 test "a stranger's rename on a stale page is not found" = {
@@ -190,11 +274,13 @@ test "a stranger's rename on a stale page is not found" = {
   let bob <- Db.insert User { name: "Bob" }
   let id <- Db.insert Todo { title: "Milk", owner: me }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.get (Index {})
   let _ <- Test.login { user: Just bob }
   let r <- Test.click (Rename { id: id })
   let after <- Db.get Todo id
-  Task.succeed ({ answer: r.answer, title: titleOf after } == { answer: PageMissing, title: "Milk" })
+  Task.succeed (
+    { answer: r.answer, title: titleOf after } == { answer: PageMissing, title: "Milk" }
+  )
 }
 
 test "a stranger's remove on a stale page is not found" = {
@@ -202,11 +288,13 @@ test "a stranger's remove on a stale page is not found" = {
   let bob <- Db.insert User { name: "Bob" }
   let id <- Db.insert Todo { title: "Milk", owner: me }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.get (Index {})
   let _ <- Test.login { user: Just bob }
   let r <- Test.click (Remove { id: id })
   let after <- Db.get Todo id
-  Task.succeed ({ answer: r.answer, title: titleOf after } == { answer: PageMissing, title: "Milk" })
+  Task.succeed (
+    { answer: r.answer, title: titleOf after } == { answer: PageMissing, title: "Milk" }
+  )
 }
 
 -- the insert before the scoped update is rolled back with it
@@ -215,12 +303,22 @@ test "a stranger's duplicate on a stale page is not found and undone" = {
   let bob <- Db.insert User { name: "Bob" }
   let id <- Db.insert Todo { title: "Milk", owner: me }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.get (Index {})
   let _ <- Test.login { user: Just bob }
   let r <- Test.click (Duplicate { id: id })
   let after <- Db.get Todo id
   let n <- Db.from Todo |> Db.count
-  Task.succeed ({ answer: r.answer, done: Maybe.map (\t -> t.done) after, n: n } == { answer: PageMissing, done: Just False, n: 1 })
+  Task.succeed (
+    {
+      answer: r.answer,
+      done: Maybe.map (\t -> t.done) after,
+      n: n,
+    } == {
+      answer: PageMissing,
+      done: Just False,
+      n: 1,
+    }
+  )
 }
 
 -- the same through update: the trace names the scoped steps as written
@@ -229,9 +327,19 @@ test "a scoped update of another's row fails the whole task" = {
   let bob <- Db.insert User { name: "Bob" }
   let id <- Db.insert Todo { title: "Milk", owner: me }
   let _ <- Test.login { user: Just bob }
-  let r <- Test.run (update (Duplicate { id: id }) { todos: [], open: 0 } { user: bob, role: Reader })
+  let r <- Test.run (Duplicate.update { id: id } { user: bob, role: Reader })
   let n <- Db.from Todo |> Db.count
-  Task.succeed ({ value: r.value, trace: r.trace, n: n } == { value: Err "not found", trace: ["Db.insertMine Todo", "Db.updateMine Todo"], n: 1 })
+  Task.succeed (
+    {
+      value: r.value,
+      trace: r.trace,
+      n: n,
+    } == {
+      value: Err "not found",
+      trace: ["Db.insertMine Todo", "Db.updateMine Todo"],
+      n: 1,
+    }
+  )
 }
 
 -- Db.updateMine never writes the owner: a function that gives the todo away changes the rest
@@ -242,5 +350,15 @@ test "updateMine never gives a todo away" = {
   let _ <- Test.login { user: Just me }
   let r <- Test.run (Db.updateMine Todo id (\t -> { t | title: "given", owner: bob }))
   let after <- Db.get Todo id
-  Task.succeed ({ value: r.value, owner: Maybe.map (\t -> t.owner) after, title: titleOf after } == { value: Ok (), owner: Just me, title: "given" })
+  Task.succeed (
+    {
+      value: r.value,
+      owner: Maybe.map (\t -> t.owner) after,
+      title: titleOf after,
+    } == {
+      value: Ok (),
+      owner: Just me,
+      title: "given",
+    }
+  )
 }

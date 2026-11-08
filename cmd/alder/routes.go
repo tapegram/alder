@@ -28,9 +28,8 @@ type routeJSON struct {
 	Col    int    `json:"col"`
 }
 
-// runRoutesTo is `alder routes [dir] [--json]`: the app's routes, pages (GET), messages
-// (POST) and routes (their methods), old ones sorted by path, routes in program order, as an aligned table or a JSON array. Diagnostics of a program that
-// does not check go to stderr as `alder check` prints them, and the exit status is 1.
+// runRoutesTo is `alder routes [dir] [--json]`: the app's routes with their methods, in program
+// order, as an aligned table or a JSON array. Diagnostics of a program that does not check go to stderr as `alder check` prints them, and the exit status is 1.
 func runRoutesTo(args []string, stdout, stderr io.Writer) (code int) {
 	defer func() {
 		if r := recover(); r != nil {

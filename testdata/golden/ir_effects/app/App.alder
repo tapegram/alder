@@ -14,8 +14,8 @@ Logout.update p session = {
   Task.succeed Response.refresh
 }
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>not found</p>

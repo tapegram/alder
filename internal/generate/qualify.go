@@ -9,9 +9,9 @@ import (
 // requalify rewrites, in every line of the edit (as replaced so far) and every insertion, the
 // module qualifiers named by the keys of rename to their values: `Admin.Layout.isAdmin` and
 // `<Admin.Layout.Page>` with Admin.Layout → Layout. Only a name written with a member after the
-// module is rewritten, so a page value (`Admin.Layout {}`) keeps its full path. bare maps a
+// module is rewritten, so a route value (`Admin.Layout {}`) keeps its full path. bare maps a
 // qualifier that changed to its new one for the name written alone (`Todo { … }`, `: Todo`, an
-// eponymous declaration): such a name is never a page value, whose spelling is a full path.
+// eponymous declaration): such a name is never a route value, whose spelling is a full path.
 // tables maps a table written as its module's path and its name (`Table.Post.Post`, recordName)
 // to the qualifier that names it (`Post`, or `TablePost` under an alias, #34).
 func (e *srcEdit) requalify(rename, bare, tables map[string]string) {
@@ -114,7 +114,7 @@ func requalifyChain(s string, i int, rename, bare, tables map[string]string) (in
 	}
 	for n := len(ends); n >= 1; n-- {
 		if n == len(ends) && !member {
-			continue // the whole name with nothing after it: a page value, or a type
+			continue // the whole name with nothing after it: a route value, or a type
 		}
 		if q, ok := rename[s[i:ends[n-1]]]; ok {
 			return j, q + s[ends[n-1]:j]

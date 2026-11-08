@@ -137,7 +137,7 @@ in Go:
 
 ```alder
 capability Email {
-  send : { to: Text.Email, subject: Text, body: Html Never } -> Task Unit,
+  send : { to: Text.Email, subject: Text, body: Html } -> Task Unit,
 }
 
 capability Weather {
@@ -219,14 +219,13 @@ module Markdown
 -- Rendering a post's body is outside the language: a capability implemented in Go
 -- (adapters/markdown/markdown.go), which builds the HTML node by node, so a post cannot inject markup.
 capability Markdown {
-  render : Text -> Query (Html Never),
+  render : Text -> Query Html,
 }
 ```
 
 `Posts.Show`'s `load` writes `let body <- Markdown.render post.body` and
-keeps the result in its Model. `Html Never` is markup that links and
-sends nothing, so the route's `view` can embed it in its own `Html`
-(chapter 5).
+keeps the result in its Model. An `Html` value is
+markup, so the route's `view` can embed it in its own `Html` (chapter 5).
 
 The capability has the same name as its module. From
 another module, `Markdown.render` therefore names the capability's
@@ -368,7 +367,7 @@ type redirect struct{ location string }
   it writes, and the Go function that does the work.
 - `fail` is `Task.fail` (and a `@unique` violation, chapter 8).
 - `notFound` is `Query.notFound` or `Task.notFound`.
-- `redirect` is `Query.redirect r`, carrying `r`'s URL (`rt.PageURL`), which
+- `redirect` is `Query.redirect r`, carrying `r`'s URL (`rt.RouteURL`), which
   `Run` returns as `*eff.ErrRedirect` for the router to answer with a 303.
 
 Building a tree does nothing. Only `eff.Run` does.
@@ -546,7 +545,7 @@ The other types:
 - `Result e a` `rt.Result[E, A]`.
 - `List a` `[]A`.
 - `Time` `time.Time`.
-- `Html Never` `html.Node`.
+- `Html` `html.Node`.
 
 The stub above lives
 inside the generated package; an adapter, in its own package, imports it
@@ -776,7 +775,7 @@ chapter 11): its names would start the same way.
 
 The blog's Markdown renderer is a whole adapter in a few lines. The
 capability is `Markdown` of module `Markdown`
-(`render : Text -> Query (Html Never)`, above), so the rule says
+(`render : Text -> Query Html`, above), so the rule says
 `adapters/markdown/` and `func Markdown()`. This is the top of
 `examples/blog/adapters/markdown/markdown.go`:
 

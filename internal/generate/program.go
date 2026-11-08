@@ -27,7 +27,6 @@ type Program struct {
 	Modules map[string]*Module // by module name
 	Order   []string           // module names, sorted
 	Tables  []*Table           // sorted by module name
-	Pages   []*Page            // sorted by module name
 	Routes  []*Route           // every route of every module, by module name, then declaration order
 	Session *Session           // App's session; nil without an App module
 	Login   string             // the page App's `login` names ("Auth.Login"), "" for none
@@ -157,23 +156,6 @@ func (p *Program) qualifiersFor(home string, mods []string) map[string]string {
 // default (a Maybe without a default is required too, as `Nothing`).
 func (c *Column) Required() bool { return !c.ID && !c.Created && !c.Updated && !c.HasDefault }
 
-// Page is one page module.
-type Page struct {
-	Module   string
-	File     string
-	Path     string
-	Params   []*Param
-	Requires string // "user", or "" for none
-	// Keys are every field of the page's `requires` (["user", "org"]); Silo the key of the admin
-	// form `requires user, role R, silo k`, "" for none (M15).
-	Keys  []string
-	Silo  string
-	Roles []string // `role R | S`, nil for none
-	Msgs  []string // the page's messages, in declaration order
-	Forms []string // the page's forms, in declaration order
-	Decl  *syntax.PageDecl
-}
-
 // Route is one `route NAME = METHOD "path" { params } …` of a module (#160).
 type Route struct {
 	Module string
@@ -202,7 +184,7 @@ func (r *Route) Ref(from string) string {
 	return r.Module + "." + r.Name
 }
 
-// Param is one page parameter.
+// Param is one route parameter.
 type Param struct {
 	Name       string
 	Type       types.Type
@@ -304,9 +286,6 @@ func newProgram(dir string, prog *names.Program, res *check.Result, diags []diag
 				}
 			}
 		}
-		if pd := prog.Pages[name]; pd != nil {
-			p.Pages = append(p.Pages, p.page(m, pd))
-		}
 		for _, ri := range res.Routes[name] {
 			p.Routes = append(p.Routes, p.route(m, ri))
 		}
@@ -387,34 +366,6 @@ func (p *Program) table(m *Module, d *syntax.TableDecl) *Table {
 		t.Columns = append(t.Columns, c)
 	}
 	return t
-}
-
-// page reads page module m.
-func (p *Program) page(m *Module, d *syntax.PageDecl) *Page {
-	pg := &Page{Module: m.Name, File: m.File, Path: d.Path, Roles: d.Roles, Decl: d}
-	if len(d.Requires) > 0 { // the generators know `requires user` (M15's other keys: Task 4)
-		pg.Requires = d.Requires[0]
-	}
-	pg.Keys, pg.Silo = d.Requires, d.Silo
-	if info := p.Res.Pages[m.Name]; info != nil && info.Params != nil {
-		for i, f := range info.Params.Fields {
-			par := &Param{Name: f.Name, Type: f.Type, HasDefault: f.HasDefault}
-			if d.Params != nil && i < len(d.Params.Fields) {
-				par.HasDefault = par.HasDefault || d.Params.Fields[i].Default != nil
-				par.Wire = d.Params.Fields[i].Wire
-			}
-			pg.Params = append(pg.Params, par)
-		}
-	}
-	for _, d := range m.Syntax.Decls {
-		switch d := d.(type) {
-		case *syntax.MsgDecl:
-			pg.Msgs = append(pg.Msgs, d.Name)
-		case *syntax.FormDecl:
-			pg.Forms = append(pg.Forms, d.Name)
-		}
-	}
-	return pg
 }
 
 // route reads route ri of module m.
@@ -543,16 +494,6 @@ func (p *Program) ResolveModule(address string) string {
 // TableModule is the module a new table of that name is declared in: Table.<Name>, the file
 // app/Table/<Name>.alder.
 func TableModule(name string) string { return "Table." + name }
-
-// PageNamed is page module name, or nil.
-func (p *Program) PageNamed(name string) *Page {
-	for _, pg := range p.Pages {
-		if pg.Module == name {
-			return pg
-		}
-	}
-	return nil
-}
 
 // Column is the table's column name, or nil.
 func (t *Table) Column(name string) *Column {

@@ -13,9 +13,8 @@ import (
 	"strings"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
-// write routes, in declaration order), then every message of the pages and of App (POST), in module
-// order.
+// Routes are the app's endpoints for web.NewRouter: every route (GET and write routes), in module
+// order, then declaration order.
 var Routes = []web.Route{
 	Route__App__Logout(),
 	Route__M__M(),
@@ -85,12 +84,6 @@ func page__M__M(rq *web.Request, params M__M__Params, keep any) (M__Model, App__
 	return model, session, nil
 }
 
-// params__M__M are route M.M's parameters as text (html.FormState.PageParams), for the posted
-// form's state its view renders with when a write renders it again.
-func params__M__M(p M__M__Params) []rt.KV {
-	return []rt.KV{{Key: "id", Value: std.TextFromInt(p.Id)}}
-}
-
 // Route__M__M serves route M.M, GET /m/{id}: decode the parameters (404 when they do not), load
 // (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in
 // rq.Model, which a test's browser reads).
@@ -105,7 +98,7 @@ func Route__M__M() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(M__M__view(model, session), web.WithPageParams(rq.FormState, params__M__M(params)), rq.Session, false)
+		return web.PageResponse(M__M__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
@@ -339,12 +332,6 @@ func page__Other__Other(rq *web.Request, params Other__Other__Params, keep any) 
 	return model, session, nil
 }
 
-// params__Other__Other are route Other.Other's parameters as text (html.FormState.PageParams), for
-// the posted form's state its view renders with when a write renders it again.
-func params__Other__Other(_ Other__Other__Params) []rt.KV {
-	return nil
-}
-
 // Route__Other__Other serves route Other.Other, GET /other: decode the parameters (404 when they do
 // not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
 // in rq.Model, which a test's browser reads).
@@ -359,7 +346,7 @@ func Route__Other__Other() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Other__Other__view(model, session), web.WithPageParams(rq.FormState, params__Other__Other(params)), rq.Session, false)
+		return web.PageResponse(Other__Other__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 

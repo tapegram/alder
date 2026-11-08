@@ -77,10 +77,10 @@ func TestRoutes_Info(t *testing.T) {
 // routeApp is an app whose App has a session with a `Maybe` user, and the module Todos (src).
 func routeApp(src string) map[string]string {
 	return map[string]string{
-		"App.alder": "module App\n\nimport Table.User\n\nsession { user: Maybe User.UserId }\n\nlogin = Login\n\n" +
-			"error : Error -> Html Never\nerror err = <p>error</p>\n\nnotFound : Html Never\nnotFound = <p>not found</p>\n",
-		"Login.alder": "module Login\n\npage \"/login\" { }\n\ntype Model = { }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { }\n\n" +
-			"view : Model -> Session -> Html Msg\nview model session = <p>log in</p>\n",
+		"App.alder": "module App\n\nimport Table.User\n\nsession { user: Maybe User.UserId }\n\nlogin = Login.Login\n\n" +
+			"error : Error -> Html\nerror err = <p>error</p>\n\nnotFound : Html\nnotFound = <p>not found</p>\n",
+		"Login.alder": "module Login\n\nroute Login = GET \"/login\" { }\n\nLogin.load : Login.Params -> Session -> Query Int\nLogin.load params session = Query.succeed 1\n\n" +
+			"Login.view : Int -> Session -> Html\nLogin.view n session = <p>log in</p>\n",
 		"Table/User.alder": "module Table.User\n\ntype UserId = brand Text\n\ntable User {\n  id: UserId @id,\n}\n",
 		"Table/Note.alder": "module Table.Note\n\nimport Table.User\n\ntype NoteId = brand Text\n\ntable Note {\n  id: NoteId @id,\n  owner: User.UserId @ref User @owner,\n}\n",
 		"Todos.alder":      src,
@@ -152,14 +152,14 @@ func TestRoutes_Scoped(t *testing.T) {
 	}
 }
 
-// TestRoutes_HtmlNoArgument: `Html` with no argument is `Html Route` in a route module (plan
-// call 2), and still needs its argument elsewhere.
+// TestRoutes_HtmlNoArgument: `Html` takes no argument in any module (#160): markup that clicks
+// a route is `Html`, and an argument is E0046.
 func TestRoutes_HtmlNoArgument(t *testing.T) {
 	files := routeApp("module Todos\n\nimport Shared\n\nroute A = GET \"/a\" { }\n\n" + getRoute("A", "<button click={A {}}>{Shared.box}</button>"))
-	files["Shared.alder"] = "module Shared\n\nbox : Html a\nbox = <p>box</p>\n\nbad : Html\nbad = <p>bad</p>\n"
+	files["Shared.alder"] = "module Shared\n\nbox : Html\nbox = <p>box</p>\n\nbad : Html a\nbad = <p>bad</p>\n"
 	_, errs := checkFiles(t, files)
-	if len(errs) != 1 || !hasError(errs, "E0008", "`Html` takes 1 type argument, got 0") || !strings.Contains(errs[0], "Shared.alder") {
-		t.Fatalf("errors = %q, want only Shared's `Html` without its argument", errs)
+	if len(errs) != 1 || !hasError(errs, "E0046", "`Html` takes no type argument now") || !strings.Contains(errs[0], "Shared.alder") {
+		t.Fatalf("errors = %q, want only Shared's `Html a`", errs)
 	}
 }
 
@@ -354,7 +354,7 @@ func TestRoutes_Login(t *testing.T) {
 		{"route In = GET \"/in/{id}\" { id: Text }\n\n" + getRoute("In", "<p>in</p>"), "its parameter `id` has no default"},
 	} {
 		files := routeApp("module Todos\n\nroute Mine = GET \"/mine\" { } requires user\n\n" + getRoute("Mine", "<p>mine</p>") + c.route)
-		files["App.alder"] = strings.Replace(files["App.alder"], "login = Login", "login = Todos.In", 1)
+		files["App.alder"] = strings.Replace(files["App.alder"], "login = Login.Login", "login = Todos.In", 1)
 		_, errs := checkFiles(t, files)
 		switch {
 		case c.want == "" && len(errs) != 0:

@@ -1,18 +1,18 @@
 module Home
 
-import Todo
 import Project
+import Todo
 
-page "/" { } requires user, org
+route Home = GET "/" { } requires user, org
 
 type Model = { todos: List Todo, n: Int }
 
-load : Params -> Session -> Query Model
-load params session = {
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = {
   let todos <- Db.scoped Todo |> Db.all
   let n <- Db.mine Project |> Db.count
   Query.succeed { todos: todos, n: n }
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>x</p>
+Home.view : Model -> Session -> Html
+Home.view model session = <p>x</p>

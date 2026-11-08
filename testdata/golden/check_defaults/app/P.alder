@@ -1,18 +1,15 @@
 module P
 
-page "/p" { n: Int = "five", m: Int = 3 }
+route P  = GET  "/p"      { n: Int = "five", m: Int = 3 }
+route Go = POST "/p/_/Go" { k: Int = True }
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+P.load : P.Params -> Session -> Query Model
+P.load params session = Query.succeed {}
 
-msg Go { k: Int = True }
+Go.update : Go.Params -> Session -> Task Response
+Go.update p session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Go p -> Task.succeed Rerender,
-}
-
-view : Model -> Session -> Html Msg
-view model session = <p>p</p>
+P.view : Model -> Session -> Html
+P.view model session = <p>p</p>

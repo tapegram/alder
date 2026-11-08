@@ -1,0 +1,9 @@
+module Home
+
+route Home = GET "/" { }
+
+Home.load : Home.Params -> Session -> Query Int
+Home.load params session = Query.succeed 1
+
+Home.view : Int -> Session -> Html
+Home.view n session = <p>{Text.fromInt n}</p>

@@ -1,15 +1,14 @@
 module App
 
-import User
 import Org
+import User
 
 session { org: Maybe Org.OrgId via Membership }
 
-login = Login
+login = Login.Login
 
-
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>not found</p>

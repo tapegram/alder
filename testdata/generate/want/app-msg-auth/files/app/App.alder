@@ -10,14 +10,14 @@ login = Auth.Login.Login
 route Logout = POST "/_/Logout" { }
 route Ping   = POST "/_/Ping"   { }
 
-error : Error -> Html Never
+error : Error -> Html
 error err =
   <Layout.Page title="Error">
     <h1>Something went wrong</h1>
     <p>Please try again.</p>
   </Layout.Page>
 
-notFound : Html Never
+notFound : Html
 notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 
 -- Logout empties the session's user and goes to log in: a `POST`, sent by a button

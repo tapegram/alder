@@ -15,7 +15,7 @@ import (
 
 func TestDevPanel(t *testing.T) {
 	t.Setenv("ALDER_DEV", "1")
-	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil, false) })
+	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil) })
 	for _, tc := range []struct {
 		dev, ds, off bool
 		want         []string
@@ -51,7 +51,7 @@ func TestDevPanel(t *testing.T) {
 }
 
 func TestDevMap(t *testing.T) {
-	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil, false) })
+	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil) })
 	for _, dev := range []bool{true, false} {
 		t.Setenv("ALDER_DEV", "1")
 		h := NewRouter(route, testOpts(func(o *Options) { o.Dev = dev }))
@@ -65,72 +65,30 @@ func TestDevMap(t *testing.T) {
 	}
 }
 
-func TestNoticedToast(t *testing.T) {
-	h := NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response {
-		rq.Notice = "Saved <ok>"
-		return PageResponse(doc("hi"), nil, nil, true)
-	}), testOpts(nil))
-	req := httptest.NewRequest("POST", "/_m/A/B", nil)
-	req.Header.Set("Datastar-Request", "true")
-	body := serve(h, req).Body.String()
-	for _, s := range []string{
-		"data: selector al-toasts\ndata: mode append\ndata: elements <al-toast variant=\"info\" timeout=\"5000\">Saved &lt;ok&gt;</al-toast>",
-		"<al-toasts popover=\"manual\" data-ignore-morph></al-toasts></body>",
-	} {
-		if !strings.Contains(body, s) {
-			t.Errorf("missing %q in %q", s, body)
-		}
-	}
-	// the toast comes after the body patch, so a morph does not show it again
-	if strings.Index(body, "selector body") > strings.Index(body, "selector al-toasts") {
-		t.Errorf("order: %q", body)
-	}
-}
-
-// Each kind of notice has its own toast: error stays for 10 seconds (timeout 10000).
-func TestNoticedToast_Kinds(t *testing.T) {
-	for kind, want := range map[rtpkg.NoticeKind]string{
-		rtpkg.NoticeInfo:    `<al-toast variant="info" timeout="5000">Saved</al-toast>`,
-		rtpkg.NoticeSuccess: `<al-toast variant="success" timeout="5000">Saved</al-toast>`,
-		rtpkg.NoticeWarning: `<al-toast variant="warning" timeout="5000">Saved</al-toast>`,
-		rtpkg.NoticeError:   `<al-toast variant="destructive" timeout="10000">Saved</al-toast>`,
-	} {
-		h := NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response {
-			rq.Notice, rq.NoticeKind = "Saved", kind
-			return PageResponse(doc("hi"), nil, nil, true)
-		}), testOpts(nil))
-		req := httptest.NewRequest("POST", "/_m/A/B", nil)
-		req.Header.Set("Datastar-Request", "true")
-		if body := serve(h, req).Body.String(); !strings.Contains(body, "data: elements "+want+"\n") {
-			t.Errorf("%s: missing %q in %q", kind, want, body)
-		}
-	}
-}
-
 func TestDevMapContents(t *testing.T) {
 	t.Setenv("ALDER_DEV", "1")
-	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil, false) })
+	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil) })
 	h := NewRouter(route, testOpts(func(o *Options) {
 		o.Dev = true
 		o.Migrations = []string{"0001_init"}
-		o.DevMap = `{"pages":[{"Module":"Posts.Show","Path":"/posts/{slug}","Requires":"user","Roles":["Admin"],"Params":["slug: Post.Slug"],"Msgs":["Remove"]}],` +
+		o.DevMap = `{"pages":[{"Module":"Posts.Show","Path":"/posts/{slug}","Requires":"user","Roles":["Admin"],"Params":["slug: Post.Slug"]}],` +
 			`"tables":[{"Name":"Post.Post","Columns":["title: Text"],"Unique":["slug"]}],"session":["user: Maybe User.UserId"]}`
 	}))
 	body := serve(h, httptest.NewRequest("GET", "/_dev", nil)).Body.String()
-	for _, want := range []string{"Posts.Show", "requires user, role Admin", "slug: Post.Slug", "message <code>Remove", "title: Text", "unique: slug", "user: Maybe User.UserId", "0001_init", "build <code>"} {
+	for _, want := range []string{"Posts.Show", "requires user, role Admin", "slug: Post.Slug", "title: Text", "unique: slug", "user: Maybe User.UserId", "0001_init", "build <code>"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q in %s", want, body)
 		}
 	}
 }
 
-// A message answering a redirect: the panel the followed page carries is the message's (its
+// A write answering a redirect: the panel the followed page carries is the write's (its
 // form fields, password masked, in Request and curl), with the GET's steps and statements after
 // a "then GET …" marker, both answers, every patch, and only the Request section shown.
 func TestDevPanel_Redirect(t *testing.T) {
 	t.Setenv("ALDER_DEV", "1")
 	routes := []Route{
-		{Method: "POST", Pattern: "/_m/A/Save", Handle: func(rq *Request) Response {
+		{Method: "POST", Pattern: "/save", Handle: func(rq *Request) Response {
 			rq.Env.Rec.AddStep(eff.StepRec{Name: "Db.delete"})
 			rq.Env.Rec.AddSQL(eff.SQLRec{Stmt: "DELETE FROM x", Rows: 2})
 			return RedirectResponse("/list", nil)
@@ -138,11 +96,11 @@ func TestDevPanel_Redirect(t *testing.T) {
 		{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response {
 			rq.Env.Rec.AddStep(eff.StepRec{Name: "Db.query"})
 			rq.Env.Rec.AddSQL(eff.SQLRec{Stmt: "SELECT y", Rows: 3})
-			return PageResponse(doc("list"), nil, nil, false)
+			return PageResponse(doc("list"), nil, nil)
 		}},
 	}
 	h := NewRouter(routes, testOpts(func(o *Options) { o.Dev = true }))
-	req := httptest.NewRequest("POST", "/_m/A/Save", strings.NewReader("q=ann&password=hunter2"))
+	req := httptest.NewRequest("POST", "/save", strings.NewReader("q=ann&password=hunter2"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Datastar-Request", "true")
 	body := serve(h, req).Body.String()
@@ -172,22 +130,22 @@ func TestDevPanel_Redirect(t *testing.T) {
 	}
 }
 
-// A Noticed answer to a form posted without Datastar: a redirect carries it in a signed cookie
-// to the next page, which shows it as an <al-alert> once; a Rerender shows it in place.
+// toastRedirect is a write route answering `redirect` to GET /list with a toast of kind k.
+func toastRedirect(k rtpkg.NoticeKind, text string) func(rq *Request) Response {
+	return func(rq *Request) Response {
+		return AnswerResponse(rtpkg.WithToast(k, text, rtpkg.Redirect(rtpkg.Route{Name: "A.List", Method: "GET", Path: "/list"})), nil, nil)
+	}
+}
+
+// A toast on a redirect answered to a form posted without Datastar: the redirect carries it in a
+// signed cookie to the next page, which shows it as an <al-alert> once.
 func TestNoticedWithoutScript(t *testing.T) {
 	routes := []Route{
-		{Method: "POST", Pattern: "/_m/A/Go", Handle: func(rq *Request) Response {
-			rq.Notice = "Deleted 3 of 4 <rows>"
-			return RedirectResponse("/list", nil)
-		}},
-		{Method: "POST", Pattern: "/_m/A/Stay", Handle: func(rq *Request) Response {
-			rq.Notice = "Saved"
-			return PageResponse(doc("here"), nil, nil, true)
-		}},
-		{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response { return PageResponse(doc("list"), nil, nil, false) }},
+		{Method: "POST", Pattern: "/go", Handle: toastRedirect(rtpkg.NoticeInfo, "Deleted 3 of 4 <rows>")},
+		{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response { return PageResponse(doc("list"), nil, nil) }},
 	}
 	h := NewRouter(routes, testOpts(nil))
-	w := serve(h, httptest.NewRequest("POST", "/_m/A/Go", nil))
+	w := serve(h, httptest.NewRequest("POST", "/go", nil))
 	var c *http.Cookie
 	for _, k := range w.Result().Cookies() {
 		if k.Name == NoticeCookie {
@@ -212,9 +170,6 @@ func TestNoticedWithoutScript(t *testing.T) {
 	if b := serve(h, forged).Body.String(); strings.Contains(b, "al-alert") {
 		t.Errorf("a forged notice is shown: %s", b)
 	}
-	if b := serve(h, httptest.NewRequest("POST", "/_m/A/Stay", nil)).Body.String(); !strings.Contains(b, `<al-alert variant="info" role="status">Saved</al-alert>`) {
-		t.Errorf("no alert on the re-rendered page: %s", b)
-	}
 }
 
 // The kind of a notice rides in the signed cookie with its text (notice:<kind>:<text>), and the
@@ -231,19 +186,12 @@ func TestNoticedWithoutScript_Kinds(t *testing.T) {
 		{rtpkg.NoticeError, "Error: try again", `<al-alert variant="destructive" role="alert">Error: try again</al-alert>`},
 	} {
 		routes := []Route{
-			{Method: "POST", Pattern: "/_m/A/Go", Handle: func(rq *Request) Response {
-				rq.Notice, rq.NoticeKind = tc.text, tc.kind
-				return RedirectResponse("/list", nil)
-			}},
-			{Method: "POST", Pattern: "/_m/A/Stay", Handle: func(rq *Request) Response {
-				rq.Notice, rq.NoticeKind = tc.text, tc.kind
-				return PageResponse(doc("here"), nil, nil, true)
-			}},
-			{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response { return PageResponse(doc("list"), nil, nil, false) }},
+			{Method: "POST", Pattern: "/go", Handle: toastRedirect(tc.kind, tc.text)},
+			{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response { return PageResponse(doc("list"), nil, nil) }},
 		}
 		h := NewRouter(routes, testOpts(nil))
 		var c *http.Cookie
-		for _, k := range serve(h, httptest.NewRequest("POST", "/_m/A/Go", nil)).Result().Cookies() {
+		for _, k := range serve(h, httptest.NewRequest("POST", "/go", nil)).Result().Cookies() {
 			if k.Name == NoticeCookie {
 				c = k
 			}
@@ -256,12 +204,9 @@ func TestNoticedWithoutScript_Kinds(t *testing.T) {
 		if b := serve(h, get).Body.String(); !strings.Contains(b, "<body>"+tc.want) {
 			t.Errorf("%s: missing %q in %s", tc.kind, tc.want, b)
 		}
-		if b := serve(h, httptest.NewRequest("POST", "/_m/A/Stay", nil)).Body.String(); !strings.Contains(b, "<body>"+tc.want) {
-			t.Errorf("%s, in place: missing %q in %s", tc.kind, tc.want, b)
-		}
 	}
 	// an older cookie, a second segment that is no kind, and malformed payloads
-	h := NewRouter([]Route{{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response { return PageResponse(doc("list"), nil, nil, false) }}}, testOpts(nil))
+	h := NewRouter([]Route{{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response { return PageResponse(doc("list"), nil, nil) }}}, testOpts(nil))
 	for payload, want := range map[string]string{
 		"notice:Saved":          `<al-alert variant="info" role="status">Saved</al-alert>`,
 		"notice:error":          `<al-alert variant="info" role="status">error</al-alert>`,
@@ -293,7 +238,7 @@ func TestDevPanel_BulkNotDuplicate(t *testing.T) {
 		})
 	}
 	routes := []Route{
-		{Method: "POST", Pattern: "/_m/A/Bulk", Handle: func(rq *Request) Response {
+		{Method: "POST", Pattern: "/bulk", Handle: func(rq *Request) Response {
 			var ds, same []eff.Task[int]
 			for _, id := range []int{1, 2, 3} {
 				ds = append(ds, stmt("Db.delete", "DELETE FROM p WHERE id = ?", id))
@@ -316,11 +261,11 @@ func TestDevPanel_BulkNotDuplicate(t *testing.T) {
 		}},
 		{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response {
 			rq.Env.Rec.AddSQL(eff.SQLRec{Stmt: "SELECT user", Args: []any{"u"}, Rows: 1})
-			return PageResponse(doc("list"), nil, nil, false)
+			return PageResponse(doc("list"), nil, nil)
 		}},
 	}
 	h := NewRouter(routes, testOpts(func(o *Options) { o.Dev = true }))
-	req := httptest.NewRequest("POST", "/_m/A/Bulk", nil)
+	req := httptest.NewRequest("POST", "/bulk", nil)
 	req.Header.Set("Datastar-Request", "true")
 	b := serve(h, req).Body.String()
 	for _, want := range []string{"x3 (bulk)", "duplicate x2", "duplicate x2"} {
@@ -355,7 +300,7 @@ func TestDevPanel_NPlusOne(t *testing.T) {
 					panic(err)
 				}
 			}
-			return PageResponse(doc("slow"), nil, nil, false)
+			return PageResponse(doc("slow"), nil, nil)
 		}},
 		{Method: "GET", Pattern: "/bulk", Handle: func(rq *Request) Response {
 			var ds []eff.Task[int]
@@ -365,7 +310,7 @@ func TestDevPanel_NPlusOne(t *testing.T) {
 			if _, err := eff.Run(rq.Env, eff.KTask, eff.All(ds)); err != nil {
 				panic(err)
 			}
-			return PageResponse(doc("bulk"), nil, nil, false)
+			return PageResponse(doc("bulk"), nil, nil)
 		}},
 	}
 	var warns []string
@@ -397,60 +342,16 @@ func TestDevPanel_NPlusOne(t *testing.T) {
 	}
 }
 
-// A Rerender runs the page's load twice: a load that runs one select 3 times is not an N+1 on
-// the GET nor on the message (6 in the answer, but 3 per load run).
-func TestDevPanel_RerenderNotNPlusOne(t *testing.T) {
-	t.Setenv("ALDER_DEV", "1")
-	load := eff.Q(eff.Call("Db.all", false, func(e *eff.Env) (int, error) {
-		for range 3 {
-			e.Rec.AddSQL(eff.SQLRec{Stmt: "SELECT all", Args: []any{}, Rows: 1})
-		}
-		return 0, nil
-	}))
-	page := func(n int) func(rq *Request) Response {
-		return func(rq *Request) Response {
-			for range n {
-				if _, err := eff.RunQuery(rq.Env, load); err != nil {
-					panic(err)
-				}
-			}
-			return PageResponse(doc("p"), nil, nil, true)
-		}
-	}
-	var warns []string
-	h := NewRouter([]Route{{Method: "GET", Pattern: "/", Handle: page(1)}, {Method: "POST", Pattern: "/_m/P/Toggle", Handle: page(2)}},
-		testOpts(func(o *Options) {
-			o.Dev = true
-			o.Log = func(level, msg string) {
-				if level == "warn" {
-					warns = append(warns, msg)
-				}
-			}
-		}))
-	for _, req := range []*http.Request{httptest.NewRequest("GET", "/", nil), httptest.NewRequest("POST", "/_m/P/Toggle", nil)} {
-		req.Header.Set("Datastar-Request", "true")
-		if b := serve(h, req).Body.String(); strings.Contains(b, "N+1") {
-			t.Errorf("%s %s: marked N+1: %s", req.Method, req.URL.Path, b)
-		}
-	}
-	if len(warns) != 0 {
-		t.Errorf("warns %q", warns)
-	}
-}
-
 // The notice cookie is consumed by a page GET only: not by a 404 (a favicon), a /_alder/ or
 // /static/ path, or a HEAD.
 func TestNoticeOnlyForPageGET(t *testing.T) {
 	routes := []Route{
-		{Method: "POST", Pattern: "/_m/A/Go", Handle: func(rq *Request) Response {
-			rq.Notice = "hello"
-			return RedirectResponse("/list", nil)
-		}},
-		{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response { return PageResponse(doc("list"), nil, nil, false) }},
+		{Method: "POST", Pattern: "/go", Handle: toastRedirect(rtpkg.NoticeInfo, "hello")},
+		{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response { return PageResponse(doc("list"), nil, nil) }},
 	}
 	h := NewRouter(routes, testOpts(nil))
 	var nc *http.Cookie
-	for _, k := range serve(h, httptest.NewRequest("POST", "/_m/A/Go", nil)).Result().Cookies() {
+	for _, k := range serve(h, httptest.NewRequest("POST", "/go", nil)).Result().Cookies() {
 		if k.Name == NoticeCookie {
 			nc = k
 		}
@@ -487,7 +388,7 @@ func TestNoticeOnlyForPageGET(t *testing.T) {
 func prodPages(t *testing.T) string {
 	t.Helper()
 	t.Setenv("ALDER_DEV", "")
-	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil, false) })
+	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil) })
 	h := NewRouter(route, testOpts(func(o *Options) { o.Dev = false }))
 	full := serveRaw(h, httptest.NewRequest("GET", "/x", nil)).Body.String()
 	req := httptest.NewRequest("GET", "/x", nil)

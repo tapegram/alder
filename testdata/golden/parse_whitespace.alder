@@ -2,30 +2,30 @@ module W
 
 -- JSX whitespace rule: a run with no newline is kept as-is; a run containing a newline is
 -- trimmed where it touches a newline and dropped if empty.
-inline : Html a
+inline : Html
 inline = <p><b>a</b> <i>b</i></p>
 
-stacked : Html a
+stacked : Html
 stacked =
   <p>
     <b>a</b>
     <i>b</i>
   </p>
 
-adjacent : Html a
+adjacent : Html
 adjacent = <p><b>a</b>
 <i>b</i></p>
 
-exprs : Html a
+exprs : Html
 exprs = <p>{k} {v}</p>
 
-lead : Html a
+lead : Html
 lead =
   <p>
     hello {name}
   </p>
 
-wrapped : Html a
+wrapped : Html
 wrapped =
   <p>
     one   two

@@ -2,7 +2,7 @@ module Home
 
 import Todo
 
-page "/" { } requires user
+route Home = GET "/" { } requires user
 
 capability Counter {
   count : Unit -> Task Int,
@@ -14,8 +14,8 @@ fake Counter {
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <p>home</p>
+Home.view : Model -> Session -> Html
+Home.view model session = <p>home</p>

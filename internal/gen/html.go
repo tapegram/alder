@@ -23,26 +23,20 @@ import (
 //	         "<Module>.<Form>" (matched by the request's html.FormState) and Secret for a
 //	         Text.Secret field; a wrapped one (`<al-input field="…">`) adds Wrap: "al-input"
 //	         and WrapAttrs, the element's other attributes
-//	FormEl   html.FormTo(ref, []html.Attr{…}, children...)
+//	FormEl   html.FormToRoute(route, []html.Attr{…}, children...): the method override for a
+//	         write route that is not POST
 //
 // Attributes:
 //
 //	Text     html.A("name", e)
 //	Bool     html.B("name", e)
 //	Maybe    html.M("name", e)
-//	Href     html.A("href", rt.PageURL(e))
-//	Click    html.MsgAttr("data-on:click", ref)
-//	Submit   method="post", html.MsgAttr("action", ref) and html.MsgAttr("data-on:submit", ref)
-//	         (html.FormTo adds them itself)
+//	Href     html.A("href", rt.RouteURL(e))
+//	Click    html.RouteAttr("data-on:click", route)
+//	Submit   method="post", html.RouteAttr("action", route) and html.RouteAttr("data-on:submit",
+//	         route) (html.FormToRoute adds them itself)
 //
-// A click or submit whose value is a Route (#160) is html.RouteAttr of that rt.Route instead,
-// and a form posting to one is html.FormToRoute (the method override for a write route that is
-// not POST).
-//
-// where ref is rt.MsgRef{Module: "<Module>", Msg: "<Msg>", Params: …}: the message's parameters
-// in declaration order, as text, without the submitted form (kvList). rt/html resolves it when
-// rendering, appending the rendered page's parameters as "_p." keys (FormState.PageParams), so
-// the message's route knows the page; Datastar posts a submit url-encoded (html.SubmitPost).
+// where route is the rt.Route value (routeRef for a route constructor written in place).
 
 // html is HTML node e as a Go expression.
 func (f *fn) html(e ir.Expr, s *scope) string {
@@ -75,19 +69,16 @@ func (f *fn) html(e ir.Expr, s *scope) string {
 	case *ir.Input:
 		return f.input(x, s)
 	case *ir.FormEl:
-		ref, to := "rt.MsgRef{}", "html.FormTo("
+		var ref string
 		var rest []ir.HAttr
 		for _, a := range x.Attrs {
-			switch {
-			case a.Kind == ir.AttrSubmit && isRoute(a.Value):
-				ref, to = f.code(a.Value, s), "html.FormToRoute("
-			case a.Kind == ir.AttrSubmit:
-				ref = f.msgRef(a.Value, s)
-			default:
+			if a.Kind == ir.AttrSubmit {
+				ref = f.code(a.Value, s)
+			} else {
 				rest = append(rest, a)
 			}
 		}
-		return to + ref + ", " + f.attrs(rest, s) + f.nodeArgs(x.Children, s)
+		return "html.FormToRoute(" + ref + ", " + f.attrs(rest, s) + f.nodeArgs(x.Children, s)
 	}
 	panic("gen: not an HTML node")
 }
@@ -140,115 +131,33 @@ func (f *fn) attrs(as []ir.HAttr, s *scope) string {
 		case ir.AttrMaybe:
 			out = append(out, "html.M("+name+", "+f.code(a.Value, s)+")")
 		case ir.AttrHref:
-			out = append(out, "html.A("+name+", rt.PageURL("+f.code(a.Value, s)+"))")
+			out = append(out, "html.A("+name+", rt.RouteURL("+f.code(a.Value, s)+"))")
 			if fileLink(a.Value) && !slices.ContainsFunc(as, func(b ir.HAttr) bool { return b.Name == "data-alder-reload" }) {
 				out = append(out, `html.A("data-alder-reload", "true")`)
 			}
 		case ir.AttrClick:
-			if isRoute(a.Value) {
-				out = append(out, `html.RouteAttr("data-on:click", `+f.code(a.Value, s)+`)`)
-				continue
-			}
-			out = append(out, `html.MsgAttr("data-on:click", `+f.msgRef(a.Value, s)+`)`)
+			out = append(out, `html.RouteAttr("data-on:click", `+f.code(a.Value, s)+`)`)
 		case ir.AttrSubmit: // on an element Lower did not make a FormEl
 			// Lower makes every <form submit> a FormEl (html.FormToRoute, with the _method
 			// override), so this is an element that is not a <form>: it never submits without
 			// JavaScript (method="post" is inert on it), and with it RouteAttr sends the route's
 			// own method. No _method override is needed (#160 PR 3, ruling R9).
-			if isRoute(a.Value) {
-				ref := f.code(a.Value, s)
-				out = append(out, `html.A("method", "post")`, `html.RouteAttr("action", `+ref+`)`,
-					`html.RouteAttr("data-on:submit", `+ref+`)`)
-				continue
-			}
-			ref := f.msgRef(a.Value, s)
-			out = append(out, `html.A("method", "post")`, `html.MsgAttr("action", `+ref+`)`,
-				`html.MsgAttr("data-on:submit", `+ref+`)`)
+			ref := f.code(a.Value, s)
+			out = append(out, `html.A("method", "post")`, `html.RouteAttr("action", `+ref+`)`,
+				`html.RouteAttr("data-on:submit", `+ref+`)`)
 		}
 	}
 	return "[]html.Attr{" + strings.Join(out, ", ") + "}"
 }
 
-// fileLink reports whether an href's value is a file page or a file GET route written in place:
-// the boost must leave it to the browser (data-alder-reload), as a file is never morphed in.
+// fileLink reports whether an href's value is a file GET route written in place: the boost
+// must leave it to the browser (data-alder-reload), as a file is never morphed in.
 func fileLink(e ir.Expr) bool {
-	switch x := e.(type) {
-	case *ir.PageRef:
-		return x.Page != nil && x.Page.File
-	case *ir.RouteRef:
-		return x.Route.File
-	}
-	return false
+	r, ok := e.(*ir.RouteRef)
+	return ok && r.Route.File
 }
 
-// isRoute reports whether the value of a click or submit attribute is a route (#160), not a
-// message: its type is Route.
-func isRoute(e ir.Expr) bool {
-	c, ok := e.Type().(*types.Con)
-	return ok && c.Name == "Route"
-}
-
-// msgRef is message value e as an rt.MsgRef, which rt/html resolves to the URL it posts to
-// (html.MsgAttr). A constructor written in place gives its module, name and parameters
-// statically; any other message value is switched on at run time. The parameters are the
-// message's (without the submitted form), in declaration order, as text (kvList: a List one
-// key per element).
-func (f *fn) msgRef(e ir.Expr, s *scope) string {
-	ref := func(module, msg string, rec *types.Record, field func(name string, t types.Type) ir.Expr, c *scope) string {
-		var items []kvItem
-		if rec != nil {
-			for _, fd := range rec.Fields {
-				if fd.Name != "form" {
-					items = append(items, kvItem{name: fd.Name, t: fd.Type, v: field(fd.Name, fd.Type)})
-				}
-			}
-		}
-		out := "rt.MsgRef{Module: " + strconv.Quote(module) + ", Msg: " + strconv.Quote(msg)
-		if len(items) > 0 {
-			out += ", Params: " + f.kvList(items, c)
-		}
-		return out + "}"
-	}
-	if c, ok := e.(*ir.Ctor); ok {
-		var rec *types.Record
-		field := func(string, types.Type) ir.Expr { return nil }
-		if c.Payload != nil {
-			rec, _ = c.Payload.Type().(*types.Record)
-			field = func(name string, t types.Type) ir.Expr {
-				if r, ok := c.Payload.(*ir.Record); ok {
-					for _, fi := range r.Fields {
-						if fi.Name == name {
-							return fi.Value
-						}
-					}
-				}
-				return &ir.Field{Typed: ir.Typed{Ty: t}, Expr: c.Payload, Name: name}
-			}
-		}
-		return ref(c.U.Module, c.Name, rec, field, s)
-	}
-	u, ok := e.Type().(*types.Union)
-	if !ok {
-		panic("gen: a message value is not a union")
-	}
-	c := s.child()
-	key, m := f.tempVar(c, "_m")
-	mv := &ir.Var{Typed: ir.Typed{Ty: e.Type()}, Kind: ir.VarLocal, Name: key}
-	var w strings.Builder
-	w.WriteString("func() rt.MsgRef {\n" + m + " := " + f.code(e, s) + "\nswitch " + m + ".Tag {\n")
-	for _, ct := range u.Constructors() {
-		rec, _ := ct.Arg.(*types.Record)
-		payload := &ir.Field{Typed: ir.Typed{Ty: rec}, Expr: mv, Name: ctorField(ct.Name)}
-		field := func(name string, t types.Type) ir.Expr {
-			return &ir.Field{Typed: ir.Typed{Ty: t}, Expr: payload, Name: name}
-		}
-		w.WriteString("case " + tagConst(u.Module, u.Name, ct.Name) + ":\nreturn " + ref(u.Module, ct.Name, rec, field, c) + "\n")
-	}
-	w.WriteString("}\npanic(\"unreachable\")\n}()")
-	return w.String()
-}
-
-// kvItem is one URL parameter: its name, its declared type and value, and for a page link its
+// kvItem is one URL parameter: its name, its declared type and value, and for a route link its
 // default (left out at it) and whether Nothing is left out.
 type kvItem struct {
 	name      string
@@ -296,7 +205,7 @@ func (f *fn) kvList(items []kvItem, s *scope) string {
 	return "rt.Queries(" + strings.Join(groups, ", ") + ")"
 }
 
-// text is e as a Go string: a message parameter or a form control's value. Literals and
+// text is e as a Go string: a route parameter or a form control's value. Literals and
 // constructors written in place are converted statically.
 func (f *fn) text(e ir.Expr, s *scope) string {
 	switch x := e.(type) {

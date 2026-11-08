@@ -18,40 +18,22 @@ type App__Feedback struct {
 	Text string
 }
 
-type App__SendParams struct {
+type App__Logout__Params struct{}
+
+type App__Send__Params struct {
 	Form App__Feedback
 }
 
-type App__Msg struct {
-	Tag  tag__App__Msg
-	Send *App__SendParams
+func App__Logout__update(p App__Logout__Params, session App__Session) eff.Task[rt.Response] {
+	return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
+		return App__Session{User: rt.Nothing[string](), Visits: s.Visits}
+	}), func(_ struct{}) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Auth.Login.Login", Method: "GET", Path: "/login"}))
+	})
 }
 
-type tag__App__Msg uint8
-
-const (
-	is__App__Msg__Logout tag__App__Msg = 0
-	is__App__Msg__Send   tag__App__Msg = 1
-)
-
-var App__Msg__Logout__ = App__Msg{Tag: is__App__Msg__Logout}
-
-func App__Msg__Send__(v App__SendParams) App__Msg {
-	return App__Msg{Tag: is__App__Msg__Send, Send: &v}
-}
-
-func App__update(msg App__Msg, session App__Session) eff.Task[rt.Nav] {
-	switch msg.Tag {
-	case is__App__Msg__Logout:
-		return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
-			return App__Session{User: rt.Nothing[string](), Visits: s.Visits}
-		}), func(_ struct{}) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Redirect(rt.Page{Path: "/login"}))
-		})
-	case is__App__Msg__Send:
-		return eff.Pure(rt.Rerender())
-	}
-	panic("unreachable")
+func App__Send__update(p App__Send__Params, session App__Session) eff.Task[rt.Response] {
+	return eff.Pure(std.ResponseRefresh())
 }
 
 func App__error(err error) html.Node {

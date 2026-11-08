@@ -2,4 +2,4 @@ module Url
 
 external : Text -> Route
 
-absolute : Page -> Text
+absolute : Route -> Text

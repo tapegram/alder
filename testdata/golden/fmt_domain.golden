@@ -55,17 +55,11 @@ capability Mailer {
 }
 
 capability Email {
-  send : { to: Text.Email, subject: Text, body: Html Never } -> Task Unit,
+  send : { to: Text.Email, subject: Text, body: Html } -> Task Unit,
 }
 
 capability Notify {
-  push : {
-    to: Text.Email,
-    subject: Text,
-    body: Html Never,
-    badge: Int,
-    category: Text,
-  } -> Task Unit,
+  push : { to: Text.Email, subject: Text, body: Html, badge: Int, category: Text } -> Task Unit,
 }
 
 fake Mailer {

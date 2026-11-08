@@ -1,6 +1,6 @@
 module H
 
-view : Model -> Session -> Html Msg
+view : Model -> Session -> Html
 view model session =
   <Layout.Page title="Todos" theme={session.theme}>
     <h1>Todos</h1>

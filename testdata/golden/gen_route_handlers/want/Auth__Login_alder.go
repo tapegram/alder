@@ -17,5 +17,5 @@ func Auth__Login__Login__load(params Auth__Login__Login__Params, session App__Se
 }
 
 func Auth__Login__Login__view(model Auth__Login__Model, session App__Session) html.Node {
-	return html.El("html", nil, html.El("body", nil, html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "Todos.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}))}, html.Text("Todos"))))
+	return html.El("html", nil, html.El("body", nil, html.El("a", []html.Attr{html.A("href", rt.RouteURL(rt.Route{Name: "Todos.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}))}, html.Text("Todos"))))
 }

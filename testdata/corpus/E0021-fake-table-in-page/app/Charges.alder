@@ -2,16 +2,16 @@ module Charges
 
 import Payments
 
-page "/charges" { }
+route Charges = GET "/charges" { }
 
 type Model = { count: Int }
 
 -- A page runs in production, where the fake's table does not exist.
-load : Params -> Session -> Query Model
-load params session = {
+Charges.load : Charges.Params -> Session -> Query Model
+Charges.load params session = {
   let n <- Db.from Payments.Charge |> Db.count
   Query.succeed { count: n }
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>{Text.fromInt model.count}</p>
+Charges.view : Model -> Session -> Html
+Charges.view model session = <p>{Text.fromInt model.count}</p>

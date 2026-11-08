@@ -20,9 +20,7 @@ import (
 // submitRaw, click) and for the Doc queries calls.
 
 // Doc is the Prelude's `Doc`: a page's document, parsed (the node tree of rt/html). Two Docs
-// are equal (`==`) when their trees are, without the page's parameters in their message URLs
-// (html.WithoutPageParams): the page a step holds was rendered with its request's state, a view
-// rendered by Test.doc without one, and they are the same document.
+// are equal (`==`) when their trees are (html.Node.Equal).
 type Doc struct{ Node html.Node }
 
 // DocOf is the document a step's result holds.
@@ -39,11 +37,11 @@ func ViewDoc(v html.Node) Doc {
 
 // AlderEqual is Doc's `==` (rt.Equaler).
 func (d Doc) AlderEqual(other any) bool {
-	return html.WithoutPageParams(d.Node).Equal(html.WithoutPageParams(other.(Doc).Node))
+	return d.Node.Equal(other.(Doc).Node)
 }
 
-// AlderKey is Doc's Dict key (rt.Keyer): its markup without the page's parameters.
-func (d Doc) AlderKey() string { return html.Render(html.WithoutPageParams(d.Node)) }
+// AlderKey is Doc's Dict key (rt.Keyer): its markup as `==` compares it (html.Normalize).
+func (d Doc) AlderKey() string { return html.Render(html.Normalize(d.Node)) }
 
 // AlderShow prints a Doc as its markup (rt.Shower).
 func (d Doc) AlderShow() (string, bool) { return html.Render(d.Node), false }
@@ -159,7 +157,7 @@ func (a Answer) AlderEqual(other any) bool {
 	}
 	switch a.Tag {
 	case Redirected, Rendered:
-		return rt.PageURL(a.Page) == rt.PageURL(b.Page)
+		return rt.RouteURL(a.Page) == rt.RouteURL(b.Page)
 	case FormRejected:
 		return rt.Eq(a.FieldErrors(), b.FieldErrors())
 	case RequestFailed:
@@ -176,9 +174,9 @@ func (a Answer) AlderKey() string { s, _ := a.AlderShow(); return s }
 func (a Answer) AlderShow() (string, bool) {
 	switch a.Tag {
 	case Redirected:
-		return "Redirected " + rt.PageURL(a.Page), true
+		return "Redirected " + rt.RouteURL(a.Page), true
 	case Rendered:
-		return "Rendered " + rt.PageURL(a.Page), true
+		return "Rendered " + rt.RouteURL(a.Page), true
 	case FormRejected:
 		return "FormRejected " + rt.Show(a.FieldErrors()), true
 	case RequestFailed:
@@ -200,7 +198,7 @@ func (b *Browser) GetPage(u, requires string) (Result, error) {
 	r, err := b.Get(u)
 	var ns *NotShownError
 	if errors.As(err, &ns) && requires != "" && ns.Answer.Tag == Redirected && b.login != "" &&
-		strings.SplitN(rt.PageURL(ns.Answer.Page), "?", 2)[0] == b.login {
+		strings.SplitN(rt.RouteURL(ns.Answer.Page), "?", 2)[0] == b.login {
 		ns.Requires = requires
 	}
 	return r, err
@@ -216,75 +214,7 @@ func ModelOf[M any](u string, r Result) (M, error) {
 	return m, nil
 }
 
-// SubmitForm is Test.submit of a form by its name: the fields posted to the form on the held
-// page whose message is msgPath (/_m/<Module>/<Msg>) — the message's own parameters, which the
-// test did not write, are the rendered form's — as Submit posts them (only the fields the form
-// has inputs for: Fields.For). Without such a form the error is a *NoControlError naming form
-// ("the page / has no form NewTodo (Todos.Index.Submit)"); with several whose URLs differ (one
-// per row) it is "the page has 2 forms for Todos.Index.Rename: write the message with its
-// parameters".
-func (b *Browser) SubmitForm(msgPath, form string, fields Fields) (Result, error) {
-	var targets []string
-	if b.hasDoc {
-		for _, f := range html.Select(b.doc, selForm) {
-			if clickForm(f) {
-				continue
-			}
-			for _, u := range formURLs(f) {
-				if p, err := url.Parse(u); err == nil && p.Path == msgPath {
-					if !slices.Contains(targets, u) {
-						targets = append(targets, u)
-					}
-					break
-				}
-			}
-		}
-	}
-	switch len(targets) {
-	case 0:
-		return Result{}, &NoControlError{Submit: true, Form: form, Msg: MsgLabel(msgPath), URL: msgPath, Page: b.url}
-	case 1:
-		return b.submit(targets[0], form, fields)
-	}
-	return Result{}, fmt.Errorf("the page has %d forms for %s: write the message with its parameters", len(targets), MsgLabel(msgPath))
-}
-
-// SubmitMsg is Test.submit of a message with its parameters (`Test.submit (Save { id: id }) r`):
-// Submit to the held page's form for msgURL (matched as the message and its own parameters),
-// with form and label — the message as Alder writes it (MsgName) — in its error.
-func (b *Browser) SubmitMsg(msgURL, form, label string, fields Fields) (Result, error) {
-	r, err := b.submit(msgURL, form, fields)
-	var nc *NoControlError
-	if errors.As(err, &nc) {
-		nc.Msg = label
-	}
-	return r, err
-}
-
-// formURLs are the URLs form f posts: its action and its data-on:submit's.
-func formURLs(f html.Node) []string {
-	var out []string
-	if a, ok := html.AttrOf(f, "action"); ok {
-		out = append(out, a)
-	}
-	if a, ok := html.AttrOf(f, "data-on:submit"); ok {
-		out = append(out, postURL(a))
-	}
-	return out
-}
-
-// ClickMsg is Test.click's request: Click, with label — the message as the test wrote it,
-// `Todos.Index.Toggle { id: "a" }` (MsgName) — in its error.
-func (b *Browser) ClickMsg(msgURL, label string) (Result, error) {
-	r, err := b.Click(msgURL)
-	var nc *NoControlError
-	if errors.As(err, &nc) {
-		nc.Msg = label
-	}
-	return r, err
-}
-
-// MsgName is a message as Alder writes it: its module and name, then its parameters (a record
+// MsgName is a route as Alder writes it: its module and name, then its parameters (a record
 // value, printed by rt.Show) when it has any: `Todos.Index.Toggle { id: "a" }`, `App.Logout`.
 func MsgName(name string, params any) string {
 	if params == nil {
@@ -348,12 +278,13 @@ func CheckSession(e *eff.Env, next any) (any, error) {
 // answer: Rendered (a GET route's element, or a write's `render r`), Refreshed, FormRejected
 // (`invalid`, a form that did not decode: status 422), Redirected (the target held, the
 // result's URL its URL), PageMissing, RequestFailed. With no control the error is a
-// *NoControlError naming label, the route as the test wrote it, and nothing is sent.
+// *NoControlError naming label, the route as the test wrote it, and the parameters the page
+// requests the route with instead (offered); nothing is sent.
 func (b *Browser) ClickRoute(r rt.Route, label string) (Result, error) {
 	defer b.track()()
 	c, ok := b.routeControl(r, false)
 	if !ok {
-		return Result{}, &NoControlError{Msg: label, URL: rt.RouteURL(r), Page: b.url}
+		return Result{}, &NoControlError{Msg: label, URL: rt.RouteURL(r), Page: b.url, Offers: b.offered(r, false)}
 	}
 	var fields url.Values
 	if c.hasForm {
@@ -367,17 +298,18 @@ func (b *Browser) ClickRoute(r rt.Route, label string) (Result, error) {
 }
 
 // SubmitRoute is Test.submit of write route r's form (named form, for the errors): fields
-// posted to the held page's form for r (not a click button's own) as Submit posts a message's
-// (only the fields the form has inputs for: Fields.For), with the form's `_method` (its hidden
-// field, or its submit button's name and value) as the page's script sends it, and the headers
-// and answers of ClickRoute. With no such form the error is a *NoControlError naming form and
-// r ("the page / has no form NewTodo (Todos.Create)"); with a field the form has no input
-// for, a *NoInputError. Either way nothing is sent.
+// posted to the held page's form for r (not a click button's own; only the fields the form has
+// inputs for: Fields.For), with the form's `_method` (its hidden field, or its submit button's
+// name and value) as the page's script sends it, and the headers and answers of ClickRoute.
+// With no such form the error is a *NoControlError naming form and r with its parameters
+// (routeLabel: "the page / has no form Title (Todos.Rename { id: "a" })") and the parameters
+// the page's forms send r with instead (offered); with a field the form has no input for, a
+// *NoInputError. Either way nothing is sent.
 func (b *Browser) SubmitRoute(r rt.Route, form string, fields Fields) (Result, error) {
 	defer b.track()()
 	c, ok := b.routeControl(r, true)
 	if !ok {
-		return Result{}, &NoControlError{Submit: true, Form: form, Msg: r.Name, URL: rt.RouteURL(r), Page: b.url}
+		return Result{}, &NoControlError{Submit: true, Form: form, Msg: b.routeLabel(r), URL: rt.RouteURL(r), Page: b.url, Offers: b.offered(r, true)}
 	}
 	send, err := fields.For(c.form, form)
 	if err != nil {
@@ -396,7 +328,7 @@ func (b *Browser) SubmitRoute(r rt.Route, form string, fields Fields) (Result, e
 // Refresh is `Test.refresh` (#160), the developer's whole-page honesty check: a plain GET of the
 // held URL (no Datastar, as a browser's reload; a redirect followed), whose page becomes the
 // held one. Its body must equal the body held before it, compared as Doc equality compares
-// (the page's parameters left out: html.WithoutPageParams) and without the toasts (<al-toasts>,
+// and without the toasts (<al-toasts>,
 // what a step's toasts were delivered into, which a reload may fill from a notice): the
 // answer is then Refreshed. A page not shown again (PageMissing, RequestFailed, Redirected
 // elsewhere) or a body that differs is a *RefreshError, as is a browser holding no page.
@@ -420,12 +352,12 @@ func (b *Browser) Refresh() (Result, error) {
 }
 
 // refreshBody is what Refresh compares of document d: its <body> (d itself without one) without
-// the page's parameters and the <al-toasts> region.
+// the <al-toasts> region.
 func refreshBody(d html.Node) html.Node {
 	if bs := html.Select(d, selBody); len(bs) > 0 {
 		d = bs[0]
 	}
-	return html.Without(html.WithoutPageParams(d), func(n html.Node) bool { return n.Tag() == "al-toasts" })
+	return html.Without(d, func(n html.Node) bool { return n.Tag() == "al-toasts" })
 }
 
 // RefreshError is Test.refresh's failure: no page held (URL ""), the held URL not shown again
@@ -461,43 +393,47 @@ var routeAction = regexp.MustCompile(`@(get|post|put|patch|delete)\('([^']*)', w
 // routeCtl is a control of the held page that requests a route: the request it makes.
 type routeCtl struct {
 	method  string    // the request's method: Datastar's verb (a DELETE that sends a form is a POST)
+	route   string    // the route's method: method, or the `_method` a form's POST sends
 	url     string    // the URL, as the page renders it
 	fetch   bool      // an element fetch (a GET route)
 	form    html.Node // the form whose fields it sends, when hasForm
 	hasForm bool
 }
 
-// routeControl is the held page's first control, in document order, requesting r: for a
-// submit (submit set) a form posting r that is not a click button's own; for a click, also a
-// click button's own form and any element whose data-on:click requests r. A control's route is
-// its method — a form's `_method` for a POST that sends one — and its URL (routeKeyOf).
+// routeControl is the held page's first control, in document order, requesting r
+// (routeControls): its route's method and its URL's path and own query are r's (routeKeyOf).
 func (b *Browser) routeControl(r rt.Route, submit bool) (routeCtl, bool) {
-	if !b.hasDoc {
-		return routeCtl{}, false
-	}
-	method := r.Method
-	if method == "" {
-		method = http.MethodGet
-	}
-	want, ok := routeKeyOf(method, rt.RouteURL(r))
+	want, ok := routeKeyOf(routeMethod(r), rt.RouteURL(r))
 	if !ok {
 		return routeCtl{}, false
 	}
-	var found routeCtl
-	var walk func(n html.Node) bool
-	walk = func(n html.Node) bool {
+	for _, c := range b.routeControls(submit) {
+		if k, ok := routeKeyOf(c.route, c.url); ok && k == want {
+			return c, true
+		}
+	}
+	return routeCtl{}, false
+}
+
+// routeControls are the held page's controls that request a route, in document order: for a
+// submit (submit set) the forms that are not a click button's own; for a click, also a click
+// button's own form and any element whose data-on:click requests one. A form's route method is
+// the `_method` its POST sends, when it sends one.
+func (b *Browser) routeControls(submit bool) []routeCtl {
+	if !b.hasDoc {
+		return nil
+	}
+	var out []routeCtl
+	var walk func(n html.Node)
+	walk = func(n html.Node) {
 		if n.Tag() == "form" && (!submit || !clickForm(n)) {
 			if a, ok := html.AttrOf(n, "data-on:submit"); ok {
 				if c, ok := parseRouteAction(a); ok {
-					c.form = n
-					m := c.method
-					if v := formData(n)[methodField]; c.hasForm && m == http.MethodPost && len(v) == 1 {
-						m = v[0]
+					c.form, c.route = n, c.method
+					if v := formData(n)[methodField]; c.hasForm && c.method == http.MethodPost && len(v) == 1 {
+						c.route = v[0]
 					}
-					if k, ok := routeKeyOf(m, c.url); ok && k == want {
-						found = c
-						return true
-					}
+					out = append(out, c)
 				}
 			}
 		}
@@ -505,22 +441,142 @@ func (b *Browser) routeControl(r rt.Route, submit bool) (routeCtl, bool) {
 			for _, name := range []string{"data-on:click", "data-on:click__prevent"} {
 				if a, ok := html.AttrOf(n, name); ok {
 					if c, ok := parseRouteAction(a); ok && !c.hasForm {
-						if k, ok := routeKeyOf(c.method, c.url); ok && k == want {
-							found = c
-							return true
-						}
+						c.route = c.method
+						out = append(out, c)
 					}
 				}
 			}
 		}
 		for _, ch := range n.Children() {
-			if walk(ch) {
-				return true
+			walk(ch)
+		}
+	}
+	walk(b.doc)
+	return out
+}
+
+// routeMethod is r's method, "GET" when it has none.
+func routeMethod(r rt.Route) string {
+	if r.Method == "" {
+		return http.MethodGet
+	}
+	return r.Method
+}
+
+// param is one parameter of a request as its route names it.
+type param struct{ key, value string }
+
+// pathParams is the pattern of the app's route of method whose pattern matches path (an
+// escaped URL path; `{name}` matches one non-empty segment), and the path's parameters by the
+// pattern's names, unescaped, in pattern order; ok is false when no route matches.
+func (b *Browser) pathParams(method, path string) (pattern string, params []param, ok bool) {
+	segs := strings.Split(path, "/")
+	for _, r := range b.routes {
+		ps := strings.Split(r.Pattern, "/")
+		if r.Method != method || len(ps) != len(segs) {
+			continue
+		}
+		params, ok = nil, true
+		for i, p := range ps {
+			if name, isParam := strings.CutPrefix(p, "{"); isParam && strings.HasSuffix(name, "}") && segs[i] != "" {
+				v, err := url.PathUnescape(segs[i])
+				if err != nil {
+					v = segs[i]
+				}
+				params = append(params, param{strings.TrimSuffix(name, "}"), v})
+			} else if p != segs[i] {
+				ok = false
+				break
 			}
 		}
-		return false
+		if ok {
+			return r.Pattern, params, true
+		}
 	}
-	return found, walk(b.doc)
+	return "", nil, false
+}
+
+// requestParams is a request's parameters to URL u for a route of method: the path's (its
+// route's pattern: pathParams), then the query's, in order; pattern is "" when no route of the
+// app matches u.
+func (b *Browser) requestParams(method, u string) (pattern string, params []param) {
+	p, err := url.Parse(u)
+	if err != nil {
+		return "", nil
+	}
+	pattern, params, ok := b.pathParams(method, p.EscapedPath())
+	if !ok {
+		return "", nil
+	}
+	for _, kv := range strings.Split(p.RawQuery, "&") {
+		k, v, _ := strings.Cut(kv, "=")
+		k, _ = url.QueryUnescape(k)
+		v, _ = url.QueryUnescape(v)
+		if k != "" {
+			params = append(params, param{k, v})
+		}
+	}
+	return pattern, params
+}
+
+// routeLabel is r as a test writes it, its parameters as text: `Todos.Rename { id: "a" }`, its
+// name alone without parameters (or when no route of the app matches its URL).
+func (b *Browser) routeLabel(r rt.Route) string {
+	_, params := b.requestParams(routeMethod(r), rt.RouteURL(r))
+	if len(params) == 0 {
+		return r.Name
+	}
+	fields := make([]string, len(params))
+	for i, p := range params {
+		fields[i] = p.key + ": " + strconv.Quote(p.value)
+	}
+	return r.Name + " { " + strings.Join(fields, ", ") + " }"
+}
+
+// offered is what the held page offers for route r with other parameters, from its controls
+// that request a route of r's method and pattern (routeControls): r's own name (its last part),
+// then each control's parameters in page order, each set once — "Toggle for id: a, b" when
+// every control has the same single parameter, else "Rename for id: a, x: 1; id: b, x: 2"; ""
+// when no control requests the route with parameters.
+func (b *Browser) offered(r rt.Route, submit bool) string {
+	method := routeMethod(r)
+	pattern, _ := b.requestParams(method, rt.RouteURL(r))
+	if pattern == "" {
+		return ""
+	}
+	type set struct{ keys, text, value string }
+	var sets []set
+	for _, c := range b.routeControls(submit) {
+		if c.route != method {
+			continue
+		}
+		pat, params := b.requestParams(method, c.url)
+		if pat != pattern || len(params) == 0 {
+			continue
+		}
+		var keys, own []string
+		for _, p := range params {
+			keys, own = append(keys, p.key), append(own, p.key+": "+p.value)
+		}
+		s := set{strings.Join(keys, ","), strings.Join(own, ", "), params[len(params)-1].value}
+		if !slices.Contains(sets, s) {
+			sets = append(sets, s)
+		}
+	}
+	if len(sets) == 0 {
+		return ""
+	}
+	name := r.Name[strings.LastIndexByte(r.Name, '.')+1:]
+	var texts, values []string
+	single := !strings.Contains(sets[0].keys, ",")
+	for _, s := range sets {
+		texts, values = append(texts, s.text), append(values, s.value)
+		single = single && s.keys == sets[0].keys
+	}
+	if single {
+		return name + " for " + sets[0].keys + ": " + strings.Join(values, ", ")
+	}
+	return name + " for " + strings.Join(texts, "; ")
 }
 
 // parseRouteAction is the request of Datastar action a when it requests a route (routeAction).
@@ -533,13 +589,13 @@ func parseRouteAction(a string) (routeCtl, bool) {
 }
 
 // routeKeyOf is rt.RouteKey of a request of method to URL u: the method, and the URL's path
-// and own query (rt.MsgKey).
+// and own query (rt.URLKey).
 func routeKeyOf(method, u string) (string, bool) {
 	p, err := url.Parse(u)
 	if err != nil || p.Path == "" {
 		return "", false
 	}
-	return method + " " + rt.MsgKey(p.Path, p.Query()), true
+	return method + " " + rt.URLKey(p.Path, p.Query()), true
 }
 
 // formData is what Datastar sends for form f, as `new FormData(f)` and the submitter: each

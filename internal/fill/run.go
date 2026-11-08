@@ -19,7 +19,7 @@ const Attempts = 3
 var AttemptTimeout = 120 * time.Second
 
 // Attempt is reported before each attempt after the first: its number and why the one before
-// it was refused (the first error, "E0003 expected Task Nav, got Task Unit").
+// it was refused (the first error, "E0003 expected Task Response, got Task Unit").
 type Attempt struct {
 	N   int
 	Why string

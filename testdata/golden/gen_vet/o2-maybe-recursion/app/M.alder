@@ -107,11 +107,11 @@ cut n = { (push 0 n) | next: Nothing }
 -- a component whose props are a record with a boxed field
 type Crumb = { label: Text, parent: Maybe Crumb }
 
-Trail : Crumb -> Html a
+Trail : Crumb -> Html
 Trail c = <span>{c.label}{match c.parent {
   Just p -> <Trail label={p.label} parent={p.parent} />,
   Nothing -> <b>root</b>,
 }}</span>
 
-trail : Html a
+trail : Html
 trail = <Trail label="c" parent={Just { label: "b", parent: Just { label: "a", parent: Nothing } }} />

@@ -77,12 +77,12 @@ func TestAccessLog_SensitivePathParams(t *testing.T) {
 	}
 	var s sink
 	routes := []Route{
-		{Method: "GET", Pattern: "/reset/{token}", Handle: func(rq *Request) Response { return PageResponse(doc("x"), nil, nil, false) }},
+		{Method: "GET", Pattern: "/reset/{token}", Handle: func(rq *Request) Response { return PageResponse(doc("x"), nil, nil) }},
 		{Method: "GET", Pattern: "/magic/{resetCode}/go", Handle: func(rq *Request) Response {
 			return ErrorResponse(html.None(), errors.New("expired"))
 		}},
-		{Method: "GET", Pattern: "/u/{id}", Handle: func(rq *Request) Response { return PageResponse(doc("x"), nil, nil, false) }},
-		{Method: "GET", Pattern: "/u/new", Handle: func(rq *Request) Response { return PageResponse(doc("x"), nil, nil, false) }},
+		{Method: "GET", Pattern: "/u/{id}", Handle: func(rq *Request) Response { return PageResponse(doc("x"), nil, nil) }},
+		{Method: "GET", Pattern: "/u/new", Handle: func(rq *Request) Response { return PageResponse(doc("x"), nil, nil) }},
 	}
 	h := NewRouter(routes, s.opts(nil))
 	for _, c := range []struct{ path, want string }{
@@ -112,7 +112,7 @@ func TestAccessLog_SensitivePathParams(t *testing.T) {
 func TestDevPanel_MasksSensitiveParam(t *testing.T) {
 	t.Setenv("ALDER_DEV", "1")
 	const tok = "Ab3_xY9-Qr7Lm2Np8Kt4"
-	h := NewRouter(one("GET", "/reset/{token}", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil, false) }), testOpts(func(o *Options) { o.Dev = true }))
+	h := NewRouter(one("GET", "/reset/{token}", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil) }), testOpts(func(o *Options) { o.Dev = true }))
 	body := serve(h, httptest.NewRequest("GET", "/reset/"+tok, nil)).Body.String()
 	panel := body[strings.Index(body, "<al-devpanel"):]
 	if strings.Contains(panel, tok) || !strings.Contains(panel, "GET /reset/••••\n") || !strings.Contains(panel, "param token = ••••") {
@@ -131,7 +131,7 @@ func (f *fixedWriter) WriteHeader(int)             {}
 // tracker and its URL is masked only for a line that is written. A request served with the
 // logger's hook allocates exactly what one served without a hook does.
 func TestAccessLog_FilteredNoCost(t *testing.T) {
-	route := one("GET", "/p", func(rq *Request) Response { return PageResponse(html.None(), nil, nil, false) })
+	route := one("GET", "/p", func(rq *Request) Response { return PageResponse(html.None(), nil, nil) })
 	lg := applog.New(io.Discard, applog.Warn, applog.Text)
 	with := NewRouter(route, testOpts(func(o *Options) { o.Access = lg.Access }))
 	without := NewRouter(route, testOpts(nil))
@@ -164,7 +164,7 @@ func TestAccessLog_FilteredNoCost(t *testing.T) {
 	var stats *eff.Stats
 	probe := NewRouter(one("GET", "/p", func(rq *Request) Response {
 		stats = rq.Env.Stats
-		return PageResponse(html.None(), nil, nil, false)
+		return PageResponse(html.None(), nil, nil)
 	}), testOpts(nil))
 	probe.ServeHTTP(w, req)
 	if stats != nil {

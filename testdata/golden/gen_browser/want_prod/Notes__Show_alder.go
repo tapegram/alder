@@ -13,26 +13,20 @@ type Notes__Show__Model struct {
 	Note Note__Note
 }
 
-type Notes__Show__Params struct {
+type Notes__Show__Show__Params struct {
 	Id string
 }
 
-type Notes__Show__Msg struct {
-	Tag tag__Notes__Show__Msg
-}
-
-type tag__Notes__Show__Msg uint8
-
-type Notes__Show__Session struct {
+type Notes__Show__Show__Session struct {
 	User   string
 	Visits int64
 }
 
-func widen__Notes__Show__Session(s Notes__Show__Session) App__Session {
+func widen__Notes__Show__Show__Session(s Notes__Show__Show__Session) App__Session {
 	return App__Session{User: rt.Just(s.User), Visits: s.Visits}
 }
 
-func Notes__Show__load(params Notes__Show__Params, session Notes__Show__Session) eff.Query[Notes__Show__Model] {
+func Notes__Show__Show__load(params Notes__Show__Show__Params, session Notes__Show__Show__Session) eff.Query[Notes__Show__Model] {
 	return eff.Q(eff.Bind(eff.Call("Db.get Note", false, func(_e1 *eff.Env) (rt.Maybe[Note__Note], error) {
 		return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, params.Id)
 	}), func(found rt.Maybe[Note__Note]) eff.Task[Notes__Show__Model] {
@@ -47,6 +41,6 @@ func Notes__Show__load(params Notes__Show__Params, session Notes__Show__Session)
 	}))
 }
 
-func Notes__Show__view(model Notes__Show__Model, session Notes__Show__Session) html.Node {
+func Notes__Show__Show__view(model Notes__Show__Model, session Notes__Show__Show__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil, html.El("h1", nil, html.Text(model.Note.Title))))
 }

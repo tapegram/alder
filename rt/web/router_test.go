@@ -81,15 +81,15 @@ func TestRouter_PathParams(t *testing.T) {
 	routes := []Route{
 		{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
 			got = rq
-			return PageResponse(doc("home"), nil, nil, false)
+			return PageResponse(doc("home"), nil, nil)
 		}},
 		{Method: "GET", Pattern: "/todos/{id}", Handle: func(rq *Request) Response {
 			got = rq
-			return PageResponse(doc("todo "+rq.Params["id"]), nil, nil, false)
+			return PageResponse(doc("todo "+rq.Params["id"]), nil, nil)
 		}},
 		{Method: "GET", Pattern: "/todos/{id}/edit/{field}", Handle: func(rq *Request) Response {
 			got = rq
-			return PageResponse(doc("edit"), nil, nil, false)
+			return PageResponse(doc("edit"), nil, nil)
 		}},
 	}
 	h := NewRouter(routes, testOpts(nil))
@@ -135,9 +135,9 @@ func TestRouter_MethodDispatch(t *testing.T) {
 	routes := []Route{
 		{Method: "GET", Pattern: "/todos", Handle: func(rq *Request) Response {
 			hits = append(hits, "GET")
-			return PageResponse(doc("list"), nil, nil, false)
+			return PageResponse(doc("list"), nil, nil)
 		}},
-		{Method: "POST", Pattern: "/_m/Todos/Add", Handle: func(rq *Request) Response {
+		{Method: "POST", Pattern: "/todos/add", Handle: func(rq *Request) Response {
 			hits = append(hits, "POST")
 			return RedirectResponse("/todos", nil)
 		}},
@@ -147,12 +147,12 @@ func TestRouter_MethodDispatch(t *testing.T) {
 		method, path string
 		code         int
 	}{
-		{"GET", "/_m/Todos/Add", 405}, // a path declared for another method only (#160)
+		{"GET", "/todos/add", 405}, // a path declared for another method only (#160)
 		{"POST", "/todos", 405},
-		{"POST", "/_m/Todos/Remove", 404},
+		{"POST", "/todos/remove", 404},
 		{"PUT", "/todos", 405},
 		{"GET", "/todos", 200},
-		{"POST", "/_m/Todos/Add", 303},
+		{"POST", "/todos/add", 303},
 	}
 	for _, c := range cases {
 		w := serve(h, httptest.NewRequest(c.method, c.path, nil))
@@ -310,7 +310,7 @@ func TestRouter_FormParsedForPost(t *testing.T) {
 	var got *Request
 	now := time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)
 	caps := map[string]any{"Cap": 1}
-	routes := []Route{{Method: "POST", Pattern: "/_m/Todos/Add", Handle: func(rq *Request) Response {
+	routes := []Route{{Method: "POST", Pattern: "/todos/add", Handle: func(rq *Request) Response {
 		got = rq
 		return RedirectResponse("/todos", nil)
 	}}}
@@ -320,7 +320,7 @@ func TestRouter_FormParsedForPost(t *testing.T) {
 		o.Dev = true
 	}))
 	post := func(body, ct string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest("POST", "/_m/Todos/Add?from=list", strings.NewReader(body))
+		req := httptest.NewRequest("POST", "/todos/add?from=list", strings.NewReader(body))
 		if ct != "" {
 			req.Header.Set("Content-Type", ct)
 		}
@@ -368,7 +368,7 @@ func TestRouter_FormParsedForPost(t *testing.T) {
 	// Defaults: nil Now is time.Now, nil Log is a no-op.
 	h = NewRouter(routes, testOpts(nil))
 	got = nil
-	req := httptest.NewRequest("POST", "/_m/Todos/Add", strings.NewReader("a=1"))
+	req := httptest.NewRequest("POST", "/todos/add", strings.NewReader("a=1"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	serve(h, req)
 	if got == nil || got.Env.Now == nil || got.Env.Log == nil || time.Since(got.Env.Now()) > time.Minute {
@@ -379,7 +379,7 @@ func TestRouter_FormParsedForPost(t *testing.T) {
 
 func TestRouter_ConcurrentRequests(t *testing.T) {
 	routes := []Route{{Method: "GET", Pattern: "/n/{id}", Handle: func(rq *Request) Response {
-		return PageResponse(doc(rq.Params["id"]), nil, testSession{User: rq.Params["id"]}, false)
+		return PageResponse(doc(rq.Params["id"]), nil, testSession{User: rq.Params["id"]})
 	}}}
 	h := NewRouter(routes, testOpts(nil))
 	done := make(chan string)
@@ -408,12 +408,12 @@ func (f flushPanics) Flush() { panic("flush failed") }
 
 func TestRouter_PanicAfterWriteOnlyLogged(t *testing.T) {
 	var logs []string
-	h := NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response {
-		return PageResponse(doc("patched"), nil, nil, true)
+	h := NewRouter(one("POST", "/go", func(rq *Request) Response {
+		return RedirectResponse("https://example.com/", nil) // under Datastar: a navigation event
 	}), testOpts(func(o *Options) {
 		o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) }
 	}))
-	req := httptest.NewRequest("POST", "/_m/A/B", nil)
+	req := httptest.NewRequest("POST", "/go", nil)
 	req.Header.Set("Datastar-Request", "true")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(flushPanics{rec}, req)
@@ -433,7 +433,7 @@ func TestRouter_Specificity(t *testing.T) {
 	route := func(pattern, name string) Route {
 		return Route{Method: "GET", Pattern: pattern, Handle: func(rq *Request) Response {
 			got = name
-			return PageResponse(doc(name), nil, nil, false)
+			return PageResponse(doc(name), nil, nil)
 		}}
 	}
 	h := NewRouter([]Route{
@@ -479,7 +479,7 @@ func TestWithScript(t *testing.T) {
 // HEAD is served like GET, without a body (I7): through a real server, which drops the body.
 func TestRouter_Head(t *testing.T) {
 	h := NewRouter([]Route{{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
-		return PageResponse(doc("home"), nil, testSession{User: "ada"}, false)
+		return PageResponse(doc("home"), nil, testSession{User: "ada"})
 	}}}, testOpts(nil))
 	srv := httptest.NewServer(h)
 	defer srv.Close()
@@ -504,7 +504,7 @@ func TestRouter_Head(t *testing.T) {
 func TestRouter_Reload(t *testing.T) {
 	const dev = `<div id="_alder_errors" data-ignore-morph></div><div data-init="@get('/_dev/reload?b=a1b2-3', {openWhenHidden: true})"></div>`
 	routes := []Route{{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
-		return PageResponse(doc("home"), nil, testSession{}, true)
+		return PageResponse(doc("home"), nil, testSession{})
 	}}}
 	for _, reload := range []bool{false, true} {
 		h := NewRouter(routes, testOpts(func(o *Options) {
@@ -538,7 +538,7 @@ func TestRouter_EnvFor(t *testing.T) {
 	var got *Request
 	routes := []Route{{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
 		got = rq
-		return PageResponse(doc("home"), nil, nil, false)
+		return PageResponse(doc("home"), nil, nil)
 	}}}
 	made := &eff.Env{Caps: map[string]any{"X": 1}}
 	var calledWith any
@@ -573,7 +573,7 @@ func TestRouter_EnvFor(t *testing.T) {
 func TestRouter_Served(t *testing.T) {
 	routes := []Route{{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
 		rq.Model = 42
-		return PageResponse(doc("home"), nil, nil, false)
+		return PageResponse(doc("home"), nil, nil)
 	}}}
 	var seen []any
 	h := NewRouter(routes, testOpts(func(o *Options) { o.Served = func(rq *Request) { seen = append(seen, rq.Model) } }))
@@ -592,7 +592,7 @@ func TestRouter_Served(t *testing.T) {
 // that names the status in StatusHeader; a re-rendered page carries none.
 func TestRouter_DatastarFailureStatusHeader(t *testing.T) {
 	routes := []Route{
-		{Method: "POST", Pattern: "/ok", Handle: func(rq *Request) Response { return PageResponse(doc("ok"), nil, nil, true) }},
+		{Method: "POST", Pattern: "/ok", Handle: func(rq *Request) Response { return PageResponse(doc("ok"), nil, nil) }},
 		{Method: "POST", Pattern: "/missing", Handle: func(rq *Request) Response { return NotFoundResponse(html.None()) }},
 		{Method: "POST", Pattern: "/fail", Handle: func(rq *Request) Response { return ErrorResponse(html.None(), io.EOF) }},
 		{Method: "POST", Pattern: "/panic", Handle: func(rq *Request) Response { panic("boom") }},
@@ -702,7 +702,7 @@ func TestRouter_BadQueryIs400(t *testing.T) {
 	var logs []string
 	routes := []Route{{Method: "GET", Pattern: "/start", Handle: func(rq *Request) Response {
 		got = rq
-		return PageResponse(doc("start"), nil, nil, false)
+		return PageResponse(doc("start"), nil, nil)
 	}}}
 	h := NewRouter(routes, testOpts(func(o *Options) {
 		o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) }

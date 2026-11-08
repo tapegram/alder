@@ -3,30 +3,27 @@ module Home
 import Todo
 import User
 
-page "/" { } requires user
+route Home = GET  "/"      { } requires user
+route Add  = POST "/_/Add" { } requires user
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = Query.succeed {}
 
-msg Add
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add p -> {
-    let _ <- Db.insertMine Todo { title: "milk", owner: session.user }
-    let _ <- Db.insertMine Todo { title: "eggs", created: Time.epoch }
-    let _ <- Db.insertMine Todo (rowFor session.user)
-    let _ <- { title: "jam" } |> Db.insertMine Todo
-    let _ <- Task.all (List.map (Db.insertMine Todo) [])
-    let _ <- Db.insertMine Todo { done: True }
-    Task.succeed Rerender
-  },
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insertMine Todo { title: "milk", owner: session.user }
+  let _ <- Db.insertMine Todo { title: "eggs", created: Time.epoch }
+  let _ <- Db.insertMine Todo (rowFor session.user)
+  let _ <- { title: "jam" } |> Db.insertMine Todo
+  let _ <- Task.all (List.map (Db.insertMine Todo) [])
+  let _ <- Db.insertMine Todo { done: True }
+  Task.succeed Response.refresh
 }
 
 rowFor : User.UserId -> Insert Todo
 rowFor u = { title: "tea", owner: u }
 
-view : Model -> Session -> Html Msg
-view model session = <p>home</p>
+Home.view : Model -> Session -> Html
+Home.view model session = <p>home</p>

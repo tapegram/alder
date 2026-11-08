@@ -82,9 +82,6 @@ func TestGoNameInjective(t *testing.T) {
 		}
 		add(widenName(m, "Session"), "widen "+m)
 		add(pageFunc(m), "page__ "+m)
-		add(updateFunc(m), "update__ "+m)
-		add(paramsFunc(m), "params__ "+m)
-		add(routeFunc(m, ""), "the route of page "+m)
 		for _, i := range []int{1, 2, 10, 11, 101} {
 			add(testFunc(m, i), fmt.Sprintf("test %d of %s", i, m))
 		}
@@ -98,7 +95,7 @@ func TestGoNameInjective(t *testing.T) {
 			add(enumName(m, n), "enum "+m+"."+n)
 			add(checkName(m, n), "brand check "+m+"."+n)
 			add(decodeName(m, n), "decoder "+m+"."+n)
-			add(routeFunc(m, n), "the route of message "+m+"."+n)
+			add(routeFunc(m, n), "the route "+m+"."+n)
 		}
 		for _, n := range uppers[:12] {
 			for _, e := range append(lowers[:20:20], "_x", "_X", "x_", "x", "x_x", "xx") {

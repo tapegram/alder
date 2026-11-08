@@ -4,10 +4,9 @@ HTML is a built-in expression form. An HTML expression has type `Html`. What
 a button, a form or a link leads to is a **route** (chapter 6), written in
 the markup as a value, so the type of the markup does not have to say it.
 
-In a route module `Html` is the whole type. In a module without routes
-(`Layout`, an `App` without routes, a shared component) `Html` still takes a type argument for
-now: write `Html a`, and `Html Never` for markup that sends nothing, such as
-`App.error`. The argument is on its way out.
+`Html` is the whole type, in a route module and in any other (`Layout`, `App`,
+a shared component). It takes no type argument: `Html Msg`, `Html a` and
+`Html Never` are E0046, and `alder fix --routes` rewrites them to `Html`.
 
 ## Elements
 
@@ -243,7 +242,7 @@ A component is a function from a record to `Html`, named with an
 uppercase letter:
 
 ```alder
-TodoItem : { todo: Todo } -> Html a
+TodoItem : { todo: Todo } -> Html
 TodoItem props =
   <li class={if props.todo.done then "done" else ""}>
     <span>{props.todo.title}</span>
@@ -256,10 +255,10 @@ It is used as an element, with props as attributes:
 <TodoItem todo={todo} />
 ```
 
-Children are passed through a `children` field of type `List (Html a)`:
+Children are passed through a `children` field of type `List Html`:
 
 ```alder
-Layout : { title: Text, children: List (Html a) } -> Html a
+Layout : { title: Text, children: List Html } -> Html
 Layout props =
   <html>
     <head><title>{props.title}</title></head>
@@ -275,12 +274,7 @@ Layout props =
 
 A component can contain any route: `click={Toggle { id: todo.id }}` names a
 route value, so a component needs no declaration of what it sends, in a route
-module or in any other.
-
-- In a route module it is typed `Html`.
-- In a module without routes, such as `Layout`, it is typed `Html a`
-  (above).
-- `Html Never` (markup that sends nothing) also fits any `Html a`.
+module or in any other. It is typed `Html` everywhere.
 
 Components are plain functions. They have no state and no lifecycle.
 

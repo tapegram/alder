@@ -1,9 +1,9 @@
 module Html
 
-unsafe : Text -> Html Never
-none : Html a
-text : Text -> Html a
+unsafe : Text -> Html
+none : Html
+text : Text -> Html
 -- the nodes side by side with no wrapper element (a doctype before <html>)
-fragment : List (Html a) -> Html a
+fragment : List Html -> Html
 -- the markup File.html serves for the node
-toText : Html Never -> Text
+toText : Html -> Text

@@ -293,7 +293,7 @@ func stdFiles(p *generate.Program, m *generate.Module, h generate.Hole) string {
 			}
 		}
 	}
-	// a name of the hole's type that is a standard module's own type (`Nav`, `Query`) is in
+	// a name of the hole's type that is a standard module's own type (`Response`, `Query`) is in
 	// Prelude, which is always there
 	var names []string
 	for n := range want {

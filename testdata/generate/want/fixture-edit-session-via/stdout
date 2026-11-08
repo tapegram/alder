@@ -19,39 +19,39 @@ edited app/Home.alder
 +}
  
 +-- a page that `requires post` sends a session without one here, to pick one
-+choose post = Home
++choose post = Home.Home
 +
- login = Auth.Login
+ login = Auth.Login.Login
  
- msg Logout
-@@ -27,14 +35,16 @@
+ route Logout = POST "/_/Logout" { }
+@@ -25,14 +33,16 @@
    </Layout.Page>
  
- notFound : Html Never
+ notFound : Html
 -notFound =
 -  <Layout.Page title="Not found">
 -    <h1>Not found</h1>
 -  </Layout.Page>
 +notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
  
- -- From a page that `requires user` a Rerender ends at the login page too; only a test of
- -- `update` itself tells Redirect from Rerender.
+ -- From a page that `requires user` a refresh ends at the login page too; only a test of
+ -- `Logout.update` itself tells a redirect from a refresh.
  test "Logout goes to log in" = {
--  let r <- Test.run (update Logout { user: Just (User.UserId "me"), role: Admin })
+-  let r <- Test.run (Logout.update {} { user: Just (User.UserId "me"), role: Admin })
 +  let r <-
-+    Test.run (update Logout {
++    Test.run (Logout.update {} {
 +      user: Just (User.UserId "me"),
 +      role: Admin,
 +      post: Nothing,
 +    })
-   Task.succeed (r.value == Ok (Redirect (Auth.Login {})))
+   Task.succeed (r.value == Ok (Response.redirect (Auth.Login.Login {})))
  }
 --- a/app/Home.alder
 +++ b/app/Home.alder
-@@ -10,14 +10,14 @@
+@@ -11,14 +11,14 @@
  
- load : Params -> Session -> Query Model
- load params session = {
+ Home.load : Home.Params -> Session -> Query Model
+ Home.load params session = {
 -  let posts <- Db.mine Post |> Db.orderBy Post.created.desc |> Db.all
 +  let posts <-
 +    Db.mine Post
@@ -66,16 +66,16 @@ edited app/Home.alder
 -}
 +form Write = { title: Text.NonEmpty, body: Text }
  
- msg Submit form Write
- 
-@@ -53,20 +53,52 @@
+ Submit.update : Submit.Params -> Session -> Task Response
+ Submit.update p session = {
+@@ -50,20 +50,52 @@
  
  test "writing a post lists it, a draft" = {
    let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
 -  let _ <- Test.login { user: Just me }
 +  let _ <- Test.login { user: Just me, post: Nothing }
    let _ <- Test.get (Home {})
-   let r <- Test.submit Write { title: Text.NonEmpty "Hello", body: "" }
+   let r <- Test.submit Submit { title: Text.NonEmpty "Hello", body: "" }
    let posts <- Db.from Post |> Db.all
 -  Task.succeed ({ answer: r.answer, listed: Test.texts "#posts li" r.doc, posts: List.map (\p -> { status: p.status, featured: p.featured, author: p.author }) posts } == { answer: Redirected (Home {}), listed: ["Hello"], posts: [{ status: Draft, featured: False, author: me }] })
 +  Task.succeed (
@@ -127,7 +127,21 @@ edited app/Home.alder
    let page <- Test.get (Home {})
    Task.succeed (Test.texts "#posts li" page.doc == ["Second", "First"])
  }
-@@ -77,9 +109,27 @@
+@@ -77,18 +109,38 @@
+ -- to log in, and nothing is written.
+ test "writing after logging out is sent to log in" = {
+   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+-  let _ <- Test.login { user: Just me }
++  let _ <- Test.login { user: Just me, post: Nothing }
+   let _ <- Test.get (Home {})
+-  let _ <- Test.login { user: Nothing }
++  let _ <- Test.login { user: Nothing, post: Nothing }
+   let r <- Test.submit Submit { title: Text.NonEmpty "Hello", body: "" }
+   let posts <- Db.from Post |> Db.count
+-  Task.succeed ({ answer: r.answer, posts: posts } == { answer: Redirected (Auth.Login.Login {}), posts: 0 })
++  Task.succeed (
++    { answer: r.answer, posts: posts } == { answer: Redirected (Auth.Login.Login {}), posts: 0 }
++  )
  }
  
  test "logging out signs the user out" = {
@@ -145,14 +159,14 @@ edited app/Home.alder
 +  }
    let _ <- Test.get (Home {})
    let out <- Test.click App.Logout
--  Task.succeed ({ answer: out.answer, user: out.session.user, role: out.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, role: Reader })
+-  Task.succeed ({ answer: out.answer, user: out.session.user, role: out.session.role } == { answer: Redirected (Auth.Login.Login {}), user: Nothing, role: Reader })
 +  Task.succeed (
 +    {
 +      answer: out.answer,
 +      user: out.session.user,
 +      role: out.session.role,
 +    } == {
-+      answer: Redirected (Auth.Login {}),
++      answer: Redirected (Auth.Login.Login {}),
 +      user: Nothing,
 +      role: Reader,
 +    }

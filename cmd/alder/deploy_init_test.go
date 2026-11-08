@@ -24,13 +24,13 @@ const staticHome = `module Home
 
 import Layout
 
-page "/" { }
+route Home = GET "/" { }
 
-load : Params -> Session -> Query Text
-load params session = Query.succeed "hi"
+Home.load : Home.Params -> Session -> Query Text
+Home.load params session = Query.succeed "hi"
 
-view : Text -> Session -> Html Never
-view model session = <Layout.Page title="Hi"><h1>{model}</h1></Layout.Page>
+Home.view : Text -> Session -> Html
+Home.view model session = <Layout.Page title="Hi"><h1>{model}</h1></Layout.Page>
 `
 
 // noTables is the scaffold with its one table (and the page that uses it) replaced by a static page.

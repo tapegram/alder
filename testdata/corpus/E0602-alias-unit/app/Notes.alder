@@ -1,11 +1,11 @@
 module Notes
 
-page "/notes" { }
+route Notes = GET "/notes" { }
 
 type Model = Unit
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed ()
+Notes.load : Notes.Params -> Session -> Query Model
+Notes.load params session = Query.succeed ()
 
-view : Model -> Session -> Html Msg
-view model session = <h1>Notes</h1>
+Notes.view : Model -> Session -> Html
+Notes.view model session = <h1>Notes</h1>

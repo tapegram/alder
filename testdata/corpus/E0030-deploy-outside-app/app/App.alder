@@ -1,9 +1,9 @@
 module App
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <h1>Something went wrong</h1>
 
-notFound : Html Never
+notFound : Html
 notFound = <h1>Not found</h1>
 
 

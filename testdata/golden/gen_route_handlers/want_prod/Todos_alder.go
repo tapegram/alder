@@ -76,10 +76,10 @@ func Todos__Index__view(model Todos__TodoList, session Todos__Index__Session) ht
 		Children []html.Node
 	}{Title: "Todos", Theme: session.Theme, Children: []html.Node{
 		html.El("nav", nil,
-			html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "Todos.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}))}, html.Text("All")),
-			html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "Todos.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", "Done", "All")}}))}, html.Text("Done")),
-			html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "About.Show", Method: "GET", Path: "/about", Query: []rt.KV{rt.QueryKV("tab", "team", "team")}}))}, html.Text("About")),
-			html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "Todos.Export", Method: "GET", Path: "/export.csv"})), html.A("data-alder-reload", "true")}, html.Text("CSV")),
+			html.El("a", []html.Attr{html.A("href", rt.RouteURL(rt.Route{Name: "Todos.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}))}, html.Text("All")),
+			html.El("a", []html.Attr{html.A("href", rt.RouteURL(rt.Route{Name: "Todos.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", "Done", "All")}}))}, html.Text("Done")),
+			html.El("a", []html.Attr{html.A("href", rt.RouteURL(rt.Route{Name: "About.Show", Method: "GET", Path: "/about", Query: []rt.KV{rt.QueryKV("tab", "team", "team")}}))}, html.Text("About")),
+			html.El("a", []html.Attr{html.A("href", rt.RouteURL(rt.Route{Name: "Todos.Export", Method: "GET", Path: "/export.csv"})), html.A("data-alder-reload", "true")}, html.Text("CSV")),
 		),
 		html.El("ul", []html.Attr{html.A("id", "todos")}, html.Nodes(std.ListMap(func(t Table__Todo__Todo) html.Node {
 			return Todos__Row__view(t, session)

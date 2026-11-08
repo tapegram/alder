@@ -1,21 +1,17 @@
 package html
 
-import (
-	"strings"
+import "strings"
 
-	"alder/rt"
-)
-
-// FormState is what a re-render after a failed form decode or a Reject carries. Form is the
-// Alder form's name ("Todos.Index.NewTodo") and Msg the key of the request that posted it: a
-// message's rt.MsgKey (its path and its own parameters, as sent), a route's rt.RouteKey (its
-// method, then that key: FormToRoute, #160); Values are the submitted raw strings by
-// field name (an unchecked checkbox is simply absent, as browsers do not submit it); Errors are
-// the messages by field name; FormError is the form-level message (the Reject text, or "").
+// FormState is what a re-render after a failed form decode or a Response.invalid carries. Form
+// is the Alder form's name ("Todos.Index.NewTodo") and Msg the key of the request that posted
+// it: the route's rt.RouteKey (its method, its path and its own parameters, as sent:
+// FormToRoute, #160); Values are the submitted raw strings by field name (an unchecked checkbox
+// is simply absent, as browsers do not submit it); Errors are the messages by field name;
+// FormError is the form-level message (the invalid text, or "").
 // rt/web must never put a Secret field's value in Values; the renderer ignores it anyway.
 //
 // A FormState applies only to the controls of form Form inside the <form> that sends request
-// Msg (FormTo, whose MsgRef.Key equals it, or FormToRoute, whose rt.RouteKey does): every other
+// Msg (FormToRoute, whose rt.RouteKey equals it): every other
 // form on the page — another form type, or a per-row form of the same type sending another row's
 // request — renders its initial values and empty error lists, exactly as Render does. A state without Form or Msg matches no control.
 type FormState struct {
@@ -24,11 +20,6 @@ type FormState struct {
 	Values    map[string]string
 	Errors    map[string][]string
 	FormError string
-	// PageParams are the parameters of the page being rendered, as text in declaration order
-	// (a parameter at its default left out): every message URL on the page carries them
-	// (MsgAttr), so its route knows the page. A state with only PageParams (Form "") is what a
-	// plain page render passes; it matches no control.
-	PageParams []rt.KV
 }
 
 // Control is a form control bound to a form field: what `<Input>`, `<Textarea>`, `<Select>` and
@@ -238,8 +229,8 @@ type Offer struct {
 }
 
 // Offers are the options the selects with `options={…}` of Alder form form offer in n, by
-// field, counting only those inside a <form> that sends request key (its formKey: FormTo's
-// MsgRef.Key, FormToRoute's rt.RouteKey), so another row's form of the same type offers nothing
+// field, counting only those inside a <form> that sends request key (its formKey:
+// FormToRoute's rt.RouteKey), so another row's form of the same type offers nothing
 // to this one. found reports whether n has such a form with at least one of them. A select of
 // a union (Options, no Choices) is checked by its decoder, not here.
 func Offers(n Node, form, key string) (offers map[string]Offer, found bool) {

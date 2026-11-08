@@ -168,7 +168,9 @@ test "a visitor cannot create a user" = {
     role: Admin,
   }
   let rows <- Db.from User |> Db.count
-  Task.succeed ({ answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login {}), rows: 1 })
+  Task.succeed (
+    { answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login.Login {}), rows: 1 }
+  )
 }
 
 test "a Member cannot create a user, even one made Admin since logging in" = {
@@ -221,7 +223,7 @@ test "a demoted Admin cannot create a user" = {
 
 test "a visitor is sent to log in" = {
   let r <- Test.open (New {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Member gets no page, even one made Admin since logging in" = {

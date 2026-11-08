@@ -3,7 +3,6 @@
 package app
 
 import (
-	"alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
 	"alder/rt/web"
@@ -11,20 +10,50 @@ import (
 	"net/url"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every message of the
-// pages and of App (POST), in module order.
+// Routes are the app's endpoints for web.NewRouter: every route (GET and write routes), in module
+// order, then declaration order.
 var Routes = []web.Route{
-	Route__Index__page(),
+	Route__App__Logout(),
+	Route__Index__Index(),
 	Route__Index__Add(),
 	Route__Index__Toggle(),
 	Route__Index__Remove(),
 	Route__Index__Notify(),
-	Route__App__Logout(),
+	Route__Login__Login(),
 }
 
-// decode__Index__Params decodes page Index's parameters: the path's from params, the others from q.
-// A parameter that does not decode is an error (the route answers 404).
-func decode__Index__Params(params map[string]string, _ url.Values) (r Index__Params, errs []web.FieldError) {
+// decode__App__Logout__Params decodes route App.Logout's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__App__Logout__Params(_ map[string]string, _ url.Values) (r App__Logout__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// Route__App__Logout serves route App.Logout, POST /_/Logout: decode the parameters (404 when they
+// do not); render the page the browser is on before the update (refresh and invalid are diffed
+// against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
+// or Task.notFound, 303 for Query.redirect).
+func Route__App__Logout() web.Route {
+	return web.Route{Method: "POST", Pattern: "/_/Logout", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__App__Logout__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		session := rq.Env.Session.(App__Session)
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, App__Logout__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
+	}}
+}
+
+// decode__Index__Index__Params decodes route Index.Index's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Index__Index__Params(params map[string]string, _ url.Values) (r Index__Index__Params, errs []web.FieldError) {
 	pv := url.Values{}
 	for k, v := range params {
 		pv[k] = []string{v}
@@ -42,52 +71,19 @@ func decode__Index__Params(params map[string]string, _ url.Values) (r Index__Par
 	return r, errs
 }
 
-// decode__Index__AddParams decodes the parameters of message Add from its URL's query q; the form
-// is decoded apart. A parameter that does not decode is an error (the route answers 404).
-func decode__Index__AddParams(q url.Values) (r Index__AddParams, errs []web.FieldError) {
-	if s, ok := web.Text(q, "title", false); !ok {
-		errs = append(errs, web.Missing("title"))
-	} else {
-		r.Title = s
-	}
-	return r, errs
-}
-
-// decode__Index__ToggleParams decodes the parameters of message Toggle from its URL's query q; the
-// form is decoded apart. A parameter that does not decode is an error (the route answers 404).
-func decode__Index__ToggleParams(q url.Values) (r Index__ToggleParams, errs []web.FieldError) {
-	if s, ok := web.Text(q, "id", false); !ok {
-		errs = append(errs, web.Missing("id"))
-	} else {
-		r.Id = s
-	}
-	return r, errs
-}
-
-// decode__Index__RemoveParams decodes the parameters of message Remove from its URL's query q; the
-// form is decoded apart. A parameter that does not decode is an error (the route answers 404).
-func decode__Index__RemoveParams(q url.Values) (r Index__RemoveParams, errs []web.FieldError) {
-	if s, ok := web.Text(q, "id", false); !ok {
-		errs = append(errs, web.Missing("id"))
-	} else {
-		r.Id = s
-	}
-	return r, errs
-}
-
-// page__Index runs page Index for rq up to its model: `requires user` (a 303 to App.login, storing
-// keep, when the session's user is Nothing), then load (with params and the narrowed session). It
-// returns the model and the session view and update take, or the response that ends the request,
-// which stores keep (the session a successful update left, or nil).
-func page__Index(rq *web.Request, params Index__Params, keep any) (Index__Model, Index__Session, *web.Response) {
+// page__Index__Index runs route Index.Index for rq up to its model: `requires user` (a 303 to
+// App.login, storing keep, when the session's user is Nothing), then load (with params and the
+// narrowed session). It returns the model and the session view and update take, or the response
+// that ends the request, which stores keep (the session a successful update left, or nil).
+func page__Index__Index(rq *web.Request, params Index__Index__Params, keep any) (Index__Model, Index__Index__Session, *web.Response) {
 	var model Index__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
 		r := web.RedirectResponse(rq.Login, keep)
-		return model, Index__Session{}, &r
+		return model, Index__Index__Session{}, &r
 	}
-	session := Index__Session{User: app.User.Val, Theme: app.Theme}
-	model, err := eff.RunQuery(rq.Env, Index__load(params, session))
+	session := Index__Index__Session{User: app.User.Val, Theme: app.Theme}
+	model, err := eff.RunQuery(rq.Env, Index__Index__load(params, session))
 	if err != nil {
 		r := route__fail(err)
 		r.Session = keep
@@ -96,152 +92,301 @@ func page__Index(rq *web.Request, params Index__Params, keep any) (Index__Model,
 	return model, session, nil
 }
 
-// params__Index are page Index's parameters as text for its message URLs
-// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
-func params__Index(p Index__Params) []rt.KV {
-	return []rt.KV{{Key: "a", Value: p.A}, {Key: "b", Value: p.B}}
-}
-
-// update__Index runs page Index's update for msg and answers its Nav (book 06): load, update (a
-// Task, whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on
-// a form (st, the state of the form that sent the message; nil for a message without one) load and
-// view again with t on the form (patched into the page under Datastar); for Rerender (and a Reject
-// without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh
-// does not post again). A failed Task changes nothing: 500 (App.error), 404 for Query.notFound or
-// Task.notFound, or a 303 for Query.redirect.
-func update__Index(rq *web.Request, params Index__Params, msg Index__Msg, st *html.FormState) web.Response {
-	model, session, stop := page__Index(rq, params, nil)
-	if stop != nil {
-		return *stop
-	}
-	model0, session0 := model, session // the page the client shows: Before
-	nav, err := eff.Run(rq.Env, eff.KTask, Index__update(msg, model, session))
-	if err != nil {
-		return route__fail(err)
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	switch {
-	case nav.Tag == rt.NavRedirect:
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	case nav.Tag == rt.NavReject && st != nil:
-		st.FormError = nav.Text
-	case !rq.Datastar:
-		return web.RedirectResponse(rt.PageAt("/pair/{a}/{b}", params__Index(params)), rq.Env.Session)
-	default:
-		st = &html.FormState{}
-	}
-	st.PageParams = params__Index(params)
-	model, session, stop = page__Index(rq, params, rq.Env.Session)
-	if stop != nil {
-		return *stop
-	}
-	return web.PageResponse(Index__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Index__view(model0, session0) })
-}
-
-// Route__Index__page serves page Index, GET /pair/{a}/{b} (book 06): decode the parameters (404
-// when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on
-// Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser
-// reads).
-func Route__Index__page() web.Route {
+// Route__Index__Index serves route Index.Index, GET /pair/{a}/{b}: decode the parameters (404 when
+// they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect,
+// 500 on a failure), view (the model also in rq.Model, which a test's browser reads).
+func Route__Index__Index() web.Route {
 	return web.Route{Method: "GET", Pattern: "/pair/{a}/{b}", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Index__Params(rq.Params, rq.Query)
+		params, errs := decode__Index__Index__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Index(rq, params, nil)
+		model, session, stop := page__Index__Index(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Index__view(model, session), &html.FormState{PageParams: params__Index(params)}, rq.Session, false)
+		return web.PageResponse(Index__Index__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 
-// Route__Index__Add serves message Add of page Index, POST /_m/Index/Add (book 06): decode the
-// page's parameters (the message URL's _p. keys, which the rendered page put there) and the
-// message's (from the query): 404 when they do not decode; then update__Index.
+// decode__Index__Add__Params decodes route Index.Add's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Index__Add__Params(params map[string]string, q url.Values) (r Index__Add__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, ok := web.Text(pv, "a", false); !ok {
+		errs = append(errs, web.Missing("a"))
+	} else {
+		r.A = s
+	}
+	if s, ok := web.Text(pv, "b", false); !ok {
+		errs = append(errs, web.Missing("b"))
+	} else {
+		r.B = s
+	}
+	if s, ok := web.Text(q, "title", false); !ok {
+		errs = append(errs, web.Missing("title"))
+	} else {
+		r.Title = s
+	}
+	return r, errs
+}
+
+// guard__Index__Add runs the guard of route Index.Add for rq: `requires user` (a 303 to App.login
+// when the session's user is Nothing). It returns the session the route's update takes, or the
+// response that ends the request.
+func guard__Index__Add(rq *web.Request, params Index__Add__Params) (Index__Index__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Index__Index__Session{}, &r
+	}
+	return Index__Index__Session{User: app.User.Val, Theme: app.Theme}, nil
+}
+
+// Route__Index__Add serves route Index.Add, POST /pair/{a}/{b}/_/Add: decode the parameters (404
+// when they do not); `requires` (303 to App.login); run the update and answer its Response (a
+// failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Index__Add() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Index/Add", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Index__Params(rt.PageParams(rq.Query))
+	return web.Route{Method: "POST", Pattern: "/pair/{a}/{b}/_/Add", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Index__Add__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		p, errs := decode__Index__AddParams(rq.Query)
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
+		session, stop := guard__Index__Add(rq, params)
+		if stop != nil {
+			return *stop
 		}
-		return update__Index(rq, params, Index__Msg__Add__(p), nil)
+		resp, err := eff.Run(rq.Env, eff.KTask, Index__Add__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		return web.AnswerResponse(resp, nil, rq.Env.Session)
 	}}
 }
 
-// Route__Index__Toggle serves message Toggle of page Index, POST /_m/Index/Toggle (book 06): decode
-// the page's parameters (the message URL's _p. keys, which the rendered page put there) and the
-// message's (from the query): 404 when they do not decode; then update__Index.
+// decode__Index__Toggle__Params decodes route Index.Toggle's parameters: the path's from params,
+// the others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Index__Toggle__Params(params map[string]string, q url.Values) (r Index__Toggle__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, ok := web.Text(pv, "a", false); !ok {
+		errs = append(errs, web.Missing("a"))
+	} else {
+		r.A = s
+	}
+	if s, ok := web.Text(pv, "b", false); !ok {
+		errs = append(errs, web.Missing("b"))
+	} else {
+		r.B = s
+	}
+	if s, ok := web.Text(q, "id", false); !ok {
+		errs = append(errs, web.Missing("id"))
+	} else {
+		r.Id = s
+	}
+	return r, errs
+}
+
+// guard__Index__Toggle runs the guard of route Index.Toggle for rq: `requires user` (a 303 to
+// App.login when the session's user is Nothing). It returns the session the route's update takes,
+// or the response that ends the request.
+func guard__Index__Toggle(rq *web.Request, params Index__Toggle__Params) (Index__Index__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Index__Index__Session{}, &r
+	}
+	return Index__Index__Session{User: app.User.Val, Theme: app.Theme}, nil
+}
+
+// Route__Index__Toggle serves route Index.Toggle, POST /pair/{a}/{b}/_/Toggle: decode the
+// parameters (404 when they do not); `requires` (303 to App.login); render the page the browser is
+// on before the update (refresh and invalid are diffed against it); run the update and answer its
+// Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Index__Toggle() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Index/Toggle", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Index__Params(rt.PageParams(rq.Query))
+	return web.Route{Method: "POST", Pattern: "/pair/{a}/{b}/_/Toggle", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Index__Toggle__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		p, errs := decode__Index__ToggleParams(rq.Query)
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
+		session, stop := guard__Index__Toggle(rq, params)
+		if stop != nil {
+			return *stop
 		}
-		return update__Index(rq, params, Index__Msg__Toggle__(p), nil)
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Index__Toggle__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
 	}}
 }
 
-// Route__Index__Remove serves message Remove of page Index, POST /_m/Index/Remove (book 06): decode
-// the page's parameters (the message URL's _p. keys, which the rendered page put there) and the
-// message's (from the query): 404 when they do not decode; then update__Index.
+// decode__Index__Remove__Params decodes route Index.Remove's parameters: the path's from params,
+// the others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Index__Remove__Params(params map[string]string, q url.Values) (r Index__Remove__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, ok := web.Text(pv, "a", false); !ok {
+		errs = append(errs, web.Missing("a"))
+	} else {
+		r.A = s
+	}
+	if s, ok := web.Text(pv, "b", false); !ok {
+		errs = append(errs, web.Missing("b"))
+	} else {
+		r.B = s
+	}
+	if s, ok := web.Text(q, "id", false); !ok {
+		errs = append(errs, web.Missing("id"))
+	} else {
+		r.Id = s
+	}
+	return r, errs
+}
+
+// guard__Index__Remove runs the guard of route Index.Remove for rq: `requires user` (a 303 to
+// App.login when the session's user is Nothing). It returns the session the route's update takes,
+// or the response that ends the request.
+func guard__Index__Remove(rq *web.Request, params Index__Remove__Params) (Index__Index__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Index__Index__Session{}, &r
+	}
+	return Index__Index__Session{User: app.User.Val, Theme: app.Theme}, nil
+}
+
+// Route__Index__Remove serves route Index.Remove, POST /pair/{a}/{b}/_/Remove: decode the
+// parameters (404 when they do not); `requires` (303 to App.login); render the page the browser is
+// on before the update (refresh and invalid are diffed against it); run the update and answer its
+// Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Index__Remove() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Index/Remove", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Index__Params(rt.PageParams(rq.Query))
+	return web.Route{Method: "POST", Pattern: "/pair/{a}/{b}/_/Remove", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Index__Remove__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		p, errs := decode__Index__RemoveParams(rq.Query)
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
+		session, stop := guard__Index__Remove(rq, params)
+		if stop != nil {
+			return *stop
 		}
-		return update__Index(rq, params, Index__Msg__Remove__(p), nil)
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Index__Remove__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
 	}}
 }
 
-// Route__Index__Notify serves message Notify of page Index, POST /_m/Index/Notify (book 06): decode
-// the page's parameters (the message URL's _p. keys, which the rendered page put there): 404 when
-// they do not decode; then update__Index.
+// decode__Index__Notify__Params decodes route Index.Notify's parameters: the path's from params,
+// the others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Index__Notify__Params(params map[string]string, _ url.Values) (r Index__Notify__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, ok := web.Text(pv, "a", false); !ok {
+		errs = append(errs, web.Missing("a"))
+	} else {
+		r.A = s
+	}
+	if s, ok := web.Text(pv, "b", false); !ok {
+		errs = append(errs, web.Missing("b"))
+	} else {
+		r.B = s
+	}
+	return r, errs
+}
+
+// guard__Index__Notify runs the guard of route Index.Notify for rq: `requires user` (a 303 to
+// App.login when the session's user is Nothing). It returns the session the route's update takes,
+// or the response that ends the request.
+func guard__Index__Notify(rq *web.Request, params Index__Notify__Params) (Index__Index__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Index__Index__Session{}, &r
+	}
+	return Index__Index__Session{User: app.User.Val, Theme: app.Theme}, nil
+}
+
+// Route__Index__Notify serves route Index.Notify, POST /pair/{a}/{b}/_/Notify: decode the
+// parameters (404 when they do not); `requires` (303 to App.login); render the page the browser is
+// on before the update (refresh and invalid are diffed against it); run the update and answer its
+// Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Index__Notify() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Index/Notify", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Index__Params(rt.PageParams(rq.Query))
+	return web.Route{Method: "POST", Pattern: "/pair/{a}/{b}/_/Notify", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Index__Notify__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		return update__Index(rq, params, Index__Msg__Notify__, nil)
+		session, stop := guard__Index__Notify(rq, params)
+		if stop != nil {
+			return *stop
+		}
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Index__Notify__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
 	}}
 }
 
-// update__App runs App's update for msg and answers its Nav: Redirect p is a 303 to p; Rerender and
-// Reject t are a 303 back to the page that sent the message (the Referer, else /), as App has no
-// page of its own to render (a Reject's text is not shown). The session the Task leaves is stored;
-// a failed Task changes nothing: 500 (App.error), 404 for Query.notFound or Task.notFound, or a 303
-// for Query.redirect.
-func update__App(rq *web.Request, msg App__Msg) web.Response {
-	nav, err := eff.Run(rq.Env, eff.KTask, App__update(msg, rq.Env.Session.(App__Session)))
-	if err != nil {
-		return route__fail(err)
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	if nav.Tag == rt.NavRedirect {
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	}
-	return web.RedirectResponse(rt.BackURL(rq.HTTP.Referer()), rq.Env.Session)
+// decode__Login__Login__Params decodes route Login.Login's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Login__Login__Params(_ map[string]string, _ url.Values) (r Login__Login__Params, errs []web.FieldError) {
+	return r, errs
 }
 
-// Route__App__Logout serves App's message Logout, POST /_m/App/Logout: update__App.
-func Route__App__Logout() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/App/Logout", Handle: func(rq *web.Request) web.Response {
-		return update__App(rq, App__Msg__Logout__)
+// page__Login__Login runs route Login.Login for rq up to its model: load (with params and the
+// session of rq.Env). It returns the model and the session view and update take, or the response
+// that ends the request, which stores keep (the session a successful update left, or nil).
+func page__Login__Login(rq *web.Request, params Login__Login__Params, keep any) (struct{}, App__Session, *web.Response) {
+	session := rq.Env.Session.(App__Session)
+	model, err := eff.RunQuery(rq.Env, Login__Login__load(params, session))
+	if err != nil {
+		r := route__fail(err)
+		r.Session = keep
+		return model, session, &r
+	}
+	return model, session, nil
+}
+
+// Route__Login__Login serves route Login.Login, GET /login: decode the parameters (404 when they do
+// not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
+// in rq.Model, which a test's browser reads).
+func Route__Login__Login() web.Route {
+	return web.Route{Method: "GET", Pattern: "/login", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Login__Login__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		model, session, stop := page__Login__Login(rq, params, nil)
+		if stop != nil {
+			return *stop
+		}
+		rq.Model = model
+		return web.PageResponse(Login__Login__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 

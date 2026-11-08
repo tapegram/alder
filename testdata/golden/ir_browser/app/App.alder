@@ -20,8 +20,8 @@ Logout.update p session = {
 Send.update : Send.Params -> Session -> Task Response
 Send.update p session = Task.succeed Response.refresh
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <html><body><h1>Something went wrong</h1></body></html>
 
-notFound : Html Never
+notFound : Html
 notFound = <html><body><h1>Not found</h1></body></html>

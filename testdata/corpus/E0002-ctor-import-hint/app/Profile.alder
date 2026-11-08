@@ -1,14 +1,14 @@
 module Profile
 
-page "/profile" { }
+route Profile = GET "/profile" { }
 
 type Model = { dark: Bool }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { dark: False }
+Profile.load : Profile.Params -> Session -> Query Model
+Profile.load params session = Query.succeed { dark: False }
 
-view : Model -> Session -> Html Msg
-view model session = <p>{if model.dark then "dark" else "light"}</p>
+Profile.view : Model -> Session -> Html
+Profile.view model session = <p>{if model.dark then "dark" else "light"}</p>
 
 label : Bool -> Text
 label dark = if dark then "dark" else "light"

@@ -286,8 +286,6 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 			es = append(es, f.code(el, s))
 		}
 		return GoType(x.Ty) + "{" + strings.Join(es, ", ") + "}", precAtom
-	case *ir.PageRef:
-		return f.pageRef(x, s), precAtom
 	case *ir.RouteRef:
 		return f.routeRef(x, s), precAtom
 	case *ir.Op:
@@ -299,10 +297,7 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 		}
 		return "rt.Concat(" + strings.Join(ps, ", ") + ")", precAtom
 	case *ir.Widen:
-		if x.Route != nil {
-			return widenName(x.Route.Module, x.Route.Session.Name) + "(" + f.code(x.Expr, s) + ")", precAtom
-		}
-		return widenName(x.Page.Module, "Session") + "(" + f.code(x.Expr, s) + ")", precAtom
+		return widenName(x.Route.Module, x.Route.Session.Name) + "(" + f.code(x.Expr, s) + ")", precAtom
 	case *ir.Let, *ir.Match, *ir.If, *ir.Hole:
 		return f.closure(e, s), precAtom
 	case *ir.Elem, *ir.Comp, *ir.HText, *ir.HExpr, *ir.HFor, *ir.HIf, *ir.HMatch, *ir.Input, *ir.FormEl:
@@ -596,13 +591,7 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 			return "rt.Ok" + typeArgs(args) + "(" + inner() + ")"
 		case "Err":
 			return "rt.Err" + typeArgs(args) + "(" + inner() + ")"
-		case "Rerender":
-			return "rt.Rerender()"
-		case "Redirect":
-			return "rt.Redirect(" + inner() + ")"
-		case "Reject":
-			return "rt.Reject(" + inner() + ")"
-		case "Shown", "Rerendered", "Refreshed", "PageMissing":
+		case "Shown", "Refreshed", "PageMissing":
 			return "rtesting.Answer{Tag: rtesting." + x.Name + "}"
 		case "Redirected", "Rendered":
 			return "rtesting.Answer{Tag: rtesting." + x.Name + ", Page: " + inner() + "}"
@@ -640,30 +629,22 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 	return ctorName(u.Module, u.Name, x.Name) + ta + "(" + p + ")"
 }
 
-// pageRef is a link to a page: its path with the path parameters filled in from Params (each
-// as text, escaped as one segment), and the other parameters as the query, in declaration
-// order: rt.KV for a required one; rt.QueryKV, which leaves it out at its default (a Maybe
-// without one: at Nothing), for the others; rt.QueryKVs for a List (one key per element).
-func (f *fn) pageRef(x *ir.PageRef, s *scope) string {
-	return f.routeLit("", "", x.Page.Path, x.Page.Params, x.Params, false, s)
-}
-
-// routeRef is a route value (#160): an rt.Route with the route's qualified Name and Method, and
-// its path and query as pageRef builds them. The `form` field of a route with `form F` is not
-// part of its URL: the submitted form supplies it.
+// routeRef is a route value: an rt.Route with the route's qualified Name and Method, its path
+// with the path parameters filled in from Params (each as text, escaped as one segment), and
+// the other parameters as the query, in declaration order: rt.KV for a required one;
+// rt.QueryKV, which leaves it out at its default (a Maybe without one: at Nothing), for the
+// others; rt.QueryKVs for a List (one key per element). The `form` field of a route with `form
+// F` is not part of its URL: the submitted form supplies it.
 func (f *fn) routeRef(x *ir.RouteRef, s *scope) string {
 	r := x.Route
 	return f.routeLit(r.Module+"."+r.Name, r.Method, r.Path, r.Params, x.Params, r.Form != nil, s)
 }
 
-// routeLit is an rt.Route literal (rt.Page, its alias, for a page: name and method "") of
-// pattern path with the parameters params (decl, the declared record) filled in. form says decl's
+// routeLit is an rt.Route literal of pattern path with the parameters params (decl, the
+// declared record) filled in. form says decl's
 // field `form` is the route's submitted form (`form F`), left out of the URL.
 func (f *fn) routeLit(name, method, path string, decl *ir.RecordType, params ir.Expr, form bool, s *scope) string {
-	typ := "rt.Page{"
-	if name != "" {
-		typ = "rt.Route{Name: " + strconv.Quote(name) + ", Method: " + strconv.Quote(method) + ", "
-	}
+	typ := "rt.Route{Name: " + strconv.Quote(name) + ", Method: " + strconv.Quote(method) + ", "
 	pattern := path
 	inPath := map[string]bool{}
 	var parts []string
@@ -705,7 +686,7 @@ func (f *fn) routeLit(name, method, path string, decl *ir.RecordType, params ir.
 	return typ + "Path: " + p + "}"
 }
 
-// pageParam is page parameter name of params: the field's value when params is a record
+// pageParam is route parameter name of params: the field's value when params is a record
 // literal, else the field of params.
 func (f *fn) pageParam(params ir.Expr, name string) ir.Expr {
 	if r, ok := params.(*ir.Record); ok {
@@ -722,7 +703,7 @@ func (f *fn) pageParam(params ir.Expr, name string) ir.Expr {
 			}
 		}
 	}
-	panic(fmt.Sprintf("gen: a page link has no parameter %s", name))
+	panic(fmt.Sprintf("gen: a route link has no parameter %s", name))
 }
 
 // texts is list (of element type elem) as a Go []string of the elements' text.

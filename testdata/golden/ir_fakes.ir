@@ -73,7 +73,7 @@
   (charge { cents: Int, user: Text } -> Task (Result Text Text))
   (refund { id: Text } -> Task (Result Text Unit))
   (balance Query Int))
-(capability Markdown.Markdown (render Text -> Query (Html Never)))
+(capability Markdown.Markdown (render Text -> Query Html))
 (fake Payments.Stripe
   (tables
     (record Payments.Charge
@@ -116,5 +116,5 @@
 (fake Markdown.Markdown
   (tables)
   (entries
-    (entry Markdown.render : Text -> Query (Html Never) (text)
+    (entry Markdown.render : Text -> Query Html (text)
       (pure query (call (std Html.text) (var text))))))

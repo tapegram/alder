@@ -108,7 +108,7 @@ func TestHealth_DBDown(t *testing.T) {
 func TestHealth_Ahead(t *testing.T) {
 	st := healthStore(t)
 	called := false
-	route := one("GET", "/", func(rq *Request) Response { called = true; return PageResponse(doc("home"), nil, nil, false) })
+	route := one("GET", "/", func(rq *Request) Response { called = true; return PageResponse(doc("home"), nil, nil) })
 	h := NewRouter(route, testOpts(func(o *Options) {
 		o.Store, o.Build = st, "b-2"
 		o.SharedMaintenance = errors.New("ahead: the database has 0002_x, which this build does not have")

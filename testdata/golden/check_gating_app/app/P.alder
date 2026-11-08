@@ -1,11 +1,11 @@
 module P
 
-page "/p" { }
+route P = GET "/p" { }
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+P.load : P.Params -> Session -> Query Model
+P.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <h1>{1 + "x"}</h1>
+P.view : Model -> Session -> Html
+P.view model session = <h1>{1 + "x"}</h1>

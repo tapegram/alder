@@ -2,10 +2,10 @@ module App
 
 session { user: Maybe Text }
 
-login = Login
+login = Login.Login
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>not found</p>

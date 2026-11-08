@@ -17,7 +17,7 @@ func methodRoutes(hit *string, decl map[string][]string) []Route {
 			routes = append(routes, Route{Method: m, Pattern: path, Handle: func(rq *Request) Response {
 				*hit = m + " " + path
 				if m == http.MethodGet {
-					return PageResponse(doc(m), nil, nil, false)
+					return PageResponse(doc(m), nil, nil)
 				}
 				return RedirectResponse("/", nil)
 			}})
@@ -279,7 +279,7 @@ func TestRouter_DatastarDropsSignalsEveryMethod(t *testing.T) {
 		h := NewRouter([]Route{{Method: m, Pattern: "/x", Handle: func(rq *Request) Response {
 			query, raw = rq.Query.Encode(), rq.HTTP.URL.RawQuery
 			if m == http.MethodGet {
-				return PageResponse(doc(m), nil, nil, false)
+				return PageResponse(doc(m), nil, nil)
 			}
 			return RedirectResponse("/", nil)
 		}}}, testOpts(nil))
@@ -313,7 +313,7 @@ func TestRouter_DatastarDropsSignalsEveryMethod(t *testing.T) {
 func TestRequestLog_EffectiveMethod(t *testing.T) {
 	var s sink
 	routes := []Route{
-		{Method: "GET", Pattern: "/t/{id}", Handle: func(rq *Request) Response { return PageResponse(doc("t"), nil, nil, false) }},
+		{Method: "GET", Pattern: "/t/{id}", Handle: func(rq *Request) Response { return PageResponse(doc("t"), nil, nil) }},
 		{Method: "DELETE", Pattern: "/t/{id}", Handle: func(rq *Request) Response { return RedirectResponse("/", nil) }},
 		{Method: "PATCH", Pattern: "/t/{id}", Handle: func(rq *Request) Response { return RedirectResponse("/", nil) }},
 		{Method: "POST", Pattern: "/t", Handle: func(rq *Request) Response { return RedirectResponse("/", nil) }},

@@ -2,16 +2,16 @@ module B
 
 import User
 
-page "/users/{id}" { id: User.UserId }
+route B = GET "/users/{id}" { id: User.UserId }
 
 type Model = { name: Text }
 
-load : Params -> Session -> Query Model
-load params session = {
+B.load : B.Params -> Session -> Query Model
+B.load params session = {
   let user <- Db.get User params.id
   Query.succeed { name: (user
   ).name }
 }
 
-view : Model -> Session -> Html Msg
-view model session = <h1>{model.name}</h1>
+B.view : Model -> Session -> Html
+B.view model session = <h1>{model.name}</h1>

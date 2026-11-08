@@ -1,0 +1,12 @@
+module App
+
+session { user: Maybe Text }
+
+-- the old syntax: an app-level message, which `alder fix --routes` turns into a route
+msg Logout
+
+error : Error -> Html
+error err = <h1>Something went wrong</h1>
+
+notFound : Html
+notFound = <h1>Not found</h1>

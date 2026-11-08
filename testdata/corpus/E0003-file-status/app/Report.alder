@@ -1,14 +1,14 @@
 module Report
 
-page "/report.txt" { }
+route Report = GET "/report.txt" { }
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Report.load : Report.Params -> Session -> Query Model
+Report.load params session = Query.succeed {}
 
-view : Model -> Session -> File
-view model session =
+Report.view : Model -> Session -> File
+Report.view model session =
   File.text { contentType: "text/plain", body: "hi" }
     |> File.withStatus 42
     |> File.withStatus 503

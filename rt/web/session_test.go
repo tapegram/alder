@@ -48,7 +48,7 @@ func TestSession_TamperedCookieIsDefault(t *testing.T) {
 	var seen []any
 	routes := []Route{{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
 		seen = append(seen, rq.Session, rq.Env.Session)
-		return PageResponse(doc("home"), nil, nil, false)
+		return PageResponse(doc("home"), nil, nil)
 	}}}
 	h := NewRouter(routes, testOpts(func(o *Options) { o.Secret = key }))
 	for _, cookie := range []string{string(b), "garbage", Sign(key, sessionPayload("not json", time.Now().Unix()-60))} {
@@ -96,11 +96,11 @@ func TestSession_DevKeyWarnsOnce(t *testing.T) {
 		var got any
 		routes := []Route{
 			{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
-				return PageResponse(doc("home"), nil, testSession{User: "ada"}, false)
+				return PageResponse(doc("home"), nil, testSession{User: "ada"})
 			}},
 			{Method: "GET", Pattern: "/who", Handle: func(rq *Request) Response {
 				got = rq.Session
-				return PageResponse(doc("who"), nil, nil, false)
+				return PageResponse(doc("who"), nil, nil)
 			}},
 		}
 		h := NewRouter(routes, opts)
@@ -139,7 +139,7 @@ func TestSession_DevKeyWarnsOnce(t *testing.T) {
 func TestSession_BigCookieWarnsOnce(t *testing.T) {
 	var logs []string
 	h := NewRouter(one("GET", "/", func(rq *Request) Response {
-		return PageResponse(doc("x"), nil, testSession{User: strings.Repeat("u", 4000)}, false)
+		return PageResponse(doc("x"), nil, testSession{User: strings.Repeat("u", 4000)})
 	}), testOpts(func(o *Options) {
 		o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) }
 	}))
@@ -195,18 +195,18 @@ func TestSession_Expiry(t *testing.T) {
 	var seen any
 	routes := []Route{
 		{Method: "GET", Pattern: "/login", Handle: func(rq *Request) Response {
-			return PageResponse(doc("in"), nil, testSession{User: "ada"}, false)
+			return PageResponse(doc("in"), nil, testSession{User: "ada"})
 		}},
 		{Method: "GET", Pattern: "/who", Handle: func(rq *Request) Response {
 			seen = rq.Session
-			return PageResponse(doc("who"), nil, rq.Session, false) // a page answers with the session it saw
+			return PageResponse(doc("who"), nil, rq.Session) // a page answers with the session it saw
 		}},
 		{Method: "GET", Pattern: "/rename", Handle: func(rq *Request) Response {
-			return PageResponse(doc("renamed"), nil, testSession{User: "bob"}, false)
+			return PageResponse(doc("renamed"), nil, testSession{User: "bob"})
 		}},
 		{Method: "GET", Pattern: "/relogin", Handle: func(rq *Request) Response {
 			rq.Env.SessionPut = true // a Session.put that wrote the value the session already had
-			return PageResponse(doc("again"), nil, rq.Session, false)
+			return PageResponse(doc("again"), nil, rq.Session)
 		}},
 	}
 	key := []byte("test-secret-test-secret")

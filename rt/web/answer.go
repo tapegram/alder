@@ -77,11 +77,11 @@ func (rt *router) answer(w http.ResponseWriter, r *http.Request, st hop, rq *Req
 // targetProblem is why a, a write's answer, cannot be delivered, "" when it can (#160 ruling
 // R10). The checker refuses a write route written in place (E0045), but not one held in a
 // variable or made by a helper:
-//   - `redirect` goes to a GET: a named GET route, an old `page`'s value (no name, no Method:
-//     rt.Page; pages and routes live side by side until PR 9) or a Url.external URL (no name,
-//     Method "GET": isExternal, a full navigation); a route of another method is refused;
-//   - `render` patches in a named GET route's view only: a page's value or an external URL has
-//     no element to patch, and is refused, as a route of another method is.
+//   - `redirect` goes to a GET: a named GET route or a Url.external URL (no name, Method "GET":
+//     isExternal, a full navigation); a route of another method is refused (an empty Method
+//     is a GET);
+//   - `render` patches in a named GET route's view only: an external URL has no element to
+//     patch, and is refused, as a route of another method is.
 func targetProblem(a rtpkg.Response) string {
 	t := a.Target
 	switch a.Kind {
@@ -91,8 +91,6 @@ func targetProblem(a rtpkg.Response) string {
 		}
 	case rtpkg.RespRender:
 		switch {
-		case t.Name == "" && t.Method == "":
-			return "a page's value is not a GET route: render takes a route whose view is patched in"
 		case t.Name == "":
 			return "a Route with no name (Url.external makes one) is not a GET route of this app"
 		case t.Method != "" && t.Method != http.MethodGet:
@@ -103,7 +101,7 @@ func targetProblem(a rtpkg.Response) string {
 }
 
 // viaName is how the Patches tab names the answer `kind` to target: "render Row", the route's
-// own name (the part after its module); just the kind for a page's value, which has no name.
+// own name (the part after its module); just the kind for a route with no name.
 func viaName(kind string, target rtpkg.Route) string {
 	if target.Name == "" {
 		return kind
@@ -119,8 +117,8 @@ func targetName(r rtpkg.Route) string {
 	return strconv.Quote(rtpkg.RouteURL(r))
 }
 
-// isExternal reports whether r is a Url.external URL (no name, Method "GET"), not a route or a
-// page of this app.
+// isExternal reports whether r is a Url.external URL (no name, Method "GET"), not a route of
+// this app.
 func isExternal(r rtpkg.Route) bool { return r.Name == "" && r.Method == http.MethodGet }
 
 // badTarget answers a write whose answer's target is not a GET route (targetProblem: why): never
@@ -353,8 +351,7 @@ func (rt *router) shownAfter(w http.ResponseWriter, rq *Request, resp Response) 
 // answerPlain answers refresh, render and invalid to a request without JavaScript (the session
 // already set): refresh and render r a 303 to the page the browser is on (its Referer, through
 // rt.BackURL; render's partial has nowhere to go without a page); invalid t a 422 with that page
-// rendered as a document, the form's values kept and t shown on it, as a page with a message's
-// Reject was. A page no GET route matches is a 303 there; one that now answers something else
+// rendered as a document, the form's values kept and t shown on it. A page no GET route matches is a 303 there; one that now answers something else
 // than its view (a 404, a redirect) is written as a GET of it would be.
 func (rt *router) answerPlain(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
 	if resp.Answer.Kind != rtpkg.RespInvalid {
@@ -395,9 +392,6 @@ func (rt *router) staleReload(w http.ResponseWriter, r *http.Request, st hop, rq
 		return false
 	case resp.Status == http.StatusSeeOther:
 		loc = resp.Location
-	}
-	if tw, isT := w.(*tracker); isT && rq.Notice != "" && tw.notice == "" {
-		tw.notice, tw.kind = rq.Notice, rq.NoticeKind
 	}
 	if err := rt.setSession(w, r, rq, resp.Session); err != nil {
 		rt.fail(w, r, st, html.None(), err, nil)

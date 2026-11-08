@@ -29,8 +29,8 @@ import (
 // An effect node in a Task position (the effect of a `let … <-` step) is the expr form of type
 // eff.Task[A]. A node the IR shares between several places (a table field's default, which
 // every record literal omitting the field holds) is switched everywhere it is emitted, tests
-// included. `requires dropped` is in the guard of its page or route (requiresChecks: a page's
-// or a GET route's page__X, a write route's guard__M__R): under its id, a session without the
+// included. `requires dropped` is in the guard of its route (requiresChecks: a GET route's
+// page__M__R, a write route's guard__M__R): under its id, a session without the
 // field is served with the placeholder instead of the redirect; `role dropped` too: under its
 // id the role check lets every role through (roleDropped); `membership
 // dropped` in session__via: under its id the field's membership check is skipped. Schema mutants
@@ -41,7 +41,7 @@ import (
 type mutation struct {
 	all      []mutate.Mutant
 	byNode   map[ir.Expr][]mutate.Mutant // the mutants replacing a node, by pointer
-	requires map[string][]mutate.Mutant  // requires dropped, by guarded.key (a page or a route)
+	requires map[string][]mutate.Mutant  // requires dropped, by guarded.key (the route's)
 	roles    map[string][]mutate.Mutant  // role dropped, by guarded.key
 	members  map[string]int              // membership dropped's id, by `via` field
 	// equivalent and skipped count the refused mutants by category
@@ -58,18 +58,12 @@ type mutation struct {
 func (g *gen) indexMutants(p *ir.Program) {
 	ms, refused := mutate.Collect(p)
 	m := &mutation{all: ms, byNode: map[ir.Expr][]mutate.Mutant{}, requires: map[string][]mutate.Mutant{}, roles: map[string][]mutate.Mutant{}, members: map[string]int{}, bare: map[ir.Expr]bool{}, subst: map[ir.Expr]string{}}
-	guardKey := func(x mutate.Mutant) string { // guarded.key of the mutant's page or route
-		if x.Route != nil {
-			return routeKey(x.Route)
-		}
-		return x.Page.Module
-	}
 	for _, x := range ms {
 		switch {
-		case x.Kind == mutate.RequiresDropped:
-			m.requires[guardKey(x)] = append(m.requires[guardKey(x)], x)
+		case x.Kind == mutate.RequiresDropped: // keyed by guarded.key: the route's
+			m.requires[routeKey(x.Route)] = append(m.requires[routeKey(x.Route)], x)
 		case x.Kind == mutate.RoleDropped:
-			m.roles[guardKey(x)] = append(m.roles[guardKey(x)], x)
+			m.roles[routeKey(x.Route)] = append(m.roles[routeKey(x.Route)], x)
 		case x.Kind == mutate.MembershipDropped:
 			m.members[x.Field] = x.ID
 		case x.Node != nil:
@@ -326,7 +320,7 @@ func (f *fn) mutatedMatch(w *strings.Builder, x *ir.Match, ms []mutate.Mutant, s
 	w.WriteString("}\npanic(\"unreachable\")\n")
 }
 
-// requiresPlaceholder writes, into gd's guard (a page's or a GET route's page__X, a write
+// requiresPlaceholder writes, into gd's guard (a GET route's page__M__R, a write
 // route's guard__M__R), the `requires dropped` mutants of its `requires`: under the mutant's id
 // a session without the field gets the placeholder, so the check that follows lets the request
 // through. app is the guard's App session variable.

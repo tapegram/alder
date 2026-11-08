@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"alder/rt"
 	"alder/rt/db"
 	"alder/rt/eff"
 	"alder/rt/html"
@@ -32,7 +33,7 @@ func slowRoute(n int) web.Route {
 		if err != nil {
 			return fail(err)
 		}
-		return web.PageResponse(layout("Slow"), nil, nil, false)
+		return web.PageResponse(layout("Slow"), nil, nil)
 	}}
 }
 
@@ -91,9 +92,9 @@ func TestBrowser_NPlusOneWarning(t *testing.T) {
 	}
 }
 
-// A load that runs one select 3 times warns neither on its GET nor on a Rerender, which runs the
-// load twice (6 in the request, 3 per load run).
-func TestBrowser_RerenderNotNPlusOne(t *testing.T) {
+// A load that runs one select 3 times warns neither on its GET nor on a write's `refresh`, which
+// runs the page's load twice (the page before and after the update: 3 per load run).
+func TestBrowser_RefreshNotNPlusOne(t *testing.T) {
 	load := func(rq *web.Request) error {
 		_, err := eff.RunQuery(rq.Env, eff.Q(eff.Call("Db.get T", false, func(e *eff.Env) (int, error) {
 			for range 3 {
@@ -105,29 +106,26 @@ func TestBrowser_RerenderNotNPlusOne(t *testing.T) {
 		})))
 		return err
 	}
-	view := layout("Three", html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("Three", "Go"))}, html.Text("Go")))
+	goRoute := rt.Route{Name: "Three.Go", Method: "POST", Path: "/three/go"}
+	view := layout("Three", html.El("button", []html.Attr{html.RouteAttr("data-on:click", goRoute)}, html.Text("Go")))
 	routes := []web.Route{
 		{Method: "GET", Pattern: "/three", Handle: func(rq *web.Request) web.Response {
 			if err := load(rq); err != nil {
 				return fail(err)
 			}
-			return web.PageResponse(view, nil, nil, false)
+			return web.PageResponse(view, nil, nil)
 		}},
-		{Method: "POST", Pattern: "/_m/Three/Go", Handle: func(rq *web.Request) web.Response {
-			for range 2 {
-				if err := load(rq); err != nil {
-					return fail(err)
-				}
-			}
-			return web.PageResponse(view, &html.FormState{}, nil, true)
+		{Method: "POST", Pattern: "/three/go", Handle: func(rq *web.Request) web.Response {
+			before, _ := rq.RenderShown(nil)
+			return web.AnswerResponse(rt.Refresh(), before, nil)
 		}},
 	}
 	r := browseOpts(t, Options{Bench: true}, routes, func(b *Browser, e *eff.Env) {
 		if _, err := b.Get("/three"); err != nil {
 			t.Fatal(err)
 		}
-		c, err := b.Click("/_m/Three/Go")
-		if err != nil || c.Answer.Tag != Rerendered {
+		c, err := b.ClickRoute(goRoute, "Three.Go")
+		if err != nil || c.Answer.Tag != Refreshed {
 			t.Fatalf("%+v %v", c.Answer, err)
 		}
 	})
@@ -137,12 +135,15 @@ func TestBrowser_RerenderNotNPlusOne(t *testing.T) {
 }
 
 // A step's Measure: Bytes is the answers' bodies; a Datastar submit whose redirect the router
-// followed is 2 requests, its load counted once (the login page's POST has none); a click that
-// re-renders runs the page's load; SQL is the statements the requests recorded.
+// followed is 2 requests, its load counted once (the login page's POST has none); a click
+// answering `refresh` runs the page's load twice, before and after its update (the shown page's
+// in-process requests, 3 in all; a DELETE's own form posts); SQL is the statements the requests
+// recorded.
 func TestBrowser_Measure(t *testing.T) {
 	var fetched int
+	var id string
 	r := browseOpts(t, Options{Bench: true}, nil, func(b *Browser, e *eff.Env) {
-		id := insertDirect(t, e, "a")
+		id = insertDirect(t, e, "a")
 		f, err := b.Fetch("/login")
 		if err != nil {
 			t.Fatal(err)
@@ -151,10 +152,10 @@ func TestBrowser_Measure(t *testing.T) {
 		if _, err := b.Get("/login"); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := b.Submit("/_m/Login/Submit", url.Values{"email": {"me@example.com"}}); err != nil {
+		if _, err := b.SubmitRoute(iLogin, "Login.Form", Fields{Values: url.Values{"email": {"me@example.com"}}}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := b.Click("/_m/Index/Delete?id=" + id); err != nil {
+		if _, err := b.ClickRoute(iDelete(id), "Index.Delete"); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -168,10 +169,10 @@ func TestBrowser_Measure(t *testing.T) {
 	if get.Step != "GET /login" || get.Requests != 1 || get.Allocs == 0 || get.Ms <= 0 {
 		t.Errorf("get %+v", get)
 	}
-	if submit.Step != "POST /_m/Login/Submit" || submit.Requests != 2 || submit.Loads != 1 || submit.SQL != 1 || submit.Steps != 1 {
+	if submit.Step != "POST /login" || submit.Requests != 2 || submit.Loads != 1 || submit.SQL != 1 || submit.Steps != 1 {
 		t.Errorf("submit %+v", submit)
 	}
-	if click.Step != "POST /_m/Index/Delete" || click.Requests != 1 || click.Loads != 1 || click.SQL != 3 || len(click.Repeats) != 0 {
+	if click.Step != "POST /rows/"+id || click.Requests != 3 || click.Loads != 2 || click.SQL != 4 || len(click.Repeats) != 0 {
 		t.Errorf("click %+v", click)
 	}
 }

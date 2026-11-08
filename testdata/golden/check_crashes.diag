@@ -1,3 +1,4 @@
+app/App.alder:5:1 E0011 `login = R.R`: `R.R` has `requires missing`; a visitor sent to log in could not open it
 app/D.alder:5:1 E0009 `Foo` is already declared at line 3
 app/D.alder:9:1 E0009 `Bar` is already declared at line 7
-app/R.alder:5:3 E0011 `requires missing`: the session has no field `missing`
+app/R.alder:3:38 E0011 `requires missing`: the session has no field `missing`

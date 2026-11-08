@@ -189,10 +189,10 @@ func Eq(l, r any) bool {
 }
 
 // docSides are the sides and the note of a failed `==` of two Docs: the first difference
-// (html.Diff, the page's parameters left out as `==` leaves them out), "the documents differ at
+// (html.Diff, as `==` compares them), "the documents differ at
 // body > main > ul#todos: left 1 child <li>, right 0", with that element's markup on each side.
 func docSides(l, r Doc) ([2]string, string) {
-	d, ok := html.Diff(html.WithoutPageParams(l.Node), html.WithoutPageParams(r.Node))
+	d, ok := html.Diff(l.Node, r.Node)
 	if !ok { // unreachable: Diff and == compare the same trees
 		return [2]string{rt.Show(l), rt.Show(r)}, ""
 	}

@@ -1,10 +1,10 @@
 module Layout
 
-Page : { title: Text, children: List (Html a) } -> Html a
+Page : { title: Text, children: List Html } -> Html
 Page props = <html><head><title>{props.title}</title></head><body>{props.children}<button click={App.Logout}>out</button></body></html>
 
-Bad : { x: Int } -> Html Msg
+Bad : { x: Int } -> Html
 Bad props = <span>{props.x}</span>
 
-Never1 : { } -> Html Never
+Never1 : { } -> Html
 Never1 props = <hr />

@@ -2,8 +2,8 @@ module App
 
 session { n: Int = 0 }
 
-error : Error -> Html Never
-error err = <p>error</p>
+error : Error -> Html
+error err = <h1>Something went wrong</h1>
 
-notFound : Html Never
-notFound = <p>not found</p>
+notFound : Html
+notFound = <h1>Not found</h1>

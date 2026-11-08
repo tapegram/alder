@@ -29,8 +29,11 @@ type ansApp struct {
 
 const ansForm = "R.New"
 
-// ansAddKey is the key of the form #add posts (its FormState.Msg).
-var ansAddKey = rt.MsgRef{Module: "R", Msg: "Add"}.Key()
+// ansAdd is the route the form #add sends; ansAddKey its key (FormState.Msg).
+var (
+	ansAdd    = rt.Route{Name: "R.Add", Method: "POST", Path: "/w/add"}
+	ansAddKey = rt.RouteKey(ansAdd)
+)
 
 func newAnsApp(n int) *ansApp { return &ansApp{done: make([]bool, n), heading: "Rows"} }
 
@@ -50,7 +53,7 @@ func (a *ansApp) index() html.Node {
 	body := []html.Node{
 		html.El("h1", nil, html.Text(a.heading)),
 		html.El("ul", []html.Attr{html.A("id", "rows")}, items...),
-		html.FormTo(rt.MsgRef{Module: "R", Msg: "Add"}, []html.Attr{html.A("id", "add")},
+		html.FormToRoute(ansAdd, []html.Attr{html.A("id", "add")},
 			html.Input(html.Control{Kind: "errors", Form: ansForm}),
 			html.Input(html.Control{Kind: "input", Form: ansForm, Name: "title", Label: "Title"}),
 			html.Input(html.Control{Kind: "errors", Form: ansForm, Name: "title"})),
@@ -77,10 +80,10 @@ func (a *ansApp) routes() []Route {
 			if st == nil {
 				st = &html.FormState{}
 			}
-			return PageResponse(a.index(), st, nil, false)
+			return PageResponse(a.index(), st, nil)
 		}},
-		{Method: "GET", Pattern: "/other", Handle: func(rq *Request) Response { return PageResponse(titled("Other"), nil, nil, false) }},
-		{Method: "GET", Pattern: "/login", Handle: func(rq *Request) Response { return PageResponse(titled("Login"), nil, nil, false) }},
+		{Method: "GET", Pattern: "/other", Handle: func(rq *Request) Response { return PageResponse(titled("Other"), nil, nil) }},
+		{Method: "GET", Pattern: "/login", Handle: func(rq *Request) Response { return PageResponse(titled("Login"), nil, nil) }},
 		{Method: "GET", Pattern: "/rows/{id}", Handle: func(rq *Request) Response {
 			a.rowLoads++
 			switch a.rowAnswer {
@@ -92,7 +95,7 @@ func (a *ansApp) routes() []Route {
 				return ErrorResponse(html.None(), errors.New("boom"))
 			}
 			id, _ := strconv.Atoi(rq.Params["id"])
-			return PageResponse(a.row(id), &html.FormState{}, nil, false)
+			return PageResponse(a.row(id), &html.FormState{}, nil)
 		}},
 		// POST /w/{kind}?id=N&toast=T&to=P&heading=H: toggles row N, sets the heading, answers kind
 		{Method: "POST", Pattern: "/w/{kind}", Handle: func(rq *Request) Response {
@@ -115,7 +118,7 @@ func (a *ansApp) routes() []Route {
 				if to == "" {
 					to = "/"
 				}
-				ans = rt.RedirectTo(targetOf(rq, rt.Route{Name: "R.Page", Method: "GET", Path: to}))
+				ans = rt.Redirect(targetOf(rq, rt.Route{Name: "R.Page", Method: "GET", Path: to}))
 			case "render":
 				target := rowRoute(id)
 				if p := rq.Query.Get("path"); p != "" {
@@ -152,12 +155,12 @@ func (a *ansApp) routes() []Route {
 }
 
 // targetOf is r as the request asks: without its Name (noname, as Url.external makes one), with
-// another Method (method), or a page value (page: neither, as rt.Page has).
+// another Method (method), or bare (neither: an empty Method is read as GET).
 func targetOf(rq *Request, r rt.Route) rt.Route {
 	if rq.Query.Get("noname") != "" {
 		r.Name = ""
 	}
-	if rq.Query.Get("page") != "" {
+	if rq.Query.Get("bare") != "" {
 		r.Name, r.Method = "", ""
 	}
 	if m := rq.Query.Get("method"); m != "" {
@@ -447,7 +450,7 @@ func TestAnswer_ShownRunsWithFreshEnv(t *testing.T) {
 		{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
 			e := rq.Env
 			runs = append(runs, seen{keys: e.Keys, siloKey: e.SiloKey, bound: e.Bound, put: e.SessionPut, session: e.Session})
-			return PageResponse(doc("p"), &html.FormState{}, nil, false)
+			return PageResponse(doc("p"), &html.FormState{}, nil)
 		}},
 		{Method: "POST", Pattern: "/w", Handle: func(rq *Request) Response {
 			// what db.Narrow and db.Enter leave on a write's Env, before its before-view
@@ -614,23 +617,23 @@ func TestBuild_StaleWrite(t *testing.T) {
 	}
 }
 
-// A write of the message runtime (a handler's PageResponse or redirect) from a tab of another
-// build is a reload too: the page shown, or the redirect's target.
-func TestBuild_StaleMessage(t *testing.T) {
+// A write a handler answers itself (a PageResponse or a redirect, not a route's Response) from
+// a tab of another build is a reload too: the page shown, or the redirect's target.
+func TestBuild_StaleHandlerAnswer(t *testing.T) {
 	ran := 0
 	routes := []Route{
-		{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response { return PageResponse(doc("p"), &html.FormState{}, nil, false) }},
-		{Method: "POST", Pattern: "/_m/M/Save", Handle: func(rq *Request) Response {
+		{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response { return PageResponse(doc("p"), &html.FormState{}, nil) }},
+		{Method: "POST", Pattern: "/save", Handle: func(rq *Request) Response {
 			ran++
-			return PageResponse(doc("p2"), &html.FormState{}, nil, true)
+			return PageResponse(doc("p2"), &html.FormState{}, nil)
 		}},
-		{Method: "POST", Pattern: "/_m/M/Go", Handle: func(rq *Request) Response {
+		{Method: "POST", Pattern: "/go", Handle: func(rq *Request) Response {
 			ran++
 			return RedirectResponse("/", nil)
 		}},
 	}
 	h := NewRouter(routes, testOpts(nil))
-	for _, c := range []struct{ path, to string }{{"/_m/M/Save", "/?a=1"}, {"/_m/M/Go", "/"}} {
+	for _, c := range []struct{ path, to string }{{"/save", "/?a=1"}, {"/go", "/"}} {
 		req := httptest.NewRequest("POST", c.path, strings.NewReader(""))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Datastar-Request", "true")
@@ -669,13 +672,13 @@ func TestBuild_StaleFetch(t *testing.T) {
 }
 
 // A redirect or render whose target it cannot deliver (ruling R10) — a write route held in a
-// variable, which E0045 cannot see; for render also a Url.external URL or an old page's value,
-// which have no element to patch — is never followed or patched in: logged, and answered as an
-// error (Alder-Status 500 and the error toast under Datastar, nothing patched; a 500 page without
-// JavaScript). Nothing is loaded. A redirect to an old page's value (rt.Page) is a GET of this
-// app, and followed.
+// variable, which E0045 cannot see; for render also a Url.external URL or a bare Route (no name,
+// no method), which have no element to patch — is never followed or patched in: logged, and
+// answered as an error (Alder-Status 500 and the error toast under Datastar, nothing patched; a
+// 500 page without JavaScript). Nothing is loaded. A redirect to a bare Route is a GET of this
+// app (an empty Method is GET), and followed.
 func TestAnswer_TargetNotGET(t *testing.T) {
-	for _, target := range []string{"/w/redirect?method=PATCH&to=/w/render", "/w/redirect?noname=1&method=DELETE&to=/w/render", "/w/render?id=1&noname=1", "/w/render?id=1&page=1", "/w/render?id=1&method=DELETE"} {
+	for _, target := range []string{"/w/redirect?method=PATCH&to=/w/render", "/w/redirect?noname=1&method=DELETE&to=/w/render", "/w/render?id=1&noname=1", "/w/render?id=1&bare=1", "/w/render?id=1&method=DELETE"} {
 		a := newAnsApp(3)
 		a.toasts = true
 		var logged []string
@@ -696,12 +699,12 @@ func TestAnswer_TargetNotGET(t *testing.T) {
 			t.Fatalf("%s without JavaScript: %d %q", target, w.Code, w.Header().Get("Location"))
 		}
 	}
-	// an old page's value (rt.Page: no name, no method) is a GET of this app: followed
+	// a bare Route (no name, no method) is a GET of this app: followed
 	a := newAnsApp(3)
 	h := NewRouter(a.routes(), testOpts(nil))
-	w := ansPost(h, "/w/redirect?page=1&to=/other", "/", nil)
+	w := ansPost(h, "/w/redirect?bare=1&to=/other", "/", nil)
 	if evs := events(w.Body.String()); len(evs) != 3 || !strings.Contains(evs[0], "<h1>Other</h1>") || !pushTo(evs[2], "/other") {
-		t.Fatalf("page: %q", evs)
+		t.Fatalf("bare: %q", evs)
 	}
 }
 
@@ -730,14 +733,14 @@ func TestCheckOptions(t *testing.T) {
 	key := rt.RouteKey(move)
 	page := func(rq *Request) Response {
 		sel := html.Input(html.Control{Kind: "select", Form: "R.MoveTo", Name: "list", Choices: []html.Choice{{Value: "home", Label: "Home"}}})
-		return PageResponse(html.El("html", nil, html.El("body", nil, html.FormToRoute(move, nil, sel))), nil, nil, false)
+		return PageResponse(html.El("html", nil, html.El("body", nil, html.FormToRoute(move, nil, sel))), nil, nil)
 	}
 	var got []FieldError
 	var bad *Response
 	routes := []Route{
 		{Method: "GET", Pattern: "/", Handle: page},
 		{Method: "GET", Pattern: "/gone", Handle: func(rq *Request) Response { return NotFoundResponse(html.None()) }},
-		{Method: "GET", Pattern: "/plain", Handle: func(rq *Request) Response { return PageResponse(titled("Plain"), nil, nil, false) }},
+		{Method: "GET", Pattern: "/plain", Handle: func(rq *Request) Response { return PageResponse(titled("Plain"), nil, nil) }},
 		{Method: "POST", Pattern: "/m/1", Handle: func(rq *Request) Response {
 			sh, _ := rq.RenderShown(nil)
 			got, bad = rq.CheckOptions(sh, []string{"/", "/gone"}, "R.MoveTo", key, map[string]string{"list": rq.Form.Get("list")})
@@ -767,20 +770,6 @@ func TestCheckOptions(t *testing.T) {
 		if bad == nil || w.Code != http.StatusBadRequest || len(logged) != 1 || !strings.HasPrefix(logged[0], "warn ") || !strings.Contains(logged[0], "R.MoveTo") || !strings.Contains(logged[0], from) {
 			t.Fatalf("from %s: %d %q", from, w.Code, logged)
 		}
-	}
-}
-
-// WithPageParams gives a GET route's view the posted form's state with that route's parameters
-// as its PageParams (#160: a write renders the page the browser is on again); the route's own
-// request (no state) stays without one, and the write's state is not changed.
-func TestWithPageParams(t *testing.T) {
-	if WithPageParams(nil, []rt.KV{{Key: "filter", Value: "Done"}}) != nil {
-		t.Fatal("a state made up for the route's own request")
-	}
-	st := &html.FormState{Form: "R.New", Msg: "POST /todos", Values: map[string]string{"title": "x"}}
-	got := WithPageParams(st, []rt.KV{{Key: "filter", Value: "Done"}})
-	if got == st || st.PageParams != nil || got.Form != "R.New" || got.Msg != "POST /todos" || got.Values["title"] != "x" || len(got.PageParams) != 1 || got.PageParams[0].Value != "Done" {
-		t.Fatalf("%+v from %+v", got, st)
 	}
 }
 

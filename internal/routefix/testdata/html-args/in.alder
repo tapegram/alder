@@ -1,0 +1,15 @@
+module Layout
+
+-- `Html` takes no argument after the migration (#160), in a module with no page too
+Page : { title: Text, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head><title>{props.title}</title></head>
+    <body>{props.children}</body>
+  </html>
+
+empty : Html Never
+empty = Html.none
+
+pair : Html m -> Html m -> List (Html m)
+pair a b = [a, b]

@@ -8,21 +8,21 @@ const afterLoginComment = "the page ?afterLogin names (fill it, here and in Sign
 // afterLoginCommentPage is the comment an app made before routes has (PR 6 reworded it).
 const afterLoginCommentPage = "the page ?afterLogin names (fill it, here and in Submit's arm, once the page exists)"
 
-// EditAuth generates `alder edit auth --to <Page>`: the hole ?afterLogin of `Auth.Login`
+// EditAuth generates `alder edit auth --to <Route>`: the hole ?afterLogin of `Auth.Login`
 // (`SignIn.update`'s redirect and the test that logs in, which `new auth` leaves in an app with
 // no page yet) replaced by the page (a route module's GET route, a GET route `Module.Route`, or
-// a page module written before routes), and the comment that names the hole. It refuses a name
+// a route module written before routes), and the comment that names the hole. It refuses a name
 // that is none of these, a page with parameters, and an app whose login has no such hole.
 func EditAuth(p *Program, to string) ([]Edit, error) {
 	if to == "" {
-		return nil, Refusef("`alder edit auth` needs `--to <Page>`: the page a login goes to")
+		return nil, Refusef("`alder edit auth` needs `--to <Route>`: the route a login goes to")
 	}
 	lit, hasParams, ok := loginTarget(p, to, "Auth.Login")
 	if !ok {
 		return nil, Refusef("`--to %s` is not a page of this app: name a route module (`Home`) or a GET route (`Posts.Index.Index`)", to)
 	}
 	if hasParams {
-		return nil, Refusef("`%s` has parameters: a login goes to a page without, name another with `--to <Page>`", to)
+		return nil, Refusef("`%s` has parameters: a login goes to a page without, name another with `--to <Route>`", to)
 	}
 	m := p.Modules["Auth.Login"]
 	if m == nil || !strings.Contains(m.Source, "?afterLogin") {

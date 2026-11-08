@@ -433,7 +433,7 @@ test "a long list of projects offers 50, and the search narrows it" = {
         id: issue1,
         findProject: "zz",
       }),
-      visitor: Redirected (Auth.Login {}),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -584,7 +584,7 @@ test "a long list of users offers 50, and the search narrows it" = {
         id: issue1,
         findAssignee: "zz",
       }),
-      visitor: Redirected (Auth.Login {}),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -683,7 +683,7 @@ test "a visitor cannot save an issue" = {
   }
   let after <- Db.get Issue issue1
   Task.succeed (
-    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login {}), row: before }
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login.Login {}), row: before }
   )
 }
 
@@ -801,7 +801,7 @@ test "a visitor is sent to log in" = {
     assignee: Nothing,
   }
   let r <- Test.open (Edit { org: org, id: issue1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Member gets no page, even one made Admin since logging in" = {

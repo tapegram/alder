@@ -48,20 +48,20 @@ func (c Caps) Registry() map[string]any {
 // Tests are the app's `test` declarations in module order then declaration order, for alder test (rtesting.Main).
 var Tests = []rtesting.Case{
 	{Module: "Auth.Login", Name: "a page that requires a user redirects to the login page", File: "app/Auth/Login.alder", Line: 62, Col: 1, Task: test__Auth__Login__1},
-	{Module: "Auth.Login", Name: "logging in through the form", File: "app/Auth/Login.alder", Line: 69, Col: 1, Task: test__Auth__Login__2},
-	{Module: "Auth.Login", Name: "Test.login, then log out through the button", File: "app/Auth/Login.alder", Line: 79, Col: 1, Task: test__Auth__Login__3},
-	{Module: "Notes.Index", Name: "adding a note through the form", File: "app/Notes/Index.alder", Line: 138, Col: 1, Task: test__Notes__Index__1},
-	{Module: "Notes.Index", Name: "a click keeps the page's parameter", File: "app/Notes/Index.alder", Line: 147, Col: 1, Task: test__Notes__Index__2},
-	{Module: "Notes.Index", Name: "a form with an empty title is rejected", File: "app/Notes/Index.alder", Line: 156, Col: 1, Task: test__Notes__Index__3},
-	{Module: "Notes.Index", Name: "a step inside Test.run", File: "app/Notes/Index.alder", Line: 166, Col: 1, Task: test__Notes__Index__4},
-	{Module: "Notes.Index", Name: "a panicking update is RequestFailed", File: "app/Notes/Index.alder", Line: 177, Col: 1, Task: test__Notes__Index__5},
-	{Module: "Notes.Index", Name: "the document and the view agree", File: "app/Notes/Index.alder", Line: 191, Col: 1, Task: test__Notes__Index__6},
-	{Module: "Notes.Index", Name: "a stranger's note is missing", File: "app/Notes/Index.alder", Line: 201, Col: 1, Task: test__Notes__Index__7},
-	{Module: "Notes.Index", Name: "the model is the one the page rendered", File: "app/Notes/Index.alder", Line: 211, Col: 1, Task: test__Notes__Index__8},
-	{Module: "Notes.Index", Name: "renaming one row's note", File: "app/Notes/Index.alder", Line: 220, Col: 1, Task: test__Notes__Index__9},
-	{Module: "Notes.Index", Name: "an App form", File: "app/Notes/Index.alder", Line: 233, Col: 1, Task: test__Notes__Index__10},
-	{Module: "Notes.Index", Name: "a Rerender after Session.put updates the session", File: "app/Notes/Index.alder", Line: 243, Col: 1, Task: test__Notes__Index__11},
-	{Module: "Notes.Index", Name: "a browser write inside a failing Test.run is undone", File: "app/Notes/Index.alder", Line: 254, Col: 1, Task: test__Notes__Index__12},
+	{Module: "Auth.Login", Name: "logging in through the form", File: "app/Auth/Login.alder", Line: 79, Col: 1, Task: test__Auth__Login__2},
+	{Module: "Auth.Login", Name: "Test.login, then log out through the button", File: "app/Auth/Login.alder", Line: 109, Col: 1, Task: test__Auth__Login__3},
+	{Module: "Notes.Index", Name: "adding a note through the form", File: "app/Notes/Index.alder", Line: 155, Col: 1, Task: test__Notes__Index__1},
+	{Module: "Notes.Index", Name: "a click keeps the page's parameter", File: "app/Notes/Index.alder", Line: 187, Col: 1, Task: test__Notes__Index__2},
+	{Module: "Notes.Index", Name: "a form with an empty title is rejected", File: "app/Notes/Index.alder", Line: 210, Col: 1, Task: test__Notes__Index__3},
+	{Module: "Notes.Index", Name: "a step inside Test.run", File: "app/Notes/Index.alder", Line: 233, Col: 1, Task: test__Notes__Index__4},
+	{Module: "Notes.Index", Name: "a panicking update is RequestFailed", File: "app/Notes/Index.alder", Line: 244, Col: 1, Task: test__Notes__Index__5},
+	{Module: "Notes.Index", Name: "the document and the view agree", File: "app/Notes/Index.alder", Line: 271, Col: 1, Task: test__Notes__Index__6},
+	{Module: "Notes.Index", Name: "a stranger's note is missing", File: "app/Notes/Index.alder", Line: 295, Col: 1, Task: test__Notes__Index__7},
+	{Module: "Notes.Index", Name: "the model is the one the page rendered", File: "app/Notes/Index.alder", Line: 305, Col: 1, Task: test__Notes__Index__8},
+	{Module: "Notes.Index", Name: "renaming one row's note", File: "app/Notes/Index.alder", Line: 330, Col: 1, Task: test__Notes__Index__9},
+	{Module: "Notes.Index", Name: "an App form", File: "app/Notes/Index.alder", Line: 353, Col: 1, Task: test__Notes__Index__10},
+	{Module: "Notes.Index", Name: "a refresh after Session.put updates the session", File: "app/Notes/Index.alder", Line: 363, Col: 1, Task: test__Notes__Index__11},
+	{Module: "Notes.Index", Name: "a browser write inside a failing Test.run is undone", File: "app/Notes/Index.alder", Line: 386, Col: 1, Task: test__Notes__Index__12},
 }
 
 // TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).
@@ -81,12 +81,8 @@ var Fakes = map[string]func() any{
 
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
-	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{"Logout", "Send"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Auth__Login__Msg(0)), []string{"Submit"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Note__Filter(0)), []string{"All", "Open", "Done"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Note__Kind(0)), []string{"Plain", "Idea", "Chore"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Index__Msg(0)), []string{"Submit", "Toggle", "Boom", "Rename", "SavePrefs", "Visit"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Show__Msg(0)), []string{})
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that
@@ -200,7 +196,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/login",
-		DevMap:      "{\"pages\":[{\"module\":\"Auth.Login\",\"path\":\"/login\",\"msgs\":[\"Submit\"]},{\"module\":\"Notes.Index\",\"path\":\"/\",\"requires\":\"user\",\"params\":[\"filter: Note.Filter\"],\"msgs\":[\"Submit\",\"Toggle\",\"Boom\",\"Rename\",\"SavePrefs\",\"Visit\"]},{\"module\":\"Notes.Show\",\"path\":\"/notes/{id}\",\"requires\":\"user\",\"params\":[\"id: Text\"]}],\"tables\":[{\"name\":\"User.User\",\"sql\":\"User__User\",\"columns\":[\"id: Text\",\"email: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"email\",\"type\":\"Text\",\"sql\":\"email\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"unique\":[\"email\"]},{\"name\":\"Note.Note\",\"sql\":\"Note__Note\",\"columns\":[\"id: Text\",\"title: Text\",\"done: Bool\",\"owner: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"title\",\"type\":\"Text\",\"sql\":\"title\",\"sqlType\":\"TEXT\"},{\"name\":\"done\",\"type\":\"Bool\",\"sql\":\"done\",\"sqlType\":\"INTEGER\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"}}],\"caps\":[\"Auth.Login.Password\"],\"session\":[\"user: Maybe Text\",\"visits: Int\"],\"appMsgs\":[\"Logout\",\"Send\"]}",
+		DevMap:      "{\"pages\":[{\"module\":\"Auth.Login.Login\",\"path\":\"/login\"},{\"module\":\"Notes.Index.Index\",\"path\":\"/\",\"requires\":\"user\",\"params\":[\"filter: Note.Filter\"]},{\"module\":\"Notes.Show.Show\",\"path\":\"/notes/{id}\",\"requires\":\"user\",\"params\":[\"id: Text\"]}],\"tables\":[{\"name\":\"User.User\",\"sql\":\"User__User\",\"columns\":[\"id: Text\",\"email: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"email\",\"type\":\"Text\",\"sql\":\"email\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"unique\":[\"email\"]},{\"name\":\"Note.Note\",\"sql\":\"Note__Note\",\"columns\":[\"id: Text\",\"title: Text\",\"done: Bool\",\"owner: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"title\",\"type\":\"Text\",\"sql\":\"title\",\"sqlType\":\"TEXT\"},{\"name\":\"done\",\"type\":\"Bool\",\"sql\":\"done\",\"sqlType\":\"INTEGER\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"}}],\"caps\":[\"Auth.Login.Password\"],\"session\":[\"user: Maybe Text\",\"visits: Int\"]}",
 	}
 }
 

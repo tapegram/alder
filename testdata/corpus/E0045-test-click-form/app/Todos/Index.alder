@@ -1,0 +1,34 @@
+module Todos.Index
+
+type Filter = All | Active
+
+route Index  = GET   "/"                  { }
+route Submit = POST  "/todos"             { } form NewTodo
+route Toggle = PATCH "/todos/{id}/toggle" { id: Text }
+
+form NewTodo = {
+  title: Text,
+}
+
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 0
+
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update params session = Task.succeed Response.refresh
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update params session = Task.succeed Response.refresh
+
+Index.view : Int -> Session -> Html
+Index.view n session =
+  <form submit={Submit}>
+    <Errors form />
+    <Input field="title" label="Title" />
+    <button click={Toggle { id: "a" }}>Toggle</button>
+  </form>
+
+test "click a route that posts a form" = {
+  let _ <- Test.get (Index {})
+  let r <- Test.click Submit
+  Task.succeed True
+}

@@ -15,36 +15,34 @@ session {
 -- a page that `requires post` sends a session without one here, to pick one
 choose post = Posts.Pick.Pick
 
-login = Auth.Login
+login = Auth.Login.Login
 
-msg Logout
+route Logout = POST "/_/Logout" { }
 
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Logout p -> {
-    let _ <- Session.put (\s -> { s | user: Nothing, role: Reader })
-    Task.succeed (Redirect (Auth.Login {}))
-  },
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing, role: Reader })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
 
-error : Error -> Html Never
+error : Error -> Html
 error err =
   <Layout.Page title="Error">
     <h1>Something went wrong</h1>
     <p>Please try again.</p>
   </Layout.Page>
 
-notFound : Html Never
+notFound : Html
 notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 
--- From a page that `requires user` a Rerender ends at the login page too; only a test of
--- `update` itself tells Redirect from Rerender.
+-- From a page that `requires user` a refresh ends at the login page too; only a test of
+-- `Logout.update` itself tells a redirect from a refresh.
 test "Logout goes to log in" = {
   let r <-
-    Test.run (update Logout {
+    Test.run (Logout.update {} {
       user: Just (User.UserId "me"),
       role: Admin,
       post: Nothing,
     })
-  Task.succeed (r.value == Ok (Redirect (Auth.Login {})))
+  Task.succeed (r.value == Ok (Response.redirect (Auth.Login.Login {})))
 }

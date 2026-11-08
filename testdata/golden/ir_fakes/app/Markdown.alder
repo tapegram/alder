@@ -2,7 +2,7 @@ module Markdown
 
 -- A capability named like its module, with a fake that needs no tables.
 capability Markdown {
-  render : Text -> Query (Html Never),
+  render : Text -> Query Html,
 }
 
 fake Markdown {

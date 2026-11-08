@@ -1,5 +1,0 @@
-module Shared
-
-form Contact = {
-  email: Text,
-}

@@ -146,7 +146,7 @@ test "a visitor cannot delete a comment" = {
   let kept <- Db.get Comment comment1
   Task.succeed (
     { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
-      == { answer: Redirected (Auth.Login {}), kept: Just comment1 }
+      == { answer: Redirected (Auth.Login.Login {}), kept: Just comment1 }
   )
 }
 
@@ -228,7 +228,7 @@ test "a visitor is sent to log in" = {
     body: Text.NonEmpty "body-1",
   }
   let r <- Test.open (Delete { id: comment1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {

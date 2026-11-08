@@ -8,7 +8,7 @@ import Table.User
 -- @admin end
 
 -- The admin's frame: the app's layout around a nav of every table's list.
-Page : { title: Text, children: List (Html a) } -> Html a
+Page : { title: Text, children: List Html } -> Html
 Page props =
   <Layout.Page title={props.title ++ " · Admin"}>
     <nav aria-label="Admin">

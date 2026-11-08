@@ -59,7 +59,7 @@ func TestLayout_EditDeclAddProp(t *testing.T) {
 	}
 	// written by hand over several lines, one field per line
 	dir = genApp(t, "scaffold")
-	rewrite(t, dir, "app/Layout.alder", "Page : { title: Text, children: List (Html a) } -> Html a", "Page : {\n  title: Text,\n  children: List (Html a),\n} -> Html a")
+	rewrite(t, dir, "app/Layout.alder", "Page : { title: Text, children: List Html } -> Html", "Page : {\n  title: Text,\n  children: List Html,\n} -> Html")
 	layoutStep(t, dir, "", "edit", "decl", "Layout.Page", "add-prop", `x:Text=""`)
 }
 
@@ -119,19 +119,19 @@ func TestLayout_EditTable(t *testing.T) {
 	}
 }
 
-// TestLayout_FormOnMsg: `new form --msg` on a message whose parameters `alder fmt` wrote over
-// several lines, and whose button it broke over several lines.
+// TestLayout_FormOnMsg: `new form --msg` on a write route whose button `alder fmt` broke over
+// several lines (a route line is never wrapped).
 func TestLayout_FormOnMsg(t *testing.T) {
 	t.Parallel()
-	dir := genApp(t, "scaffold-page")
+	dir := genApp(t, "scaffold")
 	layoutStep(t, dir, "", "new", "msg", "Home", "Pick", "first:Entry.EntryId", "second:Entry.EntryId", "third:Entry.EntryId")
-	if s := readApp(t, dir, "app/Home.alder"); !strings.Contains(s, "msg Pick {\n") {
-		t.Fatalf("the message is not over several lines:\n%s", s)
+	if s := readApp(t, dir, "app/Home.alder"); !strings.Contains(s, "      click={Pick {\n") {
+		t.Fatalf("the button is not over several lines:\n%s", s)
 	}
 	layoutStep(t, dir, "", "new", "form", "Home", "Reason", "why:Text.NonEmpty", "--msg", "Pick")
 	s := readApp(t, dir, "app/Home.alder")
-	if !strings.Contains(s, "} form Reason") || strings.Contains(s, "click={Pick") {
-		t.Fatalf("the form is not on the message, or its button is left:\n%s", s)
+	if !strings.Contains(s, "third: Entry.EntryId } form Reason\n") || strings.Contains(s, "click={Pick") {
+		t.Fatalf("the form is not on the route, or its button is left:\n%s", s)
 	}
 }
 
@@ -148,13 +148,13 @@ func TestLayout_SiloOverSeveralLines(t *testing.T) {
 	}
 }
 
-// A table in `app/Table/Todo.alder` (module `Table.Todo`, #20) checks and builds: a page imports
-// it, inserts into it and lists it.
+// A table in `app/Table/Todo.alder` (module `Table.Todo`, #20) checks and builds: a route module
+// imports it, inserts into it and lists it.
 func TestBuildTableFolder(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string]string{
-		"app/App.alder": "module App\n\nsession { n: Int = 0 }\n\nerror : Error -> Html Never\nerror err = <p>Error</p>\n\nnotFound : Html Never\nnotFound = <p>Not found</p>\n",
+		"app/App.alder": "module App\n\nsession { n: Int = 0 }\n\nerror : Error -> Html\nerror err = <p>Error</p>\n\nnotFound : Html\nnotFound = <p>Not found</p>\n",
 		"app/Table/Todo.alder": `module Table.Todo
 
 type TodoId = brand Text
@@ -168,30 +168,21 @@ table Todo {
 
 import Table.Todo
 
-page "/" { }
+route Home = GET  "/"    { }
+route Add  = POST "/add" { }
 
-type Model = { todos: List Todo }
+Home.load : Home.Params -> Session -> Query (List Todo)
+Home.load params session = Db.from Todo |> Db.orderBy Todo.title.asc |> Db.all
 
-load : Params -> Session -> Query Model
-load params session = {
-  let todos <- Db.from Todo |> Db.orderBy Todo.title.asc |> Db.all
-  Query.succeed { todos: todos }
+Add.update : Add.Params -> Session -> Task Response
+Add.update params session = {
+  let _ <- Db.insert Todo { title: "Milk" }
+  Task.succeed Response.refresh
 }
 
-msg Add
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add p -> {
-    let _ <- Db.insert Todo { title: "Milk" }
-    Task.succeed Rerender
-  },
-}
-
-view : Model -> Session -> Html Msg
-view model session = <ul>{List.map (\t -> <li>{t.title}</li>) model.todos}</ul>
-`,
-	})
+Home.view : List Todo -> Session -> Html
+Home.view todos session = <ul>{List.map (\t -> <li>{t.title}</li>) todos}</ul>
+`})
 	if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || strings.Contains(out, "error[") {
 		t.Fatalf("alder check: exit %d\n%s%s", code, out, errs)
 	}

@@ -28,7 +28,7 @@ names xs = xs |> List.map Text.toUpper |> Text.join ", "
 label : Maybe Int -> Text
 label m = "n = {Text.fromInt (m ?? 0)}"
 
-Card : { title: Text, children: List (Html a) } -> Html a
+Card : { title: Text, children: List Html } -> Html
 Card props = <div class="card"><h2>{props.title}</h2>{props.children}</div>
 ```
 
@@ -118,7 +118,8 @@ lower-case name.)
 
 The **column-1 rule** settles this. Words that start a declaration (`module`,
 `import`, `type`, `route`, `form`, `table`, `capability`, `fake`, `session`,
-`login`, `test`; `page` and `msg` too, for code from before routes) are
+`login`, `test`; `page` and `msg` too, which only `alder fix --routes` still
+reads) are
 keywords only when they are the first thing on a line. Anywhere else they are
 ordinary names.
 
@@ -299,8 +300,7 @@ resolver reports it.
 
 `testdata/golden/check_poison/app/Index.alder` forgets `import Todo` and
 then uses `Todo` four times: as a type in `Model`, in `Db.from Todo`, in
-`Todo.title.asc`, and in a form field `priority: Todo.Priority`. (This
-fixture is older than routes and declares its module with `page`.) Running
+`Todo.title.asc`, and in a form field `priority: Todo.Priority`. Running
 `alder check testdata/golden/check_poison` prints exactly one diagnostic:
 
 ```
@@ -348,8 +348,7 @@ To the checker, a **type** is a Go value from `internal/types/types.go`: a
 `Con` for a built-in like `Int` or `Float`, a `Record` or `Union` for your
 declarations, a `Fun` for a function, an `App` for things like `List Text`,
 a `Brand` for a brand, a `Param` for a type parameter (the `a` in
-`Card`'s `Html a`, which stands for any type, so one component serves every
-module's markup), or a `Var` for a type not yet known.
+`List a`, which stands for any type, so one function serves every element type), or a `Var` for a type not yet known.
 
 ### Unification
 
@@ -781,7 +780,7 @@ The emitter (`internal/gen`) walks the IR and prints Go, formatted with
 | `Maybe a` | `rt.Maybe[T]` |
 | `Result e a` | `rt.Result[E, T]` |
 | `Dict k v` | `rt.Dict[K, V]` |
-| `Html a` | `html.Node` |
+| `Html` | `html.Node` |
 | `Route` | `rt.Route` |
 | `Response` | `rt.Response` |
 | a record | a `struct` (named for a declared record, anonymous otherwise) |
@@ -1107,7 +1106,7 @@ parameters (`rt.RouteURL` makes the URL of one).
 `rt/response.go` holds `Response`, the result of an `update`: a kind
 (`RespRedirect`, `RespRender`, `RespRefresh` or `RespInvalid`), the `Route`
 it names or the text it carries, and a list of events (so far only toasts),
-built by `rt.RedirectTo(route)`, `rt.Render(route)`, `rt.Refresh()`,
+built by `rt.Redirect(route)`, `rt.Render(route)`, `rt.Refresh()`,
 `rt.Invalid(text)` and `rt.WithToast`.
 
 > **Not yet:** `Response`'s `Status` and `Headers` are shaped for the
@@ -1644,7 +1643,7 @@ func Route__Todos__Index__Index() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Todos__Index__Index__view(model, session), web.WithPageParams(rq.FormState, params__Todos__Index__Index(params)), rq.Session, false)
+		return web.PageResponse(Todos__Index__Index__view(model, session), rq.FormState, rq.Session)
 	}}
 }
 ```
@@ -1694,19 +1693,9 @@ is `nil` here; the write routes below show why it exists.
 node is a document, a body or one element: the router decides that from the
 request, below.
 
-The `FormState` it passes is `nil` for a request of its own
-(`WithPageParams` keeps `nil` as it is); when a write route renders this
-page again for the browser that sent the write, it passes the form the
-write posted, and the route's parameters ride in it as text:
-
-```go
-func params__Todos__Index__Index(p Todos__Index__Index__Params) []rt.KV {
-	return []rt.KV{rt.QueryKV("filter", []string{"All", "Active", "Completed"}[p.Filter.Tag], "All")}
-}
-```
-
-`rt.QueryKV` marks the pair to be left out when the value is the default,
-`All`.
+The `FormState` it passes (`rq.FormState`) is `nil` for a request of its
+own; when a write route renders this page again for the browser that sent
+the write, it is the form the write posted, with its values and errors.
 
 #### Three deliveries
 
@@ -4837,8 +4826,7 @@ Each step lowers to a node of its own (`internal/ir`):
 `Test.open`, `Fetch` for `Test.fetch`), `TestSubmit{Form, Route, Params,
 Record}`, `TestSubmitRaw{…, Fields}`, `TestClick{Route, Params}` and
 `TestRefresh`. `Route` is the `*ir.Route` the test names and `Params` the
-record of its parameters, nil when the test wrote the route bare (an old
-`page` or `msg` is the same node with `Page` and `Msg` set instead). The queries stay
+record of its parameters, nil when the test wrote the route bare. The queries stay
 ordinary calls.
 
 #### A step is a `Call`
@@ -5137,8 +5125,6 @@ data-errors="…">` lists, in page order (`data-errors="form"` as the field
 
 A click on a GET route is an element fetch and is `Rendered r` too. A redirect
 is `Redirected`; a 404 or a 500 is `PageMissing` or `RequestFailed`.
-`Rerendered` is what a patch with no `Answered` response comes to, the older
-form's re-render.
 
 #### Controls
 
@@ -5150,7 +5136,7 @@ held page. A page's controls are the Datastar actions its views render
 
 `routeControl` walks the held document in order, reads each action with a
 regular expression (`routeAction`: the verb, the URL, and whether it sends a
-form), and keeps the first whose `rt.RouteKey` (its method, then `rt.MsgKey`:
+form), and keeps the first whose `rt.RouteKey` (its method, then `rt.URLKey`:
 the path and the route's own parameters) equals that of the route the test
 wrote.
 
@@ -5236,8 +5222,7 @@ against the element's ancestors (any ancestor for a space, the parent for
 `>`).
 
 `TextContent` joins the text inside an element and collapses its whitespace.
-`Doc`'s `==` is `Node.Equal` of the two trees (after `html.WithoutPageParams`,
-which an address in the older message form needs and a route's does not), so a
+`Doc`'s `==` is `Node.Equal` of the two trees, so a
 page compares equal to `Test.doc (view …)`, which renders without a request.
 
 When a test's `==` of two `Doc`s is `False`, `rtesting.Eq` records `html.Diff`
@@ -5430,7 +5415,7 @@ included, which is what makes a `default changed` mutant reach every
 insert.
 
 `requires dropped` and `role dropped` are not in a function body. The
-mutator reads them from each `ir.Route` (and each older `ir.Page`), one
+mutator reads them from each `ir.Route`, one
 mutant per route, named by the route (`Save`), and the emitter keys them
 by the guard they belong to (the route's `Module.Name`). The `requires`
 mutant is a line in the route's guard before the check that sends a
@@ -6243,15 +6228,11 @@ is one `html/template` over two things:
 
 - `Options.DevMap`, a compact JSON the generator wrote into `Web()`
   (`internal/gen/devmap.go`: the tables with columns and attributes, the
-  capability names, the session's fields, and, for a module with an older
-  `page`, its path, `requires`, roles, parameters and messages);
+  capability names, the session's fields and, for each GET route, its path,
+  `requires`, roles and parameters);
 - what only the running server knows (the build id, the migrations the
   database has, how each capability is wired, and the routes: the method
   and pattern of every route the router holds).
-
-> **Not yet:** The generated map has no entry for a route yet
-> ([#190](https://github.com/tapegram/alder/issues/190)), so for an app on
-> routes its `pages` list is empty and the routes come from the router.
 
 Neither is served without `ALDER_DEV=1`: `/_dev` is a 404 and no page
 carries the panel or its script (a test builds an example, runs it without
@@ -7301,16 +7282,15 @@ and `Here` says whether the generator applies at the cursor and prefills a
 form if it does.
 
 `HereCtx` is where the cursor is (module, whether it holds routes, the
-declaration around it, a hole under it; the field is still called `IsPage`,
-and the language server sets it for a module with a `page` or with routes,
-`hereCtx` in `actions.go`); `inPage`, for example, is the `Here` of `new msg`:
+declaration around it, a hole under it; the language server sets it,
+`hereCtx` in `actions.go`); `inRoute`, for example, is the `Here` of `new msg`:
 
 ```go
-func inPage(c HereCtx) *Match {
-	if !c.IsPage {
+func inRoute(c HereCtx) *Match {
+	if !c.IsRoute {
 		return nil
 	}
-	return &Match{Sets: map[string]string{"page": c.Module}, Why: "the page at the cursor"}
+	return &Match{Sets: map[string]string{"page": c.Module}, Why: "the route module at the cursor"}
 }
 ```
 
@@ -7323,16 +7303,15 @@ The server has a fourth custom request that needs no `Spec`: `alder/routes`
 returns every route of the app, GET and write (`buildkit.Routes`, which
 `alder routes` prints too), with its method, path, module, name and place
 (the `route` line), for an editor's route picker (chapter 11). `kind` is
-still `page` for a GET route and `msg` for any other, so an older editor
-plugin keeps working. For the blog's `Posts.Index`:
+always `route` (an older editor plugin reads `page` and `msg` of earlier
+versions as well). For the blog's `Posts.Index`:
 
 ```text
 -> {"jsonrpc":"2.0","id":6,"method":"alder/routes","params":{}}
-<- {"id":6,"jsonrpc":"2.0","result":[…,{"kind":"page","method":"GET","path":"/","module":"Posts.Index","name":"Index","uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":6,"character":0},"end":{"line":6,"character":63}}},{"kind":"msg","method":"POST","path":"/_/Search","module":"Posts.Index","name":"Search","uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":9,"character":0},"end":{"line":9,"character":51}}},…]}
+<- {"id":6,"jsonrpc":"2.0","result":[…,{"kind":"route","method":"GET","path":"/","module":"Posts.Index","name":"Index","uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":6,"character":0},"end":{"line":6,"character":63}}},{"kind":"route","method":"POST","path":"/_/Search","module":"Posts.Index","name":"Search","uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":9,"character":0},"end":{"line":9,"character":51}}},…]}
 ```
 
-The routes come in the order the program declares them (the older pages and
-messages are sorted by path before them), not sorted by path.
+The routes come in the order the program declares them, not sorted by path.
 
 #### A dry run on a copy
 

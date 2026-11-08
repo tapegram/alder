@@ -105,7 +105,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.click('#go');
     await at('/');
     await page.waitForFunction(() => document.title === 'Blog', null, { timeout: 5000 }).catch(() => {});
-    await page.route('**/_m/**', async (route) => {
+    await page.route('**/_/**', async (route) => {
       const resp = await route.fetch();
       await sleep(1500);
       await route.fulfill({ response: resp }).catch(() => {});
@@ -123,7 +123,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     s = await state();
     check('a slow post then a click: the click wins', s.path === '/posts/no-such-post' && s.title === 'Not found', s);
     check('a slow post then a click: no document load', docs.length === 0 && s.marker, docs);
-    await page.unroute('**/_m/**');
+    await page.unroute('**/_/**');
 
     // Back during a pending boosted GET: the slow page never lands over the one Back returned to
     await link('/');
@@ -202,7 +202,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     });
     check('tabs (Alder page): tablist, tab with aria-selected following the choice, tabpanel linked by id', aria.list === 'tablist' && aria.outside === 0 && aria.panelsInList === 0 && aria.sel.join() === 'false,true' && aria.idx.join() === '-1,0' && aria.linked, aria);
     // a message that rerenders morphs the body: the enhanced tabs must survive it, the choice kept
-    await Promise.all([page.waitForResponse((r) => r.url().includes('/_m/Smoke')), page.click('al-button:has-text("Refresh")')]);
+    await Promise.all([page.waitForResponse((r) => r.url().includes('/smoke/_/Refresh')), page.click('al-button:has-text("Refresh")')]);
     await sleep(300); // the patch is applied
     const morphed = await page.evaluate(() => {
       const root = document.querySelector('al-tabs'), tabs = [...root.querySelectorAll('[role=tablist] > button[role=tab]')];
@@ -245,11 +245,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await sleep(300);
     // 205 more users (a long reference table: more than 200 rows), one post
     for (let i = 0; i < 205; i++) {
-      await p2.request.post(BASE + '/_m/Admin.Users.New/Create', { form: { email: `u${i}@example.com`, name: `user ${i}`, role: 'Reader' } });
+      await p2.request.post(BASE + '/admin/user/new/_/Create', { form: { email: `u${i}@example.com`, name: `user ${i}`, role: 'Reader' } });
     }
     const newPage = await (await p2.request.get(BASE + '/admin/post/new')).text();
     const me = /<option value="([^"]+)">admin@example\.com/.exec(newPage)[1];
-    await p2.request.post(BASE + '/_m/Admin.Posts.New/Create', { form: { slug: 'hello', title: 'Hello', body: 'b', published: 'True', author: me } });
+    await p2.request.post(BASE + '/admin/post/new/_/Create', { headers: { 'Alder-Page': '/admin/post/new' }, form: { slug: 'hello', title: 'Hello', body: 'b', published: 'True', author: me } });
     await p2.goto(BASE + '/admin/post');
     const showHref = await p2.evaluate(() => [...document.querySelectorAll('a')].map((a) => a.getAttribute('href')).find((h) => /^\/admin\/post\/[^/]+$/.test(h) && !/new|bulk/.test(h)));
     await p2.goto(BASE + showHref);
@@ -335,7 +335,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await p2.click('al-devpanel > nav > button:has-text("SQL")');
     await p2.evaluate(() => document.querySelector('al-devpanel').removeAttribute('open'));
     await p2.click('button:has-text("Delete the rows that can be deleted")');
-    await p2.waitForFunction(() => location.pathname === '/admin/user', null, { timeout: 5000 }).catch(() => {});
     await p2.waitForSelector('al-toast', { timeout: 5000 }).catch(() => {});
     const toast = await p2.evaluate(() => {
       const t = document.querySelector('al-toast'), r = document.querySelector('al-toasts');
@@ -346,11 +345,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const p = document.querySelector('al-devpanel'), sql = document.getElementById('_alder_tab_sql').textContent;
       return {
         bar: p.querySelector(':scope > nav').textContent, request: document.getElementById('_alder_tab_request').textContent.slice(0, 60),
-        del: sql.indexOf('DELETE'), then: sql.indexOf('then GET /admin/user'),
+        del: sql.indexOf('DELETE'),
         shown: [...p.querySelectorAll(':scope > section')].filter((x) => !x.hidden).map((x) => x.id),
       };
     });
-    check('panel after a redirect: the message\'s request, its DELETEs, then "then GET …" and the list\'s reads', /POST/.test(hop.request) && /redirect \/admin\/user, then page/.test(hop.bar) && hop.del >= 0 && hop.then > hop.del, hop);
+    check('panel after a refresh: the write route\'s request (BulkDelete), its DELETEs, answered `refresh`', /POST \/admin\/user\/bulk\/_\/BulkDelete/.test(hop.request) && /refresh/.test(hop.bar) && hop.del >= 0, hop);
     check('panel after an answer: one section shown, the tab chosen before', hop.shown.length === 1 && hop.shown[0] === '_alder_tab_sql', hop.shown);
     await p2.waitForFunction(() => !document.querySelector('al-toast'), null, { timeout: 8000 }).catch(() => {});
     check('toast: it times out', await p2.evaluate(() => !document.querySelector('al-toast')));
@@ -366,17 +365,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     check('search: it narrows the select (a Redirect, so the narrowing survives)', found.options.length === 1 && found.options[0] === 'u99@example.com' && /findAuthor/.test(found.url), found);
     // a crafted post of that user, with no search text: not among the 50 offered, so refused
     const u99 = await p2.evaluate(() => document.querySelector('select[name=author] option').value);
-    const crafted = await p2.request.post(BASE + '/_m/Admin.Posts.New/Create', { form: { slug: 'x', title: 'x', body: 'x', published: 'True', author: u99 } });
+    const crafted = await p2.request.post(BASE + '/admin/post/new/_/Create', { headers: { 'Alder-Page': '/admin/post/new' }, form: { slug: 'x', title: 'x', body: 'x', published: 'True', author: u99 } });
     check('search: an id outside the rendered options is refused', /must be one of the options/.test(await crafted.text()), crafted.status());
 
     // the Edit page of a post whose author sorts after the 50 offered: offered first, kept on save
-    await p2.request.post(BASE + '/_m/Admin.Users.New/Create', { form: { email: 'zz-last@example.com', name: 'last', role: 'Reader' } });
+    await p2.request.post(BASE + '/admin/user/new/_/Create', { form: { email: 'zz-last@example.com', name: 'last', role: 'Reader' } });
     await p2.goto(BASE + '/admin/user?q=zz-last');
     const zz = await p2.evaluate(() => { const c = document.querySelector('input[name=ids]'); return c && c.value; });
     // the New page offers that user only once the search finds it: post to the form's own action
     const newLate = await (await p2.request.get(BASE + '/admin/post/new?findAuthor=zz-last')).text();
     const createAt = /<form[^>]*action="([^"]*\/Create[^"]*)"/.exec(newLate)[1].replace(/&amp;/g, '&');
-    await p2.request.post(BASE + createAt, { form: { slug: 'late', title: 'Late', body: 'b', published: 'True', author: zz } });
+    await p2.request.post(BASE + createAt, { headers: { 'Alder-Page': '/admin/post/new?findAuthor=zz-last' }, form: { slug: 'late', title: 'Late', body: 'b', published: 'True', author: zz } });
     await p2.goto(BASE + '/admin/post?q=late');
     const lateHref = await p2.evaluate(() => [...document.querySelectorAll('a')].map((a) => a.getAttribute('href')).find((h) => /^\/admin\/post\/[^/]+$/.test(h) && !/new|bulk/.test(h)));
     await p2.goto(BASE + lateHref + '/edit');
@@ -396,7 +395,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await p2.goto(BASE + '/admin/user?q=zz-last');
     const zzEdit = (await p2.evaluate(() => [...document.querySelectorAll('a')].map((a) => a.getAttribute('href')).find((h) => /^\/admin\/user\/[^/]+$/.test(h) && !/new|bulk/.test(h)))) + '/edit';
     await p2.goto(BASE + zzEdit);
-    await p2.route('**/_m/**', async (route) => { const resp = await route.fetch(); await sleep(400); await route.fulfill({ response: resp }).catch(() => {}); });
+    await p2.route('**/_/**', async (route) => { const resp = await route.fetch(); await sleep(400); await route.fulfill({ response: resp }).catch(() => {}); });
     await p2.fill('input[name=email]', 'admin@example.com');
     await p2.focus('input[name=email]');
     await p2.keyboard.press('Enter');
@@ -405,7 +404,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await p2.waitForFunction(() => !document.querySelector('form[inert]') && /with this email exists/.test(document.body.textContent), null, { timeout: 5000 }).catch(() => {});
     await sleep(200);
     const foc = await p2.evaluate(() => ({ name: document.activeElement && document.activeElement.getAttribute('name'), refused: /with this email exists/.test(document.body.textContent) }));
-    await p2.unroute('**/_m/**');
+    await p2.unroute('**/_/**');
     check('in flight: after a refused message the focus is back on the field', during.inert && foc.refused && foc.name === 'email', { during, foc });
 
     // the dialog's own Remove: it deletes the row from the Show page

@@ -375,7 +375,7 @@ func (b *genBuild) tree(t types.Type) *GenTree {
 				g.Kind = GenMaybe
 			case "Result":
 				g.Kind = GenResult
-			default: // Nav, Answer: what a page or a browser step produces, not data
+			default: // Answer: what a browser step produces, not data
 				panic(noGen{})
 			}
 			remember()

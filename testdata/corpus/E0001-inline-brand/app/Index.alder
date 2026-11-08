@@ -1,11 +1,11 @@
 module Index
 
-page "/" { }
+route Index = GET "/" { }
 
 type Model = { id: brand Text }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { id: "a" }
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { id: "a" }
 
-view : Model -> Session -> Html Msg
-view model session = <p>{model.id}</p>
+Index.view : Model -> Session -> Html
+Index.view model session = <p>{model.id}</p>

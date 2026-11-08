@@ -13,14 +13,15 @@ import (
 // Naming scheme. Every package-level Go name the emitter writes is one of:
 //
 //	GoName      M__…__name                  a top-level Alder declaration of module M.… (value,
-//	                                        component, record, union, table, form, and a page's
-//	                                        or App's generated Params, Msg, Session, <Msg>Params)
+//	                                        component, record, union, table, form), a route's
+//	                                        member or generated type (R.view, R.Params, the
+//	                                        narrowed R.Session: M__R__view)
 //	ctorName    M__Union__Ctor__            a constructor: its function, or the value of one
 //	                                        without a payload
 //	payloadName payload__M__Union__Ctor     the struct of a constructor's anonymous record payload
 //	tagType     tag__M__Union               a union's tag type
 //	tagConst    is__M__Union__Ctor          a constructor's tag constant
-//	widenName   widen__Page__Session        a `requires` page's session widened to App's
+//	widenName   widen__M__R__Session        a `requires` route's session widened to App's
 //	tableName   table__M__Table             a table's descriptor (*db.Table)
 //	insertName  insert__M__Table            a table's insert record type (Db.insert's row)
 //	insertVals  insertvals__M__Table        the column values of an insert record
@@ -29,17 +30,15 @@ import (
 //	enumName    name__M__Union              the constructor name of a payload-less union value
 //	                                        stored in a table column
 //	checkName   check__M__Brand             a brand's `where` check (func(v Base) bool)
-//	decodeName  decode__M__Record           the decoder of a page's Params, a message's
-//	                                        <Msg>Params or a form (routes__alder.go)
+//	decodeName  decode__M__Record           the decoder of a route's R.Params or a form
+//	                                        (routes__alder.go)
 //	encodeName  encode__M__Form             a form's encoder, the inverse of its decoder, for
 //	                                        Test.submit (routes__alder.go, test builds only)
 //	selector__N                             the N-th selector literal of the tests' queries,
 //	                                        parsed once (app__alder.go, test builds only)
-//	pageFunc    page__M                     page M's `requires` check and load (routes)
-//	paramsFunc  params__M                   page M's parameters as text for message URLs
-//	updateFunc  update__M                   page M's (or App's) update and its Nav (routes)
-//	routeFunc   Route__M__page              page M's GET route (routes)
-//	            Route__M__Msg               message Msg of page M or of App (M = App)
+//	pageFunc    page__M__R                  GET route M.R's `requires` check and load (routes)
+//	guardFunc   guard__M__R                 write route M.R's `requires` check (routes)
+//	routeFunc   Route__M__R                 route R of module M (routes)
 //	capName     Cap__M__Capability          a capability's Go interface (exported: an adapter
 //	                                        implements it)
 //	argsName    Args__M__Capability__Entry  the arguments record of a capability entry
@@ -87,12 +86,12 @@ import (
 //     (an identifier never ends in "__"). Stripping that "__", Ctor is the text after the last
 //     "__" (Ctor has no "__" and does not start with '_'), and the rest is a GoName (1).
 //  3. payloadName, tagType, tagConst, widenName, tableName, insertName, insertVals, insertMineName, insertMineVals, enumName,
-//     checkName, decodeName, encodeName, selector__N, pageFunc, paramsFunc, updateFunc, testFunc, fakeName, fakeEntry, fuzz__, lit__ and the
+//     checkName, decodeName, encodeName, selector__N, pageFunc, guardFunc, testFunc, fakeName, fakeEntry, fuzz__, lit__ and the
 //     route__/session__ helpers start with a lower-case word and "__". No GoName or ctorName does (they start with
 //     an upper-case module segment); no local does (a local contains "__" only at its end, or
 //     followed by its "_N" renaming suffix); the words differ, so the kinds cannot collide with
 //     each other; within a kind the rest is decoded as in 1 and 2 (decodeName's record is a
-//     page's Params, a <Msg>Params or a form of M: type names of one module, distinct; testFunc's
+//     route's R.Params or a form of M: type names of one module, distinct; testFunc's
 //     N is the text after the last "__", digits, and the rest is the module's segments;
 //     fakeEntry's entry is the text after the last "__", as argsName's in 5, and the rest
 //     decodes as in 1).
@@ -112,15 +111,15 @@ import (
 //     them), so they start with an upper-case word: Route, Cap or Args, then "__". They are
 //     GoNames of a module whose first segment is Route, Cap or Args, so no module may be named
 //     so (E0015, names.ReservedModules); then no GoName or ctorName starts with those
-//     words, and within a kind the rest decodes as in 1: Route__M__page (a page is a module, so
-//     M names it and "page" is lower-case, no message), Route__M__Msg (M a page module or App,
-//     Msg upper-case), Cap__M__C, Args__M__C__Entry. In the last, Entry never starts with '_'
+//     words, and within a kind the rest decodes as in 1: Route__M__R (R upper-case, a route of
+//     module M), Cap__M__C, Args__M__C__Entry. In the last, Entry never starts with '_'
 //     (the entry capitalized, or "x" + an entry starting with '_') and contains no "__", while C
 //     may end with '_': so Entry is the text after the last "__", and the rest decodes as in 1
 //     (C is its name).
 //
-// The per-page generated types (Params, Msg, Session, <Msg>Params) are GoNames of names the
-// checker reserves in page modules and App (E0012), so no user declaration can take them. Two
+// A route's generated types (R.Params, R.Session) are dotted names inside its module, which no
+// user declaration can write; a module M.R beside a route R of M is E0044, so the GoName of
+// route member R.x of M is no declaration's of a module M.R. Two
 // modules whose names differ only in case (their files would be one on a case-insensitive file
 // system) are rejected by the names graph (E0014).
 
@@ -209,8 +208,8 @@ func ctorName(module, union, ctor string) string {
 	return GoName(module, union) + "__" + ctor + "__"
 }
 
-// widenName is the function that widens module's narrowed Session record rec (a page's
-// "Session", a route's "Home.Session") to App's ("widen__Home__Session", "widen__Home__Home__Session").
+// widenName is the function that widens module's narrowed Session record rec (a route's
+// "Home.Session") to App's ("widen__Home__Home__Session").
 func widenName(module, rec string) string { return "widen__" + GoName(module, rec) }
 
 // ctorField is the union struct's field holding constructor ctor's payload.
@@ -302,27 +301,16 @@ func argsName(module, capability, entry string) string {
 // checkName is brand M.B's `where` check ("check__Todo__Slug").
 func checkName(module, brand string) string { return "check__" + GoName(module, brand) }
 
-// decodeName is the decoder of record R of module M: a page's Params, a message's <Msg>Params
-// or a form ("decode__Todos__Index__NewTodo").
+// decodeName is the decoder of record R of module M: a route's R.Params or a form
+// ("decode__Todos__Index__NewTodo").
 func decodeName(module, record string) string { return "decode__" + GoName(module, record) }
 
-// pageFunc runs page M's requires check and load ("page__Todos__Index").
+// pageFunc runs GET route key's (M.R) requires check and load ("page__Todos__Index").
 func pageFunc(module string) string { return "page__" + strings.ReplaceAll(module, ".", "__") }
 
-// paramsFunc renders page M's parameters for its message URLs ("params__Todos__Index").
-func paramsFunc(module string) string { return "params__" + strings.ReplaceAll(module, ".", "__") }
-
-// updateFunc runs page M's update, or App's, and answers its Nav ("update__Todos__Index").
-func updateFunc(module string) string { return "update__" + strings.ReplaceAll(module, ".", "__") }
-
-// routeFunc is the route of page M (msg "") or of its message msg ("Route__Todos__Index__page",
-// "Route__Todos__Index__Toggle", "Route__App__Logout").
-func routeFunc(module, msg string) string {
-	if msg == "" {
-		msg = "page"
-	}
-	return "Route__" + GoName(module, msg)
-}
+// routeFunc is the web.Route of route name of module M ("Route__Todos__Index",
+// "Route__App__Logout").
+func routeFunc(module, name string) string { return "Route__" + GoName(module, name) }
 
 // testFunc is the function of the n-th `test` of module M, counted from 1 in declaration order
 // ("test__Todos__Index__1"): it returns the test's Bool, or its Task Bool.

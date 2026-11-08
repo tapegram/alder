@@ -19,10 +19,7 @@ import (
 // the warning W0010 at the import. A standard-library module, always in scope, hides a
 // capability of its name the same way: W0010 at the capability, and the same E0002 hint.
 //
-// A constructor is looked up before a page (design rule 6), and a single-segment page has no
-// other spelling, so where a constructor named like it is in scope the page cannot be written at
-// all: `Status { cfg: "pa" }` builds the constructor. That is E0041 at the constructor's
-// declaration when a use was broken by it, else the warning W0011 (pageShadows).
+// A route named like a constructor in scope cannot be told apart from it: E0044 (routeClashes).
 
 // capEntryNames is the entries of capability name declared in module path, in declaration order.
 func (p *Program) capEntryNames(path, name string) []string {
@@ -139,112 +136,6 @@ func (r *resolver) shadowedEntryHint(q, path, entry string) (hint, spelling stri
 	return "", ""
 }
 
-// pageShadows reports each constructor named like a single-segment page module: in the
-// constructor's module and the modules importing it (everywhere, for a Prelude constructor) the
-// page cannot be written. A page with a dot in its name is written with its full path, which no
-// constructor can be. It is an error (E0041) when some module in that scope writes `Name { … }`
-// and the constructor takes no record (never a `msg`, which always takes one), so that the page value written there became a
-// constructor that cannot take it (the use was already a type error); otherwise the program
-// works and it is a warning (W0011). It runs after every body is resolved (pageUses).
-func (p *Program) pageShadows(bag *diag.Bag) {
-	var pages []string
-	for name := range p.Pages {
-		if !strings.Contains(name, ".") {
-			pages = append(pages, name)
-		}
-	}
-	sort.Strings(pages)
-	report := func(misused bool, span diag.Span, format string, args ...any) {
-		if misused {
-			bag.Error(diag.PageShadowed, span, format, args...)
-		} else {
-			bag.Warn(diag.PageShadowedWarn, span, format, args...)
-		}
-	}
-	for _, page := range pages {
-		rename := page + "Page"
-		if prel := p.Std["Prelude"]; prel != nil {
-			if typ, arg, ok := ctorDecl(prel, page); ok {
-				report(p.pageUses["Prelude."+page] && !takesRecord(arg), p.Modules[page].Span,
-					"the Prelude constructor `%s` (of `%s`) shadows page `%s`: `%s { … }` is the constructor in every module, so the page cannot be linked or fetched; rename the page module (for example `module %s`)",
-					page, typ, page, page, rename)
-				continue
-			}
-		}
-		for _, x := range p.Order {
-			for _, d := range p.Modules[x].Decls {
-				what, where, noun := "", x+"` and the modules importing it", "constructor"
-				var span diag.Span
-				record := false
-				switch d := d.(type) {
-				case *syntax.TypeDecl:
-					if d.Brand != nil && d.Name == page {
-						what, span = fmt.Sprintf("brand `%s`", page), d.Span
-					}
-					for _, c := range d.Union {
-						if c.Name == page {
-							what, span, record = fmt.Sprintf("constructor `%s` (of `%s.%s`)", page, x, d.Name), c.Span, takesRecord(c.Arg)
-						}
-					}
-				case *syntax.MsgDecl:
-					if d.Name == page {
-						// a message always takes a record (its parameters, `{}`, or `{ form: … }`),
-						// so `Go {}` for it type-checks: a message clash is only ever W0011
-						what, span, where, noun, record = fmt.Sprintf("message `%s`", page), d.Span, x+"`", "message", true
-					}
-				}
-				if what != "" {
-					report(p.pageUses[x+"."+page] && !record, span,
-						"%s shadows page `%s` in `%s: there `%s { … }` is the %s, so the page cannot be linked or fetched; rename the %s or the page module (for example `module %s`)",
-						what, page, where, page, noun, noun, rename)
-				}
-			}
-		}
-	}
-}
-
-// ctorDecl finds the union constructor name in module m: its type's name and its payload.
-func ctorDecl(m *syntax.Module, name string) (typ string, arg syntax.Type, ok bool) {
-	for _, d := range m.Decls {
-		if t, isType := d.(*syntax.TypeDecl); isType {
-			for _, c := range t.Union {
-				if c.Name == name {
-					return t.Name, c.Arg, true
-				}
-			}
-		}
-	}
-	return "", nil, false
-}
-
-// notRecords are the Prelude types a record literal never has.
-var notRecords = map[string]bool{"Int": true, "Float": true, "Bool": true, "Text": true, "Unit": true, "Date": true, "Time": true, "List": true, "Maybe": true, "Result": true, "Dict": true, "Html": true, "Never": true, "Query": true, "Task": true, "Nav": true, "Error": true, "Id": true, "File": true, "Bytes": true}
-
-// takesRecord reports whether a constructor with payload arg may be applied to a record literal:
-// a record type, a type variable or a type that may be a record; not no payload, a function or
-// a Prelude type that is not a record.
-func takesRecord(arg syntax.Type) bool {
-	switch a := arg.(type) {
-	case nil, *syntax.FunType:
-		return false
-	case *syntax.TypeName:
-		return a.Module != "" || !notRecords[a.Name]
-	}
-	return true
-}
-
-// pageUse records `Name { … }`, ct applied to a record literal, when ct resolved to a constructor
-// named like a single-segment page module: pageShadows tells by it whether the clash broke a use.
-func (r *resolver) pageUse(ct *syntax.CtorRef) {
-	if ct.Module != "" || ct.Ref.Kind != syntax.RefCtor || !r.p.IsPageModule(ct.Name) {
-		return
-	}
-	if r.p.pageUses == nil {
-		r.p.pageUses = map[string]bool{}
-	}
-	r.p.pageUses[ct.Ref.Module+"."+ct.Name] = true
-}
-
 // routeClashes reports (E0044) each route of this module whose name cannot be told apart: a
 // second route of a name; a module named by this module's path and the route (`Todos.Row`
 // beside route Row in `Todos`); an import's qualifier or a standard-library module, which a
@@ -311,7 +202,7 @@ func (r *resolver) ctorInScope(name string) string {
 		s := r.p.scopes[x]
 		switch {
 		case s == nil:
-		case s.ctors[name] != "" && s.ctors[name] != "Msg":
+		case s.ctors[name] != "":
 			return fmt.Sprintf("the constructor `%s` (of `%s.%s`)", name, x, s.ctors[name])
 		case s.brands[name]:
 			return fmt.Sprintf("the brand `%s` (of `%s`)", name, x)

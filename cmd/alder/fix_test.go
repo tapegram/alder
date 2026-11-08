@@ -123,12 +123,18 @@ func TestFix_RoutesDryRun(t *testing.T) {
 }
 
 // TestFix_RoutesFiles: files named are rewritten only when the app still checks with just them
-// rewritten (holes aside). Todos/Index alone does not: App, Auth.Login and Todos.Show name its
-// page, which would be a route. A page nothing else names migrates alone; the rest of the app
-// is left as it was, and `alder check` lists only the holes.
+// rewritten (holes aside), the old syntax of the files not named aside (E0046: they are left on
+// pages for a later run). Todos/Index alone does not: the route module Links names its page,
+// which would be a route. A page nothing else names migrates alone; the rest of the app is left
+// as it was, and `alder check` lists only the holes and the old syntax left.
 func TestFix_RoutesFiles(t *testing.T) {
 	t.Parallel()
 	dir := todosOnPages(t)
+	links := "module Links\n\nroute Links = GET \"/links\" { }\n\nLinks.load : Links.Params -> Session -> Query Int\nLinks.load params session = Query.succeed 1\n\n" +
+		"Links.view : Int -> Session -> Html\nLinks.view n session = <a href={Todos.Index {}}>todos</a>\n"
+	if err := os.WriteFile(filepath.Join(dir, "app/Links.alder"), []byte(links), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	index := filepath.Join(dir, "app/Todos/Index.alder")
 	before, _ := os.ReadFile(index)
 	code, out, errs := runFix("--routes", "--dir", dir, index)
@@ -182,9 +188,12 @@ view model session = <p>{Text.fromInt model.n} <button click={Bump}>bump</button
 		if line == "" {
 			continue
 		}
+		if strings.Contains(line, `"code":"E0046"`) && !strings.Contains(line, `"file":"app/About.alder"`) {
+			continue // the rest of the app, left on pages
+		}
 		n++
 		if !strings.Contains(line, `"code":"W0002"`) || !strings.Contains(line, `"file":"app/About.alder"`) {
-			t.Errorf("after a file-scoped run, check lists more than its holes: %s", line)
+			t.Errorf("after a file-scoped run, check lists more than its holes and the old syntax left: %s", line)
 		}
 	}
 	if holes := strings.Count(out, ": hole: "); n == 0 || n != holes {
@@ -192,18 +201,20 @@ view model session = <p>{Text.fromInt model.n} <button click={Bump}>bump</button
 	}
 }
 
-// TestFix_RefusesBrokenApp: the rewrite runs only on an app `alder check` accepts.
+// TestFix_RefusesBrokenApp: the rewrite reads every file's syntax, so a file that does not parse
+// is refused and nothing is written. A type error is not: the page syntax the rewrite reads is
+// itself an `alder check` error (E0046), and the check after the rewrite reports the rest.
 func TestFix_RefusesBrokenApp(t *testing.T) {
 	t.Parallel()
 	dir := todosOnPages(t)
 	f := filepath.Join(dir, "app/Todos/Index.alder")
 	src, _ := os.ReadFile(f)
-	broken := append(src, []byte("\nbroken : Int\nbroken = \"text\"\n")...)
+	broken := append(src, []byte("\nbroken : Int\nbroken = (1\n")...)
 	if err := os.WriteFile(f, broken, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	code, out, errs := runFix("--routes", "--dir", dir)
-	if code != 2 || !strings.Contains(errs, "alder check") || !strings.Contains(errs, "E0003") {
+	if code != 2 || !strings.Contains(errs, "does not parse") || !strings.Contains(errs, "E0001") {
 		t.Fatalf("code %d\nstdout:\n%s\nstderr:\n%s", code, out, errs)
 	}
 	if again, _ := os.ReadFile(f); !bytes.Equal(broken, again) {
@@ -289,9 +300,6 @@ func TestFix_RoutesReportsErrorsAfter(t *testing.T) {
 	if err := os.WriteFile(f, src, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if code, _, errs := run(t, dir); code != 0 {
-		t.Fatalf("the app on pages does not check:\n%s", errs)
-	}
 	code, out, errs := runFix("--routes", "--dir", dir)
 	if code != 1 || !strings.Contains(out, "rewrote app/App.alder") ||
 		!strings.Contains(errs, "E0011") || !strings.Contains(errs, "alder fix: alder check finds 1 error after the rewrite") {
@@ -328,6 +336,24 @@ func TestFix_RoutesParamClash(t *testing.T) {
 // does not run it: the rewrite puts a comment above each write route's `update` saying so, prints
 // a line per such route and exits 1, though `Wipe`'s arm does not read the model and leaves no
 // typed hole. The note is the first run's: a second run has nothing to rewrite and exits 0.
+// TestFix_RoutesFileAppMsg: a page whose button sends one of App's old messages
+// (`click={App.Logout}`) is rewritten on its own: App, still on messages, is E0046 alone, and the
+// rewritten route's reference to `App.Logout` resolves quietly until App is rewritten too.
+func TestFix_RoutesFileAppMsg(t *testing.T) {
+	t.Parallel()
+	dir := todosOnPages(t)
+	bye := "module Bye\n\npage \"/bye\" { }\n\ntype Model = { n: Int }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { n: 1 }\n\n" +
+		"view : Model -> Session -> Html Msg\nview model session = <button click={App.Logout}>log out</button>\n"
+	f := filepath.Join(dir, "app/Bye.alder")
+	if err := os.WriteFile(f, []byte(bye), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errs := runFix("--routes", "--dir", dir, f)
+	if code > 1 || !strings.Contains(out, "rewrote app/Bye.alder\n") || strings.Contains(errs, "E0002") {
+		t.Fatalf("Bye alone: code %d\nstdout:\n%s\nstderr:\n%s", code, out, errs)
+	}
+}
+
 func TestFix_RoutesLoadCheck(t *testing.T) {
 	t.Parallel()
 	dir := todosOnPages(t)

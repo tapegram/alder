@@ -4,10 +4,10 @@ import User
 
 session { user: Maybe User.UserId, role: User.Role = Reader }
 
-login = Home
+login = Home.Home
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>Error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>Not found</p>

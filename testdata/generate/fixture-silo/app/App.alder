@@ -10,29 +10,27 @@ import User
 -- database.
 session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Member }
 
-login = Auth.Login
+login = Auth.Login.Login
 
-choose org = Orgs
+choose org = Orgs.Orgs
 
 silo org { Project, Issue }
 
-msg Logout
+route Logout = POST "/_/Logout" { }
 
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Logout p -> {
-    let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
-    Task.succeed (Redirect (Auth.Login {}))
-  },
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
 
-error : Error -> Html Never
+error : Error -> Html
 error err =
   <Layout.Page title="Error">
     <h1>Something went wrong</h1>
   </Layout.Page>
 
-notFound : Html Never
+notFound : Html
 notFound =
   <Layout.Page title="Not found">
     <h1>Not found</h1>
@@ -41,7 +39,7 @@ notFound =
 test "Logout clears the user and the role, and goes to log in" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", role: Admin }
   let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
-  let _ <- Test.get (Orgs {})
+  let _ <- Test.get (Orgs.Orgs {})
   let r <- Test.click Logout
-  Task.succeed ({ answer: r.answer, user: r.session.user, role: r.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, role: Member })
+  Task.succeed ({ answer: r.answer, user: r.session.user, role: r.session.role } == { answer: Redirected (Auth.Login.Login {}), user: Nothing, role: Member })
 }

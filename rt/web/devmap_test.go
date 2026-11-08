@@ -11,7 +11,7 @@ import (
 // passing through, the runtime's build id, capabilities, migrations and routes beside it; only
 // under ALDER_DEV=1.
 func TestRouter_MapJSON(t *testing.T) {
-	route := one("GET", "/x/{id}", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil, false) })
+	route := one("GET", "/x/{id}", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil) })
 	opts := func(o *Options) {
 		o.Dev = true
 		o.Migrations = []string{"0001_init"}

@@ -172,8 +172,8 @@ func TestHover_BindingSites(t *testing.T) {
 	}{
 		{"let found <-", len("let "), "found : List Post"},
 		{"post in model", 0, "post : Post"},
-		{"load params session", len("load "), "params : Params"},
-		{"load params session", 0, "load : Params -> App.Session -> Query Model"},
+		{"Index.load params session", len("Index.load "), "params : Index.Params"},
+		{"Index.load params session", len("Index."), "Index.load : Index.Params -> App.Session -> Query Model"},
 	} {
 		p := c.at(f, tc.needle, tc.off)
 		if got := hover(t, c, f, p); !strings.Contains(got, tc.want) {
@@ -229,51 +229,13 @@ func TestHover_Attr(t *testing.T) {
 	}
 }
 
-func TestHover_PageHooks(t *testing.T) {
+// A type inside a route's header does not hover as the route.
+func TestHover_RouteHeaderType(t *testing.T) {
 	c := start(t, blogCopy(t))
 	openClean(t, c, "app/Posts/Index.alder")
-	cases := []struct{ needle, sig, role string }{
-		{"load params session", "load : Params -> App.Session -> Query Model", "Page hook. Runs on every request"},
-		{"view model session", "view : Model -> App.Session -> Html Msg", "Page hook. Renders"},
-		{"update msg model session", "update : Msg -> Model -> App.Session -> Task Nav", "`Rerender` runs `load`"},
-	}
-	for _, tc := range cases {
-		got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", tc.needle, 0))
-		if !strings.Contains(got, "```alder\n"+tc.sig+"\n```") || !strings.Contains(got, tc.role) {
-			t.Errorf("hover on %q:\n%s", tc.needle, got)
-		}
-	}
-	// a value that is not a hook says nothing about hooks
-	if got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "lastPage then", 0)); strings.Contains(got, "Page hook") {
-		t.Errorf("lastPage is not a hook:\n%s", got)
-	}
-}
-
-func TestHover_PageHooks_NotInAPage(t *testing.T) {
-	c := start(t, blogCopy(t))
-	// Post is a table module, not a page: a value called `view` there is an ordinary value
-	text := c.disk("app/Table/Post.alder") + "\nview : Int\nview = 1\n"
-	c.open("app/Table/Post.alder", text)
-	c.diags("app/Table/Post.alder")
-	got := hover(t, c, "app/Table/Post.alder", c.at("app/Table/Post.alder", "view = 1", 0))
-	if strings.Contains(got, "Page hook") {
-		t.Errorf("view outside a page:\n%s", got)
-	}
-}
-
-func TestHover_PageHeader(t *testing.T) {
-	c := start(t, blogCopy(t))
-	openClean(t, c, "app/Posts/Index.alder")
-	got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", `page "/"`, 0))
-	for _, want := range []string{"```alder\npage \"/\"", "params : { page: Int, q: Text }", "hooks"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("page header hover lacks %q:\n%s", want, got)
-		}
-	}
-	// a type inside the header still hovers as the type
-	got = hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "q: Text", len("q: ")))
-	if strings.Contains(got, "hooks") {
-		t.Errorf("Text in the header hovered as the page:\n%s", got)
+	got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "q: Text", len("q: ")))
+	if strings.Contains(got, "GET") {
+		t.Errorf("Text in the header hovered as the route:\n%s", got)
 	}
 }
 
@@ -399,18 +361,13 @@ func wireBlog(t *testing.T) string {
 	return root
 }
 
-// A page header's hover names the query key of each parameter declared `as "Key"` (#55).
-func TestHover_PageHeaderWire(t *testing.T) {
+// A route's hover shows the query key of each parameter declared `as "Key"` (#55).
+func TestHover_RouteRefWire(t *testing.T) {
 	c := start(t, wireBlog(t))
 	openClean(t, c, "app/Posts/Index.alder")
-	got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", `page "/"`, 0))
-	for _, want := range []string{"params : { page: Int, q: Text }", "-- q is read from the query key \"Q\""} {
-		if !strings.Contains(got, want) {
-			t.Errorf("page header hover lacks %q:\n%s", want, got)
-		}
-	}
-	if strings.Contains(got, "page is read") {
-		t.Errorf("a parameter without a wire name is listed:\n%s", got)
+	got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "Index { page: 1, q: p.form.q }", 0))
+	if want := `{ page: Int = 1, q: Text = "" as "Q" }`; !strings.Contains(got, want) {
+		t.Errorf("route hover lacks %q:\n%s", want, got)
 	}
 }
 

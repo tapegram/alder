@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 )
 
@@ -15,7 +14,7 @@ type ArgKind int
 const (
 	ArgText      ArgKind = iota
 	ArgModule            // a module name, new or existing
-	ArgPage              // an existing page module
+	ArgPage              // an existing route module
 	ArgTable             // an existing table
 	ArgDecl              // Module.name of an existing declaration
 	ArgFieldList         // name:Type[=default][@attr…] words
@@ -105,13 +104,10 @@ type App struct {
 	Stdin io.Reader
 }
 
-// Spec describes one generator command: its ID ("new page"), its arguments and flags, and
+// Spec describes one generator command: its ID ("new route"), its arguments and flags, and
 // how to run it.
 type Spec struct {
 	ID, Summary string
-	// Aliases are older names the command answers to, with a note (AliasNote): "new page" for
-	// "new route" until the page syntax is gone (#160).
-	Aliases     []string
 	Args, Flags []Field
 	Here        func(HereCtx) *Match // nil: never "here"
 	Run         func(sets Sets, app App, dryRun bool) (*Result, error)
@@ -208,7 +204,7 @@ func ParseArgs(s *Spec, argv []string) (Sets, CLIFlags, error) {
 		sets[k] = v
 	}
 	// with fewer positionals than arguments (and no variadic one), the optional arguments are
-	// skipped from the left: `new page [module?] path` given one word gives it to `path`. With
+	// skipped from the left: `new route [module?] path` given one word gives it to `path`. With
 	// two or more optionals (no spec has them yet) the leftmost go unfilled first, so a later
 	// optional takes a word before an earlier one does: `[a?] [b?] c` given two words sets b
 	// and c, not a and c. A spec whose optionals should fill left to right needs another rule.
@@ -248,23 +244,15 @@ func ParseArgs(s *Spec, argv []string) (Sets, CLIFlags, error) {
 // Select picks the subcommand of a group (`edit`, `remove`, `regen`): the first word of argv
 // that, after group, is a Spec's ID. It returns the Spec and argv without that word.
 func Select(group string, argv []string, specs []*Spec) (*Spec, []string) {
-	s, rest, _ := SelectNamed(group, argv, specs)
-	return s, rest
-}
-
-// SelectNamed is Select that also says the ID the word named ("remove page", an alias of
-// "remove route"), for AliasNote.
-func SelectNamed(group string, argv []string, specs []*Spec) (*Spec, []string, string) {
 	for i, a := range argv {
 		if strings.HasPrefix(a, "-") {
 			continue
 		}
 		for _, s := range specs {
-			if s.ID == group+" "+a || slices.Contains(s.Aliases, group+" "+a) {
-				rest := append(append([]string{}, argv[:i]...), argv[i+1:]...)
-				return s, rest, group + " " + a
+			if s.ID == group+" "+a {
+				return s, append(append([]string{}, argv[:i]...), argv[i+1:]...)
 			}
 		}
 	}
-	return nil, argv, ""
+	return nil, argv
 }

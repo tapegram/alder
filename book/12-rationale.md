@@ -64,10 +64,9 @@ whose view happens to include the layout; the language has no word for it. A
 module holds any number of routes, and what belongs to a route is written
 `Route.name` (`Index.view`), so a file stays flat and its order is free.
 
-`page`, `msg`, `type Model`, the module-level `update`, `Nav` and `Notice`
-went, and so did the type parameter of `Html` (`Html a` is still accepted in
-shared components until the old syntax is removed). The type `Page` became
-`Route`.
+`page`, `msg`, `type Model`, the module-level `update` and `Nav`
+went, and so did the type parameter of `Html` (`Html a` is E0046). `Notice`
+became the `Response` builders (W0012), and the type `Page` became `Route`.
 
 **Goals** (the numbers are the spec's):
 
@@ -590,7 +589,7 @@ equivalent).
 **A curated set of operators, not every possible edit.** Generic mutation tools
 change any operator or constant anywhere, and produce thousands of mutants,
 many of them programs that do not compile, crash at once, or mean nothing in
-particular. Alder's twenty-seven operators are each a bug that a server-rendered
+particular. Alder's twenty-six operators are each a bug that a server-rendered
 app can have and a user would notice:
 
 - a `requires` missing;
@@ -802,7 +801,7 @@ would hold half a change.
 
 Alder refuses that program instead (E0031), at compile time, wherever the
 second write hides (a helper in another module, a `Task.all`), and says how to
-write it: in the silo, or from its own message. Reads may mix, because a read
+write it: in the silo, or from a route of its own. Reads may mix, because a read
 on another database's read-only connection cannot leave anything half done.
 
 An outbox (a write in one store that another picks up later) comes with

@@ -49,33 +49,28 @@ const todoHome = `module Home
 
 import Table.Todo
 
-page "/" { }
+route Home = GET  "/"    { }
+route Add  = POST "/add" { }
 
-type Model = { titles: List Text }
-
-load : Params -> Session -> Query Model
-load params session = {
+Home.load : Home.Params -> Session -> Query (List Text)
+Home.load params session = {
   let todos <- Db.from Todo |> Db.orderBy Todo.title.asc |> Db.all
-  Query.succeed { titles: List.map (\t -> t.title) todos }
+  Query.succeed (List.map (\t -> t.title) todos)
 }
 
-msg Add
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add p -> {
-    let _ <- Db.insert Todo { title: "x" }
-    Task.succeed Rerender
-  },
+Add.update : Add.Params -> Session -> Task Response
+Add.update params session = {
+  let _ <- Db.insert Todo { title: "x" }
+  Task.succeed Response.refresh
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>{Text.fromInt (List.length model.titles)}</p>
+Home.view : List Text -> Session -> Html
+Home.view titles session = <p>{Text.fromInt (List.length titles)}</p>
 `
 
 // appModule is an App module with session fields session.
 func appModule(imports, session string) string {
-	return "module App\n\n" + imports + "\nsession { " + session + " }\n\nerror : Error -> Html Never\nerror err = <p>Error</p>\n\nnotFound : Html Never\nnotFound = <p>Not found</p>\n"
+	return "module App\n\n" + imports + "\nsession { " + session + " }\n\nerror : Error -> Html\nerror err = <p>Error</p>\n\nnotFound : Html\nnotFound = <p>Not found</p>\n"
 }
 
 func TestTableInTableFolder(t *testing.T) {

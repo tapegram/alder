@@ -1,14 +1,11 @@
 module Things.List
 
-page "/things" { q: Text = "", page: Int = 1 }
+route Browse = GET "/things" { q: Text = "", page: Int = 1 }
 
-type Model = { params: Params }
+type Model = { params: Browse.Params }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { params: params }
+Browse.load : Browse.Params -> Session -> Query Model
+Browse.load params session = Query.succeed { params: params }
 
-view : Model -> Session -> Html Msg
-view model session =
-  <main>
-    <p>{model.params.q}</p>
-  </main>
+Browse.view : Model -> Session -> Html
+Browse.view model session = <main><p>{model.params.q}</p></main>

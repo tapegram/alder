@@ -15,5 +15,5 @@ home =
   Task.succeed (Response.redirect (Url.external "https://example.com") |> Response.toast "Back")
 
 -- Html a stays: a component of both worlds (plan call 2)
-Box : { children: List (Html a) } -> Html a
+Box : { children: List Html } -> Html
 Box props = <div>{props.children}</div>

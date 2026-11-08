@@ -1,6 +1,6 @@
 module LayoutAttrs
 
-v : Html a
+v : Html
 v =
   <div>
     <a

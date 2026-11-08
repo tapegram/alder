@@ -415,17 +415,18 @@ Date.fromText "2026-10-08"
 ## Html
 
 ```alder
-Html.unsafe : Text -> Html Never                -- unescaped markup; never for user text
-Html.none  : Html a                             -- renders nothing
-Html.text  : Text -> Html a
-Html.fragment : List (Html a) -> Html a         -- the nodes side by side, no wrapper element
-Html.toText : Html Never -> Text                -- the markup File.html serves
+Html.unsafe : Text -> Html                -- unescaped markup; never for user text
+Html.none  : Html                             -- renders nothing
+Html.text  : Text -> Html
+Html.fragment : List Html -> Html         -- the nodes side by side, no wrapper element
+Html.toText : Html -> Text                -- the markup File.html serves
 Url.external : Text -> Route                    -- external URL for href, src or Response.redirect
 Url.absolute : Route -> Text                    -- the route's URL with the site's address in front
 ```
 
-`Html.toText` takes `Html Never`, a view that sends no messages, because the
-markup is rendered without a running page to receive them.
+`Html.toText` takes an `Html`, rendered as plain markup: the links and
+buttons it holds are not followed, because no page is running to receive
+them.
 
 `Url.external` keeps a URL only when it is one of:
 
@@ -552,7 +553,7 @@ bytes"); it has the few operations below, and a
 ```alder
 File.text       : { contentType: Text, body: Text } -> File      -- a 200 answer
 File.bytes      : { contentType: Text, body: Bytes } -> File     -- a 200 answer
-File.html       : Html Never -> File                             -- text/html; charset=utf-8, rendered verbatim: no doctype unless the node has one
+File.html       : Html -> File                             -- text/html; charset=utf-8, rendered verbatim: no doctype unless the node has one
 File.json       : Json.Value -> File                             -- application/json: Json.encode of the value
 File.withStatus : Int -> File -> File                            -- 200..599
 File.withHeader : { name: Text, value: Text } -> File -> File    -- Content-Disposition, Cache-Control, ETag, Last-Modified, Retry-After, Content-Language, X-…
@@ -787,8 +788,8 @@ A toast is a one-line notice shown once, in the next page the browser shows
 
 > **Deprecated:** `Notice.with`, `Notice.success`, `Notice.warning` and
 > `Notice.error` are the old names of `Response.toast`, `success`, `warning`
-> and `error`, from the page-and-message form, where they wrap a `Nav`. Write
-> the `Response` builders.
+> and `error`. They still work, as aliases, and each use is W0012. Write the
+> `Response` builders.
 
 ## Test
 
@@ -899,13 +900,12 @@ Two types of the Prelude exist only in tests and test helpers:
 They are `Doc`, a parsed page, which has `==`, and
 
 ```text
-type Answer = Shown | Rerendered | Rendered Route | Refreshed | Redirected Route | FormRejected (List { field: Text, message: Text }) | PageMissing | RequestFailed Text
+type Answer = Shown | Rendered Route | Refreshed | Redirected Route | FormRejected (List { field: Text, message: Text }) | PageMissing | RequestFailed Text
 ```
 
-Their names, and `Answer`'s eight constructors, are taken in every module
-(E0012). `Rerendered` is the old name of a re-render, kept until the old
-page-and-message syntax is removed; a route's answers are the other seven
-(chapter 10, "`Answer`: what a request came to").
+Their names, and `Answer`'s seven constructors, are taken in every module
+(E0012). A route's answers are described in chapter 10, "`Answer`: what a
+request came to".
 
 #### Queries
 
@@ -918,7 +918,7 @@ Test.texts : Text -> Doc -> List Text            -- every match's text, in page 
 Test.has   : Text -> Doc -> Bool
 Test.count : Text -> Doc -> Int
 Test.attr  : Text -> Text -> Doc -> Maybe Text   -- attribute name, then selector: the first match's
-Test.doc   : Html a -> Doc                       -- a view rendered and parsed
+Test.doc   : Html -> Doc                       -- a view rendered and parsed
 ```
 
 A selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, or

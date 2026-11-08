@@ -1,25 +1,22 @@
 module Index
 
-page "/" { }
+route Index  = GET  "/"         { }
+route Submit = POST "/_/Submit" { } form NewTodo
 
 type Model = { n: Int }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { n: 1 }
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { n: 1 }
 
 form NewTodo = {
   title: Text.NonEmpty @unique,
 }
 
-msg Submit form NewTodo
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Submit p -> Task.succeed Rerender,
-}
-
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <form submit={Submit}>
     <Input field="title" label="Title" />
     <button>Add</button>

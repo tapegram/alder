@@ -115,11 +115,11 @@ func goDecls(m *syntax.Module) (imports, decls []decl) {
 		case *syntax.TypeDecl:
 			decls = append(decls, decl{"type", d.Name})
 		case *syntax.PageDecl:
-			decls = append(decls, decl{"page", d.Path})
+			decls = append(decls, decl{"page", d.Path}) // legacy: see legacy
 		case *syntax.RouteDecl:
 			decls = append(decls, decl{"route", d.Name})
 		case *syntax.MsgDecl:
-			decls = append(decls, decl{"msg", d.Name})
+			decls = append(decls, decl{"msg", d.Name}) // legacy: see legacy
 		case *syntax.FormDecl:
 			decls = append(decls, decl{"form", d.Name})
 		case *syntax.TableDecl:
@@ -147,6 +147,18 @@ func goDecls(m *syntax.Module) (imports, decls []decl) {
 		}
 	}
 	return imports, decls
+}
+
+// legacy reports whether decls hold a page or msg declaration. The Go parser still parses them
+// (alder fix --routes and E0046 need that), the grammar no longer does, so a source that has one
+// (testdata/fix, internal/routefix/testdata, the E0046 corpus cases) is left out of the sources.
+func legacy(decls []decl) bool {
+	for _, d := range decls {
+		if d.Kind == "page" || d.Kind == "msg" {
+			return true
+		}
+	}
+	return false
 }
 
 // sources is every .alder file under examples/, stdlib/ and testdata/, and every book snippet
@@ -178,6 +190,9 @@ func sources(t *testing.T, dir string) []source {
 				return err
 			}
 			im, ds := goDecls(m)
+			if legacy(ds) {
+				return nil
+			}
 			out = append(out, source{Path: abs, Label: path, Imports: im, Decls: ds})
 			return nil
 		})
@@ -205,6 +220,9 @@ func sources(t *testing.T, dir string) []source {
 				t.Fatal(err)
 			}
 			im, ds := goDecls(m)
+			if legacy(ds) {
+				continue
+			}
 			out = append(out, source{Path: path, Label: label, Imports: im, Decls: ds})
 		}
 	}
@@ -310,7 +328,7 @@ func queryCaptures(t *testing.T, cli, paths string) map[string][]capture {
 		case "watchnode":
 			watchEnds[at{file, row}] = end
 			return
-		case "page", "test":
+		case "test":
 			name = strings.TrimSuffix(strings.TrimPrefix(name, `"`), `"`)
 		}
 		caps[file] = append(caps[file], capture{row: row, col: col, d: decl{m[1], name}})

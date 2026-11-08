@@ -256,7 +256,7 @@ function from a record of properties to HTML.
 ```alder part=guestbook/Layout
 module Layout
 
-Page : { title: Text, children: List (Html a) } -> Html a
+Page : { title: Text, children: List Html } -> Html
 Page props =
   <html>
     <head>
@@ -302,21 +302,19 @@ import Layout
 
 session { }
 
-error : Error -> Html Never
+error : Error -> Html
 error err =
   <Layout.Page title="Error">
     <h1>Something went wrong</h1>
     <p>Please try again.</p>
   </Layout.Page>
 
-notFound : Html Never
+notFound : Html
 notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 ```
 
 `error` is shown when a request fails, and `notFound` for an address no
-route has. Their type is `Html Never`: markup with no buttons and no forms.
-(The `Never` is the type parameter that `Html` still has outside a route
-module; chapter 5.)
+route has. Their type is `Html`, like any view (chapter 5).
 
 ### The other files
 

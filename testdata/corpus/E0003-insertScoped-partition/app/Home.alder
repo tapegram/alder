@@ -1,26 +1,23 @@
 module Home
 
-import Project
 import Org
+import Project
 
-page "/" { } requires user, org
+route Home = GET  "/"      { }                requires user, org
+route Add  = POST "/_/Add" { org: Org.OrgId } requires user, org
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = Query.succeed {}
 
-msg Add { org: Org.OrgId }
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add p -> {
-    let _ <- Db.insertScoped Project { name: "a", org: p.org }
-    let row = { name: "b" }
-    let _ <- Db.insertScoped Project row
-    Task.succeed Rerender
-  },
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insertScoped Project { name: "a", org: p.org }
+  let row = { name: "b" }
+  let _ <- Db.insertScoped Project row
+  Task.succeed Response.refresh
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>x</p>
+Home.view : Model -> Session -> Html
+Home.view model session = <p>x</p>

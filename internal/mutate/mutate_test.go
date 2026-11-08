@@ -107,12 +107,12 @@ func TestGolden(t *testing.T) {
 		"requires-dropped": RequiresDropped, "guard-dropped": GuardDropped, "where-dropped": WhereDropped,
 		"orderby-reversed": OrderByReversed, "limit-dropped": LimitDropped, "offset-dropped": OffsetDropped,
 		"write-replaced": WriteReplaced, "update-field-dropped": UpdateFieldDropped,
-		"redirect-rerender": RedirectRerender, "reject-rerender": RejectRerender, "arm-swapped": ArmSwapped,
+		"arm-swapped":       ArmSwapped,
 		"condition-negated": ConditionNegated, "operator-flipped": OperatorFlipped, "bool-flipped": BoolFlipped,
 		"default-changed": DefaultChanged, "cascade-restrict": CascadeRestrict,
 		"not-dropped": NotDropped, "session-put-dropped": SessionPutDropped,
 		"scope-dropped": ScopeDropped, "role-dropped": RoleDropped,
-		"redirect-refresh": RedirectRefresh, "render-redirect": RenderRedirect, "invalid-refresh": InvalidRefresh,
+		"redirect-refresh": RedirectRefresh, "render-redirect": RenderRedirect, "render-refresh": RenderRefresh, "invalid-refresh": InvalidRefresh,
 		"refresh-invalid": RefreshInvalid, "toast-dropped": ToastDropped, "step-dropped": StepDropped,
 	}
 	// the kinds the spec gives a suppression rule (plus the rulings': requires, cascade's setNull)
@@ -184,11 +184,6 @@ func TestNeverInTestsFakesViews(t *testing.T) {
 				if isHtml(v.Type) {
 					mark(v.Body)
 				}
-			}
-		}
-		for _, pg := range p.Pages {
-			if pg.View != nil && !pg.File {
-				mark(pg.View.Body)
 			}
 		}
 		for _, f := range p.Fakes {
@@ -359,36 +354,32 @@ func TestCollect_ScopedNodes(t *testing.T) {
 	}
 }
 
-// TestFilePageViewIsMutated: a file page's view (it returns File, not Html) is mutated like any
-// value (here its `if` is negated); an HTML page's view still yields no mutant. The existing
+// TestFilePageViewIsMutated: a file route's view (it returns File, not Html) is mutated like any
+// value (here its `if` is negated); an HTML route's view still yields no mutant. The existing
 // kinds apply; there are no mutants for literals.
 func TestFilePageViewIsMutated(t *testing.T) {
 	dir := t.TempDir()
 	srcs := map[string]string{
-		"App.alder": "module App\n\nerror : Error -> Html Never\nerror err = <h1>Error</h1>\n\nnotFound : Html Never\nnotFound = <h1>Not found</h1>\n",
+		"App.alder": "module App\n\nerror : Error -> Html\nerror err = <h1>Error</h1>\n\nnotFound : Html\nnotFound = <h1>Not found</h1>\n",
 		"Report.alder": `module Report
 
-page "/report.txt" { }
+route Report = GET "/report.txt" { }
 
-type Model = { ok : Bool }
+Report.load : Report.Params -> Session -> Query Bool
+Report.load params session = Query.succeed True
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { ok: True }
-
-view : Model -> Session -> File
-view model session = if model.ok then File.text { contentType: "text/plain", body: "hi" } else File.text { contentType: "text/plain", body: "no" } |> File.withStatus 503
+Report.view : Bool -> Session -> File
+Report.view ok session = if ok then File.text { contentType: "text/plain", body: "hi" } else File.text { contentType: "text/plain", body: "no" } |> File.withStatus 503
 `,
 		"Home.alder": `module Home
 
-page "/" { }
+route Home = GET "/" { }
 
-type Model = { ok : Bool }
+Home.load : Home.Params -> Session -> Query Bool
+Home.load params session = Query.succeed True
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { ok: True }
-
-view : Model -> Session -> Html Msg
-view model session = if model.ok then <p>yes</p> else <p>no</p>
+Home.view : Bool -> Session -> Html
+Home.view ok session = if ok then <p>yes</p> else <p>no</p>
 `,
 	}
 	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
@@ -402,7 +393,7 @@ view model session = if model.ok then <p>yes</p> else <p>no</p>
 	ms, _ := Collect(lower(t, dir))
 	counts := map[string]int{}
 	for _, m := range ms {
-		if m.Decl == "view" {
+		if m.Decl == m.Module+".view" {
 			counts[m.Module]++
 		}
 	}

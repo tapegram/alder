@@ -17,15 +17,13 @@
 //     to (a fixed point, so recursion and cycles are fine). A reference counts whether or not
 //     the value is called, and a whole body counts, lambdas and `Task.all`/`List.map`
 //     arguments included: the analysis over-approximates, never under.
-//  3. Each `update` (a page's, App's) is split into arms when its body is a `match` on its
-//     message parameter (one arm per constructor; a `_` or variable arm stands for the others;
-//     arms of one constructor are merged), else it is one arm. An arm's writes are those of its
-//     body, as in 2. Each table written is in the store of its `silo` (siloOf), else shared. An
-//     arm whose tables are in two stores is E0031, naming the arm, the tables and their stores;
-//     otherwise its store is recorded (Result.Arms) for Lower's Arm.Store: the silo's, or shared
-//     (also for an arm that writes nothing).
-//  4. A fake's entry is checked the same way (as one arm), and so is a write route's `update`
-//     (`Toggle.update`: one arm, recorded under the route's module with Msg the route's name).
+//  3. Each write route's `update` (`Toggle.update`) is one arm, recorded under the route's module
+//     with Msg the route's name. Its writes are those of its body, as in 2. Each table written
+//     is in the store of its `silo` (siloOf), else shared. An update whose tables are in two
+//     stores is E0031, naming it, the tables and their stores; otherwise its store is recorded
+//     (Result.Arms) for Lower's Route.Store: the silo's, or shared (also for an update that
+//     writes nothing).
+//  4. A fake's entry is checked the same way (as one arm).
 //
 // Session.put and capability calls are not writes to either store (the cookie; the adapter).
 //
@@ -46,10 +44,9 @@ import (
 	"alder/internal/syntax"
 )
 
-// ArmStore is one arm of an `update` and the store its Task writes (Result.Arms): Msg is the
-// constructor it matches ("" for the others, or for an update that is not a match on its
-// message; a write route's name for its `update`), Silo the silo key of the store ("" for the
-// shared store), Span the arm's pattern (the update's declaration for Msg "" and for a route).
+// ArmStore is a write route's `update` and the store its Task writes (Result.Arms): Msg is the
+// route's name, Silo the silo key of the store ("" for the shared store), Span the update's
+// declaration.
 type ArmStore struct {
 	Msg  string
 	Silo string
@@ -156,13 +153,6 @@ func (c *Checker) checkWriteSets() {
 		if c.prog.Failed[name] {
 			continue
 		}
-		for _, d := range c.live(c.prog.Modules[name]) {
-			vd, ok := d.(*syntax.ValueDecl)
-			if !ok || vd.Name != "update" || vd.Route != "" || vd.Body == nil || c.pages[name] == nil && name != "App" {
-				continue
-			}
-			c.res.Arms[name] = c.updateArms(vd, writesOf)
-		}
 		for _, r := range c.routes[name] {
 			vd := c.routeMembers(c.prog.Modules[name], r.Name)["update"]
 			if !isWrite(r.Method) || vd == nil || vd.Body == nil {
@@ -180,65 +170,9 @@ func (c *Checker) checkWriteSets() {
 	}
 	for _, fe := range fakes {
 		if groups := c.storeGroups(writesOf(fe.d.Body)); len(groups) > 1 {
-			c.errorf(diag.WriteStores, fe.d.Span, "in `fake %s`'s `%s`: %s", fe.fake, fe.d.Name, c.mixMessage("`"+fe.d.Name+"`", "message", groups))
+			c.errorf(diag.WriteStores, fe.d.Span, "in `fake %s`'s `%s`: %s", fe.fake, fe.d.Name, c.mixMessage("`"+fe.d.Name+"`", "entry", groups))
 		}
 	}
-}
-
-// updateArms splits update vd into its arms (see the file comment), reports E0031 for an arm
-// whose writes are in two stores, and returns each arm's store.
-func (c *Checker) updateArms(vd *syntax.ValueDecl, writesOf func(syntax.Expr) map[string]bool) []ArmStore {
-	type arm struct {
-		msg    string
-		span   diag.Span
-		writes map[string]bool
-	}
-	var arms []*arm
-	byMsg := map[string]*arm{}
-	if m, ok := vd.Body.(*syntax.Match); ok && len(vd.Params) > 0 && isLocal(m.Subject, vd.Params[0].Name) {
-		for _, a := range m.Arms {
-			msg := ""
-			if p, ok := a.Pat.(*syntax.PCtor); ok {
-				msg = p.Name
-			}
-			ar := byMsg[msg]
-			if ar == nil {
-				ar = &arm{msg: msg, span: a.Pat.GetSpan(), writes: map[string]bool{}}
-				byMsg[msg] = ar
-				arms = append(arms, ar)
-			}
-			for t := range writesOf(a.Body) {
-				ar.writes[t] = true
-			}
-		}
-	} else {
-		arms = append(arms, &arm{span: vd.Span, writes: writesOf(vd.Body)})
-	}
-	out := make([]ArmStore, 0, len(arms))
-	for _, a := range arms {
-		groups := c.storeGroups(a.writes)
-		st := ArmStore{Msg: a.msg, Span: a.span}
-		switch {
-		case len(groups) > 1:
-			name := "`" + a.msg + "`"
-			switch {
-			case a.msg == "" && len(arms) == 1:
-				name = "`update`"
-			case a.msg == "":
-				name = "the `_` arm"
-			}
-			c.errorf(diag.WriteStores, a.span, "%s", c.mixMessage(name, "message", groups))
-		case len(groups) == 1:
-			st.Silo = groups[0].silo
-		}
-		out = append(out, st)
-	}
-	return out
-}
-
-func isLocal(e syntax.Expr, name string) bool {
-	v, ok := e.(*syntax.Var)
-	return ok && v.Ref.Kind == syntax.RefLocal && v.Name == name && v.Module == ""
 }
 
 // storeGroup is the tables (bare names, sorted) an arm writes in one store (silo "" is shared).
@@ -275,7 +209,7 @@ func (c *Checker) storeGroups(writes map[string]bool) []storeGroup {
 
 // mixMessage is E0031's text for arm name writing groups (two or more): "`Create` writes
 // `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. …"; the hint
-// sends a write from its own `from` ("message", or "route" for a write route's update).
+// sends a write from its own `from` ("entry" for a fake, "route" for a write route).
 func (c *Checker) mixMessage(name, from string, groups []storeGroup) string {
 	parts := make([]string, len(groups))
 	shared := ""

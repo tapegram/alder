@@ -37,7 +37,7 @@ edited app/Home.alder
  test "signing adds an entry" = {
    let _ <- Test.get (Home {})
    let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
-@@ -68,3 +83,26 @@
+@@ -68,3 +83,30 @@
    let page <- Test.get (Home {})
    Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
  }
@@ -47,11 +47,15 @@ edited app/Home.alder
 +  let r <- Test.submit Sign2 { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
 +  let rows <- Db.from Entry |> Db.all
 +  Task.succeed (
-+    { answer: r.answer, rows: List.map (\row -> { name: row.name, message: row.message }) rows }
-+      == {
-+        answer: Redirected (Home {}),
-+        rows: [{ name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }],
-+      }
++    {
++      answer: r.answer,
++      notices: r.notices,
++      rows: List.map (\row -> { name: row.name, message: row.message }) rows,
++    } == {
++      answer: Redirected (Home {}),
++      notices: ["Saved"],
++      rows: [{ name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }],
++    }
 +  )
 +}
 +

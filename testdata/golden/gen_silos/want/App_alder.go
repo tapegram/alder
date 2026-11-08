@@ -15,12 +15,6 @@ type App__Session struct {
 	Role User__Role
 }
 
-type App__Msg struct {
-	Tag tag__App__Msg
-}
-
-type tag__App__Msg uint8
-
 type App__Leave__Params struct{}
 
 func App__Leave__update(params App__Leave__Params, session App__Session) eff.Task[rt.Response] {

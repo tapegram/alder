@@ -2,5 +2,5 @@ module Markdown
 
 -- A capability named like its module: adapters/markdown/, func Markdown.
 capability Markdown {
-  render : Text -> Query (Html Never),
+  render : Text -> Query Html,
 }

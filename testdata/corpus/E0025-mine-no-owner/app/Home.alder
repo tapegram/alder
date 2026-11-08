@@ -2,16 +2,16 @@ module Home
 
 import Todo
 
-page "/" { id: Todo.TodoId } requires user
+route Home = GET "/" { id: Todo.TodoId } requires user
 
 type Model = { todos: List Todo }
 
-load : Params -> Session -> Query Model
-load params session = {
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = {
   let todos <- Db.mine Todo |> Db.all
   let _ <- Db.getMine Todo params.id
   Query.succeed { todos: todos }
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>todos</p>
+Home.view : Model -> Session -> Html
+Home.view model session = <p>todos</p>

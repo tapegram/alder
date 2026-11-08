@@ -5,7 +5,7 @@ module R
 looping : Bool
 looping = True
 
-media : Html Never
+media : Html
 media =
   <div>
     <video src="/static/intro.mp4" controls autoplay={False} muted loop={looping}>
@@ -21,7 +21,7 @@ media =
 clip : Text
 clip = "a\"</script><b>&"
 
-inline : Html Never
+inline : Html
 inline =
   <div data-clip={clip}>
     <style>
@@ -35,8 +35,8 @@ inline =
     <script type="application/json">{"a": 1}</script>
   </div>
 
--- `src` takes a page value too: Url.external renders as its URL (a refused one as "#").
-external : Html Never
+-- `src` takes a route value too: Url.external renders as its URL (a refused one as "#").
+external : Html
 external =
   <div>
     <script type="module" src={Url.external "https://cdn.example.com/x.js?v=1&b=2"}></script>

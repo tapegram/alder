@@ -7,16 +7,16 @@ import (
 	"alder/rt"
 )
 
-// newTodo is the message the tests' forms post; posted is the state of a re-render after it.
-var newTodo = rt.MsgRef{Module: "Todos", Msg: "Add"}
+// newTodo is the route the tests' forms send; posted is the state of a re-render after it.
+var newTodo = rt.Route{Name: "Todos.Add", Method: "POST", Path: "/todos"}
 
-func posted(form string, m rt.MsgRef, st FormState) *FormState {
-	st.Form, st.Msg = form, m.Key()
+func posted(form string, r rt.Route, st FormState) *FormState {
+	st.Form, st.Msg = form, rt.RouteKey(r)
 	return &st
 }
 
 func TestRenderWith_FillsValuesAndErrors(t *testing.T) {
-	n := FormTo(newTodo, nil,
+	n := FormToRoute(newTodo, nil,
 		Input(Control{Kind: "input", Form: "NewTodo", Name: "title", Label: "T", Required: true}),
 		Input(Control{Kind: "errors", Form: "NewTodo", Name: "title"}),
 		Input(Control{Kind: "errors", Form: "NewTodo"}),
@@ -41,7 +41,7 @@ func TestRenderWith_FillsValuesAndErrors(t *testing.T) {
 }
 
 func TestRenderWith_OtherFormUntouched(t *testing.T) {
-	n := FormTo(newTodo, nil, Input(Control{Kind: "input", Form: "Other", Name: "title", Value: "init"}))
+	n := FormToRoute(newTodo, nil, Input(Control{Kind: "input", Form: "Other", Name: "title", Value: "init"}))
 	st := posted("NewTodo", newTodo, FormState{Values: map[string]string{"title": "x"}})
 	if got := RenderWith(n, st); !strings.Contains(got, `value="init"`) {
 		t.Fatal(got)
@@ -51,7 +51,7 @@ func TestRenderWith_OtherFormUntouched(t *testing.T) {
 func TestRender_WithoutStateUnchanged(t *testing.T) {
 	n := El("div", []Attr{A("class", "x")},
 		Text("a<b"), Raw("<i>r</i>"), None(),
-		Form("/_m/M/Go", nil,
+		FormToRoute(rt.Route{Name: "M.Go", Method: "PATCH", Path: "/go"}, nil,
 			Input(Control{Kind: "input", Form: "F", Name: "title", Label: "Title", Required: true, Value: "v&"}),
 			Input(Control{Kind: "input", Form: "F", Name: "done", Type: "checkbox", Value: "True"}),
 			Input(Control{Kind: "textarea", Form: "F", Name: "body", Value: "x<y"}),
@@ -68,7 +68,7 @@ func TestRender_WithoutStateUnchanged(t *testing.T) {
 }
 
 func TestRenderWith_CheckboxSelectTextarea(t *testing.T) {
-	n := FormTo(newTodo, nil,
+	n := FormToRoute(newTodo, nil,
 		Input(Control{Kind: "input", Form: "F", Name: "done", Type: "checkbox"}),
 		Input(Control{Kind: "input", Form: "F", Name: "off", Type: "checkbox", Value: "True"}),
 		Input(Control{Kind: "select", Form: "F", Name: "c", Required: true, Value: "A", Options: []string{"A", "B"}}),
@@ -89,7 +89,7 @@ func TestRenderWith_CheckboxSelectTextarea(t *testing.T) {
 }
 
 func TestRenderWith_ErrorsEscapedAndSecretNeverEchoed(t *testing.T) {
-	n := FormTo(newTodo, nil,
+	n := FormToRoute(newTodo, nil,
 		Input(Control{Kind: "errors", Form: "F", Name: "a"}),
 		Input(Control{Kind: "input", Form: "F", Name: "pw", Secret: true, Value: "initial"}),
 	)
@@ -106,20 +106,22 @@ func TestRenderWith_ErrorsEscapedAndSecretNeverEchoed(t *testing.T) {
 	}
 }
 
-// Per-row forms of one form type (I1, the reviewer's adv3): only the form posting the very
-// message the state is for — same module, message and parameters — shows the submitted values
-// and errors; the other rows render their initial values. A state without Form or Msg (a plain
+// Per-row forms of one form type (I1, the reviewer's adv3): only the form sending the very
+// request the state is for — same method, path and parameters — shows the submitted values and
+// errors; the other rows render their initial values. A state without Form or Msg (a plain
 // page render) matches nothing.
 func TestRenderWith_StateOnlyOnThePostingForm(t *testing.T) {
+	rename := func(id string) rt.Route {
+		return rt.Route{Name: "Items.Rename", Method: "PATCH", Path: "/items/" + id + "/rename", Query: []rt.KV{rt.QueryKV("tab", "", "")}}
+	}
 	row := func(id string) Node {
-		return FormTo(rt.MsgRef{Module: "Items", Msg: "Rename", Params: []rt.KV{{Key: "id", Value: id}}}, nil,
+		return FormToRoute(rename(id), nil,
 			Input(Control{Kind: "input", Form: "Items.Name", Name: "name", Value: "init-" + id}),
 			Input(Control{Kind: "errors", Form: "Items.Name", Name: "name"}),
 			Input(Control{Kind: "errors", Form: "Items.Name"}))
 	}
 	page := El("ul", nil, row("1"), row("2"), row("3"))
-	q := map[string][]string{"id": {"2"}, "_p.filter": {"All"}} // as the route sees the request
-	st := &FormState{Form: "Items.Name", Msg: rt.MsgKey("/_m/Items/Rename", q), Values: map[string]string{"name": "typed"},
+	st := &FormState{Form: "Items.Name", Msg: rt.RouteKey(rename("2")), Values: map[string]string{"name": "typed"},
 		Errors: map[string][]string{"name": {"must not be empty"}}, FormError: "taken"}
 	got := RenderWith(page, st)
 	if strings.Count(got, `value="typed"`) != 1 || strings.Count(got, "<li>must not be empty</li>") != 1 || strings.Count(got, "<li>taken</li>") != 1 {
@@ -130,58 +132,17 @@ func TestRenderWith_StateOnlyOnThePostingForm(t *testing.T) {
 			t.Fatalf("missing %s:\n%s", init, got)
 		}
 	}
-	if i, j := strings.Index(got, "Rename?id=2"), strings.Index(got, `value="typed"`); i < 0 || j < i || strings.Contains(got[i:j], "Rename?id=3") {
+	if i, j := strings.Index(got, "/items/2/rename"), strings.Index(got, `value="typed"`); i < 0 || j < i || strings.Contains(got[i:j], "/items/3/rename") {
 		t.Fatalf("the state is not on row 2:\n%s", got)
 	}
 	// no Msg, or no Form: nothing matches
 	for _, st := range []*FormState{
 		{Form: "Items.Name", Values: map[string]string{"name": "typed"}},
-		{Msg: rt.MsgKey("/_m/Items/Rename", q), Values: map[string]string{"name": "typed"}},
+		{Msg: rt.RouteKey(rename("2")), Values: map[string]string{"name": "typed"}},
 	} {
 		if got := RenderWith(page, st); strings.Contains(got, "typed") {
 			t.Fatalf("state %+v matched:\n%s", st, got)
 		}
-	}
-}
-
-// A click button works without JavaScript (I3): outside a form it is wrapped in a form of its
-// own posting the message (Datastar posts it on submit); inside a form it is a submit button
-// with its own formaction, which Datastar posts on click, preventing the form's submission. A
-// `type` the view wrote is replaced. An <al-button> holding one is wrapped whole. Other
-// elements keep data-on:click.
-func TestRender_ClickButtons(t *testing.T) {
-	m := rt.MsgRef{Module: "Todos", Msg: "Toggle", Params: []rt.KV{{Key: "id", Value: "a b"}}}
-	st := &FormState{PageParams: []rt.KV{{Key: "filter", Value: "Active"}}}
-	u := "/_m/Todos/Toggle?id=a+b&amp;_p.filter=Active"
-	got := RenderWith(El("div", nil, El("button", []Attr{A("type", "button"), MsgAttr("data-on:click", m), A("class", "x")}, Text("Done"))), st)
-	want := `<div><form method="post" action="` + u + `" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;` + u + `&#39;, window._alderO?.(&#39;form&#39;)))">` +
-		`<button type="submit" class="x">Done</button></form></div>`
-	if got != want {
-		t.Fatalf("outside a form:\n got %s\nwant %s", got, want)
-	}
-	got = RenderWith(FormTo(newTodo, nil, El("button", []Attr{MsgAttr("data-on:click", m)}, Text("Delete")), El("button", nil, Text("Save"))), st)
-	want = `<button type="submit" formaction="` + u + `" formmethod="post" formnovalidate data-on:click__prevent="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;` + u + `&#39;, window._alderO?.()))">Delete</button><button>Save</button></form>`
-	if !strings.HasSuffix(got, want) || strings.Count(got, "<form") != 1 {
-		t.Fatalf("inside a form:\n got %s\nwant …%s", got, want)
-	}
-	// the design system's button (what `<al-button click={…}>` compiles to): the form goes around
-	// the <al-button>, so the button stays its child; inside a form, the formaction button
-	alButton := El("al-button", []Attr{A("variant", "ghost"), B("disabled", false)},
-		El("button", []Attr{A("type", "button"), MsgAttr("data-on:click", m), B("disabled", false)}, Text("Done")))
-	got = RenderWith(alButton, st)
-	want = `<form method="post" action="` + u + `" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;` + u + `&#39;, window._alderO?.(&#39;form&#39;)))">` +
-		`<al-button variant="ghost"><button type="submit">Done</button></al-button></form>`
-	if got != want {
-		t.Fatalf("al-button outside a form:\n got %s\nwant %s", got, want)
-	}
-	got = RenderWith(FormTo(newTodo, nil, alButton), st)
-	want = `<al-button variant="ghost"><button type="submit" formaction="` + u + `" formmethod="post" formnovalidate data-on:click__prevent="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;` + u + `&#39;, window._alderO?.()))">Done</button></al-button></form>`
-	if !strings.HasSuffix(got, want) || strings.Count(got, "<form") != 1 {
-		t.Fatalf("al-button inside a form:\n got %s\nwant …%s", got, want)
-	}
-	got = RenderWith(El("li", []Attr{MsgAttr("data-on:click", m)}, Text("row")), st)
-	if got != `<li data-on:click="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;`+u+`&#39;, window._alderO?.()))">row</li>` {
-		t.Fatalf("a non-button: %s", got)
 	}
 }
 
@@ -206,7 +167,7 @@ func TestRender_ControlTypes(t *testing.T) {
 // A field without an <Errors field> of its own does not lose its errors (M2): <Errors form />
 // lists them after the form's error, prefixed with the field's name, in field-name order.
 func TestRenderWith_OrphanFieldErrorsOnTheFormList(t *testing.T) {
-	n := FormTo(newTodo, nil,
+	n := FormToRoute(newTodo, nil,
 		Input(Control{Kind: "errors", Form: "F"}),
 		Input(Control{Kind: "input", Form: "F", Name: "title"}),
 		Nodes(Input(Control{Kind: "errors", Form: "F", Name: "title"})),
@@ -233,14 +194,15 @@ func TestRenderWith_OrphanFieldErrorsOnTheFormList(t *testing.T) {
 // and `placeholder` reach the native control; the form's list does not repeat the field's
 // errors.
 func TestRenderWith_WrappedControl(t *testing.T) {
-	n := FormTo(newTodo, nil,
+	n := FormToRoute(newTodo, nil,
 		Input(Control{Kind: "errors", Form: "F"}),
 		Input(Control{Kind: "input", Form: "F", Name: "title", Type: "text", Label: "Title", Required: true, Wrap: "al-input",
 			WrapAttrs: []Attr{A("placeholder", "A title"), B("disabled", false), A("help", "Short")}}),
 		Input(Control{Kind: "input", Form: "F", Name: "done", Type: "checkbox", Wrap: "al-checkbox", WrapAttrs: []Attr{B("disabled", true)}}),
 		Input(Control{Kind: "select", Form: "F", Name: "kind", Label: "Kind", Required: true, Options: []string{"A", "B"}, Wrap: "al-select", WrapAttrs: []Attr{B("invalid", true)}}),
 	)
-	initial := `<form method="post" action="/_m/Todos/Add" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos/Add&#39;, window._alderO?.(&#39;form&#39;)||{contentType: &#39;form&#39;}))">` +
+	formTag := `<form method="post" action="/todos" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/todos&#39;, window._alderO?.(&#39;form&#39;)||{contentType: &#39;form&#39;}))">`
+	initial := formTag +
 		`<ul class="errors" data-errors="form"></ul>` +
 		`<al-input label="Title" placeholder="A title" help="Short"><label>Title<input name="title" type="text" required placeholder="A title" aria-describedby="help-title" /></label><small class="help" id="help-title">Short</small><ul class="errors" data-errors="title"></ul></al-input>` +
 		`<al-checkbox disabled><label><input name="done" type="checkbox" value="True" disabled /></label><ul class="errors" data-errors="done"></ul></al-checkbox>` +
@@ -251,7 +213,7 @@ func TestRenderWith_WrappedControl(t *testing.T) {
 	}
 	st := posted("F", newTodo, FormState{Values: map[string]string{"title": "", "done": "True"},
 		Errors: map[string][]string{"title": {"must not be empty"}}})
-	failed := `<form method="post" action="/_m/Todos/Add" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos/Add&#39;, window._alderO?.(&#39;form&#39;)||{contentType: &#39;form&#39;}))">` +
+	failed := formTag +
 		`<ul class="errors" data-errors="form"></ul>` +
 		`<al-input label="Title" placeholder="A title" help="Short" invalid><label>Title<input name="title" type="text" required placeholder="A title" aria-invalid="true" aria-describedby="help-title errors-title" /></label><small class="help" id="help-title">Short</small><ul class="errors" data-errors="title" id="errors-title"><li>must not be empty</li></ul></al-input>` +
 		`<al-checkbox disabled><label><input name="done" type="checkbox" value="True" checked disabled /></label><ul class="errors" data-errors="done"></ul></al-checkbox>` +

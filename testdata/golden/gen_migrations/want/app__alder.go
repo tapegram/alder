@@ -3,7 +3,7 @@
 package app
 
 import (
-	"alder/rt"
+	_ "alder/rt" // initialized before this package (rt/tether.go)
 	"alder/rt/applog"
 	"alder/rt/db"
 	"alder/rt/html"
@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"reflect"
 	"strings"
 	"time"
 )
@@ -44,11 +43,6 @@ type Caps struct{}
 // field is). It is exported for alder test's main; Serve uses it too.
 func (Caps) Registry() map[string]any {
 	return map[string]any{}
-}
-
-// init registers the constructor names of every union of the app, for rt.Show.
-func init() {
-	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that

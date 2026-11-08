@@ -9,8 +9,8 @@ import (
 	"errors"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every message of the
-// pages and of App (POST), in module order.
+// Routes are the app's endpoints for web.NewRouter: every route (GET and write routes), in module
+// order, then declaration order.
 var Routes = []web.Route{}
 
 // route__fail answers a load or update that did not succeed: a 303 to the page for

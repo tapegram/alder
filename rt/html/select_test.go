@@ -13,7 +13,7 @@ const selectDoc = `<html><head><title>T</title><script>var s = "<li>no</li>"</sc
     <li class="done" data-id="1"><span>one</span></li>
     <li data-id="2"><span>two</span><ul class="sub"><li class="done">nested</li></ul></li>
   </ul>
-  <form method="post" action="/_m/M/Add"><ul class="errors" data-errors="title"><li>must not be empty</li></ul>
+  <form method="post" action="/todos"><ul class="errors" data-errors="title"><li>must not be empty</li></ul>
   <input name="title" type="text" required /><input name="done" type="checkbox" value="True" checked /></form>
   <a href="/?page=2" data-on:click="@post('/x')">next</a>
 </main></body></html>`

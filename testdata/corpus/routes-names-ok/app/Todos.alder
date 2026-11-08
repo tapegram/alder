@@ -16,10 +16,10 @@ Row.load params session = Query.succeed params.id
 Row.view : Int -> Session -> Html
 Row.view n session = <div>{Row.item n}<button click={Bump { id: n }}>+</button></div>
 
-Row.item : Int -> Html a
+Row.item : Int -> Html
 Row.item n = <li>{Text.fromInt n}</li>
 
-Row.link : Row.Params -> Html a
+Row.link : Row.Params -> Html
 Row.link params = <a href={Row { id: params.id }}>{Row.item params.id}</a>
 
 Bump.update : Bump.Params -> Session -> Task Response

@@ -16,19 +16,20 @@ import (
 
 // TestE2E_Todos runs the to-do app's scenario (testdata/e2e_todos_test.go.txt), steps 1–13: log
 // in, add, toggle (a Datastar patch; without JavaScript a 303 back), show, delete, another user's
-// messages (404), a tampered cookie, a failing capability (500, rollback, dev vs production
-// pages), App messages, Datastar redirects as navigation events; and
+// write routes (404), a tampered cookie, a failing capability (500, rollback, dev vs production
+// pages), App's Logout route, Datastar redirects as navigation events; and
 // TestE2E_RequiresUnderDatastar.
 func TestE2E_Todos(t *testing.T) {
-	runE2E(t, "../../testdata/fix/todos", "testdata/e2e_todos_test.go.txt", "TestE2E_Todos", "TestE2E_RequiresUnderDatastar")
+	runE2E(t, "../../examples/todos", "testdata/e2e_todos_test.go.txt", "TestE2E_Todos", "TestE2E_RequiresUnderDatastar")
 }
 
 // TestE2E_RejectKeepsWrites runs gen_vet/m3c-reject (an update that inserts a row, stores the
-// session and then Rejects) through Serve: the row and the session are kept, the form shows the
-// rejection; and TestE2E_AppRerenderToReferer: App.Reset's Rerender goes back to the Referer's
-// path and query, a Datastar navigation or a 303, never off-site (testdata/e2e_reject_test.go.txt).
+// session and then answers Response.invalid) through Serve: the row and the session are kept, the
+// form shows the text; and TestE2E_AppRefreshToReferer: App.Reset's refresh goes back to the
+// Referer's path and query, a Datastar patch or navigation or a 303, never off-site
+// (testdata/e2e_reject_test.go.txt).
 func TestE2E_RejectKeepsWrites(t *testing.T) {
-	runE2E(t, "../../testdata/golden/gen_vet/m3c-reject", "testdata/e2e_reject_test.go.txt", "TestE2E_RejectKeepsWrites", "TestE2E_AppRerenderToReferer")
+	runE2E(t, "../../testdata/golden/gen_vet/m3c-reject", "testdata/e2e_reject_test.go.txt", "TestE2E_RejectKeepsWrites", "TestE2E_AppRefreshToReferer")
 }
 
 // runE2E emits app, adds program as zz_e2e_test.go and runs the tests named, each of which

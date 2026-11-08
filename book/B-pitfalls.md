@@ -38,9 +38,9 @@ unless the item says what happens instead.
 6. Actions shared by every page (log out, theme) are write routes declared
    once, in `App`, and sent as `App.Logout` from any page.
 
-7. A route module's markup is `Html`. A shared component outside a route
-   module (a layout, a card) is typed `Html a`, so that any route can use it.
-   `Html Msg` is E0601.
+7. Markup is `Html`, in a route module and in a shared component (a layout, a
+   card) alike. `Html` takes no type argument: `Html Msg`, `Html a` and
+   `Html Never` are E0046.
 
 8. `Date.format` takes a `Date`; `Time.format` takes a `Time`. Convert with
    `Time.toDate`.
@@ -121,5 +121,6 @@ unless the item says what happens instead.
     (`Db.updateMine`, `Db.deleteMine`) on an owned table, as chapter 6,
     "Rules", shows, rather than checking in `load` and trusting the id.
 
-22. A module is a route module or an old `page`/`msg` module, never both
-    (E0043). `alder fix --routes` rewrites the second into the first.
+22. The old `page` and `msg` declarations, `Nav`, and an unqualified `load`,
+    `view` or `update` are E0046. `alder fix --routes` rewrites such a module
+    into routes.

@@ -2,25 +2,25 @@ module Todos.Index
 
 type Filter = All | Active
 
-page "/" { filter: Filter = All }
+route Index  = GET  "/"         { filter: Filter = All }
+route Submit = POST "/_/Submit" { } form NewTodo
+route Toggle = POST "/_/Toggle" { id: Text }
 
 type Model = { n: Int }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { n: 0 }
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { n: 0 }
 
-form NewTodo = {
-  title: Text,
-}
+form NewTodo = { title: Text }
 
-msg Submit form NewTodo
-msg Toggle { id: Text }
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update params session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = Task.succeed Rerender
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update params session = Task.succeed Response.refresh
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <form submit={Submit}>
     <Input field="title" label="Title" />
     <Errors field="title" />

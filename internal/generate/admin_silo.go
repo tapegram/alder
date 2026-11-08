@@ -79,7 +79,7 @@ func joinAnd(words []string) string {
 	return strings.Join(words[:len(words)-1], ", ") + " and " + words[len(words)-1]
 }
 
-// siloOf is the silo whose table's page module mod is, nil for another module.
+// siloOf is the silo whose table's route module mod is, nil for another module.
 func (g *adminGen) siloOf(mod string) *adminSilo {
 	for _, s := range g.silo {
 		if s.mods[mod] {
@@ -113,7 +113,7 @@ func (at *adminTable) requires() string {
 }
 
 // action is a GET form's `action` attribute to the table's path with suffix: the text, or for a
-// siloed table the text built around the key's value (a form's action is text, not a page value).
+// siloed table the text built around the key's value (a form's action is text, not a route value).
 func (at *adminTable) action(suffix string) string {
 	if at.silo == nil {
 		return quote(at.path + suffix)

@@ -18,8 +18,8 @@ type routeItem struct {
 	Range  Range  `json:"range"`
 }
 
-// routesReq answers alder/routes (params {}): every page (GET) and message (POST) of the last
-// build that type-checked, sorted by path. The list is empty before the first good build, and
+// routesReq answers alder/routes (params {}): every route of the last
+// build that type-checked, in program order. The list is empty before the first good build, and
 // while the program has errors the last good build's routes stand (their places may have
 // moved: a stale list is better than an empty picker).
 func routesReq(s *server, _ json.RawMessage) (out any, err error) {

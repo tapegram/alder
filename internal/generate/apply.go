@@ -73,8 +73,8 @@ type Result struct {
 	// Warnings are for standard error, after the command's name: a file written unformatted
 	// (Formatted's warning).
 	Warnings []string
-	// Notices are for standard error too, as they are: a command that was named by an older name
-	// ("`alder new page` is now `alder new route`").
+	// Notices are for standard error too, as they are: a note about how the command was read
+	// (`alder new msg` on a route module adds a write route).
 	Notices []string
 	// Next is the command to run next (`alder new table`'s page that lists the table), printed
 	// last as `next: …`; "" for none.
@@ -342,7 +342,7 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 }
 
 // removeEmptyDirs removes dir (relative to appDir) and its parents up to app/'s level while
-// they are empty: the directory a removed page module leaves (app/Posts/ after Posts.Index).
+// they are empty: the directory a removed route module leaves (app/Posts/ after Posts.Index).
 func removeEmptyDirs(appDir, dir string) {
 	for dir != "." && dir != "app" && dir != "" {
 		if os.Remove(filepath.Join(appDir, dir)) != nil { // not empty

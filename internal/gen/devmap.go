@@ -13,8 +13,8 @@ import (
 	"alder/rt/db"
 )
 
-// devMap is the app's map for the dev server's /_dev page, as compact JSON: the pages (path,
-// requires, roles, parameters, messages), the tables (columns and attributes), the capability
+// devMap is the app's map for the dev server's /_dev page, as compact JSON: the pages (each GET
+// route: its path, requires, roles, parameters), the tables (columns and attributes), the capability
 // names and the session's shape. Each table also carries its SQL name, its columns' SQL names
 // and storage types, and its silo; the map lists the app's silos. The runtime adds what only it
 // knows: the build id, the migrations applied and, per capability, whether an adapter or a fake
@@ -25,17 +25,16 @@ type devMap struct {
 	Tables  []devTable `json:"tables"`
 	Caps    []string   `json:"caps"`
 	Session []string   `json:"session"`
-	AppMsgs []string   `json:"appMsgs,omitempty"`
 	Silos   []devSilo  `json:"silos,omitempty"`
 }
 
+// devPage is a GET route; Module is its qualified name ("Todos.Index").
 type devPage struct {
 	Module   string   `json:"module"`
 	Path     string   `json:"path"`
 	Requires string   `json:"requires,omitempty"`
 	Roles    []string `json:"roles,omitempty"`
 	Params   []string `json:"params,omitempty"`
-	Msgs     []string `json:"msgs,omitempty"`
 }
 
 type devTable struct {
@@ -100,7 +99,7 @@ func devFields(r *ir.RecordType) []string {
 	var out []string
 	for _, f := range r.Fields {
 		s := f.Name + ": " + types.String(f.Type)
-		if f.Wire != "" { // a page parameter's query key (#55)
+		if f.Wire != "" { // a route parameter's query key (#55)
 			s += " as " + strconv.Quote(f.Wire)
 		}
 		out = append(out, s)
@@ -111,12 +110,10 @@ func devFields(r *ir.RecordType) []string {
 // devMapJSON is p's devMap, encoded (map keys sort, so the output is stable).
 func devMapJSON(p *ir.Program) string {
 	m := devMap{Pages: []devPage{}, Tables: []devTable{}, Caps: []string{}, Session: devFields(p.Session)}
-	for _, pg := range p.Pages {
-		d := devPage{Module: pg.Module, Path: pg.Path, Requires: strings.Join(pg.Requires, ", "), Roles: pg.Roles, Params: devFields(pg.Params)}
-		for _, msg := range pg.Msgs {
-			d.Msgs = append(d.Msgs, msg.Name)
+	for _, r := range p.Routes {
+		if r.Method == "GET" {
+			m.Pages = append(m.Pages, devPage{Module: routeKey(r), Path: r.Path, Requires: strings.Join(r.Requires, ", "), Roles: r.Roles, Params: devFields(r.Params)})
 		}
-		m.Pages = append(m.Pages, d)
 	}
 	siloOf := map[*ir.Table]string{}
 	for _, k := range slices.Sorted(maps.Keys(p.Silos)) {
@@ -145,9 +142,6 @@ func devMapJSON(p *ir.Program) string {
 	}
 	for _, c := range p.Caps {
 		m.Caps = append(m.Caps, c.Module+"."+c.Name)
-	}
-	for _, msg := range p.AppMsgs {
-		m.AppMsgs = append(m.AppMsgs, msg.Name)
 	}
 	sort.Strings(m.Caps)
 	b, err := json.Marshal(m)

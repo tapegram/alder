@@ -31,7 +31,7 @@ type AuthData struct {
 	Role        bool
 	RoleColumn  string
 	RoleDefault string
-	Home        string // the page value a login redirects to: "Home {}"
+	Home        string // the route value a login redirects to: "Home {}"
 	Open, Close string
 	Iterations  int
 	Tests       []TestData
@@ -83,7 +83,7 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 		return nil, false, Refusef("`--users %s`: a table is named by one capitalised identifier, such as `User`", o.Users)
 	}
 
-	// the page a login goes to: a GET route (or a page module written before routes)
+	// the page a login goes to: a GET route (or a route module written before routes)
 	home, homeParams := "", false
 	if o.To != "" {
 		var ok bool
@@ -96,14 +96,9 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 				home, homeParams = r.Ref("Auth.Login")+" {}", routeHasRequiredParams(r)
 			}
 		}
-		for _, pg := range p.Pages {
-			if pg.Path == "/" && home == "" {
-				home, homeParams = pageLit(pg.Module, nil), hasRequiredParams(pg)
-			}
-		}
 	}
 	if home != "" && homeParams {
-		return nil, false, Refusef("`%s` has parameters: a login goes to a page without, name one with `--to <Page>`", strings.TrimSuffix(home, " {}"))
+		return nil, false, Refusef("`%s` has parameters: a login goes to a page without, name one with `--to <Route>`", strings.TrimSuffix(home, " {}"))
 	}
 
 	var edits []Edit
@@ -366,13 +361,10 @@ func editApp(p *Program, app *Module, users *Table, idType, roleField, roleColum
 const loginRoute = "Auth.Login.Login"
 
 // loginTarget is the route value a login goes to, written in module home, for name: a route
-// module (its GET route, Plan call 14), a GET route `Module.Route`, or a page module written
+// module (its GET route, Plan call 14), a GET route `Module.Route`, or a route module written
 // before routes; hasParams when it has a parameter without a default; ok false when name is
 // none of these.
 func loginTarget(p *Program, name, home string) (lit string, hasParams, ok bool) {
-	if pg := p.PageNamed(name); pg != nil {
-		return pageLit(name, nil), hasRequiredParams(pg), true
-	}
 	r := p.RouteModule(name)
 	if r == nil {
 		for _, c := range p.Routes {

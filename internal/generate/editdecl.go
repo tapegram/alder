@@ -8,7 +8,7 @@ import (
 
 // EditDecl generates `alder edit decl <Module>.<Name> add-prop <name>:<Type>=<default>`: a
 // property added at the end of the props record of a component (`Page : { title: Text,
-// children: List (Html a) } -> Html a`), with its default, so that every use of the component
+// children: List Html } -> Html`), with its default, so that every use of the component
 // keeps checking (an anonymous record type's defaults apply to the component's literals). It
 // refuses a property without a default, one the record has, a declaration whose first argument
 // is not a record.

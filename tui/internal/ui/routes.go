@@ -247,7 +247,7 @@ func (s *routesScreen) View(width, height int, c *Ctx) string {
 		if i < len(s.hits) {
 			hits = s.hits[i]
 		}
-		cells[i] = []string{r.Kind, clean(r.Path), clean(r.Module + "." + r.Name), clean(r.File) + ":" + strconv.Itoa(r.Line),
+		cells[i] = []string{r.MethodOf(), clean(r.Path), clean(r.Module + "." + r.Name), clean(r.File) + ":" + strconv.Itoa(r.Line),
 			strconv.Itoa(hits)}
 		for k, cl := range cells[i] {
 			w[k] = max(w[k], ansi.StringWidth(cl))

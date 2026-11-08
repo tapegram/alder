@@ -37,18 +37,18 @@ func TestRoutes_JSON(t *testing.T) {
 		t.Fatalf("code %d, err %s", code, errs)
 	}
 	var rs []struct {
-		Kind, Path, Module, Name, File string
-		Line, Col                      int
+		Kind, Method, Path, Module, Name, File string
+		Line, Col                              int
 	}
 	if err := json.Unmarshal([]byte(out), &rs); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	var page, msg bool
 	for _, r := range rs {
-		if r.Kind == "page" && r.Path == "/posts/{slug}" && r.Module == "Posts.Show" && r.File == "app/Posts/Show.alder" && r.Line == 9 && r.Col == 1 {
+		if r.Kind == "route" && r.Method == "GET" && r.Path == "/posts/{slug}" && r.Module == "Posts.Show" && r.File == "app/Posts/Show.alder" && r.Line == 9 && r.Col == 1 {
 			page = true
 		}
-		if r.Kind == "msg" && r.Module == "Posts.Show" && r.Name == "AddComment" && r.File == "app/Posts/Show.alder" && r.Line == 12 {
+		if r.Kind == "route" && r.Method == "POST" && r.Module == "Posts.Show" && r.Name == "AddComment" && r.File == "app/Posts/Show.alder" && r.Line == 12 {
 			msg = true
 		}
 	}
@@ -83,7 +83,7 @@ func TestRoutes_RouteApp(t *testing.T) {
 	}
 	var del bool
 	for _, r := range rs {
-		if r.Method == "DELETE" && r.Kind == "msg" && r.Path == "/todos/{id}" && r.Name == "Delete" {
+		if r.Method == "DELETE" && r.Kind == "route" && r.Path == "/todos/{id}" && r.Name == "Delete" {
 			del = true
 		}
 	}

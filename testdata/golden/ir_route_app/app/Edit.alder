@@ -1,0 +1,32 @@
+module Edit
+
+route Edit = GET  "/edit/{n}"        { n: Int }
+route Save = POST "/edit/{n}/_/Save" { n: Int } form Note
+route Ping = POST "/edit/{n}/_/Ping" { n: Int }
+
+type Color = Red | Green
+
+type Model = { n: Int, busy: Bool }
+
+form Note = { body: Text, color: Color }
+
+Edit.load : Edit.Params -> Session -> Query Model
+Edit.load params session = Query.succeed { n: params.n, busy: False }
+
+Save.update : Save.Params -> Session -> Task Response
+Save.update params session = Task.succeed Response.refresh
+
+Ping.update : Ping.Params -> Session -> Task Response
+Ping.update params session = Task.succeed Response.refresh
+
+Edit.view : Model -> Session -> Html
+Edit.view model session =
+  <div>
+    <a href={Other.Other}>other</a>
+    <button click={Ping { n: model.n }} disabled={model.busy}>ping</button>
+    <form submit={Save { n: model.n }}>
+      <Textarea field="body" label={"Body of " ++ Text.fromInt model.n} />
+      <Select field="color" label="Color" value={Red} />
+    </form>
+    <details open><summary>more</summary></details>
+  </div>

@@ -13,17 +13,22 @@ import (
 )
 
 // frApp is a page of rows, each `<li id="row-N">`, and a form `<form id="add">` with a title,
-// answering its messages as the generated update route does (Before: the view of the model
-// before update, or of the same model for a form that did not decode).
+// with write routes answering `refresh` (or `invalid` for a form that did not decode) as the
+// generated write route does: the page the browser is on rendered before the update
+// (RenderShown), the router diffing the after-view against it.
 type frApp struct {
 	done    []bool
 	heading string
 	toasts  bool // the page has an <al-toasts> region of its own
 
-	noBefore, panicBefore bool
+	noBefore    bool // the write renders no before-view
+	panicBefore bool // the next GET / (the before-view) panics
 }
 
 const frForm = "R.New"
+
+// frAdd is the route the form #add sends.
+var frAdd = rt.Route{Name: "R.Add", Method: "POST", Path: "/r/add"}
 
 func (a *frApp) view(done []bool, heading string) html.Node {
 	var items []html.Node
@@ -38,7 +43,7 @@ func (a *frApp) view(done []bool, heading string) html.Node {
 	body := []html.Node{
 		html.El("h1", nil, html.Text(heading)),
 		html.El("ul", []html.Attr{html.A("id", "rows")}, items...),
-		html.FormTo(rt.MsgRef{Module: "R", Msg: "Add"}, []html.Attr{html.A("id", "add")},
+		html.FormToRoute(frAdd, []html.Attr{html.A("id", "add")},
 			html.Input(html.Control{Kind: "errors", Form: frForm}),
 			html.Input(html.Control{Kind: "input", Form: frForm, Name: "title", Label: "Title"}),
 			html.Input(html.Control{Kind: "errors", Form: frForm, Name: "title"})),
@@ -49,52 +54,57 @@ func (a *frApp) view(done []bool, heading string) html.Node {
 	return html.El("html", nil, html.El("head", nil, html.El("title", nil, html.Text("R"))), html.El("body", nil, body...))
 }
 
-func (a *frApp) answer(rq *Request, st *html.FormState, before func() html.Node) Response {
-	resp := PageResponse(a.view(a.done, a.heading), st, nil, true)
-	switch {
-	case a.panicBefore:
-		resp.Before = func() html.Node { panic("before") }
-	case !a.noBefore:
-		resp.Before = before
+// before is the page the browser is on, rendered before the write's update (nil with noBefore).
+func (a *frApp) before(rq *Request) *Shown {
+	if a.noBefore {
+		return nil
 	}
-	return resp
+	sh, _ := rq.RenderShown(nil)
+	return sh
+}
+
+// refresh is the write's `refresh` answer, with an info toast when the request asks for one.
+func refresh(rq *Request, before *Shown) Response {
+	ans := rt.Refresh()
+	if rq.Query.Get("notice") != "" {
+		ans = rt.WithToast(rt.NoticeInfo, "Saved", ans)
+	}
+	return AnswerResponse(ans, before, nil)
 }
 
 func (a *frApp) routes() []Route {
-	snapshot := func() func() html.Node {
-		done, heading := append([]bool(nil), a.done...), a.heading
-		return func() html.Node { return a.view(done, heading) }
-	}
 	return []Route{
 		{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
-			return PageResponse(a.view(a.done, a.heading), &html.FormState{}, nil, false)
+			if a.panicBefore {
+				a.panicBefore = false
+				panic("before")
+			}
+			return PageResponse(a.view(a.done, a.heading), rq.FormState, nil)
 		}},
-		{Method: "POST", Pattern: "/_m/R/Toggle", Handle: func(rq *Request) Response {
-			before := snapshot()
+		{Method: "POST", Pattern: "/r/toggle", Handle: func(rq *Request) Response {
+			before := a.before(rq)
 			i, _ := strconv.Atoi(rq.Query.Get("id"))
 			a.done[i-1] = !a.done[i-1]
-			if rq.Query.Get("notice") != "" {
-				rq.Notice = "Saved"
-			}
-			return a.answer(rq, &html.FormState{}, before)
+			return refresh(rq, before)
 		}},
-		{Method: "POST", Pattern: "/_m/R/Same", Handle: func(rq *Request) Response {
-			return a.answer(rq, &html.FormState{}, snapshot())
+		{Method: "POST", Pattern: "/r/same", Handle: func(rq *Request) Response {
+			return refresh(rq, a.before(rq))
 		}},
-		{Method: "POST", Pattern: "/_m/R/Heading", Handle: func(rq *Request) Response {
-			before := snapshot()
+		{Method: "POST", Pattern: "/r/heading", Handle: func(rq *Request) Response {
+			before := a.before(rq)
 			a.heading = rq.Query.Get("to")
-			return a.answer(rq, &html.FormState{}, before)
+			return refresh(rq, before)
 		}},
-		{Method: "POST", Pattern: "/_m/R/Add", Handle: func(rq *Request) Response {
-			before := snapshot()
-			title := rq.Form.Get("title")
-			if title == "" { // the form does not decode: the same model, with the errors
-				return a.answer(rq, &html.FormState{Form: frForm, Msg: rt.MsgKey("/_m/R/Add", rq.Query), Values: map[string]string{"title": ""},
-					Errors: map[string][]string{"title": {"must not be empty"}}}, before)
+		{Method: "POST", Pattern: "/r/add", Handle: func(rq *Request) Response {
+			before := a.before(rq)
+			if rq.Form.Get("title") == "" { // the form does not decode: the same model, with the errors
+				resp := InvalidResponse(&html.FormState{Form: frForm, Msg: rt.RouteKey(frAdd), Values: map[string]string{"title": ""},
+					Errors: map[string][]string{"title": {"must not be empty"}}}, nil)
+				resp.Shown = before
+				return resp
 			}
 			a.done = append(a.done, false)
-			return a.answer(rq, &html.FormState{}, before)
+			return refresh(rq, before)
 		}},
 	}
 }
@@ -164,7 +174,7 @@ func TestDocument_CarriesShown(t *testing.T) {
 		t.Fatalf("morph %q", evs[0])
 	}
 	// a re-render without a shown hash
-	w = post(t, a, testOpts(nil), "/_m/R/Same", nil, "")
+	w = post(t, a, testOpts(nil), "/r/same", nil, "")
 	if !isBodyMorph(t, w) || shownOf(w.Body.String()) != want {
 		t.Fatalf("rerender %q", w.Body.String())
 	}
@@ -174,7 +184,7 @@ func TestDocument_CarriesShown(t *testing.T) {
 func TestRerender_PatchesChangedRegion(t *testing.T) {
 	a := newFrApp(10)
 	shown := shownNow(t, a, testOpts(nil))
-	w := post(t, a, testOpts(nil), "/_m/R/Toggle?id=7", nil, shown)
+	w := post(t, a, testOpts(nil), "/r/toggle?id=7", nil, shown)
 	evs := events(w.Body.String())
 	newHash := html.Hash(bodyOf(html.RenderWith(a.view(a.done, a.heading), &html.FormState{})))
 	want := []string{regionEvent("row-7", `<li id="row-7" class="done">Row 7</li>`), regionEvent("_alder_shown", `<al-shown id="_alder_shown" data-h="`+newHash+`" hidden></al-shown>`)}
@@ -185,12 +195,12 @@ func TestRerender_PatchesChangedRegion(t *testing.T) {
 		t.Fatalf("%d %q", w.Code, w.Header().Get("Content-Type"))
 	}
 	// the next click starts from the new hash
-	w = post(t, a, testOpts(nil), "/_m/R/Toggle?id=2", nil, newHash)
+	w = post(t, a, testOpts(nil), "/r/toggle?id=2", nil, newHash)
 	if evs := events(w.Body.String()); len(evs) != 2 || evs[0] != regionEvent("row-2", `<li id="row-2" class="done">Row 2</li>`) {
 		t.Fatalf("second click %q", evs)
 	}
 	// a row added changes #rows' skeleton: the list is patched, not the body
-	w = post(t, a, testOpts(nil), "/_m/R/Add", url.Values{"title": {"x"}}, shownNow(t, a, testOpts(nil)))
+	w = post(t, a, testOpts(nil), "/r/add", url.Values{"title": {"x"}}, shownNow(t, a, testOpts(nil)))
 	if evs := events(w.Body.String()); len(evs) != 2 || !strings.HasPrefix(evs[0], "event: datastar-patch-elements\ndata: selector #rows\n") || !strings.Contains(evs[0], `<li id="row-11" class="open">`) {
 		t.Fatalf("add %q", evs)
 	}
@@ -199,7 +209,7 @@ func TestRerender_PatchesChangedRegion(t *testing.T) {
 // Text outside every region changed: the body's skeleton differs, so the body is morphed.
 func TestRerender_SkeletonChangeMorphsBody(t *testing.T) {
 	a := newFrApp(3)
-	w := post(t, a, testOpts(nil), "/_m/R/Heading?to=Other", nil, shownNow(t, a, testOpts(nil)))
+	w := post(t, a, testOpts(nil), "/r/heading?to=Other", nil, shownNow(t, a, testOpts(nil)))
 	if !isBodyMorph(t, w) || len(events(w.Body.String())) != 1 || !strings.Contains(w.Body.String(), "<h1>Other</h1>") {
 		t.Fatalf("%q", w.Body.String())
 	}
@@ -208,7 +218,7 @@ func TestRerender_SkeletonChangeMorphsBody(t *testing.T) {
 // Without the header (a post made before the boost ran) the body is morphed.
 func TestRerender_NoShownMorphsBody(t *testing.T) {
 	a := newFrApp(3)
-	w := post(t, a, testOpts(nil), "/_m/R/Toggle?id=1", nil, "")
+	w := post(t, a, testOpts(nil), "/r/toggle?id=1", nil, "")
 	if !isBodyMorph(t, w) || len(events(w.Body.String())) != 1 {
 		t.Fatalf("%q", w.Body.String())
 	}
@@ -218,19 +228,19 @@ func TestRerender_NoShownMorphsBody(t *testing.T) {
 // (#160): the regions the server changed are patched, the others left as the browser has them.
 func TestRerender_StaleShownPatchesRegions(t *testing.T) {
 	a := newFrApp(3)
-	w := post(t, a, testOpts(nil), "/_m/R/Toggle?id=1", nil, "0123456789abcdef")
+	w := post(t, a, testOpts(nil), "/r/toggle?id=1", nil, "0123456789abcdef")
 	evs := events(w.Body.String())
 	if len(evs) != 2 || evs[0] != regionEvent("row-1", `<li id="row-1" class="done">Row 1</li>`) || !strings.Contains(evs[1], "selector #_alder_shown") {
 		t.Fatalf("%q", evs)
 	}
 }
 
-// A route that sets no Before (not a message's re-render) is morphed whole.
+// A write that renders no before-view is morphed whole.
 func TestRerender_NoBeforeMorphsBody(t *testing.T) {
 	a := newFrApp(3)
 	shown := shownNow(t, a, testOpts(nil))
 	a.noBefore = true
-	if w := post(t, a, testOpts(nil), "/_m/R/Toggle?id=1", nil, shown); !isBodyMorph(t, w) {
+	if w := post(t, a, testOpts(nil), "/r/toggle?id=1", nil, shown); !isBodyMorph(t, w) {
 		t.Fatalf("%q", w.Body.String())
 	}
 }
@@ -238,7 +248,7 @@ func TestRerender_NoBeforeMorphsBody(t *testing.T) {
 // Nothing changed: no element event at all, not even the shown hash's.
 func TestRerender_NoChangeSendsNoElements(t *testing.T) {
 	a := newFrApp(3)
-	w := post(t, a, testOpts(nil), "/_m/R/Same", nil, shownNow(t, a, testOpts(nil)))
+	w := post(t, a, testOpts(nil), "/r/same", nil, shownNow(t, a, testOpts(nil)))
 	if w.Body.String() != "" || w.Code != 200 || w.Header().Get("Content-Type") != "text/event-stream" {
 		t.Fatalf("%d %q %q", w.Code, w.Header().Get("Content-Type"), w.Body.String())
 	}
@@ -251,20 +261,20 @@ func TestRerender_BeforePanicMorphsBody(t *testing.T) {
 	a.panicBefore = true
 	var logged []string
 	opts := testOpts(func(o *Options) { o.Log = func(level, msg string) { logged = append(logged, level+" "+msg) } })
-	w := post(t, a, opts, "/_m/R/Toggle?id=1", nil, shown)
+	w := post(t, a, opts, "/r/toggle?id=1", nil, shown)
 	if !isBodyMorph(t, w) || w.Header().Get(StatusHeader) != "" || !strings.Contains(w.Body.String(), `<li id="row-1" class="done">`) {
 		t.Fatalf("%q", w.Body.String())
 	}
-	if len(logged) != 1 || !strings.Contains(logged[0], "error POST /_m/R/Toggle?id=1: rendering the page before the message: before") {
+	if len(logged) != 1 || !strings.Contains(logged[0], "error GET /: rendering the page before the write: panic: before") {
 		t.Fatalf("logged %q", logged)
 	}
 }
 
-// A notice's toast needs the <al-toasts> region: a page without its own is morphed whole (the
+// A toast needs the <al-toasts> region: a page without its own is morphed whole (the
 // implicit region with it); a page with one gets its patches and then the toast.
 func TestRerender_NoticeWithoutToastsMorphsBody(t *testing.T) {
 	a := newFrApp(3)
-	w := post(t, a, testOpts(nil), "/_m/R/Toggle?id=1&notice=1", nil, shownNow(t, a, testOpts(nil)))
+	w := post(t, a, testOpts(nil), "/r/toggle?id=1&notice=1", nil, shownNow(t, a, testOpts(nil)))
 	evs := events(w.Body.String())
 	if !isBodyMorph(t, w) || !strings.Contains(evs[0], `<al-toasts popover="manual" data-ignore-morph></al-toasts>`) || len(evs) != 2 ||
 		!strings.Contains(evs[1], "data: selector al-toasts\ndata: mode append") {
@@ -272,7 +282,7 @@ func TestRerender_NoticeWithoutToastsMorphsBody(t *testing.T) {
 	}
 	a = newFrApp(3)
 	a.toasts = true
-	w = post(t, a, testOpts(nil), "/_m/R/Toggle?id=1&notice=1", nil, shownNow(t, a, testOpts(nil)))
+	w = post(t, a, testOpts(nil), "/r/toggle?id=1&notice=1", nil, shownNow(t, a, testOpts(nil)))
 	evs = events(w.Body.String())
 	if len(evs) != 3 || evs[0] != regionEvent("row-1", `<li id="row-1" class="done">Row 1</li>`) || !strings.Contains(evs[2], "data: selector al-toasts\ndata: mode append") {
 		t.Fatalf("%q", evs)
@@ -284,13 +294,13 @@ func TestRerender_NoticeWithoutToastsMorphsBody(t *testing.T) {
 // before and after, is left as the browser has it.
 func TestRerender_RejectedFormPatchesItsRegion(t *testing.T) {
 	a := newFrApp(3)
-	w := post(t, a, testOpts(nil), "/_m/R/Add", url.Values{"title": {""}}, shownNow(t, a, testOpts(nil)))
+	w := post(t, a, testOpts(nil), "/r/add", url.Values{"title": {""}}, shownNow(t, a, testOpts(nil)))
 	evs := events(w.Body.String())
 	if len(evs) != 2 || !strings.HasPrefix(evs[0], "event: datastar-patch-elements\ndata: selector #add\ndata: mode outer\n") || !strings.Contains(evs[0], "must not be empty") {
 		t.Fatalf("%q", evs)
 	}
 	shown := shownOf(evs[1])
-	w = post(t, a, testOpts(nil), "/_m/R/Toggle?id=1", nil, shown)
+	w = post(t, a, testOpts(nil), "/r/toggle?id=1", nil, shown)
 	evs = events(w.Body.String())
 	if len(evs) != 2 || evs[0] != regionEvent("row-1", `<li id="row-1" class="done">Row 1</li>`) || strings.Contains(w.Body.String(), "#add") {
 		t.Fatalf("%q", evs)
@@ -303,8 +313,8 @@ func TestRerender_CallsRendered(t *testing.T) {
 	var got []string
 	opts := testOpts(func(o *Options) { o.Rendered = func(rq *Request, body string) { got = append(got, body) } })
 	shown := shownNow(t, a, opts)
-	post(t, a, opts, "/_m/R/Toggle?id=1", nil, shown)
-	post(t, a, opts, "/_m/R/Toggle?id=1", nil, "")
+	post(t, a, opts, "/r/toggle?id=1", nil, shown)
+	post(t, a, opts, "/r/toggle?id=1", nil, "")
 	full := bodyOf(html.RenderWith(a.view(a.done, a.heading), &html.FormState{}))
 	if len(got) != 2 || got[1] != full || !strings.Contains(got[0], `<li id="row-1" class="done">`) || strings.Contains(got[0], "al-shown") {
 		t.Fatalf("%q", got)
@@ -316,11 +326,11 @@ func TestPanel_ListsRegionPatches(t *testing.T) {
 	t.Setenv("ALDER_DEV", "1")
 	a := newFrApp(3)
 	opts := testOpts(func(o *Options) { o.Dev = true })
-	w := post(t, a, opts, "/_m/R/Toggle?id=2", nil, shownNow(t, a, opts))
+	w := post(t, a, opts, "/r/toggle?id=2", nil, shownNow(t, a, opts))
 	if body := w.Body.String(); !strings.Contains(body, "<h3>Patches</h3><ul><li>#row-2</li><li>shown</li><li>panel</li></ul>") {
 		t.Fatalf("%s", body)
 	}
-	w = post(t, a, opts, "/_m/R/Same", nil, shownNow(t, a, opts))
+	w = post(t, a, opts, "/r/same", nil, shownNow(t, a, opts))
 	if body := w.Body.String(); !strings.Contains(body, "<h3>Patches</h3><ul><li>none</li><li>panel</li></ul>") {
 		t.Fatalf("%s", body)
 	}
@@ -335,16 +345,16 @@ func TestRerender_RepairedMarkupMorphsBody(t *testing.T) {
 			html.El("p", []html.Attr{html.A("id", "msg")}, html.Text(strconv.Itoa(n)), html.El("div", nil, html.Text("x")))))
 	}
 	routes := []Route{
-		{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response { return PageResponse(pageOf(n), &html.FormState{}, nil, false) }},
-		{Method: "POST", Pattern: "/_m/R/Inc", Handle: func(rq *Request) Response {
-			before := n
+		{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response { return PageResponse(pageOf(n), &html.FormState{}, nil) }},
+		{Method: "POST", Pattern: "/r/inc", Handle: func(rq *Request) Response {
+			before, _ := rq.RenderShown(nil)
 			n++
-			return PageResponse(pageOf(n), &html.FormState{}, nil, true).WithBefore(func() html.Node { return pageOf(before) })
+			return AnswerResponse(rt.Refresh(), before, nil)
 		}},
 	}
 	h := NewRouter(routes, testOpts(nil))
 	shown := shownOf(serveRaw(h, httptest.NewRequest("GET", "/", nil)).Body.String())
-	req := httptest.NewRequest("POST", "/_m/R/Inc", nil)
+	req := httptest.NewRequest("POST", "/r/inc", nil)
 	req.Header.Set("Datastar-Request", "true")
 	req.Header.Set(html.ShownHeader, shown)
 	w := serveRaw(h, req)
@@ -353,21 +363,23 @@ func TestRerender_RepairedMarkupMorphsBody(t *testing.T) {
 	}
 }
 
-// The before-render panic's log line masks a Sensitive path parameter and carries the request id.
+// The before-render panic's log line masks a Sensitive path parameter of the page the browser
+// is on and carries the request id.
 func TestRerender_BeforePanicLineIsMasked(t *testing.T) {
 	a := newFrApp(3)
-	routes := append(a.routes(), Route{Method: "POST", Pattern: "/_m/R/Reset/{token}", Handle: func(rq *Request) Response {
-		resp := PageResponse(a.view(a.done, a.heading), &html.FormState{}, nil, true)
-		resp.Before = func() html.Node { panic("before") }
-		return resp
-	}})
+	routes := append(a.routes(), Route{Method: "GET", Pattern: "/reset/{token}", Handle: func(rq *Request) Response { panic("before") }},
+		Route{Method: "POST", Pattern: "/r/reset", Handle: func(rq *Request) Response {
+			before, _ := rq.RenderShown(nil)
+			return AnswerResponse(rt.Refresh(), before, nil)
+		}})
 	var logged []string
 	opts := testOpts(func(o *Options) { o.Log = func(level, msg string) { logged = append(logged, level+" "+msg) } })
-	req := httptest.NewRequest("POST", "/_m/R/Reset/hunter2secret", nil)
+	req := httptest.NewRequest("POST", "/r/reset", nil)
 	req.Header.Set("Datastar-Request", "true")
+	req.Header.Set(html.PageHeader, "/reset/hunter2secret")
 	req.Header.Set(html.ShownHeader, shownNow(t, a, testOpts(nil)))
 	serveRaw(NewRouter(routes, opts), req)
-	if len(logged) != 1 || strings.Contains(logged[0], "hunter2secret") || !strings.Contains(logged[0], "/_m/R/Reset/••••: rendering the page before the message: before") || !strings.Contains(logged[0], " rid=") {
+	if len(logged) < 1 || strings.Contains(strings.Join(logged, "\n"), "hunter2secret") || !strings.Contains(logged[0], "/reset/••••: rendering the page before the write: panic: before") || !strings.Contains(logged[0], " rid=") {
 		t.Fatalf("logged %q", logged)
 	}
 }

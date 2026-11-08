@@ -266,8 +266,15 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 	if len(submitted) > 0 {
 		post = "(" + route + " { " + strings.Join(submitted, ", ") + " })"
 	}
+	notice := ""
+	if into != nil {
+		notice = "Saved" // the body's `Response.success "Saved"`
+	}
 	tests := formTests(formTestSpec{Form: o.Name, Page: o.Page, Open: page, Submit: post, Raw: post, Answer: answer,
-		Fields: rec.Fields, Types: ftypes, Into: into, NoEmpty: attach != nil}, tb, imports)
+		Fields: rec.Fields, Types: ftypes, Into: into, NoEmpty: attach != nil, Notice: notice}, tb, imports)
+	if attach == nil {
+		tests = append(tests, routeFormGate(p, r, o, tb, page, post, rec.Fields, into)...)
+	}
 	if err := addTests(e, m, tests); err != nil {
 		return nil, err
 	}
@@ -291,4 +298,50 @@ func attachForm(e *srcEdit, r *syntax.RouteDecl, name string) error {
 	at := q + len(r.Path) + 2
 	e.insertAt(r.Span.Start.Line, at+1, " form "+name)
 	return nil
+}
+
+// routeFormGate are the tests that the form's write route guards itself (#160: a write route runs
+// no `load`, so its own `requires` is all that stops it), each posting the form from its page,
+// opened by a signed-in user (tb's setup: the login and the rows the page's path names), after
+// the session changed; nothing is written:
+//   - the session ended (a visitor): the route's `requires user` sends them to log in;
+//   - the cookie's role is another than the route's `role` ones: 404, before the form is decoded.
+func routeFormGate(p *Program, r *Route, o FormOptions, setup *testBuilder, page, post string, fields []types.Field, into *Table) []TestData {
+	if p.Session == nil || !slices.Contains(r.Keys, "user") {
+		return nil
+	}
+	var tests []TestData
+	refused := func(name, answer string, change func(tb *testBuilder)) {
+		tb := *setup // its maps are shared: nothing below inserts a row
+		tb.lines = slices.Clone(setup.lines)
+		var values []string
+		for _, f := range fields {
+			values = append(values, f.Name+": "+tb.sample(f.Type, f.Name, 1))
+		}
+		rowsBefore := 0
+		if into != nil {
+			rowsBefore = tb.counts[into.Module]
+		}
+		tb.let("let _ <- Test.get (%s)", page)
+		change(&tb)
+		tb.let("let r <- Test.submit %s { %s }", post, strings.Join(values, ", "))
+		res := "r.answer == " + answer
+		if into != nil {
+			tb.let("let rows <- Db.from %s |> Db.count", recordName(into, o.Page))
+			res = fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", answer, rowsBefore)
+		}
+		tests = append(tests, TestData{Name: quote(name), Lines: tb.lines, Result: res})
+	}
+	if p.Login != "" {
+		refused("a visitor cannot submit "+o.Name, "Redirected ("+pageLit(p.Login, nil)+")", func(tb *testBuilder) { tb.logout() })
+	}
+	if len(r.Roles) > 0 && p.Session.Role != nil {
+		for _, c := range p.Session.Role.Ctors {
+			if !slices.Contains(r.Roles, c) {
+				refused(article(c)+" cannot submit "+o.Name, "PageMissing", func(tb *testBuilder) { tb.login(c) })
+				break
+			}
+		}
+	}
+	return tests
 }

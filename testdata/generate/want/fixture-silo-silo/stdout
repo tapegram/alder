@@ -15,26 +15,26 @@ edited migrations/schema.json
 +  role: User.Role = Member,
 +}
  
- login = Auth.Login
+ login = Auth.Login.Login
  
- choose org = Orgs
+ choose org = Orgs.Orgs
  
 -silo org { Project, Issue }
 +silo org { Project, Issue, Activity }
  
- msg Logout
+ route Logout = POST "/_/Logout" { }
  
-@@ -27,21 +31,33 @@
+@@ -25,21 +29,33 @@
  }
  
- error : Error -> Html Never
+ error : Error -> Html
 -error err =
 -  <Layout.Page title="Error">
 -    <h1>Something went wrong</h1>
 -  </Layout.Page>
 +error err = <Layout.Page title="Error"><h1>Something went wrong</h1></Layout.Page>
  
- notFound : Html Never
+ notFound : Html
 -notFound =
 -  <Layout.Page title="Not found">
 -    <h1>Not found</h1>
@@ -54,16 +54,16 @@ edited migrations/schema.json
 +    org: Nothing,
 +    role: Admin,
 +  }
-   let _ <- Test.get (Orgs {})
+   let _ <- Test.get (Orgs.Orgs {})
    let r <- Test.click Logout
--  Task.succeed ({ answer: r.answer, user: r.session.user, role: r.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, role: Member })
+-  Task.succeed ({ answer: r.answer, user: r.session.user, role: r.session.role } == { answer: Redirected (Auth.Login.Login {}), user: Nothing, role: Member })
 +  Task.succeed (
 +    {
 +      answer: r.answer,
 +      user: r.session.user,
 +      role: r.session.role,
 +    } == {
-+      answer: Redirected (Auth.Login {}),
++      answer: Redirected (Auth.Login.Login {}),
 +      user: Nothing,
 +      role: Member,
 +    }

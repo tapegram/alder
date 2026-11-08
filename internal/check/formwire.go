@@ -8,7 +8,7 @@ import (
 )
 
 // formWireNames warns (W0008, #63) about a GET `<form>` (method "get" or none, and no `submit`
-// message) whose literal `action` is the path of a page or of a GET route, when a plain `<input>`, `<select>` or
+// route) whose literal `action` is the path of a GET route, when a plain `<input>`, `<select>` or
 // `<textarea>` inside it (without a `form` attribute naming another form) has a literal `name`
 // that is one of the page's query parameters declared with another wire name, and no key the
 // page reads (`electionId: Text = "" as "ElectionId"`): the browser sends
@@ -106,10 +106,10 @@ func (mc *modCtx) formInputWires(e syntax.Expr, page string, wires map[string]st
 	}
 }
 
-// pageAt is the page module or GET route whose path a form's literal `action` names
-// (`/r/17/wood/Results`; a query or fragment and a trailing slash are ignored, and a `{param}`
-// segment takes any one segment), as messages name it (`page \`Wood\“, `route
-// \`Results.Index\“), and its declared parameters; "" and nil for none. As the router does, a
+// pageAt is the GET route whose path a form's literal `action` names (`/r/17/wood/Results`; a
+// query or fragment and a trailing slash are ignored, and a `{param}` segment takes any one
+// segment), as messages name it (`route \`Results.Index\“), and its declared parameters; "" and
+// nil for none. As the router does, a
 // literal segment wins over a parameter, left to right (`/todos/new` before `/todos/{id}`).
 func (c *Checker) pageAt(action string) (string, *syntax.RecordType) {
 	if i := strings.IndexAny(action, "?#"); i >= 0 {
@@ -127,9 +127,6 @@ func (c *Checker) pageAt(action string) (string, *syntax.RecordType) {
 	}
 	var targets []target
 	for _, name := range c.prog.Order {
-		if pd := c.prog.Pages[name]; pd != nil && c.prog.IsPageModule(name) {
-			targets = append(targets, target{"page `" + name + "`", pd.Path, pd.Params})
-		}
 		for _, r := range c.routes[name] {
 			if !isWrite(r.Method) {
 				targets = append(targets, target{"route `" + name + "." + r.Name + "`", r.Path, r.Decl.Params})

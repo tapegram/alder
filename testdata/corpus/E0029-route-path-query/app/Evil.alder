@@ -1,0 +1,9 @@
+module Evil
+
+route Evil = GET "/a?b=1" { }
+
+Evil.load : Evil.Params -> Session -> Query Int
+Evil.load params session = Query.succeed 1
+
+Evil.view : Int -> Session -> Html
+Evil.view n session = <h1>Evil</h1>

@@ -1,16 +1,16 @@
 module Todos.Index
 
-page "/" { }
+route Index = GET "/" { }
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <p>hi</p>
+Index.view : Model -> Session -> Html
+Index.view model session = <p>hi</p>
 
 test "a 404 written as NotFound" = {
-  let r <- Test.open (Todos.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == NotFound)
 }

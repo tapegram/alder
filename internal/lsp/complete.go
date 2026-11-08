@@ -300,8 +300,6 @@ func (cx *completion) declItems(mod *syntax.Module, n int) []completionItem {
 			out = append(out, cx.item(d.Name, kindClass, "", n))
 		case *syntax.FormDecl:
 			out = append(out, cx.item(d.Name, kindClass, "", n))
-		case *syntax.MsgDecl:
-			out = append(out, cx.ctorItem(mod.Name, d.Name, n))
 		}
 	}
 	return out
@@ -363,7 +361,7 @@ func (cx *completion) fields() ([]completionItem, bool) {
 	var out []completionItem
 	for _, f := range r.Fields {
 		detail := f.Name + " : " + types.StringQ(cx.a.res.U.Apply(f.Type), cx.m.Name, cx.a.prog.Qualify(cx.m.Name))
-		if w := pageParamWire(cx.a, r, f.Name); w != "" {
+		if w := routeParamWire(cx.a, r, f.Name); w != "" {
 			detail += " as " + strconv.Quote(w)
 		}
 		out = append(out, cx.item(f.Name, kindField, detail, len(g[2])))
@@ -371,19 +369,20 @@ func (cx *completion) fields() ([]completionItem, bool) {
 	return out, true
 }
 
-// pageParamWire is the wire name of field name when r is a page's Params record and the field
-// is declared `as "Key"` (#55), else "".
-func pageParamWire(a *analysis, r *types.Record, name string) string {
-	if r.Name != "Params" || a.res == nil {
+// routeParamWire is the wire name of field name when r is a route's parameters record
+// (`Index.Params`) and the field is declared `as "Key"` (#55), else "".
+func routeParamWire(a *analysis, r *types.Record, name string) string {
+	if a.res == nil || !strings.HasSuffix(r.Name, ".Params") {
 		return ""
 	}
-	pi := a.res.Pages[r.Module]
-	if pi == nil || pi.Decl == nil || pi.Decl.Params == nil {
-		return ""
-	}
-	for _, f := range pi.Decl.Params.Fields {
-		if f.Name == name {
-			return f.Wire
+	for _, ri := range a.res.Routes[r.Module] {
+		if ri.Params == nil || ri.Params.Name != r.Name || ri.Decl == nil || ri.Decl.Params == nil {
+			continue
+		}
+		for _, f := range ri.Decl.Params.Fields {
+			if f.Name == name {
+				return f.Wire
+			}
 		}
 	}
 	return ""
@@ -898,7 +897,7 @@ func (cx *completion) patterns() ([]completionItem, bool) {
 }
 
 // otherwise: the locals in scope, the module's declarations, the imported modules (by their
-// qualifiers, and an imported page also by its full path for its page value), the standard
+// qualifiers, and an imported page also by its full path for its route value), the standard
 // library's modules and the keywords. Nothing right after a `.`, where none of them
 // can follow.
 func (cx *completion) otherwise() []completionItem {
@@ -926,7 +925,7 @@ func (cx *completion) otherwise() []completionItem {
 			} else {
 				add(cx.item(im.Module, kindModule, "", n)) // no usable qualifier (E0206)
 			}
-			if cx.a.prog.IsPageModule(im.Module) { // a page value keeps its full path (rule 6)
+			if cx.a.prog.IsRouteModule(im.Module) { // a route value keeps its full path (rule 6)
 				add(cx.item(im.Module, kindModule, "", n))
 			}
 		}

@@ -7,8 +7,8 @@ import (
 	"alder/internal/syntax"
 )
 
-// RemovePage generates `alder remove route <Module>`: the route or page module's file removed.
-// It refuses a module that is neither, and a page something else still names (a link, a Redirect, a
+// RemovePage generates `alder remove route <Module>`: the route module's file removed.
+// It refuses a module that is not one, and a route something else still names (a link, a Redirect, a
 // test, `login = …`): the check of the app without it lists those uses, and nothing is removed
 // until they are gone.
 func RemovePage(p *Program, module string) ([]Edit, error) {
@@ -19,20 +19,15 @@ func RemovePage(p *Program, module string) ([]Edit, error) {
 		edits := []Edit{{Path: rs[0].File, Delete: true}}
 		return edits, stillNamed(p, edits, "`"+module+"`", rs[0].File)
 	}
-	pg, m, err := pageModule(p, module)
-	if err != nil {
-		return nil, err
-	}
-	edits := []Edit{{Path: pg.File, Delete: true}}
-	return edits, stillNamed(p, edits, "`"+module+"`", m.File)
+	return nil, notRouteModule(p, module)
 }
 
 // RemoveTable generates `alder remove table <T>`: the table's declaration removed with its id
 // brand (`type TId = brand Text`) and the module's tests, or, when the module holds nothing
 // else, the module's file; the migration that drops the table (its DROPS DATA line: the rows
 // are lost) is the caller's (Options.Migrate). It refuses a name that is not a table of the app,
-// and a table something else still names (a reference `@ref T`, a page, a query, a test, the
-// admin's pages: remove those first — for the admin, `alder remove page` its pages of the table,
+// and a table something else still names (a reference `@ref T`, a route, a query, a test, the
+// admin's routes: remove those first — for the admin, `alder remove route` its routes of the table,
 // then `alder regen admin`): the check of the app without it lists those uses.
 func RemoveTable(p *Program, name string) ([]Edit, error) {
 	t := p.TableNamed(name)

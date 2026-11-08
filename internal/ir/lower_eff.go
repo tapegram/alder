@@ -86,8 +86,8 @@ func (l *lowerer) testFake(fn syntax.Expr, args []syntax.Expr, t types.Type) Exp
 	return &TestFake{Typed: Typed{t}, Fake: l.fakesByCap[ct.Ref.Name]}
 }
 
-// testStep lowers a browser step of module Test (`Test.login s`, `Test.get p`, `Test.open p`,
-// `Test.submit F r`, `Test.submitRaw F fields`, `Test.click m`) of type t, or returns nil when
+// testStep lowers a browser step of module Test (`Test.login s`, `Test.get r`, `Test.open r`,
+// `Test.submit r f`, `Test.submitRaw r fields`, `Test.click r`) of type t, or returns nil when
 // fn is not one. The checker accepted each applied to all its arguments, in the shapes below.
 func (l *lowerer) testStep(fn syntax.Expr, args []syntax.Expr, t types.Type) Expr {
 	v, ok := fn.(*syntax.Var)
@@ -103,106 +103,29 @@ func (l *lowerer) testStep(fn syntax.Expr, args []syntax.Expr, t types.Type) Exp
 	case "get", "open", "fetch":
 		get := &TestGet{Typed: Typed{t}, Open: v.Ref.Name == "open", Fetch: v.Ref.Name == "fetch"}
 		switch ref := l.expr(args[0]).(type) {
-		case *PageRef:
-			get.Page, get.Params = ref.Page, ref.Params
 		case *RouteRef:
 			get.Route, get.Params = ref.Route, ref.Params
 		default:
-			return bug("not a page or route value")
+			return bug("not a route value")
 		}
 		return get
-	case "submit", "submitRaw":
-		if l.submittedRoute(args[0]) != nil { // a route's form, posted by naming the route
-			ref, ok := l.expr(args[0]).(*RouteRef)
-			if !ok || ref.Route.Form == nil {
-				return bug("a route without a form")
-			}
-			if v.Ref.Name == "submit" {
-				return &TestSubmit{Typed: Typed{t}, Form: ref.Route.Form, Route: ref.Route, Params: ref.Params, Record: l.expr(args[1])}
-			}
-			return &TestSubmitRaw{Typed: Typed{t}, Form: ref.Route.Form, Route: ref.Route, Params: ref.Params, Fields: l.expr(args[1])}
-		}
-		var form *Form
-		var msg *Msg
-		var page *Page
-		var params Expr
-		if ct, _ := args[0].(*syntax.CtorRef); ct != nil && ct.Ref.Kind == syntax.RefType { // a form
-			form = l.forms[key(ct.Ref.Module, ct.Ref.Name)]
-			msgs := l.out.AppMsgs
-			if ct.Ref.Module != "App" {
-				page = l.pages[ct.Ref.Module]
-				if page == nil {
-					return bug("a form of no page")
-				}
-				msgs = page.Msgs
-			}
-			for _, m := range msgs {
-				if m.Form == form && form != nil {
-					msg = m
-					break
-				}
-			}
-		} else { // the message posting it, with its parameters
-			c, ok := l.expr(args[0]).(*Ctor)
-			if !ok {
-				return bug("not a form or a message")
-			}
-			msg = l.msgs[key(c.U.Module, c.Name)]
-			if msg != nil {
-				form = msg.Form
-				if c.U.Module != "App" {
-					page = l.pages[c.U.Module]
-				}
-				if msgHasParams(msg) {
-					params = c.Payload
-				}
-			}
-		}
-		if msg == nil || form == nil {
-			return bug("no message posts the form")
+	case "submit", "submitRaw": // a route's form, posted by naming the route
+		ref, ok := l.expr(args[0]).(*RouteRef)
+		if !ok || ref.Route.Form == nil {
+			return bug("a route without a form")
 		}
 		if v.Ref.Name == "submit" {
-			return &TestSubmit{Typed: Typed{t}, Form: form, Msg: msg, Page: page, Params: params, Record: l.expr(args[1])}
+			return &TestSubmit{Typed: Typed{t}, Form: ref.Route.Form, Route: ref.Route, Params: ref.Params, Record: l.expr(args[1])}
 		}
-		return &TestSubmitRaw{Typed: Typed{t}, Form: form, Msg: msg, Page: page, Params: params, Fields: l.expr(args[1])}
+		return &TestSubmitRaw{Typed: Typed{t}, Form: ref.Route.Form, Route: ref.Route, Params: ref.Params, Fields: l.expr(args[1])}
 	case "click":
-		arg := l.expr(args[0])
-		if ref, ok := arg.(*RouteRef); ok {
-			return &TestClick{Typed: Typed{t}, Route: ref.Route, Params: ref.Params}
-		}
-		c, ok := arg.(*Ctor)
+		ref, ok := l.expr(args[0]).(*RouteRef)
 		if !ok {
-			return bug("not a message")
+			return bug("not a route value")
 		}
-		owner := c.U.Module
-		msg := l.msgs[key(owner, c.Name)]
-		if msg == nil {
-			return bug("not a message")
-		}
-		var page *Page
-		if owner != "App" {
-			page = l.pages[owner]
-		}
-		var params Expr
-		if msgHasParams(msg) {
-			params = c.Payload
-		}
-		return &TestClick{Typed: Typed{t}, Page: page, Msg: msg, Params: params}
+		return &TestClick{Typed: Typed{t}, Route: ref.Route, Params: ref.Params}
 	}
 	return nil
-}
-
-// msgHasParams reports whether message m has parameters besides its form.
-func msgHasParams(m *Msg) bool {
-	if m.Params == nil {
-		return false
-	}
-	for _, f := range m.Params.Fields {
-		if f.Name != "form" {
-			return true
-		}
-	}
-	return false
 }
 
 // lowerArgs lowers a head's arguments, then piped. A table argument (`Todo` in `Db.get Todo`)
@@ -279,7 +202,7 @@ func (l *lowerer) build(h *effHead, args []Expr, t types.Type) Expr {
 	case "Query.notFound", "Task.notFound":
 		return &EffNotFound{Typed: Typed{t}}
 	case "Query.redirect":
-		return &EffRedirect{Typed: Typed{t}, Page: args[0]}
+		return &EffRedirect{Typed: Typed{t}, To: args[0]}
 	case "Test.run":
 		return &TestRun{Typed: Typed{t}, Task: args[0]}
 	case "Test.trace":

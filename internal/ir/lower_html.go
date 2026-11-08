@@ -67,17 +67,10 @@ func (l *lowerer) element(x *syntax.Element) Expr {
 		}
 		return el
 	}
-	out := &FormEl{Typed: Typed{t}, Attrs: attrs}
-	out.Msg, out.Page = l.submitted(submit.Value)
-	if out.Msg == nil {
-		out.Route = l.submittedRoute(submit.Value)
-	}
+	out := &FormEl{Typed: Typed{t}, Attrs: attrs, Route: l.submittedRoute(submit.Value)}
 	saved := l.form
 	l.form = nil
-	switch {
-	case out.Msg != nil:
-		l.form = out.Msg.Form
-	case out.Route != nil:
+	if out.Route != nil {
 		l.form = out.Route.Form
 	}
 	out.Children = l.children(x.Children)
@@ -277,25 +270,6 @@ func (l *lowerer) children(cs []syntax.Expr) []Expr {
 		out = append(out, l.htmlNode(c))
 	}
 	return out
-}
-
-// submitted finds the message a submit value names: a constructor, bare or applied.
-func (l *lowerer) submitted(e syntax.Expr) (*Msg, *Page) {
-	var ct *syntax.CtorRef
-	switch v := e.(type) {
-	case *syntax.CtorRef:
-		ct = v
-	case *syntax.App:
-		ct, _ = v.Fn.(*syntax.CtorRef)
-	}
-	if ct == nil || ct.Ref.Kind != syntax.RefCtor {
-		return nil, nil
-	}
-	msg := l.msgs[key(ct.Ref.Module, ct.Ref.Name)]
-	if msg == nil {
-		return nil, nil
-	}
-	return msg, l.pages[ct.Ref.Module]
 }
 
 // submittedRoute finds the write route a submit value names: a route constructor, bare or

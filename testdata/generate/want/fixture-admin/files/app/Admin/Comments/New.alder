@@ -342,7 +342,7 @@ test "a long list of posts offers 50, and the search narrows it" = {
       total: 203,
       found: True,
       answer: Redirected (New { findPost: "zz" }),
-      visitor: Redirected (Auth.Login {}),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -474,7 +474,7 @@ test "a long list of users offers 50, and the search narrows it" = {
       total: 203,
       found: True,
       answer: Redirected (New { findAuthor: "zz" }),
-      visitor: Redirected (Auth.Login {}),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -557,7 +557,9 @@ test "a visitor cannot create a comment" = {
     body: Text.NonEmpty "body-1",
   }
   let rows <- Db.from Comment |> Db.count
-  Task.succeed ({ answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login {}), rows: 0 })
+  Task.succeed (
+    { answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login.Login {}), rows: 0 }
+  )
 }
 
 test "a Reader cannot create a comment, even one made Admin since logging in" = {
@@ -628,7 +630,7 @@ test "a demoted Admin cannot create a comment" = {
 
 test "a visitor is sent to log in" = {
   let r <- Test.open (New {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {

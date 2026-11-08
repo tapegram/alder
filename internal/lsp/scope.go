@@ -156,8 +156,6 @@ func declName(d syntax.Spanned) (name string, skip int, ok bool) {
 		return d.Name, len("table"), true
 	case *syntax.FormDecl:
 		return d.Name, len("form"), true
-	case *syntax.MsgDecl:
-		return d.Name, len("msg"), true
 	case *syntax.CapDecl:
 		return d.Name, len("capability"), true
 	case *syntax.FakeDecl:
@@ -394,8 +392,6 @@ func declRef(mod string, d syntax.Decl) (syntax.Ref, bool) {
 		return syntax.Ref{Kind: syntax.RefType, Module: mod, Name: d.Name}, true
 	case *syntax.FormDecl:
 		return syntax.Ref{Kind: syntax.RefType, Module: mod, Name: d.Name}, true
-	case *syntax.MsgDecl:
-		return syntax.Ref{Kind: syntax.RefCtor, Module: mod, Name: d.Name}, true
 	case *syntax.CapDecl:
 		return syntax.Ref{Kind: syntax.RefCapability, Module: mod, Name: mod + "." + d.Name}, true
 	}
@@ -422,7 +418,7 @@ func qualifiedModule(a *analysis, m *syntax.Module, q string) string {
 }
 
 // moduleNamed is the module a written name q means in m: an import's qualifier (design rule 1),
-// else a module's full path (a page value's, or a full path the resolver reports as E0205), else
+// else a module's full path (a route value's, or a full path the resolver reports as E0205), else
 // a standard-library module; nil when it is none. m may be nil, which leaves the qualifiers out.
 func moduleNamed(a *analysis, m *syntax.Module, q string) *syntax.Module {
 	if m != nil {
@@ -447,7 +443,7 @@ func modulePath(a *analysis, name string) *syntax.Module {
 }
 
 // findDecl is the node that declares ref in its module (app or standard library): a value, a
-// type, table, form or message, a union constructor, a page's `page` line, or a capability or
+// type, table, form or route, a union constructor, or a capability or
 // its entry. nil when there is none.
 func findDecl(a *analysis, ref syntax.Ref) (*syntax.Module, syntax.Spanned) {
 	mod := modulePath(a, ref.Module)
@@ -482,14 +478,6 @@ func findDecl(a *analysis, ref syntax.Ref) (*syntax.Module, syntax.Spanned) {
 			}
 		case *syntax.FormDecl:
 			if ref.Kind == syntax.RefType && d.Name == ref.Name {
-				return mod, d
-			}
-		case *syntax.MsgDecl:
-			if ref.Kind == syntax.RefCtor && d.Name == ref.Name {
-				return mod, d
-			}
-		case *syntax.PageDecl:
-			if ref.Kind == syntax.RefPage {
 				return mod, d
 			}
 		}

@@ -696,7 +696,7 @@ func TestBook_Classify(t *testing.T) {
 		{"-- a comment\n\nmodule Todos.Index\n", Module},
 		{"greeting : Text\ngreeting = \"hello\"\n", Decls},
 		{"add a b = a + b\n", Decls},
-		{"Item : { todo: Todo } -> Html Msg\n", Decls},
+		{"Item : { todo: Todo } -> Html\n", Decls},
 		{"type Filter = All | Active\n", Decls},
 		{"table Todo {\n  id: TodoId @id,\n}\n", Decls},
 		{"msg Toggle { id: TodoId }\n", Decls},
@@ -1463,6 +1463,42 @@ func TestBook_CommandsFail(t *testing.T) {
 		}
 		if msgs, _ := runCommands(t, bin, ch, c.name); len(msgs) != c.fails {
 			t.Errorf("%s: %d failures, want %d: %q", c.name, len(msgs), c.fails, msgs)
+		}
+	}
+}
+
+// TestBook_HtmlTakesNoArgument fails when a chapter writes `Html` with a type argument
+// (`Html Never`, `Html Msg`, `Html a`), which is E0046. The few places that name the old form
+// on purpose are listed by file and line text: the E0046 entries, the description of `alder
+// fix --routes`, and the history in the rationale.
+func TestBook_HtmlTakesNoArgument(t *testing.T) {
+	old := regexp.MustCompile(`Html (Never|Msg|[a-z]\b)`)
+	allowed := map[string][]string{
+		"05-html.md":      {"It takes no type argument: `Html Msg`, `Html a` and", "`Html Never` are E0046, and"},
+		"B-pitfalls.md":   {"card) alike. `Html` takes no type argument: `Html Msg`, `Html a` and", "`Html Never` are E0046."},
+		"11-tooling.md":   {"\"Qualified declarations\"), and `Html Msg` becomes `Html`.", "`Reject t` is `Response.invalid t`, and `Html Msg` is `Html`."},
+		"12-rationale.md": {"went, and so did the type parameter of `Html` (`Html a` is E0046)", "inside any `Html a`, so a shared layout", "type-check. `view : Model -> Session -> Html Msg` removes", "unqualified constructors, `Html Msg` on msg-less pages", "`App.update` may `Rerender`; shared components are `Html a`", "- a component typed `Html Msg` outside a page module;"},
+	}
+	files, err := filepath.Glob("*.md")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no chapters found: %v", err)
+	}
+	for _, f := range files {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+	lines:
+		for i, line := range strings.Split(string(src), "\n") {
+			if !old.MatchString(line) {
+				continue
+			}
+			for _, ok := range allowed[f] {
+				if strings.Contains(line, ok) {
+					continue lines
+				}
+			}
+			t.Errorf("%s:%d: `Html` takes no type argument now (E0046): %s", f, i+1, strings.TrimSpace(line))
 		}
 	}
 }

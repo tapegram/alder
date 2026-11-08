@@ -5,8 +5,8 @@ trace : Task (List Text)
 -- special form: the argument is a capability name (one whose module declares a fake)
 fake : Capability -> Task Unit
 
--- The browser steps (special forms, only inside a `test`). Each requests a route or page, or posts
--- a message, the way a browser does, through the app's real routes, inside the test's transaction.
+-- The browser steps (special forms, only inside a `test`). Each requests a route the way a browser
+-- does, through the app's real routes, inside the test's transaction.
 -- special form: the argument is App's session record
 login : Session -> Task Unit
 -- the membership a session field's `via` table records: a row of it for the user and the key's
@@ -19,23 +19,20 @@ setClock : Time -> Task Unit
 advance : Int -> Task Unit
 -- Every step's result but fetch's holds `url`, the URL of the page the browser holds after it,
 -- and `status`, the code of the step's last response (422 for `Response.invalid`).
--- special form: the argument is a GET route (`Todos.Row { id: id }`) or a page value
--- (`Todos.Index { filter: All }`); `model` is what the route's `load` gives, or the page's
--- `Model`, which must be a record; the test fails unless the route or page is shown
+-- special form: the argument is a GET route (`Todos.Row { id: id }`); `model` is what the route's
+-- `load` gives; the test fails unless the route is shown
 get : Route -> Task { model: model, session: Session, doc: Doc, url: Text, status: Int }
--- special form: the argument is a GET route or a page value; the answer says what the request came to
+-- special form: the argument is a GET route; the answer says what the request came to
 open : Route -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
--- special form: the argument is a GET route or a page value; the raw answer, redirects not followed
+-- special form: the argument is a GET route; the raw answer, redirects not followed
 fetch : Route -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }
 -- special form: the first argument is a write route with `form F` (`Create`, or `Edit { id: id }`
--- with its parameters), and the second F's record; or a form a page declares (`NewTodo`, or
--- `Todos.Index.NewTodo` from another module), or the message posting it, and that form's record
+-- with its parameters), and the second F's record
 submit : target -> f -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
 -- special form: the first argument is as submit's, the second the fields to post as text
 submitRaw : target -> List { name: Text, value: Text } -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
 -- special form: the argument is a route without `form` (`Row { id: id }`, a GET route, fetches it
--- and patches the held page; `Toggle { id: id }`, a write route, sends it), or a message of a
--- page or of App (`Toggle { id: id }`, `App.Logout`)
+-- and patches the held page; `Toggle { id: id }`, a write route, sends it; `App.Logout`, App's)
 click : target -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
 -- GETs the URL the browser holds and fails unless the body is the one it holds: the check that
 -- what the steps patched in is what the page renders
@@ -49,4 +46,4 @@ texts : Text -> Doc -> List Text
 has : Text -> Doc -> Bool
 count : Text -> Doc -> Int
 attr : Text -> Text -> Doc -> Maybe Text
-doc : Html a -> Doc
+doc : Html -> Doc

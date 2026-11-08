@@ -1,0 +1,8 @@
+app/App.alder:1:1 E0010 `App` has no `error : Error -> Html`
+app/App.alder:1:1 E0010 a route uses `requires`, but `App` has no `login`
+app/P.alder:7:1 E0043 route `Dec` is a POST route: it needs `Dec.update : Dec.Params -> Session -> Task Response`
+app/P.alder:13:12 E0401 `Task` cannot run inside a `Query`; `load` and `Query` blocks can only read
+app/P.alder:27:10 E0043 `P.view` must have type `Model -> Session -> Html`
+  fix 27:10-27:31 Model -> Session -> Html
+app/Q.alder:7:10 E0043 `Q.load` must have type `Q.Params -> Session -> Query Model`
+  fix 7:10-7:33 Q.Params -> Session -> Query Model

@@ -1,19 +1,26 @@
 module App
 
-import User
 import Org
+import User
 
-session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Reader }
+session {
+  user: Maybe User.UserId,
+  org: Maybe Org.OrgId via Membership,
+  role: User.Role = Reader,
+}
 
-login = Login
+login = Login.Login
 
-choose user = Orgs
-choose region = Orgs
-choose org = Picker
-choose org = Orgs
+choose user = Orgs.Orgs
 
-error : Error -> Html Never
+choose region = Orgs.Orgs
+
+choose org = Picker.Picker
+
+choose org = Orgs.Orgs
+
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>not found</p>

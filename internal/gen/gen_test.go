@@ -421,7 +421,7 @@ func TestGen_AlButtonAnchorAttrs(t *testing.T) {
 		t.Errorf("%d html.M(\"target\", model.T), want 2 (both branches of the disabled `if`):\n%s", n, src)
 	}
 	contains(t, []byte(src),
-		`html.El("a", []html.Attr{html.A("href", rt.PageURL(`,
+		`html.El("a", []html.Attr{html.A("href", rt.RouteURL(`,
 		`html.A("target", "_blank"), html.A("rel", "noopener"), `+reload+`, html.A("download", "a.txt")`,
 		`html.El("a", []html.Attr{html.A("aria-disabled", "true"), html.A("target", "_blank"), `+reload+`}`,
 	)
@@ -472,43 +472,6 @@ node v = Node { value: v, size: 1 }
 		"U__Tree[string]{Tag: is__U__Tree__Leaf}",
 		"func U__sizeOf[A any](t U__Tree[A]) int64 {",
 		"U__Tree__Node__[string](payload__U__Tree__Node[string]{Value: v, Size: 1})",
-	)
-	vet(t, files)
-}
-
-// A page that declares no messages has an empty Msg, so `match msg { }` is exhaustive with no
-// arms. Lowering used to return the match's (nil) fallback for no rows, which reached gen as a
-// nil expression and panicked with "gen: cannot emit <nil>".
-func TestGen_MatchNoArms(t *testing.T) {
-	files := emitSource(t, map[string]string{
-		"App.alder": `module App
-
-session { }
-
-error : Error -> Html Never
-error err = <html><head><title>E</title></head><body><p>e</p></body></html>
-
-notFound : Html Never
-notFound = <html><head><title>NF</title></head><body><p>nf</p></body></html>
-`,
-		"P.alder": `module P
-
-page "/" { }
-
-type Model = { }
-
-load : Params -> Session -> Query Model
-load params session = Query.succeed {}
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg { }
-
-view : Model -> Session -> Html Msg
-view model session = <html><head><title>P</title></head><body><p>p</p></body></html>
-`,
-	})
-	contains(t, files["P_alder.go"],
-		"func P__update(msg P__Msg, model P__Model, session App__Session) eff.Task[rt.Nav] {\n\tswitch msg.Tag {\n\t}\n\tpanic(\"unreachable\")\n}",
 	)
 	vet(t, files)
 }
@@ -597,7 +560,7 @@ func TestGoType(t *testing.T) {
 		{types.Unit, "struct{}"},
 		{types.Date, "rt.Date"},
 		{types.Time, "time.Time"},
-		{types.Page, "rt.Route"}, // Page is Route until PR 9 of #160
+		{types.Route, "rt.Route"},
 		{types.Bytes, "[]byte"},
 		{types.File, "rt.File"},
 		{list(maybe(types.Int)), "[]rt.Maybe[int64]"},
@@ -631,9 +594,9 @@ func TestGoName(t *testing.T) {
 }
 
 // The IR goldens and the todos example exercise every match kind, partial application, holes,
-// pages and (stubbed) HTML: their emitted Go must vet.
+// routes and (stubbed) HTML: their emitted Go must vet.
 func TestGen_VetIRGoldens(t *testing.T) {
-	for _, dir := range []string{"ir_patterns", "ir_page", "../../testdata/fix/todos"} {
+	for _, dir := range []string{"ir_patterns", "ir_route_app", "../../examples/todos"} {
 		if !strings.Contains(dir, "/") {
 			dir = "../../testdata/golden/" + dir
 		}
@@ -842,7 +805,7 @@ adder _a1 = add _a1
 func TestGen_HTMLTextNotPreEscaped(t *testing.T) {
 	files := emitSource(t, map[string]string{"H.alder": `module H
 
-note : Html a
+note : Html
 note = <p title="x & y">{"a < b"} & é</p>
 `})
 	src := string(files["H_alder.go"])
@@ -1049,54 +1012,53 @@ func TestStdValues(t *testing.T) {
 `)
 }
 
-// A message that is not a constructor written in place is switched on at run time for its URL;
-// a generic component takes its props at the instance's types; a Let around HTML is used.
+// A route passed as a value is clicked; a generic component takes its props at the instance's
+// types; a Let around HTML is used.
 func TestGen_HTMLDynamic(t *testing.T) {
 	files := emitSource(t, map[string]string{
 		"App.alder": `module App
 
 session { }
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>not found</p>
 `,
 		"P.alder": `module P
 
-page "/p" { }
+route P     = GET  "/p"       { }
+route Pick  = POST "/p/pick"  { name: Text, at: Maybe Int }
+route Clear = POST "/p/clear" { }
 
 type Model = { names: List Text }
 
-msg Pick { name: Text, at: Maybe Int }
-msg Clear
+P.load : P.Params -> Session -> Query Model
+P.load params session = Query.succeed { names: [] }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { names: [] }
+Pick.update : Pick.Params -> Session -> Task Response
+Pick.update params session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = Task.succeed Rerender
+Clear.update : Clear.Params -> Session -> Task Response
+Clear.update params session = Task.succeed Response.refresh
 
-Btn : { msg: Msg, label: Text } -> Html Msg
-Btn props = <button click={props.msg}>{props.label}</button>
+Btn : { to: Route, label: Text } -> Html
+Btn props = <button click={props.to}>{props.label}</button>
 
-Each : { items: List a, render: a -> Html m } -> Html m
+Each : { items: List a, render: a -> Html } -> Html
 Each props = <ul>{List.map props.render props.items}</ul>
 
-view : Model -> Session -> Html Msg
-view model session = {
+P.view : Model -> Session -> Html
+P.view model session = {
   let first = List.head model.names ?? "none"
   <div>
-    <Btn msg={Clear} label={first} />
+    <Btn to={Clear} label={first} />
     <Each items={model.names} render={\n -> <li>{n}</li>} />
   </div>
 }
 `})
 	contains(t, files["P_alder.go"],
-		"switch _m1.Tag {",
-		`return rt.MsgRef{Module: "P", Msg: "Pick", Params: []rt.KV{{Key: "name", Value: _m1.Pick.Name}, {Key: "at", Value: rt.MaybeText(_m1.Pick.At, std.TextFromInt)}}}`,
-		`return rt.MsgRef{Module: "P", Msg: "Clear"}`,
 		"P__Btn(struct {",
 		"P__Each(struct {",
 		"Items  []string",
@@ -1393,10 +1355,10 @@ session { user: Maybe Text, n: Int = 0 }
 
 login = Login.Login
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>nf</p>
 `,
 		"Login.alder": `module Login
@@ -1478,100 +1440,6 @@ func TestDefaults(t *testing.T) {
 	want := "<div><button class=\"plain\" title=\"3\">save</button><button class=\"primary\" title=\"9\">go</button></div>"
 	if got := html.Render(Home__bar); got != want {
 		t.Errorf("bar = %s, want %s", got, want)
-	}
-}
-`)
-}
-
-// A `requires` page's narrowed Session widens to App's where shared code expects it (C4): the
-// required field is wrapped back in Just.
-func TestGen_RunSessionWiden(t *testing.T) {
-	files := emitSource(t, map[string]string{
-		"App.alder": `module App
-
-session { user: Maybe Text, n: Int = 0 }
-
-login = Login
-
-error : Error -> Html Never
-error err = <p>error</p>
-
-notFound : Html Never
-notFound = <p>nf</p>
-`,
-		"Login.alder": `module Login
-
-import Ui
-
-page "/login" { }
-
-type Model = { }
-
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
-
-view : Model -> Session -> Html Msg
-view model session = <p>{Ui.who session}</p>
-`,
-		"Ui.alder": `module Ui
-
-who : Session -> Text
-who s = match s.user {
-  Just u -> "user " ++ u,
-  Nothing -> "anon",
-}
-
-count : Session -> Int
-count s = s.n
-`,
-		"Home.alder": `module Home
-
-import Ui
-
-page "/home" { } requires user
-
-type Model = { }
-
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
-
-name : Session -> Text
-name session = session.user
-
-other : Session -> Text
-other session = Ui.who session
-
-piped : Session -> Text
-piped session = session |> Ui.who
-
-both : Session -> Text
-both session = "{Ui.who (if True then session else session)}{Text.fromInt (Ui.count { session | n: 2 })}"
-
-view : Model -> Session -> Html Msg
-view model session = <p>{name session}{other session}</p>
-`,
-	})
-	contains(t, files["Home_alder.go"],
-		"func widen__Home__Session(s Home__Session) App__Session {\n\treturn App__Session{User: rt.Just(s.User), N: s.N}\n}",
-		"return Ui__who(widen__Home__Session(session))",
-	)
-	runGo(t, files, `package app
-
-import "testing"
-
-func TestWiden(t *testing.T) {
-	s := Home__Session{User: "u1", N: 1}
-	if got := Home__other(s); got != "user u1" {
-		t.Errorf("other = %q", got)
-	}
-	if got := Home__both(s); got != "user u12" {
-		t.Errorf("both = %q", got)
-	}
-	if got := Home__piped(s); got != "user u1" {
-		t.Errorf("piped = %q", got)
-	}
-	if got := Home__name(s); got != "u1" {
-		t.Errorf("name = %q", got)
 	}
 }
 `)
@@ -1914,7 +1782,7 @@ func TestMaybeRecursion(t *testing.T) {
 // (the spec of effect emission): a Query block is Binds on Tasks wrapped in eff.Q once, each Db
 // operation an eff.Call over rt/db with the transaction of the running effect, a Query run as
 // a Task step (Time.now) converted with eff.T, and a Bool column's value encoded.
-const effectsLoad = `func Index__load(params Index__Params, session Index__Session) eff.Query[Index__Model] {
+const effectsLoad = `func Index__Index__load(params Index__Index__Params, session Index__Index__Session) eff.Query[Index__Model] {
 	return eff.Q(eff.Bind(eff.Call("Db.all Todo", false, func(_e1 *eff.Env) ([]Todo__Todo, error) {
 		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.Limit(10, db.OrderBy(db.Desc("created"), db.Where(db.CEq("owner", session.User), db.From(table__Todo__Todo)))))
 	}), func(todos []Todo__Todo) eff.Task[Index__Model] {
@@ -1956,7 +1824,7 @@ func TestGen_EffectsLoad(t *testing.T) {
 		"type Args__Index__Mailer__Send struct {\n\tTo   string\n\tBody string\n}",
 		`.Caps["Index.Mailer"].(Cap__Index__Mailer)`,
 		`panic("alder: capability \"Index.Mailer\" is not wired")`,
-		".Send(_e5.Ctx, struct {",
+		".Send(_e1.Ctx, struct {",
 	)
 	contains(t, files["app__alder.go"], "var Tables = []db.TableDesc{table__Todo__Todo.Desc()}",
 		`var Capabilities = []string{"Todo.Stats", "Index.Mailer"}`)
@@ -2000,7 +1868,7 @@ func TestServeMigrates(t *testing.T) {
 // built as effect trees, run with eff.Run against an in-memory SQLite store created from the
 // generated table descriptors, with a stub for the Auth.Login.Password capability.
 func TestGen_RunTodos(t *testing.T) {
-	dir := emitApp(t, "../../testdata/fix/todos")
+	dir := emitApp(t, "../../examples/todos")
 	if err := os.WriteFile(filepath.Join(dir, "zz_run_test.go"), []byte(runTodosTest+runTodosShowTest), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -2068,8 +1936,8 @@ func TestTodos(t *testing.T) {
 				t.Errorf("unwired capability: recovered %v", r)
 			}
 		}()
-		msg := Auth__Login__Msg__Submit__(Auth__Login__SubmitParams{Form: Auth__Login__Credentials{Email: "a@b.c", Password: "pw"}})
-		eff.Run(env, eff.KTask, Auth__Login__update(msg, Auth__Login__Model{}, env.Session.(App__Session)))
+		p := Auth__Login__Submit__Params{Form: Auth__Login__Credentials{Email: "a@b.c", Password: "pw"}}
+		eff.Run(env, eff.KTask, Auth__Login__Submit__update(p, env.Session.(App__Session)))
 	}()
 	env.Caps["Auth.Login.Password"] = password{user: uid}
 
@@ -2086,39 +1954,38 @@ func TestTodos(t *testing.T) {
 	calls("setup", "Db.insert User", "Password.verify")
 
 	// log in: a wrong password is rejected, the right one redirects to / and sets the session
-	login := func(pw string) rt.Nav {
+	login := func(pw string) rt.Response {
 		t.Helper()
-		msg := Auth__Login__Msg__Submit__(Auth__Login__SubmitParams{Form: Auth__Login__Credentials{Email: "a@b.c", Password: pw}})
-		nav, err := eff.Run(env, eff.KTask, Auth__Login__update(msg, Auth__Login__Model{}, env.Session.(App__Session)))
+		p := Auth__Login__Submit__Params{Form: Auth__Login__Credentials{Email: "a@b.c", Password: pw}}
+		r, err := eff.Run(env, eff.KTask, Auth__Login__Submit__update(p, env.Session.(App__Session)))
 		if err != nil {
 			t.Fatalf("login: %v", err)
 		}
-		return nav
+		return r
 	}
-	if nav := login("nope"); nav.Tag != rt.NavReject || nav.Text != "Email or password is incorrect." {
-		t.Fatalf("bad login: %+v", nav)
+	if r := login("nope"); r.Kind != rt.RespInvalid || r.Text != "Email or password is incorrect." {
+		t.Fatalf("bad login: %+v", r)
 	}
 	if s := env.Session.(App__Session); s.User.Ok {
 		t.Fatalf("bad login set the user: %+v", s)
 	}
-	if nav := login("pw"); nav.Tag != rt.NavRedirect || nav.Page.Path != "/" {
-		t.Fatalf("login: %+v", nav)
+	if r := login("pw"); r.Kind != rt.RespRedirect || r.Target.Path != "/" {
+		t.Fatalf("login: %+v", r)
 	}
 	calls("login", "Password.verify", "Password.verify", "Db.get User", "Session.put") // the login reads the row for its role
 	app := env.Session.(App__Session)
 	if !app.User.Ok || app.User.Val != uid {
 		t.Fatalf("login did not set the session user: %+v", app)
 	}
-	session := Todos__Index__Session{User: app.User.Val}
-	model := Todos__Index__Model{Filter: Table__Todo__Filter__All__}
+	session := Todos__Index__Index__Session{User: app.User.Val}
 
-	update := func(msg Todos__Index__Msg) (rt.Nav, error) {
+	run := func(task eff.Task[rt.Response]) (rt.Response, error) {
 		t.Helper()
-		return eff.Run(env, eff.KTask, Todos__Index__update(msg, model, session))
+		return eff.Run(env, eff.KTask, task)
 	}
 	load := func(f Table__Todo__Filter) []Table__Todo__Todo {
 		t.Helper()
-		m, err := eff.RunQuery(env, Todos__Index__load(Todos__Index__Params{Filter: f}, session))
+		m, err := eff.RunQuery(env, Todos__Index__Index__load(Todos__Index__Index__Params{Filter: f}, session))
 		if err != nil {
 			t.Fatalf("load: %v", err)
 		}
@@ -2126,10 +1993,12 @@ func TestTodos(t *testing.T) {
 	}
 
 	// add
-	add := Todos__Index__Msg__Submit__(Todos__Index__SubmitParams{Form: Todos__Index__NewTodo{Title: "Buy milk", Due: rt.Just(rt.Date{Y: 2026, M: 10, D: 31})}})
-	nav, err := update(add)
-	if err != nil || nav.Tag != rt.NavRedirect || nav.Page.Path != "/" {
-		t.Fatalf("add: %+v, %v", nav, err)
+	add := func() eff.Task[rt.Response] {
+		return Todos__Index__Submit__update(Todos__Index__Submit__Params{Form: Todos__Index__NewTodo{Title: "Buy milk", Due: rt.Just(rt.Date{Y: 2026, M: 10, D: 31})}}, session)
+	}
+	r, err := run(add())
+	if err != nil || r.Kind != rt.RespRedirect || r.Target.Path != "/" {
+		t.Fatalf("add: %+v, %v", r, err)
 	}
 	calls("add", "Db.insertMine Todo") // the owner comes from the session (env.Session)
 	todos := load(Table__Todo__Filter__All__)
@@ -2146,9 +2015,9 @@ func TestTodos(t *testing.T) {
 
 	// toggle
 	mark = len(env.Trace)
-	nav, err = update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: td.Id}))
-	if err != nil || nav.Tag != rt.NavRerender {
-		t.Fatalf("toggle: %+v, %v", nav, err)
+	r, err = run(Todos__Index__Toggle__update(Todos__Index__Toggle__Params{Id: td.Id}, session))
+	if err != nil || r.Kind != rt.RespRefresh {
+		t.Fatalf("toggle: %+v, %v", r, err)
 	}
 	calls("toggle", "Db.updateMine Todo") // one statement: WHERE id = ? AND owner = ?
 	if todos = load(Table__Todo__Filter__All__); len(todos) != 1 || !todos[0].Done {
@@ -2160,32 +2029,32 @@ func TestTodos(t *testing.T) {
 
 	// the show page loads the user's own todo, and not one that does not exist
 	mark = len(env.Trace)
-	shown, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: td.Id}, Todos__Show__Session{User: uid}))
+	shown, err := eff.RunQuery(env, Todos__Show__Show__load(Todos__Show__Show__Params{Id: td.Id}, Todos__Show__Show__Session{User: uid}))
 	if err != nil || shown.Todo.Title != "Buy milk" {
 		t.Fatalf("show: %+v, %v", shown, err)
 	}
 	calls("Show.load", "Db.getMine Todo")
-	if _, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: "nope"}, Todos__Show__Session{User: uid})); err != eff.ErrNotFound {
+	if _, err := eff.RunQuery(env, Todos__Show__Show__load(Todos__Show__Show__Params{Id: "nope"}, Todos__Show__Show__Session{User: uid})); err != eff.ErrNotFound {
 		t.Fatalf("show missing: err = %v, want ErrNotFound", err)
 	}
 
 	// toggling a todo that does not exist is Task.notFound (a 404)
-	if _, err := update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: "nope"})); err != eff.ErrNotFound {
+	if _, err := run(Todos__Index__Toggle__update(Todos__Index__Toggle__Params{Id: "nope"}, session)); err != eff.ErrNotFound {
 		t.Fatalf("toggle missing: err = %v, want ErrNotFound", err)
 	}
 	// so is another user's: the scoped operations act for the ambient session (env.Session), not
 	// for the session argument
 	env.Session = App__Session{User: rt.Just("someone else")}
-	if _, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: td.Id}, Todos__Show__Session{User: uid})); err != eff.ErrNotFound {
+	if _, err := eff.RunQuery(env, Todos__Show__Show__load(Todos__Show__Show__Params{Id: td.Id}, Todos__Show__Show__Session{User: uid})); err != eff.ErrNotFound {
 		t.Fatalf("show other's: err = %v, want ErrNotFound", err)
 	}
-	if _, err := eff.Run(env, eff.KTask, Todos__Index__update(Todos__Index__Msg__Delete__(Todos__Index__DeleteParams{Id: td.Id}), model, session)); err != eff.ErrNotFound {
+	if _, err := run(Todos__Index__Delete__update(Todos__Index__Delete__Params{Id: td.Id}, session)); err != eff.ErrNotFound {
 		t.Fatalf("delete other's: err = %v, want ErrNotFound", err)
 	}
 	env.Session = app
 
 	// rollback: an add followed by a failure leaves no row
-	failing := eff.Bind(Todos__Index__update(add, model, session), func(rt.Nav) eff.Task[rt.Nav] { return eff.Fail[rt.Nav]("boom") })
+	failing := eff.Bind(add(), func(rt.Response) eff.Task[rt.Response] { return eff.Fail[rt.Response]("boom") })
 	var fail *eff.ErrFail
 	if _, err := eff.Run(env, eff.KTask, failing); !errors.As(err, &fail) || fail.Msg != "boom" {
 		t.Fatalf("failing add: err = %v", err)
@@ -2196,9 +2065,9 @@ func TestTodos(t *testing.T) {
 
 	// delete
 	mark = len(env.Trace)
-	nav, err = update(Todos__Index__Msg__Delete__(Todos__Index__DeleteParams{Id: td.Id}))
-	if err != nil || nav.Tag != rt.NavRerender {
-		t.Fatalf("delete: %+v, %v", nav, err)
+	r, err = run(Todos__Index__Delete__update(Todos__Index__Delete__Params{Id: td.Id}, session))
+	if err != nil || r.Kind != rt.RespRefresh {
+		t.Fatalf("delete: %+v, %v", r, err)
 	}
 	calls("delete", "Db.deleteMine Todo")
 	if n := len(load(Table__Todo__Filter__All__)); n != 0 {
@@ -2210,16 +2079,16 @@ func TestTodos(t *testing.T) {
 	// that touches no table begins no transaction (I2: the in-memory store's single connection
 	// would otherwise be held)
 	before := env.Session.(App__Session)
-	logoutThenFail := eff.Bind(App__update(App__Msg__Logout__, before), func(rt.Nav) eff.Task[rt.Nav] { return eff.Fail[rt.Nav]("boom") })
+	logoutThenFail := eff.Bind(App__Logout__update(App__Logout__Params{}, before), func(rt.Response) eff.Task[rt.Response] { return eff.Fail[rt.Response]("boom") })
 	if _, err := eff.Run(env, eff.KTask, logoutThenFail); !errors.As(err, &fail) || fail.Msg != "boom" {
 		t.Fatalf("logout then fail: err = %v", err)
 	}
 	if s := env.Session.(App__Session); s != before || !s.User.Ok {
 		t.Fatalf("failed Task kept its session change: %+v, want %+v", s, before)
 	}
-	// App's update: log out
-	if nav, err := eff.Run(env, eff.KTask, App__update(App__Msg__Logout__, env.Session.(App__Session))); err != nil || nav.Tag != rt.NavRedirect || nav.Page.Path != "/login" {
-		t.Fatalf("logout: %+v, %v", nav, err)
+	// App's Logout route: log out
+	if r, err := run(App__Logout__update(App__Logout__Params{}, env.Session.(App__Session))); err != nil || r.Kind != rt.RespRedirect || r.Target.Path != "/login" {
+		t.Fatalf("logout: %+v, %v", r, err)
 	}
 	if s := env.Session.(App__Session); s.User.Ok {
 		t.Fatalf("logout kept the user: %+v", s)
@@ -2393,8 +2262,9 @@ func TestShop(t *testing.T) {
 	if k, err := eff.Run(env, eff.KTask, Shop__runJob(Shop__job)); err != nil || k != 1 {
 		t.Errorf("runJob = %d, %v", k, err)
 	}
-	if nav := Shop__after(rt.Reject("no")); nav.Tag != rt.NavReject || nav.Text != "no!" || !Shop__isRedirect(rt.Redirect(rt.Page{Path: "/"})) {
-		t.Errorf("after = %+v", nav)
+	if r := Shop__after(rt.Invalid("no")); r.Kind != rt.RespInvalid || r.Text != "no" || len(r.Events) != 1 || r.Events[0].Toast.Text != "done" ||
+		!Shop__isRefresh(rt.Refresh()) || Shop__isRefresh(rt.Invalid("no")) {
+		t.Errorf("after = %+v", r)
 	}
 
 	// a capability's write is part of the Task: rolled back when the Task fails, kept when it
@@ -2464,11 +2334,11 @@ func TestShop(t *testing.T) {
 }
 `
 
-// TestGen_Routes: the routes of the ir_page app, against a golden written by hand before the
+// TestGen_Routes: the routes of the ir_route_app app, against a golden written by hand before the
 // emitter (the spec of route emission): decoders, page__/update__ functions, the GET and POST
 // routes and their helpers. The whole app vets.
 func TestGen_Routes(t *testing.T) {
-	files := emit(t, "../../testdata/golden/ir_page")
+	files := emit(t, "../../testdata/golden/ir_route_app")
 	want := "../../testdata/golden/gen_routes/want/routes__alder.go"
 	if *update {
 		if err := os.WriteFile(want, files["routes__alder.go"], 0o644); err != nil {
@@ -2485,14 +2355,9 @@ func TestGen_Routes(t *testing.T) {
 	vet(t, files)
 }
 
-// A message's parameters, the page's and the form's never mix: the page renders every message
-// URL with its own parameters under "_p." keys (html.FormState.PageParams), the route decodes
-// the page's from those only, the message's from the other keys, the form from the body — so
-// a page id, a message id and a form field id decode independently, a re-render keeps the
-// page's query parameters, and a URL without the page's path parameter is a 404. A List
-// message parameter is one key per element and round-trips. Without Datastar a Rerender is a
-// 303 to the page (PRG). A Rerender whose re-load fails still stores the session the Task left. The session cookie stores unions by name.
-func TestDecode_ParamsAndFormDontMix(t *testing.T) {
+// The session cookie stores unions by name: an unknown or missing name decodes as the field's
+// default.
+func TestGen_SessionCodecUnions(t *testing.T) {
 	files := emitSource(t, map[string]string{
 		"App.alder": `module App
 
@@ -2500,156 +2365,30 @@ type Theme = Light | Dark
 
 session { n: Int = 0, theme: Theme = Light, last: Maybe Theme }
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>not found</p>
 `,
 		"M.alder": `module M
 
-page "/m/{id}" { id: Text, filter: Text = "all" }
+route M = GET "/m" { }
 
-type Model = { id: Text, filter: Text }
+M.load : M.Params -> Session -> Query Int
+M.load params session = Query.succeed 1
 
-load : Params -> Session -> Query Model
-load params session = if session.n > 0 then Query.notFound else Query.succeed { id: params.id, filter: params.filter }
-
-form F = { id: Text, title: Text }
-
-msg Save { id: Text } form F
-msg Ping
-msg Pick { ids: List Int }
-msg Vanish
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Save p -> Task.succeed (Redirect (O { a: p.id, b: p.form.id ++ "/" ++ p.form.title ++ "/" ++ model.id })),
-  Ping p -> Task.succeed Rerender,
-  Pick p -> Task.succeed (Redirect (O { a: Text.join "," (List.map Text.fromInt p.ids), b: model.id })),
-  Vanish p -> {
-    let _ <- Session.put (\s -> { s | n: s.n + 1 })
-    Task.succeed Rerender
-  },
-}
-
-view : Model -> Session -> Html Msg
-view model session =
-  <div>
-    <p>{model.id ++ " " ++ model.filter}</p>
-    <button click={Ping}>ping</button>
-    <button click={Pick { ids: [1, 2] }}>pick</button>
-    <form submit={Save { id: "m1" }}><Input field="id" /></form>
-  </div>
-`,
-		"O.alder": `module O
-
-page "/o" { a: Text, b: Text }
-
-type Model = { }
-
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
-
-view : Model -> Session -> Html Msg
-view model session = <p>o</p>
+M.view : Int -> Session -> Html
+M.view n session = <p>m</p>
 `,
 	})
 	runGo(t, files, `package app
 
 import (
-	"encoding/base64"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"alder/rt"
-	"alder/rt/web"
 )
-
-func TestMix(t *testing.T) {
-	h, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	do := func(method, target, body string, hdr ...string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(method, target, strings.NewReader(body))
-		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		for _, h := range hdr {
-			k, v, _ := strings.Cut(h, ": ")
-			r.Header.Set(k, v)
-		}
-		w := httptest.NewRecorder()
-		h.ServeHTTP(w, r)
-		return w
-	}
-	// the page renders its parameters into every message URL
-	w := do("GET", "/m/p0?filter=x", "")
-	for _, want := range []string{
-		"<p>p0 x</p>",
-		`+"`"+`<form method="post" action="/_m/M/Ping?_p.id=p0&amp;_p.filter=x" class="_alder-click"`+"`"+`,
-		`+"`"+`<form method="post" action="/_m/M/Pick?ids=1&amp;ids=2&amp;_p.id=p0&amp;_p.filter=x" class="_alder-click"`+"`"+`,
-		`+"`"+`action="/_m/M/Save?id=m1&amp;_p.id=p0&amp;_p.filter=x"`+"`"+`,
-	} {
-		if w.Code != 200 || !strings.Contains(w.Body.String(), want) {
-			t.Fatalf("GET lacks %s: %d %s", want, w.Code, w.Body.String())
-		}
-	}
-	// at its default a page parameter is left out
-	if w := do("GET", "/m/p0", ""); !strings.Contains(w.Body.String(), `+"`"+`action="/_m/M/Ping?_p.id=p0"`+"`"+`) {
-		t.Fatalf("GET at the default filter: %s", w.Body.String())
-	}
-	// page id, message id and form id are three values
-	w = do("POST", "/_m/M/Save?id=m1&_p.id=p0", "id=f1&title=x")
-	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/o?a=m1&b=f1%2Fx%2Fp0" {
-		t.Fatalf("Save: %d %q", w.Code, w.Header().Get("Location"))
-	}
-	// a form error re-renders the page the message came from
-	if w := do("POST", "/_m/M/Save?id=m1&_p.id=p0&_p.filter=x", "title=x"); w.Code != 200 || !strings.Contains(w.Body.String(), "<p>p0 x</p>") {
-		t.Fatalf("Save without the form's id: %d %s", w.Code, w.Body.String())
-	}
-	// a Rerender under Datastar keeps the page's query parameter, in the patch's URLs too
-	w = do("POST", "/_m/M/Ping?_p.id=p0&_p.filter=x", "", "Datastar-Request: true")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "event: datastar-patch-elements") || !strings.Contains(w.Body.String(), "<p>p0 x</p>") ||
-		!strings.Contains(w.Body.String(), "/_m/M/Ping?_p.id=p0&amp;_p.filter=x") {
-		t.Fatalf("Ping: %d %s", w.Code, w.Body.String())
-	}
-	// without Datastar a Rerender is a 303 back to the page, its parameters kept (PRG)
-	w = do("POST", "/_m/M/Ping?_p.id=p%2F0&_p.filter=x", "")
-	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/m/p%2F0?filter=x" {
-		t.Fatalf("Ping without Datastar: %d %q", w.Code, w.Header().Get("Location"))
-	}
-	// no page path parameter: 404 (the Referer is not consulted)
-	if w := do("POST", "/_m/M/Ping?id=p0", "", "Referer: http://h/m/p0"); w.Code != http.StatusNotFound {
-		t.Fatalf("Ping without _p.id: %d", w.Code)
-	}
-	// a List message parameter round-trips
-	if w := do("POST", "/_m/M/Pick?ids=1&ids=2&_p.id=p0", ""); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/o?a=1%2C2&b=p0" {
-		t.Fatalf("Pick: %d %q", w.Code, w.Header().Get("Location"))
-	}
-	// without Datastar the Task stores n = 1 on its 303 (the page then 404s)
-	w = do("POST", "/_m/M/Vanish?_p.id=p0", "")
-	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/m/p0" || !strings.HasPrefix(w.Header().Get("Set-Cookie"), web.CookieName+"=") {
-		t.Fatalf("Vanish without Datastar: %d %q %q", w.Code, w.Header().Get("Location"), w.Header().Get("Set-Cookie"))
-	}
-	// under Datastar the Task stored n = 1, then the re-load is Query.notFound: 404 (patched),
-	// and the session is stored
-	w = do("POST", "/_m/M/Vanish?_p.id=p0", "", "Datastar-Request: true")
-	sc := w.Header().Get("Set-Cookie")
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "not found") || !strings.HasPrefix(sc, web.CookieName+"=") {
-		t.Fatalf("Vanish: %d, Set-Cookie %q", w.Code, sc)
-	}
-	v, _, _ := strings.Cut(strings.TrimPrefix(sc, web.CookieName+"="), ";")
-	payload, _, _ := strings.Cut(v, ".")
-	raw, _ := base64.RawURLEncoding.DecodeString(payload)
-	var env struct{ Session json.RawMessage }
-	_ = json.Unmarshal(raw, &env) // the signed payload: {"iss": …, "session": …}
-	if s, err := (session__codec{}).Decode(env.Session); err != nil || s.(App__Session).N != 1 {
-		t.Fatalf("session after Vanish: %s %v", raw, err)
-	}
-}
 
 func TestSessionCodec(t *testing.T) {
 	c := session__codec{}
@@ -2678,10 +2417,10 @@ func TestSessionCodec(t *testing.T) {
 // appModule is a minimal App for the emitted-app tests.
 const appModule = `module App
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>not found</p>
 `
 
@@ -2697,12 +2436,11 @@ type Slug = brand Text where Text.matches "^[a-z]+$"
 type Age = brand Int where (\n -> n >= 0 && n < 150)
 type Plain = brand Text
 
-page "/m" { }
+route M    = GET  "/m"      { }
+route Save = POST "/m/save" { } form F
 
-type Model = { }
-
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+M.load : M.Params -> Session -> Query Int
+M.load params session = Query.succeed 1
 
 form F = {
   slug: Slug,
@@ -2716,13 +2454,11 @@ form F = {
   plain: Plain,
 }
 
-msg Save form F
+Save.update : Save.Params -> Session -> Task Response
+Save.update params session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = Task.succeed Rerender
-
-view : Model -> Session -> Html Msg
-view model session = <form submit={Save}><Input field="pw" /><Input field="slug" /></form>
+M.view : Int -> Session -> Html
+M.view n session = <form submit={Save}><Input field="pw" /><Input field="slug" /></form>
 `,
 	})
 	contains(t, files["M_alder.go"], "func check__M__Slug(v string) bool {\n\treturn std.TextMatches(\"^[a-z]+$\", v)\n}",
@@ -2764,7 +2500,7 @@ func TestBrands(t *testing.T) {
 	if _, errs := decode__M__F(url.Values{"slug": {"abc"}, "age": {"x"}, "email": {"a@b.c"}, "name": {"x"}, "pw": {"p"}, "n": {"1"}, "plain": {""}}); !reflect.DeepEqual(errs, []web.FieldError{{Field: "age", Message: web.MsgInt}}) {
 		t.Fatalf("malformed Int: %v", errs)
 	}
-	page := html.RenderWith(M__view(M__Model{}, App__Session{}), &html.FormState{Form: "M.F", Msg: "/_m/M/Save", Values: map[string]string{"slug": "A1"}, Errors: map[string][]string{}})
+	page := html.RenderWith(M__M__view(1, App__Session{}), &html.FormState{Form: "M.F", Msg: "POST /m/save", Values: map[string]string{"slug": "A1"}, Errors: map[string][]string{}})
 	if !strings.Contains(page, `+"`"+`<input name="pw" type="password" required />`+"`"+`) || !strings.Contains(page, `+"`"+`value="A1"`+"`"+`) {
 		t.Fatalf("view: %s", page)
 	}
@@ -2772,9 +2508,9 @@ func TestBrands(t *testing.T) {
 `)
 }
 
-// A link to a page carries its path parameters in the path (each escaped as one segment) and
+// A link to a route carries its path parameters in the path (each escaped as one segment) and
 // the others as the query, in declaration order, rendered as text; a parameter at its default
-// and a Maybe at Nothing are left out. The page's decoder reads the link back.
+// and a Maybe at Nothing are left out. The route's decoder reads the link back.
 func TestGen_PageURLQuery(t *testing.T) {
 	files := emitSource(t, map[string]string{
 		"App.alder": appModule,
@@ -2782,35 +2518,31 @@ func TestGen_PageURLQuery(t *testing.T) {
 
 type Filter = All | Active | Done
 
-page "/t/{id}/x" { id: Text, filter: Filter = All, q: Maybe Text, n: Int, b: Bool = False, tags: List Text, m: Maybe Int = Just 3 }
+route T = GET "/t/{id}/x" { id: Text, filter: Filter = All, q: Maybe Text, n: Int, b: Bool = False, tags: List Text, m: Maybe Int = Just 3 }
 
-type Model = { }
+T.load : T.Params -> Session -> Query Int
+T.load params session = Query.succeed 1
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+T.view : Int -> Session -> Html
+T.view n session = <p>t</p>
 
-view : Model -> Session -> Html Msg
-view model session = <p>t</p>
-
-link1 : Page
+link1 : Route
 link1 = T { id: "a/b c", filter: Active, q: Just "x&y", n: 2, b: True, tags: ["p", "q r"], m: Nothing }
 
-link2 : Text -> Page
+link2 : Text -> Route
 link2 id = T { id: id, q: Nothing, n: -1, tags: [] }
 `,
 		"I.alder": `module I
 
 import T
 
-page "/" { filter: T.Filter = All }
+route I = GET "/" { filter: T.Filter = All }
 
-type Model = { }
+I.load : I.Params -> Session -> Query Int
+I.load params session = Query.succeed 1
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
-
-view : Model -> Session -> Html Msg
-view model session =
+I.view : Int -> Session -> Html
+I.view n session =
   <nav>
     {for f in [All, Active] -> <a href={I { filter: f }}>x</a>}
   </nav>
@@ -2829,35 +2561,35 @@ import (
 
 func TestLinks(t *testing.T) {
 	for got, want := range map[string]string{
-		rt.PageURL(T__link1):   "/t/a%2Fb%20c/x?filter=Active&q=x%26y&n=2&b=True&tags=p&tags=q+r&m=",
-		rt.PageURL(T__link2("c")): "/t/c/x?n=-1",
+		rt.RouteURL(T__link1):   "/t/a%2Fb%20c/x?filter=Active&q=x%26y&n=2&b=True&tags=p&tags=q+r&m=",
+		rt.RouteURL(T__link2("c")): "/t/c/x?n=-1",
 	} {
 		if got != want {
-			t.Errorf("PageURL = %q, want %q", got, want)
+			t.Errorf("RouteURL = %q, want %q", got, want)
 		}
 	}
-	u, _ := url.Parse(rt.PageURL(T__link1))
-	p, errs := decode__T__Params(map[string]string{"id": "a/b c"}, u.Query())
+	u, _ := url.Parse(rt.RouteURL(T__link1))
+	p, errs := decode__T__T__Params(map[string]string{"id": "a/b c"}, u.Query())
 	if errs != nil || p.Id != "a/b c" || p.Filter.Tag != is__T__Filter__Active || p.Q.Val != "x&y" || p.N != 2 || !p.B || strings.Join(p.Tags, ",") != "p,q r" || p.M.Ok {
 		t.Fatalf("decoded link1: %+v %v", p, errs)
 	}
-	p, errs = decode__T__Params(map[string]string{"id": "c"}, url.Values{"n": {"-1"}})
+	p, errs = decode__T__T__Params(map[string]string{"id": "c"}, url.Values{"n": {"-1"}})
 	if errs != nil || p.Filter.Tag != is__T__Filter__All || p.Q.Ok || p.B || len(p.Tags) != 0 || p.M.Val != 3 {
 		t.Fatalf("decoded link2: %+v %v", p, errs)
 	}
-	if _, errs := decode__T__Params(map[string]string{"id": "c"}, url.Values{"n": {"x"}, "filter": {"Nope"}}); len(errs) != 2 {
+	if _, errs := decode__T__T__Params(map[string]string{"id": "c"}, url.Values{"n": {"x"}, "filter": {"Nope"}}); len(errs) != 2 {
 		t.Fatalf("bad params: %v", errs)
 	}
 	// a Bool URL parameter is strict (web.BoolParam): ?b=maybe is an error, not True
-	if _, errs := decode__T__Params(map[string]string{"id": "c"}, url.Values{"n": {"1"}, "b": {"maybe"}}); len(errs) != 1 || errs[0].Field != "b" {
+	if _, errs := decode__T__T__Params(map[string]string{"id": "c"}, url.Values{"n": {"1"}, "b": {"maybe"}}); len(errs) != 1 || errs[0].Field != "b" {
 		t.Fatalf("b=maybe: %v", errs)
 	}
 	for raw, want := range map[string]bool{"True": true, "1": true, "false": false} {
-		if p, errs := decode__T__Params(map[string]string{"id": "c"}, url.Values{"n": {"1"}, "b": {raw}}); errs != nil || p.B != want {
+		if p, errs := decode__T__T__Params(map[string]string{"id": "c"}, url.Values{"n": {"1"}, "b": {raw}}); errs != nil || p.B != want {
 			t.Fatalf("b=%s: %+v %v", raw, p, errs)
 		}
 	}
-	page := html.Render(I__view(I__Model{}, App__Session{}))
+	page := html.Render(I__I__view(0, App__Session{}))
 	if !strings.Contains(page, `+"`"+`<a href="/">x</a><a href="/?filter=Active">x</a>`+"`"+`) {
 		t.Fatalf("links: %s", page)
 	}
@@ -2865,8 +2597,8 @@ func TestLinks(t *testing.T) {
 `)
 }
 
-// Per-row forms of one form type (I1, the reviewer's adv3): a Reject (or a form error) shows on
-// the row whose form posted the message, not on every form of that type; a plain GET shows the
+// Per-row forms of one form type (I1, the reviewer's adv3): a Response.invalid (or a form error)
+// shows on the row whose form posted the write route, not on every form of that type; a plain GET shows the
 // state nowhere.
 func TestGen_FormStatePerRow(t *testing.T) {
 	files := emitSource(t, map[string]string{
@@ -2874,35 +2606,30 @@ func TestGen_FormStatePerRow(t *testing.T) {
 
 session { user: Maybe Text }
 
-login = P
+login = P.P
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <html><head><title>E</title></head><body><p>error</p></body></html>
 
-notFound : Html Never
+notFound : Html
 notFound = <html><head><title>NF</title></head><body><p>nf</p></body></html>
 `,
 		"P.alder": `module P
 
-page "/" { }
-
-type Model = { rows: List Text }
-
-load : Params -> Session -> Query Model
-load params session = Query.succeed { rows: ["a", "b", "c"] }
+route P    = GET  "/"     { }
+route Save = POST "/save" { row: Text } form Rename
 
 form Rename = { title: Text.NonEmpty }
 
-msg Save { row: Text } form Rename
+P.load : P.Params -> Session -> Query (List Text)
+P.load params session = Query.succeed ["a", "b", "c"]
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Save p -> Task.succeed (Reject ("bad " ++ p.row))
-}
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session = Task.succeed (Response.invalid ("bad " ++ p.row))
 
-view : Model -> Session -> Html Msg
-view model session = <html><head><title>P</title></head><body>
-  {for r in model.rows -> <form submit={Save { row: r }}><Errors form /><Input field="title" label={r} /><Errors field="title" /><button>s</button></form>}
+P.view : List Text -> Session -> Html
+P.view rows session = <html><head><title>P</title></head><body>
+  {for r in rows -> <form submit={Save { row: r }}><Errors form /><Input field="title" label={r} /><Errors field="title" /><button>s</button></form>}
 </body></html>
 `,
 	})
@@ -2924,7 +2651,7 @@ func TestRows(t *testing.T) {
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
-		if w.Code != 200 {
+		if w.Code != 422 { // Response.invalid, and a form that does not decode, re-render with 422
 			t.Fatalf("POST %s: %d", target, w.Code)
 		}
 		return w.Body.String()
@@ -2937,14 +2664,14 @@ func TestRows(t *testing.T) {
 		}
 		return parts
 	}
-	body := post("/_m/P/Save?row=b", "title=typed")
+	body := post("/save?row=b", "title=typed")
 	for i, row := range rows(body) {
 		shows := strings.Contains(row, "<li>bad b</li>") && strings.Contains(row, `+"`"+`value="typed"`+"`"+`)
 		if (i == 1) != shows || strings.Count(body, "typed") != 1 {
 			t.Fatalf("Reject: row %d shows the state: %v\n%s", i, shows, body)
 		}
 	}
-	body = post("/_m/P/Save?row=c", "title=")
+	body = post("/save?row=c", "title=")
 	for i, row := range rows(body) {
 		if (i == 2) != strings.Contains(row, "<li>must not be empty</li>") || strings.Count(body, "must not be empty") != 1 {
 			t.Fatalf("form error: row %d\n%s", i, body)
@@ -2959,29 +2686,24 @@ func TestRows(t *testing.T) {
 `)
 }
 
-// The re-review's fresh1 probe: a Redirect to `Url.external` of user input cannot run script
+// The re-review's fresh1 probe: a redirect to `Url.external` of user input cannot run script
 // under Datastar, and an `href={Url.external …}` of it is "#".
 func TestGen_UrlExternalIsSanitized(t *testing.T) {
 	files := emitSource(t, map[string]string{
 		"App.alder": appModule,
 		"F.alder": `module F
 
-page "/" { q: Text = "" }
+route F  = GET  "/"   { q: Text = "" }
+route Go = POST "/go" { to: Text }
 
-type Model = { q: Text }
+F.load : F.Params -> Session -> Query Text
+F.load params session = Query.succeed params.q
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { q: params.q }
+Go.update : Go.Params -> Session -> Task Response
+Go.update params session = Task.succeed (Response.redirect (Url.external params.to))
 
-msg Go { to: Text }
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Go p -> Task.succeed (Redirect (Url.external p.to)),
-}
-
-view : Model -> Session -> Html Msg
-view model session = <p><a id="lnk" href={Url.external model.q}>x</a></p>
+F.view : Text -> Session -> Html
+F.view q session = <p><a id="lnk" href={Url.external q}>x</a></p>
 `,
 	})
 	runGo(t, files, `package app
@@ -3008,14 +2730,15 @@ func TestProbe(t *testing.T) {
 		return w
 	}
 	evil := url.QueryEscape("javascript:alert(document.cookie)")
-	w := do("POST", "/_m/F/Go?to="+evil, true)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `+"`"+`window.location.assign("#")`+"`"+`) || strings.Contains(w.Body.String(), "javascript") {
+	// Url.external made the script "#", and a redirect to "#" is refused: nothing navigates
+	w := do("POST", "/go?to="+evil, true)
+	if !strings.Contains(w.Body.String(), "refusing to navigate") || strings.Contains(w.Body.String(), "javascript") {
 		t.Fatalf("Datastar Go: %d %s", w.Code, w.Body.String())
 	}
-	if w := do("POST", "/_m/F/Go?to="+evil, false); w.Code != 303 || w.Header().Get("Location") != "#" {
-		t.Fatalf("Go: %d %q", w.Code, w.Header().Get("Location"))
+	if w := do("POST", "/go?to="+evil, false); w.Header().Get("Location") != "" || !strings.Contains(w.Body.String(), "refusing to navigate") || strings.Contains(w.Body.String(), "javascript") {
+		t.Fatalf("Go: %d %q %s", w.Code, w.Header().Get("Location"), w.Body.String())
 	}
-	if w := do("POST", "/_m/F/Go?to="+url.QueryEscape("https://ex.com/x"), false); w.Code != 303 || w.Header().Get("Location") != "https://ex.com/x" {
+	if w := do("POST", "/go?to="+url.QueryEscape("https://ex.com/x"), false); w.Code != 303 || w.Header().Get("Location") != "https://ex.com/x" {
 		t.Fatalf("Go https: %d %q", w.Code, w.Header().Get("Location"))
 	}
 	if w := do("GET", "/?q="+url.QueryEscape("JavaScript:alert(1)"), false); !strings.Contains(w.Body.String(), `+"`"+`<a id="lnk" href="#">`+"`"+`) {
@@ -3025,8 +2748,8 @@ func TestProbe(t *testing.T) {
 `)
 }
 
-// Every union of the program, page and App Msg unions included, registers its constructor
-// names from app__alder.go's init, in declaration order, so rt.Show prints its values.
+// Every union of the program, from every module file, registers its constructor names from
+// app__alder.go's init, in declaration order, so rt.Show prints its values.
 func TestGen_RegistersUnions(t *testing.T) {
 	files := emit(t, "../../testdata/golden/gen_basic")
 	contains(t, files[appFile], `rt.RegisterUnion(reflect.TypeOf(tag__M__Shape(0)), []string{"Circle", "Rect"})`)
@@ -3054,14 +2777,14 @@ func TestShow(t *testing.T) {
 	}
 }
 `)
-	todos := emit(t, "../../testdata/fix/todos")
+	todos := emit(t, "../../examples/todos")
 	contains(t, todos[appFile],
-		`rt.RegisterUnion(reflect.TypeOf(tag__Todos__Index__Msg(0)), []string{"Submit", "Toggle", "Delete"})`,
-		`rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{`)
+		`rt.RegisterUnion(reflect.TypeOf(tag__Table__Todo__Filter(0)), []string{"All", "Active", "Completed"})`,
+		`rt.RegisterUnion(reflect.TypeOf(tag__Table__User__Role(0)), []string{"Member", "Admin"})`)
 }
 
-// runTodosShowTest prints todos values with rt.Show: unions from every module file (Todo,
-// the page's and App's Msg) print by their constructor names, never as Go.
+// runTodosShowTest prints todos values with rt.Show: unions from every module file (Todo's
+// Filter, User's Role) print by their constructor names, and route parameters as records, never as Go.
 const runTodosShowTest = `
 
 func TestTodosShow(t *testing.T) {
@@ -3070,10 +2793,9 @@ func TestTodosShow(t *testing.T) {
 		v    any
 		want string
 	}{
-		{Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: "x"}), "Toggle { id: \"x\" }"},
-		{Todos__Index__Msg__Submit__(Todos__Index__SubmitParams{Form: Todos__Index__NewTodo{Title: "Milk", Due: due}}),
-			"Submit { form: { title: \"Milk\", due: Just 2026-10-09 } }"},
-		{App__Msg__Logout__, "Logout"},
+		{Todos__Index__Toggle__Params{Id: "x"}, "{ id: \"x\" }"},
+		{Todos__Index__Submit__Params{Filter: Table__Todo__Filter__Completed__, Form: Todos__Index__NewTodo{Title: "Milk", Due: due}},
+			"{ filter: Completed, form: { title: \"Milk\", due: Just 2026-10-09 } }"},
 		{App__Session{User: rt.Just("u1")}, "{ user: Just \"u1\", role: Member }"}, // a union's zero value is its first constructor
 		{Todos__Index__Model{Filter: Table__Todo__Filter__Active__, Todos: []Table__Todo__Todo{{Id: "1", Title: "a", Created: time.Unix(0, 0)}}},
 			"{ filter: Active, todos: [{ id: \"1\", title: \"a\", done: False, due: Nothing, owner: \"\", created: 1970-01-01T00:00:00Z }] }"},
@@ -3093,7 +2815,7 @@ func TestTodosShow(t *testing.T) {
 
 // A record field whose Alder name starts with '_' is the exported Go field U__<rest> (Field), in
 // every place a field may be: a record (rt.Show, rt.Eq and rt.Key see it), App's session (its
-// cookie codec), a page parameter, a message parameter, a form and a table row.
+// cookie codec), a GET route's parameter, a write route's parameter, a form and a table row.
 func TestGen_RunUnderscoreFields(t *testing.T) {
 	if got := Field("_at"); got != "U__at" {
 		t.Errorf("Field(_at) = %s", got)
@@ -3106,10 +2828,10 @@ func TestGen_RunUnderscoreFields(t *testing.T) {
 
 session { _n: Int = 0, _seen: Maybe Time }
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>not found</p>
 `,
 		"Row.alder": `module Row
@@ -3126,23 +2848,22 @@ table Row {
 
 import Row
 
-page "/home" { _q: Int = 0 }
+route Home = GET  "/home"      { _q: Int = 0 }
+route Add  = POST "/home/add"  { } form NewRow
+route Pick = POST "/home/pick" { _k: Int }
 
 form NewRow = { _note: Text }
 
-msg Add form NewRow
-msg Pick { _k: Int }
+type Model = { _rows: List Row.Row, _h: Html, _d: Dict Text Time }
 
-type Model = { _rows: List Row.Row, _h: Html Never, _d: Dict Text Time }
-
-load : Params -> Session -> Query Model
-load params session = {
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = {
   let rows <- Db.from Row |> Db.orderBy Row._at.asc |> Db.all
   Query.succeed { _rows: rows, _h: <b>{Text.fromInt params._q}</b>, _d: Dict.empty }
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Home.view : Model -> Session -> Html
+Home.view model session =
   <div>
     {model._h}
     <ul>{for r in model._rows -> <li>{r._note}</li>}</ul>
@@ -3153,16 +2874,16 @@ view model session =
     <button click={Pick { _k: 7 }}>pick</button>
   </div>
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add p -> {
-    let _ <- Db.insert Row { _note: p.form._note }
-    Task.succeed Rerender
-  },
-  Pick p -> {
-    let _ <- Session.put (\s -> { s | _n: s._n + p._k })
-    Task.succeed (Redirect (Home { _q: p._k }))
-  },
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insert Row { _note: p.form._note }
+  Task.succeed Response.refresh
+}
+
+Pick.update : Pick.Params -> Session -> Task Response
+Pick.update p session = {
+  let _ <- Session.put (\s -> { s | _n: s._n + p._k })
+  Task.succeed (Response.redirect (Home { _q: p._k }))
 }
 `,
 	})
@@ -3218,19 +2939,19 @@ func TestUnderscore(t *testing.T) {
 		}
 		return w
 	}
-	// a page parameter
+	// a GET route's parameter
 	if w := do("GET", "/home?_q=3", ""); w.Code != 200 || !strings.Contains(w.Body.String(), "<b>3</b>") {
 		t.Fatalf("GET: %d %s", w.Code, w.Body.String())
 	}
 	// a form field, into a table row and back
-	if w := do("POST", "/_m/Home/Add", "_note=milk"); w.Code != http.StatusSeeOther {
+	if w := do("POST", "/home/add", "_note=milk"); w.Code != http.StatusSeeOther {
 		t.Fatalf("Add: %d %s", w.Code, w.Body.String())
 	}
 	if w := do("GET", "/home", ""); !strings.Contains(w.Body.String(), "<li>milk</li>") {
 		t.Fatalf("the row: %s", w.Body.String())
 	}
-	// a message parameter, and the session
-	if w := do("POST", "/_m/Home/Pick?_k=7", ""); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/home?_q=7" {
+	// a write route's parameter, and the session
+	if w := do("POST", "/home/pick?_k=7", ""); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/home?_q=7" {
 		t.Fatalf("Pick: %d %q", w.Code, w.Header().Get("Location"))
 	}
 	if cookie == "" {
@@ -3251,10 +2972,10 @@ func TestGen_Tests(t *testing.T) {
 
 session { n: Int = 0 }
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <html><body><p>error</p></body></html>
 
-notFound : Html Never
+notFound : Html
 notFound = <html><body><p>nf</p></body></html>
 `,
 		"Shop.alder": `module Shop
@@ -3342,13 +3063,13 @@ func TestGen_Fakes(t *testing.T) {
 // (testdata/e2e_browser_test.go.txt).
 func TestGen_Browser(t *testing.T) {
 	files := emitWith(t, "../../testdata/golden/gen_browser", true)
-	contains(t, files["Notes__Index_alder.go"], `eff.Call("Test.get Notes.Index", true,`, `.GetPage(_u`, `, "user")`, `rtesting.ModelOf[Notes__Index__Model](_u`,
-		`eff.Call("Test.click Notes.Index.Toggle", true,`, `.ClickMsg(rt.MsgRef{Module: "Notes.Index", Msg: "Toggle", Params: []rt.KV{{Key: "id", Value: _m`,
-		`rtesting.MsgName("Notes.Index.Toggle", _m`, `.SubmitForm("/_m/Notes.Index/Submit", "NewNote", encode__Notes__Index__NewNote(`,
+	contains(t, files["Notes__Index_alder.go"], `eff.Call("Test.get Notes.Index.Index", true,`, `.GetPage(_u`, `, "user")`, `rtesting.ModelOf[Notes__Index__Model](_u`,
+		`eff.Call("Test.click Notes.Index.Toggle", true,`, `.ClickRoute(rt.Route{Name: "Notes.Index.Toggle", Method: "POST", Path: "/_/Toggle", Query: []rt.KV{{Key: "id", Value: _m`,
+		`rtesting.MsgName("Notes.Index.Toggle", _m`, `.SubmitRoute(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/_/Submit"}, "NewNote", encode__Notes__Index__NewNote(`,
 		`rtesting.RawFields("NewNote", []string{"title", "due", "urgent", "priority", "weight", "kind", "remark", "contact"},`,
-		`rtesting.DocCountSel(selector__`, `rtesting.DocTexts(sel, `, `rtesting.DocCount(bad, `, `rtesting.ViewDoc(Notes__Index__view(`, `case rtesting.RequestFailed:`)
-	contains(t, files["Auth__Login_alder.go"], `eff.Call("Test.login", true,`, `eff.Call("Test.open Notes.Index", true,`, `.Open(_u`,
-		`rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}`, `rtesting.FormRejectedAnswer([]struct {`,
+		`rtesting.DocCountSel(selector__`, `rtesting.DocTexts(sel, `, `rtesting.DocCount(bad, `, `rtesting.ViewDoc(Notes__Index__Index__view(`, `case rtesting.RequestFailed:`)
+	contains(t, files["Auth__Login_alder.go"], `eff.Call("Test.login", true,`, `eff.Call("Test.open Notes.Index.Index", true,`, `.Open(_u`,
+		`rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Route{Name: "Auth.Login.Login", Method: "GET", Path: "/login"}}`, `rtesting.FormRejectedAnswer([]struct {`,
 		`eff.Call("Test.click App.Logout", true,`, `rtesting.MsgName("App.Logout", nil)`)
 	contains(t, files["routes__alder.go"], "func encode__Notes__Index__NewNote(r Notes__Index__NewNote) rtesting.Fields {")
 	contains(t, files["app__alder.go"], "func Web() web.Options {", `selector__1  = rtesting.Sel("h1")`)
@@ -3359,9 +3080,9 @@ func TestGen_Browser(t *testing.T) {
 	runGo(t, files, string(prog))
 }
 
-// TestGen_Wire (#55): a test build of the gen_wire golden, whose page names its query keys
+// TestGen_Wire (#55): a test build of the gen_wire golden, whose route names its query keys
 // (`electionId: Text = "" as "ElectionId"`), decodes the wire keys and emits them in every URL
-// of the page: a link, the page's message URLs (_p.<key>), a redirect and a test's visit
+// of the route: a link, a redirect and a test's visit
 // (testdata/e2e_wire_test.go.txt).
 func TestGen_Wire(t *testing.T) {
 	files := emitWith(t, "../../testdata/golden/gen_wire", true)
@@ -3500,12 +3221,12 @@ func TestGen_Mutate(t *testing.T) {
 				t.Fatalf("Mutants has %d entries, want %d", got, len(ms))
 			}
 			for _, m := range ms {
-				if m.Node == nil && m.Page == nil && m.Route == nil {
+				if m.Node == nil && m.Route == nil {
 					continue
 				}
 				// a switch's case, or an If's or a Match's test of Mutant (mutatedIf, mutatedMatch)
 				needles := []string{fmt.Sprintf("case %d:\n", m.ID), fmt.Sprintf("Mutant == %d ", m.ID), fmt.Sprintf("Mutant != %d ", m.ID), fmt.Sprintf("(Mutant == %d)", m.ID)}
-				if m.Page != nil || m.Route != nil {
+				if m.Route != nil {
 					needles = []string{fmt.Sprintf("Mutant == %d {", m.ID), fmt.Sprintf("Mutant != %d && ", m.ID)} // requires, role dropped
 				}
 				found := false
@@ -3815,35 +3536,31 @@ func TestGen_LetChainLinear(t *testing.T) {
 
 func TestGen_FilePage(t *testing.T) {
 	files := emitSource(t, map[string]string{
-		"App.alder": "module App\n\nerror : Error -> Html Never\nerror err = <h1>Error</h1>\n\nnotFound : Html Never\nnotFound = <h1>Not found</h1>\n",
+		"App.alder": "module App\n\nerror : Error -> Html\nerror err = <h1>Error</h1>\n\nnotFound : Html\nnotFound = <h1>Not found</h1>\n",
 		"Report.alder": `module Report
 
-page "/report.txt" { }
+route Report = GET "/report.txt" { }
 
-type Model = { }
+Report.load : Report.Params -> Session -> Query Int
+Report.load params session = Query.succeed 1
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
-
-view : Model -> Session -> File
-view model session = File.text { contentType: "text/plain", body: "hi" } |> File.withStatus 503
+Report.view : Int -> Session -> File
+Report.view n session = File.text { contentType: "text/plain", body: "hi" } |> File.withStatus 503
 `,
 		"Home.alder": `module Home
 
-page "/" { }
+route Home = GET "/" { }
 
-type Model = { }
+Home.load : Home.Params -> Session -> Query Int
+Home.load params session = Query.succeed 1
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
-
-view : Model -> Session -> Html Msg
-view model session = <a href={Report {}}>report</a>
+Home.view : Int -> Session -> Html
+Home.view n session = <a href={Report.Report {}}>report</a>
 `,
 	})
 	contains(t, files["routes__alder.go"],
 		`return web.Route{Method: "GET", Pattern: "/report.txt", File: true, Handle: func(rq *web.Request) web.Response {`,
-		"return web.FileResponse(Report__view(model, session), rq.Session)")
+		"return web.FileResponse(Report__Report__view(model, session), rq.Session)")
 	contains(t, files["Home_alder.go"], `html.A("data-alder-reload", "true")`)
 	vet(t, files)
 }
@@ -3914,47 +3631,41 @@ func TestGen_QueryRedirect(t *testing.T) {
 		"App.alder": appModule,
 		"Builder.alder": `module Builder
 
-page "/builder/{seed}" { seed: Text, tab: Text = "main" }
+route Builder = GET "/builder/{seed}" { seed: Text, tab: Text = "main" }
 
-type Model = { seed: Text }
+Builder.load : Builder.Params -> Session -> Query Text
+Builder.load params session = Query.succeed params.seed
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { seed: params.seed }
-
-view : Model -> Session -> Html Msg
-view model session = <html><head><title>Builder</title></head><body><p>builder {model.seed}</p></body></html>
+Builder.view : Text -> Session -> Html
+Builder.view seed session = <html><head><title>Builder</title></head><body><p>builder {seed}</p></body></html>
 `,
 		"Start.alder": `module Start
 
-page "/start" { go: Text = "", to: Text = "" }
+route Start = GET "/start" { go: Text = "", to: Text = "" }
 
-type Model = { }
-
-load : Params -> Session -> Query Model
-load params session =
-  if params.go == "builder" then Query.redirect (Builder { seed: "7", tab: "main" })
+Start.load : Start.Params -> Session -> Query Int
+Start.load params session =
+  if params.go == "builder" then Query.redirect (Builder.Builder { seed: "7", tab: "main" })
   else if params.go == "out" then Query.redirect (Url.external params.to)
-  else if params.go == "value" then Maybe.withDefault (Query.succeed { }) (Maybe.map Query.redirect (Just (Builder { seed: "a b", tab: "x" })))
-  else Query.succeed { }
+  else if params.go == "value" then Maybe.withDefault (Query.succeed 1) (Maybe.map Query.redirect (Just (Builder.Builder { seed: "a b", tab: "x" })))
+  else Query.succeed 1
 
-view : Model -> Session -> Html Msg
-view model session = <p>start</p>
+Start.view : Int -> Session -> Html
+Start.view n session = <p>start</p>
 `,
 		"Go.alder": `module Go
 
-page "/go.txt" { }
+route Go = GET "/go.txt" { }
 
-type Model = { }
+Go.load : Go.Params -> Session -> Query Int
+Go.load params session = Query.redirect (Builder.Builder { seed: "9", tab: "main" })
 
-load : Params -> Session -> Query Model
-load params session = Query.redirect (Builder { seed: "9", tab: "main" })
-
-view : Model -> Session -> File
-view model session = File.text { contentType: "text/plain", body: "never" }
+Go.view : Int -> Session -> File
+Go.view n session = File.text { contentType: "text/plain", body: "never" }
 `,
 	})
 	contains(t, files["Start_alder.go"], `eff.Redirect[`)
-	contains(t, files["Start_alder.go"], `rt.PageURL(`)
+	contains(t, files["Start_alder.go"], `rt.RouteURL(`)
 	runGo(t, files, `package app
 
 import (
@@ -4023,7 +3734,7 @@ func TestProbe(t *testing.T) {
 // Response.success "ok"` is a Response with one success toast.
 func TestGen_ResponseBuilders(t *testing.T) {
 	files := emitSource(t, map[string]string{
-		"App.alder": "module App\n\nerror : Error -> Html Never\nerror err = <html><body></body></html>\n\nnotFound : Html Never\nnotFound = <html><body></body></html>\n",
+		"App.alder": "module App\n\nerror : Error -> Html\nerror err = <html><body></body></html>\n\nnotFound : Html\nnotFound = <html><body></body></html>\n",
 		"R.alder": "module R\n\n" +
 			"done : Response\ndone = Response.redirect (Url.external \"/x\") |> Response.success \"ok\"\n\n" +
 			"again : Response\nagain = Response.refresh |> Response.toast \"a\" |> Response.warning \"b\" |> Response.error \"c\"\n\n" +
@@ -4543,7 +4254,7 @@ func goFunc(t *testing.T, src, name string) string {
 // form: it is part of the route's URL) and a PATCH route with `form Entry` sent from a bare
 // `submit` attribute on an element that is not a <form>.
 var routeFormApp = map[string]string{
-	"App.alder": "module App\n\nsession { theme: Text = \"light\" }\n\nerror : Error -> Html Never\nerror err = <p>error</p>\n\nnotFound : Html Never\nnotFound = <p>not found</p>\n",
+	"App.alder": "module App\n\nsession { theme: Text = \"light\" }\n\nerror : Error -> Html\nerror err = <p>error</p>\n\nnotFound : Html\nnotFound = <p>not found</p>\n",
 	"Search.alder": `module Search
 
 route Find = GET   "/find"      { form: Text = "" }

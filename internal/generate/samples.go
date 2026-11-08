@@ -8,7 +8,7 @@ import (
 )
 
 // testBuilder writes the setup of a generated test in module home: the rows it inserts (each
-// with sample values, and the rows they refer to first), the login, the page value it opens.
+// with sample values, and the rows they refer to first), the login, the route value it opens.
 // Its lines are the test block's statements, in order.
 type testBuilder struct {
 	p       *Program
@@ -39,11 +39,8 @@ type siloCtx struct {
 	v      string
 }
 
-// keyedFor makes the builder's login set the key page pg requires besides `user` (an `org`):
+// keyedForKeys makes the builder's login set the keys a route requires besides `user` (an `org`):
 // a row of the key's table, the signed-in user a member of it when the key is `via` a table.
-func (b *testBuilder) keyedFor(pg *Page) *testBuilder { return b.keyedForKeys(pg.Keys) }
-
-// keyedForKeys is keyedFor for the fields a page or route requires.
 func (b *testBuilder) keyedForKeys(keys []string) *testBuilder {
 	for _, k := range keys {
 		if k == "user" {
@@ -478,10 +475,6 @@ func importTypes(s *importSet, t types.Type) {
 	}
 }
 
-// pageValue is the page value of pg for a test, its required parameters filled with sample
-// values (the id of a row, inserted, for a table's id).
-func (b *testBuilder) pageValue(pg *Page) string { return b.valueOf(pg.Module, pg.Params) }
-
 // routeValue is the value of route r for a test, written in b's module: `R {}` or
 // `R { a: x }`, its required parameters filled with sample values.
 func (b *testBuilder) routeValue(r *Route) string { return b.valueOf(r.Ref(b.home), r.Params) }
@@ -497,7 +490,7 @@ func (b *testBuilder) valueOf(name string, params []*Param) string {
 	return pageLit(name, fields)
 }
 
-// pageLit is a page value: `M {}` or `M { a: x, b: y }`.
+// pageLit is a route value: `M {}` or `M { a: x, b: y }`.
 func pageLit(module string, fields []string) string {
 	if len(fields) == 0 {
 		return module + " {}"

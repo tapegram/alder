@@ -1,11 +1,11 @@
  shelf  [32m● ok[0m  localhost:8080  alder v0.15.0               1 Requests 2 Logs 3 Data 4 Tests [1m5 Routes[0m
  5 routes  4 hits
  ──────────────────────────────────────────────────────────────────────────────────────────────────
- > page  /               Home.page    app/Home.al:1    1
-   msg   /_m/Books/lend  Books.Lend   app/Books.al:22  [2m0[0m
-   page  /books/new      Books.page   app/Books.al:40  [2m0[0m
-   page  /books/{id}     Books.page   app/Books.al:8   2
-   page  /search         Search.page  app/Search.al:2  1
+ > GET   /               Home.page    app/Home.al:1    1
+   POST  /_m/Books/lend  Books.Lend   app/Books.al:22  [2m0[0m
+   GET   /books/new      Books.page   app/Books.al:40  [2m0[0m
+   GET   /books/{id}     Books.page   app/Books.al:8   2
+   GET   /search         Search.page  app/Search.al:2  1
 
 
 

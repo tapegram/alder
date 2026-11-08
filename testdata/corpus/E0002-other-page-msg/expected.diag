@@ -1,1 +1,0 @@
-app/Profile.alder:14:20 E0002 `Logout` belongs to page `Auth.Login`; a page can only send its own messages and `App` messages

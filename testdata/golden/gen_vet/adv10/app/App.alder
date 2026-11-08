@@ -9,8 +9,8 @@ route Logout = POST "/_/Logout" { }
 Logout.update : Logout.Params -> Session -> Task Response
 Logout.update params session = Task.succeed Response.refresh
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>nf</p>

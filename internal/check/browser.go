@@ -23,9 +23,9 @@ func IsTestStep(name string) bool { _, ok := testSteps[name]; return ok }
 
 // stepExample is how each step is applied, for the message of a step used as a value.
 var stepExample = map[string]string{
-	"login": "Test.login { user: Just id }", "get": "Test.get (Todos.Index {})", "open": "Test.open (Todos.Index {})",
-	"fetch":  "Test.fetch (Report.Csv { id: id })",
-	"submit": "Test.submit NewTodo { title: \"Milk\" }", "submitRaw": "Test.submitRaw NewTodo [{ name: \"title\", value: \"\" }]",
+	"login": "Test.login { user: Just id }", "get": "Test.get (Todos.Index.Index {})", "open": "Test.open (Todos.Index.Index {})",
+	"fetch":  "Test.fetch (Report.Csv.Csv { id: id })",
+	"submit": "Test.submit Create { title: \"Milk\" }", "submitRaw": "Test.submitRaw Create [{ name: \"title\", value: \"\" }]",
 	"click": "Test.click (Toggle { id: id })",
 }
 
@@ -33,7 +33,7 @@ var stepExample = map[string]string{
 var selectorArg = map[string]int{"text": 0, "texts": 0, "has": 0, "count": 0, "attr": 1}
 
 // answerCtors are the constructors of the Prelude's test type `Answer`.
-var answerCtors = map[string]bool{"Shown": true, "Rerendered": true, "Rendered": true, "Refreshed": true, "Redirected": true, "FormRejected": true, "PageMissing": true, "RequestFailed": true}
+var answerCtors = map[string]bool{"Shown": true, "Rendered": true, "Refreshed": true, "Redirected": true, "FormRejected": true, "PageMissing": true, "RequestFailed": true}
 
 // testTypes are the Prelude types that exist only inside a `test`.
 var testTypes = map[string]bool{"Doc": true, "Answer": true}
@@ -204,68 +204,32 @@ func (mc *modCtx) testLogin(arg syntax.Expr, env *env, eff effect) types.Type {
 	return &types.App{Con: "Task", Args: []types.Type{types.Unit}}
 }
 
-// pageOf is the page module a page value written in place names: `Todos.Index {…}` or (a page
-// without parameters) `Todos.Show`; "" for another expression, and ok false when the head is
-// a name the resolver could not resolve (reported).
-func pageOf(e syntax.Expr) (page string, ok bool) {
-	head := e
-	if app, isApp := e.(*syntax.App); isApp && len(app.Args) == 1 {
-		head = app.Fn
+// unresolvedHead reports whether e's head (e, or the function of an application) is a name the
+// resolver could not resolve (reported), or an old page's value (E0046 in its module).
+func unresolvedHead(e syntax.Expr) bool {
+	if app, isApp := e.(*syntax.App); isApp {
+		e = app.Fn
 	}
-	ct, isCt := head.(*syntax.CtorRef)
-	if !isCt {
-		return "", true
-	}
-	if ct.Ref.Kind == syntax.RefNone {
-		return "", false
-	}
-	if ct.Ref.Kind == syntax.RefPage {
-		return ct.Ref.Module, true
-	}
-	return "", true
+	ct, isCt := e.(*syntax.CtorRef)
+	return isCt && (ct.Ref.Kind == syntax.RefNone || ct.Ref.Kind == syntax.RefPage)
 }
 
-// testGet types `Test.get p`, `Test.open p` and `Test.fetch p`: p is a page value written in
-// place (its head a page); get's result holds the page's `Model`, which must be a record (a
-// union cannot be named in the result: E0003), open's the Answer, fetch's the raw answer
-// (fetchResult). Only fetch may name a file page.
+// testGet types `Test.get r`, `Test.open r` and `Test.fetch r`: r is a GET route written in
+// place (testGetRoute).
 func (mc *modCtx) testGet(name string, arg syntax.Expr, env *env, eff effect) types.Type {
 	c := mc.c
+	if mc.bareRoute(arg, true) {
+		return types.Err
+	}
 	if ct, r := mc.routeTarget(arg); r != nil {
 		return mc.testGetRoute(name, arg, ct, r, env, eff)
 	}
-	page, ok := pageOf(arg)
-	if !ok {
+	if unresolvedHead(arg) {
 		return types.Err
 	}
-	if page == "" {
-		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a page value such as `Todos.Index {}`, got `%s`", name, mc.source(arg.GetSpan()))
-		mc.infer(arg, env, eff)
-		return types.Err
-	}
-	mc.check(arg, types.Page, env, eff)
-	if c.pages[page] == nil {
-		return types.Err
-	}
-	if c.pages[page].File && name != "fetch" {
-		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`%s` is a file page: use `Test.fetch`", page)
-		return types.Err
-	}
-	if name == "fetch" {
-		return fetchResult()
-	}
-	if name == "open" {
-		return mc.stepResult("answer", c.answerType())
-	}
-	model, ok := c.types[c.key(page, "Model")]
-	if !ok {
-		return types.Err // a page without Model: E0010
-	}
-	if _, isUnion := model.(*types.Union); isUnion {
-		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.get` needs a record `Model`: `%s`'s is a union — use `Test.open`", page)
-		return types.Err
-	}
-	return mc.stepResult("model", model)
+	c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a route written in place, such as `Todos.Index.Index {}`, got `%s`", name, mc.source(arg.GetSpan()))
+	mc.infer(arg, env, eff)
+	return types.Err
 }
 
 // testGetRoute is testGet of route r, written in place as arg (ct its head): a GET route, as a
@@ -319,29 +283,26 @@ func routeStep(r *RouteInfo) string {
 	return "(" + r.Name + " { " + strings.Join(fs, ", ") + " })"
 }
 
-// stepForm is the form a `Test.submit` names and the message posting it.
+// stepForm is the form a `Test.submit` posts and the write route posting it.
 type stepForm struct {
-	module string // the form's module (a page, or App)
+	module string // the route's module
 	form   *types.Record
-	msg    string
+	route  string
 }
 
-// stepFormOf resolves the target of `Test.submit`/`submitRaw`: a form of a page module or of
-// App that exactly one of its messages posts, or a message that posts a form, written with its
-// parameters (`Save { id: id }`). ok is false when an error was reported (or the resolver
-// reported one).
+// stepFormOf resolves the target of `Test.submit`/`submitRaw`: a write route with `form F`,
+// written in place with its parameters (`Move { id: id }`). ok is false when an error was
+// reported (or the resolver reported one).
 func (mc *modCtx) stepFormOf(step string, arg syntax.Expr, env *env, eff effect) (stepForm, bool) {
 	c := mc.c
-	head := arg
-	if app, isApp := arg.(*syntax.App); isApp {
-		head = app.Fn
-	}
-	ct, isCt := head.(*syntax.CtorRef)
-	if isCt && ct.Ref.Kind == syntax.RefNone {
+	if unresolvedHead(arg) {
 		mc.inferArgs([]syntax.Expr{arg}, env, eff)
 		return stepForm{}, false
 	}
 	if ct, r := mc.routeTarget(arg); r != nil { // a write route with `form F`: F's record
+		if r.Decl.Form != "" && mc.bareRoute(arg, true) {
+			return stepForm{}, false
+		}
 		if r.Decl.Form == "" {
 			if isWrite(r.Method) {
 				c.errorf(diag.RouteTarget, arg.GetSpan(), "`Test.%s` posts a route's form; `%s` has no `form`: use `Test.click %s`", step, ct.Name, routeStep(r))
@@ -354,25 +315,14 @@ func (mc *modCtx) stepFormOf(step string, arg syntax.Expr, env *env, eff effect)
 		mc.check(arg, types.Route, env, eff)
 		for _, f := range r.Params.Fields {
 			if fr, ok := f.Type.(*types.Record); ok && f.Name == "form" {
-				return stepForm{module: r.Module, form: fr, msg: r.Name}, true
+				return stepForm{module: r.Module, form: fr, route: r.Name}, true
 			}
 		}
 		return stepForm{}, false // its form is not a record: reported at the route
 	}
-	if isCt && ct.Ref.Kind == syntax.RefCtor {
-		if info := c.ctors[c.key(ct.Ref.Module, ct.Ref.Name)]; info != nil && c.isMessageUnion(info.Union) {
-			form := mc.msgForm(ct.Ref.Module, ct.Ref.Name)
-			if form == "" {
-				c.errorf(diag.TypeMismatch, arg.GetSpan(), "`%s` posts no form: use `Test.click`", ct.Ref.Name)
-				mc.infer(arg, env, eff)
-				return stepForm{}, false
-			}
-			mc.check(arg, info.Union, env, eff)
-			return stepForm{module: ct.Ref.Module, form: c.forms[c.key(ct.Ref.Module, form)], msg: ct.Ref.Name}, true
-		}
-	}
-	if arg != head || !isCt || ct.Ref.Kind != syntax.RefType || c.forms[c.key(ct.Ref.Module, ct.Ref.Name)] == nil {
-		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a form declared by a page, got `%s`", step, mc.source(arg.GetSpan()))
+	ct, isCt := arg.(*syntax.CtorRef)
+	if !isCt || ct.Ref.Kind != syntax.RefType || c.forms[c.key(ct.Ref.Module, ct.Ref.Name)] == nil {
+		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a write route with `form`, such as `Create`, got `%s`", step, mc.source(arg.GetSpan()))
 		if !isCt || ct.Ref.Kind != syntax.RefType {
 			mc.infer(arg, env, eff)
 		}
@@ -380,61 +330,19 @@ func (mc *modCtx) stepFormOf(step string, arg syntax.Expr, env *env, eff effect)
 	}
 	c.record(ct, types.Unit) // a form's name is not a value (stepParams)
 	mod := ct.Ref.Module
-	if c.pages[mod] == nil && mod != "App" && c.routes[mod] != nil {
-		for _, r := range c.routes[mod] { // a route's form is posted by naming the route
-			if r.Decl.Form == ct.Ref.Name {
-				c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` names the route that posts a form: write `Test.%s %s …`", step, step, routeStep(r))
-				return stepForm{}, false
-			}
+	for _, r := range c.routes[mod] { // a route's form is posted by naming the route
+		if r.Decl.Form == ct.Ref.Name {
+			c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` names the route that posts a form: write `Test.%s %s …`", step, step, routeStep(r))
+			return stepForm{}, false
 		}
 	}
-	if c.pages[mod] == nil && mod != "App" {
-		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a form declared by a page: `%s` is a form of `%s`, which is not a page", step, ct.Name, mod)
-		return stepForm{}, false
-	}
-	var posts []*syntax.MsgDecl
-	if m := c.prog.Modules[mod]; m != nil {
-		for _, d := range c.live(m) {
-			if md, ok := d.(*syntax.MsgDecl); ok && md.Form == ct.Ref.Name {
-				posts = append(posts, md)
-			}
-		}
-	}
-	switch len(posts) {
-	case 0:
-		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a form a message posts: no `msg … form %s` in `%s`", step, ct.Ref.Name, mod)
-		return stepForm{}, false
-	case 1:
-		return stepForm{module: mod, form: c.forms[c.key(mod, ct.Ref.Name)], msg: posts[0].Name}, true
-	}
-	var names []string
-	for _, md := range posts {
-		names = append(names, "`"+md.Name+"`")
-	}
-	list := strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
-	first := posts[0]
-	write := first.Name
-	if first.Params != nil && len(first.Params.Fields) > 0 {
-		var fs []string
-		for _, f := range first.Params.Fields {
-			fs = append(fs, f.Name+": …")
-		}
-		write = "(" + first.Name + " { " + strings.Join(fs, ", ") + " })"
-	}
-	value := "{ … }"
-	if step == "submitRaw" {
-		value = "[…]"
-	}
-	d := c.errorf(diag.TypeMismatch, arg.GetSpan(), "`%s` is posted by %s: write `Test.%s %s %s`", ct.Name, list, step, write, value)
-	if write == first.Name { // a message without parameters: the fix names it
-		d.Fix = diag.ReplaceSpan(arg.GetSpan(), first.Name)
-	}
+	c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a write route with `form`, got form `%s` of `%s`, which no route posts", step, ct.Name, mod)
 	return stepForm{}, false
 }
 
-// testSubmit types `Test.submit F r` (r is F's record: a request value, so its defaults apply)
-// and `Test.submitRaw F fields` (fields a List { name: Text, value: Text }); F may be the
-// message posting the form, with its parameters.
+// testSubmit types `Test.submit r f` (r a write route with `form F`, f F's record: a request
+// value, so its defaults apply) and `Test.submitRaw r fields` (fields a List { name: Text,
+// value: Text }).
 func (mc *modCtx) testSubmit(name string, formArg, value syntax.Expr, env *env, eff effect) types.Type {
 	c := mc.c
 	f, ok := mc.stepFormOf(name, formArg, env, eff)
@@ -456,20 +364,18 @@ func (mc *modCtx) testSubmit(name string, formArg, value syntax.Expr, env *env, 
 	return mc.stepResult("answer", c.answerType())
 }
 
-// testClick types `Test.click m`: m is a message of a page or of App that carries no form (a
-// form's message is posted with Test.submit).
+// testClick types `Test.click r`: r is a route written in place, a GET route fetched or a write
+// route without a form (a form's route is posted with Test.submit).
 func (mc *modCtx) testClick(arg syntax.Expr, env *env, eff effect) types.Type {
 	c := mc.c
-	head := arg
-	if app, isApp := arg.(*syntax.App); isApp {
-		head = app.Fn
-	}
-	ct, isCt := head.(*syntax.CtorRef)
-	if isCt && ct.Ref.Kind == syntax.RefNone {
+	if unresolvedHead(arg) {
 		mc.infer(arg, env, eff)
 		return types.Err
 	}
-	if ct, r := mc.routeTarget(arg); r != nil { // a GET route fetched, or a write route without form
+	if mc.bareRoute(arg, true) {
+		return types.Err
+	}
+	if ct, r := mc.routeTarget(arg); r != nil {
 		if r.Decl.Form != "" {
 			c.errorf(diag.RouteTarget, arg.GetSpan(), "`Test.click` sends a route without a form; `%s` posts form `%s`: use `Test.submit %s { … }`", ct.Name, r.Decl.Form, routeStep(r))
 			mc.infer(arg, env, eff)
@@ -478,29 +384,13 @@ func (mc *modCtx) testClick(arg syntax.Expr, env *env, eff effect) types.Type {
 		mc.check(arg, types.Route, env, eff)
 		return mc.stepResult("answer", c.answerType())
 	}
-	var info *ctorInfo
-	if isCt && ct.Ref.Kind == syntax.RefCtor {
-		info = c.ctors[c.key(ct.Ref.Module, ct.Ref.Name)]
+	t := c.u.Apply(mc.infer(arg, env, eff))
+	got := "`" + mc.source(arg.GetSpan()) + "`"
+	if !types.IsErr(t) {
+		got += " of type `" + mc.ts(t) + "`"
 	}
-	if info == nil || !c.isMessageUnion(info.Union) {
-		t := c.u.Apply(mc.infer(arg, env, eff))
-		got := "`" + mc.source(arg.GetSpan()) + "`"
-		if !types.IsErr(t) {
-			got += " of type `" + mc.ts(t) + "`"
-		}
-		if page, _ := pageOf(arg); page != "" { // a link, not a button
-			got += ": follow a link with `Test.get` or `Test.open`"
-		}
-		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.click` wants a message of a page or of `App`, got %s", got)
-		return types.Err
-	}
-	if form := mc.msgForm(ct.Ref.Module, ct.Ref.Name); form != "" {
-		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`%s` carries form `%s`: use `Test.submit`", ct.Ref.Name, form)
-		mc.infer(arg, env, eff)
-		return types.Err
-	}
-	mc.check(arg, info.Union, env, eff)
-	return mc.stepResult("answer", c.answerType())
+	c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.click` wants a route, got %s", got)
+	return types.Err
 }
 
 // testRefresh types `Test.refresh` at x: a step's result, as `Test.open`'s.
@@ -511,26 +401,6 @@ func (mc *modCtx) testRefresh(x *syntax.Var) types.Type {
 		return types.Err
 	}
 	return mc.stepResult("answer", c.answerType())
-}
-
-// msgForm is the form message msg of module mod (a page or App) posts, "" for none.
-func (mc *modCtx) msgForm(mod, msg string) string {
-	c := mc.c
-	if p := c.pages[mod]; p != nil {
-		if md := p.Msgs[msg]; md != nil {
-			return md.Form
-		}
-	}
-	if mod == "App" {
-		if m := c.prog.Modules["App"]; m != nil {
-			for _, d := range c.live(m) {
-				if md, ok := d.(*syntax.MsgDecl); ok && md.Name == msg {
-					return md.Form
-				}
-			}
-		}
-	}
-	return ""
 }
 
 // checkSelectorArg reports E0023 when the selector argument of the query `Test.<name>` applied

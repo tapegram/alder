@@ -67,7 +67,7 @@ var ridSuffix = regexp.MustCompile(` rid=[0-9a-f]{8}$`)
 func TestAccessLog_PageGET(t *testing.T) {
 	var s sink
 	h := NewRouter(one("GET", "/start", func(rq *Request) Response {
-		return PageResponse(doc("start"), nil, nil, false)
+		return PageResponse(doc("start"), nil, nil)
 	}), s.opts(nil))
 	w := serveRaw(h, httptest.NewRequest("GET", "/start?key=s3cret&seed=7", nil))
 	a := s.one(t)
@@ -91,12 +91,12 @@ func TestAccessLog_PageGET(t *testing.T) {
 
 func TestAccessLog_POSTRedirect(t *testing.T) {
 	var s sink
-	h := NewRouter(one("POST", "/_m/A/Save", func(rq *Request) Response { return RedirectResponse("/list", nil) }), s.opts(nil))
-	req := httptest.NewRequest("POST", "/_m/A/Save", strings.NewReader("password=hunter2"))
+	h := NewRouter(one("POST", "/a/save", func(rq *Request) Response { return RedirectResponse("/list", nil) }), s.opts(nil))
+	req := httptest.NewRequest("POST", "/a/save", strings.NewReader("password=hunter2"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := serve(h, req)
 	a := s.one(t)
-	if w.Code != 303 || a.Method != "POST" || a.Path != "/_m/A/Save" || a.Status != 303 || a.Bytes != 0 || a.Quiet {
+	if w.Code != 303 || a.Method != "POST" || a.Path != "/a/save" || a.Status != 303 || a.Bytes != 0 || a.Quiet {
 		t.Errorf("%d: %+v", w.Code, a)
 	}
 }
@@ -131,7 +131,7 @@ func TestAccessLog_StaticQuiet(t *testing.T) {
 	}
 	var s sink
 	t.Setenv("ALDER_DEV", "1")
-	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil, false) }),
+	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil) }),
 		s.opts(func(o *Options) { o.StaticDir = dir; o.Dev = true }))
 	for _, c := range []struct {
 		path   string
@@ -181,10 +181,10 @@ func TestAccessLog_Panic(t *testing.T) {
 
 	// after the response started: the status as written, and the error line, share the id
 	s.reset()
-	h = NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response {
-		return PageResponse(doc("patched"), nil, nil, true)
+	h = NewRouter(one("POST", "/go", func(rq *Request) Response {
+		return RedirectResponse("https://example.com/", nil) // under Datastar: a navigation event
 	}), s.opts(nil))
-	req := httptest.NewRequest("POST", "/_m/A/B", nil)
+	req := httptest.NewRequest("POST", "/go", nil)
 	req.Header.Set("Datastar-Request", "true")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(flushPanics{rec}, req)
@@ -199,7 +199,7 @@ func TestAccessLog_Panic(t *testing.T) {
 
 func TestAccessLog_IncomingID(t *testing.T) {
 	var s sink
-	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil, false) }), s.opts(nil))
+	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil) }), s.opts(nil))
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("X-Request-Id", "abc-1")
 	if w := serve(h, req); w.Header().Get("X-Request-Id") != "abc-1" || s.one(t).ID != "abc-1" {
@@ -217,7 +217,7 @@ func TestAccessLog_IncomingID(t *testing.T) {
 
 func TestAccessLog_NilHook(t *testing.T) {
 	var logs []string
-	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil, false) }), testOpts(func(o *Options) {
+	h := NewRouter(one("GET", "/", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil) }), testOpts(func(o *Options) {
 		o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) }
 	}))
 	w := serve(h, httptest.NewRequest("GET", "/", nil))
@@ -230,7 +230,7 @@ func TestAccessLog_Steps(t *testing.T) {
 	var s sink
 	h := NewRouter(one("GET", "/", func(rq *Request) Response {
 		rq.Env.Trace = append(rq.Env.Trace, "Db.all Todo", "Time.now")
-		return PageResponse(doc("x"), nil, nil, false)
+		return PageResponse(doc("x"), nil, nil)
 	}), s.opts(nil))
 	serve(h, httptest.NewRequest("GET", "/", nil))
 	if a := s.one(t); a.Steps != 2 {
@@ -254,7 +254,7 @@ func TestErrorLine_Masked(t *testing.T) {
 
 func TestBadRequest_Masked(t *testing.T) {
 	var s sink
-	h := NewRouter(one("GET", "/start", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil, false) }), s.opts(nil))
+	h := NewRouter(one("GET", "/start", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil) }), s.opts(nil))
 	hex40 := "0123456789abcdef0123456789abcdef01234567"
 	w := serve(h, httptest.NewRequest("GET", "/start?key=s3cret&faults=a;b&"+hex40+"=%zz", nil))
 	if w.Code != 400 || len(s.lines) != 1 {
@@ -275,7 +275,7 @@ func TestBadRequest_Masked(t *testing.T) {
 // 413 and 415 are warn lines, each with the request's id.
 func TestBodyRefusals_Warn(t *testing.T) {
 	var s sink
-	h := NewRouter(one("POST", "/p", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil, false) }), s.opts(nil))
+	h := NewRouter(one("POST", "/p", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil) }), s.opts(nil))
 	big := httptest.NewRequest("POST", "/p", strings.NewReader("a="+strings.Repeat("x", maxBody+10)))
 	big.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	multi := httptest.NewRequest("POST", "/p", strings.NewReader("--x--"))
@@ -299,16 +299,16 @@ func TestLogLines_NoHeadersCookiesBodies(t *testing.T) {
 	var s sink
 	routes := []Route{
 		{Method: "GET", Pattern: "/page", Handle: func(rq *Request) Response {
-			return PageResponse(doc("x"), nil, testSession{User: secret}, false)
+			return PageResponse(doc("x"), nil, testSession{User: secret})
 		}},
 		{Method: "GET", Pattern: "/boom", Handle: func(rq *Request) Response { panic("kaboom") }},
 		{Method: "GET", Pattern: "/err", Handle: func(rq *Request) Response {
 			return ErrorResponse(html.None(), errors.New("failed"))
 		}},
-		{Method: "POST", Pattern: "/_m/A/Save", Handle: func(rq *Request) Response {
+		{Method: "POST", Pattern: "/a/save", Handle: func(rq *Request) Response {
 			return RedirectResponse("/page", testSession{User: secret})
 		}},
-		{Method: "POST", Pattern: "/_m/A/Boom", Handle: func(rq *Request) Response { panic("kaboom") }},
+		{Method: "POST", Pattern: "/a/boom", Handle: func(rq *Request) Response { panic("kaboom") }},
 		{Method: "GET", Pattern: "/file", File: true, Handle: func(rq *Request) Response {
 			return FileResponse(rtpkg.File{Status: 200, ContentType: "text/plain", Body: []byte(secret), Headers: [][2]string{{"Set-Cookie", secret}}}, nil)
 		}},
@@ -318,10 +318,10 @@ func TestLogLines_NoHeadersCookiesBodies(t *testing.T) {
 	for _, dev := range []bool{false, true} {
 		h := NewRouter(routes, s.opts(func(o *Options) { o.Dev = dev }))
 		cookie := SignedCookie(t, testSession{User: secret})
-		for _, path := range []string{"/page", "/boom", "/err", "/_m/A/Save", "/_m/A/Boom", "/file", "/maint", "/nowhere", "/page?q=a;b", HealthPath} {
+		for _, path := range []string{"/page", "/boom", "/err", "/a/save", "/a/boom", "/file", "/maint", "/nowhere", "/page?q=a;b", HealthPath} {
 			for _, ds := range []bool{false, true} {
 				method := "GET"
-				if strings.HasPrefix(path, "/_m/") {
+				if strings.HasPrefix(path, "/a/") {
 					method = "POST"
 				}
 				req := httptest.NewRequest(method, path, strings.NewReader("password="+secret+"&note="+secret))
@@ -366,7 +366,7 @@ func SignedCookie(t *testing.T, s testSession) string {
 
 func TestDevPanel_ShowsID(t *testing.T) {
 	t.Setenv("ALDER_DEV", "1")
-	h := NewRouter(one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil, false) }), testOpts(func(o *Options) { o.Dev = true }))
+	h := NewRouter(one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil) }), testOpts(func(o *Options) { o.Dev = true }))
 	w := serve(h, httptest.NewRequest("GET", "/x", nil))
 	if body := w.Body.String(); !strings.Contains(body, `<section id="_alder_tab_request"><h3>Request</h3><pre>id `+w.Header().Get("X-Request-Id")+"\nGET /x\n") {
 		t.Errorf("no id line first in Request: %s", body)
@@ -377,7 +377,7 @@ func TestDevPanel_MasksQuery(t *testing.T) {
 	t.Setenv("ALDER_DEV", "1")
 	h := NewRouter(one("GET", "/x", func(rq *Request) Response {
 		rq.Env.Rec.AddStep(eff.StepRec{Name: "Db.all"})
-		return PageResponse(doc("hi"), nil, nil, false)
+		return PageResponse(doc("hi"), nil, nil)
 	}), testOpts(func(o *Options) { o.Dev = true }))
 	body := serve(h, httptest.NewRequest("GET", "/x?key=s3cret&seed=7", nil)).Body.String()
 	panel := body[strings.Index(body, "<al-devpanel"):]
@@ -396,7 +396,7 @@ func TestRouter_LogLinesCarryRid(t *testing.T) {
 	h := NewRouter(one("GET", "/x", func(rq *Request) Response {
 		rq.Env.Log("info", "x")
 		rq.Env.Log("effect", "Db.all Todo")
-		return PageResponse(doc("x"), nil, nil, false)
+		return PageResponse(doc("x"), nil, nil)
 	}), testOpts(func(o *Options) {
 		o.LogID = func(id, level, msg string) {
 			mu.Lock()
@@ -434,7 +434,7 @@ func TestRouter_DevCountsRepeats(t *testing.T) {
 				panic(err)
 			}
 		}
-		return PageResponse(doc("x"), nil, nil, false)
+		return PageResponse(doc("x"), nil, nil)
 	}), s.opts(func(o *Options) { o.Dev = true }))
 	serve(h, httptest.NewRequest("GET", "/n1", nil))
 	if a := s.one(t); !a.Counted || a.Stmts != 5 || a.Repeats != 1 {
@@ -442,7 +442,7 @@ func TestRouter_DevCountsRepeats(t *testing.T) {
 	}
 	// production: nothing counted
 	s.reset()
-	h = NewRouter(one("GET", "/p", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil, false) }), s.opts(nil))
+	h = NewRouter(one("GET", "/p", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil) }), s.opts(nil))
 	serve(h, httptest.NewRequest("GET", "/p", nil))
 	if a := s.one(t); a.Counted || a.Repeats != 0 {
 		t.Errorf("production record counted: %+v", a)

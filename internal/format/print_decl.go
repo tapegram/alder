@@ -3,7 +3,6 @@ package format
 import (
 	"cmp"
 	"slices"
-	"strconv"
 	"strings"
 
 	"alder/internal/syntax"
@@ -278,7 +277,8 @@ func (p *printer) routeLines(rs []*syntax.RouteDecl) Doc {
 		if r.Form != "" {
 			params += " form " + r.Form
 		}
-		rows[i] = [cols + 1]string{"route " + r.Name, "= " + r.Method, strconv.Quote(r.Path), params, guardText(&r.Guard)}
+		// r.Path is the text between the quotes as written (escapes kept), as a page's path
+		rows[i] = [cols + 1]string{"route " + r.Name, "= " + r.Method, "\"" + r.Path + "\"", params, guardText(&r.Guard)}
 		for c := range cols {
 			width[c] = max(width[c], len(rows[i][c]))
 		}

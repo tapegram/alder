@@ -2,28 +2,37 @@ module Pg
 
 import Layout
 
-page "/" { }
+route Pg     = GET  "/"         { }
+route Submit = POST "/_/Submit" { } form F
+route Toggle = POST "/_/Toggle" { id: Int }
 
-type Model = { n: Int, name: Text, saving: Bool, items: List Text }
+type Model = {
+  n: Int,
+  name: Text,
+  saving: Bool,
+  items: List Text,
+}
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { n: 1, name: "x", saving: False, items: [] }
+Pg.load : Pg.Params -> Session -> Query Model
+Pg.load params session = Query.succeed {
+  n: 1,
+  name: "x",
+  saving: False,
+  items: [],
+}
 
 form F = { title: Text.NonEmpty, kind: Kind }
 
 type Kind = A | B
 
-msg Submit form F
-msg Toggle { id: Int }
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Submit p -> Task.succeed Rerender,
-  Toggle p -> Task.succeed Rerender,
-}
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = Task.succeed Response.refresh
 
-view : Model -> Session -> Html Msg
-view model session =
+Pg.view : Model -> Session -> Html
+Pg.view model session =
   <Layout.Page title="T">
     <p>{model.n}</p>
     <a href="/somewhere">x</a>
@@ -46,7 +55,9 @@ view model session =
       <Errors field="title" />
       <button>Go</button>
     </form>
-    <ul>{for it in model.items -> <li>{it}</li>}</ul>
+    <ul>
+      {for it in model.items -> <li>{it}</li>}
+    </ul>
     {if model.saving then <p>s</p> else Html.none}
     {match session.user {
       Just u -> <span>{u}</span>,

@@ -2,7 +2,11 @@ module Index
 
 import Todo
 
-page "/pair/{a}/{b}" { a: Todo.TodoId, b: Todo.TodoId } requires user
+route Index  = GET  "/pair/{a}/{b}"          { a: Todo.TodoId, b: Todo.TodoId }                  requires user
+route Add    = POST "/pair/{a}/{b}/_/Add"    { a: Todo.TodoId, b: Todo.TodoId, title: Text }     requires user
+route Toggle = POST "/pair/{a}/{b}/_/Toggle" { a: Todo.TodoId, b: Todo.TodoId, id: Todo.TodoId } requires user
+route Remove = POST "/pair/{a}/{b}/_/Remove" { a: Todo.TodoId, b: Todo.TodoId, id: Todo.TodoId } requires user
+route Notify = POST "/pair/{a}/{b}/_/Notify" { a: Todo.TodoId, b: Todo.TodoId }                  requires user
 
 capability Mailer {
   send : { to: Text, body: Text } -> Task Bool,
@@ -16,8 +20,8 @@ type Model = {
   first: Maybe Todo,
 }
 
-load : Params -> Session -> Query Model
-load params session = {
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
   let todos <-
     Db.from Todo
       |> Db.where (Todo.owner.eq session.user)
@@ -26,48 +30,60 @@ load params session = {
       |> Db.all
   let pair <- Query.all [Db.get Todo params.a, Db.get Todo params.b]
   let now <- Time.now
-  let q = Db.from Todo |> Db.where (Db.or [Todo.title.contains "x", Todo.done.eq True]) |> Db.offset 5
+  let q =
+    Db.from Todo
+      |> Db.where (Db.or [Todo.title.contains "x", Todo.done.eq True])
+      |> Db.offset 5
   let count <- Query.map (\n -> n + 1) (Db.count q)
   let first <- Db.first Todo.pending
-  Query.succeed { todos: todos, pair: pair, now: now, count: count, first: first }
+  Query.succeed {
+    todos: todos,
+    pair: pair,
+    now: now,
+    count: count,
+    first: first,
+  }
 }
 
-msg Add { title: Text }
-msg Toggle { id: Todo.TodoId }
-msg Remove { id: Todo.TodoId }
-msg Notify
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add p -> {
-    let id <- Db.insert Todo { title: p.title, due: Nothing, owner: session.user }
-    let _ <- Log.info "added {id}"
-    let _ <- Log.debug "debug {id}"
-    let _ <- Log.error "error {id}"
-    Task.succeed (Redirect (Index { a: id, b: id }))
-  },
-  Toggle p -> {
-    let _ <- Db.update Todo p.id (\t -> { t | done: not t.done })
-    Task.succeed Rerender
-  },
-  Remove p -> {
-    let found <- Db.get Todo p.id
-    match found {
-      Just t -> {
-        let _ <- Db.delete Todo t.id
-        Task.succeed Rerender
-      },
-      Nothing -> Task.fail "no such todo",
-    }
-  },
-  Notify p -> {
-    let token : Text <- Random.id
-    let sent <- Task.all [Mailer.send { to: "a@b.c", body: token }]
-    let n <- Task.map List.length (Task.succeed sent)
-    let _ <- Session.put (\s -> { s | theme: "dark" })
-    Task.succeed (if n > 0 then Rerender else Reject "not sent")
-  },
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let id <- Db.insert Todo {
+    title: p.title,
+    due: Nothing,
+    owner: session.user,
+  }
+  let _ <- Log.info "added {id}"
+  let _ <- Log.debug "debug {id}"
+  let _ <- Log.error "error {id}"
+  Task.succeed (Response.redirect (Index { a: id, b: id }))
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>{Text.fromInt model.count}</p>
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let _ <- Db.update Todo p.id (\t -> { t | done: not t.done })
+  Task.succeed Response.refresh
+}
+
+Remove.update : Remove.Params -> Session -> Task Response
+Remove.update p session = {
+  let found <- Db.get Todo p.id
+  match found {
+    Just t -> {
+      let _ <- Db.delete Todo t.id
+      Task.succeed Response.refresh
+    },
+    Nothing -> Task.fail "no such todo",
+  }
+}
+
+Notify.update : Notify.Params -> Session -> Task Response
+Notify.update p session = {
+  let token : Text <- Random.id
+  let sent <- Task.all [Mailer.send { to: "a@b.c", body: token }]
+  let n <- Task.map List.length (Task.succeed sent)
+  let _ <- Session.put (\s -> { s | theme: "dark" })
+  Task.succeed (if n > 0 then Response.refresh else Response.invalid "not sent")
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session = <p>{Text.fromInt model.count}</p>

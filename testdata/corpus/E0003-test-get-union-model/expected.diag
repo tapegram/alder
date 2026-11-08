@@ -1,1 +1,1 @@
-app/Todos/Index.alder:31:25 E0003 `Test.get` needs a record `Model`: `Todos.Index`'s is a union — use `Test.open`
+app/Todos/Index.alder:31:25 E0003 `Test.get` needs a model that is not a union: `Index.load` gives `Model` — use `Test.open`

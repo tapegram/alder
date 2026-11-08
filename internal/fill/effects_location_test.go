@@ -10,8 +10,8 @@ import (
 // wrote and an import the fill added above.
 func TestEffects_LocationRobust(t *testing.T) {
 	dir := effectsApp(t)
-	expr := "{\n  -- a comment the model wrote\n  let _ <- Mail.notify \"hi\" -- and another\n  Task.succeed Rerender\n}"
-	r, err := Run(context.Background(), &script{answers: []string{expr}}, dir, "Home.update.Submit", "", nil)
+	expr := "{\n  -- a comment the model wrote\n  let _ <- Mail.notify \"hi\" -- and another\n  Task.succeed Response.refresh\n}"
+	r, err := Run(context.Background(), &script{answers: []string{expr}}, dir, "Home.Submit.update", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

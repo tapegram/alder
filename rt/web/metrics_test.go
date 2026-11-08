@@ -64,7 +64,7 @@ func dbInsert(rq *Request) {
 	}
 }
 
-func page(rq *Request) Response { return PageResponse(doc("x"), nil, nil, false) }
+func page(rq *Request) Response { return PageResponse(doc("x"), nil, nil) }
 
 // scrape is the exposition the router answers (GET MetricsPath with auth, when set).
 func scrape(t *testing.T, h http.Handler, auth string) *httptest.ResponseRecorder {

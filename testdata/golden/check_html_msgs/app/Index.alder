@@ -2,31 +2,26 @@ module Index
 
 import Todo
 
-page "/" { }
+route Index  = GET  "/"         { }
+route Toggle = POST "/_/Toggle" { id: Todo.TodoId }
 
 type Model = { todos: List Todo }
 
-load : Params -> Session -> Query Model
-load params session = {
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
   let todos <- Db.from Todo |> Db.all
   Query.succeed { todos: todos }
 }
 
-msg Toggle { id: Todo.TodoId }
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Toggle p -> Task.succeed Rerender,
-}
-
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <ul>
     {for todo in model.todos ->
       <li>
-        <form submit={Toggle { id: todo.id }}>
-          <Input field="title" />
-        </form>
+        <form submit={Toggle { id: todo.id }}><Input field="title" /></form>
         <a href={"/todos/" ++ todo.title}>open</a>
         <a href={todo.slug}>slug</a>
         <a href={Index}>home</a>

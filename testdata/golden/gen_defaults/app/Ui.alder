@@ -2,7 +2,7 @@ module Ui
 
 type Kind = Primary | Plain
 
-Btn : { label: Text, kind: Kind = Plain, size: Int = 1 + 2 } -> Html m
+Btn : { label: Text, kind: Kind = Plain, size: Int = 1 + 2 } -> Html
 Btn props = <button class={cls props.kind} title={Text.fromInt props.size}>{props.label}</button>
 
 cls : Kind -> Text
