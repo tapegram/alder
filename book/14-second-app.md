@@ -11,17 +11,30 @@ The blog has eleven modules of its own in `examples/blog/app/`, and
 the twenty of a site admin that `alder new admin` generated in
 `app/Admin/` (chapter 15 tours them):
 
-| Module | What it is |
-|---|---|
-| `App`, `Layout`, `Auth.Login` | As in the to-do app, but the session also holds the user's role, which the login copies from the user's row; the login leads to `/` |
-| `User` | The user table, with a `role` column |
-| `Post`, `Comment` | The two tables, and the functions about posts |
-| `Markdown` | A capability that turns a post's body into HTML |
-| `Posts.Index` | `/`: the published posts, a page at a time, and a search (`POST /_/Search`) |
-| `Posts.Show` | `/posts/{slug}`: one post, its comments, a comment form (`POST /posts/{slug}/_/AddComment`) |
-| `Write` | `/write`: an author's own posts, and a form for a new one (`POST /write/_/Create`) |
-| `Write.Edit` | `/write/{id}`: edit, publish, unpublish or delete a post (four `POST` routes under `/write/{id}/_/`) |
-| `Admin.…` | `/admin`: every table's rows, to list, search, create, edit and delete, for an Admin; generated (chapter 15) |
+- **`App`, `Layout`, `Auth.Login`**: As in the to-do app, but the session also
+  holds the user's role, which the login copies from the user's row; the login
+  leads to `/`
+
+- **`User`**: The user table, with a `role` column
+
+- **`Post`, `Comment`**: The two tables, and the functions about posts
+
+- **`Markdown`**: A capability that turns a post's body into HTML
+
+- **`Posts.Index`**: `/`: the published posts, a page at a time, and a search
+  (`POST /_/Search`)
+
+- **`Posts.Show`**: `/posts/{slug}`: one post, its comments, a comment form
+  (`POST /posts/{slug}/_/AddComment`)
+
+- **`Write`**: `/write`: an author's own posts, and a form for a new one
+  (`POST /write/_/Create`)
+
+- **`Write.Edit`**: `/write/{id}`: edit, publish, unpublish or delete a post
+  (four `POST` routes under `/write/{id}/_/`)
+
+- **`Admin.…`**: `/admin`: every table's rows, to list, search, create, edit and
+  delete, for an Admin; generated (chapter 15)
 
 Four modules are shown in full, piece by piece: `go test ./book` checks
 that the pieces of each equal its file in `examples/blog`, blank lines
@@ -65,21 +78,23 @@ test "a name or comment has text and a bound" = {
 }
 ```
 
-A comment belongs to a post: `post: Post.PostId @ref Post` names a `Post`
-row, and inserting a comment for a missing post fails (chapter 8,
-"Writing"). `@cascade` is the field's **delete rule**: deleting a post
-deletes its comments. The default, `@restrict`, would refuse to delete a
-post that has comments, and `@setNull` needs a `Maybe` field. The rule
-sits on the referring field, so this file says what any route's deletion
-of a post does to its comments.
+A comment belongs to a post: `post: Post.PostId @ref Post` names a `Post` row,
+and inserting a comment for a missing post fails (chapter 8, "Writing").
+`@cascade` is the field's **delete rule**: deleting a post deletes its
+comments.
 
-Anyone may comment without logging in, so the name and the text are
-bounded: without a bound, one visitor could store a megabyte under a
-post for every reader to download. `Name` and `Body` are brands of `Text`
-with a refinement (chapter 4); a brand's base is a built-in type, not
-another brand, so `fits` checks for itself what `Text.NonEmpty` would.
-The comment form uses these types, so a longer comment is refused with
-an error beside the field before `update` runs.
+The default, `@restrict`, would refuse to delete a post that has comments, and
+`@setNull` needs a `Maybe` field. The rule sits on the referring field, so this
+file says what any route's deletion of a post does to its comments.
+
+Anyone may comment without logging in, so the name and the text are bounded:
+without a bound, one visitor could store a megabyte under a post for every
+reader to download. `Name` and `Body` are brands of `Text` with a refinement
+(chapter 4); a brand's base is a built-in type, not another brand, so `fits`
+checks for itself what `Text.NonEmpty` would.
+
+The comment form uses these types, so a longer comment is refused with an error
+beside the field before `update` runs.
 
 ## A slug: `Post`
 
@@ -105,14 +120,15 @@ table Post {
 }
 ```
 
-A post's address is `/posts/hello-world`. The id is still generated, and
-the slug is a second, `@unique` column. `Slug` is a refined brand too: a
-form field of type `Post.Slug` reports an error before `update` runs,
-and a route parameter that breaks the rule, `/posts/Bad%20Slug`, is a 404.
-`author` is the post's owner, and `@owner` says so to the compiler: the
-routes where an author manages their posts read and write them through
-`Db`'s scoped operations (chapter 6, "Rules"). The public routes, which
-show anyone's published posts, use `Db.from` as before.
+A post's address is `/posts/hello-world`. The id is still generated, and the
+slug is a second, `@unique` column. `Slug` is a refined brand too: a form field
+of type `Post.Slug` reports an error before `update` runs, and a route
+parameter that breaks the rule, `/posts/Bad%20Slug`, is a 404.
+
+`author` is the post's owner, and `@owner` says so to the compiler: the routes
+where an author manages their posts read and write them through `Db`'s scoped
+operations (chapter 6, "Rules"). The public routes, which show anyone's
+published posts, use `Db.from` as before.
 
 ```alder part=blog/Table.Post
 bySlug : Slug -> Query (Maybe Post)
@@ -163,15 +179,15 @@ test "a draft is not visible" = {
 The second test builds a `Post` by hand, `created` included, with
 `Time.epoch` as a fixed time (chapter 10).
 
-The last two were added when `alder test --mutate` (chapter 10,
-"Mutation testing") showed that no test noticed `bySlug` losing its
-`where`, or `author` becoming `@ref User @cascade`. The first inserts two
-posts and asks for the second, which a `bySlug` without the `where` would
-not find first. The second deletes an author who has a post: under the
-default rule, `@restrict`, the delete fails and the post stays, so
-`Result.toMaybe` of the result is `Nothing`. The error's text names a
-generated id, which differs from run to run, so the test does not
-compare it.
+The last two were added when `alder test --mutate` (chapter 10, "Mutation
+testing") showed that no test noticed `bySlug` losing its `where`, or `author`
+becoming `@ref User @cascade`. The first inserts two posts and asks for the
+second, which a `bySlug` without the `where` would not find first.
+
+The second deletes an author who has a post: under the default rule,
+`@restrict`, the delete fails and the post stays, so `Result.toMaybe` of the
+result is `Nothing`. The error's text names a generated id, which differs from
+run to run, so the test does not compare it.
 
 ```alder part=blog/Table.Post
 test "bySlug finds the post with that slug" = {
@@ -251,14 +267,14 @@ route Write = GET "/write" { } requires user, role Author
 
 `requires user` sends a visitor to log in, as before; `role Author` then
 answers a 404 to a logged-in Reader, the same 404 as a page that does not
-exist, before `load` or `update` runs. The check reads the cookie and
-nothing else, so it costs no query. It is the role at login, and the
-cookie keeps it until logout or the session's 30 days: a user demoted
-since still passes it. So the GET routes re-read the user's row in `load`
-(chapter 6, "Rules"; a test below shows it). No `load` runs before a
-write route, so each write route's `update` begins with
-`User.authorOnly session.user`, the same re-read as a `Query` that is a
-404 for anyone who is no author now.
+exist, before `load` or `update` runs. The check reads the cookie and nothing
+else, so it costs no query. It is the role at login, and the cookie keeps it
+until logout or the session's 30 days: a user demoted since still passes it.
+
+So the GET routes re-read the user's row in `load` (chapter 6, "Rules"; a test
+below shows it). No `load` runs before a write route, so each write route's
+`update` begins with `User.authorOnly session.user`, the same re-read as a
+`Query` that is a 404 for anyone who is no author now.
 
 `Write`'s `load` lists the author's own posts with `Db.mine Post |>
 Db.orderBy Post.created.desc |> Db.all`, and its route `Create` stores
@@ -354,17 +370,18 @@ Delete.update p session = {
 }
 ```
 
-The four write routes take the post's id from their path, as `Edit`
-does (`POST /write/{id}/_/Save`), and `Save` also decodes the form
-`EditPost`: its fields reach `update` as `p.form`. A request can name any
-id, and no `load` runs first to find the post, so each `update` begins
-with `User.authorOnly` and then writes with the scoped `Db.updateMine`
-and `Db.deleteMine`, which find no row for a post of another author: that
-is a 404, as it is on the page (chapter 6, "Rules"). `Save` answers
-`Response.refresh` with a toast, so the page is shown again with the new
-values; `Publish` and `Unpublish` refresh it; `Delete` makes one write,
-`@cascade` deletes the comments, and the answer is a redirect to the
-list, because the page it came from is gone.
+The four write routes take the post's id from their path, as `Edit` does
+(`POST /write/{id}/_/Save`), and `Save` also decodes the form `EditPost`: its
+fields reach `update` as `p.form`. A request can name any id, and no `load`
+runs first to find the post, so each `update` begins with `User.authorOnly` and
+then writes with the scoped `Db.updateMine` and `Db.deleteMine`, which find no
+row for a post of another author: that is a 404, as it is on the page (chapter
+6, "Rules").
+
+`Save` answers `Response.refresh` with a toast, so the page is shown again with
+the new values; `Publish` and `Unpublish` refresh it; `Delete` makes one write,
+`@cascade` deletes the comments, and the answer is a redirect to the list,
+because the page it came from is gone.
 
 ```alder part=blog/Write.Edit
 Edit.view : Model -> Session -> Html
@@ -583,46 +600,47 @@ test "Publish shows the post on the front page; Unpublish hides it" = {
 }
 ```
 
-The first test deletes a post with two comments through `Delete.update`.
-Its trace has two steps: the `Db.get User` of `User.authorOnly`, and
+The first test deletes a post with two comments through `Delete.update`. Its
+trace has two steps: the `Db.get User` of `User.authorOnly`, and
 `Db.deleteMine Post`, since SQLite deletes the comments in that statement
-(chapter 8, "Writing"). It calls `update` directly, with a session record,
-but the scoped operations act for the test's own session, the one
-`Test.login` set, not for that record (chapter 6, "Rules"); so the test
-logs in first. The second opens another author's post as that author: the
-role check passes, and `Db.getMine` answers `PageMissing`. It then runs
-the four write routes' `update` as that author, with no `load` before
-them: each answers `Err "not found"` and the post is unchanged, so it is
-`Db.updateMine` and `Db.deleteMine` that keep the writes in the author's
-own rows.
+(chapter 8, "Writing"). It calls `update` directly, with a session record, but
+the scoped operations act for the test's own session, the one `Test.login` set,
+not for that record (chapter 6, "Rules"); so the test logs in first.
 
-The third is the stale role. The author logs in through the login form
-(with `Auth.Login`'s `fake Password`, chapter 10), which stores their
-role, `Author`, in the session, and the edit page opens. Then their row
-is changed to `Reader`. The cookie still says Author, so the role check
-passes, but `load` re-reads the row and the page is a 404 (`stale` is
-`PageMissing`) at once; a write route run with the same stale session
-is `Err "not found"` as well, since `User.authorOnly` re-reads the row.
-After a second login the session holds the row's role too. The fourth is
-the other way round: a row made Author whose cookie still says Reader is
-turned away by the role check, until they log in again (the re-read
-alone would let them in, so this test is the one that pins the check).
-The last test reads the front page through `Index.Index.load`, which a
-test may call once its module imports `Posts.Index`: after the import the
-module is `Index`, and the route's member `Index.Index.load`.
+The second opens another author's post as that author: the role check passes,
+and `Db.getMine` answers `PageMissing`. It then runs the four write routes'
+`update` as that author, with no `load` before them: each answers
+`Err "not found"` and the post is unchanged, so it is `Db.updateMine` and
+`Db.deleteMine` that keep the writes in the author's own rows.
 
-Two more go through the page, and were added after `alder test --mutate`
-showed what nothing checked: that a visitor who opens an edit page is
-sent to log in (with `requires user` deleted, the page would be served to
-them), and that Save stores both fields. The second posts the form and
-reads the page `Response.refresh` shows again: the heading and the text
-area now hold what was saved, the answer is `Refreshed`, the toast is in
-`notices`, and the post's status is still the `<al-badge>` reading Draft
-(a refresh replaces the page's `<body>`, custom elements and all; the
-`<head>` is not updated yet, alder#189). The mutation operators for
-`requires` and `role` exist only for the old page form (alder#187), so
-on routes these two tests, not a mutant, are what notices a dropped
-`requires`.
+The third is the stale role. The author logs in through the login form (with
+`Auth.Login`'s `fake Password`, chapter 10), which stores their role, `Author`,
+in the session, and the edit page opens. Then their row is changed to `Reader`.
+The cookie still says Author, so the role check passes, but `load` re-reads the
+row and the page is a 404 (`stale` is `PageMissing`) at once; a write route run
+with the same stale session is `Err "not found"` as well, since
+`User.authorOnly` re-reads the row.
+
+After a second login the session holds the row's role too. The fourth is the
+other way round: a row made Author whose cookie still says Reader is turned
+away by the role check, until they log in again (the re-read alone would let
+them in, so this test is the one that pins the check). The last test reads the
+front page through `Index.Index.load`, which a test may call once its module
+imports `Posts.Index`: after the import the module is `Index`, and the route's
+member `Index.Index.load`.
+
+Two more go through the page, and were added after `alder test --mutate` showed
+what nothing checked: that a visitor who opens an edit page is sent to log in
+(with `requires user` deleted, the page would be served to them), and that Save
+stores both fields. The second posts the form and reads the page
+`Response.refresh` shows again: the heading and the text area now hold what was
+saved, the answer is `Refreshed`, the toast is in `notices`, and the post's
+status is still the `<al-badge>` reading Draft (a refresh replaces the page's
+`<body>`, custom elements and all; the `<head>` is not updated yet, alder#189).
+
+The mutation operators for `requires` and `role` exist only for the old page
+form (alder#187), so on routes these two tests, not a mutant, are what notices
+a dropped `requires`.
 
 ```alder part=blog/Write.Edit
 -- The page through the browser: a visitor is sent to log in; the author saves the form, and the
@@ -683,18 +701,20 @@ test "saving changes the title and the body" = {
 `app/Markdown.alder` declares `capability Markdown` with one entry,
 `render : Text -> Query (Html Never)` (chapter 7 shows the module).
 `Posts.Show`'s `load` finds the post with `Post.bySlug`, answers
-`Query.notFound` when `Post.visible` says the session may not see it, so
-a reader cannot tell a draft from an unused slug, renders the body, and
-reads the comments oldest first. `view` embeds the body, an
-`Html Never`, as `{model.body}` (chapter 5). The Go side builds it with
-`html.El` and `html.Text`, never `html.Raw`, so a post cannot inject
-markup; a link is kept only for an `http:` or `https:` address. That Go
-is the adapter `examples/blog/adapters/markdown/markdown.go`: module
+`Query.notFound` when `Post.visible` says the session may not see it, so a
+reader cannot tell a draft from an unused slug, renders the body, and reads the
+comments oldest first.
+
+`view` embeds the body, an `Html Never`, as `{model.body}` (chapter 5). The Go
+side builds it with `html.El` and `html.Text`, never `html.Raw`, so a post
+cannot inject markup; a link is kept only for an `http:` or `https:` address.
+That Go is the adapter `examples/blog/adapters/markdown/markdown.go`: module
 `Markdown`, capability `Markdown`, so directory `adapters/markdown/` and
-constructor `func Markdown()` (chapter 7 quotes its top, and the
-generated `caps` package that wires it).
-`app/Markdown.alder` also has a `fake Markdown`, which one `Posts.Show`
-test uses in the adapter's place (chapter 10, "Faking a capability").
+constructor `func Markdown()` (chapter 7 quotes its top, and the generated
+`caps` package that wires it).
+
+`app/Markdown.alder` also has a `fake Markdown`, which one `Posts.Show` test
+uses in the adapter's place (chapter 10, "Faking a capability").
 
 The comment form's route, `AddComment`, takes the post's slug from its
 path (`POST /posts/{slug}/_/AddComment`) and decodes the form
@@ -769,13 +789,14 @@ Index.load params session = {
 ```
 
 `load` keeps the page between 1 and `lastPage`, so a huge number cannot
-overflow the offset. It asks for `perPage + 1` rows: if the extra one
-comes back, there is an older page. A blank `q` gives `Db.and []`, which
-matches every row; otherwise `Db.or` matches title or body (chapter 8,
-"Search"). `q` is cut to 100 characters, since a search costs every
-post's length times the query's and SQLite refuses a pattern over about
-50 KB. `canWrite` is the session's role, so only an Author is shown the
-Write link, and a Reader never sees a link to a 404.
+overflow the offset. It asks for `perPage + 1` rows: if the extra one comes
+back, there is an older page. A blank `q` gives `Db.and []`, which matches
+every row; otherwise `Db.or` matches title or body (chapter 8, "Search").
+
+`q` is cut to 100 characters, since a search costs every post's length times
+the query's and SQLite refuses a pattern over about 50 KB. `canWrite` is the
+session's role, so only an Author is shown the Write link, and a Reader never
+sees a link to a 404.
 
 ```alder part=blog/Posts.Index
 form SearchForm = { q: Text }
@@ -1138,14 +1159,15 @@ test "only an Author sees the Write link" = {
 }
 ```
 
-The last two go through the page as a browser would (chapter 10,
-"Testing through the browser"). The first opens the first and second
-pages and reads the links the `nav` renders: `Test.attr "href"
-"a[rel=next]"` is the `href` of the first `<a rel="next">`, and the
-second page's "Newer" link is `/`, the first page with both parameters at
-their defaults, which the URL leaves out. The second posts the search form
-with `Test.submit`, follows the redirect to `/?q=tomato` and reads the
-titles listed there and the query kept in the search box:
+The last two go through the page as a browser would (chapter 10, "Testing
+through the browser"). The first opens the first and second pages and reads the
+links the `nav` renders: `Test.attr "href" "a[rel=next]"` is the `href` of the
+first `<a rel="next">`, and the second page's "Newer" link is `/`, the first
+page with both parameters at their defaults, which the URL leaves out.
+
+The second posts the search form with `Test.submit`, follows the redirect to
+`/?q=tomato` and reads the titles listed there and the query kept in the search
+box:
 
 ```alder part=blog/Posts.Index
 -- The same page through the browser: the links a page renders, and the search form posted as a
@@ -1229,37 +1251,39 @@ one second later each time. Changing `desc` to `asc` in `load` fails
 this test, and flipping it in `Posts.Show` fails "a comment is listed
 oldest first".
 
-Three more tests go through the browser. `Write`'s "the write page needs
-an Author" opens `/write` as a visitor (`Redirected (Auth.Login.Login {})`:
-`requires user` sends them to log in) and as a logged-in Reader
-(`PageMissing`: the role check's 404); "an Author logs out from the
-write page" clicks the page's `App.Logout` button and finds the
-session's `user` gone. "a Reader cannot open the write page" logs in as
-each role in turn, with `Test.login { user: Just reader, role: Reader }`
-and then as the Author: the Reader gets `PageMissing`, the Author the
-page (`Shown`). `Posts.Show`'s "an empty comment is rejected" posts the comment
-form with an empty body through `Test.submitRaw`, which sends text as
-typed, and gets `FormRejected [{ field: "body", message: "is not valid" }]`:
-`Comment.Body` is a brand with a `where` rule, and a value its rule
-refuses is "is not valid" (a `Text.NonEmpty` field would say "must not
-be empty").
+Three more tests go through the browser. `Write`'s "the write page needs an
+Author" opens `/write` as a visitor (`Redirected (Auth.Login.Login {})`:
+`requires user` sends them to log in) and as a logged-in Reader (`PageMissing`:
+the role check's 404); "an Author logs out from the write page" clicks the
+page's `App.Logout` button and finds the session's `user` gone.
+
+"a Reader cannot open the write page" logs in as each role in turn, with
+`Test.login { user: Just reader, role: Reader }` and then as the Author: the
+Reader gets `PageMissing`, the Author the page (`Shown`). `Posts.Show`'s "an
+empty comment is rejected" posts the comment form with an empty body through
+`Test.submitRaw`, which sends text as typed, and gets
+`FormRejected [{ field: "body", message: "is not valid" }]`: `Comment.Body` is
+a brand with a `where` rule, and a value its rule refuses is "is not valid" (a
+`Text.NonEmpty` field would say "must not be empty").
 
 Ten tests were written after `alder test --mutate` (chapter 10, "Mutation
-testing") ran on the blog: before them, 17 of its 58 mutants survived;
-after, 3 do, and those three cannot be killed (chapter 10 explains why).
-The generated admin, which came later, adds 147 mutants, and its own
-tests kill 144 of them; the three that survive are equivalent mutants
-(`examples/blog/README.md` names them). Since the move to routes the
-mutator has no operators for `requires`, `role` or the `Response`
-answers (alder#187), so the whole blog is 202 mutants, fewer than the
-page form had.
-`Post`'s two and `Write.Edit`'s two are above. `Write`'s "the write page
-lists the author's own posts, newest first" inserts another author's post
-between two of the author's own. `Posts.Show`'s "commenting through the
-form" checks that a comment redirects back to the post. `Auth.Login`
-gained the to-do app's `fake Password` and its two login tests, which
-check the session's `user` (and now its `role`) after a login and the
-form's error after a wrong one. `Posts.Index` gained the last two:
+testing") ran on the blog: before them, 17 of its 58 mutants survived; after, 3
+do, and those three cannot be killed (chapter 10 explains why). The generated
+admin, which came later, adds 147 mutants, and its own tests kill 144 of them;
+the three that survive are equivalent mutants (`examples/blog/README.md` names
+them).
+
+Since the move to routes the mutator has no operators for `requires`, `role` or
+the `Response` answers (alder#187), so the whole blog is 202 mutants, fewer
+than the page form had. `Post`'s two and `Write.Edit`'s two are above.
+`Write`'s "the write page lists the author's own posts, newest first" inserts
+another author's post between two of the author's own.
+
+`Posts.Show`'s "commenting through the form" checks that a comment redirects
+back to the post. `Auth.Login` gained the to-do app's `fake Password` and its
+two login tests, which check the session's `user` (and now its `role`) after a
+login and the form's error after a wrong one. `Posts.Index` gained the last
+two:
 
 With exactly ten posts,
 one full page, there is no next page; `hasMore` written with `>=` would
@@ -1357,16 +1381,27 @@ to-dos are its own, and each org's live in a database of the org's own.
 Its modules, besides the forty of the admin `alder new admin`
 wrote (chapter 15, "The admin of a silo"):
 
-| Module | What it is |
-|---|---|
-| `App` | The session with a key, `org … via Membership`; `choose org`; `silo org { Project, Todo }`; `maintenance` |
-| `User`, `Org`, `Membership` | Shared tables: the users, the orgs, and who is a member of which; `Membership.isMember`, the re-read idiom |
-| `Project`, `Todo` | The siloed tables, partitioned by `org` |
-| `Activity` | The org's log: partitioned by `org`, but shared |
-| `Auth.Login`, `Layout` | As in the blog; the login also puts the user's first org in the session |
-| `Orgs.Index` | `/orgs`: the user's orgs, to open one (`POST /orgs/_/Open`), and a form for a new one (`POST /orgs/_/Create`); `choose org`'s page |
-| `Projects.Index`, `Projects.Show` | `/projects`, `/projects/{id}`: the org's projects and their to-dos, and the write routes that change them |
-| `Members.Index` | `/members`: the org's members, adding and removing them, and its activity |
+- **`App`**: The session with a key, `org … via Membership`; `choose org`;
+  `silo org { Project, Todo }`; `maintenance`
+
+- **`User`, `Org`, `Membership`**: Shared tables: the users, the orgs, and who
+  is a member of which; `Membership.isMember`, the re-read idiom
+
+- **`Project`, `Todo`**: The siloed tables, partitioned by `org`
+
+- **`Activity`**: The org's log: partitioned by `org`, but shared
+
+- **`Auth.Login`, `Layout`**: As in the blog; the login also puts the user's
+  first org in the session
+
+- **`Orgs.Index`**: `/orgs`: the user's orgs, to open one (`POST /orgs/_/Open`),
+  and a form for a new one (`POST /orgs/_/Create`); `choose org`'s page
+
+- **`Projects.Index`, `Projects.Show`**: `/projects`, `/projects/{id}`: the
+  org's projects and their to-dos, and the write routes that change them
+
+- **`Members.Index`**: `/members`: the org's members, adding and removing them,
+  and its activity
 
 ### The session and the silo: `App`
 
@@ -1617,17 +1652,17 @@ table lives follows from what writes it.
 ### Its tests and its score
 
 The app's own 35 tests cover what the rules promise, with two orgs:
-`Projects.Index "a member sees the org's name and only its projects, by
-name"`, `"a project is created in the org's database, and another org
-does not see it"`, `Orgs.Index "a non-member's switch is refused"`, `"a
-membership deleted earlier in the same Task counts as gone"`, and the
-re-read tests "a member removed from the org loses access at once". The
-generated admin brings 298 more (333 in all). `alder test --mutate
-examples/workspace` scores 0.963 (289 of 300 mutants killed; the page
-form had 522, before the mutator lost its `requires` and `role`
-operators on routes, alder#187); the 11 survivors are in the
-generated admin, and `examples/workspace/README.md` says why each is
-not a gap.
+`Projects.Index "a member sees the org's name and only its projects, by name"`,
+`"a project is created in the org's database, and another org does not see it"`,
+`Orgs.Index "a non-member's switch is refused"`,
+`"a membership deleted earlier in the same Task counts as gone"`, and the
+re-read tests "a member removed from the org loses access at once".
+
+The generated admin brings 298 more (333 in all).
+`alder test --mutate examples/workspace` scores 0.963 (289 of 300 mutants
+killed; the page form had 522, before the mutator lost its `requires` and
+`role` operators on routes, alder#187); the 11 survivors are in the generated
+admin, and `examples/workspace/README.md` says why each is not a gap.
 
 ### Run it
 
@@ -1636,10 +1671,11 @@ $ alder run examples/workspace
 ```
 
 In dev mode the stub of `Password` accepts `ann@example.com` and
-`bob@example.com` (Members) and `admin@example.com` (an Admin), all with
-the password `password`. Log in as Ann, make an org on `/orgs`, add Bob
-on `/members` by his email, and log in as Bob: he sees Ann's org's
-projects, and none of another org's. Each org's database is a file under
-`build/workspace/silos/org/`; the shared one is `build/workspace/dev.db`.
-As the Admin, `/admin/orgs` lists every org, and each opens that org's
-pages, a member or not.
+`bob@example.com` (Members) and `admin@example.com` (an Admin), all with the
+password `password`. Log in as Ann, make an org on `/orgs`, add Bob on
+`/members` by his email, and log in as Bob: he sees Ann's org's projects, and
+none of another org's.
+
+Each org's database is a file under `build/workspace/silos/org/`; the shared
+one is `build/workspace/dev.db`. As the Admin, `/admin/orgs` lists every org,
+and each opens that org's pages, a member or not.
