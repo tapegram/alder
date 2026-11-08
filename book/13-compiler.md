@@ -2498,14 +2498,18 @@ its URL is a path of this app, never a morph, and the toast it carries
 rides in the notice cookie to the page that loads.
 
 The scenarios of this part run in the tests of the two packages involved.
-`rt/web` has `TestAnswer_Redirect`, `TestAnswer_Render`, `TestAnswer_Refresh`
-and `TestAnswer_Invalid` in `answer_test.go`, the deliveries in
-`deliver_test.go` (`TestDeliver_PlainDocument`, `_BoostMorph`,
-`_ElementPatch`, `_ElementNoRootID`), and the stale-build answers
-(`TestBuild_StaleWrite`, `_StaleFetch`). `internal/gen/gen_test.go` serves
-the generated golden app and sends it the requests of a browser:
-`TestGenRoute_GetDocument`, `_GetElement`, `_ToggleRender`, `_DeleteRefresh`,
-`_FormDecodeFails` and `_InvalidCommits`. Each runs on every `go test ./...`.
+
+- `rt/web` has `TestAnswer_Redirect`, `TestAnswer_Render`,
+  `TestAnswer_Refresh` and `TestAnswer_Invalid` in `answer_test.go`, the
+  deliveries in `deliver_test.go` (`TestDeliver_PlainDocument`,
+  `_BoostMorph`, `_ElementPatch`, `_ElementNoRootID`), and the stale-build
+  answers (`TestBuild_StaleWrite`, `_StaleFetch`).
+- `internal/gen/gen_test.go` serves the generated golden app and sends it
+  the requests of a browser: `TestGenRoute_GetDocument`, `_GetElement`,
+  `_ToggleRender`, `_DeleteRefresh`, `_FormDecodeFails` and
+  `_InvalidCommits`.
+
+Each runs on every `go test ./...`.
 
 ### The rules: scoped operations and roles
 
@@ -2514,43 +2518,59 @@ five scoped `Db` operations, and `requires user, role R` on a route. This
 part follows them through the compiler and the runtime, with the to-do
 app (`Todo.owner @owner`) and the blog (`role Author`).
 
-**The checker.** `@owner` is checked once `App`'s session is known
+#### The checker
+
+`@owner` is checked once `App`'s session is known
 (`checkOwners`, `internal/check/rules.go`): the session must have a
 `user` field, and the marked column must be a `@ref` of that field's
 type without the `Maybe`, one per table (E0024). The column's name
-becomes the table's `Owner`. A reference to one of the five operations
-is checked where it is written (`inferVar` sends `Db.mine` and the others
-to `inferScoped`), against the member being checked: it is legal in a
-member of a route that `requires user` (its `load`, `view` or `update`),
-and in a `test`; anywhere else it is E0026. A top-level value that uses one
-legally is marked, and the mark follows references to it within its module
-(`propagateScoped`, a fixpoint), so a use of the value from a module where
-the operation itself would be refused is E0026 at that use. A helper of a
-route module that no route owns may use the operation: each route member
-that refers to the helper is checked instead (`checkRouteRefs`), so the
-helper is refused at the member whose route does not `require` the key. After a body is typed,
-each operation's table argument must have an `Owner` (E0025,
-`checkScopedTables`).
+becomes the table's `Owner`.
+
+A reference to one of the five operations is checked where it is written
+(`inferVar` sends `Db.mine` and the others to `inferScoped`), against the
+member being checked: it is legal in a member of a route that
+`requires user` (its `load`, `view` or `update`), and in a `test`;
+anywhere else it is E0026.
+
+A top-level value that uses one legally is marked, and the mark follows
+references to it within its module (`propagateScoped`, a fixpoint), so a
+use of the value from a module where the operation itself would be refused
+is E0026 at that use. A helper of a route module that no route owns may
+use the operation: each route member that refers to the helper is checked
+instead (`checkRouteRefs`), so the helper is refused at the member whose
+route does not `require` the key.
+
+After a body is typed, each operation's table argument must have an
+`Owner` (E0025, `checkScopedTables`).
+
 `Db.insertMine`'s row is typed as `InsertMine T`, a type that is never
 written in source: `Insert T` without the owner column. Its literal may
 not name the owner (E0003), and a row that is not a literal in the call
-is refused, so the row can only be what is written there. The role
-clause is checked by `checkRoles`, called from `defineRoutes` for each route (E0027): `user` first, a `role` field
-of the session whose type is a union and not a `Maybe`, and each name
-one of its constructors.
+is refused, so the row can only be what is written there.
 
-**The IR.** Five nodes of their own, not flags on `DbGet` or `DbUpdate`,
+The role clause is checked by `checkRoles`, called from `defineRoutes` for
+each route (E0027): `user` first, a `role` field of the session whose type
+is a union and not a `Maybe`, and each name one of its constructors.
+
+#### The IR
+
+Five nodes of their own, not flags on `DbGet` or `DbUpdate`,
 so that every later stage has to say what it does with them:
-`DbScoped{Table}`, a `Select` value; `DbGetScoped{Table, ID}`;
-`DbUpdateScoped{Table, ID, Fn}`; `DbDeleteScoped{Table, ID}`;
-`DbInsertScoped{Table, Row}`. Each also carries `Op`, the operation as
-written (`Db.mine`, `Db.scoped`), which traces and reports use, and
-`Key`, the session field it scopes by: `user` for the `mine` family and
-for any table whose `@partition` is `user` (M15 generalised M11's
-`DbMine` nodes into these: "Partitions", below). A pipeline that starts
-from `Db.mine` is an ordinary `DbSelect` whose `Base` is the
-`DbScoped`. The to-do list's `load` (`alder dump --ir examples/todos`
-prints it, among the modules of the generated admin):
+
+- `DbScoped{Table}`, a `Select` value;
+- `DbGetScoped{Table, ID}`;
+- `DbUpdateScoped{Table, ID, Fn}`;
+- `DbDeleteScoped{Table, ID}`;
+- `DbInsertScoped{Table, Row}`.
+
+Each also carries `Op`, the operation as written (`Db.mine`, `Db.scoped`),
+which traces and reports use, and `Key`, the session field it scopes by:
+`user` for the `mine` family and for any table whose `@partition` is `user`
+(M15 generalised M11's `DbMine` nodes into these: "Partitions", below).
+
+A pipeline that starts from `Db.mine` is an ordinary `DbSelect` whose
+`Base` is the `DbScoped`. The to-do list's `load` (`alder dump --ir
+examples/todos` prints it, among the modules of the generated admin):
 
 ```
 (value Todos.Index.Index.load : Index.Params -> Index.Session -> Query Model (params session)
@@ -2576,7 +2596,9 @@ and the `update` of its `Toggle` route:
 The table records its partition, `(partition user owner)`, and a route
 its roles, `(roles Admin)` (the admin's). Nothing else in the IR changes.
 
-**The Go.** The table's descriptor (`Table__Todo_alder.go`) gets two fields:
+#### The Go
+
+The table's descriptor (`Table__Todo_alder.go`) gets two fields:
 
 ```go
 	Owner: "owner",
@@ -2614,7 +2636,9 @@ func Todos__Index__Toggle__update(p Todos__Index__Toggle__Params, session Todos_
 and `Submit`'s `Db.insertMine` builds the row without its owner, a Go
 struct of its own (`insertmine__Table__Todo__Todo`), which
 `insertminevals__Table__Todo__Todo` turns into the column values with a `nil`
-where the owner goes. Its answer, `Response.redirect (Index { filter: p.filter })`,
+where the owner goes.
+
+Its answer, `Response.redirect (Index { filter: p.filter })`,
 shows what a route value becomes in Go: an `rt.Route` literal with the route's
 name, its method, its path with the path parameters filled in and the rest
 of its parameters, each at its default left out:
@@ -2632,7 +2656,9 @@ func Todos__Index__Submit__update(p Todos__Index__Submit__Params, session Todos_
 Notice what none of these is given: the user. `update`'s `session` is
 not passed to `UpdateMineRow`, and `load`'s is not in the `Select`.
 
-**Whose user: the ambient session.** Each helper asks `owner`
+#### Whose user: the ambient session
+
+Each helper asks `owner`
 (`rt/db/store.go`) for the user. `owner` takes the `Env` that is running
 the effect from the context (`eff.EnvFrom(ctx)`, the same way a
 capability finds it: chapter 7), reads its `Session`, and hands it to the
@@ -2640,9 +2666,13 @@ descriptor's `User`. In a served request `Env.Session` is the session
 from the cookie; in a test, the test's session, which `Test.login` and
 `Session.put` set (chapter 10, "Tests that use the rules"). Since
 `Session.put` writes `Env.Session`, a scoped step after it acts for the
-new user. With no `Env`, or `User` answering false, the step fails with
+new user.
+
+With no `Env`, or `User` answering false, the step fails with
 an `*eff.ErrFail` whose text is the operation and table: `Db.mine Todo:
-no signed-in user`. Reading the user at run time, not from an argument,
+no signed-in user`.
+
+Reading the user at run time, not from an argument,
 is what lets a helper value such as `recent = Db.mine Todo |> Db.limit
 5` (a Go package variable, built once) mean "the current user's" at each
 use.
@@ -2652,12 +2682,16 @@ yet. `All`, `First` and `CountRows` resolve it as they start (`scoped`):
 they get the user from `owner`, put `CEq(owner, user)` in front of the
 select's conditions, and call `Env.Note("Db.mine Todo")`, which logs the
 name and puts it into the trace just before the running step's own
-name. That is why a trace reads `["Db.mine Todo", "Db.all Todo"]`: the
-note is not a step (no `Call` ran for it), but it says which select the
-step ran. `Select.SQL` refuses a `Mine` select that was not resolved, so
-an unscoped query can never be made from one by mistake.
+name.
 
-**The SQL.** With the dev panel on (chapter 11), its SQL tab lists each
+That is why a trace reads `["Db.mine Todo", "Db.all Todo"]`: the note is
+not a step (no `Call` ran for it), but it says which select the step ran.
+`Select.SQL` refuses a `Mine` select that was not resolved, so an unscoped
+query can never be made from one by mistake.
+
+#### The SQL
+
+With the dev panel on (chapter 11), its SQL tab lists each
 statement a request sent; `/_dev/requests/<id>` has the same list as JSON.
 These are the to-do app's, from a request each (every value is a `?`; the
 table is `Table__Todo__Todo`, from `module Table.Todo`):
@@ -2718,25 +2752,36 @@ When a stranger pressed my todo's Toggle ("Toggle by another user is
 not found"), only the `SELECT … AND "owner" = ?` ran: it found nothing,
 and no `UPDATE` was sent.
 
-**The rows-affected check.** `UpdateMineRow` reads the row first because
+#### The rows-affected check
+
+`UpdateMineRow` reads the row first because
 `f` is a function of the row: it needs the current values to compute
 the new ones. It checks that `f` kept the id, then writes. The `UPDATE`
 carries the owner predicate again, and the store's `UpdateWhere` returns
 how many rows the statement changed (`RowsAffected` of the result). If
 that is 0 (the row was deleted or changed hands between the two
 statements), the step is `eff.ErrNotFound` like a missing row, and the
-`Task` rolls back. So ownership is decided by the statement that writes,
-on the database that writes, whatever the read saw (chapter 6, "The
-rules and a replicated database"). The `SET` list leaves out the id,
-`@created` and the owner: `UpdateMineRow` removes the owner's column and
-value before it calls `UpdateWhere`, so an `f` that changes `owner`
-writes everything else and the row stays the user's. `DeleteMineRow`
-needs no read: its one `DELETE` carries the predicate, and 0 rows
-deleted is `eff.ErrNotFound`. (`Db.delete` of a missing row is not an
-error; `Db.deleteMine`'s is, since it cannot tell missing from someone
-else's, and both must be a 404.)
+`Task` rolls back.
 
-**The role check.** A route with `role R` gets one more check in its
+So ownership is decided by the statement that writes, on the database that
+writes, whatever the read saw (chapter 6, "The rules and a replicated
+database").
+
+The `SET` list leaves out the id, `@created` and the owner:
+`UpdateMineRow` removes the owner's column and value before it calls
+`UpdateWhere`, so an `f` that changes `owner` writes everything else and
+the row stays the user's.
+
+`DeleteMineRow` needs no read: its one `DELETE` carries the predicate, and
+0 rows deleted is `eff.ErrNotFound`.
+
+> **`Db.delete` and `Db.deleteMine`.** `Db.delete` of a missing row is not
+> an error; `Db.deleteMine`'s is, since it cannot tell missing from someone
+> else's, and both must be a 404.
+
+#### The role check
+
+A route with `role R` gets one more check in its
 guard, after the `requires user` redirect and before `load` or `update`.
 The blog's `page__Write__Write` (`build/blog/routes__alder.go`), which the
 `GET /write` route runs before it renders:
@@ -2761,13 +2806,14 @@ func page__Write__Write(rq *web.Request, params Write__Write__Params, keep any) 
 `app.Role` is the session's union value; its `Tag` is compared with the
 constructor's tag (with `role Author | Admin`, the test is
 `!(… == Author || … == Admin)`). A wrong role is the not-found page,
-before any query runs: the check costs no database read. A write route
-has the same check in its `guard__` function, which has no `load` after it:
-`guard__Write__Create` returns the 404 in the same place. Every handler of
-a route with the clause, a GET route's and a write route's, goes through its
-guard first, so a write is checked before its form is decoded or its
-`update` runs. The route's `Session` carries `Role` beside the narrowed
-`User`.
+before any query runs: the check costs no database read.
+
+A write route has the same check in its `guard__` function, which has no
+`load` after it: `guard__Write__Create` returns the 404 in the same place.
+Every handler of a route with the clause, a GET route's and a write
+route's, goes through its guard first, so a write is checked before its
+form is decoded or its `update` runs. The route's `Session` carries `Role`
+beside the narrowed `User`.
 
 ### Partitions and silos
 
@@ -2776,7 +2822,9 @@ chapter 8, "Silos"). This part follows `examples/workspace` through the
 same stages: a key in the session, a table partitioned by it, a silo,
 and the runtime that keeps a database per org.
 
-**The checker.** `internal/check/partitions.go` reads `@partition k`
+#### The checker
+
+`internal/check/partitions.go` reads `@partition k`
 (and `@owner` as `@partition user`) into the table's `PartKey` and
 `PartCol`, once the session is known (E0032); `via`, `choose` and `silo`
 declarations into `Result.Via`, `Choose` and `Silos` (E0032, E0033). A
@@ -2801,7 +2849,9 @@ adapter's Go code are the runtime's to check, below. The answer is
 `Result.Arms`, which the IR keeps as the route's `Store`:
 `(store silo org)` in `alder dump --ir`, under the route's `update`.
 
-**The Go.** The table's descriptor names its partition and its silo
+#### The Go
+
+The table's descriptor names its partition and its silo
 (`build/workspace/Table__Project_alder.go`):
 
 ```go
@@ -2848,7 +2898,9 @@ with a form, and with the not-found page (404) for one without a form,
 rather than the error page (`routeUpdateFailure` in `internal/gen/routes.go`
 writes the lines); `Test.run` sees the failure as it is.
 
-**A store per silo.** `rt/db/stores.go`'s `Stores` holds the shared
+#### A store per silo
+
+`rt/db/stores.go`'s `Stores` holds the shared
 database and the silos opened so far, by key and value. Every database
 step of `rt/db` asks `route` which store it runs on: a table with no
 `Silo` runs on the shared one; a siloed table on the silo of the row's
@@ -2862,7 +2914,9 @@ happen in an `update` that checked; one that reaches it anyway (a
 test's own `Task`, an adapter, a bug in gen) is refused by `route` as an
 internal error rather than written outside the `Task`.
 
-**Opening a silo.** The first request for an org opens its file
+#### Opening a silo
+
+The first request for an org opens its file
 (`openSilo`): the id must be an id, the org's row must exist in the
 shared database (one read), and then the open-time check of chapter 8
 runs in one `BEGIN IMMEDIATE` on the file: create it at the build's
@@ -2877,7 +2931,9 @@ the maintenance page (503), and is checked again after a minute; one
 unused for ten minutes is closed. Only requests for the same org wait
 while it opens: the registry's lock guards the map, not the check.
 
-**The drain.** A deploy starts the new build while the old one drains
+#### The drain
+
+A deploy starts the new build while the old one drains
 its requests (chapter 16). The new build may migrate a silo the old one
 has open. So once the old process is told to stop, it opens no new silo
 (a request for one answers the maintenance page) and, before each
@@ -2887,7 +2943,9 @@ is refused and the silo answers the maintenance page for the rest of
 the drain. A process that is not draining never re-checks, which is why
 a deploy always signals the old process before it starts the new.
 
-**Tests.** `db.NewTestStores` gives each test a `:memory:` database per
+#### Tests
+
+`db.NewTestStores` gives each test a `:memory:` database per
 org it touches, made on first use, each with its transaction open for
 the whole test, and the test's savepoints (`Test.run`, each browser
 request) span all of them. A browser request's `Task` is bound by the
@@ -2912,7 +2970,9 @@ browser ──HTTP──▶ dev server (alder run, ALDER_ADDR) ──proxy──
    └──/_dev/reload───┘  worker: check → build → start child → swap → clear + reload
 ```
 
-**The proxy.** The dev server's handler, `devServer.ServeHTTP`, answers
+#### The proxy
+
+The dev server's handler, `devServer.ServeHTTP`, answers
 `/_dev/reload` and the `/_dev/theme` routes itself and hands every other request to Go's
 `httputil.ReverseProxy`, aimed at the current child's address. The
 address is read once per request, under a lock, so a request that started
@@ -2922,11 +2982,17 @@ it, which a Datastar answer (a stream of server-sent events, "A request"
 above) needs. Cookies and `303`s are passed on untouched, and the
 `Host` header is kept, so the app sees the address the browser used.
 
-**The theme page.** `/_dev/theme` (`cmd/alder/theme_ui.go`, with the page's HTML, CSS and JavaScript as Go string constants in `theme_ui_assets.go`) is answered by this handler too, never proxied, so it works while the app is still building or does not build. A write is refused while the app has errors the checker cannot get past (an `App.alder` that does not parse, say); type errors elsewhere do not block it. That is also why it exists only under `alder run`: the supervisor is the one process that owns the app's directory and may write to it, and a built app carries no such routes. Before anything else each of its routes passes `themeAllowed`, which refuses a request from another site (`Sec-Fetch-Site`, `Origin`) or addressed to another name (`Host`), because a write to `App.alder` must not be reachable from a web page you merely visited. The write path has four steps. The page posts its theme as JSON; `generate.ThemeEdit` runs the checker's own theme check on it (the E0042 rules, so the page and `alder check` cannot disagree) and refuses a declaration that fails; the formatter prints the declaration (`format.Theme`, the same code `alder fmt` uses); and that text is spliced over the old `theme { … }` in `App.alder`, read afresh at that moment so an edit made in an editor since the page loaded is kept. The splice goes through `Apply`, chapter 15's copy, check, write: the result is checked in a copy before the file is touched. The watcher then sees the file change and rebuilds like for any edit. Printing the whole declaration is why a `--` comment inside `theme { … }` does not survive a write.
+#### The theme page
 
-**The importer.** `theme.Import` (`internal/theme/import.go`) reads CSS with a small scanner of its own, as the repository allows no CSS library. It drops `/* … */` comments outside strings, then `nodes` cuts the text into statements and `{ … }` blocks, tracking strings, parentheses and braces so a `;` inside `url(…)` or a `}` inside a quoted string does not end one (parentheses are tracked only for `;`). A block's selector decides where its `--name: value` lines go: `.dark` (or `[data-theme=dark]`) is the dark scheme, `:root` or `html` the light one, and a rule inside `@media (prefers-color-scheme: dark)` is dark; `@media`, `@layer` and `@supports` are walked into, and Tailwind's own at-rules (`@theme`, `@import`, `@custom-variant`) are counted and skipped. Each name is looked up in the token table (`theme.ByCSS`), the value is checked against the token's kind, and bare HSL channels are wrapped in `hsl()`. Whatever cannot be placed is kept with a reason (`Unplaced`) instead of being lost; `UnplacedCSS` prints those as the block to paste into `app.css`. The importer is a pure function from text to a theme: `alder theme import` and the page's Import… button both call it, and only the first writes.
+`/_dev/theme` (`cmd/alder/theme_ui.go`, with the page's HTML, CSS and JavaScript as Go string constants in `theme_ui_assets.go`) is answered by this handler too, never proxied, so it works while the app is still building or does not build. A write is refused while the app has errors the checker cannot get past (an `App.alder` that does not parse, say); type errors elsewhere do not block it. That is also why it exists only under `alder run`: the supervisor is the one process that owns the app's directory and may write to it, and a built app carries no such routes. Before anything else each of its routes passes `themeAllowed`, which refuses a request from another site (`Sec-Fetch-Site`, `Origin`) or addressed to another name (`Host`), because a write to `App.alder` must not be reachable from a web page you merely visited. The write path has four steps. The page posts its theme as JSON; `generate.ThemeEdit` runs the checker's own theme check on it (the E0042 rules, so the page and `alder check` cannot disagree) and refuses a declaration that fails; the formatter prints the declaration (`format.Theme`, the same code `alder fmt` uses); and that text is spliced over the old `theme { … }` in `App.alder`, read afresh at that moment so an edit made in an editor since the page loaded is kept. The splice goes through `Apply`, chapter 15's copy, check, write: the result is checked in a copy before the file is touched. The watcher then sees the file change and rebuilds like for any edit. Printing the whole declaration is why a `--` comment inside `theme { … }` does not survive a write.
 
-**The watcher.** `watch` polls rather than asking the operating system
+#### The importer
+
+`theme.Import` (`internal/theme/import.go`) reads CSS with a small scanner of its own, as the repository allows no CSS library. It drops `/* … */` comments outside strings, then `nodes` cuts the text into statements and `{ … }` blocks, tracking strings, parentheses and braces so a `;` inside `url(…)` or a `}` inside a quoted string does not end one (parentheses are tracked only for `;`). A block's selector decides where its `--name: value` lines go: `.dark` (or `[data-theme=dark]`) is the dark scheme, `:root` or `html` the light one, and a rule inside `@media (prefers-color-scheme: dark)` is dark; `@media`, `@layer` and `@supports` are walked into, and Tailwind's own at-rules (`@theme`, `@import`, `@custom-variant`) are counted and skipped. Each name is looked up in the token table (`theme.ByCSS`), the value is checked against the token's kind, and bare HSL channels are wrapped in `hsl()`. Whatever cannot be placed is kept with a reason (`Unplaced`) instead of being lost; `UnplacedCSS` prints those as the block to paste into `app.css`. The importer is a pure function from text to a theme: `alder theme import` and the page's Import… button both call it, and only the first writes.
+
+#### The watcher
+
+`watch` polls rather than asking the operating system
 for change notifications, so the compiler needs no dependency beyond Go's
 standard library. Every 300 ms, `snapshot` records the modification time
 and size of every `.alder` file under `app/`, every file under
@@ -2961,7 +3027,9 @@ So an editor that writes five files in a row produces one change, sent
 300 ms after the last write. This is *coalescing*: merging a burst of
 events into one.
 
-**The worker.** One goroutine, `work`, receives the changes and is the
+#### The worker
+
+One goroutine, `work`, receives the changes and is the
 only caller of `rebuild`. Because there is one worker, two rebuilds can
 never run at the same time (the rebuild is *single-flight*). While it
 rebuilds, the watcher waits on its send, and when the worker comes back it
