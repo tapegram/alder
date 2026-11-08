@@ -1705,7 +1705,9 @@ func params__Todos__Index__Index(p Todos__Index__Index__Params) []rt.KV {
 `rt.QueryKV` marks the pair to be left out when the value is the default,
 `All`.
 
-**Three deliveries.** A GET route's handler is the same for every request
+#### Three deliveries
+
+A GET route's handler is the same for every request
 for it. What differs is the request, and the router (`rt/web`) reads it
 twice. In `ServeHTTP`, a Datastar `GET` that is not an element fetch is a
 navigation:
@@ -1935,22 +1937,30 @@ it goes, where each element with an `id` starts and ends in the markup
 compares it with `before`.
 
 Which of the two ways to send the change applies is decided by `regions` in
-`rt/web/shown.go`, which falls back to sending the whole body when there is no
-before-view (none was rendered, it did not answer its view, or it was a
-page other than the one now shown), when the request carries no
-`Alder-Shown` header at all (a post made before the page's script ran), or
-when a toast needs a region the page lacks. Otherwise:
+`rt/web/shown.go`. It falls back to sending the whole body when:
+
+- there is no before-view (none was rendered, it did not answer its view,
+  or it was a page other than the one now shown);
+- the request carries no `Alder-Shown` header at all (a post made before
+  the page's script ran);
+- a toast needs a region the page lacks.
+
+Otherwise:
 
 1. If the two bodies are the same string, nothing changed, and no element
    event is sent.
+
 2. Else `html.Fragments` compares the two renders region by region,
-   starting with the body. A region whose markup is the same on both sides
-   is left alone. A region whose markup differs only inside its child
-   regions (the same children, in the same order, and the same text between
-   them) is looked into, child by child. Any other changed region is sent
-   whole. A change that lies outside every region (a heading with no `id`
-   around it) can only be sent as the body itself, and then the whole body
-   is sent.
+   starting with the body:
+
+   - A region whose markup is the same on both sides is left alone.
+   - A region whose markup differs only inside its child regions (the same
+     children, in the same order, and the same text between them) is
+     looked into, child by child.
+   - Any other changed region is sent whole.
+   - A change that lies outside every region (a heading with no `id`
+     around it) can only be sent as the body itself, and then the whole
+     body is sent.
 
 Here Milk leaves the Active list, so `#todos` changed and has no child
 regions to look into; the count changed, so `#summary` did too; nothing
@@ -1978,19 +1988,26 @@ data: elements <al-shown id="_alder_shown" data-h="3e0bf51c02f9362a" hidden></al
 
 ```
 
-(without the `Date`, `X-Request-Id` and `Transfer-Encoding` headers). Each
-event is the event name, two lines that say what to replace and how, and
-one `data: elements` line for each line of the markup; the rendered page has
-no line breaks, so each is one line, and a blank line ends the event.
-(The writer turns every `\r\n` and lone `\r` into `\n` before it splits the
-lines, and the renderer writes a carriage return in text as `&#13;`: a
-line end inside your data can never end a `data:` line and start a
-field.) Datastar finds each element by its `id` and morphs it into the new
-one. The rest of the page is not touched at all: an open `<details>`, a
-half-typed input or the scroll position elsewhere stay as they were. No
-`<head>` and no doctype are sent.
+(without the `Date`, `X-Request-Id` and `Transfer-Encoding` headers).
 
-**The shown hash.** The last event records which page the browser now
+Each event is the event name, two lines that say what to replace and how,
+and one `data: elements` line for each line of the markup; the rendered
+page has no line breaks, so each is one line, and a blank line ends the
+event.
+
+> **Carriage returns.** The writer turns every `\r\n` and lone `\r` into
+> `\n` before it splits the lines, and the renderer writes a carriage
+> return in text as `&#13;`: a line end inside your data can never end a
+> `data:` line and start a field.
+
+Datastar finds each element by its `id` and morphs it into the new one. The
+rest of the page is not touched at all: an open `<details>`, a half-typed
+input or the scroll position elsewhere stay as they were. No `<head>` and
+no doctype are sent.
+
+#### The shown hash
+
+The last event records which page the browser now
 shows, for the next click. Every page the router sends whole ends its
 `<body>` with
 
@@ -2005,20 +2022,26 @@ It is the hash of the body as the server last rendered it for this page:
 the whole body, when a full body was sent, or the hash of the render the
 regions were cut from, which `PatchShown` sends last.
 
-What the server does with the header's value is nothing, since #160. It used
-to compare it with the hash of its own before-view, and send the whole body
-when they differed. But an element fetch and a `render` change the browser's DOM without the
-server rendering the page, so
-after any of them the hash in the browser is out of date, by design, and a
-rule that sent the whole body then would morph away what they loaded. Now a
-stale hash costs nothing: the server diffs its own before-view against its
-own after-view, and patches the regions it changed. Regions it did not change
-are left as the browser has them, so rows a click fetched and an inline
-edit that is open survive a `refresh` that did not touch them. The
-guarantee is the one a partial page gives you: every region the server sent
-is right. The header only has to be there (a post made before the script ran
-has none, and gets the whole body). Sending `Alder-Shown: 0000000000000000`
-with the same click gets the same three events.
+#### What the server does with the header
+
+What the server does with the header's value is nothing, since #160. It
+used to compare it with the hash of its own before-view, and send the whole
+body when they differed. But an element fetch and a `render` change the
+browser's DOM without the server rendering the page, so after any of them
+the hash in the browser is out of date, by design, and a rule that sent the
+whole body then would morph away what they loaded.
+
+Now a stale hash costs nothing: the server diffs its own before-view
+against its own after-view, and patches the regions it changed. Regions it
+did not change are left as the browser has them, so rows a click fetched
+and an inline edit that is open survive a `refresh` that did not touch
+them.
+
+The guarantee is the one a partial page gives you: every region the server
+sent is right. The header only has to be there (a post made before the
+script ran has none, and gets the whole body). Sending
+`Alder-Shown: 0000000000000000` with the same click gets the same three
+events.
 
 The tab that is behind in another way is the one from an older build. Its
 `<head>` is that build's, and the router cannot patch a head. `ServeHTTP`
@@ -2029,13 +2052,18 @@ mismatch answers a reload, never a patch:
 		if b := r.Header.Get(datastar.BuildHeader); b != "" && b != BuildID() {
 ```
 
-A link's request (`GET`) is answered with `rt.reload`, a real navigation
-to its address; an element fetch with a navigation to the page it was made
-from (`Alder-Page`); a write runs first (its decoders guard it) and then
-`staleReload` answers its `Response` as a reload: `redirect r` goes to `r`,
-anything else reloads the page the browser is on. A toast is kept in the
-notice cookie, so the page loaded shows it. Clicking Done from a tab of
-another build answers
+How a stale-build request is answered depends on what it was:
+
+- A link's request (`GET`) is answered with `rt.reload`, a real navigation
+  to its address.
+- An element fetch is answered with a navigation to the page it was made
+  from (`Alder-Page`).
+- A write runs first (its decoders guard it) and then `staleReload`
+  answers its `Response` as a reload: `redirect r` goes to `r`, anything
+  else reloads the page the browser is on. A toast is kept in the notice
+  cookie, so the page loaded shows it.
+
+Clicking Done from a tab of another build answers
 
 ```
 event: datastar-patch-elements
@@ -2048,7 +2076,9 @@ data: elements <script data-effect="el.remove()">window.location.assign("/?filte
 after the write has toggled Milk. A request with no `Alder-Build` at all (a
 hand-made one) is not checked.
 
-**`render`: one element.** Not every write needs the page. In the route
+#### `render`: one element
+
+Not every write needs the page. In the route
 handlers golden (`testdata/golden/gen_route_handlers`, the app whose Go
 `TestGenRoute_ToggleRender` runs), `Toggle` is a `PATCH` that answers
 `render` of the todo's own route, and the checker finds no `refresh` or
@@ -2076,17 +2106,23 @@ func Route__Todos__Toggle() web.Route {
 }
 ```
 
-`nil` is the before-view. The route's path has `{id}`, so `decode__…` reads it
-from `rq.Params`, the path parameters the router matched, where `Toggle`
-above read the query. `answer` sees a `render` and a Datastar request, and
-`answerRender` makes the delivery an element fetch run in the server: it
-builds a `GET` of the target's URL (`getOf`, with `Alder-Fetch: 1` set),
-marks the hop as a render (`hop.render`), and serves it with the session the
-write left. That is the same `serve` the router runs for a request from
-outside, so the target's own handler runs: `Route__Todos__Row`'s `page__…`
-(`requires`, then `Row.load`, one read by key) and `Row.view`, and the router
-delivers the result with `deliverElement`, as it would an element fetch
-from the browser:
+`nil` is the before-view. The route's path has `{id}`, so `decode__…` reads
+it from `rq.Params`, the path parameters the router matched, where `Toggle`
+above read the query.
+
+`answer` sees a `render` and a Datastar request, and `answerRender` makes
+the delivery an element fetch run in the server:
+
+1. It builds a `GET` of the target's URL (`getOf`, with `Alder-Fetch: 1`
+   set).
+2. It marks the hop as a render (`hop.render`).
+3. It serves it with the session the write left.
+
+That is the same `serve` the router runs for a request from outside, so the
+target's own handler runs: `Route__Todos__Row`'s `page__…` (`requires`,
+then `Row.load`, one read by key) and `Row.view`, and the router delivers
+the result with `deliverElement`, as it would an element fetch from the
+browser:
 
 ```
 event: datastar-patch-elements
@@ -2098,17 +2134,20 @@ data: elements <li id="todo-t1">…</li>
 
 (The request was `PATCH /todos/t1/toggle`, from the page `/`.)
 `deliverElement` finds the id with `html.RootID`: the first root element of
-the view must have one. A view
-whose root has none is not an error of the request: the router logs it
-(`route … answered an element fetch with a view whose first root element has
-no id`), notes it in the dev panel, and sends an empty event stream, so the
-page is left as it was. A view with several roots is morphed in whole, with
-the first root's `id` as the selector. Nothing else is loaded or sent: no
-before-view, no page load, and `al-shown` is not touched, so it is stale
-by design. `TestGenRoute_NoBeforeWhenUnreachable` pins both halves: this
-`Route__Todos__Toggle` has no call to `RenderShown` and the sibling `Delete`
-route, which answers `refresh`, has; the page's `load` ran once for
-the row and never for the list.
+the view must have one.
+
+A view whose root has none is not an error of the request: the router logs
+it (`route … answered an element fetch with a view whose first root element
+has no id`), notes it in the dev panel, and sends an empty event stream, so
+the page is left as it was. A view with several roots is morphed in whole,
+with the first root's `id` as the selector.
+
+Nothing else is loaded or sent: no before-view, no page load, and
+`al-shown` is not touched, so it is stale by design.
+`TestGenRoute_NoBeforeWhenUnreachable` pins both halves: this
+`Route__Todos__Toggle` has no call to `RenderShown` and the sibling
+`Delete` route, which answers `refresh`, has; the page's `load` ran once
+for the row and never for the list.
 
 A `render` whose target cannot answer its view is never patched in
 (`renderFailed`): the row was deleted between the write and the read, or its
@@ -2128,28 +2167,35 @@ went wrong". An element fetch whose route answers 404 (a `click` that asks
 for `Row { id }` of a row that is gone) is answered the same way: the
 not-found page never replaces the element.
 
-**The other answers.** `redirect`, `invalid` and the plain answers are the
+#### The other answers
+
+`redirect`, `invalid` and the plain answers are the
 same walk with another delivery:
 
 - `redirect r` (`answerRedirect`) is not diffed, even when `r` is the page
-  the browser is on, and no before-view is rendered for it. Under Datastar
-  it must not be a 303: the client's `fetch` would follow it and morph the
-  new page into the old URL. So `write` finds a 303 to a page of this app
-  (`followable`) and `follow`s it: a `GET` of the target, served by the
-  same `serve` with the session the write left, answered as a boosted link
-  is. The golden's `Create`, answering `Response.redirect (Index {…}) |>
+  the browser is on, and no before-view is rendered for it.
+
+  Under Datastar it must not be a 303: the client's `fetch` would follow it
+  and morph the new page into the old URL. So `write` finds a 303 to a page
+  of this app (`followable`) and `follow`s it: a `GET` of the target, served
+  by the same `serve` with the session the write left, answered as a
+  boosted link is.
+
+  The golden's `Create`, answering `Response.redirect (Index {…}) |>
   Response.toast "Added"`, sends four events: the body of the list, its
   `<title>`, the history step, and the toast, as a patch appended to
   `al-toasts`.
+
 - `invalid t` is `answerShown` again, with the form state of the route
   (`invalidState`: the posted values, and `t` as the form's error) and the
   status 422 in the `Alder-Status` header, not in the HTTP status, since
-  Datastar ignores answers that are not 2xx. `Create` answering
-  `Response.invalid "Already there"` committed its insert (`invalid` is a
-  successful result: its `Task` commits) and answered the list page with the
-  error in the form's `<Errors form />`. Here the form is not inside a
-  region of its own, so the change is outside every region and the whole
-  body is sent:
+  Datastar ignores answers that are not 2xx.
+
+  `Create` answering `Response.invalid "Already there"` committed its
+  insert (`invalid` is a successful result: its `Task` commits) and
+  answered the list page with the error in the form's `<Errors form />`.
+  Here the form is not inside a region of its own, so the change is outside
+  every region and the whole body is sent:
 
   ```
   HTTP/1.1 200 OK
@@ -2165,11 +2211,14 @@ same walk with another delivery:
   A form that does not decode never reaches `update`: the handler answers
   `web.InvalidResponse` with the form's state and the field errors, which is
   `answerShown` with an `invalid` that has no text of its own.
+
 - `Response.toast "Added" r` (and `success`, `warning`, `error`) is not a
   kind of answer. It appends an event to `r`: `rt.WithToast` copies `r`'s
   events and adds `Toast{Kind, Text}`, and `r`'s kind and status are
-  unchanged. The router delivers a toast after the answer's own patches, as
-  one more `datastar-patch-elements` event that appends an `<al-toast>` to
+  unchanged.
+
+  The router delivers a toast after the answer's own patches, as one more
+  `datastar-patch-elements` event that appends an `<al-toast>` to
   `al-toasts` (`notify`; the `Added` of the golden's `Create` is the last
   event of the answer above):
 
@@ -2183,19 +2232,28 @@ same walk with another delivery:
 
   The variant is `info`, `success`, `warning` or `destructive` (the
   library's name for `error`, which also stays on screen twice as long,
-  10 seconds against 5; `noticeLook`). If the answer is a `refresh` or an
-  `invalid` whose page has no `<al-toasts>`, the router cannot patch the
-  toast in by region and sends the whole body, with an empty
-  `<al-toasts popover="manual" data-ignore-morph>` added (`shellBody`). A toast
-  on a `redirect` that ends in a real navigation (another site, or a stale
-  tab's reload) rides in the notice cookie instead, and the page it loads
-  shows it.
-- Without JavaScript (`answerPlain`) each is plain HTTP, as chapter 6 lists:
-  `redirect r` a 303 to `r`; `refresh` and `render r` a 303 to the page the
-  browser is on (`ShownURL`: `Referer`); `invalid t` a 422 with that page
-  rendered as a document. A write from a page the router cannot match to a
-  GET route is answered by going to that address. Toggling Milk on
-  `/?filter=Active` without JavaScript answers
+  10 seconds against 5; `noticeLook`).
+
+  If the answer is a `refresh` or an `invalid` whose page has no
+  `<al-toasts>`, the router cannot patch the toast in by region and sends
+  the whole body, with an empty `<al-toasts popover="manual"
+  data-ignore-morph>` added (`shellBody`).
+
+  A toast on a `redirect` that ends in a real navigation (another site, or
+  a stale tab's reload) rides in the notice cookie instead, and the page it
+  loads shows it.
+
+- Without JavaScript (`answerPlain`) each is plain HTTP, as chapter 6
+  lists:
+
+  - `redirect r` a 303 to `r`;
+  - `refresh` and `render r` a 303 to the page the browser is on
+    (`ShownURL`: `Referer`);
+  - `invalid t` a 422 with that page rendered as a document.
+
+  A write from a page the router cannot match to a GET route is answered by
+  going to that address. Toggling Milk on `/?filter=Active` without
+  JavaScript answers
 
   ```
   HTTP/1.1 303 See Other
@@ -2203,28 +2261,38 @@ same walk with another delivery:
   ```
 
   The browser then `GET`s `/?filter=Active`, so its address bar shows the
-  list, not the write's URL, and a refresh does not post again. If the id
-  names no row, or another user's, `Db.updateMine` ends in `Task.notFound`,
-  and under Datastar the 404 page's body arrives as a body morph, as a 200
+  list, not the write's URL, and a refresh does not post again.
+
+  If the id names no row, or another user's, `Db.updateMine` ends in
+  `Task.notFound`, and under Datastar the 404 page's body arrives as a body
+  morph, as a 200 event with the real status in `Alder-Status`.
   event with the real status in `Alder-Status`.
 - A `PUT`, `PATCH` or `DELETE` route is sent without JavaScript as a `POST`
   carrying `_method`. `serve` reads the body of every method but `GET` and
   `HEAD` (`readForm`), and `effectiveMethod` (`rt/web/method.go`) lets a
   `POST` whose body has exactly one `_method` of `PUT`, `PATCH` or `DELETE`
-  be routed by it. On any other method `_method` is ignored, and in the query
-  string it is never read, so a link from another site can never become a
-  write. A path some route declares, but not for the request's method, is a
-  405 with an `Allow` header: `find` returns the set of methods the routes
-  with that path declare. A `GET /todos` of the golden app, where only `POST
+  be routed by it.
+
+  On any other method `_method` is ignored, and in the query string it is
+  never read, so a link from another site can never become a write.
+
+  A path some route declares, but not for the request's method, is a 405
+  with an `Allow` header: `find` returns the set of methods the routes with
+  that path declare. A `GET /todos` of the golden app, where only `POST
   /todos` exists, answers `405` with `Allow: POST`.
 
-**A boosted link.** Every page the router writes whole carries these tags
-(`HeadTags` and `withScript` in `rt/web/router.go`): right after
-`<head>`, the `color-scheme` meta, the `alder-build` meta, the style of the
-pending bar and the Datastar script; just before `</head>`,
-`datastar.BoostTag()`, last because it is about a kilobyte and would
-otherwise push a layout's `<meta charset>` out of the first 1024 bytes,
-where the browser looks for it:
+#### A boosted link
+
+Every page the router writes whole carries these tags (`HeadTags` and
+`withScript` in `rt/web/router.go`):
+
+- right after `<head>`: the `color-scheme` meta, the `alder-build` meta, the
+  style of the pending bar and the Datastar script;
+- just before `</head>`: `datastar.BoostTag()`, last because it is about a
+  kilobyte and would otherwise push a layout's `<meta charset>` out of the
+  first 1024 bytes, where the browser looks for it.
+
+The boost tag looks like this:
 
 ```html
 <meta name="alder-boost" content="links"
@@ -2235,22 +2303,27 @@ where the browser looks for it:
 ```
 
 (shown on several lines; the quotes inside the attributes are escaped as
-`&#39;` in the real page). Datastar reads `data-*` attributes on every
-element of the document, the `<head>` included. The `data-init`
-(`datastar.BoostInit`) runs when Datastar sets the element up: it notes the
-page shown (`window._alderAt`), reads the build id from
-`<meta name="alder-build">` (`window._alderBuild`), and defines the helpers
-the page's requests call: `window._alderO`, the options of a post (the
-headers of "A request" above), `window._alderF`, those of an element
-fetch, and `window._alderBusy`, which marks the page pending while a request
-is in flight. `data-on:click__window`
-is a click listener on `window`, the outermost target, so it sees every
-click on the page after the page's own handlers have had theirs; and it
-is on an element in the `<head>`, which a body patch never touches, so
-the listener outlives every morph. Its expression, `datastar.BoostClick`,
-is plain JavaScript that Datastar compiles into a function (it rewrites
-`@get(` into a call of its `get` action, and `$name` into a signal, so the
-expression uses no `$`):
+`&#39;` in the real page).
+
+Datastar reads `data-*` attributes on every element of the document, the
+`<head>` included. The `data-init` (`datastar.BoostInit`) runs when
+Datastar sets the element up. It:
+
+- notes the page shown (`window._alderAt`);
+- reads the build id from `<meta name="alder-build">`
+  (`window._alderBuild`);
+- defines the helpers the page's requests call: `window._alderO`, the
+  options of a post (the headers of "A request" above), `window._alderF`,
+  those of an element fetch, and `window._alderBusy`, which marks the page
+  pending while a request is in flight.
+
+`data-on:click__window` is a click listener on `window`, the outermost
+target, so it sees every click on the page after the page's own handlers
+have had theirs; and it is on an element in the `<head>`, which a body
+patch never touches, so the listener outlives every morph. Its expression,
+`datastar.BoostClick`, is plain JavaScript that Datastar compiles into a
+function (it rewrites `@get(` into a call of its `get` action, and `$name`
+into a signal, so the expression uses no `$`):
 
 ```js
 if (evt.defaultPrevented || evt.button !== 0 || evt.metaKey || evt.ctrlKey || evt.shiftKey || evt.altKey) return;
@@ -2269,17 +2342,21 @@ window._alderAC?.abort();
 ```
 
 Each `return` is one of chapter 6's exceptions, left to the browser. A
-click that gets past them is cancelled (`preventDefault`), the link's
-`#fragment`, if any, is kept in `window._alderHash` (a browser never
-sends the fragment to the server, so the push adds it back), the scroll
-position is saved in the state of the history entry being left, the
-request still in flight is aborted, and
-Datastar sends `GET /posts/42?datastar=%7B%7D` with
-`Datastar-Request: true` and `Alder-Build`, and without `Alder-Fetch`.
-(Datastar always adds the page's signals to a
-`GET` as the parameter `datastar`; `payload: {}` makes them `{}`, and the
-router drops the parameter before it matches the route, so a route's
-parameters never see it.)
+click that gets past them:
+
+- is cancelled (`preventDefault`);
+- has the link's `#fragment`, if any, kept in `window._alderHash` (a browser
+  never sends the fragment to the server, so the push adds it back);
+- has the scroll position saved in the state of the history entry being
+  left;
+- has the request still in flight aborted;
+- and Datastar sends `GET /posts/42?datastar=%7B%7D` with
+  `Datastar-Request: true` and `Alder-Build`, and without `Alder-Fetch`.
+
+> **The `datastar` parameter.** Datastar always adds the page's signals to
+> a `GET` as the parameter `datastar`; `payload: {}` makes them `{}`, and
+> the router drops the parameter before it matches the route, so a route's
+> parameters never see it.
 
 `ServeHTTP` sees a Datastar `GET` that is not an element fetch and marks it
 as a navigation, as "Three deliveries" showed: the URL to
@@ -2309,21 +2386,30 @@ data: elements <script data-effect="el.remove()">(function(){var u="/";if(u.inde
 
 ```
 
-Datastar applies the three events in order. The first morphs the body, and
-its `<al-shown>` records the hash of the page now shown. The second replaces
-the `<title>`; its selector is `head > title`, so an
-SVG's `<title>` in the body is left alone (`titleOf` cuts the title out of
-the rendered page; a page without one sends `<title></title>`, so the old
-page's title does not stay). The third is `datastar.Navigate` in mode
-`Push`: a script appended to the body, which Datastar runs and which
-removes itself. It records the URL, with the clicked link's fragment
-added back when the URL has none of its own (`history.pushState`: the
-address bar changes, nothing loads), notes the
-path the page now shows in `window._alderAt`, makes the `<body>`
-focusable (`tabindex="-1"`) and focuses it, so keyboard and screen reader
-users start at the top of the new page, then scrolls to the top (or to
-the element a `#fragment` in the URL names). A 404 or 500 is answered with
-the same three events and the status in `Alder-Status`, as for a write.
+Datastar applies the three events in order:
+
+1. The first morphs the body, and its `<al-shown>` records the hash of the
+   page now shown.
+
+2. The second replaces the `<title>`; its selector is `head > title`, so an
+   SVG's `<title>` in the body is left alone (`titleOf` cuts the title out
+   of the rendered page; a page without one sends `<title></title>`, so the
+   old page's title does not stay).
+
+3. The third is `datastar.Navigate` in mode `Push`: a script appended to
+   the body, which Datastar runs and which removes itself. It:
+
+   - records the URL, with the clicked link's fragment added back when the
+     URL has none of its own (`history.pushState`: the address bar changes,
+     nothing loads);
+   - notes the path the page now shows in `window._alderAt`;
+   - makes the `<body>` focusable (`tabindex="-1"`) and focuses it, so
+     keyboard and screen reader users start at the top of the new page;
+   - then scrolls to the top (or to the element a `#fragment` in the URL
+     names).
+
+A 404 or 500 is answered with the same three events and the status in
+`Alder-Status`, as for a write.
 
 Back and Forward fire `popstate` on `window`. The boost's
 `data-on:popstate__window`, `datastar.BoostPopstate`, asks for the page
@@ -2333,39 +2419,48 @@ again unless only the fragment changed:
 if (location.pathname + location.search !== window._alderAt) {window._alderAC?.abort(); (window._alderBusy||((e,p)=>p))(null, @get(location.pathname + location.search, {payload: {}, headers: {'Alder-History': 'replace', 'Alder-Build': window._alderBuild}, requestCancellation: window._alderAC = new AbortController()}))}
 ```
 
-The header `Alder-History: replace` makes the mode *replace*: the
-history entry exists already, so the script calls `history.replaceState`
-instead (keeping the entry's fragment), and scrolls to the `alderY` in
-that entry's state (`history.scrollRestoration` is `manual`, so the
-browser does not scroll by itself before the page has come back). The
-fourth attribute, `datastar.BoostScroll`, keeps `alderY` up to date: on
-every `scroll` of the window, at most every 200 ms and once more after
-the last one (`__throttle.200ms.trailing`), it runs
-`history.replaceState(Object.assign({}, history.state, {alderY: scrollY}), '')`,
-writing the position into the current entry. So an entry has its
-position whichever way you leave it, by a click or by Back, and Back and
-Forward both return to it.
+The header `Alder-History: replace` makes the mode *replace*: the history
+entry exists already, so the script calls `history.replaceState` instead
+(keeping the entry's fragment), and scrolls to the `alderY` in that entry's
+state (`history.scrollRestoration` is `manual`, so the browser does not
+scroll by itself before the page has come back).
 
-**A redirect, followed.** A `Response.redirect` under Datastar to a route of
-this app is followed by the router itself. `answerRedirect` hands the
-target's URL to `write` as a 303, and `write` sees a 303 with
-`rq.Datastar` set and a Location that `followable` accepts (a path
-starting with `/`, not `//`, not the Datastar script, not a file under
-`/static/`), stores the session as for any 303, and calls `follow`.
-`follow` clones the request into a `GET` of the Location (no body, no
-form) and serves it through the same `serve` the router runs for a
-request from outside, with two differences: the request's session is the
-one the redirect just stored (the browser does not have the new cookie
-yet; it arrives with this answer), and the navigation to record is the
-Location, in mode push. The target's handler runs, `Options.Served` sees
-it (so a test's browser gets the target's model), and `write` answers
-with the target's morph. If the target redirects in turn, `follow`
-follows again; a GET that redirects when ten GETs of the chain are
-already behind it is a 500, logged for the request the browser sent
-(`more than 10 redirects in a row (the last to …)`), as the test browser
-counts them. Clicking "Log out" on `/?filter=Active` (the route `Logout` of
-`App`, whose `update` answers `Response.redirect (Auth.Login.Login {})`)
-answers
+The fourth attribute, `datastar.BoostScroll`, keeps `alderY` up to date: on
+every `scroll` of the window, at most every 200 ms and once more after the
+last one (`__throttle.200ms.trailing`), it runs
+`history.replaceState(Object.assign({}, history.state, {alderY: scrollY}), '')`,
+writing the position into the current entry. So an entry has its position
+whichever way you leave it, by a click or by Back, and Back and Forward
+both return to it.
+
+#### A redirect, followed
+
+A `Response.redirect` under Datastar to a route of this app is followed by
+the router itself. `answerRedirect` hands the target's URL to `write` as a
+303, and `write` sees a 303 with `rq.Datastar` set and a Location that
+`followable` accepts (a path starting with `/`, not `//`, not the Datastar
+script, not a file under `/static/`), stores the session as for any 303,
+and calls `follow`.
+
+`follow` clones the request into a `GET` of the Location (no body, no form)
+and serves it through the same `serve` the router runs for a request from
+outside, with two differences:
+
+- the request's session is the one the redirect just stored (the browser
+  does not have the new cookie yet; it arrives with this answer);
+- the navigation to record is the Location, in mode push.
+
+The target's handler runs, `Options.Served` sees it (so a test's browser
+gets the target's model), and `write` answers with the target's morph.
+
+> **Chains of redirects.** If the target redirects in turn, `follow`
+> follows again; a GET that redirects when ten GETs of the chain are
+> already behind it is a 500, logged for the request the browser sent
+> (`more than 10 redirects in a row (the last to …)`), as the test browser
+> counts them.
+
+Clicking "Log out" on `/?filter=Active` (the route `Logout` of `App`,
+whose `update` answers `Response.redirect (Auth.Login.Login {})`) answers
 
 ```
 HTTP/1.1 200 OK
