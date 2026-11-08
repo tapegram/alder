@@ -116,15 +116,16 @@ name, which is exactly how `examples/todos/app/App.alder` uses it in
 lexer does not know that; it sees an upper-case name, a dot and a
 lower-case name.)
 
-The **column-1 rule** settles this. Words that start a declaration
-(`module`, `import`, `type`, `route`, `form`, `table`, `capability`, `fake`,
-`session`, `login`, `test`; `page` and `msg` too, for code from before routes)
-are keywords only when they are the first thing
-on a line. Anywhere else they are ordinary names. The rule is applied as
-the parser takes each token (`advance` in `internal/syntax/parser.go`),
-which turns a declaration keyword with `Col > 1` back into a name
-(`ParserKind`, whose `declKeywords` lists them). Parsing
-the same two lines, with `module App` above them, gives:
+The **column-1 rule** settles this. Words that start a declaration (`module`,
+`import`, `type`, `route`, `form`, `table`, `capability`, `fake`, `session`,
+`login`, `test`; `page` and `msg` too, for code from before routes) are
+keywords only when they are the first thing on a line. Anywhere else they are
+ordinary names.
+
+The rule is applied as the parser takes each token (`advance` in
+`internal/syntax/parser.go`), which turns a declaration keyword with `Col > 1`
+back into a name (`ParserKind`, whose `declKeywords` lists them). Parsing the
+same two lines, with `module App` above them, gives:
 
 ```
 (session (field user (Maybe User.UserId)))
@@ -2266,7 +2267,6 @@ same walk with another delivery:
   If the id names no row, or another user's, `Db.updateMine` ends in
   `Task.notFound`, and under Datastar the 404 page's body arrives as a body
   morph, as a 200 event with the real status in `Alder-Status`.
-  event with the real status in `Alder-Status`.
 - A `PUT`, `PATCH` or `DELETE` route is sent without JavaScript as a `POST`
   carrying `_method`. `serve` reads the body of every method but `GET` and
   `HEAD` (`readForm`), and `effectiveMethod` (`rt/web/method.go`) lets a
@@ -2658,15 +2658,15 @@ not passed to `UpdateMineRow`, and `load`'s is not in the `Select`.
 
 #### Whose user: the ambient session
 
-Each helper asks `owner`
-(`rt/db/store.go`) for the user. `owner` takes the `Env` that is running
-the effect from the context (`eff.EnvFrom(ctx)`, the same way a
-capability finds it: chapter 7), reads its `Session`, and hands it to the
-descriptor's `User`. In a served request `Env.Session` is the session
-from the cookie; in a test, the test's session, which `Test.login` and
-`Session.put` set (chapter 10, "Tests that use the rules"). Since
-`Session.put` writes `Env.Session`, a scoped step after it acts for the
-new user.
+Each helper asks `owner` (`rt/db/store.go`) for the user. `owner` takes the
+`Env` that is running the effect from the context (`eff.EnvFrom(ctx)`, the
+same way a capability finds it: chapter 7), reads its `Session`, and hands it
+to the descriptor's `User`.
+
+In a served request `Env.Session` is the session from the cookie; in a test,
+the test's session, which `Test.login` and `Session.put` set (chapter 10,
+"Tests that use the rules"). Since `Session.put` writes `Env.Session`, a
+scoped step after it acts for the new user.
 
 With no `Env`, or `User` answering false, the step fails with
 an `*eff.ErrFail` whose text is the operation and table: `Db.mine Todo:
@@ -3891,14 +3891,15 @@ This is a file. Before each case `Main` writes `Module<tab>Name` to it, and
 it empties it when it returns.
 
 A Go panic in a test is recovered and fails that test, but some failures
-cannot be recovered: a stack overflow is a fatal error that ends the
-process with exit code 2 and a long dump on standard error. When the
-program exits with anything but 0 or 1, `alder test` reads the file to
-learn which test was running, prints a `FAIL` for it (an object under
+cannot be recovered: a stack overflow is a fatal error that ends the process
+with exit code 2 and a long dump on standard error.
+
+When the program exits with anything but 0 or 1, `alder test` reads the file
+to learn which test was running, prints a `FAIL` for it (an object under
 `--json`) whose `error:` is the first lines of the dump (the `fatal error:`
-line and the top frame of the running goroutine), then the summary line
-the program never printed (it counts the results it passed through, and
-this failure), and exits 1.
+line and the top frame of the running goroutine), then the summary line the
+program never printed (it counts the results it passed through, and this
+failure), and exits 1.
 
 It passes the program's standard error through line by line until a line
 that starts a Go crash report (`fatal error:`, `panic:`, `runtime:`,
@@ -4155,15 +4156,15 @@ it back when it fails, so a failed `:run!` leaves the database as it was.
 
 #### The no-vet build
 
-`go vet` checks the generated Go before it is
-built, so that an emitter bug shows up as an internal error and not as a
-confusing build failure. The first build of a session is vetted, and so
-is the first after a reload, so a bug in the generated Go is still
-caught. Later builds pass `scratch.Options{NoVet: true}`. On
-`examples/todos`, warm, the first evaluation takes about 0.6 s and later
-ones about 0.47 s (the table in "The scratch runner"): each new
-expression changes the generated package, so Go compiles and links it
-again.
+`go vet` checks the generated Go before it is built, so that an emitter bug
+shows up as an internal error and not as a confusing build failure. The first
+build of a session is vetted, and so is the first after a reload, so a bug in
+the generated Go is still caught.
+
+Later builds pass `scratch.Options{NoVet: true}`. On `examples/todos`, warm,
+the first evaluation takes about 0.6 s and later ones about 0.47 s (the table
+in "The scratch runner"): each new expression changes the generated package,
+so Go compiles and links it again.
 
 #### `:reload`
 
@@ -5143,11 +5144,13 @@ Before a `submit` or `click` is sent, the browser looks for the control on the
 held page. A page's controls are the Datastar actions its views render
 (`rt/html` `RouteClick` and `RouteSubmit`): a `<form>`'s
 `data-on:submit="…@post('/_/Submit?filter=Active', …)"`, or a button's
-`data-on:click`. `routeControl` walks the held document in order, reads each
-action with a regular expression (`routeAction`: the verb, the URL, and
-whether it sends a form), and keeps the first whose `rt.RouteKey` (its method,
-then `rt.MsgKey`: the path and the route's own parameters) equals that of the
-route the test wrote.
+`data-on:click`.
+
+`routeControl` walks the held document in order, reads each action with a
+regular expression (`routeAction`: the verb, the URL, and whether it sends a
+form), and keeps the first whose `rt.RouteKey` (its method, then `rt.MsgKey`:
+the path and the route's own parameters) equals that of the route the test
+wrote.
 
 A form that posts a `_method` field (a `PUT`, `PATCH` or `DELETE` route) has
 that as its method.
@@ -5293,17 +5296,19 @@ write. Since the replacement has the node's type, every mutant is
 well-typed, and the checker's work is not undone. The schema operators
 carry `Table`, a clone of the table with the change.
 
-To say where a survivor is, the lowerer records each mutated node's
-source position (`ir.Pos`, a line and a column). The IR dump leaves
-positions out, so its goldens did not change. Collect visits the
-modules in the program's order (imports first, otherwise alphabetical).
-In each module it takes the tables field by field, then each value's
-body in pre-order, numbering from 1. A route's `load` and `update` are
-values like any other (`Index.load`, `Toggle.update`), so their bodies
-are walked; its `view` is not, nor a `test`, a `fake`, a component, or
-a value whose result has `Html` in it. A change it refuses is a
-`mutate.Suppressed` with a `Category` (`equivalent` or `skipped`) and a
-`Why`.
+To say where a survivor is, the lowerer records each mutated node's source
+position (`ir.Pos`, a line and a column). The IR dump leaves positions out, so
+its goldens did not change.
+
+Collect visits the modules in the program's order (imports first, otherwise
+alphabetical). In each module it takes the tables field by field, then each
+value's body in pre-order, numbering from 1.
+
+A route's `load` and `update` are values like any other (`Index.load`,
+`Toggle.update`), so their bodies are walked; its `view` is not, nor a `test`,
+a `fake`, a component, or a value whose result has `Html` in it. A change it
+refuses is a `mutate.Suppressed` with a `Category` (`equivalent` or `skipped`)
+and a `Why`.
 
 #### Mutant schemata: every mutant in one build
 
@@ -5594,14 +5599,16 @@ goroutine. So `alder test` runs the program with two files in
   `mutants.log` (`ALDER_TEST_MUTATE_LOG`).
 
 A timed-out mutant is logged, and then the program exits with code 3
-(`rtesting.ExitMutantTimedOut`). If instead the program dies while the
-status file names a mutant, `alder test` logs that mutant as killed,
-`crashed`, by the test the status names. Either way `alder test` runs
-the program again with `ALDER_TEST_MUTATE_FROM` set to the next id,
-which skips the suite's own run and starts there. The run that reaches
-the last mutant reads the log and prints the whole report. A crash in
-the suite's own run is reported as plain `alder test` reports one,
-followed by `tests fail: fix them before measuring mutants`.
+(`rtesting.ExitMutantTimedOut`). If instead the program dies while the status
+file names a mutant, `alder test` logs that mutant as killed, `crashed`, by
+the test the status names.
+
+Either way `alder test` runs the program again with `ALDER_TEST_MUTATE_FROM`
+set to the next id, which skips the suite's own run and starts there.
+
+The run that reaches the last mutant reads the log and prints the whole
+report. A crash in the suite's own run is reported as plain `alder test`
+reports one, followed by `tests fail: fix them before measuring mutants`.
 
 ### The runtime travels with the compiler
 
@@ -6434,17 +6441,18 @@ The build runs in these steps (`runBuildTo` in `cmd/alder/build.go`):
    your Go, and exit 1 with Go's output
    (`buildkit.AdaptersCompileMessage`).
 
-The test builds of `alder test`, `alder eval` and the REPL (section
-"Running tests", above) follow the same steps through `scratch.CompileCheckedWith`,
-with two differences. Step 2 is `buildkit.CheckTestAdapters`: every
-refusal stands, but a missing need is returned instead, its key goes into
-`gen.Options.Unwired`, `gen.CapsPackage` leaves that field of `Caps` out
-(with a comment) and does not import a package nothing else needs, and
-the warning goes into `Build.Warning` for the command to print. In step 5,
-when the generated package vets but the module does not, the scratch
-runner vets `./caps` and `./adapters/...` alone: if they fail it is a
-`scratch.AdapterError` with step 5's message (the commands exit 1),
-otherwise the fault is the scratch `main`'s.
+The test builds of `alder test`, `alder eval` and the REPL (section "Running
+tests", above) follow the same steps through `scratch.CompileCheckedWith`,
+with two differences. Step 2 is `buildkit.CheckTestAdapters`: every refusal
+stands, but a missing need is returned instead, its key goes into
+`gen.Options.Unwired`, `gen.CapsPackage` leaves that field of `Caps` out (with
+a comment) and does not import a package nothing else needs, and the warning
+goes into `Build.Warning` for the command to print.
+
+In step 5, when the generated package vets but the module does not, the
+scratch runner vets `./caps` and `./adapters/...` alone: if they fail it is a
+`scratch.AdapterError` with step 5's message (the commands exit 1), otherwise
+the fault is the scratch `main`'s.
 
 Because every name follows the scheme, finding a route's view is a search:
 
@@ -6472,14 +6480,15 @@ func Todos__Index__Index__view(model Todos__Index__Model, session Todos__Index__
 
 Compare it with the `view` in chapter 2. `session` has type
 `Todos__Index__Index__Session`, not the app's session: the route `requires
-user`, so it gets its own session record in which `user` is a `UserId`, not
-a `Maybe UserId`. The routes of a module that narrow the same fields share
-one record, named after the first of them, so `Index`'s `view` and
-`Toggle`'s `update` take the same type. Where the code passes `session` to
-code that expects the app's session, the call goes through
-`widen__Todos__Index__Index__Session`, which the emitter writes into
-`Todos__Index_alder.go`: it copies the fields and wraps `user` back in
-`rt.Just`.
+user`, so it gets its own session record in which `user` is a `UserId`, not a
+`Maybe UserId`. The routes of a module that narrow the same fields share one
+record, named after the first of them, so `Index`'s `view` and `Toggle`'s
+`update` take the same type.
+
+Where the code passes `session` to code that expects the app's session, the
+call goes through `widen__Todos__Index__Index__Session`, which the emitter
+writes into `Todos__Index_alder.go`: it copies the fields and wraps `user`
+back in `rt.Just`.
 
 ## 10. The language server
 
@@ -7587,39 +7596,46 @@ the test needs.
 
 #### The action
 
-`codeActionReq` already finds the hole under the cursor
-for the generators (`hereCtx`). When there is one, and the client said in
-`initialize` that it applies workspace edits (`workspace.applyEdit`, now a
-field of `initializeParams`), it adds a quick fix whose `diagnostics` are
-the hole's W0002 and whose `command` is `alder.fill`, with the document,
-the address and the hole as its argument. Unlike `alder.generate`, which
-the plugin runs, the server lists `alder.fill` in its
-`executeCommandProvider`, so the editor sends it back as
+`codeActionReq` already finds the hole under the cursor for the generators
+(`hereCtx`). When there is one, and the client said in `initialize` that it
+applies workspace edits (`workspace.applyEdit`, now a field of
+`initializeParams`), it adds a quick fix whose `diagnostics` are the hole's
+W0002 and whose `command` is `alder.fill`, with the document, the address and
+the hole as its argument.
+
+Unlike `alder.generate`, which the plugin runs, the server lists `alder.fill`
+in its `executeCommandProvider`, so the editor sends it back as
 `workspace/executeCommand`.
 
 #### The command
 
-`executeCommandReq` runs on the slow worker, and a fill
-would hold it for minutes, blocking every preview and plan behind it. So
-`fillCommand` only checks the argument, refuses a second fill while one
+`executeCommandReq` runs on the slow worker, and a fill would hold it for
+minutes, blocking every preview and plan behind it.
+
+So `fillCommand` only checks the argument, refuses a second fill while one
 runs (an atomic flag; one at a time per server), starts a goroutine under
 `s.bg`, the group the scratch runs use, and answers `{"started": true}` at
-once. The goroutine takes the open documents and their versions in one
-snapshot, writes them over a temporary copy of the app with
-`generate.Materialise` (as a generator's dry run does, so the model sees
-the unsaved buffer), and calls `fill.Run` there.
+once.
+
+The goroutine takes the open documents and their versions in one snapshot,
+writes them over a temporary copy of the app with `generate.Materialise` (as a
+generator's dry run does, so the model sees the unsaved buffer), and calls
+`fill.Run` there.
 
 #### Requests from the server
 
-Until now the server only answered requests
-and sent notifications. The fill needs two answers from the editor: a
-progress token, and whether the edit was applied. `s.request(method,
-params)` sends a request with an id of its own (`"alder-3"`), puts a channel
-in a map of pending requests under that id, and waits on the channel. On
-the reader goroutine, a message with an id and no method is a response;
-`dispatch` looks its id up in the map and hands it to the waiting
-goroutine. That is why `request` is never called on the reader goroutine:
-the reader is the one that would deliver the answer.
+Until now the server only answered requests and sent notifications. The fill
+needs two answers from the editor: a progress token, and whether the edit was
+applied.
+
+`s.request(method, params)` sends a request with an id of its own
+(`"alder-3"`), puts a channel in a map of pending requests under that id, and
+waits on the channel. On the reader goroutine, a message with an id and no
+method is a response; `dispatch` looks its id up in the map and hands it to
+the waiting goroutine.
+
+That is why `request` is never called on the reader goroutine: the reader is
+the one that would deliver the answer.
 
 With the first, `window/workDoneProgress/create`, the server gets a token
 and then sends `$/progress` notifications on it: `begin` with the title
@@ -7653,14 +7669,15 @@ An edit the editor applies is one undo step.
 Before the edit goes, two more checks.
 
 The hole's type bounds what the expression returns, not what it does: an
-answer the module's own text talked the model into (a comment is part of
-the prompt) can be a `Task Response` that deletes every row and still
-checks. So `fill.Run` checks the result once more with `generate.Probe`,
-which returns the checked copy, and `fill.Effects` reads the expression
-there: `generate.FillAt` says where the fill put it, and every name in it
-carries the resolver's answer (a `syntax.Ref`: a value of the app, a
-standard library value, a capability). Text would not do: an alias, or a
-helper in another module, hides a name from a search.
+answer the module's own text talked the model into (a comment is part of the
+prompt) can be a `Task Response` that deletes every row and still checks.
+
+So `fill.Run` checks the result once more with `generate.Probe`, which returns
+the checked copy, and `fill.Effects` reads the expression there:
+`generate.FillAt` says where the fill put it, and every name in it carries the
+resolver's answer (a `syntax.Ref`: a value of the app, a standard library
+value, a capability). Text would not do: an alias, or a helper in another
+module, hides a name from a search.
 
 It flags three things:
 
@@ -7815,15 +7832,19 @@ double n = n * 2             line 2
 
 `scratch.ParseFile` rewrites line 4 as `it1 = double 21`, so on that line a
 column of the module is 4 more than the file's (`it1 = ` is six bytes where `>
-` was two; the file's `SourceMap.Shift` records -4 for the line). Then
-`scratch.Check` puts `module Scratch` and an `import` for every app module in
-front, say 21 lines, so file line 4 is module line 25. After an `in
-Table.Todo` header the module's own text goes in front instead: the file
-continues the module. A view records where the inserted lines start and how
-many there are (`Checked.InsertLine`, `Checked.LineOffset`), and two small
-functions turn a position one way and back: `toModule` adds the lines and
-undoes the shift, `fromModule` does the opposite, and has no answer for an
-inserted line, which the user never wrote.
+` was two; the file's `SourceMap.Shift` records -4 for the line).
+
+Then `scratch.Check` puts `module Scratch` and an `import` for every app
+module in front, say 21 lines, so file line 4 is module line 25.
+
+After an `in Table.Todo` header the module's own text goes in front instead:
+the file continues the module.
+
+A view records where the inserted lines start and how many there are
+(`Checked.InsertLine`, `Checked.LineOffset`), and two small functions turn a
+position one way and back: `toModule` adds the lines and undoes the shift,
+`fromModule` does the opposite, and has no answer for an inserted line, which
+the user never wrote.
 
 A request maps the cursor into the module, asks the same code an app module
 uses (`hoverText`, `definition`, completion's contexts), and maps any place in
