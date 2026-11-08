@@ -24,11 +24,11 @@ func themeFields(t *testing.T, src []byte) []*syntax.DeployField {
 }
 
 func TestTheme_BlogByteForByte(t *testing.T) {
-	src, err := os.ReadFile("../../testdata/fix/blog/app/App.alder")
+	src, err := os.ReadFile("../../examples/blog/app/App.alder")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := strings.Join(strings.Split(string(src), "\n")[37:42], "\n")
+	want := strings.Join(strings.Split(string(src), "\n")[35:40], "\n")
 	if got := Theme(themeFields(t, src)); got != want {
 		t.Errorf("got\n%s\nwant\n%s", got, want)
 	}

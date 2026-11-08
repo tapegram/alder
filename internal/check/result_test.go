@@ -12,7 +12,7 @@ import (
 )
 
 func TestResult_RecordsTypes(t *testing.T) {
-	res, bag := runDirResult(t, "../../testdata/fix/todos")
+	res, bag := runDirResult(t, "../../examples/todos")
 	if bag.HasErrors() {
 		t.Fatal(render(bag))
 	}
@@ -38,8 +38,8 @@ func TestResult_RecordsTypes(t *testing.T) {
 			t.Errorf("unresolved type %s for binding %T", types.String(res.U.Apply(ty)), site)
 		}
 	}
-	if res.Pages["Todos.Index"] == nil || res.Session == nil || res.AppMsg == nil {
-		t.Fatal("page/app info missing")
+	if len(res.Routes["Todos.Index"]) == 0 || res.Session == nil {
+		t.Fatal("route/app info missing")
 	}
 }
 
