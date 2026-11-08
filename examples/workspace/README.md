@@ -65,21 +65,40 @@ The tables (Activity, Membership, Org, Project, Todo and User) live under `app/T
 
 ## Mutation score
 
-`alder test --mutate examples/workspace` (book 10, "Mutation testing"): 300 mutants, 333 tests,
-289 killed, 11 survived (score 0.963). `TestExample_Workspace` fails if the score drops below
-0.96, the exact 0.963 rounded down, or the number of mutants is not 300.
+`alder test --mutate examples/workspace` (book 10, "Mutation testing"): 580 mutants, 388 tests,
+562 killed, 18 survived (score 0.969). `TestExample_Workspace` fails if the score drops below
+0.96, the exact 0.969 rounded down, or the number of mutants is not 580.
 
-- The app's own code (35 tests): every mutant killed, `membership dropped` (the `via` check
-  removed) by `Orgs.Index "a non-member's switch is refused"`, and `scope dropped` of
-  `Db.scoped Activity` by `Members.Index "the members, by name, and the activity of this org
-  only"`. The `scope dropped` of the siloed tables' scoped operations is not made: the org's
-  database holds that org's rows only, so the mutant is equivalent, and the run says so.
-- The generated admin (298 tests, `app/Admin/`, kept as `alder new admin` wrote them): the 11
-  survivors. Five are `> 200` flipped to `>= 200` in the New routes' searches (`orgsTotal`,
-  `usersTotal`, `projectsTotal`): a search of "" matches every row, as in the blog. Six are in
+- The app's own code (39 tests, 79 mutants): every mutant but one killed: `membership dropped`
+  (the `via` check removed) by `Orgs.Index "a non-member's switch is refused"`, and `scope
+  dropped` of `Db.scoped Activity` by `Members.Index "the members, by name, and the activity of
+  this org only"`. The `scope dropped` of the siloed tables' scoped operations is not made: the
+  org's database holds that org's rows only, so the mutant is equivalent, and the run says so;
+  nor is the `requires dropped` of a route that also requires `org`, which is `via`: no session
+  has an org without a user. No `load` runs before a write route, so each write of `Members.Index`,
+  `Projects.Index` and `Projects.Show` begins with `Membership.memberOnly`; its `step dropped` is
+  killed by the "a removed member cannot … from a page shown before" tests, which delete the
+  membership while the page is open and send the write from it (the rows tell: the refresh after
+  a write would be a 404 too). The survivor is the `requires dropped` of `Orgs.Index`'s `Open`,
+  equivalent: its one step is a `Session.put` of the org, and a session without a user has its
+  `via` fields cleared, so the visitor is redirected to the projects page, which sends them to log
+  in, as the `requires` would; `Orgs.Index "opening or creating an org after logging out is sent
+  to log in"` kills `Create`'s.
+- The generated admin (349 tests, `app/Admin/`, kept as `alder new admin` wrote them): the 17 other
+  survivors. Four are `> 200` flipped to `>= 200` in the New routes' searches (`orgsTotal`,
+  `usersTotal`, `projectsTotal`): a search of "" matches every row, as in the blog. Seven are in
   Membership's list, whose columns are all references (and its `created`): no column has a sample
   order to sort by, so the list has no sort test (`order` and `toggle` survive), and its search
-  and filters are `Db.and []` (the two `where dropped` are equivalent).
+  and filters are `Db.and []` (the two `where dropped` are equivalent). Six are the `step dropped`
+  of the `adminOnly` that begins the Activity, Membership and Todo `Create` and `Save`:
+
+The `step dropped` of the `adminOnly` that begins `Create` and `Save` on a form with a select of
+another table's rows is not a gap: a demoted Admin's post of that form is refused (400) by the
+options check before the update runs, since the page it was posted from is rendered again to
+check the options, and that page's `load` begins with `adminOnly` too. (The `requires` and `role`
+of a `Search…` route, which only redirects to the page it was posted from, are suppressed as
+equivalent when that page's guard refuses the same requests; the generated test of a long list
+sends a visitor's search, which the `requires user` of the search route sends to log in.)
 
 ## Replaying the admin
 

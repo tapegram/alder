@@ -231,7 +231,11 @@ test "Create is refused to a visitor, a Reader and a demoted author" = {
     passwordHash: "",
     role: Author,
   }
-  let post = { slug: Post.Slug "hello", title: Text.NonEmpty "Hello", body: "" }
+  let post = {
+    slug: Post.Slug "hello",
+    title: Text.NonEmpty "Hello",
+    body: "",
+  }
   let _ <- Test.login { user: Just me, role: Author }
   let _ <- Test.get (Write {})
   let _ <- Test.login { user: Nothing, role: Reader }

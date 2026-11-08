@@ -331,7 +331,11 @@ test "a removed member cannot add or remove members from a page shown before" = 
       added: added.answer,
       removed: removed.answer,
       members: List.map (\m -> m.user) members,
-    } == { added: PageMissing, removed: PageMissing, members: [cy] }
+    } == {
+      added: PageMissing,
+      removed: PageMissing,
+      members: [cy],
+    }
   )
 }
 

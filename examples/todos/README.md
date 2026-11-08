@@ -36,18 +36,27 @@ deploy production`; `alder ci init` writes the GitHub workflow that does it on e
 
 ## Mutation score
 
-`alder test --mutate examples/todos` (book 10, "Mutation testing"): 124 mutants, 126 tests, 122
-killed, 2 survived (score 0.98). `TestExample_TodosMutation` fails if the score drops below
-0.98 or the number of mutants is not 124.
+`alder test --mutate examples/todos` (book 10, "Mutation testing"): 231 mutants, 147 tests, 227
+killed, 4 survived (score 0.98). `TestExample_TodosMutation` fails if the score drops below
+0.98, the exact 0.983 rounded down, or the number of mutants is not 231.
 
-- The app's own code: 30 mutants, all killed by its 23 tests (score 1.00).
-- The generated admin (`app/Admin/`, "Replaying the admin" below): 94 mutants, 92 killed by
-  its generated tests, kept as `alder new admin` wrote them. The two survivors are equivalent:
+- The app's own code: 45 mutants, all killed by its 25 tests (score 1.00).
+- The generated admin (`app/Admin/`, "Replaying the admin" below): 186 mutants, 182 killed by
+  its 122 generated tests, kept as `alder new admin` wrote them. Two survivors are equivalent:
   `ownersTotal > 200` flipped to `>= 200` in the `where` of the New route's owner list, where a
   search of "" matches every row anyway, and `Todo.owner.in ids` dropped from the user bulk
   route's `load`, whose `refused` is only asked of the chosen rows. (The Edit route's list no longer
   has the first: its row's own owner is read by itself and comes first, and the search leaves it
-  out, so the generated test of exactly 200 users tells `>` from `>=`.)
+  out, so the generated test of exactly 200 users tells `>` from `>=`.) The two others are the
+  `step dropped` of the `adminOnly` that begins `Create` and `Save`:
+
+The `step dropped` of the `adminOnly` that begins `Create` and `Save` on a form with a select of
+another table's rows is not a gap: a demoted Admin's post of that form is refused (400) by the
+options check before the update runs, since the page it was posted from is rendered again to
+check the options, and that page's `load` begins with `adminOnly` too. (The `requires` and `role`
+of a `Search…` route, which only redirects to the page it was posted from, are suppressed as
+equivalent when that page's guard refuses the same requests; the generated test of a long list
+sends a visitor's search, which the `requires user` of the search route sends to log in.)
 
 The history of the app's own code:
 
@@ -57,6 +66,15 @@ The history of the app's own code:
   dropped` of the role in logout's and login's `Session.put`, survived the 20 tests; two more
   tests kill them: `App "Logout makes the role Member"` (an Admin who logs out is a Member) and
   `Auth.Login "logging in copies the role from the user's row"`.
+- With the route operators (alder#187): a route's `requires`, its `Response` answers and its
+  `let _ <-` steps added 15 mutants. The five `requires dropped` of the write routes survived (no
+  `load` runs before a write, so its own `requires user` is the check, and no test sent a write
+  without a session); two tests kill them: `Todos.Index "a write after logging out is sent to log
+  in"` and `Todos.Show "saving or deleting after logging out is sent to log in"`, which open the
+  page, log out (`Test.login { user: Nothing }`) and send each write from the page still held.
+  The other ten were killed by tests that were there: the GET routes' `requires dropped` by the
+  visitor tests, and the answers (`redirect → refresh`, `refresh → invalid`, `invalid → refresh`)
+  by the tests that check what a write answers.
 
 The ownership rules are declared (book 06, "Rules"): `Todo.owner` is the table's `@owner`, and
 the routes use `Db.mine`, `Db.getMine`, `Db.updateMine`, `Db.deleteMine` and `Db.insertMine`.
@@ -72,9 +90,9 @@ is not found"` kills them.
 
 The nine tests that closed the gaps, each named for what it kills:
 
-- `App "Logout clears the user and goes to log in"`: it checks the rule that logging out ends at
-  the login page. Operators for a route's `Response` do not exist yet (alder#187), so no mutant
-  of the route form needs it; it stays for the behaviour it pins.
+- `App "Logout clears the user and goes to log in"`: the `redirect → refresh` of
+  `Logout.update`, which no browser test can kill (every Log out button is on a page that
+  `requires user`, so a refresh ends at the login page too).
 - `Todo "countOpen ignores done todos"` (now two open todos and one done, so `not` dropped gives
   1, not 2), `Todo "Active keeps only open todos"` and `Todo "each filter has its label"`: the
   swapped `match` arms and the dropped `not` of `matches` and `filterLabel`.
@@ -82,15 +100,17 @@ The nine tests that closed the gaps, each named for what it kills:
 - `Todos.Index "Delete removes the todo"`: the delete replaced by `Task.succeed ()` (now also
   killed by `"Delete by another user is not found"`, which expects a 404).
 - `Todos.Index "the newest todo is listed first"`: `Db.orderBy` reversed.
-- `Todos.Show "a visitor is sent to log in from a todo"`: a visitor is sent to log in. It pins the rule, and kills no mutant: a route's `requires` is not
-  mutated yet (alder#187).
+- `Todos.Show "a visitor is sent to log in from a todo"`: the `requires dropped` of the `Show`
+  route.
 - `Todos.Show "saving changes the title and the due date"`: the save replaced, and each updated
   field dropped.
 - `Todos.Show "deleting from the todo's page"`: that route's delete.
 
 No mutant of the app's own code survives. The run also refuses 1 mutant as provably equivalent
-(`User.role`'s default, which no row of the app's code leaves out) and skips 27 that do not
-apply; neither count is part of the score.
+(`User.role`'s default, which no row of the app's code leaves out; and two in the admin, below)
+and skips 41 that do not
+apply (most of them a `step dropped` of a write or a `Session.put`, which `write replaced` and
+`session put dropped` make); neither count is part of the score.
 
 ## Replaying the admin
 

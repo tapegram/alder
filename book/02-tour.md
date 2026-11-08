@@ -810,15 +810,18 @@ test "Delete by another user is not found" = {
 }
 ```
 
-The next three tests go through the page itself, as a user would: they log
+The next four tests go through the page itself, as a user would: they log
 in, open the page, post its form, click its buttons, and read what the page
 shows (`#summary` is the `<p id="summary">` above). The form posted by
 `Test.submit (Submit {})` and the button clicked by `Test.click (Toggle { id:
 id })` must be on the page the test holds, so a stranger who opens the list
 afresh, whose page lists none of my todos, has nothing to click; the todo's
 own page is a 404 for them (`PageMissing`). The answer to the click is
-`Refreshed`, the test's name for `Response.refresh`. Chapter 10, "Testing
-through the browser", explains each step.
+`Refreshed`, the test's name for `Response.refresh`. Each write route has
+its own `requires user`, since no `load` runs before it: the third test
+keeps the page open, logs out (`Test.login { user: Nothing }`), and sends
+each write from it, which must send the visitor to log in and change
+nothing. Chapter 10, "Testing through the browser", explains each step.
 
 ```alder part=Todos.Index
 -- The same page through the browser: the test logs in, opens the page, and uses the form and
@@ -869,6 +872,47 @@ test "toggling a todo through the page" = {
       answer: Refreshed,
       done: True,
       summary: Just "0 open",
+    }
+  )
+}
+
+-- Each write route has its own `requires user`: a visitor who adds, toggles or deletes from a
+-- page still open after the session ended is sent to log in, and nothing changes.
+test "a write after logging out is sent to log in" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let added <- Test.submit (Submit {}) { title: Text.NonEmpty "Eggs", due: Nothing }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let toggled <- Test.click (Toggle { id: id })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let deleted <- Test.click (Delete { id: id })
+  let todos <- Db.from Todo |> Db.all
+  Task.succeed (
+    {
+      added: added.answer,
+      toggled: toggled.answer,
+      deleted: deleted.answer,
+      todos: List.map (\t -> { title: t.title, done: t.done }) todos,
+    } == {
+      added: Redirected (Auth.Login.Login {}),
+      toggled: Redirected (Auth.Login.Login {}),
+      deleted: Redirected (Auth.Login.Login {}),
+      todos: [{ title: Text.NonEmpty "Milk", done: False }],
     }
   )
 }

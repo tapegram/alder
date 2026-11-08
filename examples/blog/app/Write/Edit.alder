@@ -281,11 +281,24 @@ test "the write routes refuse a visitor and a Reader" = {
   let _ <- Test.get (Edit { id: draft })
   let _ <- Test.login { user: Just me, role: Reader }
   let readerDelete <- Test.click (Delete { id: draft })
-  let posts <- Db.from Post |> Db.orderBy Post.slug.asc |> Db.all
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.slug.asc
+      |> Db.all
   Task.succeed (
     {
-      visitor: [visitorSave.answer, visitorPublish.answer, visitorUnpublish.answer, visitorDelete.answer],
-      reader: [readerSave.answer, readerPublish.answer, readerUnpublish.answer, readerDelete.answer],
+      visitor: [
+        visitorSave.answer,
+        visitorPublish.answer,
+        visitorUnpublish.answer,
+        visitorDelete.answer,
+      ],
+      reader: [
+        readerSave.answer,
+        readerPublish.answer,
+        readerUnpublish.answer,
+        readerDelete.answer,
+      ],
       posts: List.map (\p -> { title: p.title, published: p.published }) posts,
     } == {
       visitor: List.repeat 4 (Redirected (Auth.Login.Login {})),
@@ -337,18 +350,22 @@ test "the write routes turn a demoted author away" = {
   let _ <- Test.get (Edit { id: draft })
   let _ <- Db.update User me (\u -> { u | role: Reader })
   let deleted <- Test.click (Delete { id: draft })
-  let posts <- Db.from Post |> Db.orderBy Post.slug.asc |> Db.all
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.slug.asc
+      |> Db.all
   Task.succeed (
     {
       answers: [saved.answer, published.answer, unpublished.answer, deleted.answer],
       posts: List.map (\p -> { title: p.title, published: p.published }) posts,
-    } == {
-      answers: List.repeat 4 PageMissing,
-      posts: [
-        { title: Text.NonEmpty "Draft", published: False },
-        { title: Text.NonEmpty "Live", published: True },
-      ],
     }
+      == {
+        answers: List.repeat 4 PageMissing,
+        posts: [
+          { title: Text.NonEmpty "Draft", published: False },
+          { title: Text.NonEmpty "Live", published: True },
+        ],
+      }
   )
 }
 
@@ -375,10 +392,11 @@ test "publishing and unpublishing through the page" = {
     {
       published: { answer: published.answer, status: Test.text "al-badge" published.doc },
       unpublished: { answer: unpublished.answer, status: Test.text "al-badge" unpublished.doc },
-    } == {
-      published: { answer: Refreshed, status: Just "Published" },
-      unpublished: { answer: Refreshed, status: Just "Draft" },
     }
+      == {
+        published: { answer: Refreshed, status: Just "Published" },
+        unpublished: { answer: Refreshed, status: Just "Draft" },
+      }
   )
 }
 

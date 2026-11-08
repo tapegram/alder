@@ -165,8 +165,11 @@ test "Done marks a to-do done, and Reopen opens it again" = {
       answers: [done.answer, open.answer],
       done: Test.texts "#todos li.done .title" done.doc,
       open: Test.texts "#todos li.open .title" open.doc,
+    } == {
+      answers: [Refreshed, Refreshed],
+      done: ["Fuel"],
+      open: ["Fuel"],
     }
-      == { answers: [Refreshed, Refreshed], done: ["Fuel"], open: ["Fuel"] }
   )
 }
 
