@@ -1037,8 +1037,8 @@ The rest of this section is the browser
 line.
 
 The full set needs invoker commands, `popover="hint"` and CSS anchor
-positioning: Chromium 135 and later (Chrome, Edge), Safari 26, Firefox
-140. `al.js` includes a shim (`al-shim.js`, 26 lines) that adds invoker
+positioning: Chromium 135 and later (Chrome, Edge), Safari 26,
+Firefox 140. `al.js` includes a shim (`al-shim.js`, 26 lines) that adds invoker
 commands to a browser without them (so `commandfor` / `command` open and
 close a dialog or popover on older versions), and it makes a tooltip a
 manual popover where `hint` is unknown.
