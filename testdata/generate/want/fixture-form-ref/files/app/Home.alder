@@ -169,8 +169,15 @@ test "submitting Tagging adds a row" = {
   let r <- Test.submit SubmitTagging { name: Text.NonEmpty "name-1", post: post1 }
   let rows <- Db.from Tag |> Db.all
   Task.succeed (
-    { answer: r.answer, rows: List.map (\row -> { name: row.name, post: row.post }) rows }
-      == { answer: Redirected (Home {}), rows: [{ name: Text.NonEmpty "name-1", post: post1 }] }
+    {
+      answer: r.answer,
+      notices: r.notices,
+      rows: List.map (\row -> { name: row.name, post: row.post }) rows,
+    } == {
+      answer: Redirected (Home {}),
+      notices: ["Saved"],
+      rows: [{ name: Text.NonEmpty "name-1", post: post1 }],
+    }
   )
 }
 
@@ -183,5 +190,22 @@ test "Tagging refuses an empty name" = {
   Task.succeed (
     { answer: r.answer, rows: rows }
       == { answer: FormRejected [{ field: "name", message: "must not be empty" }], rows: 0 }
+  )
+}
+
+test "a visitor cannot submit Tagging" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let _ <- Test.get (Home {})
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit SubmitTagging { name: Text.NonEmpty "name-1", post: post1 }
+  let rows <- Db.from Tag |> Db.count
+  Task.succeed (
+    { answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login.Login {}), rows: 0 }
   )
 }

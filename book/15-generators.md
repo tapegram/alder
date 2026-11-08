@@ -498,7 +498,7 @@ edited app/Replies.alder
  test "the list shows the rows, newest first" = {
    let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
    let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
-@@ -115,3 +134,42 @@
+@@ -115,3 +134,44 @@
      }
    )
  }
@@ -511,6 +511,7 @@ edited app/Replies.alder
 +  Task.succeed (
 +    {
 +      answer: r.answer,
++      notices: r.notices,
 +      rows: List.map (\row -> {
 +        entry: row.entry,
 +        message: row.message,
@@ -518,6 +519,7 @@ edited app/Replies.alder
 +      }) rows,
 +    } == {
 +      answer: Redirected (Replies {}),
++      notices: ["Saved"],
 +      rows: [
 +        {
 +          entry: entry1,
@@ -564,8 +566,13 @@ The generator wrote these into the module:
   form's errors in an `al-alert`, and the button.
 
 - **Two tests**: one submits the form and compares the stored row, the
-  defaults of the fields the form leaves out included (`hidden: False`); the
-  other submits an empty `message` and expects the decoder's `FormRejected`.
+  defaults of the fields the form leaves out included (`hidden: False`), and
+  the message the answer shows (`notices: ["Saved"]`); the other submits an
+  empty `message` and expects the decoder's `FormRejected`. When the route
+  `requires user` (the page does), a third test opens the page logged in,
+  logs out and submits: a write route runs no `load`, so its own `requires`
+  sends the visitor to log in, and nothing is written. A route with `role R`
+  gets one more, a user of another role answered `PageMissing`.
 
 The input for a field depends on its type:
 
@@ -4146,7 +4153,7 @@ edited app/Notes/Index.alder
  
  type Model = { }
  
-@@ -10,9 +12,50 @@
+@@ -10,9 +12,63 @@
  Index.load params session = Query.succeed {}
  
  Index.view : Model -> Session -> Html
@@ -4197,6 +4204,19 @@ edited app/Notes/Index.alder
 +  let _ <- Test.get (Index {})
 +  let r <- Test.submitRaw Add [{ name: "title", value: "" }]
 +  Task.succeed (r.answer == FormRejected [{ field: "title", message: "must not be empty" }])
++}
++
++test "a visitor cannot submit NewNote" = {
++  let me <- Db.insert User {
++    email: Text.Email "email-1@example.com",
++    name: Text.NonEmpty "name-1",
++    passwordHash: "passwordhash-1",
++  }
++  let _ <- Test.login { user: Just me }
++  let _ <- Test.get (Index {})
++  let _ <- Test.login { user: Nothing }
++  let r <- Test.submit Add { title: Text.NonEmpty "title-1" }
++  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 +}
 app/Notes/Index.alder:32:29: warning[W0002]: hole ?answer has type Task Response
   Add.update params session = ?answer

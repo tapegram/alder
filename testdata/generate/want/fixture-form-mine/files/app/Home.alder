@@ -165,6 +165,7 @@ test "submitting Quick adds a row" = {
   Task.succeed (
     {
       answer: r.answer,
+      notices: r.notices,
       rows: List.map (\row -> {
         title: row.title,
         body: row.body,
@@ -173,6 +174,7 @@ test "submitting Quick adds a row" = {
       }) rows,
     } == {
       answer: Redirected (Home {}),
+      notices: ["Saved"],
       rows: [
         {
           title: Text.NonEmpty "title-1",
@@ -194,5 +196,17 @@ test "Quick refuses an empty title" = {
   Task.succeed (
     { answer: r.answer, rows: rows }
       == { answer: FormRejected [{ field: "title", message: "must not be empty" }], rows: 0 }
+  )
+}
+
+test "a visitor cannot submit Quick" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Home {})
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit SubmitQuick { title: Text.NonEmpty "title-1", body: "body-1" }
+  let rows <- Db.from Post |> Db.count
+  Task.succeed (
+    { answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login.Login {}), rows: 0 }
   )
 }

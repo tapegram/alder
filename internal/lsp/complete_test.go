@@ -400,4 +400,3 @@ func TestComplete_OtherwiseOffersQualifiers(t *testing.T) {
 		}
 	}
 }
-

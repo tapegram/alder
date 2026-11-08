@@ -298,6 +298,8 @@ var genCases = []genCase{
 	{name: "form-route-ref", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--requires", "user"}}, args: []string{"new", "form", "Posts.Index", "Tagging", "name:Text.NonEmpty", "post:Post.PostId"}, test: true},
 	{name: "form-route-hole", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--requires", "user"}}, args: []string{"new", "form", "Posts.Index", "NewComment", "body:Text", "--hole"}, test: true,
 		fills: [][2]string{{"Posts.Index.SubmitNewComment.update --hole ?answer", "Task.succeed (Response.refresh |> Response.success \"Saved\")"}, {`Posts.Index."submitting NewComment"`, "Refreshed"}}},
+	// #160: a form on a route with `role`: its tests refuse a visitor and a user of another role
+	{name: "form-route-role", base: "fixture", pre: [][]string{{"new", "route", "Tags.Index", "/tags", "--list", "Tag", "--role", "Admin"}}, args: []string{"new", "form", "Tags.Index", "Quick", "name:Text.NonEmpty", "post:Post.PostId"}, test: true},
 	{name: "form-route-show", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "form", "Posts.Show", "Reply", "body:Text", "--hole", "--msg", "SendReply"}},
 	{name: "msg", base: "scaffold", args: []string{"new", "msg", "Home", "Clear"}, test: true,
 		fills: [][2]string{{"--decl Home.Clear.update", "{\n  let _ <- Log.info \"cleared\"\n  Task.succeed Response.refresh\n}"}}},

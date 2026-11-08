@@ -446,6 +446,21 @@ func addTests(e *srcEdit, m *Module, tests []TestData) error {
 	return nil
 }
 
+// noticesGot and noticesWant are a test's `notices` fields for the toast notice ("" for none).
+func noticesGot(notice string) string {
+	if notice == "" {
+		return ""
+	}
+	return "notices: r.notices, "
+}
+
+func noticesWant(notice string) string {
+	if notice == "" {
+		return ""
+	}
+	return "notices: [" + quote(notice) + "], "
+}
+
 // formTestSpec is what formTests needs to know of the form it tests.
 type formTestSpec struct {
 	Form    string        // the form's name
@@ -458,6 +473,7 @@ type formTestSpec struct {
 	Types   map[string]types.Type
 	Into    *Table // the table the update inserts into, or nil
 	NoEmpty bool   // no test of an empty required field
+	Notice  string // the toast a valid submission's update sends ("Saved"), asserted with the rows; "" for none
 }
 
 // formTests are the tests of a form: a valid submission (its answer, and the row inserted into
@@ -497,11 +513,11 @@ func formTests(s formTestSpec, tb *testBuilder, imports *importSet) []TestData {
 		}
 		valid = append(valid, "let rows <- Db.from "+recordName(into, s.Page)+" |> Db.all")
 		tests = append(tests, TestData{Name: quote("submitting " + s.Form + " adds a row"), Lines: valid,
-			Result: fmt.Sprintf("{ answer: r.answer, rows: List.map (\\row -> { %s }) rows } == { answer: %s, rows: [{ %s }] }", strings.Join(got, ", "), answer, strings.Join(want, ", "))})
+			Result: fmt.Sprintf("{ answer: r.answer, %srows: List.map (\\row -> { %s }) rows } == { answer: %s, %srows: [{ %s }] }", noticesGot(s.Notice), strings.Join(got, ", "), answer, noticesWant(s.Notice), strings.Join(want, ", "))})
 	case into != nil:
 		valid = append(valid, "let rows <- Db.from "+recordName(into, s.Page)+" |> Db.count")
 		tests = append(tests, TestData{Name: quote("submitting " + s.Form + " adds a row"), Lines: valid,
-			Result: fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", answer, rowsBefore+1)})
+			Result: fmt.Sprintf("{ answer: r.answer, %srows: rows } == { answer: %s, %srows: %d }", noticesGot(s.Notice), answer, noticesWant(s.Notice), rowsBefore+1)})
 	default:
 		tests = append(tests, TestData{Name: quote("submitting " + s.Form), Lines: valid, Result: "r.answer == ?expected"})
 	}

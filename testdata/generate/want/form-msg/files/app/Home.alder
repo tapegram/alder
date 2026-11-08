@@ -89,11 +89,15 @@ test "submitting Quick adds a row" = {
   let r <- Test.submit Sign2 { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
   let rows <- Db.from Entry |> Db.all
   Task.succeed (
-    { answer: r.answer, rows: List.map (\row -> { name: row.name, message: row.message }) rows }
-      == {
-        answer: Redirected (Home {}),
-        rows: [{ name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }],
-      }
+    {
+      answer: r.answer,
+      notices: r.notices,
+      rows: List.map (\row -> { name: row.name, message: row.message }) rows,
+    } == {
+      answer: Redirected (Home {}),
+      notices: ["Saved"],
+      rows: [{ name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }],
+    }
   )
 }
 
