@@ -338,6 +338,9 @@ func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effe
 			hrefText()
 			return
 		}
+		if mc.bareRoute(a.Value, false) {
+			return
+		}
 		if ct, r := mc.routeTarget(a.Value); r != nil && isWrite(r.Method) {
 			c.errorf(diag.RouteTarget, a.Value.GetSpan(), "`href` goes to a GET route; `%s` is %s: use `click`", ct.Name, r.Method)
 			mc.infer(a.Value, env, eff)
@@ -352,6 +355,9 @@ func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effe
 			mc.mismatch(a.Value.GetSpan(), got, types.Page)
 		}
 	case a.Name == "click" || a.Name == "submit":
+		if mc.bareRoute(a.Value, false) {
+			return
+		}
 		if ct, r := mc.routeTarget(a.Value); a.Name == "submit" && r != nil && !isWrite(r.Method) {
 			c.errorf(diag.RouteTarget, a.Value.GetSpan(), "`submit` posts to a write route; `%s` is GET: link to it with `href`", ct.Name)
 			mc.infer(a.Value, env, eff)

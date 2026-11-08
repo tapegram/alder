@@ -107,7 +107,7 @@ func TestGolden(t *testing.T) {
 		"requires-dropped": RequiresDropped, "guard-dropped": GuardDropped, "where-dropped": WhereDropped,
 		"orderby-reversed": OrderByReversed, "limit-dropped": LimitDropped, "offset-dropped": OffsetDropped,
 		"write-replaced": WriteReplaced, "update-field-dropped": UpdateFieldDropped,
-		"arm-swapped": ArmSwapped,
+		"arm-swapped":       ArmSwapped,
 		"condition-negated": ConditionNegated, "operator-flipped": OperatorFlipped, "bool-flipped": BoolFlipped,
 		"default-changed": DefaultChanged, "cascade-restrict": CascadeRestrict,
 		"not-dropped": NotDropped, "session-put-dropped": SessionPutDropped,

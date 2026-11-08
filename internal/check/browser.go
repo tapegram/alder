@@ -231,6 +231,9 @@ func pageOf(e syntax.Expr) (page string, ok bool) {
 // (fetchResult). Only fetch may name a file page.
 func (mc *modCtx) testGet(name string, arg syntax.Expr, env *env, eff effect) types.Type {
 	c := mc.c
+	if mc.bareRoute(arg, true) {
+		return types.Err
+	}
 	if ct, r := mc.routeTarget(arg); r != nil {
 		return mc.testGetRoute(name, arg, ct, r, env, eff)
 	}
@@ -342,6 +345,9 @@ func (mc *modCtx) stepFormOf(step string, arg syntax.Expr, env *env, eff effect)
 		return stepForm{}, false
 	}
 	if ct, r := mc.routeTarget(arg); r != nil { // a write route with `form F`: F's record
+		if r.Decl.Form != "" && mc.bareRoute(arg, true) {
+			return stepForm{}, false
+		}
 		if r.Decl.Form == "" {
 			if isWrite(r.Method) {
 				c.errorf(diag.RouteTarget, arg.GetSpan(), "`Test.%s` posts a route's form; `%s` has no `form`: use `Test.click %s`", step, ct.Name, routeStep(r))
@@ -467,6 +473,9 @@ func (mc *modCtx) testClick(arg syntax.Expr, env *env, eff effect) types.Type {
 	ct, isCt := head.(*syntax.CtorRef)
 	if isCt && ct.Ref.Kind == syntax.RefNone {
 		mc.infer(arg, env, eff)
+		return types.Err
+	}
+	if mc.bareRoute(arg, true) {
 		return types.Err
 	}
 	if ct, r := mc.routeTarget(arg); r != nil { // a GET route fetched, or a write route without form

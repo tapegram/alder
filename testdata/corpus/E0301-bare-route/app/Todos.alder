@@ -1,0 +1,21 @@
+module Todos
+
+route Index  = GET   "/"                  { }
+route Row    = GET   "/todos/{id}"        { id: Text }
+route Toggle = PATCH "/todos/{id}/toggle" { id: Text }
+
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+-- a route with parameters is sent with them: `Toggle { id: … }`, not a bare `Toggle`
+Index.view : Int -> Session -> Html
+Index.view n session = <div><button click={Toggle}>Toggle</button><a href={Row}>row</a></div>
+
+Row.load : Row.Params -> Session -> Query Text
+Row.load params session = Query.succeed params.id
+
+Row.view : Text -> Session -> Html
+Row.view id session = <p>{id}</p>
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update params session = Task.succeed Response.refresh

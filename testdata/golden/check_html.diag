@@ -4,7 +4,8 @@ app/Pg.alder:37:9 E0003 expected Text, Html or List Html in `{…}`, got Int
   fix 37:9-37:16 Text.fromInt (model.n)
 app/Pg.alder:38:8 E0303 `href` takes a page value, not a string; write `href={Module.Page { … }}` or `Url.external "…"`
 app/Pg.alder:39:13 E0001 `onclick` is not Alder; use `click={Msg}`
-app/Pg.alder:40:20 E0003 expected Route, got Toggle.Params -> Route
+app/Pg.alder:40:20 E0301 route `Toggle` needs its parameters: `Toggle { id: ?id }`
+  fix 40:20-40:26 Toggle { id: ?id }
 app/Pg.alder:42:5 E0002 unknown element `<blink>`
 app/Pg.alder:43:19 E0003 expected Text, got Int
   fix 43:19-43:26 Text.fromInt (model.n)

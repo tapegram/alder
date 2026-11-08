@@ -98,8 +98,8 @@ type Diagnostic struct {
 const RemovedHint = "run `alder fix --routes` to rewrite this module"
 
 // Retired codes (never reuse): E0016 (two pages on one path), E0034 (a message in a file page),
-// E0041 and W0011 (a constructor hiding a page), E0301 (a message sent without its parameters),
-// E0302 (an `update` missing a message's arm), E0601 (`Msg` outside a page module). Their only
+// E0041 and W0011 (a constructor hiding a page), E0302 (an `update` missing a message's arm),
+// E0601 (`Msg` outside a page module). Their only
 // triggers were the page syntax that E0046 now rejects (#160).
 
 // General codes. Spec codes (E0101..E0602) are declared where they are raised.

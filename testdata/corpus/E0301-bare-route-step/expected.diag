@@ -1,0 +1,6 @@
+app/Todos.alder:30:21 E0301 route `Row` needs its parameters: `Row { id: ?id }`
+  fix 30:21-30:24 (Row { id: ?id })
+app/Todos.alder:31:23 E0301 route `Toggle` needs its parameters: `Toggle { id: ?id }`
+  fix 31:23-31:29 (Toggle { id: ?id })
+app/Todos.alder:32:24 E0301 route `Rename` needs its parameters: `Rename { id: ?id }`
+  fix 32:24-32:30 (Rename { id: ?id })

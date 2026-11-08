@@ -499,3 +499,34 @@ func (c *Checker) checkRouteRefs() {
 		}
 	}
 }
+
+// bareRoute reports E0301 when e is a route with parameters (other than its form) written bare
+// where a request goes (`click={Toggle}`, `href={Row}`, `Test.click Toggle`): the route is a
+// function of its parameters there, not a Route. The fix writes the record with a `?hole` for
+// each parameter, in parentheses when paren is set (a Test step's argument). It reports whether
+// it did; e is then recorded as a Route.
+func (mc *modCtx) bareRoute(e syntax.Expr, paren bool) bool {
+	ct, ok := e.(*syntax.CtorRef)
+	if !ok || ct.Ref.Kind != syntax.RefRoute {
+		return false
+	}
+	r := mc.c.route(ct.Ref.Module, ct.Ref.Name)
+	if r == nil || r.Params == nil || messageLike(r.Params) {
+		return false
+	}
+	var parts []string
+	for _, f := range r.Params.Fields {
+		if f.Name != "form" {
+			parts = append(parts, f.Name+": ?"+f.Name)
+		}
+	}
+	full := mc.source(ct.Span) + " { " + strings.Join(parts, ", ") + " }"
+	d := mc.c.errorf("E0301", ct.Span, "route `%s` needs its parameters: `%s`", ct.Name, full)
+	if paren {
+		full = "(" + full + ")"
+	}
+	d.Fix = diag.ReplaceSpan(ct.Span, full)
+	d.Fix.Preferred = true
+	mc.c.record(ct, types.Route)
+	return true
+}
