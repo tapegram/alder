@@ -294,12 +294,15 @@ test "a long list of projects offers 50, and the search narrows it" = {
       findProject: "name-203",
     })
   let r <- Test.submit (SearchProject { org: org, id: todo1 }) { q: "zz" }
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let visitor <- Test.submit (SearchProject { org: org, id: todo1 }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.projects,
       total: all.model.projectsTotal,
       found: Test.count "select[name=project] option" found.doc <= 3,
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 51,
       total: 203,
@@ -309,6 +312,7 @@ test "a long list of projects offers 50, and the search narrows it" = {
         id: todo1,
         findProject: "zz",
       }),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -362,6 +366,88 @@ test "the row's own project is offered first when it sorts past the 50" = {
       shown: 51,
     }
   )
+}
+
+test "a visitor cannot save a todo" = {
+  let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.member me org
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org,
+  }
+  let project2 <- Db.insert Project { name: Text.NonEmpty "name-2", org: org }
+  let before <- Db.get Todo todo1
+  let _ <- Test.get (Edit { org: org, id: todo1 })
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let r <- Test.submit (Save { org: org, id: todo1 }) {
+    title: Text.NonEmpty "title-2",
+    done: True,
+    project: project2,
+  }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let after <- Db.get Todo todo1
+  Task.succeed (
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login.Login {}), row: before }
+  )
+}
+
+test "a Member cannot save a todo, even one made Admin since logging in" = {
+  let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.member me org
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org,
+  }
+  let project2 <- Db.insert Project { name: Text.NonEmpty "name-2", org: org }
+  let before <- Db.get Todo todo1
+  let _ <- Test.get (Edit { org: org, id: todo1 })
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
+  let r <- Test.submit (Save { org: org, id: todo1 }) {
+    title: Text.NonEmpty "title-2",
+    done: True,
+    project: project2,
+  }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let after <- Db.get Todo todo1
+  Task.succeed ({ answer: r.answer, row: after } == { answer: PageMissing, row: before })
 }
 
 test "a demoted Admin cannot save a todo" = {

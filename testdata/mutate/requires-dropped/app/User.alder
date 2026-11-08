@@ -1,3 +1,5 @@
 module User
 
 type UserId = brand Text
+
+type TeamId = brand Text

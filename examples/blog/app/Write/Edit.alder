@@ -225,6 +225,181 @@ test "a demoted author is turned away at once" = {
   )
 }
 
+-- Each write route, posted from the edit page still open in the browser, is guarded on its own.
+-- A visitor (the session ended) is sent to log in by its `requires user`; a Reader (the cookie now
+-- says Reader, though the row says Author) gets a 404 from its `role Author`. Neither changes the
+-- posts: the draft has the Publish button, the published post the Unpublish one.
+test "the write routes refuse a visitor and a Reader" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+    role: Author,
+  }
+  let draft <- Db.insert Post {
+    slug: Post.Slug "draft",
+    title: Text.NonEmpty "Draft",
+    body: "",
+    author: me,
+  }
+  let live <- Db.insert Post {
+    slug: Post.Slug "live",
+    title: Text.NonEmpty "Live",
+    body: "",
+    published: True,
+    author: me,
+  }
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Test.login { user: Nothing, role: Reader }
+  let visitorSave <- Test.submit (Save { id: draft }) { title: Text.NonEmpty "Changed", body: "" }
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Test.login { user: Nothing, role: Reader }
+  let visitorPublish <- Test.click (Publish { id: draft })
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: live })
+  let _ <- Test.login { user: Nothing, role: Reader }
+  let visitorUnpublish <- Test.click (Unpublish { id: live })
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Test.login { user: Nothing, role: Reader }
+  let visitorDelete <- Test.click (Delete { id: draft })
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Test.login { user: Just me, role: Reader }
+  let readerSave <- Test.submit (Save { id: draft }) { title: Text.NonEmpty "Changed", body: "" }
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Test.login { user: Just me, role: Reader }
+  let readerPublish <- Test.click (Publish { id: draft })
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: live })
+  let _ <- Test.login { user: Just me, role: Reader }
+  let readerUnpublish <- Test.click (Unpublish { id: live })
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Test.login { user: Just me, role: Reader }
+  let readerDelete <- Test.click (Delete { id: draft })
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.slug.asc
+      |> Db.all
+  Task.succeed (
+    {
+      visitor: [
+        visitorSave.answer,
+        visitorPublish.answer,
+        visitorUnpublish.answer,
+        visitorDelete.answer,
+      ],
+      reader: [
+        readerSave.answer,
+        readerPublish.answer,
+        readerUnpublish.answer,
+        readerDelete.answer,
+      ],
+      posts: List.map (\p -> { title: p.title, published: p.published }) posts,
+    } == {
+      visitor: List.repeat 4 (Redirected (Auth.Login.Login {})),
+      reader: List.repeat 4 PageMissing,
+      posts: [
+        { title: Text.NonEmpty "Draft", published: False },
+        { title: Text.NonEmpty "Live", published: True },
+      ],
+    }
+  )
+}
+
+-- An author made a Reader since logging in still passes the role check (the cookie says Author),
+-- but each write route begins with User.authorOnly, which re-reads the row: Save, Publish,
+-- Unpublish and Delete are each a 404, and the posts are left as they were.
+test "the write routes turn a demoted author away" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+    role: Author,
+  }
+  let draft <- Db.insert Post {
+    slug: Post.Slug "draft",
+    title: Text.NonEmpty "Draft",
+    body: "",
+    author: me,
+  }
+  let live <- Db.insert Post {
+    slug: Post.Slug "live",
+    title: Text.NonEmpty "Live",
+    body: "",
+    published: True,
+    author: me,
+  }
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Db.update User me (\u -> { u | role: Reader })
+  let saved <- Test.submit (Save { id: draft }) { title: Text.NonEmpty "Changed", body: "" }
+  let _ <- Db.update User me (\u -> { u | role: Author })
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Db.update User me (\u -> { u | role: Reader })
+  let published <- Test.click (Publish { id: draft })
+  let _ <- Db.update User me (\u -> { u | role: Author })
+  let _ <- Test.get (Edit { id: live })
+  let _ <- Db.update User me (\u -> { u | role: Reader })
+  let unpublished <- Test.click (Unpublish { id: live })
+  let _ <- Db.update User me (\u -> { u | role: Author })
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Db.update User me (\u -> { u | role: Reader })
+  let deleted <- Test.click (Delete { id: draft })
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.slug.asc
+      |> Db.all
+  Task.succeed (
+    {
+      answers: [saved.answer, published.answer, unpublished.answer, deleted.answer],
+      posts: List.map (\p -> { title: p.title, published: p.published }) posts,
+    }
+      == {
+        answers: List.repeat 4 PageMissing,
+        posts: [
+          { title: Text.NonEmpty "Draft", published: False },
+          { title: Text.NonEmpty "Live", published: True },
+        ],
+      }
+  )
+}
+
+-- Publish and Unpublish through the page: each answers with the page again (Refreshed), its
+-- badge and button turned over.
+test "publishing and unpublishing through the page" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+    role: Author,
+  }
+  let id <- Db.insert Post {
+    slug: Post.Slug "hello",
+    title: Text.NonEmpty "Hello",
+    body: "",
+    author: me,
+  }
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: id })
+  let published <- Test.click (Publish { id: id })
+  let unpublished <- Test.click (Unpublish { id: id })
+  Task.succeed (
+    {
+      published: { answer: published.answer, status: Test.text "al-badge" published.doc },
+      unpublished: { answer: unpublished.answer, status: Test.text "al-badge" unpublished.doc },
+    }
+      == {
+        published: { answer: Refreshed, status: Just "Published" },
+        unpublished: { answer: Refreshed, status: Just "Draft" },
+      }
+  )
+}
+
 test "a promoted reader logs in again before editing" = {
   let me <- Db.insert User {
     email: Text.Email "me@example.com",

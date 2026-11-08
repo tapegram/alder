@@ -218,12 +218,14 @@ test "deleting the chosen rows leaves the ones other rows refer to" = {
   Task.succeed (
     {
       answer: r.answer,
+      notices: r.notices,
       gone: Maybe.map (\row -> row.id) gone,
       left: Maybe.map (\row -> row.id) left,
       kept: Maybe.map (\row -> row.id) kept,
       listed: Test.count "#selected li small" r.doc,
     } == {
       answer: Refreshed,
+      notices: ["Deleted 1 of 2"],
       gone: Nothing,
       left: Just post3,
       kept: Just post1,
@@ -256,10 +258,12 @@ test "setting status changes the chosen rows only" = {
   Task.succeed (
     {
       answer: r.answer,
+      notices: r.notices,
       one: Maybe.map (\row -> row.status == Published) one,
       other: Maybe.map (\row -> row.status == Published) other,
     } == {
       answer: Refreshed,
+      notices: ["Updated 1"],
       one: Just True,
       other: Just False,
     }
@@ -290,10 +294,12 @@ test "setting featured changes the chosen rows only" = {
   Task.succeed (
     {
       answer: r.answer,
+      notices: r.notices,
       one: Maybe.map (\row -> row.featured == True) one,
       other: Maybe.map (\row -> row.featured == True) other,
     } == {
       answer: Refreshed,
+      notices: ["Updated 1"],
       one: Just True,
       other: Just False,
     }
@@ -358,6 +364,100 @@ test "26 chosen ids are refused" = {
   )
 }
 
+test "setting status on 26 chosen ids is refused" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let chosen = [post1] ++ List.map (\n -> Post.PostId ("none-" ++ Text.fromInt n)) (List.range 1 25)
+  let _ <- Test.get (Bulk { ids: chosen })
+  let r <- Test.submit (BulkSetStatus { ids: chosen }) { value: Published }
+  let after <- Db.get Post post1
+  Task.succeed (
+    { answer: r.answer, set: Maybe.map (\row -> row.status == Published) after }
+      == {
+        answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
+        set: Just False,
+      }
+  )
+}
+
+test "setting featured on 26 chosen ids is refused" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let chosen = [post1] ++ List.map (\n -> Post.PostId ("none-" ++ Text.fromInt n)) (List.range 1 25)
+  let _ <- Test.get (Bulk { ids: chosen })
+  let r <- Test.submit (BulkSetFeatured { ids: chosen }) { value: True }
+  let after <- Db.get Post post1
+  Task.succeed (
+    { answer: r.answer, set: Maybe.map (\row -> row.featured == True) after }
+      == {
+        answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
+        set: Just False,
+      }
+  )
+}
+
+test "a visitor cannot delete the chosen rows" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let _ <- Test.get (Bulk { ids: [post1] })
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit (BulkDelete { ids: [post1] }) {}
+  let kept <- Db.get Post post1
+  Task.succeed (
+    { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
+      == { answer: Redirected (Auth.Login {}), kept: Just post1 }
+  )
+}
+
+test "a Reader cannot delete the chosen rows, even one made Admin since logging in" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let _ <- Test.get (Bulk { ids: [post1] })
+  let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.submit (BulkDelete { ids: [post1] }) {}
+  let kept <- Db.get Post post1
+  Task.succeed (
+    { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
+      == { answer: PageMissing, kept: Just post1 }
+  )
+}
+
 test "a demoted Admin cannot delete the chosen rows" = {
   let me <- Db.insert User {
     email: Text.Email "email-1@example.com",
@@ -380,6 +480,48 @@ test "a demoted Admin cannot delete the chosen rows" = {
   )
 }
 
+test "a visitor cannot set status on the chosen rows" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let before <- Db.get Post post1
+  let _ <- Test.get (Bulk { ids: [post1] })
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit (BulkSetStatus { ids: [post1] }) { value: Published }
+  let after <- Db.get Post post1
+  Task.succeed (
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login {}), row: before }
+  )
+}
+
+test "a Reader cannot set status on the chosen rows, even one made Admin since logging in" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let before <- Db.get Post post1
+  let _ <- Test.get (Bulk { ids: [post1] })
+  let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.submit (BulkSetStatus { ids: [post1] }) { value: Published }
+  let after <- Db.get Post post1
+  Task.succeed ({ answer: r.answer, row: after } == { answer: PageMissing, row: before })
+}
+
 test "a demoted Admin cannot set status on the chosen rows" = {
   let me <- Db.insert User {
     email: Text.Email "email-1@example.com",
@@ -396,6 +538,48 @@ test "a demoted Admin cannot set status on the chosen rows" = {
   let _ <- Test.get (Bulk { ids: [post1] })
   let _ <- Db.update User me (\u -> { u | role: Reader })
   let r <- Test.submit (BulkSetStatus { ids: [post1] }) { value: Published }
+  let after <- Db.get Post post1
+  Task.succeed ({ answer: r.answer, row: after } == { answer: PageMissing, row: before })
+}
+
+test "a visitor cannot set featured on the chosen rows" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let before <- Db.get Post post1
+  let _ <- Test.get (Bulk { ids: [post1] })
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit (BulkSetFeatured { ids: [post1] }) { value: True }
+  let after <- Db.get Post post1
+  Task.succeed (
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login {}), row: before }
+  )
+}
+
+test "a Reader cannot set featured on the chosen rows, even one made Admin since logging in" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let before <- Db.get Post post1
+  let _ <- Test.get (Bulk { ids: [post1] })
+  let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.submit (BulkSetFeatured { ids: [post1] }) { value: True }
   let after <- Db.get Post post1
   Task.succeed ({ answer: r.answer, row: after } == { answer: PageMissing, row: before })
 }

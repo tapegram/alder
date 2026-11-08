@@ -41,14 +41,14 @@ The example's login is the development stub, which refuses every password outsid
 
 ## Mutation score
 
-`alder test --mutate examples/blog` (book 10, "Mutation testing"): 202 mutants, 196 tests, 196
-killed, 6 survived (score 0.97). `TestExample_Blog` fails if the score drops below 0.97, the
-exact 0.970 rounded down, or the number of mutants is not 202.
+`alder test --mutate examples/blog` (book 10, "Mutation testing"): 376 mutants, 227 tests, 362
+killed, 14 survived (score 0.96). `TestExample_Blog` fails if the score drops below 0.96, the
+exact 0.963 rounded down, or the number of mutants is not 376.
 
-- **The generated admin** (`app/Admin/`, "Replaying the admin" below): 147 mutants, 144 killed
-  by its generated tests, kept as `alder new admin` wrote them.
+- **The generated admin** (`app/Admin/`, "Replaying the admin" below): 290 mutants, 279 killed
+  by its 181 generated tests, kept as `alder new admin` wrote them.
 
-  The three survivors are equivalent:
+  Three survivors are equivalent:
 
   - `postsTotal > 200` and `authorsTotal > 200` flipped to `>= 200` in the `where` of the Comment
     and Post New routes' lists (a search of "" matches every row).
@@ -58,13 +58,37 @@ exact 0.970 rounded down, or the number of mutants is not 202.
   The Edit routes' lists have no such survivor: the row's own value is read by itself and comes
   first, the search leaves it out, and the generated test of exactly 200 rows tells `>` from `>=`.
 
-- **The rest of the blog:** 55 mutants, 52 killed, 3 survived, as before the admin (below).
+  The eight others are the `step dropped` of the `adminOnly` that begins the Comment and Post
+  `Create` and `Save`, and the `role dropped` of the four `Search…` routes (`SearchPost`,
+  `SearchAuthor`).
+
+- **The rest of the blog:** 86 mutants, 83 killed, 3 survived, as before the admin (below).
+
+The `step dropped` of the `adminOnly` that begins `Create` and `Save` on a form with a select of
+another table's rows is not a gap: a demoted Admin's post of that form is refused (400) by the
+options check before the update runs, since the page it was posted from is rendered again to
+check the options, and that page's `load` begins with `adminOnly` too. Nor is the `role dropped`
+of a `Search…` route, which only redirects to the page it was posted from: another role's search
+is redirected there, or, when it does not decode, that page is rendered again with the errors,
+and either way that page's own role check answers the 404 the search's would. (The search's
+`requires dropped` is killed: the generated test of a long list sends a visitor's search, which
+must go to log in, where the mutant's role check answers 404.)
 
 The history of the rest:
 
 - Before: 29 tests, 41 killed, 17 survived (score 0.71), recorded before the app declared its
   rules.
 - After: 42 tests, 60 killed, 3 survived (score 0.95).
+- With the route operators (alder#187): a route's `requires` and role, its `Response` answers and
+  its `let _ <-` steps added 31 mutants to the rest, 16 at first killed. The survivors were write
+  routes' guards: the `requires dropped` and `role dropped` of `Write`'s Create and of
+  `Write.Edit`'s four write routes, the `step dropped` of `User.authorOnly` in Create, Save and
+  Unpublish (only Publish's and Delete's were tested), and the `refresh → invalid` of Publish and
+  Unpublish (no test checked what they answer). Four tests kill them, each sending the writes from
+  a page still open after the session changed: `Write "Create is refused to a visitor, a Reader
+  and a demoted author"`, `Write.Edit "the write routes refuse a visitor and a Reader"`,
+  `Write.Edit "the write routes turn a demoted author away"`, and `Write.Edit "publishing and
+  unpublishing through the page"`. The rest now has 46 tests.
 
 The rules are declared (book 06, "Rules"): `Post.author` is the table's `@owner`, the session
 holds the user's `role` from login, and `Write` and `Write.Edit` `requires user, role Author`.
@@ -84,11 +108,9 @@ Their mutants are killed:
 - **The dropped `role`** of the login's and the logout's `Session.put` by
   `Auth.Login "logging in through the form"` and
   `Posts.Index "logging out from the front page goes to log in"`.
-
-> **No `role dropped` mutant.** A `role dropped` mutant exists only for the old `page` form,
-> alder#187; the tests `Write "a promoted reader logs in again first"` and
-> `Write.Edit "a promoted reader logs in again before editing"` still pin the role check, the row
-> saying Author while the cookie says Reader, and kill no mutant.
+- **The `role dropped` of the two GET routes** by `Write "a promoted reader logs in again first"`
+  and `Write.Edit "a promoted reader logs in again before editing"` (the row says Author while
+  the cookie says Reader: only the role check turns them away).
 
 The ten tests that closed the gaps:
 
@@ -101,18 +123,16 @@ The ten tests that closed the gaps:
   `hasMore`.
 - `Posts.Index "logging out from the front page goes to log in"`: the dropped `role` of logout's
   `Session.put`. The front page is the one page with a Log out button that does not `require
-  user`, so here the browser shows where logging out ends. (Its old kill, `Redirect → Rerender`,
-  has no operator on routes yet, alder#187.)
-- `Write.Edit "a visitor is sent to log in"`: pins the rule that a visitor is sent to log in;
-  a route's `requires` is not mutated yet (alder#187), so it kills no mutant.
+  user`, so here the browser shows where logging out ends: it also kills logout's `redirect →
+  refresh`.
+- `Write.Edit "a visitor is sent to log in"`: the `requires dropped` of the `Edit` route.
 - `Write.Edit "saving changes the title and the body"`: the save replaced, and each updated
   field dropped.
-- `Posts.Show "commenting through the form"`: the comment's insert replaced, and the redirect
-  after it, which no operator mutates yet (alder#187).
+- `Posts.Show "commenting through the form"`: the comment's insert replaced, and the `redirect →
+  refresh` after it.
 - `Auth.Login "an unknown email is rejected"` and `Auth.Login "logging in through the form"`,
-  with a new `fake Password`: the dropped `Session.put`. The login's redirect and its
-  `Response.invalid` are pinned by behaviour only: a route's `Response` has no operator yet
-  (alder#187).
+  with a new `fake Password`: the dropped `Session.put`, and the login's `redirect → refresh` and
+  `invalid → refresh`.
 
 The three survivors are legitimate: no test can kill them, because each mutant behaves exactly
 like the original program.
@@ -128,7 +148,9 @@ like the original program.
   page is the same.
 
 The run also refuses 1 mutant it can prove equivalent (`User.role`'s default, which no row
-leaves out) and skips 41 that do not apply; neither count is part of the score.
+leaves out) and skips 54 that do not apply (most of them a `step dropped` of a write or a
+`Session.put`, which `write replaced` and `session put dropped` make); neither count is part of
+the score.
 
 ## Replaying the admin
 

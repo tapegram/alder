@@ -115,10 +115,12 @@ test "the project's to-dos, oldest first, and adding one" = {
     {
       name: Test.text "h1" page.doc,
       before: Test.texts "#todos .title" page.doc,
+      answer: r.answer,
       after: Test.texts "#todos .title" r.doc,
     } == {
       name: Just "Rocket",
       before: ["Fuel"],
+      answer: Refreshed,
       after: ["Fuel", "Launch"],
     }
   )
@@ -160,10 +162,61 @@ test "Done marks a to-do done, and Reopen opens it again" = {
   let open <- Test.click (Toggle { id: fuel })
   Task.succeed (
     {
+      answers: [done.answer, open.answer],
       done: Test.texts "#todos li.done .title" done.doc,
       open: Test.texts "#todos li.open .title" open.doc,
+    } == {
+      answers: [Refreshed, Refreshed],
+      done: ["Fuel"],
+      open: ["Fuel"],
     }
-      == { done: ["Fuel"], open: ["Fuel"] }
+  )
+}
+
+-- No `load` runs before Add or Toggle: each begins with Membership.memberOnly, so a member
+-- removed while the page is open adds no to-do and toggles none (the refresh after a write
+-- would be a 404 too, so the rows tell).
+test "a removed member cannot add or toggle a to-do from a page shown before" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Test.member ann acme
+  let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let fuel <- Db.insert Todo {
+    title: Text.NonEmpty "Fuel",
+    project: rocket,
+    org: acme,
+  }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Test.get (Show { id: rocket })
+  let rows <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq ann)
+      |> Db.all
+  let _ <- Task.all (List.map (\m -> Db.delete Membership m.id) rows)
+  let added <- Test.submit (Add { id: rocket }) { title: Text.NonEmpty "Launch" }
+  let _ <- Test.member ann acme
+  let _ <- Test.get (Show { id: rocket })
+  let again <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq ann)
+      |> Db.all
+  let _ <- Task.all (List.map (\m -> Db.delete Membership m.id) again)
+  let toggled <- Test.click (Toggle { id: fuel })
+  let todos <- Db.from Todo |> Db.all
+  Task.succeed (
+    {
+      added: added.answer,
+      toggled: toggled.answer,
+      todos: List.map (\t -> { title: t.title, done: t.done }) todos,
+    } == {
+      added: PageMissing,
+      toggled: PageMissing,
+      todos: [{ title: Text.NonEmpty "Fuel", done: False }],
+    }
   )
 }
 

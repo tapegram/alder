@@ -1,0 +1,16 @@
+module Home
+
+route Home = GET  "/"     { }
+route Go   = POST "/_/Go" { }
+
+type Model = { }
+
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = Query.succeed { }
+
+-- A mutant: the update answers refresh instead of its redirect.
+Go.update : Go.Params -> Session -> Task Response
+Go.update p session = Task.succeed (Response.redirect (Home {}))
+
+Home.view : Model -> Session -> Html
+Home.view model session = <p>Home</p>

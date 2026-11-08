@@ -287,17 +287,21 @@ test "a long list of users offers 50, and the search narrows it" = {
   let all <- Test.get (New {})
   let found <- Test.get (New { findUser: "email-203@example.com" })
   let r <- Test.submit SearchUser { q: "zz" }
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let visitor <- Test.submit SearchUser { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.users,
       total: all.model.usersTotal,
       found: Test.texts "select[name=user] option" found.doc == ["email-203@example.com"],
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 50,
       total: 203,
       found: True,
       answer: Redirected (New { findUser: "zz" }),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -403,17 +407,21 @@ test "a long list of orgs offers 50, and the search narrows it" = {
   let all <- Test.get (New {})
   let found <- Test.get (New { findOrg: "name-203" })
   let r <- Test.submit SearchOrg { q: "zz" }
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let visitor <- Test.submit SearchOrg { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.orgs,
       total: all.model.orgsTotal,
       found: Test.texts "select[name=org] option" found.doc == ["name-203"],
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 50,
       total: 203,
       found: True,
       answer: Redirected (New { findOrg: "zz" }),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -455,6 +463,64 @@ test "an org outside the narrowed list is refused" = {
     { answer: sent.answer, rows: rows }
       == { answer: FormRejected [{ field: "org", message: "must be one of the options" }], rows: 0 }
   )
+}
+
+test "a visitor cannot create a membership" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
+  let _ <- Test.get (New {})
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let r <- Test.submit Create { user: user2, org: org2 }
+  let rows <- Db.from Membership |> Db.count
+  Task.succeed (
+    { answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login.Login {}), rows: 0 }
+  )
+}
+
+test "a Member cannot create a membership, even one made Admin since logging in" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
+  let _ <- Test.get (New {})
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
+  let r <- Test.submit Create { user: user2, org: org2 }
+  let rows <- Db.from Membership |> Db.count
+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: PageMissing, rows: 0 })
 }
 
 test "a demoted Admin cannot create a membership" = {

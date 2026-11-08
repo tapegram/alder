@@ -207,8 +207,15 @@ test "signing adds an entry" = {
   let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
   let page <- Test.get (Home {})
   Task.succeed (
-    { answer: signed.answer, entries: Test.count "#entries li" page.doc }
-      == { answer: Redirected (Home {}), entries: 1 }
+    {
+      answer: signed.answer,
+      notices: signed.notices,
+      entries: Test.count "#entries li" page.doc,
+    } == {
+      answer: Redirected (Home {}),
+      notices: ["Signed"],
+      entries: 1,
+    }
   )
 }
 ```
@@ -217,7 +224,8 @@ The page ends with its two tests. The first goes through the page the way a
 person would, in an in-memory browser: it opens `/` (`Test.get`), fills in
 and posts the form (`Test.submit Submit { … }`), and opens the page again.
 
-The answer to the post must be the redirect `update` makes, and the page
+The answer to the post must be the redirect `update` makes, with its toast
+in `notices`, and the page
 must then list one entry: `Test.count "#entries li"` counts the `<li>`
 inside `<ul id="entries">`.
 
@@ -487,7 +495,8 @@ after that it takes a second or two.
 
 `alder test --mutate` measures the tests. It makes small changes to the
 program, called **mutants**, each one a plausible mistake (here: the
-insert replaced by nothing and the order reversed), and runs the
+insert replaced by nothing, the order reversed, the redirect answered as
+a refresh, the toast left out), and runs the
 tests against each. A mutant the tests notice is killed; one they do not
 notice survived, and each survivor names a test that is missing:
 
@@ -496,12 +505,12 @@ $ alder test --mutate
 ok   Home "signing adds an entry"
 ok   Home "entries are listed newest first"
 2 passed, 0 failed
-2 mutants: 2 killed, 0 survived  (score 1.00)
+4 mutants: 4 killed, 0 survived  (score 1.00)
 ```
 
 Without the second test, the order reversed (`Entry.created.desc`
-changed to `.asc`) would survive, and the run would end `2 mutants: 1
-killed, 1 survived  (score 0.50)` with that survivor named under
+changed to `.asc`) would survive, and the run would end `4 mutants: 3
+killed, 1 survived  (score 0.75)` with that survivor named under
 `survived:`. Chapter 10, "Mutation testing", explains the rest.
 
 `alder build` writes the server, one executable with SQLite inside it, and
@@ -870,7 +879,7 @@ test "Delete by another user is not found" = {
 }
 ```
 
-The next three tests go through the page itself, as a user would: they log
+The next four tests go through the page itself, as a user would: they log
 in, open the page, post its form, click its buttons, and read what the page
 shows (`#summary` is the `<p id="summary">` above).
 
@@ -880,8 +889,12 @@ stranger who opens the list afresh, whose page lists none of my todos, has
 nothing to click; the todo's own page is a 404 for them (`PageMissing`).
 
 The answer to the click is `Refreshed`, the test's name for
-`Response.refresh`. Chapter 10, "Testing through the browser", explains each
-step.
+`Response.refresh`.
+
+Each write route has its own `requires user`, since no `load` runs before it:
+the third test keeps the page open, logs out (`Test.login { user: Nothing }`),
+and sends each write from it, which must send the visitor to log in and change
+nothing. Chapter 10, "Testing through the browser", explains each step.
 
 ```alder part=Todos.Index
 -- The same page through the browser: the test logs in, opens the page, and uses the form and
@@ -932,6 +945,47 @@ test "toggling a todo through the page" = {
       answer: Refreshed,
       done: True,
       summary: Just "0 open",
+    }
+  )
+}
+
+-- Each write route has its own `requires user`: a visitor who adds, toggles or deletes from a
+-- page still open after the session ended is sent to log in, and nothing changes.
+test "a write after logging out is sent to log in" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let added <- Test.submit (Submit {}) { title: Text.NonEmpty "Eggs", due: Nothing }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let toggled <- Test.click (Toggle { id: id })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let deleted <- Test.click (Delete { id: id })
+  let todos <- Db.from Todo |> Db.all
+  Task.succeed (
+    {
+      added: added.answer,
+      toggled: toggled.answer,
+      deleted: deleted.answer,
+      todos: List.map (\t -> { title: t.title, done: t.done }) todos,
+    } == {
+      added: Redirected (Auth.Login.Login {}),
+      toggled: Redirected (Auth.Login.Login {}),
+      deleted: Redirected (Auth.Login.Login {}),
+      todos: [{ title: Text.NonEmpty "Milk", done: False }],
     }
   )
 }

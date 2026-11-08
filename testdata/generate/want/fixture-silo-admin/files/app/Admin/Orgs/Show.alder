@@ -157,11 +157,13 @@ test "deleting an org nothing refers to" = {
     {
       button: Test.count "#delete al-button" page.doc,
       answer: r.answer,
+      notices: r.notices,
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
       button: 1,
       answer: Redirected (Admin.Orgs.Index.Index {}),
+      notices: ["Deleted"],
       gone: Nothing,
       kept: Just org2,
     }

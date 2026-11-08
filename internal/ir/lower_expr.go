@@ -161,7 +161,7 @@ func (l *lowerer) variable(x *syntax.Var) Expr {
 	case syntax.RefValue:
 		return &Var{Typed: Typed{t}, Kind: VarGlobal, Module: x.Ref.Module, Name: x.Ref.Name}
 	case syntax.RefStd:
-		return &Var{Typed: Typed{t}, Kind: VarStd, Module: x.Ref.Module, Name: x.Ref.Name}
+		return &Var{Typed: Typed{t}, Pos: posOf(x.Span), Kind: VarStd, Module: x.Ref.Module, Name: x.Ref.Name}
 	}
 	panic(fmt.Sprintf("ir: cannot lower reference %s.%s at %s", x.Module, x.Name, pos(x.Span)))
 }

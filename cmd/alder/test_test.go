@@ -77,7 +77,7 @@ func TestTest_Todos(t *testing.T) {
 		`ok   Admin.Todos.Index "a demoted Admin is refused at once"`,
 		`ok   Admin.Todos.Index "filtering by done lists the rows with that value"`,
 		`ok   Admin.Users.Delete "an Admin cannot delete their own account"`,
-		"126 passed, 0 failed\n",
+		"147 passed, 0 failed\n",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
@@ -93,7 +93,7 @@ func TestTest_Failing(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	for _, want := range []string{"FAIL Table.Todo \"wrong\"\n  left:  0\n  right: 1\n", "126 passed, 1 failed\n"} {
+	for _, want := range []string{"FAIL Table.Todo \"wrong\"\n  left:  0\n  right: 1\n", "147 passed, 1 failed\n"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
 		}
@@ -110,7 +110,7 @@ func TestTest_Property(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	for _, want := range []string{"FAIL Table.Todo \"rev\"  (failed on run ", "  seed: ", "126 passed, 1 failed\n"} {
+	for _, want := range []string{"FAIL Table.Todo \"rev\"  (failed on run ", "  seed: ", "147 passed, 1 failed\n"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
 		}
@@ -201,7 +201,7 @@ func TestTest_JSON(t *testing.T) {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-	if len(lines) != 126 {
+	if len(lines) != 147 {
 		t.Fatalf("want one line per test, got %d:\n%s", len(lines), stdout)
 	}
 	for _, l := range lines {
@@ -225,7 +225,7 @@ func TestTest_JSON(t *testing.T) {
 	if toggle < 0 || !strings.Contains(lines[toggle], `"trace":["Db.insert User","Db.insert Todo","Test.login","Test.run","Db.updateMine Todo","Db.get Todo"]`) {
 		t.Errorf("the effect test's line lacks its trace (line %d):\n%s", toggle, stdout)
 	}
-	if stderr != "126 passed, 0 failed\n" {
+	if stderr != "147 passed, 0 failed\n" {
 		t.Errorf("stderr %q, want the summary", stderr)
 	}
 }
@@ -1226,7 +1226,7 @@ ok   Notes "a new note is not pinned"
 	if m := ms.Mutants[3]; m.Kind != "requires dropped" || !m.Killed || m.By != `Notes "a visitor is sent to log in"` || m.Tables != "" {
 		t.Fatalf("mutant 4: %+v", m)
 	}
-	if lines[7] != `{"score":0.8571428571428571,"killed":6,"survived":1,"suppressed":0,"skipped":0}` {
+	if lines[7] != `{"score":0.8571428571428571,"killed":6,"survived":1,"suppressed":0,"skipped":1}` {
 		t.Fatalf("score object %s", lines[7])
 	}
 

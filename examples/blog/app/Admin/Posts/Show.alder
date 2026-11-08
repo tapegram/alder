@@ -206,11 +206,13 @@ test "deleting a post nothing refers to" = {
     {
       button: Test.count "#delete al-button" page.doc,
       answer: r.answer,
+      notices: r.notices,
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
       button: 1,
       answer: Redirected (Admin.Posts.Index.Index {}),
+      notices: ["Deleted"],
       gone: Nothing,
       kept: Just post2,
     }

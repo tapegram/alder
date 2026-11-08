@@ -45,14 +45,14 @@ func widen__Notes__Notes__Session(s Notes__Notes__Session) App__Session {
 func Notes__mine() db.Select[Note__Note] {
 	_h1 := func() db.Select[Note__Note] {
 		switch Mutant {
-		case 4:
+		case 10:
 			return db.From(table__Note__Note)
 		}
 		return db.Mine(table__Note__Note)
 	}()
 	_ = _h1
 	switch Mutant {
-	case 3:
+	case 9:
 		return _h1
 	}
 	return db.Limit(5, _h1)
@@ -65,14 +65,14 @@ func Notes__Notes__load(params Notes__Notes__Params, session Notes__Notes__Sessi
 		return eff.Bind(func() eff.Task[int64] {
 			_h2 := func() db.Select[Note__Note] {
 				switch Mutant {
-				case 6:
+				case 12:
 					return db.From(table__Note__Note)
 				}
 				return db.Mine(table__Note__Note)
 			}()
 			_ = _h2
 			switch Mutant {
-			case 5:
+			case 11:
 				return eff.Call("Db.count Note", false, func(_e3 *eff.Env) (int64, error) {
 					return db.CountRows(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), _h2)
 				})
@@ -80,7 +80,7 @@ func Notes__Notes__load(params Notes__Notes__Params, session Notes__Notes__Sessi
 			return eff.Call("Db.count Note", false, func(_e4 *eff.Env) (int64, error) {
 				return db.CountRows(_e4.Ctx, _e4.Store.(db.Store), db.TxOf(_e4), db.Where(db.CEq("pinned", db.EncodeBool(func() bool {
 					switch Mutant {
-					case 7:
+					case 13:
 						return false
 					}
 					return true
@@ -95,27 +95,33 @@ func Notes__Notes__load(params Notes__Notes__Params, session Notes__Notes__Sessi
 func Notes__Add__update(p Notes__Add__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[string] {
 		switch Mutant {
-		case 8:
+		case 14:
 			return eff.Pure("mutant")
 		}
 		return eff.Call("Db.insertMine Note", true, func(_e1 *eff.Env) (string, error) {
 			return db.InsertMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, insertminevals__Note__Note(insertmine__Note__Note{Title: p.Form.Title, Pinned: func() bool {
 				switch Mutant {
-				case 1:
+				case 3:
 					return true
 				}
 				return false
 			}()}), _e1.Now())
 		})
 	}(), func(_ string) eff.Task[rt.Response] {
-		return eff.Pure(std.ResponseRefresh())
+		return eff.Pure(func() rt.Response {
+			switch Mutant {
+			case 15:
+				return std.ResponseInvalid("mutant")
+			}
+			return std.ResponseRefresh()
+		}())
 	})
 }
 
 func Notes__Pin__update(p Notes__Pin__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[Note__Note] {
 		switch Mutant {
-		case 9:
+		case 16:
 			return eff.Bind(eff.Call("Db.get Note", false, func(_e1 *eff.Env) (rt.Maybe[Note__Note], error) {
 				return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, p.Id)
 			}), func(found rt.Maybe[Note__Note]) eff.Task[Note__Note] {
@@ -132,9 +138,9 @@ func Notes__Pin__update(p Notes__Pin__Params, session Notes__Notes__Session) eff
 	}(), func(n Note__Note) eff.Task[rt.Response] {
 		return eff.Bind(func() eff.Task[struct{}] {
 			switch Mutant {
-			case 10:
+			case 17:
 				return eff.Pure(struct{}{})
-			case 11:
+			case 18:
 				return eff.Bind(eff.Call("Db.get Note", false, func(_e3 *eff.Env) (rt.Maybe[Note__Note], error) {
 					return db.GetRow(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), table__Note__Note, n.Id)
 				}), func(found rt.Maybe[Note__Note]) eff.Task[struct{}] {
@@ -143,7 +149,7 @@ func Notes__Pin__update(p Notes__Pin__Params, session Notes__Notes__Session) eff
 							return struct{}{}, db.UpdateRow(_e4.Ctx, _e4.Store.(db.Store), db.TxOf(_e4), table__Note__Note, n.Id, func(x Note__Note) Note__Note {
 								return Note__Note{Id: x.Id, Title: x.Title, Pinned: func() bool {
 									switch Mutant {
-									case 12:
+									case 19:
 										return false
 									}
 									return true
@@ -158,7 +164,7 @@ func Notes__Pin__update(p Notes__Pin__Params, session Notes__Notes__Session) eff
 				return struct{}{}, db.UpdateMineRow(_e5.Ctx, _e5.Store.(db.Store), db.TxOf(_e5), table__Note__Note, n.Id, func(x Note__Note) Note__Note {
 					return Note__Note{Id: x.Id, Title: x.Title, Pinned: func() bool {
 						switch Mutant {
-						case 12:
+						case 19:
 							return false
 						}
 						return true
@@ -166,20 +172,38 @@ func Notes__Pin__update(p Notes__Pin__Params, session Notes__Notes__Session) eff
 				}, _e5.Now())
 			})
 		}(), func(_ struct{}) eff.Task[rt.Response] {
-			return eff.Pure(std.ResponseRefresh())
+			return eff.Pure(func() rt.Response {
+				switch Mutant {
+				case 20:
+					return std.ResponseInvalid("mutant")
+				}
+				return std.ResponseRefresh()
+			}())
 		})
 	})
 }
 
 func Notes__Remove__update(p Notes__Remove__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
-	return eff.Bind(Notes__wipe(p.Id), func(_ struct{}) eff.Task[rt.Response] {
-		return eff.Pure(std.ResponseRefresh())
+	return eff.Bind(func() eff.Task[struct{}] {
+		switch Mutant {
+		case 21:
+			return eff.Pure(struct{}{})
+		}
+		return Notes__wipe(p.Id)
+	}(), func(_ struct{}) eff.Task[rt.Response] {
+		return eff.Pure(func() rt.Response {
+			switch Mutant {
+			case 22:
+				return std.ResponseInvalid("mutant")
+			}
+			return std.ResponseRefresh()
+		}())
 	})
 }
 
 func Notes__wipe(_m1 string) eff.Task[struct{}] {
 	switch Mutant {
-	case 13:
+	case 23:
 		return eff.Bind(eff.Call("Db.get Note", false, func(_e1 *eff.Env) (rt.Maybe[Note__Note], error) {
 			return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, _m1)
 		}), func(found rt.Maybe[Note__Note]) eff.Task[struct{}] {

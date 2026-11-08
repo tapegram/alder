@@ -39,7 +39,7 @@ edited app/Home.alder
  test "signing adds an entry" = {
    let _ <- Test.get (Home {})
    let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
-@@ -68,8 +74,8 @@
+@@ -75,8 +81,8 @@
    Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
  }
  
@@ -51,6 +51,6 @@ edited app/Home.alder
 +  let r <- Test.submit Clear { why: Text.NonEmpty "why-1" }
 +  Task.succeed (r.answer == ?expected)
  }
-app/Home.alder:80:29: warning[W0002]: hole ?expected has type Answer
+app/Home.alder:87:29: warning[W0002]: hole ?expected has type Answer
     Task.succeed (r.answer == ?expected)
                               ^^^^^^^^^

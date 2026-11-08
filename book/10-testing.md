@@ -2178,30 +2178,40 @@ alder test --mutate [--min R] [--json] [-run re] [-timeout d] [dir]
 It runs the tests as `alder test` does; if one fails, it stops with
 `tests fail: fix them before measuring mutants`. Otherwise it runs them
 again once per mutant. Here is the to-do app's own code (the generated
-admin of chapter 15 adds 94 mutants of its own) with the eleven tests it
+admin of chapter 15 adds 191 mutants of its own) with the eleven tests it
 had before this section's work, the others left out with `-run`:
 
 ```text
 11 passed, 0 failed
-30 mutants: 16 killed, 14 survived  (score 0.53)
+45 mutants: 21 killed, 24 survived  (score 0.47)
 survived:
   App           Logout.update:16   update field dropped   { s | user: Nothing, role: Member } → { s | user: Nothing }
+  App           Logout.update:17   redirect → refresh     Response.redirect (Auth.Login.Login {}) → Response.refresh
   Auth.Login    Submit.update:42   update field dropped   { s | user: Just id, role: role } → { s | user: Just id }
   Table.Todo    Todo:16            cascade ↔ restrict     owner @ref User @restrict → owner @ref User @cascade
   Table.Todo    matches:21         arm swapped            match filter { All -> True, Active -> not todo.done, Complete…
   Table.Todo    matches:23         not dropped            not todo.done → todo.done
   Table.Todo    filterLabel:28     arm swapped            match filter { All -> "Al… → the All and Active bodies swapped
   Table.Todo    filterLabel:28     arm swapped            match filter { All -> "All", Active -> "Active", Completed ->…
+  Todos.Index   Submit:8           requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
+  Todos.Index   Toggle:9           requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
+  Todos.Index   Delete:10          requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
   Todos.Index   Index.load:18      orderBy reversed       Db.orderBy Todo.created.desc → Db.orderBy Todo.created.asc
+  Todos.Index   Delete.update:44   refresh → invalid      Response.refresh → Response.invalid "mutant"
+  Todos.Show    Show:7             requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
+  Todos.Show    Save:12            requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
+  Todos.Show    Delete:13          requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
   Todos.Show    Save.update:27     write replaced         let _ <- Db.updateMine Todo p.id … → let _ <- Task.succeed ()
   Todos.Show    Save.update:27     scope dropped          Db.updateMine Todo p.id (\t -> { t | title: p.form.title, due: p.form.due }) → Db.update Todo p.id …, not found when missing
   Todos.Show    Save.update:27     update field dropped   { t | title: p.form.title, due: p.form.due } → { t | due: p.form.due }
   Todos.Show    Save.update:27     update field dropped   { t | title: p.form.title, due: p.form.due } → { t | title: p.form.title }
+  Todos.Show    Save.update:28     redirect → refresh     Response.redirect (Todos.Index.Index {}) → Response.refresh
   Todos.Show    Delete.update:33   write replaced         let _ <- Db.deleteMine Todo p.id → let _ <- Task.succeed ()
   Todos.Show    Delete.update:33   scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
+  Todos.Show    Delete.update:34   redirect → refresh     Response.redirect (Todos.Index.Index {}) → Response.refresh
 ```
 
-A test failed for 16 of the 30 mutants: the score is 16 / 30. A
+A test failed for 21 of the 45 mutants: the score is 21 / 45. A
 survivor's line gives its module; `declaration:line` (`Index.load:18` is
 line 18 of `app/Todos/Index.alder`; a route's members are named as in the
 source, `Save.update:27`; a column is added, `load:33:17`, when the line
@@ -2210,16 +2220,17 @@ after, shortened with `…` (an arm swap names its arms).
 
 ### The operators
 
-Each mutant comes from one of twenty-one **operators**, named by what it
+Each mutant comes from one of twenty-seven **operators**, named by what it
 breaks, in five classes; every mutant is well-typed:
 
 | Class | Operator | What it changes |
 |---|---|---|
-| authorization | `requires dropped` | A page's `requires user` no longer redirects a visitor, who is served as `User.UserId "mutant"` (for a field that is a brand over `Text`); old `page` form only |
-| authorization | `role dropped` | `requires user, role R` becomes `requires user`; old `page` form only |
+| authorization | `requires dropped` | A route's `requires user` no longer redirects a visitor, who is served as `User.UserId "mutant"` (for a field that is a brand over `Text`); one mutant per route (and per old `page`) |
+| authorization | `role dropped` | A route's `requires user, role R` becomes `requires user` |
 | authorization | `scope dropped` | `Db.mine T` becomes `Db.from T`; the other scoped operations act on anyone's row; likewise `Db.scoped` and its family (not on a siloed table) |
 | authorization | `membership dropped` | A key's `via M` check removed: a `Session.put` of any org succeeds |
 | authorization | `guard dropped` | An `if` or `match` with one arm ending in `Task.notFound`, `Query.notFound` or `Task.fail` becomes its other arm: the check is gone |
+| authorization | `step dropped` | A `let _ <- e` step becomes `Task.succeed ()` (or `Query.succeed ()`; `Task.succeed []` for a `List Unit`, a bulk action's writes): the access check `let _ <- Layout.adminOnly session.user` that begins a write route's `update`, say. Not an update, a delete or a `Session.put` (the two operators below make that program), nor a step whose result is neither `Unit` nor a `List` of it |
 | data | `where dropped` | One `Db.where` of a query removed |
 | data | `orderBy reversed` | A `Db.orderBy`'s `asc` and `desc` swapped |
 | data | `limit dropped` | A query's `Db.limit` removed |
@@ -2227,6 +2238,11 @@ breaks, in five classes; every mutant is well-typed:
 | data | `write replaced` | A `let … <-` insert, update or delete becomes `Task.succeed` of a placeholder (`()`, or an id `"mutant"`) |
 | data | `update field dropped` | One field of a record update `{ t \| a: …, b: … }` that sets two or more left out, wherever it is |
 | data | `session put dropped` | A `Session.put` step becomes `Task.succeed ()` |
+| flow | `redirect → refresh` | `Response.redirect r` becomes `Response.refresh` |
+| flow | `render → redirect` | `Response.render r` becomes `Response.redirect r` |
+| flow | `invalid → refresh` | `Response.invalid "message"` becomes `Response.refresh`: a refused write answered as a done one |
+| flow | `refresh → invalid` | `Response.refresh` becomes `Response.invalid "mutant"`: a done write answered as a refused one |
+| flow | `toast dropped` | One `Response.toast`, `success`, `warning` or `error` left out: the `Response` it decorates is answered without the notice |
 | flow | `redirect → rerender` | `Redirect page` becomes `Rerender`; old `Nav` only |
 | flow | `reject → rerender` | `Reject "message"` becomes `Rerender`; old `Nav` only |
 | flow | `arm swapped` | Two neighbouring arms of a `match` trade bodies (one mutant per pair) |
@@ -2237,10 +2253,13 @@ breaks, in five classes; every mutant is well-typed:
 | schema | `default changed` | A table field's default: `False`↔`True`, a number → one more, `""`→`"x"`, a union's constructor → the next one |
 | schema | `cascade ↔ restrict` | A reference's delete rule, `@cascade`↔`@restrict` |
 
-Four operators are for what chapter 6 replaced: a page's `requires` and
-`Nav`. A route's `requires` and `Response` are not mutated yet (alder#187),
-so the browser tests alone hold them (section 9): a visitor sent to log
-in, the wrong role, the answer a click comes to.
+Two operators are for what chapter 6 replaced, the old `Nav`; `requires
+dropped` and `role dropped` mutate an old `page`'s clause as a route's.
+A write route runs no `load` (chapter 6), so its own `requires`, its role
+and the access check its `update` begins with are all that stop a
+request: each is a mutant, and a test that sends the write from a page
+still open after the session changed kills it (a visitor, a cookie whose
+role is no longer the one required, a row demoted since; section 9).
 
 **The partition mutants.** `scope dropped` is made for every key: in
 the workspace, `Db.scoped Activity` → `Db.from Activity` is killed by
@@ -2261,9 +2280,8 @@ whose tests never try is told so by its score.
 
 ### The rules' mutants in a report
 
-The two operators for the declared rules of chapter 6 ("Rules") that a
-route has are `scope dropped` and `membership dropped`. `scope dropped`
-reads like this in a report. From `alder test --mutate -run
+Of the operators for the declared rules of chapter 6 ("Rules"), `scope
+dropped` reads like this in a report. From `alder test --mutate -run
 '^Table\.Todo ' examples/todos`, whose four tests open no page, the to-do
 app's six:
 
@@ -2309,8 +2327,9 @@ test "saving changes the title and the due date" = {
 }
 ```
 
-Nine tests of this kind kill all fourteen: the app's own code then ends
-`30 mutants: 30 killed, 0 survived  (score 1.00)`.
+Nine tests of this kind kill those fourteen, and the tests of the route
+operators kill the ten others (below): the app's own code then ends `45
+mutants: 45 killed, 0 survived  (score 1.00)`.
 
 ### The mutant that needs a stranger
 
@@ -2362,12 +2381,21 @@ field dropped` of the role; "a user with todos cannot be deleted" the
 its label" the swapped arms and the dropped `not` of `matches` and
 `filterLabel`; "the newest todo is listed first" the reversed
 `orderBy`; and the three of `Todos.Show` above. `examples/todos/README.md`
-lists the example's tests with what each kills. The report had no
-`requires dropped` or `redirect → rerender` line, because a route has
-neither mutant, so "a visitor is sent to log in from a todo" and "Logout
-clears the user and goes to log in" are in the example for the rules
-they check (section 9, and "The logout redirect" below), not because a
-survivor asked for them.
+lists the example's tests with what each kills. The report's ten other
+lines are the route operators'. Six are `requires dropped`, one per
+route: "a visitor is sent to log in from a todo" kills `Todos.Show`'s
+GET route's, and two tests kill the five write routes': "a write after
+logging out is sent to log in" and "saving or deleting after logging out
+is sent to log in" open the page, log out (`Test.login { user: Nothing
+}`) and send each write from the page still held, which must answer
+`Redirected (Auth.Login.Login {})` and change nothing. Against the
+mutant the write runs as the placeholder user, and its answer is a 404 or
+a failure, never the login page. The four answers (`redirect → refresh`
+of Logout and of `Todos.Show`'s Save and Delete, `refresh → invalid` of
+`Todos.Index`'s Delete) are killed by the tests that
+check what a write answers: "Logout clears the user and goes to log in"
+(see "The logout redirect" below), "saving changes the title and the due
+date", "deleting from the todo's page" and "Delete removes the todo".
 
 One kill is worth a word. `Table.Todo countOpen:37 not dropped` (`not
 t.done → t.done`) counts the done todos instead of the open ones. A test
@@ -2379,23 +2407,30 @@ example, admin included, reads:
 ```text
 $ alder test --mutate examples/todos
 …
-126 passed, 0 failed
-124 mutants: 122 killed, 2 survived  (score 0.98)
+147 passed, 0 failed
+236 mutants: 230 killed, 6 survived  (score 0.97)
 survived:
-  Admin.Todos.New    New.load:33   operator flipped   ownersTotal > 200 → ownersTotal >= 200
-  Admin.Users.Bulk   selected:44   where dropped      Db.where (Todo.owner.in taken) → the condition dropped
+  Admin.Todos.Edit   SearchOwner:14     role dropped       requires user, role Admin → requires user
+  Admin.Todos.Edit   Save.update:88     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Todos.New    SearchOwner:14     role dropped       requires user, role Admin → requires user
+  Admin.Todos.New    New.load:33        operator flipped   ownersTotal > 200 → ownersTotal >= 200
+  Admin.Todos.New    Create.update:62   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Users.Bulk   selected:44        where dropped      Db.where (Todo.owner.in taken) → the condition dropped
 ```
 
-(`…` stands for the 126 `ok` lines.) The app's own code has 30 mutants
-and all are killed by its 23 tests: the nine above; two that check rules and kill
-no mutant ("Logout clears the user…", "a visitor is sent to log in from a todo");
-and twelve older ones (`Todos.Index`'s eight, `Auth.Login`'s three, "countOpen…"). Two of the nine exist for the
+(`…` stands for the 147 `ok` lines.) The app's own code has 45 mutants
+and all are killed by its 25 tests: the nine above; the four of the route
+operators ("Logout clears the user…", "a visitor is sent to log in from a
+todo" and the two that send a write after logging out); and twelve older
+ones (`Todos.Index`'s eight, `Auth.Login`'s three, "countOpen…"). Two of the nine exist for the
 session's `role`, which the admin of chapter 15 needed: `App "Logout makes
 the role Member"` and `Auth.Login "logging in copies the role from the
 user's row"` kill the `update field dropped` of `role` in logout's and
-login's `Session.put`. The generated admin brings 94 mutants and 103 tests
-of its own, which kill all but two. Those two are equivalent mutants
-(below), and the example's README says why.
+login's `Session.put`. The generated admin brings 191 mutants and 122 tests
+of its own, which kill all but six. The README of the example says why
+each survives: the `role dropped` of its `Search` routes (another role's search is redirected to the page it was posted from, or, not decoding, renders that page again, and that page's own role check answers the 404 the search's would), the two `adminOnly` steps that the
+options check answers first (a demoted Admin's form is refused before the
+step runs), and two equivalent mutants (below).
 
 ### What is never a mutant
 
@@ -2411,7 +2446,16 @@ are reported apart, in `--json`'s last object (below):
   the same program as the original. The rules: an `arm swapped` of two
   identical bodies; an `orderBy reversed` under `Db.first` on a query by
   id; a `condition negated` of a literal `True` or `False`; an `operator
-  flipped` whose two sides are the same expression; and a `default
+  flipped` whose two sides are the same expression; a `step dropped` of
+  a step that is already `Task.succeed`; a write route's `requires
+  dropped` or `role dropped` when the route has no form, is in no silo,
+  and its `update` only redirects to a `GET` route whose guard refuses the
+  same requests in the same order (for `requires dropped`: the route
+  requires that one field and no role, and the target requires it first;
+  for `role dropped`: the target requires nothing the route does not, and
+  allows no role the route refuses), so nothing runs between the clause
+  and the redirect and the request ends where the clause would have sent
+  it; and a `default
   changed` on a field that no record of the app's code leaves out (no
   `Db.insert` row, no `Insert T` a helper builds), so the default never
   applies (the blog's `User.role`, which only tests rely on); and, in
@@ -2427,7 +2471,11 @@ are reported apart, in `--json`'s last object (below):
   a == b` (or `!=`) is skipped, because `operator flipped` already makes
   `if a != b`; so is one of `if not e`, which `not dropped` makes. (An
   ordering condition is negated: `<` flips to `<=`, while its negation is
-  `>=`.) A `guard dropped` or an `arm swapped` is skipped where an arm
+  `>=`.) A `step dropped` of an update, a delete or a `Session.put` is
+  skipped, because `write replaced` and `session put dropped` make it; so
+  is one of an `if` or a `match` whose `guard dropped` leaves `succeed
+  ()`, and one of a step whose result is neither `Unit` nor a `List` of
+  it (an insert's id: there is no value to succeed with). A `guard dropped` or an `arm swapped` is skipped where an arm
   uses what its pattern binds (a `match` on a `Maybe` whose `Just x` arm
   uses `x` cannot trade bodies with the `Nothing` arm); a `requires` on a field that is not a brand
   over `Text`, a `Maybe` default and an `@setNull` rule have no
@@ -2435,9 +2483,10 @@ are reported apart, in `--json`'s last object (below):
   the owner comes from the session either way.
 
 The to-do app has 1 suppressed (`User.role`'s default, which no row of
-the app's code leaves out) and 27 skipped (2 in its own code, the `scope
-dropped` of `Db.insertMine` among them, and 25 in its generated admin);
-the blog 1 (the same) and 41.
+the app's code leaves out) and 38 skipped (9 in its own code, the `scope
+dropped` of `Db.insertMine` among them, and 29 in its generated admin;
+most are a `step dropped` of a write or a `Session.put`); the blog 1 (the
+same) and 54.
 
 ### Survivors that are not gaps
 
@@ -2455,10 +2504,9 @@ browser asks for the same page again, with the user now gone from the
 session, and `requires user` redirects it to the login page. Either way
 the user ends up there, so no browser test can tell `redirect` from
 `refresh` here. A test of `Logout.update` itself can, since it sees the
-`Response` before any browser follows it. (With the page-and-message
-form this was a survivor, `redirect → rerender`; a route has no such
-mutant, but the test still checks something a browser cannot.) The example
-has one. It must be in `app/App.alder`: `Logout.update` is called by the
+`Response` before any browser follows it: the `redirect → refresh`
+mutant of `Logout.update` survives every browser test, and this one kills
+it. The example has one. It must be in `app/App.alder`: `Logout.update` is called by the
 runtime, and a test anywhere else that calls it is E0002. (This block is
 not checked on its own, since it belongs in that module; it is the
 file's own text.)
@@ -2476,26 +2524,36 @@ open, so there a browser test tells the two apart.)
 ### Mutants that are the same program
 
 With all its tests (those of its rules, and those of its generated admin),
-the blog keeps six survivors (here and below, `…` stands for the 196 `ok`
-lines):
+the blog keeps fourteen survivors (here and below, `…` stands for the 227
+`ok` lines):
 
 ```text
 $ alder test --mutate examples/blog
 …
-196 passed, 0 failed
-202 mutants: 196 killed, 6 survived  (score 0.97)
+227 passed, 0 failed
+376 mutants: 362 killed, 14 survived  (score 0.96)
 survived:
-  Admin.Comments.New   New.load:34        operator flipped   postsTotal > 200 → postsTotal >= 200
-  Admin.Posts.New      New.load:33        operator flipped   authorsTotal > 200 → authorsTotal >= 200
-  Admin.Users.Bulk     selected:44        where dropped      Db.where (Post.author.in taken) → the condition dropped
-  Posts.Index          Index.load:33:17   operator flipped   params.page < 1 → params.page <= 1
-  Posts.Index          Index.load:33:48   operator flipped   params.page > lastPage → params.page >= lastPage
-  Posts.Index          Index.load:42      limit dropped      Db.limit (perPage + 1) → no limit
+  Admin.Comments.Edit   SearchPost:15      role dropped       requires user, role Admin → requires user
+  Admin.Comments.Edit   Save.update:88     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Comments.New    SearchPost:15      role dropped       requires user, role Admin → requires user
+  Admin.Comments.New    New.load:34        operator flipped   postsTotal > 200 → postsTotal >= 200
+  Admin.Comments.New    Create.update:62   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Posts.Edit      SearchAuthor:14    role dropped       requires user, role Admin → requires user
+  Admin.Posts.Edit      Save.update:89     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Posts.New       SearchAuthor:14    role dropped       requires user, role Admin → requires user
+  Admin.Posts.New       New.load:33        operator flipped   authorsTotal > 200 → authorsTotal >= 200
+  Admin.Posts.New       Create.update:63   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Users.Bulk      selected:44        where dropped      Db.where (Post.author.in taken) → the condition dropped
+  Posts.Index           Index.load:33:17   operator flipped   params.page < 1 → params.page <= 1
+  Posts.Index           Index.load:33:48   operator flipped   params.page > lastPage → params.page >= lastPage
+  Posts.Index           Index.load:42      limit dropped      Db.limit (perPage + 1) → no limit
 ```
 
-The first three are the generated admin's, equivalent as the to-do
-admin's two are (the blog's README says why). The other three are in
-the blog's own code. The first line of `Posts.Index`'s `load` clamps the
+The first eleven are the generated admin's, as the to-do admin's six
+are (the blog's README says why each survives: the `role dropped` of its
+four `Search` routes, the four `adminOnly` steps that the options check
+answers first, and three equivalent mutants). The
+other three are in the blog's own code. The first line of `Posts.Index`'s `load` clamps the
 page number:
 
 ```alder fragment
@@ -2536,30 +2594,38 @@ app's behaviour and gets no mutants.
 ### The exact score
 
 With no survivor the report ends at the score line. The comparison
-uses the exact score, not the two decimals printed: the blog's is 196 /
-202 = 0.9703…, printed as 0.97, so
+uses the exact score, not the two decimals printed: the blog's is 362 /
+376 = 0.9627…, printed as 0.96, so
 
 ```text
-$ alder test --mutate --min 0.971 examples/blog
+$ alder test --mutate --min 0.963 examples/blog
 …
-196 passed, 0 failed
-202 mutants: 196 killed, 6 survived  (score 0.97)
+227 passed, 0 failed
+376 mutants: 362 killed, 14 survived  (score 0.96)
 survived:
-  Admin.Comments.New   New.load:34        operator flipped   postsTotal > 200 → postsTotal >= 200
-  Admin.Posts.New      New.load:33        operator flipped   authorsTotal > 200 → authorsTotal >= 200
-  Admin.Users.Bulk     selected:44        where dropped      Db.where (Post.author.in taken) → the condition dropped
-  Posts.Index          Index.load:33:17   operator flipped   params.page < 1 → params.page <= 1
-  Posts.Index          Index.load:33:48   operator flipped   params.page > lastPage → params.page >= lastPage
-  Posts.Index          Index.load:42      limit dropped      Db.limit (perPage + 1) → no limit
+  Admin.Comments.Edit   SearchPost:15      role dropped       requires user, role Admin → requires user
+  Admin.Comments.Edit   Save.update:88     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Comments.New    SearchPost:15      role dropped       requires user, role Admin → requires user
+  Admin.Comments.New    New.load:34        operator flipped   postsTotal > 200 → postsTotal >= 200
+  Admin.Comments.New    Create.update:62   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Posts.Edit      SearchAuthor:14    role dropped       requires user, role Admin → requires user
+  Admin.Posts.Edit      Save.update:89     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Posts.New       SearchAuthor:14    role dropped       requires user, role Admin → requires user
+  Admin.Posts.New       New.load:33        operator flipped   authorsTotal > 200 → authorsTotal >= 200
+  Admin.Posts.New       Create.update:63   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Users.Bulk      selected:44        where dropped      Db.where (Post.author.in taken) → the condition dropped
+  Posts.Index           Index.load:33:17   operator flipped   params.page < 1 → params.page <= 1
+  Posts.Index           Index.load:33:48   operator flipped   params.page > lastPage → params.page >= lastPage
+  Posts.Index           Index.load:42      limit dropped      Db.limit (perPage + 1) → no limit
 $ echo $?
 1
 ```
 
-while `--min 0.97` passes. A CI job runs `alder test --mutate --min R`
+while `--min 0.96` passes. A CI job runs `alder test --mutate --min R`
 with `R` at the score the app has reached, so a change that lets a
 mutant survive fails the build. The examples do this in the Go test
 suite: `TestExample_TodosMutation` and `TestExample_Blog` require at
-least 0.98 and 0.97, and the number of mutants their READMEs record.
+least 0.97 and 0.96, and the number of mutants their READMEs record.
 Without `--min`, the exit code is the tests'.
 
 ### `-run`, `-timeout` and `--json`
@@ -2575,13 +2641,13 @@ ok   Table.Todo "Active keeps only open todos"
 ok   Table.Todo "each filter has its label"
 ok   Table.Todo "a user with todos cannot be deleted"
 4 passed, 0 failed
-124 mutants: 7 killed, 117 survived  (score 0.06)
+236 mutants: 7 killed, 229 survived  (score 0.03)
 survived:
 …
 ```
 
-(117 survivor lines follow: the six `scope dropped` of "The rules' mutants
-in a report" among them, and all 94 of the generated admin's, which only
+(229 survivor lines follow: the six `scope dropped` of "The rules' mutants
+in a report" among them, and all 191 of the generated admin's, which only
 its own tests kill.) This is useful while writing the tests of
 one module, but the score that counts is the whole suite's.
 
@@ -2610,20 +2676,20 @@ every mutant, then one with the totals. A mutant's object has its `id`,
 `module`, `file`, `decl`, `line`, `col` (the column), `kind`, `before`,
 `after`, whether it was `killed`, `by` which test (the first that
 failed), and a `note` (`"crashed"`, `"timed out"`, or empty). From the
-to-do app's run, two of the 124:
+to-do app's run, two of the 236:
 
 ```text
-{"id":110,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"Index.load","line":18,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
+{"id":214,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"Index.load","line":18,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
 {"id":5,"module":"Table.Todo","file":"app/Table/Todo.alder","decl":"Todo","line":16,"col":3,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Table.Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
 ```
 
 and the last line:
 
 ```text
-{"score":0.9838709677419355,"killed":122,"survived":2,"suppressed":1,"skipped":27}
+{"score":0.9745762711864406,"killed":230,"survived":6,"suppressed":1,"skipped":38}
 ```
 
-`score` is exact here (122 / 124). `"tables":
+`score` is exact here (230 / 236). `"tables":
 "ensure"` marks a **schema mutant** (`default changed`, `cascade ↔
 restrict`): its tests run on tables made from the mutated table
 declarations by `Ensure`, as for an app without `migrations/`

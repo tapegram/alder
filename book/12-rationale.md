@@ -590,16 +590,19 @@ equivalent).
 **A curated set of operators, not every possible edit.** Generic mutation tools
 change any operator or constant anywhere, and produce thousands of mutants,
 many of them programs that do not compile, crash at once, or mean nothing in
-particular. Alder's twenty-one operators are each a bug that a server-rendered
+particular. Alder's twenty-seven operators are each a bug that a server-rendered
 app can have and a user would notice:
 
 - a `requires` missing;
 - an ownership check dropped;
 - a role or an ownership rule dropped (`role dropped`, `scope dropped`, M11);
 - a membership check dropped (`membership dropped`, M15);
+- an access-check step dropped (`step dropped`, alder#187);
 - a write that does nothing;
 - a filter or an order wrong;
-- a redirect that is a re-render;
+- a redirect that is a refresh;
+- a refusal answered as a success;
+- a notice left out;
 - a delete rule changed.
 
 Each works on the typed IR and makes a well-typed mutant by construction, so

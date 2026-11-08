@@ -157,16 +157,17 @@ shows how).
 
 All three examples run under it:
 
-- the to-do app's 124 mutants, 122 killed (the two survivors are in its
-  generated admin and equivalent);
-- the blog's 202, 196 killed;
-- the workspace's 300, 289 killed.
+- the to-do app's 236 mutants, 230 killed (the six survivors are in its
+  generated admin);
+- the blog's 376, 362 killed;
+- the workspace's 596, 570 killed.
 
 Every survivor is explained in the example's README.
 
-> **Not yet:** the operators for a route's `requires`, its role and its
-> `Response` do not exist yet (alder#187), so those rules are held by the
-> browser tests alone.
+A route's `requires` and role, its `Response` answers and each `let _ <-` step
+of its `update` (the access check a write route begins with) are mutated too,
+so a write route's own guard needs a test that sends the write from a page
+still open after the session changed.
 
 ### Declared authorization
 

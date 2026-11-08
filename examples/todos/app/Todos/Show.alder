@@ -120,6 +120,41 @@ test "deleting from the todo's page" = {
   )
 }
 
+-- Each write route has its own `requires user`: a visitor who posts Save or Delete from a page
+-- still open after the session ended is sent to log in, and the todo is left as it was.
+test "saving or deleting after logging out is sent to log in" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let _ <- Test.login { user: Nothing }
+  let saved <- Test.submit (Save { id: id }) { title: Text.NonEmpty "Bread", due: Nothing }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let _ <- Test.login { user: Nothing }
+  let deleted <- Test.click (Delete { id: id })
+  let after <- Db.get Todo id
+  Task.succeed (
+    {
+      saved: saved.answer,
+      deleted: deleted.answer,
+      todo: Maybe.map (\t -> t.title) after,
+    } == {
+      saved: Redirected (Auth.Login.Login {}),
+      deleted: Redirected (Auth.Login.Login {}),
+      todo: Just (Text.NonEmpty "Milk"),
+    }
+  )
+}
+
 -- No `load` runs before a write route: Save and Delete take the id from their path, and a
 -- stranger who posts them for my todo, on my page still open in the browser, is answered by
 -- their own `Db.updateMine` and `Db.deleteMine` with a 404.

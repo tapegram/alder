@@ -1,2 +1,6 @@
 1  App   Logout.update:12  session put dropped  let _ <- Session.put (\s -> { s | user: Nothing }) → let _ <- Task.succeed ()
-2  Home  Login.update:16   session put dropped  let _ <- Session.put (\s -> { s | user: Just p.id }) → let _ <- Task.succeed ()
+2  App   Logout.update:13  redirect → refresh   Response.redirect (Home.Home {}) → Response.refresh
+3  Home  Login.update:16   session put dropped  let _ <- Session.put (\s -> { s | user: Just p.id }) → let _ <- Task.succeed ()
+4  Home  Login.update:17   refresh → invalid    Response.refresh → Response.invalid "mutant"
+-  App   Logout.update:12  step dropped         skipped: session put dropped makes the same program
+-  Home  Login.update:16   step dropped         skipped: session put dropped makes the same program
