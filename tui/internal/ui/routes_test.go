@@ -13,8 +13,8 @@ import (
 	"alder/tui/internal/runner"
 )
 
-// shelfRoutes is the output of `alder routes --json` for the shelf app, sorted by path as alder
-// sorts it.
+// shelfRoutes is the output of an older `alder routes --json` for the shelf app (kinds, no
+// methods: the method column reads them as GET and POST), sorted by path as it sorted it.
 const shelfRoutes = `[` +
 	`{"kind":"page","path":"/","module":"Home","name":"page","file":"app/Home.al","line":1,"col":1},` +
 	`{"kind":"msg","path":"/_m/Books/lend","module":"Books","name":"Lend","file":"app/Books.al","line":22,"col":3},` +
@@ -49,11 +49,11 @@ func TestRoutes_Screen(t *testing.T) {
 	}
 	dim0 := "\x1b[2m0\x1b[0m"
 	for _, want := range []string{
-		"> page  /               Home.page    app/Home.al:1    1",
-		"  msg   /_m/Books/lend  Books.Lend   app/Books.al:22  " + dim0,
-		"  page  /books/new      Books.page   app/Books.al:40  " + dim0,
-		"  page  /books/{id}     Books.page   app/Books.al:8   2",
-		"  page  /search         Search.page  app/Search.al:2  1",
+		"> GET   /               Home.page    app/Home.al:1    1",
+		"  POST  /_m/Books/lend  Books.Lend   app/Books.al:22  " + dim0,
+		"  GET   /books/new      Books.page   app/Books.al:40  " + dim0,
+		"  GET   /books/{id}     Books.page   app/Books.al:8   2",
+		"  GET   /search         Search.page  app/Search.al:2  1",
 	} {
 		if rowOf(frame, want) == "" {
 			t.Errorf("no row %q in\n%s", want, frame)

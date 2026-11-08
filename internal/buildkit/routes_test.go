@@ -2,8 +2,7 @@ package buildkit
 
 import "testing"
 
-// A route app lists its routes in program order, each with its method; GET is kind "page", any
-// other method kind "msg" (older editor plugins read kind).
+// A route app lists its routes in program order, each with its method and kind "route".
 func TestRoutes_ListsRoutes(t *testing.T) {
 	t.Parallel()
 	prog, res, bag, ioErrs := LoadChecked("../../testdata/corpus/routes-ok", nil)
@@ -19,12 +18,12 @@ func TestRoutes_ListsRoutes(t *testing.T) {
 		got = append(got, row{r.Method, r.Kind, r.Path, r.Module, r.Name})
 	}
 	want := map[row]bool{
-		{"GET", "page", "/", "Todos", "Index"}:                    true,
-		{"GET", "page", "/todos/{id}", "Todos", "Row"}:            true,
-		{"GET", "page", "/export.csv", "Todos", "Export"}:         true,
-		{"PATCH", "msg", "/todos/{id}/toggle", "Todos", "Toggle"}: true,
-		{"POST", "msg", "/todos", "Todos", "Create"}:              true,
-		{"DELETE", "msg", "/todos/{id}", "Todos", "Delete"}:       true,
+		{"GET", "route", "/", "Todos", "Index"}:                     true,
+		{"GET", "route", "/todos/{id}", "Todos", "Row"}:             true,
+		{"GET", "route", "/export.csv", "Todos", "Export"}:          true,
+		{"PATCH", "route", "/todos/{id}/toggle", "Todos", "Toggle"}: true,
+		{"POST", "route", "/todos", "Todos", "Create"}:              true,
+		{"DELETE", "route", "/todos/{id}", "Todos", "Delete"}:       true,
 	}
 	for _, r := range got {
 		delete(want, r)
