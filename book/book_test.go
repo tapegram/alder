@@ -31,16 +31,11 @@ var (
 	buildOnce sync.Once
 	alderBin  string
 	buildErr  error
-	// todosApp is examples/todos as the book quotes it, absolute; exampleModules are its modules
-	// except App and the generated admin's. Until the book moves to routes (#160, PR 8), it
-	// quotes the examples as they were before `alder fix --routes`: testdata/fix holds those
-	// copies, and examples/ the apps on routes. The chapters already on routes (onRoutes) quote
-	// examples/ instead. (Temporary: deleted when the last chapter has moved, Task 8.3c.)
-	// exampleModules and exampleImports (the imports Decls blocks get, the cycle check) still
-	// read testdata/fix for every chapter, onRoutes ones included.
-	todosApp, _       = filepath.Abs("../testdata/fix/todos")
-	routesExamples, _ = filepath.Abs("../examples")
-	exampleModules    []string
+	// todosApp is examples/todos, absolute; exampleModules are its modules except App and the
+	// generated admin's. The book quotes the example apps as they are under examples/.
+	todosApp, _    = filepath.Abs("../examples/todos")
+	examplesDir, _ = filepath.Abs("../examples")
+	exampleModules []string
 	// scaffoldApp is the app `alder new guestbook` wrote with the built binary (the example
 	// ScaffoldExample), and newOutput what it printed.
 	scaffoldApp string
@@ -49,12 +44,6 @@ var (
 	// transcripts).
 	bareApp string
 )
-
-// onRoutes are the chapter files (base names) already rewritten for routes: their part= blocks
-// and the example app their other blocks are checked in are the apps under examples/, which are
-// on routes, while every other chapter still quotes the pre-routes copies in testdata/fix.
-// Temporary: a chapter is added when it moves; the set is deleted with the last move (#160, 8.3c).
-var onRoutes = map[string]bool{"02-tour.md": true, "03-syntax.md": true, "05-html.md": true, "06-routes.md": true, "07-effects.md": true, "08-database.md": true, "09-stdlib.md": true, "10-testing.md": true, "11-tooling.md": true, "13-compiler.md": true, "14-second-app.md": true, "15-generators.md": true, "16-deploy.md": true}
 
 // BareExample is the state name of chapter 15's transcripts on a bare app (`alder new notes
 // --bare`): like ScaffoldExample, the built binary's output, not a directory under examples/.
@@ -66,27 +55,16 @@ const BareExample = "notes"
 // generator cannot drift apart (TestBook_Scaffold).
 const ScaffoldExample = "guestbook"
 
-// exampleApp is the directory of the example app named ex (a directory under examples/, read
-// from its copy under testdata/fix until PR 8 of #160: see todosApp), absolute. A chapter in
-// onRoutes uses exampleAppOn instead.
-func exampleApp(ex string) string { return exampleAppOn(ex, false) }
-
-// exampleAppOn is exampleApp for a chapter that is on routes (routes true: the app under
-// examples/) or not (its pre-routes copy).
-func exampleAppOn(ex string, routes bool) string {
+// exampleApp is the directory of the example app named ex (a directory under examples/, or the
+// scaffold or bare app the built binary wrote), absolute.
+func exampleApp(ex string) string {
 	if ex == ScaffoldExample {
 		return scaffoldApp
 	}
 	if ex == BareExample {
 		return bareApp
 	}
-	if routes {
-		return filepath.Join(routesExamples, ex)
-	}
-	if ex == DefaultExample {
-		return todosApp
-	}
-	return filepath.Join(filepath.Dir(todosApp), ex)
+	return filepath.Join(examplesDir, ex)
 }
 
 func TestMain(m *testing.M) {
@@ -207,8 +185,6 @@ type verifier struct {
 	// example is, for a module joined from part=<example>/<Module> blocks, its example app
 	// (every other block is checked in DefaultExample).
 	example map[Snippet]string
-	// routes is set for a chapter in onRoutes: it quotes examples/, not testdata/fix.
-	routes bool
 }
 
 // exampleOf is the example app s is checked in.
@@ -226,7 +202,7 @@ func (v *verifier) failf(line int, format string, a ...any) {
 // verify checks every ```alder block of the chapter at path, reported as display.
 func verify(t *testing.T, path, display string) report {
 	t.Helper()
-	v := &verifier{t: t, bin: alder(t), display: display, r: report{counts: map[string]int{}}, joined: map[Snippet][]int{}, example: map[Snippet]string{}, routes: onRoutes[filepath.Base(path)]}
+	v := &verifier{t: t, bin: alder(t), display: display, r: report{counts: map[string]int{}}, joined: map[Snippet][]int{}, example: map[Snippet]string{}}
 	v.evalDir = filepath.Join(tmpRoot, "eval")
 	var err error
 	if err = os.MkdirAll(v.evalDir, 0o755); err == nil {
@@ -262,7 +238,7 @@ func verify(t *testing.T, path, display string) report {
 		case Part:
 			v.r.counts["part"]++
 			key := exp.Example + "/" + exp.Module
-			if fi, err := os.Stat(filepath.Join(exampleAppOn(exp.Example, v.routes), "app")); err != nil || !fi.IsDir() {
+			if fi, err := os.Stat(filepath.Join(exampleApp(exp.Example), "app")); err != nil || !fi.IsDir() {
 				v.failf(s.Line, "part=%s: there is no example app examples/%s", key, exp.Example)
 				continue
 			}
@@ -319,7 +295,7 @@ func verify(t *testing.T, path, display string) report {
 		}
 		v.joined[js] = lines
 		v.example[js] = exp.Example
-		if msg := sameAsExampleOn(exp.Example, m, src, v.routes); msg != "" {
+		if msg := sameAsExample(exp.Example, m, src); msg != "" {
 			v.failf(js.Line, "%s", msg)
 		}
 		switch {
@@ -345,7 +321,7 @@ func verify(t *testing.T, path, display string) report {
 func (v *verifier) newApp(ex string) string {
 	v.seq++
 	dir := filepath.Join(v.dir, fmt.Sprintf("app%d", v.seq))
-	src := filepath.Join(exampleAppOn(ex, v.routes), "app")
+	src := filepath.Join(exampleApp(ex), "app")
 	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -661,7 +637,7 @@ func (v *verifier) parseOnly(s Snippet) {
 // eval runs an Expr block through `alder eval --json -`: for Eval its value must be exp.Value
 // exactly; for Error a diagnostic must have exp.Code.
 func (v *verifier) eval(s Snippet, exp Expect) {
-	cmd := exec.Command(v.bin, "eval", exampleAppOn(DefaultExample, v.routes), "--json", "-")
+	cmd := exec.Command(v.bin, "eval", exampleApp(DefaultExample), "--json", "-")
 	cmd.Dir = v.evalDir
 	cmd.Stdin = strings.NewReader(s.Source) // as written: eval continues an item on a closer
 	var out, errb bytes.Buffer
@@ -1108,11 +1084,8 @@ func TestBook_ScaffoldDrift(t *testing.T) {
 // or the to-do example has no module m (the tour's pieces may be a module of their own), else a
 // message naming the first line that differs. Another example must have the module: a part=
 // block names it to quote it, so a misspelt name fails.
-func sameAsExample(example, m, src string) string { return sameAsExampleOn(example, m, src, false) }
-
-// sameAsExampleOn is sameAsExample for a chapter that is on routes (see onRoutes) or not.
-func sameAsExampleOn(example, m, src string, routes bool) string {
-	file := filepath.Join(exampleAppOn(example, routes), "app", filepath.FromSlash(strings.ReplaceAll(m, ".", "/"))+".alder")
+func sameAsExample(example, m, src string) string {
+	file := filepath.Join(exampleApp(example), "app", filepath.FromSlash(strings.ReplaceAll(m, ".", "/"))+".alder")
 	b, err := os.ReadFile(file)
 	if err != nil {
 		if example == DefaultExample {

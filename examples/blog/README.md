@@ -1,7 +1,7 @@
 # blog
 
 The second example, which chapter 14 tours: posts with drafts, comments, a Reader/Author/Admin
-role, a Markdown capability, pages of results and a search, the author's own pages under
+role, a Markdown capability, routes of results and a search, the author's own pages under
 `/write`, and a site admin under `/admin` that `alder new admin` generated (book 15). `alder
 check`, `alder build` and `alder test` take this directory; chapter 11 explains each command.
 
@@ -12,7 +12,7 @@ To try it: `alder run`, then log in at `/login` with the password `password` as
 
 ## Layout
 
-The tables (Comment, Post and User) live under `app/Table/`, one module each (`module Table.Comment`, `Table.Post` and `Table.User`), and pages `import Table.<Name>`. The admin's folders are plural (`app/Admin/Todos/` and so on); its URLs are not (`/admin/todo`). `migrations/0002_rename_comment_rename_post_rename_user.sql` renames the tables from the old root modules to these; it moves no data.
+The tables (Comment, Post and User) live under `app/Table/`, one module each (`module Table.Comment`, `Table.Post` and `Table.User`), and route modules `import Table.<Name>`. The admin's folders are plural (`app/Admin/Todos/` and so on); its URLs are not (`/admin/todo`). `migrations/0002_rename_comment_rename_post_rename_user.sql` renames the tables from the old root modules to these; it moves no data.
 
 ## Deploying
 
@@ -44,8 +44,8 @@ exact 0.970 rounded down, or the number of mutants is not 202.
 - The generated admin (`app/Admin/`, "Replaying the admin" below): 147 mutants, 144 killed
   by its generated tests, kept as `alder new admin` wrote them. The three survivors are equivalent:
   `postsTotal > 200` and `authorsTotal > 200` flipped to `>= 200` in the `where` of the Comment
-  and Post New pages' lists (a search of "" matches every row), and `Post.author.in ids` dropped
-  from the user bulk page's load (`refused` is only asked of the chosen rows). The Edit pages'
+  and Post New routes' lists (a search of "" matches every row), and `Post.author.in ids` dropped
+  from the user bulk route's `load` (`refused` is only asked of the chosen rows). The Edit routes'
   lists have no such survivor: the row's own value is read by itself and comes first, the search
   leaves it out, and the generated test of exactly 200 rows tells `>` from `>=`.
 - The rest of the blog: 55 mutants, 52 killed, 3 survived, as before the admin (below).
@@ -58,11 +58,9 @@ The history of the rest:
 
 The rules are declared (book 06, "Rules"): `Post.author` is the table's `@owner`, the session
 holds the user's `role` from login, and `Write` and `Write.Edit` `requires user, role Author`.
-The cookie keeps the role until logout (or the session's 30 days), so both pages' `load` also
+The cookie keeps the role until logout (or the session's 30 days), so both routes' `load` also
 re-read the user's row (`User.isAuthor`, the re-read idiom): a demoted author is turned away at
-once. Their new mutants are killed: the two `role dropped` by `Write "a promoted reader logs in
-again first"` and `Write.Edit "a promoted reader logs in again before editing"` (the row says
-Author, the cookie still Reader: only the role check turns them away); the re-reads by `Write "a
+once. Their mutants are killed: the re-reads (`guard dropped`) by `Write "a
 demoted author cannot open the write page"` and `Write.Edit "a demoted author is turned away at
 once"`; the two `scope dropped` (`Db.mine Post`, `Db.getMine Post`)
 by `Write "the write page lists the author's own posts, newest first"` and `Write.Edit "another
@@ -70,7 +68,10 @@ author's post is not found"`, which since routes (#160) also kills the `scope dr
 `Write.Edit`'s write routes (no `load` runs before them, so their `Db.updateMine` and
 `Db.deleteMine` are the check); the dropped `role` of the login's and the logout's `Session.put` by
 `Auth.Login "logging in through the form"` and `Posts.Index "logging out from the front page
-goes to log in"`.
+goes to log in"`. (A `role dropped` mutant exists only for the old `page` form, alder#187; the tests
+`Write "a promoted reader logs in again first"` and `Write.Edit "a promoted reader logs in again
+before editing"` still pin the role check, the row saying Author while the cookie says Reader, and
+kill no mutant.)
 
 The ten tests that closed the gaps:
 
@@ -81,16 +82,20 @@ The ten tests that closed the gaps:
   reversed.
 - `Posts.Index "a page that is exactly full has no next page"`: `>` flipped to `>=` in
   `hasMore`.
-- `Posts.Index "logging out from the front page goes to log in"`: logout's `Redirect →
-  Rerender`. The front page is the one page with a Log out button that does not `require user`,
-  so here the browser shows the difference.
-- `Write.Edit "a visitor is sent to log in"`: `requires user` dropped.
+- `Posts.Index "logging out from the front page goes to log in"`: the dropped `role` of logout's
+  `Session.put`. The front page is the one page with a Log out button that does not `require
+  user`, so here the browser shows where logging out ends. (Its old kill, `Redirect → Rerender`,
+  has no operator on routes yet, alder#187.)
+- `Write.Edit "a visitor is sent to log in"`: pins the rule that a visitor is sent to log in;
+  a route's `requires` is not mutated yet (alder#187), so it kills no mutant.
 - `Write.Edit "saving changes the title and the body"`: the save replaced, and each updated
   field dropped.
-- `Posts.Show "commenting through the form"`: the redirect after a comment.
+- `Posts.Show "commenting through the form"`: the comment's insert replaced, and the redirect
+  after it, which no operator mutates yet (alder#187).
 - `Auth.Login "an unknown email is rejected"` and `Auth.Login "logging in through the form"`,
-  with a new `fake Password`: the dropped `Session.put`, the login's redirect, and its
-  `Reject`.
+  with a new `fake Password`: the dropped `Session.put`. The login's redirect and its
+  `Response.invalid` are pinned by behaviour only: a route's `Response` has no operator yet
+  (alder#187).
 
 The three survivors are legitimate: no test can kill them, because each mutant behaves exactly
 like the original program.
@@ -111,7 +116,7 @@ leaves out) and skips 41 that do not apply; neither count is part of the score.
 ## Replaying the admin
 
 Every file under `app/Admin/` is exactly what `alder new admin` wrote; none was edited by hand.
-The author's pages were `Admin` and `Admin.Edit` until then, at `/admin`; the admin needs that
+The author's modules were `Admin` and `Admin.Edit` until then, at `/admin`; the admin needs that
 module and path, so they became `Write` and `Write.Edit`, at `/write` and `/write/{id}`. The
 steps, from the blog before the admin:
 

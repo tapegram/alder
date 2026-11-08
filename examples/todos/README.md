@@ -11,7 +11,7 @@ Member) or `admin@b.c` (an Admin: `/admin`). The accounts are the development st
 
 ## Layout
 
-The tables (Todo and User) live under `app/Table/`, one module each (`module Table.Todo` and `Table.User`), and pages `import Table.<Name>`. The admin's folders are plural (`app/Admin/Todos/` and so on); its URLs are not (`/admin/todo`). `migrations/0002_rename_todo_rename_user.sql` renames the tables from the old root modules to these; it moves no data.
+The tables (Todo and User) live under `app/Table/`, one module each (`module Table.Todo` and `Table.User`), and route modules `import Table.<Name>`. The admin's folders are plural (`app/Admin/Todos/` and so on); its URLs are not (`/admin/todo`). `migrations/0002_rename_todo_rename_user.sql` renames the tables from the old root modules to these; it moves no data.
 
 ## Deploying
 
@@ -43,9 +43,9 @@ killed, 2 survived (score 0.98). `TestExample_TodosMutation` fails if the score 
 - The app's own code: 30 mutants, all killed by its 23 tests (score 1.00).
 - The generated admin (`app/Admin/`, "Replaying the admin" below): 94 mutants, 92 killed by
   its generated tests, kept as `alder new admin` wrote them. The two survivors are equivalent:
-  `ownersTotal > 200` flipped to `>= 200` in the `where` of the New page's owner list, where a
+  `ownersTotal > 200` flipped to `>= 200` in the `where` of the New route's owner list, where a
   search of "" matches every row anyway, and `Todo.owner.in ids` dropped from the user bulk
-  page's load, whose `refused` is only asked of the chosen rows. (The Edit page's list no longer
+  route's `load`, whose `refused` is only asked of the chosen rows. (The Edit route's list no longer
   has the first: its row's own owner is read by itself and comes first, and the search leaves it
   out, so the generated test of exactly 200 users tells `>` from `>=`.)
 
@@ -59,7 +59,7 @@ The history of the app's own code:
   `Auth.Login "logging in copies the role from the user's row"`.
 
 The ownership rules are declared (book 06, "Rules"): `Todo.owner` is the table's `@owner`, and
-the pages use `Db.mine`, `Db.getMine`, `Db.updateMine`, `Db.deleteMine` and `Db.insertMine`.
+the routes use `Db.mine`, `Db.getMine`, `Db.updateMine`, `Db.deleteMine` and `Db.insertMine`.
 Their four `scope dropped` mutants (each scoped operation made unscoped) are killed by the
 ownership tests among the eleven: `Todos.Index "a stranger cannot see my todo"` (the list's
 `Db.mine` and `Todos.Show`'s `Db.getMine`), `Todos.Index "Toggle by another user is not found"`
@@ -72,20 +72,21 @@ is not found"` kills them.
 
 The nine tests that closed the gaps, each named for what it kills:
 
-- `App "Logout clears the user and goes to log in"`: logout's `Redirect → Rerender`. Every Log
-  out button of this app is on a page that `requires user`, so in the browser a Rerender of that
-  page also ends at the login page. Only a test of `App.update` itself tells the two apart.
+- `App "Logout clears the user and goes to log in"`: it checks the rule that logging out ends at
+  the login page. Operators for a route's `Response` do not exist yet (alder#187), so no mutant
+  of the route form needs it; it stays for the behaviour it pins.
 - `Todo "countOpen ignores done todos"` (now two open todos and one done, so `not` dropped gives
   1, not 2), `Todo "Active keeps only open todos"` and `Todo "each filter has its label"`: the
   swapped `match` arms and the dropped `not` of `matches` and `filterLabel`.
 - `Todo "a user with todos cannot be deleted"`: `owner @ref User` changed to `@cascade`.
 - `Todos.Index "Delete removes the todo"`: the delete replaced by `Task.succeed ()` (now also
-  killed by `"Delete by another user is not found"`, which expects a 404 and gets a Rerender).
+  killed by `"Delete by another user is not found"`, which expects a 404).
 - `Todos.Index "the newest todo is listed first"`: `Db.orderBy` reversed.
-- `Todos.Show "a visitor is sent to log in from a todo"`: `requires user` dropped.
-- `Todos.Show "saving changes the title and the due date"`: the save replaced, each updated
-  field dropped, and the redirect after it.
-- `Todos.Show "deleting from the todo's page"`: that page's delete, and its redirect.
+- `Todos.Show "a visitor is sent to log in from a todo"`: a visitor is sent to log in. It pins the rule, and kills no mutant: a route's `requires` is not
+  mutated yet (alder#187).
+- `Todos.Show "saving changes the title and the due date"`: the save replaced, and each updated
+  field dropped.
+- `Todos.Show "deleting from the todo's page"`: that route's delete.
 
 No mutant of the app's own code survives. The run also refuses 1 mutant as provably equivalent
 (`User.role`'s default, which no row of the app's code leaves out) and skips 27 that do not

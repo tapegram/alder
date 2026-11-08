@@ -898,7 +898,7 @@ Post.PostId } form PostForm requires user, role Admin`, and a path that ends in
 `DELETE` route, `Destroy`, that the button sends. `Bulk` is a `GET` route that shows the chosen rows
 and a `POST` route for each action (`BulkDelete`, `BulkSetStatus` …). Every
 route has `requires user, role Admin`, and an `update` answers with a
-`Response`: `Response.redirect` to the list after a save or a delete,
+`Response`: `Response.redirect` to the row after a save and to the list after a delete,
 `Response.invalid` for a refusal. Every write route has a test whose
 name starts "a demoted Admin cannot …": it demotes the Admin in the table
 after logging in, sends the write route, and expects the refusal. No

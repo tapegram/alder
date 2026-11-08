@@ -2237,8 +2237,8 @@ breaks, in five classes; every mutant is well-typed:
 | schema | `default changed` | A table field's default: `False`↔`True`, a number → one more, `""`→`"x"`, a union's constructor → the next one |
 | schema | `cascade ↔ restrict` | A reference's delete rule, `@cascade`↔`@restrict` |
 
-Four operators change what chapter 6 replaced, a page's `requires` and
-the `Nav` values. A route's `requires` and `Response` are not mutated yet,
+Four operators are for what chapter 6 replaced: a page's `requires` and
+`Nav`. A route's `requires` and `Response` are not mutated yet (alder#187),
 so the browser tests alone hold them (section 9): a visitor sent to log
 in, the wrong role, the answer a click comes to.
 
@@ -2387,7 +2387,9 @@ survived:
 ```
 
 (`…` stands for the 126 `ok` lines.) The app's own code has 30 mutants
-and all are killed by its 23 tests. Two of the nine exist for the
+and all are killed by its 23 tests: the nine above; two that check rules and kill
+no mutant ("Logout clears the user…", "a visitor is sent to log in from a todo");
+and twelve older ones (`Todos.Index`'s eight, `Auth.Login`'s three, "countOpen…"). Two of the nine exist for the
 session's `role`, which the admin of chapter 15 needed: `App "Logout makes
 the role Member"` and `Auth.Login "logging in copies the role from the
 user's row"` kill the `update field dropped` of `role` in logout's and
