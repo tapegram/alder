@@ -6190,53 +6190,80 @@ testing and M10 the embedded runtime (above). See the design spec,
 
 ### The dev trace, the panel and `/_dev`
 
+#### The recorder
+
 In developer mode the router gives each request's `eff.Env` a `Recorder`
-(`rt/eff`): `Run` adds a step (name, milliseconds, and "adapter" or "fake" for a
-capability's call) around every `Call`, and `rt/db` wraps its querier so each
-statement is added with its arguments, time and rows touched (a read's rows
-are counted by its caller once they are read, `Recorder.SetRows`). A nil
-recorder costs nothing. A redirect the router follows in the same answer
-(`follow`, chapter 6) serves the target page with the first request's
-recorder: the hop notes where its steps and statements begin
-(`tracker.hops`), the panel prints "then GET <url>" there, and each request
-keeps its own answer (`tracker.setAnswer`), so the panel stays the write's
-(the Patches tab names what was sent, `tracker.patchName`, such as
-`#todos`, `body` or `toast`, and the answer by its route, `tracker.via`:
-`render Row`, `redirect Index`).
+(`rt/eff`): `Run` adds a step (name, milliseconds, and "adapter" or "fake"
+for a capability's call) around every `Call`, and `rt/db` wraps its
+querier so each statement is added with its arguments, time and rows
+touched (a read's rows are counted by its caller once they are read,
+`Recorder.SetRows`). A nil recorder costs nothing.
+
+A redirect the router follows in the same answer (`follow`, chapter 6)
+serves the target page with the first request's recorder: the hop notes
+where its steps and statements begin (`tracker.hops`), the panel prints
+"then GET <url>" there, and each request keeps its own answer
+(`tracker.setAnswer`), so the panel stays the write's (the Patches tab
+names what was sent, `tracker.patchName`, such as `#todos`, `body` or
+`toast`, and the answer by its route, `tracker.via`: `render Row`,
+`redirect Index`).
+
+#### The panel
+
 After the answer the router renders the panel from it
 (`rt/web/devpanel.go`): inlined before `</body>` on a full document; on a
-Datastar answer the body patch carries an empty `<al-devpanel id="_alder_panel"
-data-ignore-morph>` (kept by the morph, with its open state) and the panel's
-contents follow as one more `datastar-patch-elements` event, selector
-`#_alder_panel`, mode inner. The panel's script (`panelScript`, a constant of
-`rt/web/devpanel.go`) is written once, after the panel of a full document, and a
-morph leaves it running: it keeps the tab last chosen on the shell
-(`data-tab`) and, after each patch of the panel (whose sections but Request
-arrive `hidden`), shows that tab's section again; a `MutationObserver` on the
-panel files each request
-(its `data-rid`, bar line and sections) in `sessionStorage`, the last 20 of the
-tab, and lists them in the History tab; "Copy as curl" copies the line the
-server built (`curlLine`, with a `<your session cookie>` placeholder). `/_dev`
-is a route the router answers itself when `ALDER_DEV=1`. Its page is one
-`html/template` over two things: `Options.DevMap`, a compact JSON the
-generator wrote into `Web()` (`internal/gen/devmap.go`: the tables with columns
-and attributes, the capability names, the session's fields, and, for a module
-with an older `page`, its path, `requires`, roles, parameters and messages),
-and what only the running server knows (the build id, the migrations the
-database has, how each capability is wired, and the routes: the method and
-pattern of every route the router holds). The generated map has no entry for a
-route yet ([#190](https://github.com/tapegram/alder/issues/190)), so for an app on routes its `pages` list is empty and the routes
-come from the router. Neither is served without `ALDER_DEV=1`:
-`/_dev` is a 404 and no page carries the panel or its script (a test builds
-an example, runs it without `ALDER_DEV` and checks both). A toast is an event
-of the `rt.Response` (`Response.toast`, `rt.WithToast`). `setToasts` in the
-router makes the first one the answer's (`tracker.notice` and `kind`) and keeps
-the rest (`tracker.more`), and `notify` patches each after the answer's own
-patches, as `<al-toast variant="…" timeout="…">` appended to `al-toasts`
+Datastar answer the body patch carries an empty
+`<al-devpanel id="_alder_panel" data-ignore-morph>` (kept by the morph,
+with its open state) and the panel's contents follow as one more
+`datastar-patch-elements` event, selector `#_alder_panel`, mode inner.
+
+The panel's script (`panelScript`, a constant of `rt/web/devpanel.go`) is
+written once, after the panel of a full document, and a morph leaves it
+running:
+
+- it keeps the tab last chosen on the shell (`data-tab`) and, after each
+  patch of the panel (whose sections but Request arrive `hidden`), shows
+  that tab's section again;
+- a `MutationObserver` on the panel files each request (its `data-rid`,
+  bar line and sections) in `sessionStorage`, the last 20 of the tab, and
+  lists them in the History tab;
+- "Copy as curl" copies the line the server built (`curlLine`, with a
+  `<your session cookie>` placeholder).
+
+#### The `/_dev` page
+
+`/_dev` is a route the router answers itself when `ALDER_DEV=1`. Its page
+is one `html/template` over two things:
+
+- `Options.DevMap`, a compact JSON the generator wrote into `Web()`
+  (`internal/gen/devmap.go`: the tables with columns and attributes, the
+  capability names, the session's fields, and, for a module with an older
+  `page`, its path, `requires`, roles, parameters and messages);
+- what only the running server knows (the build id, the migrations the
+  database has, how each capability is wired, and the routes: the method
+  and pattern of every route the router holds).
+
+> **Not yet:** The generated map has no entry for a route yet
+> ([#190](https://github.com/tapegram/alder/issues/190)), so for an app on
+> routes its `pages` list is empty and the routes come from the router.
+
+Neither is served without `ALDER_DEV=1`: `/_dev` is a 404 and no page
+carries the panel or its script (a test builds an example, runs it without
+`ALDER_DEV` and checks both).
+
+#### Toasts in the panel
+
+A toast is an event of the `rt.Response` (`Response.toast`,
+`rt.WithToast`). `setToasts` in the router makes the first one the
+answer's (`tracker.notice` and `kind`) and keeps the rest (`tracker.more`),
+and `notify` patches each after the answer's own patches, as
+`<al-toast variant="…" timeout="…">` appended to `al-toasts`
 (`datastar.PatchToast`; `shellBody` adds an empty `<al-toasts>` to a body
-patch when the page has none). Without Datastar the first toast of a 303 rides in the
-signed cookie `alder_notice` as `notice:<kind>:<text>` to the page it
-goes to (`storeNotice`, `takeNotice`), which shows it once as an `<al-alert>`.
+patch when the page has none).
+
+Without Datastar the first toast of a 303 rides in the signed cookie
+`alder_notice` as `notice:<kind>:<text>` to the page it goes to
+(`storeNotice`, `takeNotice`), which shows it once as an `<al-alert>`.
 
 
 ## 9. Reading generated code
@@ -6258,33 +6285,39 @@ hand, and git ignores it.
 
 `build/todos/` has one Go file per module, named after the module with `.`
 replaced by `__` and `_alder.go` added (`Todos__Index_alder.go` for
-`Todos.Index`), plus two app-wide files and a `go.mod` that finds the
-runtime in `rt/` beside it (section 8, "The runtime travels with the
-compiler"). `app__alder.go` holds the lists of section 8
-(`Tables`, `Capabilities`), the `Caps` struct the generated `caps` package fills, `Options`,
-`Serve` (which checks the capabilities, opens the database, creates the
-tables and returns `web.NewRouter(Routes, …)`), `Web` (the router's
-options that do not depend on how the app runs, which `Serve` starts
-from), and `session__codec`, the cookie's JSON. `routes__alder.go` holds `Routes` and every handler of
-section 8's last part. An app with capabilities also gets
-`caps/caps__alder.go`, the package `caps` that wires them (chapter 7
-quotes the blog's). A full `alder build` (without `--emit`) adds
-`cmd/main.go`, which reads the environment and calls
-`Serve(caps.Caps(), …)` (or `Serve(app.Caps{}, …)` for an app without
-capabilities); `adapters/` and `static/`, copies of the app's own; and
-the executable.
+`Todos.Index`), plus two app-wide files and a `go.mod` that finds the runtime
+in `rt/` beside it (section 8, "The runtime travels with the compiler").
+
+`app__alder.go` holds the lists of section 8 (`Tables`, `Capabilities`), the
+`Caps` struct the generated `caps` package fills, `Options`, `Serve` (which
+checks the capabilities, opens the database, creates the tables and returns
+`web.NewRouter(Routes, …)`), `Web` (the router's options that do not depend on
+how the app runs, which `Serve` starts from), and `session__codec`, the
+cookie's JSON.
+
+`routes__alder.go` holds `Routes` and every handler of section 8's last part.
+An app with capabilities also gets `caps/caps__alder.go`, the package `caps`
+that wires them (chapter 7 quotes the blog's).
+
+A full `alder build` (without `--emit`) adds `cmd/main.go`, which reads the
+environment and calls `Serve(caps.Caps(), …)` (or `Serve(app.Caps{}, …)` for
+an app without capabilities); `adapters/` and `static/`, copies of the app's
+own; and the executable.
 
 The fixed ending is there because Go reads meaning into file names: a file
 ending in `_test.go` is a test, and one whose name ends in `_linux` or
 `_amd64` (before the first `.`) is compiled only on Linux or only on that
 processor. A module named `Foo_test` or `Bar_linux` is a fine Alder module,
 and `Foo_test_alder.go` and `Bar_linux_alder.go` are ordinary files to Go.
+
 Every Go file starts with `// Code generated by alder; DO NOT EDIT.`
 (`app__alder.go`'s names the compiler's version too: `// Code generated by
-alder devel+0be85a2f5d31; DO NOT EDIT.`, chapter 11), and the build runs `go vet` on the package before saying `wrote`. Before
-writing, the build deletes the `.go` files in `build/<app>/` that start
-with that line (and `go.mod`), so a module you removed or renamed leaves
-no file behind; files you put there yourself are kept.
+alder devel+0be85a2f5d31; DO NOT EDIT.`, chapter 11), and the build runs `go
+vet` on the package before saying `wrote`.
+
+Before writing, the build deletes the `.go` files in `build/<app>/` that start
+with that line (and `go.mod`), so a module you removed or renamed leaves no
+file behind; files you put there yourself are kept.
 
 Every generated name follows one scheme (`internal/gen/names.go`), and its
 parts are always joined by a double underscore, `__`:
@@ -6310,77 +6343,95 @@ parts are always joined by a double underscore, `__`:
 | `title` → `Title`, `_at` → `U__at` | a record field, exported (a capital first letter, or `U__` for a leading `_`) so that adapters, and the runtime's `Show`, `Eq` and `Key`, see it | |
 | `type` → `type__` | a local whose name Go reserves, or that names `rt`, `html`, `std` | |
 
-Why `__`? Your names may not contain it: the compiler rejects `max__len`
-(E0001), and a module name segment may not end with `_`. So `__` can only
-be a joint, and a generated name can be read back into its parts:
+#### Why `__`
+
+Your names may not contain it: the compiler rejects `max__len` (E0001),
+and a module name segment may not end with `_`. So `__` can only be a
+joint, and a generated name can be read back into its parts:
 `Todos__Index__view` is module `Todos.Index` and name `view`, never module
 `Todos` and a name `Index__view`. Modules `A.B` and `A_B` become
 `A__B_alder.go` and `A_B_alder.go`, so they cannot overwrite each other's
-file. Names the compiler adds
-start with a lowercase word (`tag__`, `is__`, `payload__`, `widen__`,
-`page__`, `guard__`, `decode__`, …), which no module name does, so they never clash
-with yours either. The names your adapters use must be exported, so they
-start with a capital: `Cap__`, `Args__` and `Route__`, and the fixed
-`Caps`, `Serve`, `Options`, `Routes`, `Tables` and `Capabilities`. A
-type `Password` in a module `Cap.Auth.Login` would be
-`Cap__Auth__Login__Password`, the interface of capability `Password` in
-`Auth.Login`, so a module whose first segment is exactly `Route`, `Cap` or
-`Args` is refused (E0015). The fixed names contain no `__`, so no
-declaration of yours can produce them. One more rule keeps `Args__` names
-apart: an entry whose name starts with `_` gets an `x` in front
-(`_raw` → `Args__M__C__x_raw`), so the part after the last `__` never
-starts with `_`. The one
-places your names and generated ones share a module are `App`, which
-generates `Session`, so a type or component of yours may not use that name
-(E0012), and a route module, whose generated types are qualified by the
-route (`Toggle.Params`, `Index.Session`) and so need no reserved word. The
-route's own name is kept apart from the module names, the import qualifiers
-and the constructors in scope by E0044. A generated name can never be a Go keyword or clash with `rt`,
-`html` or `std`.
+file.
 
-**The build, in order** (`runBuildTo` in `cmd/alder/build.go`):
+Names the compiler adds start with a lowercase word (`tag__`, `is__`,
+`payload__`, `widen__`, `page__`, `guard__`, `decode__`, …), which no
+module name does, so they never clash with yours either.
+
+The names your adapters use must be exported, so they start with a
+capital: `Cap__`, `Args__` and `Route__`, and the fixed `Caps`, `Serve`,
+`Options`, `Routes`, `Tables` and `Capabilities`. A type `Password` in a
+module `Cap.Auth.Login` would be `Cap__Auth__Login__Password`, the
+interface of capability `Password` in `Auth.Login`, so a module whose
+first segment is exactly `Route`, `Cap` or `Args` is refused (E0015). The
+fixed names contain no `__`, so no declaration of yours can produce them.
+
+One more rule keeps `Args__` names apart: an entry whose name starts with
+`_` gets an `x` in front (`_raw` → `Args__M__C__x_raw`), so the part after
+the last `__` never starts with `_`.
+
+> **Where your names and generated ones meet.** The one places your names
+> and generated ones share a module are `App`, which generates `Session`,
+> so a type or component of yours may not use that name (E0012), and a
+> route module, whose generated types are qualified by the route
+> (`Toggle.Params`, `Index.Session`) and so need no reserved word. The
+> route's own name is kept apart from the module names, the import
+> qualifiers and the constructors in scope by E0044. A generated name can
+> never be a Go keyword or clash with `rt`, `html` or `std`.
+
+#### The build, in order
+
+The build runs in these steps (`runBuildTo` in `cmd/alder/build.go`):
 
 1. Check the program (section 5), and lower it to the IR (section 6).
+
 2. Check the adapters, before anything is written:
-   `buildkit.CheckAdapters` (`internal/buildkit/adapters.go`). It turns
-   each capability of the IR's `Program.Caps` into a `Need`: the module,
-   the capability, the directory (`gen.AdapterPkg`: the module's first
-   segment, lower-cased), the function (`gen.AdapterFunc`: the other
-   segments and the capability's name, joined) and the interface. Two
-   needs with the same directory and function are the "internal naming
+   `buildkit.CheckAdapters` (`internal/buildkit/adapters.go`).
+
+   It turns each capability of the IR's `Program.Caps` into a `Need`: the
+   module, the capability, the directory (`gen.AdapterPkg`: the module's
+   first segment, lower-cased), the function (`gen.AdapterFunc`: the other
+   segments and the capability's name, joined) and the interface.
+
+   Two needs with the same directory and function are the "internal naming
    error" (`gen.AdapterCollision`), checked first; then a directory named
    `internal` or `testdata` is refused, and so is an `adapters/go.mod`.
-   Then the scan. It lists `adapters/` and wants each needed directory
-   by its exact name, as a real directory: a symbolic link is skipped
-   (as the copy below skips it), and a directory that differs only in
-   letter case is refused by name, since on a case-insensitive file
-   system it would pass the scan and then confuse Go. In each directory
-   it parses, with Go's own parser (`go/parser`, which reads a file's
-   declarations without type-checking anything), every regular `.go`
-   file that is not a test and that Go would build here
+
+   Then the scan. It lists `adapters/` and wants each needed directory by
+   its exact name, as a real directory: a symbolic link is skipped (as the
+   copy below skips it), and a directory that differs only in letter case
+   is refused by name, since on a case-insensitive file system it would
+   pass the scan and then confuse Go.
+
+   In each directory it parses, with Go's own parser (`go/parser`, which
+   reads a file's declarations without type-checking anything), every
+   regular `.go` file that is not a test and that Go would build here
    (`build.Default.MatchFile` applies build tags and `_linux`-style file
-   names), and collects the functions that are exported, have no
-   receiver, no type parameters and no parameters. A need whose function
-   is not among them is missing; when the package declares the name as
-   something else (a function with parameters, a variable, a type), the
-   `Need` keeps that near miss in `Found` for its line. A file that does
-   not parse counts as having every function, so that Go, later, reports
-   the syntax error itself. Every missing need is printed, and the build
-   exits 1.
+   names), and collects the functions that are exported, have no receiver,
+   no type parameters and no parameters.
+
+   A need whose function is not among them is missing; when the package
+   declares the name as something else (a function with parameters, a
+   variable, a type), the `Need` keeps that near miss in `Found` for its
+   line. A file that does not parse counts as having every function, so
+   that Go, later, reports the syntax error itself. Every missing need is
+   printed, and the build exits 1.
+
 3. Emit the Go (section 7); `gen.Emit` adds the `caps` file
    (`gen.CapsPackage`) when the program has capabilities. Write it
    (`buildkit.WriteGenerated`, which also removes a stale `caps/`).
+
 4. Copy `migrations/`, then the whole `adapters/` tree
-   (`buildkit.CopyAdapters`, which first removes, by exact name, what
-   the app no longer has, so a directory renamed only in its case is not
-   lost on macOS, then copies, skipping a file whose content is
-   unchanged, so Go's build cache stays warm) and `static/`, and write
-   `cmd/main.go` (`gen.Main`).
+   (`buildkit.CopyAdapters`, which first removes, by exact name, what the
+   app no longer has, so a directory renamed only in its case is not lost
+   on macOS, then copies, skipping a file whose content is unchanged, so
+   Go's build cache stays warm) and `static/`, and write `cmd/main.go`
+   (`gen.Main`).
+
 5. `go vet ./...` on the module, then `go build ./cmd`. When vet fails,
-   the build vets the generated package alone to decide whose fault it
-   is: if that fails too, it is an internal error (exit 2); otherwise the
-   adapters (or the wiring of their constructors) do not compile, which
-   is your Go, and exit 1 with Go's output
+   the build vets the generated package alone to decide whose fault it is:
+   if that fails too, it is an internal error (exit 2); otherwise the
+   adapters (or the wiring of their constructors) do not compile, which is
+   your Go, and exit 1 with Go's output
    (`buildkit.AdaptersCompileMessage`).
 
 The test builds of `alder test`, `alder eval` and the REPL (section
@@ -6443,18 +6494,22 @@ this section is the inside.
 
 The transcripts below are real. They were recorded by running Neovim 0.12.5
 with alder.nvim on a copy of `examples/blog`, with `ALDER_LSP_LOG` set to a
-file: `alder lsp` copies every message it receives (`->`) and sends (`<-`)
-to that file, one JSON object per line. Long values are trimmed, and
-each cut is marked `…`; whole messages are left out only where the text
-says so; and the directory the copy lived in is written `…`. Nothing else is changed:
-the lines are the log's, byte for byte, apart from those cuts. (Neovim
-asks `textDocument/documentColor` after every change, and `alder lsp`
+file: `alder lsp` copies every message it receives (`->`) and sends (`<-`) to
+that file, one JSON object per line.
+
+Long values are trimmed, and each cut is marked `…`; whole messages are left
+out only where the text says so; and the directory the copy lived in is
+written `…`. Nothing else is changed: the lines are the log's, byte for byte,
+apart from those cuts.
+
+(Neovim asks `textDocument/documentColor` after every change, and `alder lsp`
 answers with an empty list; those requests and their answers are left out
-everywhere, which is why some ids below skip a number. Several sessions are
-quoted, each a fresh run on a fresh copy of the blog, so the ids start
-again at 1 in each. The generator requests of "Generators" were sent by a
-script in the same Neovim, with the parameters the editor's generator modal
-sends.)
+everywhere, which is why some ids below skip a number.
+
+Several sessions are quoted, each a fresh run on a fresh copy of the blog, so
+the ids start again at 1 in each. The generator requests of "Generators" were
+sent by a script in the same Neovim, with the parameters the editor's
+generator modal sends.)
 
 ### The wire
 
