@@ -91,7 +91,7 @@ test "a visitor is sent to log in" = {
     assignee: Nothing,
   }
   let r <- Test.open (Show { id: issue1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "without an org the page sends you to choose one" = {
@@ -106,5 +106,5 @@ test "without an org the page sends you to choose one" = {
     assignee: Nothing,
   }
   let r <- Test.open (Show { id: issue1 })
-  Task.succeed (r.answer == Redirected (Orgs {}))
+  Task.succeed (r.answer == Redirected (Orgs.Orgs {}))
 }

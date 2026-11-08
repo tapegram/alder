@@ -116,7 +116,7 @@ test "a visitor cannot save an org" = {
   let r <- Test.submit (Save { id: org1 }) { name: Text.NonEmpty "name-2" }
   let after <- Db.get Org org1
   Task.succeed (
-    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login {}), row: before }
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login.Login {}), row: before }
   )
 }
 
@@ -182,7 +182,7 @@ test "a missing row is not found" = {
 test "a visitor is sent to log in" = {
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let r <- Test.open (Edit { id: org1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Member gets no page, even one made Admin since logging in" = {

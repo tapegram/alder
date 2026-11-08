@@ -14,20 +14,18 @@ session {
   role: User.Role = Member,
 }
 
-login = Auth.Login
+login = Auth.Login.Login
 
-choose org = Orgs
+choose org = Orgs.Orgs
 
 silo org { Project, Issue, Activity }
 
-msg Logout
+route Logout = POST "/_/Logout" { }
 
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Logout p -> {
-    let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
-    Task.succeed (Redirect (Auth.Login {}))
-  },
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
 
 error : Error -> Html Never
@@ -47,7 +45,7 @@ test "Logout clears the user and the role, and goes to log in" = {
     org: Nothing,
     role: Admin,
   }
-  let _ <- Test.get (Orgs {})
+  let _ <- Test.get (Orgs.Orgs {})
   let r <- Test.click Logout
   Task.succeed (
     {
@@ -55,7 +53,7 @@ test "Logout clears the user and the role, and goes to log in" = {
       user: r.session.user,
       role: r.session.role,
     } == {
-      answer: Redirected (Auth.Login {}),
+      answer: Redirected (Auth.Login.Login {}),
       user: Nothing,
       role: Member,
     }

@@ -432,7 +432,7 @@ test "a visitor cannot delete the chosen rows" = {
   let kept <- Db.get Post post1
   Task.succeed (
     { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
-      == { answer: Redirected (Auth.Login {}), kept: Just post1 }
+      == { answer: Redirected (Auth.Login.Login {}), kept: Just post1 }
   )
 }
 
@@ -498,7 +498,7 @@ test "a visitor cannot set status on the chosen rows" = {
   let r <- Test.submit (BulkSetStatus { ids: [post1] }) { value: Published }
   let after <- Db.get Post post1
   Task.succeed (
-    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login {}), row: before }
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login.Login {}), row: before }
   )
 }
 
@@ -560,7 +560,7 @@ test "a visitor cannot set featured on the chosen rows" = {
   let r <- Test.submit (BulkSetFeatured { ids: [post1] }) { value: True }
   let after <- Db.get Post post1
   Task.succeed (
-    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login {}), row: before }
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login.Login {}), row: before }
   )
 }
 
@@ -612,7 +612,7 @@ test "a visitor is sent to log in" = {
     author: me,
   }
   let r <- Test.open (Bulk { ids: [post1] })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {

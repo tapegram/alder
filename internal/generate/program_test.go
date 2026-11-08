@@ -57,9 +57,15 @@ func TestLoad_Fixture(t *testing.T) {
 	if s == nil || s.User == nil || s.UserTable != "User" || s.Role == nil || !slices.Equal(s.Role.Ctors, []string{"Reader", "Admin"}) {
 		t.Errorf("session: %+v", s)
 	}
-	home := p.PageNamed("Home")
-	if home == nil || home.Path != "/" || home.Requires != "user" || !slices.Equal(home.Msgs, []string{"Submit"}) || !slices.Equal(home.Forms, []string{"Write"}) {
-		t.Errorf("Home: %+v", home)
+	home := p.RouteModule("Home")
+	var writes []string
+	for _, r := range p.RoutesOf("Home") {
+		if r.Write() {
+			writes = append(writes, r.Name+" form "+r.Form)
+		}
+	}
+	if home == nil || home.Path != "/" || !slices.Equal(home.Keys, []string{"user"}) || !slices.Equal(writes, []string{"Submit form Write"}) {
+		t.Errorf("Home: %+v, write routes %v", home, writes)
 	}
 	if !p.Layout || !p.Std["Text"] || p.Std["Post"] {
 		t.Errorf("Layout %v, Std %v", p.Layout, p.Std)
@@ -75,7 +81,7 @@ func TestHoleIndex(t *testing.T) {
 	}
 	home := filepath.Join(dir, "app", "Home.alder")
 	b, _ := os.ReadFile(home)
-	src := strings.Replace(string(b), "    Task.succeed (Redirect (Home {}))\n", "    ?done\n", 1)
+	src := strings.Replace(string(b), "  Task.succeed (Response.redirect (Home {}))\n", "  ?done\n", 1)
 	src += "\ntest \"a hole\" = ?verdict\n\ncapability Home {\n  stamp : Int -> Task Text,\n}\n\nfake Home {\n  stamp n = ?stamp\n}\n"
 	os.WriteFile(home, []byte(src), 0o644)
 	p, err := Load(dir)
@@ -86,7 +92,7 @@ func TestHoleIndex(t *testing.T) {
 	for _, h := range HoleIndex(p.Prog, p.Diags) {
 		got = append(got, h.Address()+" ?"+h.Name+" : "+h.Type)
 	}
-	want := []string{`Home.update.Submit ?done : Task Nav`, `Home."a hole" ?verdict : Bool`, `Home.Home.stamp ?stamp : Task Text`}
+	want := []string{`Home.Submit.update ?done : Task Response`, `Home."a hole" ?verdict : Bool`, `Home.Home.stamp ?stamp : Task Text`}
 	if !slices.Equal(got, want) {
 		t.Errorf("holes:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}

@@ -264,7 +264,7 @@ test "a visitor cannot save a user" = {
   }
   let after <- Db.get User user2
   Task.succeed (
-    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login {}), row: before }
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login.Login {}), row: before }
   )
 }
 
@@ -331,7 +331,7 @@ test "a visitor is sent to log in" = {
     name: Text.NonEmpty "name-1",
   }
   let r <- Test.open (Edit { id: user1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {

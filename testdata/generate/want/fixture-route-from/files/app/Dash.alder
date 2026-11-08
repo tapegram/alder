@@ -70,5 +70,5 @@ test "the page shows each table's rows" = {
 
 test "a visitor is sent to log in" = {
   let r <- Test.open (Dash {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }

@@ -117,7 +117,9 @@ test "a visitor cannot create a project" = {
     role: Admin,
   }
   let rows <- Db.from Project |> Db.count
-  Task.succeed ({ answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login {}), rows: 0 })
+  Task.succeed (
+    { answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login.Login {}), rows: 0 }
+  )
 }
 
 test "a Member cannot create a project, even one made Admin since logging in" = {
@@ -172,7 +174,7 @@ test "a demoted Admin cannot create a project" = {
 test "a visitor is sent to log in" = {
   let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let r <- Test.open (New { org: org })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Member gets no page, even one made Admin since logging in" = {

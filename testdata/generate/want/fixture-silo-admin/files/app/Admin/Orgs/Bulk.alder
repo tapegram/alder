@@ -232,7 +232,7 @@ test "a visitor cannot delete the chosen rows" = {
   let kept <- Db.get Org org1
   Task.succeed (
     { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
-      == { answer: Redirected (Auth.Login {}), kept: Just org1 }
+      == { answer: Redirected (Auth.Login.Login {}), kept: Just org1 }
   )
 }
 
@@ -287,7 +287,7 @@ test "a demoted Admin cannot delete the chosen rows" = {
 test "a visitor is sent to log in" = {
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let r <- Test.open (Bulk { ids: [org1] })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Member gets no page, even one made Admin since logging in" = {

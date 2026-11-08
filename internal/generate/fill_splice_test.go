@@ -82,20 +82,20 @@ func TestFill_OperatorKeepsItsPrecedence(t *testing.T) {
 // TestFill_MultiLineWithComments: a multi-line answer's comments are cut and its lines kept; an
 // answer of comments only is refused.
 func TestFill_MultiLineWithComments(t *testing.T) {
-	expr := "{\n  -- first, nothing\n  let x <- Task.succeed Rerender -- the answer\n  -- then\n  Task.succeed x\n} -- done"
-	got := fillOutside(t, fillApp(t, nil), "Home.update.Submit", expr)
-	if strings.Contains(got, "first, nothing") || strings.Contains(got, "the answer") || !strings.Contains(got, "let x <- Task.succeed Rerender\n") || !strings.Contains(got, "Task.succeed x\n") {
+	expr := "{\n  -- first, nothing\n  let x <- Task.succeed Response.refresh -- the answer\n  -- then\n  Task.succeed x\n} -- done"
+	got := fillOutside(t, fillApp(t, nil), "Home.Submit.update", expr)
+	if strings.Contains(got, "first, nothing") || strings.Contains(got, "the answer") || !strings.Contains(got, "let x <- Task.succeed Response.refresh\n") || !strings.Contains(got, "Task.succeed x\n") {
 		t.Errorf("Home:\n%s", got)
 	}
-	if _, _, _, err := Fill(fillApp(t, nil), "Home.update.Submit", "", "-- only a comment\n"); err == nil {
+	if _, _, _, err := Fill(fillApp(t, nil), "Home.Submit.update", "", "-- only a comment\n"); err == nil {
 		t.Error("an expression of comments only was accepted")
 	}
 }
 
 // TestFill_StringWithDashesKept: `--` inside a string is not a comment.
 func TestFill_StringWithDashesKept(t *testing.T) {
-	got := fillOutside(t, fillApp(t, nil), "Home.update.Submit", `Task.succeed (Reject "a -- b") -- why`)
-	if !strings.Contains(got, `Reject "a -- b"`) || strings.Contains(got, "why") {
+	got := fillOutside(t, fillApp(t, nil), "Home.Submit.update", `Task.succeed (Response.invalid "a -- b") -- why`)
+	if !strings.Contains(got, `Response.invalid "a -- b"`) || strings.Contains(got, "why") {
 		t.Errorf("Home:\n%s", got)
 	}
 }

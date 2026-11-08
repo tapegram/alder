@@ -99,8 +99,8 @@ func TestSystem_Reference(t *testing.T) {
 // TestRun_RetryTextNamesTheAnswer: a refusal sent back to the model speaks of its answer, not
 // of standard input.
 func TestRun_RetryTextNamesTheAnswer(t *testing.T) {
-	s := &script{answers: []string{"Task.succeed Rerender,\n}", "Task.succeed Rerender"}}
-	if _, err := Run(context.Background(), s, holeApp(t, nil), "Home.update.Submit", "", nil); err != nil {
+	s := &script{answers: []string{"Task.succeed Response.refresh,\n}", "Task.succeed Response.refresh"}}
+	if _, err := Run(context.Background(), s, holeApp(t, nil), "Home.Submit.update", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if retry := s.seen[1][2].Content; strings.Contains(retry, "standard input") || !strings.Contains(retry, "your answer") {

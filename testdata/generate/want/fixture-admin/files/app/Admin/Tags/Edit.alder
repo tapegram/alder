@@ -306,7 +306,7 @@ test "a long list of posts offers 50, and the search narrows it" = {
       total: 203,
       found: True,
       answer: Redirected (Edit { id: tag1, findPost: "zz" }),
-      visitor: Redirected (Auth.Login {}),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -376,7 +376,7 @@ test "a visitor cannot save a tag" = {
   let r <- Test.submit (Save { id: tag1 }) { name: Text.NonEmpty "name-2", post: post2 }
   let after <- Db.get Tag tag1
   Task.succeed (
-    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login {}), row: before }
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login.Login {}), row: before }
   )
 }
 
@@ -454,7 +454,7 @@ test "a visitor is sent to log in" = {
   }
   let tag1 <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
   let r <- Test.open (Edit { id: tag1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {

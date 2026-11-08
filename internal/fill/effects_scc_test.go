@@ -20,13 +20,13 @@ func TestEffects_SCC(t *testing.T) {
 		name, expr string
 		want       int
 	}{
-		{"a then c in one expression", "{\n  let _ <- Scc.a 1\n  let _ <- Scc.c 2\n  Task.succeed Rerender\n}", 2},
-		{"c alone", "{\n  let _ <- Scc.c 2\n  Task.succeed Rerender\n}", 1},
-		{"b alone", "{\n  let _ <- Scc.b 2\n  Task.succeed Rerender\n}", 1},
-		{"a then b", "{\n  let _ <- Scc.a 1\n  let _ <- Scc.b 2\n  Task.succeed Rerender\n}", 2},
+		{"a then c in one expression", "{\n  let _ <- Scc.a 1\n  let _ <- Scc.c 2\n  Task.succeed Response.refresh\n}", 2},
+		{"c alone", "{\n  let _ <- Scc.c 2\n  Task.succeed Response.refresh\n}", 1},
+		{"b alone", "{\n  let _ <- Scc.b 2\n  Task.succeed Response.refresh\n}", 1},
+		{"a then b", "{\n  let _ <- Scc.a 1\n  let _ <- Scc.b 2\n  Task.succeed Response.refresh\n}", 2},
 	} {
 		dir := sccApp(t)
-		r, err := Run(context.Background(), &script{answers: []string{c.expr}}, dir, "Home.update.Submit", "", nil)
+		r, err := Run(context.Background(), &script{answers: []string{c.expr}}, dir, "Home.Submit.update", "", nil)
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}

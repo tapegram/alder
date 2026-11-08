@@ -197,7 +197,7 @@ test "a visitor cannot delete a project" = {
   let kept <- Db.get Project project1
   Task.succeed (
     { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
-      == { answer: Redirected (Auth.Login {}), kept: Just project1 }
+      == { answer: Redirected (Auth.Login.Login {}), kept: Just project1 }
   )
 }
 
@@ -279,7 +279,7 @@ test "a visitor is sent to log in" = {
   let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
   let r <- Test.open (Delete { org: org, id: project1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Member gets no page, even one made Admin since logging in" = {

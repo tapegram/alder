@@ -315,7 +315,7 @@ test "a visitor is sent to log in" = {
     author: me,
   }
   let r <- Test.open (Show { id: post1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {

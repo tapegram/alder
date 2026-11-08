@@ -386,7 +386,7 @@ test "a visitor cannot delete the chosen rows" = {
   let kept <- Db.get Issue issue1
   Task.succeed (
     { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
-      == { answer: Redirected (Auth.Login {}), kept: Just issue1 }
+      == { answer: Redirected (Auth.Login.Login {}), kept: Just issue1 }
   )
 }
 
@@ -490,7 +490,7 @@ test "a visitor cannot set status on the chosen rows" = {
   }
   let after <- Db.get Issue issue1
   Task.succeed (
-    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login {}), row: before }
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login.Login {}), row: before }
   )
 }
 
@@ -613,7 +613,7 @@ test "a visitor is sent to log in" = {
     assignee: Nothing,
   }
   let r <- Test.open (Bulk { org: org, ids: [issue1] })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Member gets no page, even one made Admin since logging in" = {

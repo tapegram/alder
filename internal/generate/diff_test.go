@@ -35,11 +35,11 @@ func TestLineEdits_HunksAndImport(t *testing.T) {
 // TestFindHole: the hole an address names, with Fill's refusals.
 func TestFindHole(t *testing.T) {
 	p := fillApp(t, nil)
-	h, err := FindHole(p, "Home.update.Submit", "")
-	if err != nil || h.Name != "done" || h.Type != "Task Nav" {
+	h, err := FindHole(p, "Home.Submit.update", "")
+	if err != nil || h.Name != "done" || h.Type != "Task Response" {
 		t.Fatalf("FindHole = %+v, %v", h, err)
 	}
-	if _, err := FindHole(p, "Home.update.Submit", "?nope"); err == nil || !strings.Contains(err.Error(), "has no hole `?nope`") {
+	if _, err := FindHole(p, "Home.Submit.update", "?nope"); err == nil || !strings.Contains(err.Error(), "has no hole `?nope`") {
 		t.Errorf("a hole it does not have: %v", err)
 	}
 	if _, err := FindHole(p, "Home.view", ""); err == nil || !strings.Contains(err.Error(), "has no typed hole") {

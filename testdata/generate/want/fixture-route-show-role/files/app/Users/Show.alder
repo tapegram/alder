@@ -79,7 +79,7 @@ test "a visitor is sent to log in" = {
     name: Text.NonEmpty "name-1",
   }
   let r <- Test.open (Show { id: user1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a user who is not Admin gets no page" = {

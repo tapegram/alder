@@ -1,23 +1,15 @@
 edited app/App.alder
 --- a/app/App.alder
 +++ b/app/App.alder
-@@ -11,12 +11,15 @@
+@@ -10,6 +10,7 @@
+ login = Auth.Login.Login
  
- msg Logout
+ route Logout = POST "/_/Logout" { }
++route Ping   = POST "/_/Ping"   { }
  
-+msg Ping
-+
- update : Msg -> Session -> Task Nav
- update msg session = match msg {
-   Logout p -> {
-     let _ <- Session.put (\s -> { s | user: Nothing, role: Reader })
-     Task.succeed (Redirect (Auth.Login {}))
-   },
-+  Ping p -> ?ping,
- }
- 
- error : Error -> Html Never
-@@ -27,10 +30,7 @@
+ Logout.update : Logout.Params -> Session -> Task Response
+ Logout.update p session = {
+@@ -25,14 +26,22 @@
    </Layout.Page>
  
  notFound : Html Never
@@ -27,23 +19,20 @@ edited app/App.alder
 -  </Layout.Page>
 +notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
  
- -- From a page that `requires user` a Rerender ends at the login page too; only a test of
- -- `update` itself tells Redirect from Rerender.
-@@ -38,3 +38,11 @@
-   let r <- Test.run (update Logout { user: Just (User.UserId "me"), role: Admin })
-   Task.succeed (r.value == Ok (Redirect (Auth.Login {})))
++Ping.update : Ping.Params -> Session -> Task Response
++Ping.update params session = Task.succeed Response.refresh
++
+ -- From a page that `requires user` a refresh ends at the login page too; only a test of
+ -- `Logout.update` itself tells a redirect from a refresh.
+ test "Logout goes to log in" = {
+   let r <- Test.run (Logout.update {} { user: Just (User.UserId "me"), role: Admin })
+   Task.succeed (r.value == Ok (Response.redirect (Auth.Login.Login {})))
  }
 +
-+-- A message of App is sent from any page (`click={App.Ping}`), so the test calls update itself.
-+-- Fill ?expected with what Ping must do, as `{ value: r.value, trace: r.trace } ==
-+-- { value: Ok Rerender, trace: ["Session.put"] }`: its answer and the effects it ran.
++-- Ping is sent from any page (`click={App.Ping}`): put an `al-button` with it in the view of
++-- the page this test opens, or open the page that has it. Until a page does, the click finds no control.
 +test "pressing Ping" = {
-+  let r <- Test.run (update Ping { user: Nothing, role: Reader })
-+  Task.succeed ?expected
++  let _ <- Test.get (Auth.Login.Login {})
++  let r <- Test.click Ping
++  Task.succeed (r.answer == Refreshed)
 +}
-app/App.alder:22:13: warning[W0002]: hole ?ping has type Task Nav
-    Ping p -> ?ping,
-              ^^^^^
-app/App.alder:47:16: warning[W0002]: hole ?expected has type Bool
-    Task.succeed ?expected
-                 ^^^^^^^^^

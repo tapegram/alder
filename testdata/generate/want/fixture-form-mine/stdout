@@ -1,10 +1,20 @@
 edited app/Home.alder
 --- a/app/Home.alder
 +++ b/app/Home.alder
-@@ -10,23 +10,31 @@
+@@ -4,21 +4,22 @@
+ import Table.Post
+ import Table.User
  
- load : Params -> Session -> Query Model
- load params session = {
+-route Home   = GET  "/"         { }            requires user
+-route Submit = POST "/_/Submit" { } form Write requires user
++route Home        = GET  "/"              { }            requires user
++route Submit      = POST "/_/Submit"      { } form Write requires user
++route SubmitQuick = POST "/_/SubmitQuick" { } form Quick requires user
+ 
+ type Model = { posts: List Post }
+ 
+ Home.load : Home.Params -> Session -> Query Model
+ Home.load params session = {
 -  let posts <- Db.mine Post |> Db.orderBy Post.created.desc |> Db.all
 +  let posts <-
 +    Db.mine Post
@@ -19,26 +29,9 @@ edited app/Home.alder
 -}
 +form Write = { title: Text.NonEmpty, body: Text }
  
- msg Submit form Write
- 
-+form Quick = { title: Text.NonEmpty, body: Text }
-+
-+msg SubmitQuick form Quick
-+
- update : Msg -> Model -> Session -> Task Nav
- update msg model session = match msg {
-   Submit p -> {
-     let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
-     Task.succeed (Redirect (Home {}))
-   },
-+  SubmitQuick p -> {
-+    let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
-+    Task.succeed (Redirect (Home {}))
-+  },
- }
- 
- view : Model -> Session -> Html Msg
-@@ -46,6 +54,12 @@
+ Submit.update : Submit.Params -> Session -> Task Response
+ Submit.update p session = {
+@@ -43,26 +44,72 @@
          <al-textarea field="body" label="Body" />
          <al-button type="submit">Write</al-button>
        </form>
@@ -51,9 +44,21 @@ edited app/Home.alder
      </al-card>
  
      <al-button variant="outline" click={App.Logout}>Log out</al-button>
-@@ -57,15 +71,47 @@
+   </Layout.Page>
+ 
++form Quick = { title: Text.NonEmpty, body: Text }
++
++SubmitQuick.update : SubmitQuick.Params -> Session -> Task Response
++SubmitQuick.update params session = {
++  let _ <- Db.insertMine Post { title: params.form.title, body: params.form.body }
++  Task.succeed (Response.redirect (Home {}) |> Response.success "Saved")
++}
++
+ test "writing a post lists it, a draft" = {
+   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+   let _ <- Test.login { user: Just me }
    let _ <- Test.get (Home {})
-   let r <- Test.submit Write { title: Text.NonEmpty "Hello", body: "" }
+   let r <- Test.submit Submit { title: Text.NonEmpty "Hello", body: "" }
    let posts <- Db.from Post |> Db.all
 -  Task.succeed ({ answer: r.answer, listed: Test.texts "#posts li" r.doc, posts: List.map (\p -> { status: p.status, featured: p.featured, author: p.author }) posts } == { answer: Redirected (Home {}), listed: ["Hello"], posts: [{ status: Draft, featured: False, author: me }] })
 +  Task.succeed (
@@ -103,7 +108,14 @@ edited app/Home.alder
    let _ <- Test.login { user: Just me }
    let page <- Test.get (Home {})
    Task.succeed (Test.texts "#posts li" page.doc == ["Second", "First"])
-@@ -77,9 +123,64 @@
+@@ -82,13 +129,70 @@
+   let _ <- Test.login { user: Nothing }
+   let r <- Test.submit Submit { title: Text.NonEmpty "Hello", body: "" }
+   let posts <- Db.from Post |> Db.count
+-  Task.succeed ({ answer: r.answer, posts: posts } == { answer: Redirected (Auth.Login.Login {}), posts: 0 })
++  Task.succeed (
++    { answer: r.answer, posts: posts } == { answer: Redirected (Auth.Login.Login {}), posts: 0 }
++  )
  }
  
  test "logging out signs the user out" = {
@@ -116,14 +128,14 @@ edited app/Home.alder
    let _ <- Test.login { user: Just me, role: Admin }
    let _ <- Test.get (Home {})
    let out <- Test.click App.Logout
--  Task.succeed ({ answer: out.answer, user: out.session.user, role: out.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, role: Reader })
+-  Task.succeed ({ answer: out.answer, user: out.session.user, role: out.session.role } == { answer: Redirected (Auth.Login.Login {}), user: Nothing, role: Reader })
 +  Task.succeed (
 +    {
 +      answer: out.answer,
 +      user: out.session.user,
 +      role: out.session.role,
 +    } == {
-+      answer: Redirected (Auth.Login {}),
++      answer: Redirected (Auth.Login.Login {}),
 +      user: Nothing,
 +      role: Reader,
 +    }
@@ -134,7 +146,7 @@ edited app/Home.alder
 +  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
 +  let _ <- Test.login { user: Just me }
 +  let _ <- Test.get (Home {})
-+  let r <- Test.submit Quick { title: Text.NonEmpty "title-1", body: "body-1" }
++  let r <- Test.submit SubmitQuick { title: Text.NonEmpty "title-1", body: "body-1" }
 +  let rows <- Db.from Post |> Db.all
 +  Task.succeed (
 +    {
@@ -163,7 +175,7 @@ edited app/Home.alder
 +  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
 +  let _ <- Test.login { user: Just me }
 +  let _ <- Test.get (Home {})
-+  let r <- Test.submitRaw Quick [{ name: "title", value: "" }, { name: "body", value: "x" }]
++  let r <- Test.submitRaw SubmitQuick [{ name: "title", value: "" }, { name: "body", value: "x" }]
 +  let rows <- Db.from Post |> Db.count
 +  Task.succeed (
 +    { answer: r.answer, rows: rows }

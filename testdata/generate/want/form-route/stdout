@@ -40,7 +40,7 @@ edited app/Posts/Index.alder
    let _ <- Test.login { user: Just me }
 @@ -163,3 +182,44 @@
    let r <- Test.open (Index {})
-   Task.succeed (r.answer == Redirected (Auth.Login {}))
+   Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
  }
 +
 +test "submitting Quick adds a row" = {

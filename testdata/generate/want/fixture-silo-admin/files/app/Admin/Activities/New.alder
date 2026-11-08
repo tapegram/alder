@@ -202,7 +202,7 @@ test "a long list of orgs offers 50, and the search narrows it" = {
       total: 203,
       found: True,
       answer: Redirected (New { findOrg: "zz" }),
-      visitor: Redirected (Auth.Login {}),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -256,7 +256,9 @@ test "a visitor cannot create an activity" = {
   let _ <- Test.login { user: Nothing, org: Nothing }
   let r <- Test.submit Create { text: Text.NonEmpty "text-1", org: org2 }
   let rows <- Db.from Activity |> Db.count
-  Task.succeed ({ answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login {}), rows: 0 })
+  Task.succeed (
+    { answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login.Login {}), rows: 0 }
+  )
 }
 
 test "a Member cannot create an activity, even one made Admin since logging in" = {
@@ -307,7 +309,7 @@ test "a demoted Admin cannot create an activity" = {
 
 test "a visitor is sent to log in" = {
   let r <- Test.open (New {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Member gets no page, even one made Admin since logging in" = {

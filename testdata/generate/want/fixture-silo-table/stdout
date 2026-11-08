@@ -18,16 +18,16 @@ edited migrations/schema.json
 +  role: User.Role = Member,
 +}
  
- login = Auth.Login
+ login = Auth.Login.Login
  
- choose org = Orgs
+ choose org = Orgs.Orgs
  
 -silo org { Project, Issue }
 +silo org { Project, Issue, Note }
  
- msg Logout
+ route Logout = POST "/_/Logout" { }
  
-@@ -27,21 +31,33 @@
+@@ -25,21 +29,33 @@
  }
  
  error : Error -> Html Never
@@ -57,16 +57,16 @@ edited migrations/schema.json
 +    org: Nothing,
 +    role: Admin,
 +  }
-   let _ <- Test.get (Orgs {})
+   let _ <- Test.get (Orgs.Orgs {})
    let r <- Test.click Logout
--  Task.succeed ({ answer: r.answer, user: r.session.user, role: r.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, role: Member })
+-  Task.succeed ({ answer: r.answer, user: r.session.user, role: r.session.role } == { answer: Redirected (Auth.Login.Login {}), user: Nothing, role: Member })
 +  Task.succeed (
 +    {
 +      answer: r.answer,
 +      user: r.session.user,
 +      role: r.session.role,
 +    } == {
-+      answer: Redirected (Auth.Login {}),
++      answer: Redirected (Auth.Login.Login {}),
 +      user: Nothing,
 +      role: Member,
 +    }

@@ -558,7 +558,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "route", "Like", "/like", "--method", "POST", "--form", "message"}, "", "alder new route: `--form message` is not a form name:"},
 		{"scaffold", []string{"new", "route", "Like", "/like", "--method", "POST", "--param", "n:Int=1"}, "", "alder new route: --param n:Int=1: a write route's parameter has no default;"},
 		// M13
-		{"fixture", []string{"new", "auth"}, "", "alder new auth: the session already has a `user` field: the app has a login (`login = Auth.Login`)"},
+		{"fixture", []string{"new", "auth"}, "", "alder new auth: the session already has a `user` field: the app has a login (`login = Auth.Login.Login`)"},
 		{"scaffold", []string{"new", "auth", "--role", "Role"}, "", "alder new auth: `--role Role`: module `Table.User` has no union `Role` of constructors without payloads: `alder new type Table.User \"Role = Member | Admin\"` makes one"},
 		{"scaffold", []string{"new", "type", "Table.Entry", "Entry = A | B"}, "", "alder new type: `Table.Entry` already declares `Entry`: choose another name"},
 		{"scaffold", []string{"new", "type", "Table.Entry", "Mood ="}, "", "alder new type: `type Mood =` is not a type declaration: "},
@@ -852,12 +852,12 @@ func TestGenerate_FillImports(t *testing.T) {
 	if code, _, errs := alderIn(t, dir, "", "new", "msg", "Home", "Purge"); code != 0 {
 		t.Fatalf("alder new msg: %s", errs)
 	}
-	fill := "{\n  let n <- Db.from Comment |> Db.where (Comment.body.contains (Text.trim \"x\")) |> Db.count\n  Task.succeed (if n > 0 then Rerender else Rerender)\n}"
-	code, out, errs := alderIn(t, dir, fill, "fill", "Home.update.Purge", "-", "--dry-run", "--json")
+	fill := "{\n  let n <- Db.from Comment |> Db.where (Comment.body.contains (Text.trim \"x\")) |> Db.count\n  Task.succeed (if n > 0 then Response.refresh else Response.refresh)\n}"
+	code, out, errs := alderIn(t, dir, fill, "fill", "--decl", "Home.Purge.update", "-", "--dry-run", "--json")
 	if code != 0 || !strings.Contains(out, `"imports":["Table.Comment"]`) || !strings.Contains(out, `+import Table.Comment\n`) {
 		t.Errorf("fill --dry-run --json: exit %d\n%s%s", code, out, errs)
 	}
-	code, out, errs = alderIn(t, dir, fill, "fill", "Home.update.Purge", "-")
+	code, out, errs = alderIn(t, dir, fill, "fill", "--decl", "Home.Purge.update", "-")
 	if code != 0 || !strings.HasSuffix(out, "added import Table.Comment to app/Home.alder\n") || !strings.Contains(out, "+import Table.Comment\n") {
 		t.Fatalf("fill: exit %d\n%s%s", code, out, errs)
 	}
@@ -1068,8 +1068,8 @@ func TestGenerate_E11Commands(t *testing.T) {
 			t.Fatalf("new form --msg: exit %d\n%s%s", code, out, errs)
 		}
 		golden(t, "form-on-msg", out, changedFiles(before, appFiles(t, dir)))
-		if code, _, errs := alderIn(t, dir, "", "new", "form", "Home", "Other", "why:Text", "--msg", "Feature"); code != 1 || !strings.Contains(errs, "`Home` already declares `Feature`") {
-			t.Errorf("a second form on the message: exit %d: %s", code, errs)
+		if code, _, errs := alderIn(t, dir, "", "new", "form", "Home", "Other", "why:Text", "--msg", "Feature"); code != 1 || !strings.Contains(errs, "`Feature` is posted with the form `Reason` already") {
+			t.Errorf("a second form on the route: exit %d: %s", code, errs)
 		}
 	})
 	// #160: the same on a route module: `--msg M` naming a write route attaches the form to it
@@ -1147,8 +1147,8 @@ func TestGenerate_E11Commands(t *testing.T) {
 }
 
 // TestGenerate_E11Messages: the refusals that name the fix (E11 §7): a lambda over bound
-// parameters, a hole-less test or Model, a test's block in a Bool hole, a bare app type, and `alder test`
-// with holes left; an unquoted test address is accepted.
+// parameters, a hole-less test or Model, a test's block in a test's ?expected, a bare app type,
+// and `alder test` with holes left; an unquoted test address is accepted.
 func TestGenerate_E11Messages(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
@@ -1178,10 +1178,10 @@ func TestGenerate_E11Messages(t *testing.T) {
 	if code, o := run("True", "fill", `Notes."the page is shown"`, "-"); code != 1 || !strings.Contains(o, `alder fill --decl 'Notes."the page is shown"' -`) {
 		t.Errorf("a test without a hole: exit %d: %s", code, o)
 	}
-	if code, o := run("", "new", "msg", "Home", "Clear"); code != 0 {
-		t.Fatalf("new msg: %s", o)
+	if code, o := run("", "new", "form", "Home", "Feedback", "note:Text"); code != 0 {
+		t.Fatalf("new form: %s", o)
 	}
-	if code, o := run("{\n  Task.succeed True\n}", "fill", `Home."pressing Clear"`, "-"); code != 1 || !strings.Contains(o, "to replace the whole test, use `alder fill --decl") {
+	if code, o := run("{\n  Task.succeed True\n}", "fill", `Home."submitting Feedback"`, "-"); code != 1 || !strings.Contains(o, "to replace the whole test, use `alder fill --decl") {
 		t.Errorf("a block in ?expected: exit %d: %s", code, o)
 	}
 	if code, o := run("", "new", "msg", "Home", "Pick", "role:Role"); code != 1 || !strings.Contains(o, "write `User.Role`") {
@@ -1190,7 +1190,7 @@ func TestGenerate_E11Messages(t *testing.T) {
 	if code, o := run("", "check"); code != 0 || !strings.Contains(o, "alder check: 3 typed holes left\n") {
 		t.Errorf("alder check with holes: exit %d: %s", code, o)
 	}
-	if code, o := run("", "test"); code != 1 || !strings.Contains(o, "fill the hole): ") || !strings.Contains(o, "?expected : Bool") {
+	if code, o := run("", "test"); code != 1 || !strings.Contains(o, "fill the hole): ") || !strings.Contains(o, "?expected : Answer") {
 		t.Errorf("alder test with holes: exit %d: %s", code, o)
 	}
 }

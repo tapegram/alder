@@ -219,7 +219,7 @@ test "a visitor cannot delete a user" = {
   let kept <- Db.get User user2
   Task.succeed (
     { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
-      == { answer: Redirected (Auth.Login {}), kept: Just user2 }
+      == { answer: Redirected (Auth.Login.Login {}), kept: Just user2 }
   )
 }
 
@@ -298,7 +298,7 @@ test "a visitor is sent to log in" = {
     name: Text.NonEmpty "name-1",
   }
   let r <- Test.open (Delete { id: user1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Member gets no page, even one made Admin since logging in" = {

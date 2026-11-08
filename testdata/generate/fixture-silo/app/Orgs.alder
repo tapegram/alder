@@ -6,28 +6,25 @@ import Org
 import User
 
 -- `choose org`'s page: the signed-in user's orgs, each a button that sets the session's org.
-page "/orgs" { } requires user
+route Orgs = GET  "/orgs"        { }                requires user
+route Pick = POST "/orgs/_/Pick" { org: Org.OrgId } requires user
 
 type Model = { mine: List Membership }
 
-load : Params -> Session -> Query Model
-load params session = {
+Orgs.load : Orgs.Params -> Session -> Query Model
+Orgs.load params session = {
   let mine <- Db.from Membership |> Db.where (Membership.user.eq session.user) |> Db.all
   Query.succeed { mine: mine }
 }
 
-msg Pick { org: Org.OrgId }
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Pick p -> {
-    let _ <- Session.put (\s -> { s | org: Just p.org })
-    Task.succeed Rerender
-  },
+Pick.update : Pick.Params -> Session -> Task Response
+Pick.update p session = {
+  let _ <- Session.put (\s -> { s | org: Just p.org })
+  Task.succeed Response.refresh
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Orgs.view : Model -> Session -> Html
+Orgs.view model session =
   <Layout.Page title="Orgs">
     <ul>{for m in model.mine -> <li><button click={Pick { org: m.org }}>pick</button></li>}</ul>
     <button click={App.Logout}>Log out</button>
@@ -50,11 +47,11 @@ test "a non-member's switch is refused" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
   let b <- Db.insert Org { name: Text.NonEmpty "B" }
   let _ <- Test.login { user: Just me, org: Nothing }
-  let r <- Test.run (update (Pick { org: b }) { mine: [] } { user: me, org: Nothing, role: Member })
+  let r <- Test.run (Pick.update { org: b } { user: me, org: Nothing, role: Member })
   Task.succeed (r.value == Err "Session.put org: no Membership for this user and org")
 }
 
 test "a visitor is sent to log in" = {
   let r <- Test.open (Orgs {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }

@@ -291,7 +291,7 @@ test "a long list of users offers 50, and the search narrows it" = {
       total: 203,
       found: True,
       answer: Redirected (Edit { id: post1, findAuthor: "zz" }),
-      visitor: Redirected (Auth.Login {}),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -370,7 +370,7 @@ test "a visitor cannot save a post" = {
   }
   let after <- Db.get Post post1
   Task.succeed (
-    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login {}), row: before }
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login.Login {}), row: before }
   )
 }
 
@@ -455,7 +455,7 @@ test "a visitor is sent to log in" = {
     author: me,
   }
   let r <- Test.open (Edit { id: post1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {

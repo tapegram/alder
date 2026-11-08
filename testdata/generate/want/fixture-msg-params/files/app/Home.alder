@@ -4,12 +4,14 @@ import Layout
 import Table.Post
 import Table.User
 
-page "/" { } requires user
+route Home    = GET  "/"          { }                 requires user
+route Submit  = POST "/_/Submit"  { } form Write      requires user
+route Feature = POST "/_/Feature" { id: Post.PostId } requires user
 
 type Model = { posts: List Post }
 
-load : Params -> Session -> Query Model
-load params session = {
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = {
   let posts <-
     Db.mine Post
       |> Db.orderBy Post.created.desc
@@ -19,21 +21,14 @@ load params session = {
 
 form Write = { title: Text.NonEmpty, body: Text }
 
-msg Submit form Write
-
-msg Feature { id: Post.PostId }
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Submit p -> {
-    let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
-    Task.succeed (Redirect (Home {}))
-  },
-  Feature p -> ?feature,
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = {
+  let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
+  Task.succeed (Response.redirect (Home {}))
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Home.view : Model -> Session -> Html
+Home.view model session =
   <Layout.Page title="Your posts">
     <h1>Your posts</h1>
 
@@ -56,11 +51,14 @@ view model session =
     <al-button click={Feature { id: ?featureId }}>Feature</al-button>
   </Layout.Page>
 
+Feature.update : Feature.Params -> Session -> Task Response
+Feature.update params session = Task.succeed Response.refresh
+
 test "writing a post lists it, a draft" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Home {})
-  let r <- Test.submit Write { title: Text.NonEmpty "Hello", body: "" }
+  let r <- Test.submit Submit { title: Text.NonEmpty "Hello", body: "" }
   let posts <- Db.from Post |> Db.all
   Task.succeed (
     {
@@ -110,7 +108,21 @@ test "only my posts are listed, newest first" = {
 
 test "a visitor is sent to log in" = {
   let r <- Test.open (Home {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
+}
+
+-- Submit has its own `requires user`: a post from a page still open after logging out is sent
+-- to log in, and nothing is written.
+test "writing after logging out is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Home {})
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit Submit { title: Text.NonEmpty "Hello", body: "" }
+  let posts <- Db.from Post |> Db.count
+  Task.succeed (
+    { answer: r.answer, posts: posts } == { answer: Redirected (Auth.Login.Login {}), posts: 0 }
+  )
 }
 
 test "logging out signs the user out" = {
@@ -128,16 +140,13 @@ test "logging out signs the user out" = {
       user: out.session.user,
       role: out.session.role,
     } == {
-      answer: Redirected (Auth.Login {}),
+      answer: Redirected (Auth.Login.Login {}),
       user: Nothing,
       role: Reader,
     }
   )
 }
 
--- Fill ?expected with what pressing Feature must do, so that a test fails when the arm
--- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
--- changed (`after`, the row read again), as `{ answer: r.answer, … } == { answer: Rerendered, … }`.
 test "pressing Feature" = {
   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
   let _ <- Test.login { user: Just me }
@@ -148,6 +157,5 @@ test "pressing Feature" = {
   }
   let _ <- Test.get (Home {})
   let r <- Test.click (Feature { id: post1 })
-  let after <- Db.get Post post1
-  Task.succeed ?expected
+  Task.succeed (r.answer == Refreshed)
 }

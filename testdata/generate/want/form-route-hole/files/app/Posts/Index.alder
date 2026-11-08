@@ -176,7 +176,7 @@ test "the list has 20 rows a page" = {
 
 test "a visitor is sent to log in" = {
   let r <- Test.open (Index {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "submitting NewComment" = {

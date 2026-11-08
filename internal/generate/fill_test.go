@@ -29,7 +29,7 @@ func TestQualifiersMultiByte(t *testing.T) {
 	}
 }
 
-// fillApp is the fixture with Home.update.Submit's hole `?done` and the given extra modules.
+// fillApp is the fixture with Home.Submit.update's hole `?done` and the given extra modules.
 func fillApp(t *testing.T, extra map[string]string) *Program {
 	t.Helper()
 	dir := t.TempDir()
@@ -38,7 +38,7 @@ func fillApp(t *testing.T, extra map[string]string) *Program {
 	}
 	home := filepath.Join(dir, "app", "Home.alder")
 	b, _ := os.ReadFile(home)
-	os.WriteFile(home, []byte(strings.Replace(string(b), "    Task.succeed (Redirect (Home {}))\n", "    ?done\n", 1)), 0o644)
+	os.WriteFile(home, []byte(strings.Replace(string(b), "  Task.succeed (Response.redirect (Home {}))\n", "  ?done\n", 1)), 0o644)
 	for rel, src := range extra {
 		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
 			t.Fatal(err)
@@ -55,21 +55,21 @@ func fillApp(t *testing.T, extra map[string]string) *Program {
 // A short qualifier of a module not yet imported is resolved when exactly one module of the app
 // would get it, and refused, naming the candidates, when several would.
 func TestFill_ShortQualifier(t *testing.T) {
-	const expr = "Task.succeed (if Index.helper == 1 then Rerender else Rerender)"
+	const expr = "Task.succeed (if Index.helper == 1 then Response.refresh else Response.refresh)"
 	helper := func(m string) string { return "module " + m + "\n\nhelper : Int\nhelper = 1\n" }
 	p := fillApp(t, map[string]string{"app/Todos/Index.alder": helper("Todos.Index")})
-	edits, _, imports, err := Fill(p, "Home.update.Submit", "", expr)
+	edits, _, imports, err := Fill(p, "Home.Submit.update", "", expr)
 	if err != nil || !slices.Equal(imports, []string{"Todos.Index"}) || len(edits) != 1 || !strings.Contains(edits[0].Body, "import Todos.Index\n") || !strings.Contains(edits[0].Body, "Index.helper") {
 		t.Fatalf("unique: imports %v err %v edits %+v", imports, err, edits)
 	}
 	p = fillApp(t, map[string]string{"app/Todos/Index.alder": helper("Todos.Index"), "app/Reports/Index.alder": helper("Reports.Index")})
-	_, _, _, err = Fill(p, "Home.update.Submit", "", expr)
+	_, _, _, err = Fill(p, "Home.Submit.update", "", expr)
 	if err == nil || !strings.Contains(err.Error(), "`Reports.Index`, `Todos.Index`") || !strings.Contains(err.Error(), "`Index`") {
 		t.Fatalf("ambiguous: %v", err)
 	}
 	// a qualifier no module would get is the check's to report
 	p = fillApp(t, nil)
-	if _, _, imports, err = Fill(p, "Home.update.Submit", "", expr); err != nil || len(imports) != 0 {
+	if _, _, imports, err = Fill(p, "Home.Submit.update", "", expr); err != nil || len(imports) != 0 {
 		t.Fatalf("none: imports %v err %v", imports, err)
 	}
 }
@@ -77,7 +77,7 @@ func TestFill_ShortQualifier(t *testing.T) {
 // A page is not a candidate for a short qualifier: `Show.x` is not an import of Teams.Show.
 func TestFill_ShortQualifierSkipsPages(t *testing.T) {
 	p := fillApp(t, map[string]string{"app/Teams/Show.alder": "module Teams.Show\n\npage \"/teams\" { }\n\ntype Model = { n: Int }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { n: 1 }\n\nview : Model -> Session -> Html Msg\nview model session = <p></p>\n\nhelper : Int\nhelper = 1\n"})
-	_, _, imports, err := Fill(p, "Home.update.Submit", "", "Task.succeed (if Show.helper == 1 then Rerender else Rerender)")
+	_, _, imports, err := Fill(p, "Home.Submit.update", "", "Task.succeed (if Show.helper == 1 then Response.refresh else Response.refresh)")
 	if err != nil || len(imports) != 0 {
 		t.Fatalf("imports %v err %v", imports, err)
 	}
