@@ -398,17 +398,21 @@ test "a long list of posts offers 50, and the search narrows it" = {
   let all <- Test.get (Edit { id: comment1 })
   let found <- Test.get (Edit { id: comment1, findPost: "title-203" })
   let r <- Test.submit (SearchPost { id: comment1 }) { q: "zz" }
+  let _ <- Test.login { user: Nothing }
+  let visitor <- Test.submit (SearchPost { id: comment1 }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.posts,
       total: all.model.postsTotal,
       found: Test.count "select[name=post] option" found.doc <= 3,
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 51,
       total: 203,
       found: True,
       answer: Redirected (Edit { id: comment1, findPost: "zz" }),
+      visitor: Redirected (Auth.Login {}),
     }
   )
 }
@@ -535,17 +539,21 @@ test "a long list of users offers 50, and the search narrows it" = {
   let all <- Test.get (Edit { id: comment1 })
   let found <- Test.get (Edit { id: comment1, findAuthor: "email-203@example.com" })
   let r <- Test.submit (SearchAuthor { id: comment1 }) { q: "zz" }
+  let _ <- Test.login { user: Nothing }
+  let visitor <- Test.submit (SearchAuthor { id: comment1 }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.authors,
       total: all.model.authorsTotal,
       found: Test.count "select[name=author] option" found.doc <= 3,
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 51,
       total: 203,
       found: True,
       answer: Redirected (Edit { id: comment1, findAuthor: "zz" }),
+      visitor: Redirected (Auth.Login {}),
     }
   )
 }

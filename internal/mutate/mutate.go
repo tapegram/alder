@@ -20,6 +20,7 @@
 package mutate
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -77,6 +78,10 @@ const (
 //     is its name.
 //   - role dropped: Page is the page, or Route the route, whose `requires user, role R | …` is
 //     dropped to `requires user` (any signed-in user is served); Node and Replacement are nil.
+//     Either is suppressed for a write route whose update only redirects to a GET route whose
+//     own guard refuses the same requests (redirectOnly: the admin's Search routes).
+//   - step dropped: Node is the Effect of a `let _ <- e` step and Replacement `Task.succeed ()`
+//     (`Query.succeed ()` for a Query step).
 //   - scope dropped: Node is a scoped Db node and Replacement its unscoped twin: `Db.mine T` →
 //     `Db.from T` (a DbSelect); `Db.getMine T id` → `Db.get T id` bound and matched, Nothing →
 //     Query.notFound; `Db.updateMine`/`Db.deleteMine` → `Db.get T id`, then on Just the unscoped
@@ -246,6 +251,10 @@ func (c *collector) requires(g guard) {
 			return
 		}
 	}
+	if t := redirectOnly(g.route); t != nil && g.roles == nil && slices.Contains(t.Requires, req) {
+		c.suppress(RequiresDropped, line, "the update only redirects to "+t.Name+", which requires "+req+" too")
+		return
+	}
 	var field *ir.FieldT
 	if c.p.Session != nil {
 		for i := range c.p.Session.Fields {
@@ -269,6 +278,29 @@ func (c *collector) requires(g guard) {
 		Replacement: &ir.Lit{Typed: ir.Typed{Ty: types.Text}, Kind: ir.LitText, Text: "mutant"}})
 }
 
+// redirectOnly is, for a write route whose update does nothing but answer `Response.redirect`
+// to a GET route (`Task.succeed (Response.redirect (Edit { … }))`: the admin's Search routes), that
+// GET route; nil otherwise. Its guard runs on the redirect: when it refuses whom r's own clause
+// would (the same `requires`, roles among r's), dropping r's clause ends a request where the clause
+// did, at the login page or a 404, with nothing run in between (equivalent).
+func redirectOnly(r *ir.Route) *ir.Route {
+	if r == nil || r.Method == "GET" || r.Update == nil {
+		return nil
+	}
+	pure, ok := r.Update.Body.(*ir.EffPure)
+	if !ok {
+		return nil
+	}
+	call, ok := pure.Value.(*ir.Call)
+	if !ok || !isStd(call.Fn, "Response", "redirect") || len(call.Args) != 1 {
+		return nil
+	}
+	if ref, ok := call.Args[0].(*ir.RouteRef); ok && ref.Route != nil && ref.Route.Method == "GET" {
+		return ref.Route
+	}
+	return nil
+}
+
 // memberships drops each `via` field's membership check (M15): under the mutant Session.put
 // (and Test.login) of the field to any value passes.
 func (c *collector) memberships() {
@@ -289,6 +321,11 @@ func (c *collector) memberships() {
 // roles drops g's `role R | …`: the page or route serves any signed-in user.
 func (c *collector) roles(g guard) {
 	c.decl = g.decl
+	if t := redirectOnly(g.route); t != nil && t.Roles != nil && slices.Contains(t.Requires, "user") &&
+		!slices.ContainsFunc(t.Roles, func(r string) bool { return !slices.Contains(g.roles, r) }) {
+		c.suppress(RoleDropped, g.rolesPos.Line, "the update only redirects to "+t.Name+", whose role check refuses every other role too")
+		return
+	}
 	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RoleDropped, Line: g.rolesPos.Line, Col: g.rolesPos.Col,
 		Before: "requires " + strings.Join(g.requires, ", ") + ", role " + strings.Join(g.roles, " | "),
 		After:  "requires " + strings.Join(g.requires, ", "), Page: g.page, Route: g.route})

@@ -277,17 +277,21 @@ test "a long list of users offers 50, and the search narrows it" = {
   let all <- Test.get (Edit { id: post1 })
   let found <- Test.get (Edit { id: post1, findAuthor: "email-203@example.com" })
   let r <- Test.submit (SearchAuthor { id: post1 }) { q: "zz" }
+  let _ <- Test.login { user: Nothing }
+  let visitor <- Test.submit (SearchAuthor { id: post1 }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.authors,
       total: all.model.authorsTotal,
       found: Test.count "select[name=author] option" found.doc <= 3,
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 51,
       total: 203,
       found: True,
       answer: Redirected (Edit { id: post1, findAuthor: "zz" }),
+      visitor: Redirected (Auth.Login {}),
     }
   )
 }

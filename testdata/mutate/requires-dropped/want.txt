@@ -1,7 +1,9 @@
-1  Mine     requires:6       requires dropped   requires user → served without user (user = User.UserId "mutant")
-2  Routes   Show:7           requires dropped   requires user → served without user (user = User.UserId "mutant")
-3  Routes   Save:8           requires dropped   requires user → served without user (user = User.UserId "mutant")
-4  Routes   Save.update:17   refresh → invalid  Response.refresh → Response.invalid "mutant"
-5  Routes   Count.update:20  refresh → invalid  Response.refresh → Response.invalid "mutant"
--  Counted  requires:4       requires dropped   skipped: field is not a Text brand
--  Routes   Count:9          requires dropped   skipped: field is not a Text brand
+1  Mine     requires:6       requires dropped    requires user → served without user (user = User.UserId "mutant")
+2  Routes   Show:8           requires dropped    requires user → served without user (user = User.UserId "mutant")
+3  Routes   Save:9           requires dropped    requires user → served without user (user = User.UserId "mutant")
+4  Routes   Save.update:19   refresh → invalid   Response.refresh → Response.invalid "mutant"
+5  Routes   Count.update:22  refresh → invalid   Response.refresh → Response.invalid "mutant"
+6  Routes   Find.update:25   redirect → refresh  Response.redirect (Show { q: "x" }) → Response.refresh
+-  Counted  requires:4       requires dropped    skipped: field is not a Text brand
+-  Routes   Count:10         requires dropped    skipped: field is not a Text brand
+-  Routes   Find:11          requires dropped    equivalent: the update only redirects to Show, which requires user too

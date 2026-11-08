@@ -294,12 +294,15 @@ test "a long list of projects offers 50, and the search narrows it" = {
       findProject: "name-203",
     })
   let r <- Test.submit (SearchProject { org: org, id: todo1 }) { q: "zz" }
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let visitor <- Test.submit (SearchProject { org: org, id: todo1 }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.projects,
       total: all.model.projectsTotal,
       found: Test.count "select[name=project] option" found.doc <= 3,
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 51,
       total: 203,
@@ -309,6 +312,7 @@ test "a long list of projects offers 50, and the search narrows it" = {
         id: todo1,
         findProject: "zz",
       }),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }

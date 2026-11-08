@@ -252,17 +252,21 @@ test "a long list of posts offers 50, and the search narrows it" = {
   let all <- Test.get (New {})
   let found <- Test.get (New { findPost: "slug-203" })
   let r <- Test.submit SearchPost { q: "zz" }
+  let _ <- Test.login { user: Nothing }
+  let visitor <- Test.submit SearchPost { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.posts,
       total: all.model.postsTotal,
       found: Test.texts "select[name=post] option" found.doc == ["slug-203"],
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 50,
       total: 203,
       found: True,
       answer: Redirected (New { findPost: "zz" }),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }

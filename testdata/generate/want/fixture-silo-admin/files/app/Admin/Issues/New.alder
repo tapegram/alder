@@ -329,17 +329,21 @@ test "a long list of projects offers 50, and the search narrows it" = {
   let all <- Test.get (New { org: org })
   let found <- Test.get (New { org: org, findProject: "name-203" })
   let r <- Test.submit (SearchProject { org: org }) { q: "zz" }
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let visitor <- Test.submit (SearchProject { org: org }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.projects,
       total: all.model.projectsTotal,
       found: Test.texts "select[name=project] option" found.doc == ["name-203"],
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 50,
       total: 203,
       found: True,
       answer: Redirected (New { org: org, findProject: "zz" }),
+      visitor: Redirected (Auth.Login {}),
     }
   )
 }
@@ -450,17 +454,21 @@ test "a long list of users offers 50, and the search narrows it" = {
   let all <- Test.get (New { org: org })
   let found <- Test.get (New { org: org, findAssignee: "email-203@example.com" })
   let r <- Test.submit (SearchAssignee { org: org }) { q: "zz" }
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let visitor <- Test.submit (SearchAssignee { org: org }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.assignees,
       total: all.model.assigneesTotal,
       found: Test.texts "select[name=assignee] option" found.doc == ["", "email-203@example.com"],
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 50,
       total: 203,
       found: True,
       answer: Redirected (New { org: org, findAssignee: "zz" }),
+      visitor: Redirected (Auth.Login {}),
     }
   )
 }

@@ -1,14 +1,22 @@
 module Routes
 
--- A route's role clause, as a page's: one mutant drops it; Open has no role clause.
+-- A route's role clause, as a page's: one mutant drops it; Open has no role clause. Find's is
+-- equivalent: its update only redirects to Show, whose role check refuses whom Find's would.
+-- Back's is not: it redirects to Home, which serves any signed-in user.
 route Show = GET  "/routes"        { } requires user, role Admin
+route Home = GET  "/routes/home"   { } requires user
 route Save = POST "/routes/_/Save" { } requires user, role Author | Admin
 route Open = POST "/routes/_/Open" { } requires user
+route Find = POST "/routes/_/Find" { } requires user, role Author | Admin
+route Back = POST "/routes/_/Back" { } requires user, role Admin
 
 type Model = { }
 
 Show.load : Show.Params -> Session -> Query Model
 Show.load params session = Query.succeed { }
+
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = Query.succeed { }
 
 Save.update : Save.Params -> Session -> Task Response
 Save.update p session = Task.succeed Response.refresh
@@ -16,5 +24,14 @@ Save.update p session = Task.succeed Response.refresh
 Open.update : Open.Params -> Session -> Task Response
 Open.update p session = Task.succeed Response.refresh
 
+Find.update : Find.Params -> Session -> Task Response
+Find.update p session = Task.succeed (Response.redirect (Show {}))
+
+Back.update : Back.Params -> Session -> Task Response
+Back.update p session = Task.succeed (Response.redirect (Home {}))
+
 Show.view : Model -> Session -> Html
 Show.view model session = <p>Routes</p>
+
+Home.view : Model -> Session -> Html
+Home.view model session = <p>Home</p>

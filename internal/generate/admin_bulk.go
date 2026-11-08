@@ -2,6 +2,7 @@ package generate
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"alder/internal/types"
@@ -365,6 +366,18 @@ func (g *adminGen) findTests(at *adminTable, mod string, imports *importSet, edi
 			redirect = pageLit(get, []string{"id: " + target, findParam(c) + ": \"zz\""})
 		}
 		tb.let("let r <- Test.submit %s { q: \"zz\" }", search)
+		// the search route's own `requires user` (#187): a visitor's search, from the page still
+		// held, goes to log in. This test's steps only: the next test goes on from tb's.
+		lines := tb.lines
+		var visitorL, visitorR string // the result's fields for it
+		if g.p.Login != "" {
+			n := len(tb.lines)
+			tb.logout()
+			tb.let("let visitor <- Test.submit %s { q: \"zz\" }", search)
+			lines = slices.Clone(tb.lines)
+			tb.lines = tb.lines[:n]
+			visitorL, visitorR = ", visitor: visitor.answer", ", visitor: Redirected ("+pageLit(g.p.Login, nil)+")"
+		}
 		found := fmt.Sprintf("Test.count %s found.doc <= 3", quote(sel))
 		if !edit {
 			want := "[" + quote(last) + "]"
@@ -377,9 +390,9 @@ func (g *adminGen) findTests(at *adminTable, mod string, imports *importSet, edi
 		if edit { // the row's own value, then 50
 			shown = 51
 		}
-		tests = append(tests, TestData{Name: quote("a long list of " + pluralOf(rt) + " offers 50, and the search narrows it"), Lines: tb.lines,
-			Result: fmt.Sprintf("{ shown: List.length all.model.%s, total: all.model.%s, found: %s, answer: r.answer } == { shown: %d, total: %d, found: True, answer: Redirected (%s) }",
-				optionsField(c), totalField(c), found, shown, tb.counts[rt.Module], redirect)})
+		tests = append(tests, TestData{Name: quote("a long list of " + pluralOf(rt) + " offers 50, and the search narrows it"), Lines: lines,
+			Result: fmt.Sprintf("{ shown: List.length all.model.%s, total: all.model.%s, found: %s, answer: r.answer%s } == { shown: %d, total: %d, found: True, answer: Redirected (%s)%s }",
+				optionsField(c), totalField(c), found, visitorL, shown, tb.counts[rt.Module], redirect, visitorR)})
 		if edit {
 			tests = append(tests, g.ownFirstTest(at, mod, imports, c))
 		}

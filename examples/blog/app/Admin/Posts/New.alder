@@ -286,17 +286,21 @@ test "a long list of users offers 50, and the search narrows it" = {
   let all <- Test.get (New {})
   let found <- Test.get (New { findAuthor: "email-203@example.com" })
   let r <- Test.submit SearchAuthor { q: "zz" }
+  let _ <- Test.login { user: Nothing }
+  let visitor <- Test.submit SearchAuthor { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.authors,
       total: all.model.authorsTotal,
       found: Test.texts "select[name=author] option" found.doc == ["email-203@example.com"],
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 50,
       total: 203,
       found: True,
       answer: Redirected (New { findAuthor: "zz" }),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }

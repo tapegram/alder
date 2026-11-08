@@ -3,10 +3,12 @@ module Routes
 import User
 
 -- A route's `requires`, as a page's: one mutant per route, the GET route's and the write
--- route's; Count's refused, `visits` being an Int.
-route Show  = GET  "/routes"         { } requires user
-route Save  = POST "/routes/_/Save"  { } requires user
-route Count = POST "/routes/_/Count" { } requires visits
+-- route's; Count's refused, `visits` being an Int; Find's equivalent, its update only redirecting
+-- to Show, which requires the same.
+route Show  = GET  "/routes"         { q: Text = "" } requires user
+route Save  = POST "/routes/_/Save"  { }              requires user
+route Count = POST "/routes/_/Count" { }              requires visits
+route Find  = POST "/routes/_/Find"  { }              requires user
 
 type Model = { user: User.UserId }
 
@@ -18,6 +20,9 @@ Save.update p session = Task.succeed Response.refresh
 
 Count.update : Count.Params -> Session -> Task Response
 Count.update p session = Task.succeed Response.refresh
+
+Find.update : Find.Params -> Session -> Task Response
+Find.update p session = Task.succeed (Response.redirect (Show { q: "x" }))
 
 Show.view : Model -> Session -> Html
 Show.view model session = <p>Routes</p>

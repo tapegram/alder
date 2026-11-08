@@ -275,17 +275,21 @@ test "a long list of users offers 50, and the search narrows it" = {
   let all <- Test.get (New {})
   let found <- Test.get (New { findUser: "email-203@example.com" })
   let r <- Test.submit SearchUser { q: "zz" }
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let visitor <- Test.submit SearchUser { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.users,
       total: all.model.usersTotal,
       found: Test.texts "select[name=user] option" found.doc == ["email-203@example.com"],
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 50,
       total: 203,
       found: True,
       answer: Redirected (New { findUser: "zz" }),
+      visitor: Redirected (Auth.Login {}),
     }
   )
 }
@@ -384,17 +388,21 @@ test "a long list of orgs offers 50, and the search narrows it" = {
   let all <- Test.get (New {})
   let found <- Test.get (New { findOrg: "name-203" })
   let r <- Test.submit SearchOrg { q: "zz" }
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let visitor <- Test.submit SearchOrg { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.orgs,
       total: all.model.orgsTotal,
       found: Test.texts "select[name=org] option" found.doc == ["name-203"],
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 50,
       total: 203,
       found: True,
       answer: Redirected (New { findOrg: "zz" }),
+      visitor: Redirected (Auth.Login {}),
     }
   )
 }
