@@ -31,11 +31,10 @@ var (
 	buildOnce sync.Once
 	alderBin  string
 	buildErr  error
-	// todosApp is examples/todos as the book quotes it, absolute; exampleModules are its modules
-	// except App and the generated admin's. Until the book moves to routes (#160, PR 8), it
-	// quotes the examples as they were before `alder fix --routes`: testdata/fix holds those
-	// copies, and examples/ the apps on routes.
-	todosApp, _    = filepath.Abs("../testdata/fix/todos")
+	// todosApp is examples/todos, absolute; exampleModules are its modules except App and the
+	// generated admin's. The book quotes the example apps as they are under examples/.
+	todosApp, _    = filepath.Abs("../examples/todos")
+	examplesDir, _ = filepath.Abs("../examples")
 	exampleModules []string
 	// scaffoldApp is the app `alder new guestbook` wrote with the built binary (the example
 	// ScaffoldExample), and newOutput what it printed.
@@ -56,8 +55,8 @@ const BareExample = "notes"
 // generator cannot drift apart (TestBook_Scaffold).
 const ScaffoldExample = "guestbook"
 
-// exampleApp is the directory of the example app named ex (a directory under examples/, read
-// from its copy under testdata/fix until PR 8 of #160: see todosApp), absolute.
+// exampleApp is the directory of the example app named ex (a directory under examples/, or the
+// scaffold or bare app the built binary wrote), absolute.
 func exampleApp(ex string) string {
 	if ex == ScaffoldExample {
 		return scaffoldApp
@@ -65,10 +64,7 @@ func exampleApp(ex string) string {
 	if ex == BareExample {
 		return bareApp
 	}
-	if ex == DefaultExample {
-		return todosApp
-	}
-	return filepath.Join(filepath.Dir(todosApp), ex)
+	return filepath.Join(examplesDir, ex)
 }
 
 func TestMain(m *testing.M) {
@@ -641,7 +637,7 @@ func (v *verifier) parseOnly(s Snippet) {
 // eval runs an Expr block through `alder eval --json -`: for Eval its value must be exp.Value
 // exactly; for Error a diagnostic must have exp.Code.
 func (v *verifier) eval(s Snippet, exp Expect) {
-	cmd := exec.Command(v.bin, "eval", todosApp, "--json", "-")
+	cmd := exec.Command(v.bin, "eval", exampleApp(DefaultExample), "--json", "-")
 	cmd.Dir = v.evalDir
 	cmd.Stdin = strings.NewReader(s.Source) // as written: eval continues an item on a closer
 	var out, errb bytes.Buffer

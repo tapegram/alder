@@ -76,7 +76,7 @@ table Note {
 }
 ```
 
-Defaults of forms, records, the session and page parameters are never
+Defaults of forms, records, the session and route parameters are never
 stored, and may be any expression.
 
 When you rename a table or a field, say so with **`@renamed "old"`**,
@@ -256,8 +256,9 @@ Writes in one `update` run in a single transaction. If the task fails,
 nothing is written. Inserting or updating a row that violates `@unique`
 fails the task with a message such as `User.email must be unique`, and
 everything the task wrote before is rolled back; check first with a query
-and `Reject` if the user should see a message. `Reject` is a successful
-result, so writes made before it are kept (chapter 6): decide first, then
+and answer `Response.invalid` if the user should see a message.
+`Response.invalid` is a successful result, so the transaction commits and
+writes made before it are kept (chapter 6, "`Response`"): decide first, then
 write.
 
 `@ref` is checked the same way. Inserting or updating a row whose `@ref`
@@ -323,7 +324,7 @@ table Note {
 ### Your own rows
 
 A table with an `@owner` column (above) also has five **scoped**
-operations, for the pages of a signed-in user:
+operations, for the routes of a signed-in user:
 
 ```alder fragment
 Db.mine       : Table t -> Select t                  -- Db.from t, only the user's rows
@@ -336,8 +337,8 @@ Db.insertMine : Table t -> Insert t -> Task (Id t)   -- the row without its owne
 They act for the user of the running request (or test), and answer a
 row that is someone else's as a missing one: not found, a 404.
 `Db.getMine` is a `Query t`, not a `Query (Maybe t)`: there is nothing
-to match, because a missing row ends the page. They are allowed only in
-a page module whose page `requires user`. Chapter 6, "Rules", explains
+to match, because a missing row ends the request. They are allowed only in
+the members of a route that `requires user`. Chapter 6, "Rules", explains
 them in full, and chapter 13 shows their SQL: each puts `"owner" = ?` in
 its statement.
 
@@ -815,7 +816,7 @@ migrations/ until then`` (E0019).
 
 ## Silos
 
-A partition keeps one org's rows from another's pages; a **silo** keeps
+A partition keeps one org's rows from another org's requests; a **silo** keeps
 them in another file. `App` lists the tables that live in a database per
 value of a key (`examples/workspace/app/App.alder`):
 
@@ -848,8 +849,8 @@ ones.
 - Reading or writing a siloed table needs the key narrowed: the scoped
   operations, and the unscoped ones too (`Db.from Project` reads one
   org's file, so it needs to know which): "`Db.delete Project` (`Project`
-  lives in `silo org`) needs a page that `requires org`: `App` is not a
-  page". There is no query over every org's rows; the admin goes through
+  lives in `silo org`) needs a route that `requires org`: this is not
+  a member of one". There is no query over every org's rows; the admin goes through
   the orgs one at a time (chapter 15).
 - `Db.update` cannot move a row to another org: "Db.update Project: a row
   cannot move to another org (delete it and insert it there)". A row is
@@ -861,16 +862,16 @@ ones.
 
 A `Task` runs in one transaction, and a transaction is one database's.
 So **a `Task` writes to one store**: the shared database, or one silo.
-The checker works out what each arm of every `update` writes, and
-refuses an arm whose writes fall in two stores (E0031):
+The checker works out what each write route's `update` writes, and
+refuses one whose writes fall in two stores (E0031):
 
 ```text
-`Create` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message.
+`Create.update` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route.
 ```
 
 What it counts is every mention of a write function — `Db.insert`,
-`Db.update`, `Db.delete` and their scoped forms — anywhere the arm can
-reach: in the arm, in every helper it mentions (in any module, a helper
+`Db.update`, `Db.delete` and their scoped forms — anywhere the `update` can
+reach: in the `update`, in every helper it mentions (in any module, a helper
 of a helper too), in a lambda, in a `Task.all` over a `List.map`. It
 does not matter whether the function is called where it is written:
 `let ins = Db.insert` and then `ins AuditLog { … }`, or a lambda that is
@@ -880,22 +881,22 @@ function always names its table there: `Table t` is refused, E0003).
 The count errs on the side of too many: a helper that is mentioned and
 never called still counts.
 
-That is what the checker proves: an `update` arm it accepts mentions no
+That is what the checker proves: an `update` it accepts mentions no
 write of a second store. It does not look at a `test`'s own Tasks, nor
 inside a capability's adapter (Go code). There the runtime holds the
-rule: a request's `Task` is bound to its arm's store before it runs, a
-`Test.run`'s to the store it writes first (to its arm's, for a page's
-`update`), and a write of another store fails the `Task` with an
+rule: a request's `Task` is bound to its route's store before it runs, a
+`Test.run`'s to the store it writes first (a route's `update` is not pre-bound
+there, [#191](https://github.com/tapegram/alder/issues/191)), and a write of another store fails the `Task` with an
 internal error: a 500 in production, a failed test under `alder test`.
 
-Reads may mix: an arm, or a `load`, may read the shared database and a
+Reads may mix: an `update`, or a `load`, may read the shared database and a
 silo, as the workspace's projects page reads its org's name (shared)
 beside its projects (the org's file). A `Session.put` writes the cookie,
 not a store, and a capability is outside both, so neither counts. The
 workspace keeps its `Activity` log in the shared database for this
 reason: a line of activity is written with the membership it is about
 (shared), never with a project. A write that must follow another in a
-different store is sent from its own message; a transaction across
+different store is sent from its own route; a transaction across
 databases (an outbox) is a later milestone's.
 
 ### Where the files live

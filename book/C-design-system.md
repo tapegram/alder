@@ -376,7 +376,7 @@ attributes and gives the control its look:
 <al-stack direction="row" gap="sm">
   <al-button type="submit">Save</al-button>
   <al-button variant="secondary" type="button">Secondary</al-button>
-  <al-button variant="outline" href={Todos.Index {}}>Cancel</al-button>
+  <al-button variant="outline" href={Todos.Index.Index {}}>Cancel</al-button>
   <al-button variant="ghost" type="button">Ghost</al-button>
   <al-button variant="destructive" type="submit">Delete</al-button>
 </al-stack>
@@ -410,7 +410,7 @@ without JavaScript"): with no JavaScript, the button submits a little
 form of its own. That form goes around the whole `<al-button>`, so the
 button stays the element's child and keeps the look:
 
-```alder eval=<form method="post" action="/_m/App/Logout" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Logout&#39;, window._alderO?.(&#39;form&#39;)))"><al-button variant="outline" size="sm"><button type="submit">Log out</button></al-button></form>
+```alder eval=<form method="post" action="/_/Logout" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_/Logout&#39;, window._alderO?.(&#39;form&#39;)))"><al-button variant="outline" size="sm"><button type="submit">Log out</button></al-button></form>
 <al-button variant="outline" size="sm" click={App.Logout}>Log out</al-button>
 ```
 
@@ -455,7 +455,7 @@ If you write the `<button>` or `<a>` yourself, with its `click` or
 `href` on it and none on the element, Alder leaves the element alone:
 
 ```alder eval=<al-button variant="outline"><a href="/?filter=Active">Open todos</a></al-button>
-<al-button variant="outline"><a href={Todos.Index { filter: Active }}>Open todos</a></al-button>
+<al-button variant="outline"><a href={Todos.Index.Index { filter: Active }}>Open todos</a></al-button>
 ```
 
 ### `al-input`
@@ -482,12 +482,13 @@ four:
 ```alder
 module Settings
 
-page "/settings" { }
+route Settings = GET  "/settings" { }
+route Save     = POST "/settings" { } form Profile
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Settings.load : Settings.Params -> Session -> Query Model
+Settings.load params session = Query.succeed { }
 
 type Plan = Free | Pro | Team
 
@@ -498,15 +499,11 @@ form Profile = {
   newsletter: Bool,
 }
 
-msg Save form Profile
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Save p -> Task.succeed Rerender,
-}
-
-view : Model -> Session -> Html Msg
-view model session =
+Settings.view : Model -> Session -> Html
+Settings.view model session =
   <form submit={Save}>
     <al-input field="name" label="Name" placeholder="Ada Lovelace" help="As it appears on your posts" />
     <al-textarea field="bio" label="Bio" placeholder="A line or two" />
@@ -654,7 +651,7 @@ Slots: `header`, default, `footer`, `actions`, `description`, `action`.
   <p>The first post. The body is every child without a slot.</p>
   <p slot="footer">Posted on 12 October 2026</p>
   <div slot="actions">
-    <al-button variant="outline" href={Todos.Index {}}>Back</al-button>
+    <al-button variant="outline" href={Todos.Index.Index {}}>Back</al-button>
     <al-button variant="destructive" type="submit">Delete</al-button>
   </div>
 </al-card>
@@ -721,9 +718,9 @@ from the library's optional script, `components/al-alert.js`, which
 Alder does not ship. Datastar's morph would remove a button a script
 added, so in an Alder page render your own: an `<al-button>` with a
 `click`. The model is not kept between requests (`load` builds it again
-for every render), so the message must record the dismissal where `load`
-will find it, in the session or in the database, and answer `Rerender`;
-`load` then leaves the alert out.
+for every render), so a write route must record the dismissal where `load`
+will find it, in the session or in the database, and answer
+`Response.refresh`; `load` then leaves the alert out.
 
 ### `al-pagination`
 
@@ -744,7 +741,7 @@ slot keeps the layout and is drawn dimmed:
 ```alder eval=<al-pagination page="1" pages="5" role="navigation" aria-label="Pages"><span slot="prev" aria-disabled="true">Previous</span><a slot="next" href="/?filter=Active">Next</a></al-pagination>
 <al-pagination page="1" pages="5" role="navigation" aria-label="Pages">
   <span slot="prev" aria-disabled="true">Previous</span>
-  <a slot="next" href={Todos.Index { filter: Active }}>Next</a>
+  <a slot="next" href={Todos.Index.Index { filter: Active }}>Next</a>
 </al-pagination>
 ```
 
@@ -754,9 +751,9 @@ its own "Page N", chapter 14):
 
 ```alder eval=<al-pagination role="navigation" aria-label="Pages"><a slot="prev" href="/">Previous</a><span>Showing 11 to 20 of 48</span><a slot="next" href="/?filter=Completed">Next</a></al-pagination>
 <al-pagination role="navigation" aria-label="Pages">
-  <a slot="prev" href={Todos.Index {}}>Previous</a>
+  <a slot="prev" href={Todos.Index.Index {}}>Previous</a>
   <span>Showing 11 to 20 of 48</span>
-  <a slot="next" href={Todos.Index { filter: Completed }}>Next</a>
+  <a slot="next" href={Todos.Index.Index { filter: Completed }}>Next</a>
 </al-pagination>
 ```
 
@@ -963,10 +960,10 @@ writes it), so the renderer also writes `data-preserve-attr="open"` on the
 `<dialog>`, which tells Datastar to leave that attribute alone. A body
 update while the dialog is on screen then leaves it open and modal with
 focus inside it, as long as the element keeps its `id`. A form in the
-dialog posts a message of the page the dialog is on: messages belong to
-the page that declares them (chapter 6), so the admin's Show page declares
-its own `Remove`, and its dialog shows the counts the confirmation page
-shows and posts it (chapter 15).
+dialog posts a write route: the form's `submit` names it, and a route
+belongs to the module that declares it (chapter 6), so the admin's Show
+module declares its own `Remove`, and its dialog shows the counts the
+confirmation page shows and posts it (chapter 15).
 
 Without JavaScript the button still opens the dialog, as a modal, in the
 browsers this tier supports (Chromium 135 and later, Safari 26, Firefox
@@ -1094,8 +1091,8 @@ accessibility tree and the tab order, but the radios stay and still drive
 the CSS that shows the panel; each panel gets `role="tabpanel"`, an `id`
 (generated where you wrote none) and `aria-labelledby` naming its tab.
 A click, the arrow keys, Home and End (`al-tabs-keys.js`) check the
-hidden radio, so `al-select` fires as before. Every message of an Alder page
-morphs the body, which would undo all of this (the server writes none of it),
+hidden radio, so `al-select` fires as before. Every write of an Alder page
+that answers `Response.refresh` morphs the body, which would undo all of this (the server writes none of it),
 so the script watches the element and rebuilds the tab list, the hidden
 labels and the panels' roles after a patch, keeping the tab the reader chose. A screen reader announces it as a tab list
 whose tabs are `Details` and `Comments`, the selected one marked, followed
@@ -1146,27 +1143,27 @@ toast Alder's runtime patches in already does.
 </al-toasts>
 ```
 
-You rarely write one. A message that answers `Notice.with "Saved"
-Rerender` (chapter 6, "Notices and in-flight") makes Alder's runtime
+You rarely write one. A write route that answers `Response.refresh |>
+Response.toast "Saved"` (chapter 6, "Notices and in-flight state") makes Alder's runtime
 patch an `<al-toast>` into the page's `<al-toasts>`, after the body
 update, so the toast survives the morph; the scaffold's guestbook does
 this for "Signed".
 
 Without JavaScript the region stays hidden, so a toast is never seen.
-Alder covers the `Notice` answer itself: a request made without the
+Alder covers the toast itself: a request made without the
 script (a form posted with JavaScript off) gets its notice as an
 `<al-alert>` at the top of the page that answers it, the page itself on a
-`Rerender`, the next page on a `Redirect` (the kind and text ride a signed
+`refresh`, the next page on a `redirect` (the kind and text ride a signed
 cookie, `alder_notice`, for that one page).
 
-Each `Notice` function gives its own toast and alert:
+Each `Response` toast function gives its own toast and alert:
 
 | Function | kind | `al-toast` `variant` | toast `timeout` | `al-alert` `variant` | `al-alert` `role` |
 |---|---|---|---|---|---|
-| `Notice.with` | info | `info` | `5000` | `info` | `status` |
-| `Notice.success` | success | `success` | `5000` | `success` | `status` |
-| `Notice.warning` | warning | `warning` | `5000` | `warning` | `alert` |
-| `Notice.error` | error | `destructive` | `0` | `destructive` | `alert` |
+| `Response.toast` | info | `info` | `5000` | `info` | `status` |
+| `Response.success` | success | `success` | `5000` | `success` | `status` |
+| `Response.warning` | warning | `warning` | `5000` | `warning` | `alert` |
+| `Response.error` | error | `destructive` | `10000` | `destructive` | `alert` |
 
 ### `al-toasts`
 

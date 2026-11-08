@@ -173,7 +173,7 @@ These are ordinary brands of `Text` and `Int` and widen the same way.
 ## Type parameters on records and unions
 
 ```alder
-type Page a = { items: List a, total: Int }
+type Results a = { items: List a, total: Int }
 ```
 
 ## What there is not
@@ -184,5 +184,5 @@ type Page a = { items: List a, total: Int }
 - No record that contains itself by value (`type R = { r: R }`, directly
   or through other records, is E0011): a record may refer to itself only
   through `Maybe`, `List`, `Dict` or another union.
-- No subtyping other than brand-to-base, and a `requires` page's `Session`
+- No subtyping other than brand-to-base, and a `requires` route's `Session`
   to the app's (chapter 6).

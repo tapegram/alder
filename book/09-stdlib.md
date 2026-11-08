@@ -380,8 +380,8 @@ Html.none  : Html a                             -- renders nothing
 Html.text  : Text -> Html a
 Html.fragment : List (Html a) -> Html a         -- the nodes side by side, no wrapper element
 Html.toText : Html Never -> Text                -- the markup File.html serves
-Url.external : Text -> Page                     -- external URL for href, src or Redirect
-Url.absolute : Page -> Text                     -- the page's URL with the site's address in front
+Url.external : Text -> Route                    -- external URL for href, src or Response.redirect
+Url.absolute : Route -> Text                    -- the route's URL with the site's address in front
 ```
 
 `Html.toText` takes `Html Never`, a view that sends no messages, because the
@@ -395,21 +395,21 @@ nowhere: `javascript:` and `data:` URLs in any case (`JavaScript:`), other
 schemes (`mailto:`), URLs with leading spaces, relative paths, and any URL
 holding a control character (browsers drop tabs and newlines, so `/\t/evil`
 would be `//evil`). So a link or a
-`Redirect` built from user input can never run script. The runtime checks
+`Response.redirect` built from user input can never run script. The runtime checks
 again: an `href` that is not such a URL renders as `#`, and a redirect to
 one is answered with a 500 (`refusing to navigate to javascript:`).
 
-A `Page` compares by its address: `Todos.Index {} == Todos.Index
+A `Route` compares by its address: `Todos.Index.Index {} == Todos.Index.Index
 { filter: All }`, since a defaulted parameter is left out of the URL.
 
-`Url.absolute p` is the page's full URL, for a program that is not a
+`Url.absolute r` is the route's full URL, for a program that is not a
 browser: a link in an email, or a URL another service will fetch. It is
-the text `href={p}` renders (`/todos?filter=Active`, a defaulted parameter
+the text `href={r}` renders (`/todos?filter=Active`, a defaulted parameter
 left out, the query encoded) with the site's public address in front:
 `https://todos.example.com/todos?filter=Active`. The address comes from
 `ALDER_PUBLIC_URL` (chapter 11, `alder build`), which `alder deploy` sets
 to the address it serves (chapter 16); without it the server uses its own
-listening address, `http://localhost:8080` by default. A page whose URL is
+listening address, `http://localhost:8080` by default. A route whose URL is
 not a path of this site is left as it is: `Url.absolute (Url.external
 "https://example.com/a")` is `https://example.com/a`, a fragment `#top`
 stays `#top`, and a sanitised `#` stays `#`, while `Url.external
@@ -418,7 +418,7 @@ the server starts, before the app's own values are computed, and does
 not change while it serves, so `Url.absolute` is an ordinary function,
 usable in a `view` and in a top-level value (chapter 11 has the one
 exception, a port 0). There is no way to build a full URL from
-text: the only input is a `Page`, so a link to a page that does not exist
+text: the only input is a `Route`, so a link to a route that does not exist
 is still a type error. In a test the address is always
 `http://localhost:8080` (chapter 10).
 
@@ -588,7 +588,7 @@ knows them:
 | `.asc`, `.desc` | any | `Order t` |
 
 The scoped operations of `Db`, for a table with an `@owner` column, used
-only in a page module whose page `requires user` (chapter 6, "Rules";
+only in the members of a route that `requires user` (chapter 6, "Rules";
 chapter 8, "Your own rows"). Each acts for the signed-in user of the
 running request or test, and without one fails with "`Db.mine Todo: no
 signed-in user`" (the operation and table as written):
@@ -603,7 +603,7 @@ signed-in user`" (the operation and table as written):
 
 The same operations for any partition key (M15): a table with a
 `@partition k` column (`@owner` is `@partition user`), used only where
-the session's `k` is narrowed, in a page module whose page `requires k`
+the session's `k` is narrowed, in the members of a route that `requires k`
 (chapter 6, "Partitions"). The `mine` family above is these with the key
 `user`, written for tables partitioned by `user`:
 
@@ -631,15 +631,46 @@ Task.sleep  : Int -> Task Unit                  -- the same, in a Task
 `Query.notFound` and `Task.notFound` (both
 `: Query a` / `: Task a`, no arguments) stop the effect and answer 404 with
 `App.notFound`; a `Task` that ends in `Task.notFound` is rolled back like
-any failed `Task`. `Query.redirect : Page -> Query a` stops the effect and
-answers a 303 to the page value, as `Redirect p` does (chapter 7,
-"Failure"): a page's `load` uses it to send the browser elsewhere.
+any failed `Task`. `Query.redirect : Route -> Query a` stops the effect and
+answers a 303 to the route value, as `Response.redirect r` does (chapter 7,
+"Failure"): a GET route's `load` uses it to send the browser elsewhere.
+
+## Response, Route
+
+A write route's `update` is `Params -> Session -> Task Response` (chapter 6,
+"`Response`"). `Response` and `Route` are types of the Prelude: a `Route` is
+a route name applied to its parameters (`Todos.Index.Index { filter: Done }`),
+and a `Response` is built with these functions, each named after the
+HTTP it produces:
+
+```alder
+Response.redirect : Route -> Response                 -- 303, to the GET route's URL
+Response.render   : Route -> Response                 -- 200, that GET route's view, as one element
+Response.refresh  : Response                          -- 200, the page the browser is on, again
+Response.invalid  : Text -> Response                  -- 422, that page, form kept, the text in <Errors form />
+Response.toast    : Text -> Response -> Response      -- a toast on any response
+Response.success  : Text -> Response -> Response      -- a toast of kind success
+Response.warning  : Text -> Response -> Response      -- a toast of kind warning
+Response.error    : Text -> Response -> Response      -- a toast of kind error
+```
+
+A toast is a one-line notice shown once, in the next page the browser shows
+(chapter 6, "Notices and in-flight state"). `redirect` and `render` take a
+GET route (E0045 for any other). `invalid` is a successful result: its `Task`
+commits. `Response.status`, `header`, `json`, `file`, `remove`, `patch` and
+`stream` do not exist yet. A `Route` and a `Response` compare with `==`; two
+routes are equal when they lead to the same address.
+
+`Notice.with`, `Notice.success`, `Notice.warning` and `Notice.error` are the
+old names of `Response.toast`, `success`, `warning` and `error`, from the
+page-and-message form, where they wrap a `Nav`. They are deprecated: write
+the `Response` builders.
 
 ## Test
 
 Only a `test` or a test helper may use these (chapter 10, "Test
 helpers": a value that uses one becomes a helper); where no test can
-reach, such as a page's `view`, each is E0040 "… is only available in a
+reach, such as a route's `view`, each is E0040 "… is only available in a
 `test` or a test helper".
 
 - `Test.run : Task a -> Task { value: Result Text a, trace: List Text }`
@@ -673,34 +704,43 @@ reach, such as a page's `view`, each is E0040 "… is only available in a
 
 The browser steps (chapter 10, section 9) are special forms too: each is
 applied directly to all its arguments, never passed as a value or piped
-into, and `get`, `open`, `fetch`, `submit`, `submitRaw` and `click` need an `App`
-module. `Session` here is `App`'s session record.
+into, and `get`, `open`, `fetch`, `submit`, `submitRaw`, `click` and
+`refresh` need an `App` module. `Session` here is `App`'s session record.
 
 ```text
 Test.login     : Session -> Task Unit
-Test.get       : Page -> Task { model: Model, session: Session, doc: Doc }
-Test.open      : Page -> Task { answer: Answer, session: Session, doc: Doc }
-Test.submit    : Form -> record -> Task { answer: Answer, session: Session, doc: Doc }
-Test.submitRaw : Form -> List { name: Text, value: Text } -> Task { answer: Answer, session: Session, doc: Doc }
-Test.click     : Msg -> Task { answer: Answer, session: Session, doc: Doc }
-Test.fetch     : Page -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }
+Test.get       : Route -> Task { model: Model, session: Session, doc: Doc, url: Text, status: Int }
+Test.open      : Route -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
+Test.submit    : Route -> record -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
+Test.submitRaw : Route -> List { name: Text, value: Text } -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
+Test.click     : Route -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
+Test.refresh   : Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
+Test.fetch     : Route -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }
 ```
 
 - `Test.login s` sets the browser's session cookie, through the rules a
   served request follows: a `via` key (`org: Just acme`) needs its
   membership row first (`Test.member`), as `Session.put` would.
-- `Test.get p` and `Test.open p` take a page value written in place
-  (`Todos.Index {}`, `Todos.Show { id: id }`); `model` is the `Model`
-  of `p`'s page, which must be a record. `Test.get` fails the test
-  unless the page is shown.
-- `Test.submit F r` takes a form of a page or of `App` (`NewTodo` in its
-  module, `Todos.Index.NewTodo` elsewhere) and that form's record; a
-  form each row renders, or one two messages post, is written as its
-  message with its parameters, `Test.submit (Rename { id: b }) { … }`.
-  `Test.submitRaw` takes the same first argument and text fields.
-- `Test.click m` takes a message of a page or of `App` that carries no
-  form, with its parameters: `Toggle { id: id }`, `App.Logout`.
-- `Test.fetch p` takes a page value written in place, like `Test.get`,
+- `Test.get r` and `Test.open r` take a GET route value written in place
+  (`Todos.Index.Index {}`, `Todos.Show.Show { id: id }`); `model` is what
+  the route's `load` gave, which must be a record. `Test.get` fails the
+  test unless the route is shown. Every step but `fetch` also gives the
+  `url` of the page the browser holds afterwards and the `status` of its
+  last response (422 after `Response.invalid`).
+- `Test.submit r f` takes a write route with `form F` and its parameters
+  (`Create`, `Edit { id: id }`), and that form's record `f`. `Test.submitRaw`
+  takes the same first argument and text fields.
+- `Test.click r` takes a route without a `form`, with its parameters:
+  `Toggle { id: id }`, `App.Logout`. A write route is sent; a GET route
+  is fetched and patched into the page held.
+- `Test.refresh` loads the address the browser holds again, with a plain
+  `GET`, and fails unless the body of the page it gets is the body the
+  browser held (the page's `<al-toasts>` region left out); its answer is
+  `Refreshed`. A toggle's test ends with it: it is the check that what the
+  steps patched in is what a fresh load gives (chapter 10, "`Test.refresh`:
+  is the page the one a fresh load would give?"). It fails with no page
+  held.
+- `Test.fetch r` takes a GET route value written in place, like `Test.get`,
   and gives the raw answer: its `status`, `contentType`, `body` as
   `Bytes` and `headers` (sorted by name). It does not follow a redirect,
   and it is the step for a file page; `Test.get` and `Test.open` on a
@@ -708,15 +748,17 @@ Test.fetch     : Page -> Task { status: Int, contentType: Text, body: Bytes, hea
   file").
 
 Two types of the Prelude exist only in tests and test helpers (in a
-type declaration, E0003 "`Doc` is a test type"; in a page's `view` and
+type declaration, E0003 "`Doc` is a test type"; in a route's `view` and
 the other values that can never be helpers, E0040): `Doc`, a parsed page, which has `==`, and
 
 ```text
-type Answer = Shown | Rerendered | Redirected Page | FormRejected (List { field: Text, message: Text }) | PageMissing | RequestFailed Text
+type Answer = Shown | Rerendered | Rendered Route | Refreshed | Redirected Route | FormRejected (List { field: Text, message: Text }) | PageMissing | RequestFailed Text
 ```
 
-Their names, and `Answer`'s six constructors, are taken in every module
-(E0012). The queries are ordinary functions on a `Doc`, available only
+Their names, and `Answer`'s eight constructors, are taken in every module
+(E0012). `Rerendered` is the old name of a re-render, kept until the old
+page-and-message syntax is removed; a route's answers are the other seven
+(chapter 10, "`Answer`: what a request came to"). The queries are ordinary functions on a `Doc`, available only
 in tests like the rest of `Test`:
 
 ```text

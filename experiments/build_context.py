@@ -33,7 +33,7 @@ DEFAULT_CHAPTERS = ["03", "04", "05", "06", "07", "08", "09", "10"]
 # the browser" (the step table, the rules and the failure texts an agent's tests meet); its
 # "10. How the browser works" is the inside, for a human reader.
 HUMAN_SECTIONS = {
-    "06": ["How a request runs"],
+    "06": ["Delivery, decided by the request", "How a request runs"],
     "07": ["How effects run", "Implementing a capability"],
     "08": ["How tables are stored"],
     "10": ["2. Running the tests", "6. What a trace says",
@@ -84,18 +84,19 @@ KEEP_SUBSECTIONS = {
 # the shrinker's internals and the `--mutate` interplay, reading for a person.
 DROP_SUBSECTIONS = {
     "06": {"Rules": ["The rules and a replicated database"],
-           "App-level messages": ["Example: a theme switch"],
+           "App-level routes": ["Example: a theme switch"],
            "File pages": ["Status and headers", "Links and the boost", "What stays HTML"]},
     "07": {"Capabilities": ["A capability returning bytes"],
            "How effects run": ["Waiting: `Query.delay` and `Task.sleep`"]},
     "08": {"Migrations": ["When the app starts", "Statements you add"]},
     "09": {"Test": ["Browser steps and queries"]},
-    "10": {"11. Mutation testing": ["Why a mutation score", "The rules' mutants in a report", "How the two tests kill them", "All fourteen, and one killed by luck", "What is never a mutant",
+    "10": {"11. Mutation testing": ["Why a mutation score", "The rules' mutants in a report", "The mutant that needs a stranger", "How the two tests kill them", "All fourteen, and one killed by luck", "What is never a mutant",
                                     "The logout redirect", "Mutants that are the same program", "The exact score",
                                     "`-run`, `-timeout` and `--json`", "Ids and lines change with the code"],
            "9. Testing through the browser": ["Why through the browser", "Step by step", "`Test.get` and `Test.open`: requesting a page",
                                               "More forms", "Bad input, an example", "Clicks that fail", "A selector the compiler refuses",
-                                              "Comparing a page with its view", "`Test.fetch`: requesting a file"],
+                                              "Comparing a page with its view", "`Test.fetch`: requesting a file",
+                                              "When `Test.refresh` fails"],
            "12. Properties": ["Keeping the case", "How the shrinking works, and why you do not write it",
                               "Properties and `--mutate`"]},
 }
@@ -112,9 +113,30 @@ DROP_SUBSECTIONS = {
 # and says how `load` uses it. Chapter 5's "Custom elements" (M7a) keeps its rules in one
 # paragraph, and the input elements in another, without the manifest's story and the examples;
 # its click-button paragraph keeps the fact, not the markup. Chapter 6's paragraph on generated
-# pages goes (COMMANDS lists the generators).
+# pages goes (COMMANDS lists the generators). Chapter 3's route declarations (#160, PR 8) are a summary
+# of chapter 6's table; chapter 5's options check and its long-list pattern are shortened to their rules.
 TRIMS = {
-    "05": [("A `<button click={…}>` works with and without JavaScript.", "`data-*` and `aria-*` attributes take `Text`.",
+    "03": [("A page, and every action it sends, is a **route**", "## Literals",
+            "A page, and every action it sends, is a **route**: a `route` line\n"
+            "(`route NAME = METHOD \"path\" { params }`, then an optional `form F` and `requires …`) and\n"
+            "the declarations written `Route.name` (`R.load`, `R.view`, `R.update`, with the signatures of\n"
+            "chapter 6); an unqualified declaration belongs to the module. A qualifier that is no route of\n"
+            "the module is E0044.\n\n")],
+    "05": [("A request can be crafted by hand, so the browser's list is not a", "**A list too long to render.**",
+            "A request can be crafted by hand, so the runtime checks a posted value against the options of\n"
+            "the page the form was posted from (`Alder-Page`, else `Referer`), drawn again. A value that is\n"
+            "not one of them is the field error \"must be one of the options\": `422`, the page again, no\n"
+            "`update`; an empty value passes only when the select offers the empty option; a post from a\n"
+            "page that does not offer the options is `400`. `options` may use only the view's parameters\n"
+            "(`model`, `session`) and names it binds itself, and the select must be in a `GET` route's\n"
+            "`view`, not in a `for`, a `let` or `match` binding, or a component (E0304).\n\n"),
+           ("**A list too long to render.**", "A `<form submit={R}>` where the write route",
+            "**A list too long to render.** Keep the narrowing text as a parameter of the page's route\n"
+            "(`findAuthor: Text = \"\"`), have `load` fetch at most 50 rows that contain it, and add a second\n"
+            "form with its own write route whose `update` answers `Response.redirect` to the page with\n"
+            "`findAuthor` set (a `refresh` would keep the old text). The select is checked against the\n"
+            "narrowed page it is posted from.\n\n"),
+           ("A `<button click={…}>` works with and without JavaScript.", "`data-*` and `aria-*` attributes take `Text`.",
             "A `<button click={…}>` works with and without JavaScript (chapter 6); a\n`click` on any other element needs JavaScript.\n\n"),
            ("## Custom elements\n", "## Partial updates",
             "## Custom elements\n\nA tag with a hyphen is a custom element, declared by the built-in\n"
@@ -128,15 +150,16 @@ TRIMS = {
             "In a `<form submit>`, `<al-input field=\"f\" />` is `<Input>` (E0304 rules),\n`al-textarea` `<Textarea>`, "
             "`al-select` `<Select>`, `al-checkbox` `<Input>`\non a `Bool`; each renders its `help` and its own error list\n"
             "(an `<Errors field>` for it is E0028).\n\n")],
-    "06": [("and, in `Write.Edit`,\n\n```alder fragment\nload params session = {\n  let author <- User.isAuthor", "Every message of the page runs `load` first",
-            "which each Write page's `load` calls first, answering `Query.notFound`\nwhen it is `False`. "),
-           ("A row `load` already found with `Db.getMine` is not one of the cases:", "### The rules and a replicated database",
-            "A row `load` already found with `Db.getMine` is not one of the cases:\nwrite the scoped form; it costs "
-            "nothing (`Todos.Show` writes\n`Db.updateMine Todo model.todo.id …`, and the mutation tool counts it\nas "
-            "the same program as the unscoped one there).\n\n"),
-           ("**Generated pages say the same.**", "**A role is read at login.**",
+    "06": [("A GET route asks in its `load`, as the blog's `Write.Edit` does,", "That is the blog's test",
+            "A GET route's `load` calls `isAuthor` first, answering `Query.notFound`\nwhen it is `False`; a write route, "
+            "which runs no `load`, begins with `authorOnly`.\n\n"),
+           ("A row a page has already shown is not one of the cases either:", "### The rules and a replicated database",
+            "A row a page has already shown is not one of the cases either:\nwrite the scoped form; it costs "
+            "nothing (a write route takes its id from its path\nand runs no `load`, so the scoped write is what makes the "
+            "id safe: `Todos.Show`\nwrites `Db.updateMine Todo p.id …`).\n\n"),
+           ("**Generated routes say the same.**", "**A role is read at login.**",
             ""),
-           ("### Partitions\n\n`@owner` says", "## The request lifecycle",
+           ("### Partitions\n\n`@owner` says", "## Delivery, decided by the request",
             "### Partitions\n\n`@partition k` generalises `@owner` (which is `@partition user`) to any session\n"
             "key, here `org` (`examples/workspace`):\n\n```alder fragment\n"
             "session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Member }\n"
@@ -148,7 +171,7 @@ TRIMS = {
             "  (never changes `org`), `Db.deleteScoped T id` and `Db.insertScoped T { … }` (a literal\n"
             "  without `org`) keep to the session's org; another org's row is not found. `Db.mine` on an\n"
             "  org table is E0025 (\"… write `Db.scoped Project`\").\n"
-            "- They need a page that `requires user, org` (E0026); a `via` key comes after `user`\n"
+            "- They need a route that `requires user, org` (E0026); a `via` key comes after `user`\n"
             "  (E0027). There `session.org : Org.OrgId`. A visitor is sent to log in, a user without an\n"
             "  org to `choose org`'s page (required for a `via` key, E0032; that page must not require\n"
             "  the key); a key with no `choose` answers 404.\n"
@@ -158,26 +181,27 @@ TRIMS = {
             "  counts; one deleted counts as gone). `Nothing` is always allowed, and a session that loses\n"
             "  its user loses its org. The membership table has exactly one `@ref` to the user table and\n"
             "  one to the key's (E0032); one `via` field per session. Picking an org:\n\n"
-            "```alder fragment\nOpen p -> {\n  let _ <- Session.put (\\s -> { s | org: Just p.org })\n"
-            "  Task.succeed (Redirect (Projects.Index {}))\n},\n```\n\n"
+            "```alder fragment\nOpen.update p session = {\n  let _ <- Session.put (\\s -> { s | org: Just p.org })\n"
+            "  Task.succeed (Response.redirect (Projects.Index.Index {}))\n}\n```\n\n"
             "  A crafted `Open` of an org the user is no member of is refused; a test calls `update`\n"
             "  directly to send it.\n"
-            "- The cookie keeps `org`; it is not checked again per request. A page that must notice a\n"
-            "  removed member at once re-reads the membership in `load` (the re-read idiom):\n\n"
+            "- The cookie keeps `org`; it is not checked again per request. A route that must notice a\n"
+            "  removed member at once re-reads the membership (the re-read idiom):\n\n"
             "```alder fragment\nisMember : User.UserId -> Org.OrgId -> Query Bool\nisMember user org = {\n"
             "  let n <- Db.from Membership |> Db.where (Membership.user.eq user) |> Db.where (Membership.org.eq org) |> Db.count\n"
             "  Query.succeed (n > 0)\n}\n```\n\n"
             "  `load` begins `let member <- Membership.isMember session.user session.org` and answers\n"
-            "  `Query.notFound` when it is `False`.\n"
-            "- The admin form `requires user, role Admin, silo org` takes `org` from the page's\n"
+            "  `Query.notFound` when it is `False`; a write route, which runs no `load`, begins with\n"
+            "  `Membership.memberOnly session.user session.org`.\n"
+            "- The admin form `requires user, role Admin, silo org` takes `org` from the route's\n"
             "  parameter `{ org: Org.OrgId, … }`, guarded by the role, not `via` (E0033).\n"
             "- Not in a fake or `App` (E0026); an org's name stays unscoped (`Db.get Org session.org`).\n"
             "- With `silo org { Project, Todo }` (chapter 8, \"Silos\") each org's rows are in its own\n"
             "  database, and a `Task` writes to one store (E0031).\n\n"),
-           ("The to-do list's page uses four of them\n", "Why `update` needs them as much as `load` does",
-            "The to-do list's page uses four of them, and `Todos.Show` reads its todo with the fifth\n"
+           ("The to-do list uses four of them\n", "Why a write route needs them as much as a `load` does",
+            "The to-do list uses four of them, and `Todos.Show` reads its todo with the fifth\n"
             "(`examples/todos/app/Todos/Index.alder` and `Todos/Show.alder`, in the example app below).\n\n"),
-           ("Two small ideas first, because a file has to say both.", "The compiler decides a page is a file page",
+           ("Two small ideas first, because a file has to say both.", "The compiler decides a route is a file page",
             "A `File` carries a content type (`text/csv`), a status (`200`, `404`, `503`), a body and extra headers.\n\n"),
            ("`File.text` answers `200` with the text", "`File.html` is the way to answer a web page",
             "`File.withHeader` sets a header: `Content-Disposition: attachment; filename=todos.csv` saves the answer\n"
@@ -186,6 +210,30 @@ TRIMS = {
            ("`File.html` is the way to answer a web page, byte for byte.", "`File.status`, `File.contentType` and `File.body` read",
             "`File.html` answers a web page byte for byte. Markup in a `view` has one root element and\n"
             "no doctype, so to start with `<!doctype html>` use `Html.fragment [Html.unsafe \"<!doctype html>\\n\", <html>…</html>]`.\n\n")],
+    "07": [("The four `Log` functions write a line to the app's log at their level.", "The same goes for tokens in URLs.",
+            "The four `Log` functions write a line at their level; `ALDER_LOG` (default `info`) chooses what is\n"
+            "kept, and `Log.debug` is dropped by default. A log line outlives the request and is read by\n"
+            "others: log ids and outcomes, not the values people typed; the runtime masks secrets in URLs,\n"
+            "not in a `Log` text.\n\n"),
+           ("`Http.HttpError` is the stdlib's type for a failed request:", "`Random.int` is a fresh number",
+            "A type of a standard module other than the Prelude is written qualified (`Http.HttpError`; a bare\n"
+            "`HttpError` is E0202).\n\n"),
+           ("`Random.int` is a fresh number on every run.", "Nothing else in the language touches",
+            "`Random.int` is a fresh number on every run; for the same numbers every run use the pure,\n"
+            "seeded `Random.step` (chapter 9, \"Random\"), which is no effect.\n\n"),
+           ("Chapter 10 (\"Faking a capability\") teaches fakes:", "Two commands write a capability for you",
+            ""),
+           ("Two commands write a capability for you (chapter 15):", "### A capability returning bytes",
+            ""),
+           ("Formats live behind the capability:", "## How effects run", ""),
+           ("The adapter returns a plain Go `[]byte`:", "A GET route then wraps the bytes in a file",
+            "The adapter returns a plain Go `[]byte` and an error.\n\n"),
+           ("- The wait belongs to the request.", "```alder\nmodule Todos.Pause",
+            "- A cancelled request stops waiting at once. The number is clamped to 0..60000, and the trace\n"
+            "  shows the clamped value (`Query.delay 20000ms`).\n"
+            "- A `Query` delay holds no transaction. A `Task` begins its transaction at its first database\n"
+            "  step, so a `Task.sleep` after a write holds it open: sleep first.\n"
+            "- In a test the wait is virtual: the clock moves at once and nothing sleeps.\n\n")],
     "08": [("## Silos\n\nA partition keeps", "### One store per `Task`",
             "## Silos\n\n`silo org { Project, Todo }` in `App` keeps those tables in a database per org; the\n"
             "rest are in the shared database. Each listed table is `@partition org`; a table is in one silo;\n"
@@ -201,9 +249,23 @@ TRIMS = {
             "and capabilities do not count.\n\n"),
            ("A table with an `@owner` column (above) also has five **scoped**\n", "## How tables are stored",
             "A table with an `@owner` column (above) also has five **scoped**\noperations, `Db.mine`, "
-            "`Db.getMine`, `Db.updateMine`, `Db.deleteMine` and\n`Db.insertMine`, for the pages of a signed-in "
+            "`Db.getMine`, `Db.updateMine`, `Db.deleteMine` and\n`Db.insertMine`, for the routes of a signed-in "
             "user: chapter 6, \"Rules\",\nexplains them, and chapter 9 lists their types.\n\n")],
-    "09": [("`Float.sqrt`, `Float.exp`, `Float.log` and `Float.pow` are", "\n## Bool",
+    "09": [("`Url.external` keeps a URL only when it is", "`Url.absolute r` is the route's full URL",
+            "`Url.external` keeps only an absolute `http:`/`https:` URL, a path of this site (not `//host` or\n"
+            "`/\\host`) or a fragment (`#top`); anything else (`javascript:`, `data:`, `mailto:`, relative\n"
+            "paths, control characters) becomes `#`, and a redirect to one is a 500. A link or\n"
+            "`Response.redirect` built from user input can never run script.\n\n"
+            "A `Route` compares by its address: a defaulted parameter is left out of the URL.\n\n"),
+           ("A write route's `update` is `Params -> Session -> Task Response`", "```alder\nResponse.redirect",
+            "`Response` and `Route` are Prelude types (chapter 6, \"`Response`\"). An `update` builds its\n"
+            "`Response` with:\n\n"),
+           ("A toast is a one-line notice shown once,", "## Test\n",
+            "`redirect` and `render` take a GET route (E0045 otherwise). `invalid` is a successful result: its\n"
+            "`Task` commits. `Response.status`, `header`, `json`, `file`, `remove`, `patch` and `stream` do not\n"
+            "exist yet. `Route` and `Response` compare with `==`. `Notice.with`, `success`, `warning` and\n"
+            "`error` are the deprecated old names of the toast builders, on a `Nav`.\n\n"),
+           ("`Float.sqrt`, `Float.exp`, `Float.log` and `Float.pow` are", "\n## Bool",
             "IEEE rules: `Float.sqrt (-1.0)` is NaN, `Float.log 0.0` -infinity; no failures.\n"),
            ("\n`Time.toMillis` counts milliseconds", "\n## File, Bytes", "\n"),
            ("A file page's `view` returns a `File`", "```alder\nFile.text ",
@@ -213,7 +275,7 @@ TRIMS = {
            ("- `Test.member : u -> k -> Task Unit` (M15)", "\n### Browser steps and queries",
             "- `Test.member ann acme : Task Unit` inserts the `via` table's row making the user a member\n"
             "  of the key (other columns `Nothing` or their default; E0003 if one is required).\n"
-            "- `Test.fetch : Page -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }`\n"
+            "- `Test.fetch : Route -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }`\n"
             "  requests a file page: the raw answer, redirects not followed, headers sorted by name.\n"),
            ("\nRun without the key (a test whose session has no `org`)", "`Query.notFound` and `Task.notFound`",
             "\nWithout the key they fail (\"Db.insertScoped Project: the session has no org\"). On a siloed\n"
@@ -227,7 +289,7 @@ TRIMS = {
             "needs the membership first, as `Session.put` does: `Test.member ann acme` inserts it. Each org a\n"
             "test touches has its own in-memory database (a silo); insert another org's siloed rows before\n"
             "`Test.login`, as production refuses them in a request of this org. A crafted switch is a direct\n"
-            "call: `Test.run (update (Open { org: globex }) model session)` is `Err \"Session.put org: no\n"
+            "call: `Test.run (Open.update { org: globex } session)` is `Err \"Session.put org: no\n"
             "Membership for this user and org\"`, which kills the mutant `membership dropped`.\n\n"),
            ("**Where an effect test runs.** Every effect test gets a world of its own:", "A pure test (section 1) touches none of this",
             "**Where an effect test runs.** Each effect test gets a fresh, empty\nin-memory SQLite database with the "

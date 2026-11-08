@@ -1,8 +1,13 @@
 # 5. HTML
 
-HTML is a built-in expression form. An HTML expression has type `Html Msg`,
-where `Msg` is the message type of the page it can send. HTML that sends
-nothing has type `Html Never`.
+HTML is a built-in expression form. An HTML expression has type `Html`. What
+a button, a form or a link leads to is a **route** (chapter 6), written in
+the markup as a value, so the type of the markup does not have to say it.
+
+In a route module `Html` is the whole type. In a module without routes
+(`Layout`, an `App` without routes, a shared component) `Html` still takes a type argument for
+now: write `Html a`, and `Html Never` for markup that sends nothing, such as
+`App.error`. The argument is on its way out.
 
 ## Elements
 
@@ -29,14 +34,14 @@ Braces embed an expression:
 An embedded expression must have one of these types:
 
 - `Text`: inserted as escaped text.
-- `Html Msg`: inserted as markup.
-- `List (Html Msg)`: inserted in order.
+- `Html`: inserted as markup.
+- `List Html`: inserted in order.
 
 Nothing else is inserted implicitly. An `Int` must be converted with
 `Text.fromInt`. A `Maybe Text` must be matched or defaulted with `??`.
 
 Text is **always escaped**. To insert trusted markup, use `Html.unsafe`,
-which takes a `Text` and returns `Html Never`. It is the only way to produce
+which takes a `Text` and returns markup. It is the only way to produce
 unescaped output, and it must never be applied to text a user entered.
 
 ## Control flow in HTML
@@ -49,7 +54,7 @@ unescaped output, and it must never be applied to text a user entered.
 
   {match model.user {
     Just u -> <span>{u.name}</span>,
-    Nothing -> <a href={Auth.Login {}}>Log in</a>,
+    Nothing -> <a href={Auth.Login.Login {}}>Log in</a>,
   }}
 </div>
 ```
@@ -59,11 +64,11 @@ branch should show nothing, write `else Html.none`:
 
 ```alder
 <nav>
-  {if model.user == Nothing then <a href={Auth.Login {}}>Log in</a> else Html.none}
+  {if model.user == Nothing then <a href={Auth.Login.Login {}}>Log in</a> else Html.none}
 </nav>
 ```
 
-`for x in list -> html` produces a `List (Html Msg)`. There is no index
+`for x in list -> html` produces a `List Html`. There is no index
 variable; use `List.indexed` first if an index is needed.
 
 A line that begins with `--` between elements is a comment, as elsewhere.
@@ -121,7 +126,7 @@ put a space between elements on separate lines, insert it with `{" "}`.
 <input type="text" name="title" value={model.draft} />
 <li class={if todo.done then "done" else ""}>{todo.title}</li>
 <button disabled={model.saving}>Save</button>
-<a href={Todos.Show { id: todo.id }}>{todo.title}</a>
+<a href={Todos.Show.Show { id: todo.id }}>{todo.title}</a>
 ```
 
 Attribute values are either a literal string or a braced expression. The
@@ -131,9 +136,10 @@ expression's type depends on the attribute:
 |---|---|
 | most attributes (`class`, `id`, `value`, `placeholder`, ...) | `Text` |
 | boolean attributes (`disabled`, `checked`, `required`, `controls`, `muted`, ...) | `Bool` |
-| `href` | a page value (chapter 6) |
-| `src` | `Text`, or a page value: `src={Url.external "https://…"}` |
-| `click`, `submit` | a message value (chapter 6) |
+| `href` | the value of a `GET` route (chapter 6) |
+| `src` | `Text`, or a route value: `src={Url.external "https://…"}` |
+| `click` | the value of any route |
+| `submit` (on a `<form>`) | the value of a write route |
 | any attribute | `Maybe Text`: omitted when `Nothing` |
 
 A boolean attribute (HTML's: `controls`, `muted`, `async`, `defer`, …) is
@@ -142,13 +148,44 @@ absent.
 
 `href` never takes a `Text`. Links to external sites use `<a href={Url.external "https://..."}>`.
 Event attributes are not HTML event names (`onclick`); they are `click` and
-`submit`, and they take a message, not a function.
+`submit`, and they take a route, not a function. A route of the
+wrong kind is E0045: `href` to a write route (a link only reads), or `submit`
+to a `GET` route (a form posts).
 
-A `<button click={…}>` works with and without JavaScript. Outside a form it
-is rendered inside a small form of its own that posts the message:
+A `<button click={…}>` works with and without JavaScript. What it renders
+depends on the route's method. For a `POST` route, outside a form, it is
+rendered inside a small form of its own that posts to the route's address
+(here `App.Logout`, `POST "/_/Logout"`):
 
 ```html
-<form method="post" action="/_m/App/Logout" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Logout&#39;, window._alderO?.(&#39;form&#39;)))"><button type="submit">Log out</button></form>
+<form method="post" action="/_/Logout" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_/Logout&#39;, window._alderO?.(&#39;form&#39;)))"><button type="submit">Log out</button></form>
+```
+
+A browser form can send only `GET` and `POST`. A `PUT`, `PATCH` or `DELETE`
+route is sent as a `POST` that names its method in a hidden field, `_method`,
+so it works without JavaScript too. This is `click={Toggle { id: "7" }}` for
+`route Toggle = PATCH "/rows/{id}/toggle" { id: Text }`:
+
+```html
+<form method="post" action="/rows/7/toggle" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @patch(&#39;/rows/7/toggle&#39;, window._alderO?.(&#39;form&#39;)))"><input type="hidden" name="_method" value="PATCH" /><button type="submit">Toggle</button></form>
+```
+
+The router honours `_method` on a `POST` only, and never in the query string,
+so a link from another site cannot become a write. With JavaScript, Datastar
+sends the request with the route's own method (`@patch` above) and the field
+is not needed (a `DELETE` is sent as `@post` with `_method=DELETE`; chapter 6). A `<form submit={R}>` whose route is a `PUT`, `PATCH` or
+`DELETE` does the same: the form's own submit button carries
+`name="_method" value="PATCH"`, or the form gets a hidden `_method` field when
+it has no submit button of its own.
+
+A `click` on a `GET` route is a `GET` form, with the route's query
+parameters in hidden fields, so that without JavaScript the button
+navigates to the route; with it, the answer is the route's view, put where the
+route's root `id` stands (chapter 6, "Delivery"). `click={Index { q: "x" }}`
+on `route Index = GET "/" { q: Text = "" }` is:
+
+```html
+<form method="get" action="/?q=x" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @get(&#39;/?q=x&#39;, window._alderF?.()))"><input type="hidden" name="q" value="x" /><button type="submit">Search</button></form>
 ```
 
 The design system's stylesheet (Appendix C) gives that wrapper
@@ -157,10 +194,11 @@ layout and the button sits in line with the text around it. Without
 `al.css`, write that rule in your own stylesheet; and write a rule of
 your own for forms as `form:not(._alder-click) { … }`, so it does not
 catch the wrapper (the stylesheet `alder new` writes does). Inside a `<form submit>` (forms
-cannot nest) a `click` button is a submit button with its own
-`formaction` instead. A `click` on any other element, such as a `<li>`,
-needs JavaScript. Chapter 6, "With and without JavaScript", has the
-details.
+cannot nest) a `click` button on a write route is a submit button with its
+own `formaction`, `formmethod` and, for a `PUT`, `PATCH` or `DELETE`, its own
+`_method` instead; a `click` on a `GET` route there, and a `click` on any
+other element, such as a `<li>`, need JavaScript. Chapter 6, "With and
+without JavaScript", has the details.
 
 `data-*` and `aria-*` attributes take `Text`.
 
@@ -217,17 +255,19 @@ Layout props =
 </Layout>
 ```
 
-A component in a page module may be typed `Html Msg` and send that page's
-messages. A component in any other module has no `Msg`; it is typed `Html a`
-and can send only app-level messages (`App.Logout`), which fit any `Html a`.
-`Html Never` (markup that sends nothing) also fits any `Html a`.
+A component can contain any route: `click={Toggle { id: todo.id }}` names a
+route value, so a component needs no declaration of what it sends, in a route
+module or in any other. In a route module it is typed `Html`; in a module
+without routes, such as `Layout`, it is typed `Html a` (above). `Html Never`
+(markup that sends nothing) also fits any `Html a`.
 
 Components are plain functions. They have no state and no lifecycle.
 
 ## Forms and inputs
 
-Inside `<form submit={Msg}>`, the `<Input>`, `<Select>`, `<Textarea>`, and
-`<Errors>` components are bound to that message's form type (chapter 6):
+Inside `<form submit={R}>`, the `<Input>`, `<Select>`, `<Textarea>`, and
+`<Errors>` components are bound to the form type of the write route `R`
+(chapter 6, "`form`"):
 
 ```alder
 <form submit={Submit}>
@@ -239,7 +279,7 @@ Inside `<form submit={Msg}>`, the `<Input>`, `<Select>`, `<Textarea>`, and
 ```
 
 `<Errors field="x" />` shows the errors for one field; `<Errors form />`
-shows form-level errors (from `Reject`), then the errors of every field
+shows form-level errors (from `Response.invalid`), then the errors of every field
 that has no `<Errors field>` of its own, each after the field's name. Each
 renders a list, empty until there is something to show, with one item per
 message:
@@ -311,42 +351,46 @@ A request can be crafted by hand, so the browser's list is not a
 guarantee: someone can post an id the page never offered, such as
 another table's id, an id that names no row, or a row this user may
 not see. The runtime therefore checks the value against the options
-when the form is submitted. `load` runs before every message (chapter
-6), so the model is there again, and the generated code computes the
-`options` expression again from it. A value that is not one of the
-options is a field error, "must be one of the options", answered like
-the decoder's: the page is drawn again with the error under the select
-and `update` does not run. An empty value passes only when the select
-offers the empty option. To make that recomputation possible,
-`options` may use only the view's parameters (`model` and `session`)
-and names it binds itself, such as a lambda's `\u`: a select inside a
-`for` that takes its options from the loop's variable is E0304, as is
-a name a `let` or a `match` arm of the view binds, and so is a select
-with `options` in a component, whose props the runtime
-cannot compute from the model. Put the list in the model and the select
-in the page's `view`. The check ignores the view's `if`s: a select in a
-branch not drawn still offers its options to a crafted post.
+when the form is submitted. A write carries the address of the page it was
+sent from (`Alder-Page`; without JavaScript the `Referer`; chapter 6,
+"Delivery"), so the runtime draws that page again and reads the options its
+select offered. A value that is not one of them is a field error, "must be
+one of the options", answered like a form that does not decode: `422`, the
+page drawn again with the error under the select, and `update` does not run.
+An empty value passes only when the select offers the empty option. A form
+posted from a page that does not offer its options (another page, an address
+no `GET` route matches, a page that no longer shows that form) is refused
+with `400`, and the server logs why. The check is against the page as it was
+drawn, so a select in a branch the page did not draw offers nothing.
+To make the check possible, `options` may use only the view's parameters
+(`model` and `session`) and names it binds itself, such as a lambda's `\u`: a
+select inside a `for` that takes its options from the loop's variable is
+E0304, as is a name a `let` or a `match` arm of the view binds, and so is a
+select with `options` in a component, whose props the check cannot rebuild
+from the page's parameters. Put the list in the model and the select in the
+`GET` route's `view`.
 
 **A list too long to render.** A select that offers every row of a large
 table is slow to draw and hard to use, and there is no `al-autocomplete`
 element in the library to type into. The pattern the admin uses (chapter
 15, "A long table behind a reference") needs nothing new, because the
-options are computed from the model and the membership rule is checked
-against the options just rendered. Keep the narrowing text as a page
-parameter (`page "/posts/new" { findAuthor: Text = "" }`), so `load` reads
-it before every message; have `load` fetch at most 50 rows whose label
-contains it (`Db.where (User.email.contains p.findAuthor)`, `Db.limit
-50`); and add a small second form with its own message, `form Find = { q:
-Text }`, whose arm answers `Redirect` to the same page with `findAuthor`
-set. It must be a `Redirect`, not a `Rerender`: `load` ran before the
-message, with the old text, and only a fresh request narrows by the new.
-The select then holds the narrowed rows, and a posted value outside them
-(typed by hand, or left over from an earlier search) is "must be one of the
-options" like any other. The pattern has no script and works with
-JavaScript off.
+membership rule is checked against the options just rendered. Keep the
+narrowing text as a parameter of the page's route (`route New = GET
+"/posts/new" { findAuthor: Text = "" }`), so `New.load` reads it on every
+request; have `load` fetch at most 50 rows whose label contains it
+(`Db.where (User.email.contains params.findAuthor)`, `Db.limit 50`); and add
+a small second form with its own write route, `route Find = POST
+"/posts/_/Find" { } form Find` with `form Find = { q: Text }`, whose
+`Find.update` answers `Response.redirect (New { findAuthor: p.form.q })`. It
+must be a `redirect`, not a `refresh`: `refresh` draws the page at the address
+it is on, with the old text, and only a request for the new address narrows
+by the new text. The select then holds the narrowed rows, and a posted value
+outside them (typed by hand, or left over from an earlier search) is "must be
+one of the options" like any other, because the form is posted from the
+narrowed page. The pattern has no script and works with JavaScript off.
 
-A `<form submit={M}>` where `M` has no `form` type is allowed; it contains
-no bound inputs, only a button.
+A `<form submit={R}>` where the write route `R` has no `form` type is allowed;
+it contains no bound inputs, only a button.
 
 `field` must name a field of the form type. The input's `name`, `type`,
 `required`, and current value are derived from the field's type and the
@@ -471,7 +515,7 @@ popover and invoker attributes `popover`, `popovertarget`,
 also allows on any element (so `<al-menu id="more" popover>` is written
 as Appendix C shows it; a bare `popover` is the platform's `popover="auto"`);
 and Alder's own `click` and `href`, which mean what they mean anywhere (a
-message, a page). `submit` is not among them: a custom element is not a
+route). `submit` is not among them: a custom element is not a
 form, so nothing would ever submit it.
 
 ```alder error=E0028 "`submit` belongs on `<form>`; use `type=\"submit\"` inside `<form submit>`"
@@ -534,7 +578,7 @@ the slots of the element it puts them in. In
 component's call, so a wrong slot name there renders quietly in the
 default slot.
 
-Events are not checked: Alder's `click` and `submit` are messages, not
+Events are not checked: Alder's `click` and `submit` name routes, not
 DOM events (chapter 6).
 
 ### The input elements
@@ -582,13 +626,17 @@ element, and inside a `<form submit>` it holds no bound input (use
 
 ## Partial updates
 
-After a message, the runtime renders the whole page again, and also the
-page as it was before the message (the same `view` of the model `load`
-gave before `update`). It compares the two and sends the browser only the
-elements that changed, each found by its `id`; Datastar morphs each into
-place, and leaves the rest of the page alone. Without Datastar (JavaScript
-off), the browser gets the whole new page. Nothing in your code changes
-between the two (chapter 6, "With and without JavaScript").
+When a write route answers `Response.refresh` (or `Response.invalid`), the
+runtime renders the page the browser is on twice: as it was before the
+`update`, and again after it (the same `view`, of the model `load` gave each
+time). It compares the two and sends the browser only the elements that
+changed, each found by its `id`; Datastar morphs each into place, and leaves
+the rest of the page alone. Two other answers skip the comparison. `render r`
+sends the one element that `r`'s view draws, by its root `id`. `redirect r`
+sends the page `r` as a link does, never compared with the one on screen
+(chapter 6, "Delivery"). Without Datastar (JavaScript off), a write answers
+with a `303` (`invalid`: a `422`) and the browser loads the whole page (chapter 6, "With and
+without JavaScript").
 
 An element with an `id` is a **region**. The `<body>` is the outermost
 one, and regions nest. When something changes, the runtime sends the

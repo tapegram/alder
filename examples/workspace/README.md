@@ -18,7 +18,7 @@ shared database is `build/workspace/dev.db` and each org's a file of its own und
 
 ## Layout
 
-The tables (Activity, Membership, Org, Project, Todo and User) live under `app/Table/`, one module each (`module Table.Activity`, ... `Table.User`), and pages `import Table.<Name>`. The admin's folders are plural (`app/Admin/Todos/` and so on); its URLs are not (`/admin/todo`). `migrations/0002_rename_activity_rename_membership.sql` renames the tables from the old root modules to these; it moves no data.
+The tables (Activity, Membership, Org, Project, Todo and User) live under `app/Table/`, one module each (`module Table.Activity`, ... `Table.User`), and route modules `import Table.<Name>`. The admin's folders are plural (`app/Admin/Todos/` and so on); its URLs are not (`/admin/todo`). `migrations/0002_rename_activity_rename_membership.sql` renames the tables from the old root modules to these; it moves no data.
 
 ## What it shows
 
@@ -28,7 +28,7 @@ The tables (Activity, Membership, Org, Project, Todo and User) live under `app/T
   hand), also when the row was deleted earlier in the same Task (`Orgs.Index "a membership
   deleted earlier in the same Task counts as gone"`). Logging in puts the first org the user
   joined (`Auth.Login`); logging out clears it with the user.
-- **Pages that require the key.** `Projects.Index`, `Projects.Show` and `Members.Index` are
+- **Routes that require the key.** `Projects.Index`, `Projects.Show` and `Members.Index` are
   `requires user, org`: a visitor is sent to log in, a user without an org to `Orgs.Index`
   (`Projects.Index "without an org the page sends you to choose one"`).
 - **The scoped operations.** `Db.scoped Project`, `Db.getScoped`, `Db.insertScoped`,
@@ -52,13 +52,13 @@ The tables (Activity, Membership, Org, Project, Todo and User) live under `app/T
   and `Remove` (a Membership and a line of Activity) write the shared one. A Task that wrote a
   project and a line of Activity would be E0031 (book 11).
 - **The re-read idiom.** The cookie keeps `org` as it was put; it is not checked again on every
-  request. The three org pages call `Membership.isMember` in their `load`, so a member removed
+  request. The three org modules call `Membership.isMember` in their `load`, so a member removed
   since is turned away at once (`Projects.Index "a member removed from the org loses access at
   once"`, `Members.Index "removing a member logs it, and a removed member loses access at
   once"`).
 - **The admin of a silo.** `/admin/orgs` lists every org; each opens its dashboard
   (`/admin/orgs/{org}`) and the pages of its projects and to-dos (`/admin/orgs/{org}/project…`),
-  declared `requires user, role Admin, silo org`: the org comes from the page's parameter and the
+  declared `requires user, role Admin, silo org`: the org comes from the route's parameter and the
   role check guards it, so an Admin need not be a member (`Admin.Projects.Index "an Admin who is
   no member of the org lists its projects, and only its"`, `Admin.Projects.Bulk "a bulk action
   stays inside one org"`, and a Member's 404 on each page).
@@ -75,7 +75,7 @@ The tables (Activity, Membership, Org, Project, Todo and User) live under `app/T
   only"`. The `scope dropped` of the siloed tables' scoped operations is not made: the org's
   database holds that org's rows only, so the mutant is equivalent, and the run says so.
 - The generated admin (298 tests, `app/Admin/`, kept as `alder new admin` wrote them): the 11
-  survivors. Five are `> 200` flipped to `>= 200` in the New pages' searches (`orgsTotal`,
+  survivors. Five are `> 200` flipped to `>= 200` in the New routes' searches (`orgsTotal`,
   `usersTotal`, `projectsTotal`): a search of "" matches every row, as in the blog. Six are in
   Membership's list, whose columns are all references (and its `created`): no column has a sample
   order to sort by, so the list has no sort test (`order` and `toggle` survive), and its search

@@ -10,23 +10,31 @@ tag (and before its `>` or `/>`), and in a type, where a line may begin with
 module      = "module" ModName NL {import NL} {decl NL} ;
 import      = "import" ModName ["as" uname] ;   (* the canonical qualifier, chapter 3: E0204 otherwise *)
 
-decl        = valueDecl | typeDecl | pageDecl | msgDecl | formDecl
+decl        = valueDecl | typeDecl | routeDecl | formDecl
             | tableDecl | capDecl | fakeDecl | sessionDecl | testDecl | loginDecl ;
 
-valueDecl   = lname ":" type NL lname {lname} "=" expr ;
+valueDecl   = declName ":" type NL declName {lname} "=" expr ;
+declName    = lname | uname "." lname ;         (* Route.name: a member of route Route, chapter 6;
+                                                   the signature and the definition write the same name *)
 typeDecl    = "type" uname {lname} "=" ( unionBody | recordType | brandType ) ;
 unionBody   = ["|"] ctor {"|" ctor} ;
 ctor        = uname [atype] ;
 brandType   = "brand" uname ["where" expr] ;
 
-pageDecl    = "page" string recordType ["requires" lname ["," "role" uname {"|" uname}]] ;
-                                    (* the role clause: after "requires user" only, E0027 *)
-msgDecl     = "msg" uname [recordType] ["form" uname] ;
+routeDecl   = "route" uname "=" method string recordType ["form" uname] [guard] ;
+method      = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" ;
+                                    (* "form F": a write route only, E0043;
+                                       the string is the path, "{name}" segments;
+                                       the record is the route's parameters: a field may
+                                       have a default and "as" (a query key) *)
+guard       = "requires" lname {"," lname} ["," "role" uname {"|" uname}] ["," "silo" lname] ;
+                                    (* each lname a session field; the role clause: after
+                                       "requires user" only, E0027 *)
 formDecl    = "form" uname "=" "{" {fieldDef ","} [fieldDef] "}" ;
 tableDecl   = "table" uname [renamed] "{" {fieldDef {attr} ","} [fieldDef {attr}] "}" ;
 fieldDef    = lname ":" type ["=" expr] ["as" string] ;
                                     (* in a table: the default is a literal, E0022;
-                                       "as": a page's query key, page parameters only;
+                                       "as": a route's query key, route parameters only;
                                        it may start the next line; in the default, "as"
                                        is a name inside ( ), [ ], a record's, an update's
                                        or a block's { }; elsewhere it ends the default *)
@@ -38,11 +46,12 @@ renamed     = "@renamed" string ;   (* the old name; a plain string, no "{…}" 
 capDecl     = "capability" uname "{" {lname ":" type ","} [lname ":" type] "}" ;
 fakeDecl    = "fake" uname "{" {tableDecl | lname {lname} "=" expr} "}" ;   (* beside its capability, E0020 *)
 sessionDecl = "session" recordType ;
-loginDecl   = "login" "=" ModName ;
+loginDecl   = "login" "=" ModName ;   (* a route: Auth.Login.Login, the module and then the route *)
 testDecl    = "test" string "=" expr ;
 
 type        = atype {atype} ["->" type] ;
-atype       = uname | ModName "." uname | lname | recordType | "(" type ")" ;
+atype       = uname | ModName "." uname |   (* Index.Params, Row.Session: a route's types *)
+             lname | recordType | "(" type ")" ;
 recordType  = "{" {fieldDef ","} [fieldDef] "}" ;
 
 expr        = pipeExpr ;
@@ -91,6 +100,17 @@ hexpr       = expr
 string      = '"' {char | "{" expr "}"} '"' ;
 ModName     = uname {"." uname} ;
 ```
+
+A route's members are `Route.name` declarations (`Index.load`, `Index.view`,
+`Toggle.update`); what a route module may declare, and the signatures, are in
+chapter 6. A dotted name is read as the longest module path the program knows,
+then a route of that module, then a member: `Todos.Index.Index {}` is the module
+`Todos.Index`, its route `Index`, and the route's parameters.
+
+`page "…" { … }` and `msg M { … }` are the old form of a route and its writes. The
+parser still accepts them, beside `route` (a module has one form or the other,
+E0043), until they are removed; `alder fix --routes` rewrites them. They are not
+part of the grammar above, and `page` and `msg` stay reserved words meanwhile.
 
 Lexical: `lname` is `[a-z_][A-Za-z0-9_]*` other than `_` alone, `uname` is
 `[A-Z][A-Za-z0-9_]*`, and `hname` additionally allows `-`. No `lname` or

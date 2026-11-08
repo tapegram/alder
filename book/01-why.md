@@ -13,7 +13,7 @@ case, a side effect in the wrong place, a forgotten auth check. None of these
 are hard problems. They are coordination problems between parts of a program
 that the language doesn't know are related.
 
-Alder makes those parts language constructs (`page`, `msg`, `form`, `table`,
+Alder makes those parts language constructs (`route`, `form`, `table`,
 `capability`) so the compiler can check that they agree.
 
 ## Principles
@@ -36,26 +36,33 @@ Alder makes those parts language constructs (`page`, `msg`, `form`, `table`,
 
 ## The shape of an Alder app
 
-An Alder app is a set of **pages**. Each page is a module that declares:
+An Alder app is a set of **routes**. Every URL is a route: one `route` line
+with an HTTP method and a path. A module may declare any number of them.
 
-- a **route** (`page "/todos/{id}" { id: TodoId }`),
-- a **Model** type, derived fresh for every request,
-- `load`, which describes what to read to build the Model,
-- `view`, which turns the Model into HTML,
-- zero or more **messages** (`msg`), which are the POST routes the page's
-  HTML can send, and
-- `update`, which handles a message and describes what to write and where
-  to go next.
+- A route that reads (`GET`) has a `load`, which describes what to read, and
+  a `view`, which turns what `load` returned into HTML. A page is a GET
+  route whose view includes the layout; the language has no word for it.
+- A route that changes something (`POST`, `PUT`, `PATCH`, `DELETE`) has an
+  `update`, which describes what to write and answers with a `Response`:
+  go to another route (`Response.redirect`), show a route again in place
+  (`Response.render`), reload the page (`Response.refresh`), or refuse a
+  form (`Response.invalid`).
+- A button or a form names the write route it sends, a link names the GET
+  route it goes to, and the compiler checks that each exists and has the
+  parameters it is given.
 
-This is Elm's Model–View–Update, with one change: the Model is not stored
-between requests. It is rebuilt from the route, the session, and the
-database each time. There is nothing to invalidate and nothing to get out
-of sync.
+There is no stored model. What `load` returns is rebuilt from the route's
+parameters, the session and the database for each request, so there is
+nothing to invalidate and nothing to get out of sync. The server remembers
+nothing between requests: state lives in the URL, in the HTML, in the
+session or in the database, and nowhere else (chapter 6, "The state rule").
+Because a row's route can be fetched on its own, toggling one todo reads that
+one todo and sends that one `<li>`, not the page.
 
-Pages are served as plain HTML. Interactions are HTTP POSTs. With Datastar
-present in the page, the server responds to a POST with a patch of the
-changed HTML over SSE, so the page updates in place without a reload.
-Without JavaScript the same app works as full page loads.
+Routes are served as plain HTML. With Datastar present in the page, the
+server answers a write with a patch of the changed HTML over SSE, so the page
+updates in place without a reload. Without JavaScript the same app works as
+full page loads and redirects.
 
 ## What Alder is not
 

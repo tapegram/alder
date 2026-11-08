@@ -31,7 +31,95 @@ The reasoning behind the claim, from the literature:
 
 ## Decisions
 
-### Derived model, not stored model **(untested)**
+Alder first had `page`, `msg`, a `Model` type per page and an `update` that
+answered with `Rerender`, `Redirect` or `Reject`. Routes replaced all of
+them (#160, "Routes, not pages and messages", below). The decisions that
+were made in that vocabulary stay here, marked **(superseded)**, because the
+reasons and the experiments behind them are history, and the parts of them
+that still hold (the model is rebuilt, never stored; a form's state is in the
+request) hold on routes. Where a heading or a quotation uses `page`, `msg`,
+`Rerender` or `Redirect`, it is the old name.
+
+### Routes, not pages and messages **(decided #160; tested: the corpus, the three examples, the book)**
+
+**Intent.** Every message paid for the page's `load` twice, before and after
+`update`. The only way to keep a computed result was to write it somewhere or
+put it in a redirect's parameters. A row's buttons could not be shared between
+two pages without two `update`s. Nothing let a piece of a page be fetched
+on its own (search results, "load more", a slow widget). The position taken
+was to push HATEOAS as far as it goes: the server remembers nothing between
+requests, and cheap partial updates are the easy path.
+
+**What replaced them.** One keyword, `route NAME = METHOD "path" { params }`
+(chapter 6). A GET route has a `load` and a `view`; a write route has an
+`update` that changes data and answers with a `Response`. A page is a GET
+route whose view happens to include the layout; the language has no word for
+it. A module holds any number of routes, and what belongs to a route is
+written `Route.name` (`Index.view`), so a file stays flat and its order is
+free. `page`, `msg`, `type Model`, the module-level `update`, `Nav` and
+`Notice` went, and so did the type parameter of `Html` (`Html a` is still
+accepted in shared components until the old syntax is removed). The type
+`Page` became `Route`.
+
+**Goals** (the numbers are the spec's):
+
+1. A row toggle costs one write and one read by key, and sends one element on
+   the wire. No page load, no before-view. (`Response.render (Row { id })`.)
+2. One keyword covers pages, partials and writes.
+3. Search-as-you-type, infinite scroll, lazy regions, inline edit, modals,
+   wizards, login, toasts, CSV export and polling badges each fall out of
+   routes plus existing attributes, with no new runtime concept. (The ones
+   that need `input=`, `load=` and `every=` wait for a later change: chapter 6
+   names what is built.)
+4. Without JavaScript every write still works: a plain `POST`, the response's
+   own status code, a `GET`.
+5. `alder test` checks that every region the server patched equals a fresh
+   render of that region, on every click and submit.
+6. Existing apps move mechanically: `alder fix --routes` rewrites a page
+   module as a route module.
+7. `Response` is where later work lands (status codes, headers, several
+   patches, JSON, files, streams) without a language change.
+
+**Anti-goals**, each of them tried or weighed and refused:
+
+- A per-route flag or type that says "page" or "partial". `Page` as a view
+  type and a `fragment` keyword were both tried and rejected: the request
+  decides how an answer is delivered (a document, a body morph, or one
+  element patched by its root `id`), as in HTMX, not the route.
+- A model that `update` returns to `view`. An answer that carried both a model
+  and parameters could disagree, and a refresh is what exposes it. `update`
+  changes data; a GET route renders data.
+- A hidden cost model (loading the model only in the arms that read it). It
+  was refused in favour of structure: a write route has no model because it
+  has no view.
+- A raw `{ status, headers, body }` record as the answer. A `Location` that is
+  text loses the typed `Route`, and the checker could no longer warn about a
+  rejected form with no `<Errors form />`. `Response` is opaque and its
+  builders are typed, named after the HTTP they produce (`redirect` is a
+  `303`, `invalid` a `422`).
+- Server-side per-tab state, a cache of the last body, sticky sessions.
+
+**The state rule.** Because the server keeps nothing, where a value lives
+decides what survives. The URL survives a refresh, Back and a shared link; the
+HTML, only the next interaction; the session, a refresh but not sharing; the
+database, everything. So: *if you would want it back after a refresh, it goes
+in the URL; if it is secret, it goes in the session; everything else rides in
+the HTML or is a row.* A choice that was a runtime feature ("does a refresh
+keep it?") is now the developer's, made by where the value is put, and the
+compiler's checks (every link names a route and its parameters, every
+parameter has a type) fall on the URL, the one home that is shared.
+
+**What was kept, and what is not built.** `requires`, `@owner`, roles,
+forms and their errors are unchanged, per route. Rails/Turbo, HTMX, Remix and
+LiveView all have the same three outcomes of a write: redirect, re-render in
+place, a partial. Alder spells them `Response.redirect`, `Response.render`
+and `Response.refresh`, and adds `Response.invalid` for a refused form.
+`Response.status`,
+`header`, `json`, `file`, `remove`, `patch` and `stream`, and the attributes
+`input=`, `load=`, `intersect=` and `every=`, are not built yet; the
+`Response` type is shaped for them (chapter 6).
+
+### Derived model, not stored model **(still holds; the Model slot is superseded)**
 
 Elm stores the Model in memory and `update` returns a new one. Alder
 rebuilds the Model from `(route, session, database)` on every request.
@@ -40,14 +128,14 @@ across time, which agents are bad at. A derived model makes every request
 reproducible from three inputs and leaves nothing to invalidate. The cost is
 that UI state has to live in the URL, the session, or the database.
 
-### `page` and `msg` are keywords, not library calls **(untested)**
+### `page` and `msg` are keywords, not library calls **(untested; superseded: `route` is the keyword)**
 
 So the compiler can check that every link targets a real page with the
 right parameters, every form posts to a real message, every message is
 handled, and every page has `load` and `view`. In a library these would be
 runtime failures.
 
-### Messages have no path **(tested: E3)**
+### Messages have no path **(tested: E3; superseded: a route's path is declared, a write route's URL is its own)**
 
 Six runs across E1–E3 declared the same POST path on two pages (`/logout`,
 `/theme`, `/notes/{id}/delete`). A POST URL is never typed, bookmarked, or
@@ -56,7 +144,7 @@ a collision risk. `msg Delete { id: NoteId }` declares a message; the
 compiler derives its URL from the page and message name. Pages keep their
 paths, because GET URLs are part of the product.
 
-### Messages belong to pages, plus app-level messages **(tested: E1)**
+### Messages belong to pages, plus app-level messages **(tested: E1; superseded: write routes, and routes of `App`)**
 
 A `msg` is declared in the page module whose `update` handles it, and the
 page's parameters travel with it. This gives `update` the same Model that
@@ -166,7 +254,7 @@ In E2-T4 (a per-user theme), every model wanted the session in `view`:
 Sonnet copied `theme` into every Model, Haiku hard-coded `theme={Light}`,
 and Qwen3-Coder wrote `session.theme` inside `view`, which did not
 type-check. `view : Model -> Session -> Html Msg` removes the boilerplate
-and the error.
+and the error. (On routes it is `R.view : m -> Session -> Html`.)
 
 ### Brands with implicit widening **(untested)**
 
@@ -803,7 +891,7 @@ rule the checker adds to it.
 ### Links are boosted by default; the server still renders every page **(decided M13; tested: router and dev-server tests, both examples unchanged)**
 
 Before M13, every click on a link in an Alder app was a full page load,
-and so was nearly every message: most `update`s answer `Redirect`, which
+and so was nearly every write: most `update`s answered with a redirect, which
 Datastar carried out with `window.location.assign`. Between two pages the
 browser painted a blank frame, white even in dark mode, while it fetched
 and revalidated the stylesheet. The app worked; it did not feel like
@@ -818,7 +906,7 @@ agent must keep in sync. M13 takes the smaller step that htmx calls
 whole, exactly as a page load would get it; the browser only changes how
 it applies the answer. A link becomes a Datastar `GET`, the answer is the
 page's `<body>` morphed into the current one plus its `<title>` and a
-history entry (chapter 6, "Links and navigation"), and a `Redirect` to a
+history entry (chapter 6, "Links and navigation"), and a redirect to a
 page of the app is answered with that page in the same response.
 
 **By default, not opt-in.** An opt-in attribute would be one more thing
@@ -834,8 +922,8 @@ modifier-key clicks are left to the browser, because there the browser's
 own behaviour is what the user asked for.
 
 **In the runtime, not in the language.** Nothing in Alder's syntax or
-types changed: a link is still `<a href={Page {…}}>`, and `Redirect`
-still names a page. The boost is a `<meta>` the router adds to every
+types changed: a link is still `<a href={…}>` with a route value, and a
+redirect still names a route. The boost is a `<meta>` the router adds to every
 page, with Datastar attributes that listen on `window`; it lives in the
 `<head>`, which a morph never touches, so it survives every navigation.
 Datastar could express it, so Alder ships no script of its own for it.
@@ -981,6 +1069,10 @@ move needs no `@renamed`, because the table is the same one in a new
 place.
 
 ## Experiments
+
+The experiments below ran on `page` and `msg`, before routes (#160). They are
+kept as they were written: the results are about how agents fared with that
+form, and the names are the old ones.
 
 Each experiment has a directory under `experiments/` with its prompt,
 raw outputs, and scores. Summaries are recorded here.
