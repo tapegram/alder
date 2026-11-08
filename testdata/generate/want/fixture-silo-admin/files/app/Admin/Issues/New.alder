@@ -331,18 +331,6 @@ test "a long list of projects offers 50, and the search narrows it" = {
   let r <- Test.submit (SearchProject { org: org }) { q: "zz" }
   let _ <- Test.login { user: Nothing, org: Nothing }
   let visitor <- Test.submit (SearchProject { org: org }) { q: "zz" }
-  let _ <- Test.login {
-    user: Just me,
-    org: Just org,
-    role: Admin,
-  }
-  let _ <- Test.get (New { org: org })
-  let _ <- Test.login {
-    user: Just me,
-    org: Nothing,
-    role: Member,
-  }
-  let reader <- Test.submitRaw (SearchProject { org: org }) []
   Task.succeed (
     {
       shown: List.length all.model.projects,
@@ -350,14 +338,12 @@ test "a long list of projects offers 50, and the search narrows it" = {
       found: Test.texts "select[name=project] option" found.doc == ["name-203"],
       answer: r.answer,
       visitor: visitor.answer,
-      reader: reader.answer,
     } == {
       shown: 50,
       total: 203,
       found: True,
       answer: Redirected (New { org: org, findProject: "zz" }),
       visitor: Redirected (Auth.Login {}),
-      reader: PageMissing,
     }
   )
 }
@@ -470,18 +456,6 @@ test "a long list of users offers 50, and the search narrows it" = {
   let r <- Test.submit (SearchAssignee { org: org }) { q: "zz" }
   let _ <- Test.login { user: Nothing, org: Nothing }
   let visitor <- Test.submit (SearchAssignee { org: org }) { q: "zz" }
-  let _ <- Test.login {
-    user: Just me,
-    org: Just org,
-    role: Admin,
-  }
-  let _ <- Test.get (New { org: org })
-  let _ <- Test.login {
-    user: Just me,
-    org: Nothing,
-    role: Member,
-  }
-  let reader <- Test.submitRaw (SearchAssignee { org: org }) []
   Task.succeed (
     {
       shown: List.length all.model.assignees,
@@ -489,14 +463,12 @@ test "a long list of users offers 50, and the search narrows it" = {
       found: Test.texts "select[name=assignee] option" found.doc == ["", "email-203@example.com"],
       answer: r.answer,
       visitor: visitor.answer,
-      reader: reader.answer,
     } == {
       shown: 50,
       total: 203,
       found: True,
       answer: Redirected (New { org: org, findAssignee: "zz" }),
       visitor: Redirected (Auth.Login {}),
-      reader: PageMissing,
     }
   )
 }

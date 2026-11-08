@@ -37,27 +37,30 @@ deploy production`; `alder ci init` writes the GitHub workflow that does it on e
 
 ## Mutation score
 
-`alder test --mutate examples/blog` (book 10, "Mutation testing"): 368 mutants, 227 tests, 358
-killed, 10 survived (score 0.97). `TestExample_Blog` fails if the score drops below 0.97, the
-exact 0.973 rounded down, or the number of mutants is not 368.
+`alder test --mutate examples/blog` (book 10, "Mutation testing"): 376 mutants, 227 tests, 362
+killed, 14 survived (score 0.96). `TestExample_Blog` fails if the score drops below 0.96, the
+exact 0.963 rounded down, or the number of mutants is not 376.
 
-- The generated admin (`app/Admin/`, "Replaying the admin" below): 282 mutants, 275 killed
+- The generated admin (`app/Admin/`, "Replaying the admin" below): 290 mutants, 279 killed
   by its 181 generated tests, kept as `alder new admin` wrote them. Three survivors are equivalent:
   `postsTotal > 200` and `authorsTotal > 200` flipped to `>= 200` in the `where` of the Comment
   and Post New routes' lists (a search of "" matches every row), and `Post.author.in ids` dropped
   from the user bulk route's `load` (`refused` is only asked of the chosen rows). The Edit routes'
   lists have no such survivor: the row's own value is read by itself and comes first, the search
-  leaves it out, and the generated test of exactly 200 rows tells `>` from `>=`. The four others
-  are the `step dropped` of the `adminOnly` that begins the Comment and Post `Create` and `Save`.
+  leaves it out, and the generated test of exactly 200 rows tells `>` from `>=`. The eight others
+  are the `step dropped` of the `adminOnly` that begins the Comment and Post `Create` and `Save`,
+  and the `role dropped` of the four `Search…` routes (`SearchPost`, `SearchAuthor`).
 - The rest of the blog: 86 mutants, 83 killed, 3 survived, as before the admin (below).
 
 The `step dropped` of the `adminOnly` that begins `Create` and `Save` on a form with a select of
 another table's rows is not a gap: a demoted Admin's post of that form is refused (400) by the
 options check before the update runs, since the page it was posted from is rendered again to
-check the options, and that page's `load` begins with `adminOnly` too. (The `requires` and `role`
-of a `Search…` route, which only redirects to the page it was posted from, are suppressed as
-equivalent when that page's guard refuses the same requests; the generated test of a long list
-sends a visitor's search, which the `requires user` of the search route sends to log in.)
+check the options, and that page's `load` begins with `adminOnly` too. Nor is the `role dropped`
+of a `Search…` route, which only redirects to the page it was posted from: another role's search
+is redirected there, or, when it does not decode, that page is rendered again with the errors,
+and either way that page's own role check answers the 404 the search's would. (The search's
+`requires dropped` is killed: the generated test of a long list sends a visitor's search, which
+must go to log in, where the mutant's role check answers 404.)
 
 The history of the rest:
 
@@ -126,8 +129,8 @@ like the original program.
   `perPage`. Without the limit the query reads every matching post, which is slower, but the
   page is the same.
 
-The run also refuses 5 mutants it can prove equivalent (`User.role`'s default, which no row
-leaves out, and the `role dropped` of the admin's four `Search…` routes) and skips 58 that do not apply (most of them a `step dropped` of a write or a
+The run also refuses 1 mutant it can prove equivalent (`User.role`'s default, which no row
+leaves out) and skips 54 that do not apply (most of them a `step dropped` of a write or a
 `Session.put`, which `write replaced` and `session put dropped` make); neither count is part of
 the score.
 

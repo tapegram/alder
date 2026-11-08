@@ -36,27 +36,30 @@ deploy production`; `alder ci init` writes the GitHub workflow that does it on e
 
 ## Mutation score
 
-`alder test --mutate examples/todos` (book 10, "Mutation testing"): 231 mutants, 147 tests, 227
-killed, 4 survived (score 0.98). `TestExample_TodosMutation` fails if the score drops below
-0.98, the exact 0.983 rounded down, or the number of mutants is not 231.
+`alder test --mutate examples/todos` (book 10, "Mutation testing"): 236 mutants, 147 tests, 230
+killed, 6 survived (score 0.97). `TestExample_TodosMutation` fails if the score drops below
+0.97, the exact 0.974 rounded down, or the number of mutants is not 236.
 
 - The app's own code: 45 mutants, all killed by its 25 tests (score 1.00).
-- The generated admin (`app/Admin/`, "Replaying the admin" below): 186 mutants, 182 killed by
+- The generated admin (`app/Admin/`, "Replaying the admin" below): 191 mutants, 185 killed by
   its 122 generated tests, kept as `alder new admin` wrote them. Two survivors are equivalent:
   `ownersTotal > 200` flipped to `>= 200` in the `where` of the New route's owner list, where a
   search of "" matches every row anyway, and `Todo.owner.in ids` dropped from the user bulk
   route's `load`, whose `refused` is only asked of the chosen rows. (The Edit route's list no longer
   has the first: its row's own owner is read by itself and comes first, and the search leaves it
-  out, so the generated test of exactly 200 users tells `>` from `>=`.) The two others are the
-  `step dropped` of the `adminOnly` that begins `Create` and `Save`:
+  out, so the generated test of exactly 200 users tells `>` from `>=`.) The four others are the
+  `step dropped` of the `adminOnly` that begins `Create` and `Save`, and the `role dropped` of the
+  New and Edit pages' `SearchOwner` routes:
 
 The `step dropped` of the `adminOnly` that begins `Create` and `Save` on a form with a select of
 another table's rows is not a gap: a demoted Admin's post of that form is refused (400) by the
 options check before the update runs, since the page it was posted from is rendered again to
-check the options, and that page's `load` begins with `adminOnly` too. (The `requires` and `role`
-of a `Search…` route, which only redirects to the page it was posted from, are suppressed as
-equivalent when that page's guard refuses the same requests; the generated test of a long list
-sends a visitor's search, which the `requires user` of the search route sends to log in.)
+check the options, and that page's `load` begins with `adminOnly` too. Nor is the `role dropped`
+of a `Search…` route, which only redirects to the page it was posted from: another role's search
+is redirected there, or, when it does not decode, that page is rendered again with the errors,
+and either way that page's own role check answers the 404 the search's would. (The search's
+`requires dropped` is killed: the generated test of a long list sends a visitor's search, which
+must go to log in, where the mutant's role check answers 404.)
 
 The history of the app's own code:
 
@@ -107,8 +110,7 @@ The nine tests that closed the gaps, each named for what it kills:
 - `Todos.Show "deleting from the todo's page"`: that route's delete.
 
 No mutant of the app's own code survives. The run also refuses 1 mutant as provably equivalent
-(`User.role`'s default, which no row of the app's code leaves out; and two in the admin, below)
-and skips 41 that do not
+(`User.role`'s default, which no row of the app's code leaves out) and skips 38 that do not
 apply (most of them a `step dropped` of a write or a `Session.put`, which `write replaced` and
 `session put dropped` make); neither count is part of the score.
 

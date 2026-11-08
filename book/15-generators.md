@@ -871,9 +871,9 @@ wrote app/Admin/Users/Show.alder
 
 `examples/blog/app/Admin/` holds exactly these files, as the command
 wrote them; nobody has edited them, and the blog's README says how to
-check that by running it again. Its 181 tests pass, and they kill 275 of
-the admin's 282 mutants (chapter 10; the blog's README says why each of
-the seven survivors is not a gap). For each table `T`, with `t` its
+check that by running it again. Its 181 tests pass, and they kill 279 of
+the admin's 290 mutants (chapter 10; the blog's README says why each of
+the eleven survivors is not a gap). For each table `T`, with `t` its
 name in lower case and `Ts` its plural (`Posts`, `Activities`; the folder is
 plural so that `Admin.Posts` never reads as the table `Post`):
 

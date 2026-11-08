@@ -172,8 +172,9 @@ func TestAdmin_DryRunJSON(t *testing.T) {
 //
 // fixture-silo (M15) is an app whose org key has `via Membership`, with Project and Issue in
 // `silo org` and Activity partitioned by org in the shared database: its admin has the picker,
-// the dashboard of one org and the siloed tables' pages under `silo org`. Its survivors (0.97,
-// 19 of 555 with the route operators, #187) are justified: the five `> 200` flipped to `>= 200`
+// the dashboard of one org and the siloed tables' pages under `silo org`. Its survivors (0.95,
+// 29 of 573 with the route operators, #187) are justified: the `role dropped` of the Search
+// routes (another role's search ends at the page's own role check, decoded or not), the five `> 200` flipped to `>= 200`
 // in the New pages' searches (a search of "" matches every row, as in the blog), Membership's
 // list, whose columns are all references and its `created`, so no column has a sample order to
 // sort by (the sort test is left out: `order` and `toggle` survive) and its search and filters

@@ -4592,7 +4592,7 @@ write route (here the blog's `Write.Edit`'s Save):
 
 ```go
 	app := rq.Env.Session.(App__Session)
-	if !app.User.Ok && Mutant == 337 {
+	if !app.User.Ok && Mutant == 345 {
 		app.User = rt.Just("mutant")
 	}
 	if !app.User.Ok {
@@ -4601,9 +4601,9 @@ write route (here the blog's `Write.Edit`'s Save):
 	}
 ```
 
-so under mutant 337 a session without a user gets the placeholder user
+so under mutant 345 a session without a user gets the placeholder user
 `"mutant"`, and the check that follows lets the request through. `role
-dropped` is the same for the role check that follows it: `Mutant != 338
+dropped` is the same for the role check that follows it: `Mutant != 346
 && app.Role.Tag != …` lets every role through under its id. A write route
 runs no `load` before its `update`, so these two lines, and the access
 check its `update` begins with (`step dropped`), are all that stop a
@@ -4616,13 +4616,13 @@ has the same type: `Db.mine T` becomes `Db.from T`, and
 `Db.updateMine T id f` becomes a `Db.get`, then a `match` on its result
 that runs `Db.update T id f` for `Just _` and `Task.notFound` for
 `Nothing`, so the mutant is "not found" only for a missing row. The
-to-do app's `Toggle.update`, mutant 214, in the mutate build:
+to-do app's `Toggle.update`, mutant 219, in the mutate build:
 
 ```go
 		switch Mutant {
-		case 213:
+		case 218:
 			return eff.Pure(struct{}{})
-		case 214:
+		case 219:
 			return eff.Bind(eff.Call("Db.get Todo", false, func(_e1 *eff.Env) (rt.Maybe[Table__Todo__Todo], error) {
 				return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Table__Todo__Todo, p.Id)
 			}), func(found rt.Maybe[Table__Todo__Todo]) eff.Task[struct{}] {
@@ -4639,8 +4639,8 @@ to-do app's `Toggle.update`, mutant 214, in the mutate build:
 		return eff.Call("Db.updateMine Todo", true, func(_e3 *eff.Env) (struct{}, error) {
 ```
 
-(213 is `write replaced` on the same step; `…` is the record the function
-builds, with mutant 215's `not dropped` inside it.) The names `found` and
+(218 is `write replaced` on the same step; `…` is the record the function
+builds, with mutant 220's `not dropped` inside it.) The names `found` and
 `row` the replacements bind are made fresh when the wrapped code already
 uses them. `Db.getMine` becomes a `Db.get` whose `Nothing` is
 `Query.notFound`, and `Db.deleteMine` a `Db.get` then `Db.delete`;

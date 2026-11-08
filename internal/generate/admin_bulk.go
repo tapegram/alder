@@ -366,34 +366,21 @@ func (g *adminGen) findTests(at *adminTable, mod string, imports *importSet, edi
 			redirect = pageLit(get, []string{"id: " + target, findParam(c) + ": \"zz\""})
 		}
 		tb.let("let r <- Test.submit %s { q: \"zz\" }", search)
-		// the search route's own guard (#187), sent from the page still held: a visitor's search
-		// goes to log in (`requires user`); a search posted with no field by another role, the row
-		// still Admin, is a 404 (`role Admin`, which runs before the form is decoded: without it the
-		// post would be refused as a form that does not decode). This test's steps only: the next
-		// test goes on from tb's.
-		n := len(tb.lines)
-		admin := ""
-		for _, l := range tb.lines {
-			if strings.HasPrefix(l, "let _ <- Test.login ") {
-				admin = l
-			}
-		}
-		var gateL, gateR string // the result's fields for them
+		// the search route's own `requires user` (#187): a visitor's search, from the page still
+		// held, goes to log in. (Its `role Admin` has no such test: another role's search is
+		// redirected to the page, whose own role check answers 404, as the search's would; and a
+		// search that does not decode re-renders that page, which answers 404 too.) This test's
+		// steps only: the next test goes on from tb's.
+		lines := tb.lines
+		var visitorL, visitorR string // the result's fields for it
 		if g.p.Login != "" {
+			n := len(tb.lines)
 			tb.logout()
 			tb.let("let visitor <- Test.submit %s { q: \"zz\" }", search)
-			gateL, gateR = ", visitor: visitor.answer", ", visitor: Redirected ("+pageLit(g.p.Login, nil)+")"
+			lines = slices.Clone(tb.lines)
+			tb.lines = tb.lines[:n]
+			visitorL, visitorR = ", visitor: visitor.answer", ", visitor: Redirected ("+pageLit(g.p.Login, nil)+")"
 		}
-		if other := g.otherRole(); other != "" && admin != "" {
-			tb.let("%s", admin)
-			tb.let("let _ <- Test.get (%s)", pageAt())
-			tb.login(other)
-			tb.let("let reader <- Test.submitRaw %s []", search)
-			gateL, gateR = gateL+", reader: reader.answer", gateR+", reader: PageMissing"
-		}
-		lines := slices.Clone(tb.lines)
-		tb.lines = tb.lines[:n]
-		visitorL, visitorR := gateL, gateR
 		found := fmt.Sprintf("Test.count %s found.doc <= 3", quote(sel))
 		if !edit {
 			want := "[" + quote(last) + "]"

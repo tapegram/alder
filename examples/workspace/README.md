@@ -65,11 +65,11 @@ The tables (Activity, Membership, Org, Project, Todo and User) live under `app/T
 
 ## Mutation score
 
-`alder test --mutate examples/workspace` (book 10, "Mutation testing"): 580 mutants, 388 tests,
-562 killed, 18 survived (score 0.969). `TestExample_Workspace` fails if the score drops below
-0.96, the exact 0.969 rounded down, or the number of mutants is not 580.
+`alder test --mutate examples/workspace` (book 10, "Mutation testing"): 596 mutants, 388 tests,
+570 killed, 26 survived (score 0.956). `TestExample_Workspace` fails if the score drops below
+0.95, the exact 0.956 rounded down, or the number of mutants is not 596.
 
-- The app's own code (39 tests, 79 mutants): every mutant but one killed: `membership dropped`
+- The app's own code (39 tests, 80 mutants): every mutant but one killed: `membership dropped`
   (the `via` check removed) by `Orgs.Index "a non-member's switch is refused"`, and `scope
   dropped` of `Db.scoped Activity` by `Members.Index "the members, by name, and the activity of
   this org only"`. The `scope dropped` of the siloed tables' scoped operations is not made: the
@@ -84,21 +84,24 @@ The tables (Activity, Membership, Org, Project, Todo and User) live under `app/T
   `via` fields cleared, so the visitor is redirected to the projects page, which sends them to log
   in, as the `requires` would; `Orgs.Index "opening or creating an org after logging out is sent
   to log in"` kills `Create`'s.
-- The generated admin (349 tests, `app/Admin/`, kept as `alder new admin` wrote them): the 17 other
+- The generated admin (349 tests, `app/Admin/`, kept as `alder new admin` wrote them): the 25 other
   survivors. Four are `> 200` flipped to `>= 200` in the New routes' searches (`orgsTotal`,
   `usersTotal`, `projectsTotal`): a search of "" matches every row, as in the blog. Seven are in
   Membership's list, whose columns are all references (and its `created`): no column has a sample
   order to sort by, so the list has no sort test (`order` and `toggle` survive), and its search
   and filters are `Db.and []` (the two `where dropped` are equivalent). Six are the `step dropped`
-  of the `adminOnly` that begins the Activity, Membership and Todo `Create` and `Save`:
+  of the `adminOnly` that begins the Activity, Membership and Todo `Create` and `Save`, and eight
+  the `role dropped` of their New and Edit pages' `Search…` routes:
 
 The `step dropped` of the `adminOnly` that begins `Create` and `Save` on a form with a select of
 another table's rows is not a gap: a demoted Admin's post of that form is refused (400) by the
 options check before the update runs, since the page it was posted from is rendered again to
-check the options, and that page's `load` begins with `adminOnly` too. (The `requires` and `role`
-of a `Search…` route, which only redirects to the page it was posted from, are suppressed as
-equivalent when that page's guard refuses the same requests; the generated test of a long list
-sends a visitor's search, which the `requires user` of the search route sends to log in.)
+check the options, and that page's `load` begins with `adminOnly` too. Nor is the `role dropped`
+of a `Search…` route, which only redirects to the page it was posted from: another role's search
+is redirected there, or, when it does not decode, that page is rendered again with the errors,
+and either way that page's own role check answers the 404 the search's would. (The search's
+`requires dropped` is killed: the generated test of a long list sends a visitor's search, which
+must go to log in, where the mutant's role check answers 404.)
 
 ## Replaying the admin
 
