@@ -1,0 +1,23 @@
+module Routes
+
+import User
+
+-- A route's `requires`, as a page's: one mutant per route, the GET route's and the write
+-- route's; Count's refused, `visits` being an Int.
+route Show  = GET  "/routes"         { } requires user
+route Save  = POST "/routes/_/Save"  { } requires user
+route Count = POST "/routes/_/Count" { } requires visits
+
+type Model = { user: User.UserId }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = Query.succeed { user: session.user }
+
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session = Task.succeed Response.refresh
+
+Count.update : Count.Params -> Session -> Task Response
+Count.update p session = Task.succeed Response.refresh
+
+Show.view : Model -> Session -> Html
+Show.view model session = <p>Routes</p>

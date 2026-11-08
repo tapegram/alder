@@ -29,9 +29,10 @@ import (
 // An effect node in a Task position (the effect of a `let … <-` step) is the expr form of type
 // eff.Task[A]. A node the IR shares between several places (a table field's default, which
 // every record literal omitting the field holds) is switched everywhere it is emitted, tests
-// included. `requires dropped` is in the page's route (pageFunc): under its id, a session
-// without the field is served with the placeholder instead of the redirect; `role dropped`
-// too: under its id the role check lets every role through (roleDropped); `membership
+// included. `requires dropped` is in the guard of its page or route (requiresChecks: a page's
+// or a GET route's page__X, a write route's guard__M__R): under its id, a session without the
+// field is served with the placeholder instead of the redirect; `role dropped` too: under its
+// id the role check lets every role through (roleDropped); `membership
 // dropped` in session__via: under its id the field's membership check is skipped. Schema mutants
 // carry their tables: the full Tables with the mutated table's descriptor rendered from the
 // mutant's clone (mutantsTable), which rtesting creates with db.Ensure.
@@ -39,10 +40,10 @@ import (
 // mutation is a mutate build's state.
 type mutation struct {
 	all      []mutate.Mutant
-	byNode   map[ir.Expr][]mutate.Mutant  // the mutants replacing a node, by pointer
-	requires map[*ir.Page][]mutate.Mutant // requires dropped, by page
-	roles    map[*ir.Page][]mutate.Mutant // role dropped, by page
-	members  map[string]int               // membership dropped's id, by `via` field
+	byNode   map[ir.Expr][]mutate.Mutant // the mutants replacing a node, by pointer
+	requires map[string][]mutate.Mutant  // requires dropped, by guarded.key (a page or a route)
+	roles    map[string][]mutate.Mutant  // role dropped, by guarded.key
+	members  map[string]int              // membership dropped's id, by `via` field
 	// equivalent and skipped count the refused mutants by category
 	equivalent, skipped int
 	// bare are the nodes whose original is being emitted (inside their own switch)
@@ -56,13 +57,19 @@ type mutation struct {
 // calls) would never be seen.
 func (g *gen) indexMutants(p *ir.Program) {
 	ms, refused := mutate.Collect(p)
-	m := &mutation{all: ms, byNode: map[ir.Expr][]mutate.Mutant{}, requires: map[*ir.Page][]mutate.Mutant{}, roles: map[*ir.Page][]mutate.Mutant{}, members: map[string]int{}, bare: map[ir.Expr]bool{}, subst: map[ir.Expr]string{}}
+	m := &mutation{all: ms, byNode: map[ir.Expr][]mutate.Mutant{}, requires: map[string][]mutate.Mutant{}, roles: map[string][]mutate.Mutant{}, members: map[string]int{}, bare: map[ir.Expr]bool{}, subst: map[ir.Expr]string{}}
+	guardKey := func(x mutate.Mutant) string { // guarded.key of the mutant's page or route
+		if x.Route != nil {
+			return routeKey(x.Route)
+		}
+		return x.Page.Module
+	}
 	for _, x := range ms {
 		switch {
 		case x.Kind == mutate.RequiresDropped:
-			m.requires[x.Page] = append(m.requires[x.Page], x)
+			m.requires[guardKey(x)] = append(m.requires[guardKey(x)], x)
 		case x.Kind == mutate.RoleDropped:
-			m.roles[x.Page] = append(m.roles[x.Page], x)
+			m.roles[guardKey(x)] = append(m.roles[guardKey(x)], x)
 		case x.Kind == mutate.MembershipDropped:
 			m.members[x.Field] = x.ID
 		case x.Node != nil:
@@ -319,17 +326,18 @@ func (f *fn) mutatedMatch(w *strings.Builder, x *ir.Match, ms []mutate.Mutant, s
 	w.WriteString("}\npanic(\"unreachable\")\n")
 }
 
-// requiresPlaceholder writes, into page pg's route, the `requires dropped` mutants of its
-// `requires`: under the mutant's id a session without the field gets the placeholder, so the
-// check that follows lets the request through. app is the route's App session variable.
-func (g *gen) requiresPlaceholder(b *strings.Builder, pg *ir.Page, app string) {
+// requiresPlaceholder writes, into gd's guard (a page's or a GET route's page__X, a write
+// route's guard__M__R), the `requires dropped` mutants of its `requires`: under the mutant's id
+// a session without the field gets the placeholder, so the check that follows lets the request
+// through. app is the guard's App session variable.
+func (g *gen) requiresPlaceholder(b *strings.Builder, gd guarded, app string) {
 	if g.mutation == nil {
 		return
 	}
-	for _, m := range g.mutation.requires[pg] {
+	for _, m := range g.mutation.requires[gd.key] {
 		f := &fn{g: g}
-		fmt.Fprintf(b, "\tif !%s.%s.Ok && Mutant == %d {\n\t\t%s.%s = rt.Just(%s)\n\t}\n", app, Field(firstRequired(pg)), m.ID,
-			app, Field(firstRequired(pg)), f.code(m.Replacement, newScope()))
+		fmt.Fprintf(b, "\tif !%s.%s.Ok && Mutant == %d {\n\t\t%s.%s = rt.Just(%s)\n\t}\n", app, Field(m.Field), m.ID,
+			app, Field(m.Field), f.code(m.Replacement, newScope()))
 	}
 }
 
@@ -342,15 +350,14 @@ func (g *gen) membershipDropped(k string) int {
 	return g.mutation.members[k]
 }
 
-// roleDropped is the prefix of page pg's role check (roleRefused) that lets every role through
-// under the id of each of its `role dropped` mutants: "Mutant != 12 && ", "" outside a mutate
-// build.
-func (g *gen) roleDropped(pg *ir.Page) string {
+// roleDropped is the prefix of gd's role check (roleRefused) that lets every role through under
+// the id of each of its `role dropped` mutants: "Mutant != 12 && ", "" outside a mutate build.
+func (g *gen) roleDropped(gd guarded) string {
 	if g.mutation == nil {
 		return ""
 	}
 	var b strings.Builder
-	for _, m := range g.mutation.roles[pg] {
+	for _, m := range g.mutation.roles[gd.key] {
 		fmt.Fprintf(&b, "Mutant != %d && ", m.ID)
 	}
 	return b.String()

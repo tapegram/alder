@@ -51,6 +51,12 @@ const (
 	ScopeDropped       = "scope dropped"
 	RoleDropped        = "role dropped"
 	MembershipDropped  = "membership dropped"
+	RedirectRefresh    = "redirect → refresh"
+	RenderRedirect     = "render → redirect"
+	InvalidRefresh     = "invalid → refresh"
+	RefreshInvalid     = "refresh → invalid"
+	ToastDropped       = "toast dropped"
+	StepDropped        = "step dropped"
 )
 
 // Mutant is one mutation point. Module and Decl name where it is (Decl is the value's name,
@@ -65,11 +71,12 @@ const (
 //     of the same type built only from existing IR node kinds. Replacement never contains Node
 //     itself; it may share Node's subexpressions (which may carry mutants of their own). A Node
 //     may occur in several places of the IR (a shared default): every occurrence is replaced.
-//   - requires dropped: Page is the page and Field its `requires` field (a brand over Text);
-//     Node is nil and Replacement is the placeholder the field gets when the session lacks it
-//     (a Text Lit "mutant", the brand being erased).
-//   - role dropped: Page is the page whose `requires user, role R | …` is dropped to `requires
-//     user` (any signed-in user is served); Node and Replacement are nil.
+//   - requires dropped: Page is the page, or Route the route (#160), and Field its `requires`
+//     field (a brand over Text); Node is nil and Replacement is the placeholder the field gets
+//     when the session lacks it (a Text Lit "mutant", the brand being erased). A route's Decl
+//     is its name.
+//   - role dropped: Page is the page, or Route the route, whose `requires user, role R | …` is
+//     dropped to `requires user` (any signed-in user is served); Node and Replacement are nil.
 //   - scope dropped: Node is a scoped Db node and Replacement its unscoped twin: `Db.mine T` →
 //     `Db.from T` (a DbSelect); `Db.getMine T id` → `Db.get T id` bound and matched, Nothing →
 //     Query.notFound; `Db.updateMine`/`Db.deleteMine` → `Db.get T id`, then on Just the unscoped
@@ -97,6 +104,7 @@ type Mutant struct {
 	Node               ir.Expr
 	Replacement        ir.Expr
 	Page               *ir.Page
+	Route              *ir.Route
 	Table              *ir.Table
 	Field              string
 	// Arms, for a Match's arm swapped, are the indices of the swapped arms (i, i+1); for a
@@ -134,9 +142,19 @@ func Collect(p *ir.Program) ([]Mutant, []Suppressed) {
 	for _, m := range p.Modules {
 		c.module = m.Name
 		if pg := pages[m.Name]; pg != nil && len(pg.Requires) > 0 {
-			c.requires(pg)
+			g := guard{page: pg, decl: "requires", requires: pg.Requires, roles: pg.Roles, requiresPos: pg.RequiresPos, rolesPos: pg.RolesPos}
+			c.requires(g)
 			if pg.Roles != nil {
-				c.roles(pg)
+				c.roles(g)
+			}
+		}
+		for _, r := range p.Routes {
+			if r.Module == m.Name && len(r.Requires) > 0 {
+				g := guard{route: r, decl: r.Name, requires: r.Requires, roles: r.Roles, requiresPos: r.RequiresPos, rolesPos: r.RolesPos}
+				c.requires(g)
+				if r.Roles != nil {
+					c.roles(g)
+				}
 			}
 		}
 		for _, t := range p.Tables {
@@ -202,14 +220,29 @@ func wrapped(prefix, suffix string) func(string) string {
 
 // ---- requires and the schema
 
-// requires drops the first field of a page's `requires` (M15: Task 2 covers the others).
-func (c *collector) requires(pg *ir.Page) {
-	c.decl = "requires"
-	line := pg.RequiresPos.Line
-	req := pg.Requires[0]
-	for _, k := range pg.Requires[1:] {
+// guard is the `requires` (and role) clause of a page or of a route (#160), which requires
+// dropped and role dropped drop. decl names it in the mutant table: "requires" for a page, the
+// route's name for a route (a module declares several routes, each with its own clause).
+type guard struct {
+	page                  *ir.Page
+	route                 *ir.Route
+	decl                  string
+	requires, roles       []string
+	requiresPos, rolesPos ir.Pos
+}
+
+// requires drops the first field of g's `requires` (M15: Task 2 covers the others).
+func (c *collector) requires(g guard) {
+	c.decl = g.decl
+	line := g.requiresPos.Line
+	req := g.requires[0]
+	what := "page"
+	if g.route != nil {
+		what = "route"
+	}
+	for _, k := range g.requires[1:] {
 		if req == "user" && c.p.Via[k] != nil {
-			c.suppress(RequiresDropped, line, "the page also requires "+k+", which is `via`: no session has it without a user")
+			c.suppress(RequiresDropped, line, "the "+what+" also requires "+k+", which is `via`: no session has it without a user")
 			return
 		}
 	}
@@ -229,10 +262,10 @@ func (c *collector) requires(pg *ir.Page) {
 	if field.Brand.Module != c.module {
 		placeholder = field.Brand.Module + "." + placeholder
 	}
-	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RequiresDropped, Line: line, Col: pg.RequiresPos.Col,
+	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RequiresDropped, Line: line, Col: g.requiresPos.Col,
 		Before: "requires " + req,
 		After:  "served without " + req + " (" + req + " = " + placeholder + ")",
-		Page:   pg, Field: req,
+		Page:   g.page, Route: g.route, Field: req,
 		Replacement: &ir.Lit{Typed: ir.Typed{Ty: types.Text}, Kind: ir.LitText, Text: "mutant"}})
 }
 
@@ -253,12 +286,12 @@ func (c *collector) memberships() {
 	}
 }
 
-// roles drops a page's `role R | …`: the page serves any signed-in user.
-func (c *collector) roles(pg *ir.Page) {
-	c.decl = "requires"
-	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RoleDropped, Line: pg.RolesPos.Line, Col: pg.RolesPos.Col,
-		Before: "requires " + strings.Join(pg.Requires, ", ") + ", role " + strings.Join(pg.Roles, " | "),
-		After:  "requires " + strings.Join(pg.Requires, ", "), Page: pg})
+// roles drops g's `role R | …`: the page or route serves any signed-in user.
+func (c *collector) roles(g guard) {
+	c.decl = g.decl
+	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RoleDropped, Line: g.rolesPos.Line, Col: g.rolesPos.Col,
+		Before: "requires " + strings.Join(g.requires, ", ") + ", role " + strings.Join(g.roles, " | "),
+		After:  "requires " + strings.Join(g.requires, ", "), Page: g.page, Route: g.route})
 }
 
 func (c *collector) table(t *ir.Table) {

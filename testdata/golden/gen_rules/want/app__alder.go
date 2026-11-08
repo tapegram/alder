@@ -61,19 +61,25 @@ var Mutant int
 
 // Mutants are the app's mutants in id order (mutate.Collect); a schema mutant's Tables are the app's tables with its change, created by db.Ensure.
 var Mutants = []rtesting.Mutant{
-	{ID: 1, Module: "Note", Decl: "Note", Kind: "default changed", File: "app/Note.alder", Line: 11, Col: 3, Before: "pinned = False", After: "pinned = True", Tables: []db.TableDesc{table__User__User.Desc(), {Name: "Note.Note", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText}, {Name: "pinned", Type: db.CBool}, {Name: "owner", Type: db.CText, Ref: "User.User"}}, ID: "id"}}},
-	{ID: 2, Module: "Note", Decl: "Note", Kind: "cascade ↔ restrict", File: "app/Note.alder", Line: 12, Col: 3, Before: "owner @ref User @restrict", After: "owner @ref User @cascade", Tables: []db.TableDesc{table__User__User.Desc(), {Name: "Note.Note", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText}, {Name: "pinned", Type: db.CBool}, {Name: "owner", Type: db.CText, Ref: "User.User", OnDelete: db.Cascade}}, ID: "id"}}},
-	{ID: 3, Module: "Notes", Decl: "mine", Kind: "limit dropped", File: "app/Notes.alder", Line: 13, Col: 24, Before: "Db.limit 5", After: "no limit"},
-	{ID: 4, Module: "Notes", Decl: "mine", Kind: "scope dropped", File: "app/Notes.alder", Line: 13, Col: 8, Before: "Db.mine Note", After: "Db.from Note"},
-	{ID: 5, Module: "Notes", Decl: "Notes.load", Kind: "where dropped", File: "app/Notes.alder", Line: 20, Col: 10, Before: "Db.where (Note.pinned.eq True)", After: "the condition dropped"},
-	{ID: 6, Module: "Notes", Decl: "Notes.load", Kind: "scope dropped", File: "app/Notes.alder", Line: 19, Col: 5, Before: "Db.mine Note", After: "Db.from Note"},
-	{ID: 7, Module: "Notes", Decl: "Notes.load", Kind: "bool flipped", File: "app/Notes.alder", Line: 20, Col: 35, Before: "True", After: "False"},
-	{ID: 8, Module: "Notes", Decl: "Add.update", Kind: "write replaced", File: "app/Notes.alder", Line: 29, Col: 3, Before: "let _ <- Db.insertMine Note { title: p.form.title }", After: "let _ <- Task.succeed (Note.NoteId \"mutant\")"},
-	{ID: 9, Module: "Notes", Decl: "Pin.update", Kind: "scope dropped", File: "app/Notes.alder", Line: 35, Col: 12, Before: "Db.getMine Note p.id", After: "Db.get Note p.id, not found when missing"},
-	{ID: 10, Module: "Notes", Decl: "Pin.update", Kind: "write replaced", File: "app/Notes.alder", Line: 36, Col: 3, Before: "let _ <- Db.updateMine Note n.id (\\x -> { x | pinned: True })", After: "let _ <- Task.succeed ()"},
-	{ID: 11, Module: "Notes", Decl: "Pin.update", Kind: "scope dropped", File: "app/Notes.alder", Line: 36, Col: 12, Before: "Db.updateMine Note n.id (\\x -> { x | pinned: True })", After: "Db.update Note n.id (\\x -> { x | pinned: True }), not found when missing"},
-	{ID: 12, Module: "Notes", Decl: "Pin.update", Kind: "bool flipped", File: "app/Notes.alder", Line: 36, Col: 57, Before: "True", After: "False"},
-	{ID: 13, Module: "Notes", Decl: "wipe", Kind: "scope dropped", File: "app/Notes.alder", Line: 48, Col: 8, Before: "Db.deleteMine Note _m1", After: "Db.delete Note _m1, not found when missing"},
+	{ID: 1, Module: "Admin", Decl: "Admin", Kind: "requires dropped", File: "app/Admin.alder", Line: 3, Col: 32, Before: "requires user", After: "served without user (user = User.UserId \"mutant\")"},
+	{ID: 2, Module: "Admin", Decl: "Admin", Kind: "role dropped", File: "app/Admin.alder", Line: 3, Col: 47, Before: "requires user, role Author | Admin", After: "requires user"},
+	{ID: 3, Module: "Note", Decl: "Note", Kind: "default changed", File: "app/Note.alder", Line: 11, Col: 3, Before: "pinned = False", After: "pinned = True", Tables: []db.TableDesc{table__User__User.Desc(), {Name: "Note.Note", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText}, {Name: "pinned", Type: db.CBool}, {Name: "owner", Type: db.CText, Ref: "User.User"}}, ID: "id"}}},
+	{ID: 4, Module: "Note", Decl: "Note", Kind: "cascade ↔ restrict", File: "app/Note.alder", Line: 12, Col: 3, Before: "owner @ref User @restrict", After: "owner @ref User @cascade", Tables: []db.TableDesc{table__User__User.Desc(), {Name: "Note.Note", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText}, {Name: "pinned", Type: db.CBool}, {Name: "owner", Type: db.CText, Ref: "User.User", OnDelete: db.Cascade}}, ID: "id"}}},
+	{ID: 5, Module: "Notes", Decl: "Notes", Kind: "requires dropped", File: "app/Notes.alder", Line: 5, Col: 59, Before: "requires user", After: "served without user (user = User.UserId \"mutant\")"},
+	{ID: 6, Module: "Notes", Decl: "Add", Kind: "requires dropped", File: "app/Notes.alder", Line: 6, Col: 59, Before: "requires user", After: "served without user (user = User.UserId \"mutant\")"},
+	{ID: 7, Module: "Notes", Decl: "Pin", Kind: "requires dropped", File: "app/Notes.alder", Line: 7, Col: 59, Before: "requires user", After: "served without user (user = User.UserId \"mutant\")"},
+	{ID: 8, Module: "Notes", Decl: "Remove", Kind: "requires dropped", File: "app/Notes.alder", Line: 8, Col: 59, Before: "requires user", After: "served without user (user = User.UserId \"mutant\")"},
+	{ID: 9, Module: "Notes", Decl: "mine", Kind: "limit dropped", File: "app/Notes.alder", Line: 13, Col: 24, Before: "Db.limit 5", After: "no limit"},
+	{ID: 10, Module: "Notes", Decl: "mine", Kind: "scope dropped", File: "app/Notes.alder", Line: 13, Col: 8, Before: "Db.mine Note", After: "Db.from Note"},
+	{ID: 11, Module: "Notes", Decl: "Notes.load", Kind: "where dropped", File: "app/Notes.alder", Line: 20, Col: 10, Before: "Db.where (Note.pinned.eq True)", After: "the condition dropped"},
+	{ID: 12, Module: "Notes", Decl: "Notes.load", Kind: "scope dropped", File: "app/Notes.alder", Line: 19, Col: 5, Before: "Db.mine Note", After: "Db.from Note"},
+	{ID: 13, Module: "Notes", Decl: "Notes.load", Kind: "bool flipped", File: "app/Notes.alder", Line: 20, Col: 35, Before: "True", After: "False"},
+	{ID: 14, Module: "Notes", Decl: "Add.update", Kind: "write replaced", File: "app/Notes.alder", Line: 29, Col: 3, Before: "let _ <- Db.insertMine Note { title: p.form.title }", After: "let _ <- Task.succeed (Note.NoteId \"mutant\")"},
+	{ID: 15, Module: "Notes", Decl: "Pin.update", Kind: "scope dropped", File: "app/Notes.alder", Line: 35, Col: 12, Before: "Db.getMine Note p.id", After: "Db.get Note p.id, not found when missing"},
+	{ID: 16, Module: "Notes", Decl: "Pin.update", Kind: "write replaced", File: "app/Notes.alder", Line: 36, Col: 3, Before: "let _ <- Db.updateMine Note n.id (\\x -> { x | pinned: True })", After: "let _ <- Task.succeed ()"},
+	{ID: 17, Module: "Notes", Decl: "Pin.update", Kind: "scope dropped", File: "app/Notes.alder", Line: 36, Col: 12, Before: "Db.updateMine Note n.id (\\x -> { x | pinned: True })", After: "Db.update Note n.id (\\x -> { x | pinned: True }), not found when missing"},
+	{ID: 18, Module: "Notes", Decl: "Pin.update", Kind: "bool flipped", File: "app/Notes.alder", Line: 36, Col: 57, Before: "True", After: "False"},
+	{ID: 19, Module: "Notes", Decl: "wipe", Kind: "scope dropped", File: "app/Notes.alder", Line: 48, Col: 8, Before: "Db.deleteMine Note _m1", After: "Db.delete Note _m1, not found when missing"},
 }
 
 // MutantsSuppressed and MutantsSkipped count the mutants refused as equivalent and as not applicable.

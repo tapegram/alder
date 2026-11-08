@@ -78,6 +78,9 @@ func decode__Notes__Notes__Params(_ map[string]string, _ url.Values) (r Notes__N
 func page__Notes__Notes(rq *web.Request, params Notes__Notes__Params, keep any) (Notes__Model, Notes__Notes__Session, *web.Response) {
 	var model Notes__Model
 	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok && Mutant == 4 {
+		app.User = rt.Just("mutant")
+	}
 	if !app.User.Ok {
 		r := web.RedirectResponse(rq.Login, keep)
 		return model, Notes__Notes__Session{}, &r
@@ -127,6 +130,9 @@ func decode__Notes__Add__Params(_ map[string]string, _ url.Values) (r Notes__Add
 // response that ends the request.
 func guard__Notes__Add(rq *web.Request, params Notes__Add__Params) (Notes__Notes__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok && Mutant == 5 {
+		app.User = rt.Just("mutant")
+	}
 	if !app.User.Ok {
 		r := web.RedirectResponse(rq.Login, nil)
 		return Notes__Notes__Session{}, &r

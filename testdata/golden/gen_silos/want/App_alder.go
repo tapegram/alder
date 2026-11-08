@@ -26,7 +26,7 @@ type App__Leave__Params struct{}
 func App__Leave__update(params App__Leave__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[struct{}] {
 		switch Mutant {
-		case 2:
+		case 6:
 			return eff.Pure(struct{}{})
 		}
 		return std.SessionPut(func(s App__Session) App__Session {

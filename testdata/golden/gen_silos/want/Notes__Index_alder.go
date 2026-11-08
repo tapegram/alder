@@ -33,7 +33,7 @@ func Notes__Index__Index__load(params Notes__Index__Index__Params, session Notes
 	return eff.Q(eff.Bind(eff.Call("Db.all Note", false, func(_e1 *eff.Env) ([]Note__Note, error) {
 		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), func() db.Select[Note__Note] {
 			switch Mutant {
-			case 7:
+			case 13:
 				return db.From(table__Note__Note)
 			}
 			return db.Mine(table__Note__Note)
@@ -46,7 +46,7 @@ func Notes__Index__Index__load(params Notes__Index__Index__Params, session Notes
 func Notes__Index__Add__update(params Notes__Index__Add__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[string] {
 		switch Mutant {
-		case 8:
+		case 14:
 			return eff.Pure("mutant")
 		}
 		return eff.Call("Db.insertMine Note", true, func(_e1 *eff.Env) (string, error) {

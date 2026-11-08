@@ -1,2 +1,5 @@
 1  Mine     requires:6  requires dropped  requires user → served without user (user = User.UserId "mutant")
+2  Routes   Show:7      requires dropped  requires user → served without user (user = User.UserId "mutant")
+3  Routes   Save:8      requires dropped  requires user → served without user (user = User.UserId "mutant")
 -  Counted  requires:4  requires dropped  skipped: field is not a Text brand
+-  Routes   Count:9     requires dropped  skipped: field is not a Text brand
