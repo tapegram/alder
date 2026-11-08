@@ -5345,14 +5345,16 @@ give 1, not 2.
 
 #### In place, not per subtree
 
-A replacement can share the node's
-subtrees: a negated `if` has the same branches, a flipped `&&` the same
-operands. Emitting each replacement in full would emit those subtrees
-once per mutant, and their own mutants' switches inside each copy: an
-`else if` chain nine levels deep, with two mutants per level, became 3
-MB of Go that took a minute and 1.7 GB to compile. So the mutants of an
-`if` switch only its condition, and its branches are emitted once. The
-blog's page clamp, in `Index.load` of `Posts.Index`,
+A replacement can share the node's subtrees: a negated `if` has the same
+branches, a flipped `&&` the same operands. Emitting each replacement in full
+would emit those subtrees once per mutant, and their own mutants' switches
+inside each copy: an `else if` chain nine levels deep, with two mutants per
+level, became 3 MB of Go that took a minute and 1.7 GB to compile.
+
+So the mutants of an `if` switch only its condition, and its branches are
+emitted once.
+
+The blog's page clamp, in `Index.load` of `Posts.Index`,
 
 ```alder fragment
   let page = if params.page < 1 then 1 else if params.page > lastPage then lastPage else params.page
@@ -5384,21 +5386,24 @@ is in the mutate build
 	}()
 ```
 
-where 166 and 168 are `condition negated` (`(Mutant == 166) != c` is `not
-c` under 166 and `c` otherwise) and 167 and 169 the flipped comparisons. A
-`guard dropped` on an `if` is `Mutant != k && c` (or `Mutant == k ||
-c`). A `match` with mutants emits each arm's body once: it first finds
-the arm, and an arm that a mutant moves gives its number instead of its
-value; `guard dropped` and `arm swapped` then change the number (under
-an arm swap, arm 1 becomes 2 and 2 becomes 1), and a switch on the number
-returns the body. For the other operators, the children a replacement
-shares (the operands of a flipped operator, the argument of a dropped
-`not`, an update's fields, a select's steps) are computed once into Go
-variables before the switch, and the original and each replacement use
-those (the right operand of `&&` and `||` becomes a function, called
-only when needed). The mutate build is then a few hundred bytes per
-mutant larger than the test build, and `TestGen_MutateNested` checks
-that on twelve-deep chains.
+where 166 and 168 are `condition negated` (`(Mutant == 166) != c` is `not c`
+under 166 and `c` otherwise) and 167 and 169 the flipped comparisons.
+
+A `guard dropped` on an `if` is `Mutant != k && c` (or `Mutant == k || c`).
+
+A `match` with mutants emits each arm's body once: it first finds the arm, and
+an arm that a mutant moves gives its number instead of its value; `guard
+dropped` and `arm swapped` then change the number (under an arm swap, arm 1
+becomes 2 and 2 becomes 1), and a switch on the number returns the body.
+
+For the other operators, the children a replacement shares (the operands of a
+flipped operator, the argument of a dropped `not`, an update's fields, a
+select's steps) are computed once into Go variables before the switch, and the
+original and each replacement use those (the right operand of `&&` and `||`
+becomes a function, called only when needed).
+
+The mutate build is then a few hundred bytes per mutant larger than the test
+build, and `TestGen_MutateNested` checks that on twelve-deep chains.
 
 The emitter switches a node in three places, and all three do nothing
 when `Mutate` is unset:
@@ -5417,14 +5422,17 @@ every record literal that leaves the field out, tests' literals
 included, which is what makes a `default changed` mutant reach every
 insert.
 
-`requires dropped` and `role dropped` are not in a function body, but
-they exist only for the older `page` form, and not for routes. The mutator
-reads them from `ir.Page` (`Collect` loops over `p.Pages`), a list route
-modules are not in, so a route's `requires user, role Author` has no mutant,
-and nothing in the score says whether a test would notice the clause
-dropped ([alder#187](https://github.com/tapegram/alder/issues/187)). The
-same is true of the older redirect and reject operators. For a `page`
-module, the `requires` mutant is a line in the page's function
+`requires dropped` and `role dropped` are not in a function body, but they
+exist only for the older `page` form, and not for routes.
+
+> **Not yet:** The mutator reads them from `ir.Page` (`Collect` loops over
+> `p.Pages`), a list route modules are not in, so a route's
+> `requires user, role Author` has no mutant, and nothing in the score says
+> whether a test would notice the clause dropped
+> ([alder#187](https://github.com/tapegram/alder/issues/187)). The same is
+> true of the older redirect and reject operators.
+
+For a `page` module, the `requires` mutant is a line in the page's function
 (`page__Todos__Index` of the pre-routes to-do app, `testdata/fix/todos`)
 before the check that sends a visitor to log in:
 
@@ -5504,7 +5512,9 @@ again at each use, so a constant that is costly to compute makes the
 mutate run slower (never the plain test run or the production build,
 where it is still a package variable).
 
-**The table of mutants.** `app__alder.go` also gets
+#### The table of mutants
+
+`app__alder.go` also gets
 
 ```go
 // Mutant is the mutant the running suite switches on (alder test --mutate): an id of Mutants, 0 for none.
@@ -5539,20 +5549,25 @@ examples and the corpus apps with `Mutate`, and vets each. It checks
 that every mutant has its switch and that no production build mentions
 `Mutant`.
 
-**How a kill is decided.** `rtesting.Main` with `--mutate` first runs
+#### How a kill is decided
+
+`rtesting.Main` with `--mutate` first runs
 the suite as usual. If a test fails, it prints `tests fail: fix them
 before measuring mutants` and stops. Otherwise `runMutant`
 (`rt/testing/mutate.go`) does this for each mutant in turn:
 
 1. It sets `Mutant` to the mutant's id (and back to 0 afterwards).
+
 2. For a schema mutant, it replaces the tables each test's database is
    made from with the mutant's `Tables`, made by `db.Ensure`, and drops
    the migrations, so the changed rule is what the test meets (the JSON
    says `"tables":"ensure"`).
+
 3. It starts one timer for the mutant: `-timeout` (10 s by default), or
    three times the suite's own run when that is longer, so a slow suite
    does not time out on a slow moment of the machine. (The suite's run
    is logged, so a later program that goes on from a mutant has it.)
+
 4. It runs the selected tests in order, each in a goroutine with its
    own fresh database, as plain `alder test` does. The first test that
    fails kills the mutant, and is its `by`. A test that panics (a Go
@@ -5565,7 +5580,9 @@ The score is the number of killed mutants divided by the number of
 mutants that ran (1 when none ran), and `--min` compares that exact
 number.
 
-**When a mutant ends the program.** Some mutants cannot be caught in a
+#### When a mutant ends the program
+
+Some mutants cannot be caught in a
 goroutine. A stack overflow is a Go fatal error, which no `recover`
 sees, and a test that loops for ever cannot be stopped from outside its
 goroutine. So `alder test` runs the program with two files in
@@ -5595,7 +5612,9 @@ included. Until M10 the generated `go.mod` said `replace alder =>
 was checked out. Now the runtime is inside the `alder` binary, and every
 build writes it out.
 
-**Embedding.** Go can put files into a program while compiling it: a
+#### Embedding
+
+Go can put files into a program while compiling it: a
 `//go:embed` comment above a variable names files of the package's
 directory, and the compiler stores their bytes in the binary, readable at
 run time through the variable (an `embed.FS`, a small read-only file
@@ -5646,7 +5665,9 @@ assets into the app's static directory (below). `TestDesignSystemVersion`
 (`rt/embed_test.go`) checks that `VERSION`, the manifest's `version` and
 the stylesheet's first line name the same release.
 
-**Writing it out.** `buildkit.WriteRuntime(dst)`
+#### Writing it out
+
+`buildkit.WriteRuntime(dst)`
 (`internal/buildkit/buildkit.go`) writes `Files` into `dst/rt/` as the
 module `alder`: `dist/go.mod.txt` becomes `rt/go.mod`, `dist/go.sum.txt`
 `rt/go.sum`, and every other file keeps its path under `rt/rt/`. The
@@ -5756,7 +5777,9 @@ relative to the `go.mod`, so the directory can move. A `replace` to a
 directory is final: Go reads the module from there and never asks a
 proxy for it.
 
-**Why the module is still called `alder`.** A Go module's name is
+#### Why the module is still called `alder`
+
+A Go module's name is
 usually where it can be downloaded, such as `github.com/someone/alder`.
 The runtime is never downloaded, so its name needs to be that of no
 place, and `alder` is that: a name without a dot, which Go would not even
@@ -5812,7 +5835,9 @@ returns what it did: the files, a unified diff of each edited one
 lines of context), the diagnostics in the files the command changed, and
 the holes. With `--dry-run` it stops before writing.
 
-**Holes.** A hole `?name` parses as an expression of its own (section
+#### Holes
+
+A hole `?name` parses as an expression of its own (section
 3), and the checker gives it the type its place demands and reports it
 as W0002 with that type. `generate.HoleIndex` turns those warnings into
 addresses: the module and the declaration that encloses the hole's
@@ -5822,7 +5847,9 @@ expression, puts the expression where the hole's span is (wrapped in
 parentheses where it would otherwise bind differently, indented to its
 place), and hands that edit to `Apply`: the checker then decides.
 
-**Regions.** A region is found by scanning a file's lines for its
+#### Regions
+
+A region is found by scanning a file's lines for its
 markers (`generate.Regions`): a `-- @admin begin <name>` line, the lines
 after it, and the next `-- @admin end`. A missing or doubled marker is
 an error before anything else happens. `alder regen admin` generates the
@@ -5835,7 +5862,9 @@ to do. Errors in the admin's own files do not stop it (a renamed field
 breaks them, inside the regions it is about to rewrite), but the result
 goes through `Apply` like every other command's, and must check.
 
-**Options checked on submit.** A `<Select options={…}>` offers values the
+#### Options checked on submit
+
+A `<Select options={…}>` offers values the
 server worked out, such as the ids of the rows a user may pick, so a posted
 value has to be checked against what the page offered. The checker records,
 for each write route with a `form F`, the GET routes whose view draws a
@@ -5878,7 +5907,9 @@ source to Go; it is a program that drives the compiler's other commands
 and then talks to a server. Its code is in `internal/deploy/`, with the
 command itself in `cmd/alder/deploy.go`.
 
-**The gate reuses the commands.** `deploy.Runner` is an interface with
+#### The gate reuses the commands
+
+`deploy.Runner` is an interface with
 four methods, `Check`, `Build`, `Test` and `Mutate`; the command
 implements it (`deployRunner`) by calling the same functions `alder
 check`, `alder build` and `alder test` run, capturing what each prints.
@@ -5890,7 +5921,9 @@ floor, the checks, the `requires` names. `deploy.GateCheck` and
 step, and return a `*deploy.Refusal` (its text, and the step's output as
 detail) for the first that fails.
 
-**The artifact and the build id.** `MakeArtifact` (`artifact.go`)
+#### The artifact and the build id
+
+`MakeArtifact` (`artifact.go`)
 builds the executable into a temporary directory with `go build` and
 `GOOS`/`GOARCH` set to the target's platform (with `CGO_ENABLED=0`: the
 SQLite driver, modernc.org/sqlite, is Go, so any platform can build for
@@ -5901,7 +5934,9 @@ asked) and writes it into every page's `<meta name="alder-build">`, as
 "The runtime travels with the compiler" above describes. Nothing records the id anywhere in between: the
 same bytes give the same id on both sides.
 
-**The plan.** Each migration file starts with a header naming the
+#### The plan
+
+Each migration file starts with a header naming the
 schema hash it starts from and the one it leads to (`-- from`, `-- to`;
 section "Migrations"). `MakePlan` (`plan.go`) hashes the live database's
 `schema.json`, which the target hands back, finds the build's file whose
@@ -5910,7 +5945,9 @@ their `-- step:` lines and the `DROPS DATA` lines `alder migrate` wrote
 into the header. A live hash no file leads to is a refusal: the server
 runs a newer schema than this build knows.
 
-**The engine and the targets.** `deploy.Deploy` (`deploy.go`) is the
+#### The engine and the targets
+
+`deploy.Deploy` (`deploy.go`) is the
 sequence of chapter 16, written once: it calls a `deploy.Target`
 (`target.go`) step by step, `Connect`, `Requires`, `Schema`, `Upload`,
 `Backup`, `Migrate`, `Start`, `Health`, `Switch`, `Record`, `Stop`,
@@ -5973,7 +6010,9 @@ for the image build, the public addresses and the secrets. The `Script`
 target (`script.go`) is not a `Target` at all: after the artifact, the
 engine runs it and is done.
 
-**The health check by build id.** `Health` asks the new build for `/`,
+#### The health check by build id
+
+`Health` asks the new build for `/`,
 following redirects (a page that `requires user` answers `/` with the
 login page, which is a page of the same build), until the answer is a
 200 whose HTML contains `name="alder-build" content="<id>"`, or the
@@ -5985,7 +6024,9 @@ against the public address, which is the only way in. The id is the
 point: a check that only asked "does something answer on port 443?"
 would pass against the old build.
 
-**The binary's maintenance arguments.** The generated `main` (section
+#### The binary's maintenance arguments
+
+The generated `main` (section
 7) takes two arguments besides serving: `--migrate-only` checks
 `ALDER_SECRET`, opens the database, applies the pending migrations
 (printing `migrated <name>` for each, which the engine reads into the
@@ -6006,7 +6047,9 @@ checks every silo file now, printing `org/<id>: ok`, `org/<id>: migrated
 transactions it rolls back (a deploy's preflight); `--prune-silos …`
 removes the orphaned silos it is given, each checked again first.
 
-**The backup shipper.** `rt/backup` is a small Litestream. SQLite in
+#### The backup shipper
+
+`rt/backup` is a small Litestream. SQLite in
 WAL mode appends every committed change to `app.db-wal` as **frames**
 (a page of the database and a header), and only a **checkpoint** copies
 them back into `app.db`. With `ALDER_BACKUP_URL` set, the runtime opens
@@ -6036,7 +6079,9 @@ asked-for time, writes each run of segments next to it as an
 wal_checkpoint(TRUNCATE)`), then checks the page count against the last
 commit frame: SQLite is the only program that ever interprets the WAL.
 
-**The workflow.** `alder ci init` (`cmd/alder/ci.go`) is a string
+#### The workflow
+
+`alder ci init` (`cmd/alder/ci.go`) is a string
 builder over the declaration: which of `production` and `preview` exist,
 their kinds (an `Ssh` environment needs an SSH key in CI, a `Fly` one a
 token and its values), the floor. Its output is compared with golden
