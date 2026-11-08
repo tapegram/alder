@@ -5828,77 +5828,90 @@ round: instead of reading source to make Go, they make source. They live
 in `internal/generate/`, and every one ends in the same function,
 `generate.Apply(appDir, edits, options)`.
 
-A generator first loads the app as `alder check` does (`generate.Load`:
-the names of section 4 and the checker of section 5) and turns what it
-needs into plain facts, a `generate.Program`: the tables with their
-columns, types and attributes, the routes with their methods, paths,
-parameters and `requires`, the session's `user` and `role`. From those facts it
-computes a list of **edits**: a file to create, with its text; a file to
-change, with its whole new text; or, for the admin, new bodies for the
-owned regions of a file. The small generators fill templates
-(`internal/generate/templates/*.tmpl`, Go's `text/template`, embedded in
-the binary with `embed` like the runtime; their delimiters are `[[ ]]`,
-since Alder's own braces would read as template actions). The admin
-builds its text in Go (`internal/generate/admin.go`): it needs
-decisions per column (a select for a reference, a checkbox for a
-`Bool`, a count for a `@unique`) that templates express badly. Code
-that goes into an existing file is placed by looking at the parsed
-module: a new route's line after the module's last `route` line, its
-`update` before the module's first `test` (or at the end of the file), a
-button at the end of the view or inside a `for` loop, a form inside the
-view's last `al-card`.
+A generator first loads the app as `alder check` does (`generate.Load`: the
+names of section 4 and the checker of section 5) and turns what it needs into
+plain facts, a `generate.Program`: the tables with their columns, types and
+attributes, the routes with their methods, paths, parameters and `requires`,
+the session's `user` and `role`.
 
-`Apply` then does what chapter 15 calls copy, check, write. It copies
-the app into a temporary directory (all but `build/`, `.git` and the
-databases), applies the edits there, runs the migration generator on
-the copy when the command changed a table, and checks the copy with the
-same loader and checker. If the copy has an error, `Apply` returns a
-refusal carrying the copy's diagnostics, and the app was never touched.
-Otherwise it writes each file the copy changed back into the app, and
-returns what it did: the files, a unified diff of each edited one
-(`generate.UnifiedDiff`, a longest-common-subsequence diff with three
-lines of context), the diagnostics in the files the command changed, and
-the holes. With `--dry-run` it stops before writing.
+From those facts it computes a list of **edits**: a file to create, with its
+text; a file to change, with its whole new text; or, for the admin, new bodies
+for the owned regions of a file.
+
+The small generators fill templates (`internal/generate/templates/*.tmpl`,
+Go's `text/template`, embedded in the binary with `embed` like the runtime;
+their delimiters are `[[ ]]`, since Alder's own braces would read as template
+actions).
+
+The admin builds its text in Go (`internal/generate/admin.go`): it needs
+decisions per column (a select for a reference, a checkbox for a `Bool`, a
+count for a `@unique`) that templates express badly.
+
+Code that goes into an existing file is placed by looking at the parsed
+module: a new route's line after the module's last `route` line, its `update`
+before the module's first `test` (or at the end of the file), a button at the
+end of the view or inside a `for` loop, a form inside the view's last
+`al-card`.
+
+`Apply` then does what chapter 15 calls copy, check, write. It copies the app
+into a temporary directory (all but `build/`, `.git` and the databases),
+applies the edits there, runs the migration generator on the copy when the
+command changed a table, and checks the copy with the same loader and checker.
+If the copy has an error, `Apply` returns a refusal carrying the copy's
+diagnostics, and the app was never touched.
+
+Otherwise it writes each file the copy changed back into the app, and returns
+what it did: the files, a unified diff of each edited one
+(`generate.UnifiedDiff`, a longest-common-subsequence diff with three lines of
+context), the diagnostics in the files the command changed, and the holes.
+
+With `--dry-run` it stops before writing.
 
 #### Holes
 
-A hole `?name` parses as an expression of its own (section
-3), and the checker gives it the type its place demands and reports it
-as W0002 with that type. `generate.HoleIndex` turns those warnings into
-addresses: the module and the declaration that encloses the hole's
-position (a route's member by its full name, `Toggle.update`). `alder fill` parses
-standard input with `syntax.ParseExpr`, refuses anything after one
-expression, puts the expression where the hole's span is (wrapped in
-parentheses where it would otherwise bind differently, indented to its
-place), and hands that edit to `Apply`: the checker then decides.
+A hole `?name` parses as an expression of its own (section 3), and the checker
+gives it the type its place demands and reports it as W0002 with that type.
+`generate.HoleIndex` turns those warnings into addresses: the module and the
+declaration that encloses the hole's position (a route's member by its full
+name, `Toggle.update`).
+
+`alder fill` parses standard input with `syntax.ParseExpr`, refuses anything
+after one expression, puts the expression where the hole's span is (wrapped in
+parentheses where it would otherwise bind differently, indented to its place),
+and hands that edit to `Apply`: the checker then decides.
 
 #### Regions
 
-A region is found by scanning a file's lines for its
-markers (`generate.Regions`): a `-- @admin begin <name>` line, the lines
-after it, and the next `-- @admin end`. A missing or doubled marker is
-an error before anything else happens. `alder regen admin` generates the
-whole admin again in memory from the app as it is now, then for each
-file on disk builds an edit that replaces the body of each named region
-with the same region's body from the fresh version; lines outside the
-regions are never part of an edit. A file whose regions are already
-equal produces no edit, which is why a second run says there is nothing
-to do. Errors in the admin's own files do not stop it (a renamed field
-breaks them, inside the regions it is about to rewrite), but the result
-goes through `Apply` like every other command's, and must check.
+A region is found by scanning a file's lines for its markers
+(`generate.Regions`): a `-- @admin begin <name>` line, the lines after it, and
+the next `-- @admin end`. A missing or doubled marker is an error before
+anything else happens.
+
+`alder regen admin` generates the whole admin again in memory from the app as
+it is now, then for each file on disk builds an edit that replaces the body of
+each named region with the same region's body from the fresh version; lines
+outside the regions are never part of an edit.
+
+A file whose regions are already equal produces no edit, which is why a second
+run says there is nothing to do. Errors in the admin's own files do not stop
+it (a renamed field breaks them, inside the regions it is about to rewrite),
+but the result goes through `Apply` like every other command's, and must
+check.
 
 #### Options checked on submit
 
-A `<Select options={…}>` offers values the
-server worked out, such as the ids of the rows a user may pick, so a posted
-value has to be checked against what the page offered. The checker records,
-for each write route with a `form F`, the GET routes whose view draws a
-select of `F`, written in the view itself or in a view it reaches through
-the values it refers to (`RouteInfo.OptionRoutes`: `Row.view` called by
-`Index.view`). The write route's handler checks the value after the form
-has decoded and before the `update` (this is `Move` of
-`testdata/golden/gen_route_handlers`, which answers `render` and so has no
-before-view of its own):
+A `<Select options={…}>` offers values the server worked out, such as the ids
+of the rows a user may pick, so a posted value has to be checked against what
+the page offered.
+
+The checker records, for each write route with a `form F`, the GET routes
+whose view draws a select of `F`, written in the view itself or in a view it
+reaches through the values it refers to (`RouteInfo.OptionRoutes`: `Row.view`
+called by `Index.view`).
+
+The write route's handler checks the value after the form has decoded and
+before the `update` (this is `Move` of `testdata/golden/gen_route_handlers`,
+which answers `render` and so has no before-view of its own):
 
 ```go
 		params.Form = form
@@ -5914,16 +5927,19 @@ before-view of its own):
 
 `rq.RenderShown(nil)` renders the page the browser is on (`Alder-Page`, else
 `Referer`) as "A request" showed, and `CheckOptions` (`rt/web/options.go`)
-looks in that render. It finds the `<form>` that sent the request (the
-form's `rt.RouteKey` is the write route's) and compares each posted value
-with the choices of the selects the render draws for it (`html.Offers`,
-`html.Offered`; the empty value only when the select offers an empty
-option). A value no select offered is a field error, `web.MsgOption`
-("must be one of the options"), answered like a decoder's error. A post
-from a page that is not one of those routes, one that no longer renders (a
-404, a redirect), or one without that form (its row is gone) is a 400,
-logged at warn with the reason. Because the choices are read from the
-rendered page, the server keeps no second copy of the `options` expression.
+looks in that render.
+
+It finds the `<form>` that sent the request (the form's `rt.RouteKey` is the
+write route's) and compares each posted value with the choices of the selects
+the render draws for it (`html.Offers`, `html.Offered`; the empty value only
+when the select offers an empty option). A value no select offered is a field
+error, `web.MsgOption` ("must be one of the options"), answered like a
+decoder's error.
+
+A post from a page that is not one of those routes, one that no longer renders
+(a 404, a redirect), or one without that form (its row is gone) is a 400,
+logged at warn with the reason. Because the choices are read from the rendered
+page, the server keeps no second copy of the `options` expression.
 
 ### Deploying: the pipeline, the health check, the backup shipper
 
@@ -5934,175 +5950,226 @@ command itself in `cmd/alder/deploy.go`.
 
 #### The gate reuses the commands
 
-`deploy.Runner` is an interface with
-four methods, `Check`, `Build`, `Test` and `Mutate`; the command
-implements it (`deployRunner`) by calling the same functions `alder
-check`, `alder build` and `alder test` run, capturing what each prints.
-`alder test --mutate --json` prints the score as one JSON object, which
-the runner reads. The check step also hands back the lowered program,
-whose `ir.Deploy` is the declaration (section 6): the environments, the
-floor, the checks, the `requires` names. `deploy.GateCheck` and
-`deploy.GateRest` (`gate.go`) run the steps in order, print one line per
-step, and return a `*deploy.Refusal` (its text, and the step's output as
-detail) for the first that fails.
+`deploy.Runner` is an interface with four methods, `Check`, `Build`, `Test`
+and `Mutate`; the command implements it (`deployRunner`) by calling the same
+functions `alder check`, `alder build` and `alder test` run, capturing what
+each prints. `alder test --mutate --json` prints the score as one JSON object,
+which the runner reads.
+
+The check step also hands back the lowered program, whose `ir.Deploy` is the
+declaration (section 6): the environments, the floor, the checks, the
+`requires` names.
+
+`deploy.GateCheck` and `deploy.GateRest` (`gate.go`) run the steps in order,
+print one line per step, and return a `*deploy.Refusal` (its text, and the
+step's output as detail) for the first that fails.
 
 #### The artifact and the build id
 
-`MakeArtifact` (`artifact.go`)
-builds the executable into a temporary directory with `go build` and
-`GOOS`/`GOARCH` set to the target's platform (with `CGO_ENABLED=0`: the
-SQLite driver, modernc.org/sqlite, is Go, so any platform can build for
-any other), hashes it with SHA-256, and renames the directory to the
-first 16 hex digits. The runtime computes the same number for itself
-(`web.BuildID`: it hashes `os.Executable()` once, the first time it is
-asked) and writes it into every page's `<meta name="alder-build">`, as
-"The runtime travels with the compiler" above describes. Nothing records the id anywhere in between: the
-same bytes give the same id on both sides.
+`MakeArtifact` (`artifact.go`) builds the executable into a temporary
+directory with `go build` and `GOOS`/`GOARCH` set to the target's platform
+(with `CGO_ENABLED=0`: the SQLite driver, modernc.org/sqlite, is Go, so any
+platform can build for any other), hashes it with SHA-256, and renames the
+directory to the first 16 hex digits.
+
+The runtime computes the same number for itself (`web.BuildID`: it hashes
+`os.Executable()` once, the first time it is asked) and writes it into every
+page's `<meta name="alder-build">`, as "The runtime travels with the compiler"
+above describes. Nothing records the id anywhere in between: the same bytes
+give the same id on both sides.
 
 #### The plan
 
-Each migration file starts with a header naming the
-schema hash it starts from and the one it leads to (`-- from`, `-- to`;
-section "Migrations"). `MakePlan` (`plan.go`) hashes the live database's
-`schema.json`, which the target hands back, finds the build's file whose
-`-- to` is that hash, and lists the files after it as pending, with
-their `-- step:` lines and the `DROPS DATA` lines `alder migrate` wrote
-into the header. A live hash no file leads to is a refusal: the server
-runs a newer schema than this build knows.
+Each migration file starts with a header naming the schema hash it starts from
+and the one it leads to (`-- from`, `-- to`; section "Migrations"). `MakePlan`
+(`plan.go`) hashes the live database's `schema.json`, which the target hands
+back, finds the build's file whose `-- to` is that hash, and lists the files
+after it as pending, with their `-- step:` lines and the `DROPS DATA` lines
+`alder migrate` wrote into the header.
+
+A live hash no file leads to is a refusal: the server runs a newer schema than
+this build knows.
 
 #### The engine and the targets
 
-`deploy.Deploy` (`deploy.go`) is the
-sequence of chapter 16, written once: it calls a `deploy.Target`
-(`target.go`) step by step, `Connect`, `Requires`, `Schema`, `Upload`,
-`Backup`, `Migrate`, `Start`, `Health`, `Switch`, `Record`, `Stop`,
-`Prune`, and decides by itself what to refuse and what to print. A
-target knows how to do each step at its kind of place and nothing about
-the order, so the rules (no upload before the plan is accepted, no switch
-before the health check, the previous build left serving on a failure)
-hold for every target because they live in one function. On the
-experimental Fly target the last rule holds only because it refuses a
-deploy with a pending migration (`MigrationRefuser`): its previous image,
-put back on a migrated database, would refuse to start. The
-engine's tests drive it with a fake target that records its calls.
+`deploy.Deploy` (`deploy.go`) is the sequence of chapter 16, written once: it
+calls a `deploy.Target` (`target.go`) step by step, `Connect`, `Requires`,
+`Schema`, `Upload`, `Backup`, `Migrate`, `Start`, `Health`, `Switch`,
+`Record`, `Stop`, `Prune`, and decides by itself what to refuse and what to
+print.
+
+A target knows how to do each step at its kind of place and nothing about the
+order, so the rules (no upload before the plan is accepted, no switch before
+the health check, the previous build left serving on a failure) hold for every
+target because they live in one function.
+
+On the experimental Fly target the last rule holds only because it refuses a
+deploy with a pending migration (`MigrationRefuser`): its previous image, put
+back on a migrated database, would refuse to start.
+
+The engine's tests drive it with a fake target that records its calls.
 
 What a target can do beyond the core is a small optional interface the
-engine asks for with a type assertion: `Locker` (the environment's
-lock, taken by deploy, rollback and restore), `Preflighter` (the unit
-and Caddy prepared before anything is uploaded), `DataLossAllower` (the
-run's `--allow-data-loss`), `BackupRestorer` (put a pre-migration copy
-back: `rollback --restore-backup`, and the automatic restore after a
-failed deploy whose migrations dropped data), `Rerouter` (check that
-the traffic reaches the build already serving), `StreamChecker` (the
-environment file streams the backup) and `MigrationRefuser` (the Fly
-target, which refuses a migrating deploy for now). A target without one
-gets the plain behaviour, and the refusals name only the commands that
-target has.
+engine asks for with a type assertion:
 
-The `Ssh` target (`ssh.go`) runs every step as a small POSIX shell
-script sent over the system's `ssh` to `sh -s` on standard input, after
-a prelude defining the root directory and a function `alive` that says
-whether a build's process runs. There is no agent on the server and no
-library: `ssh`, `sh`, `tar` and `curl` are the whole protocol. The
-upload is a tar stream Go writes (`archive/tar`) into a `.part`
-directory, renamed when complete. Each build gets a generated `run`
-wrapper that sources the operator's environment file and sets
-`ALDER_DB`, `ALDER_STATIC`, `ALDER_ADDR` and `ALDER_BACKUP_URL`, and
-defaults `ALDER_PUBLIC_URL` to `https://<domain>` with the shell's
-`: "${ALDER_PUBLIC_URL:=…}"`, which keeps a value the environment file
-set (no default for a wildcard domain without `--host`); the
-wrapper holds names and paths, never a value, and `Requires` checks the
+- `Locker`: the environment's lock, taken by deploy, rollback and restore;
+- `Preflighter`: the unit and Caddy prepared before anything is uploaded;
+- `DataLossAllower`: the run's `--allow-data-loss`;
+- `BackupRestorer`: put a pre-migration copy back: `rollback
+  --restore-backup`, and the automatic restore after a failed deploy whose
+  migrations dropped data;
+- `Rerouter`: check that the traffic reaches the build already serving;
+- `StreamChecker`: the environment file streams the backup;
+- `MigrationRefuser`: the Fly target, which refuses a migrating deploy for
+  now.
+
+A target without one gets the plain behaviour, and the refusals name only
+the commands that target has.
+
+##### The `Ssh` target
+
+The `Ssh` target (`ssh.go`) runs every step as a small POSIX shell script
+sent over the system's `ssh` to `sh -s` on standard input, after a prelude
+defining the root directory and a function `alive` that says whether a
+build's process runs. There is no agent on the server and no library:
+`ssh`, `sh`, `tar` and `curl` are the whole protocol.
+
+The upload is a tar stream Go writes (`archive/tar`) into a `.part`
+directory, renamed when complete.
+
+Each build gets a generated `run` wrapper that sources the operator's
+environment file and sets `ALDER_DB`, `ALDER_STATIC`, `ALDER_ADDR` and
+`ALDER_BACKUP_URL`, and defaults `ALDER_PUBLIC_URL` to `https://<domain>`
+with the shell's `: "${ALDER_PUBLIC_URL:=…}"`, which keeps a value the
+environment file set (no default for a wildcard domain without `--host`);
+the wrapper holds names and paths, never a value, and `Requires` checks the
 environment file with `grep -Eq` so that only an exit status crosses the
-connection. Caddy is driven through its admin API on `localhost:2019`
-with `curl`: one route per environment, its `@id` the unit's name, its
-upstream port changed by a `PATCH` on switch. The lock is one more
-`ssh` session, kept open for the run: its script takes `flock` on
-`<path>/deploy.lock` (or creates `deploy.lock.d`) and then reads its
-standard input until alder closes it, so the lock lives exactly as long
-as the run's connection. Replacing the database (`RestoreBackup`,
-`Restore`) first stops every build that runs, cancelling the delayed
-stop of one still draining: a process that kept the old file open would
-go on serving it, renamed aside. Three Caddy caveats follow from
-driving it only through the admin API (chapter 16, "Caddy"): the routes
-live in Caddy's running configuration, so a Caddy alder did not install
-(no `--resume` drop-in) forgets them when it restarts from its
-Caddyfile; a server of the box's own already on `:443` conflicts with
-the `alder` server at `Switch`; and the admin API on localhost answers
-every local user of the box. The `Fly` target (`fly.go`)
-does the same steps through Fly's Machines API with `net/http`, running
-its shell scripts in the machine through the API's `exec`, and `flyctl`
-for the image build, the public addresses and the secrets. The `Script`
-target (`script.go`) is not a `Target` at all: after the artifact, the
-engine runs it and is done.
+connection.
+
+Caddy is driven through its admin API on `localhost:2019` with `curl`: one
+route per environment, its `@id` the unit's name, its upstream port
+changed by a `PATCH` on switch.
+
+The lock is one more `ssh` session, kept open for the run: its script
+takes `flock` on `<path>/deploy.lock` (or creates `deploy.lock.d`) and
+then reads its standard input until alder closes it, so the lock lives
+exactly as long as the run's connection.
+
+Replacing the database (`RestoreBackup`, `Restore`) first stops every
+build that runs, cancelling the delayed stop of one still draining: a
+process that kept the old file open would go on serving it, renamed aside.
+
+Three Caddy caveats follow from driving it only through the admin API
+(chapter 16, "Caddy"):
+
+- the routes live in Caddy's running configuration, so a Caddy alder did
+  not install (no `--resume` drop-in) forgets them when it restarts from
+  its Caddyfile;
+- a server of the box's own already on `:443` conflicts with the `alder`
+  server at `Switch`;
+- the admin API on localhost answers every local user of the box.
+
+##### The `Fly` target
+
+The `Fly` target (`fly.go`) does the same steps through Fly's Machines API
+with `net/http`, running its shell scripts in the machine through the
+API's `exec`, and `flyctl` for the image build, the public addresses and
+the secrets.
+
+##### The `Script` target
+
+The `Script` target (`script.go`) is not a `Target` at all: after the
+artifact, the engine runs it and is done.
 
 #### The health check by build id
 
-`Health` asks the new build for `/`,
-following redirects (a page that `requires user` answers `/` with the
-login page, which is a page of the same build), until the answer is a
-200 whose HTML contains `name="alder-build" content="<id>"`, or the
-build's process has exited, or the timeout passes. The 200 matters: a
-build started on a database that is ahead of it serves the maintenance
-page, which carries the same meta, with 503, and must not be switched to. On the `Ssh` target that is `curl` in a loop at
-the box, against the new build's own port; on Fly it is Go's HTTP client
-against the public address, which is the only way in. The id is the
-point: a check that only asked "does something answer on port 443?"
-would pass against the old build.
+`Health` asks the new build for `/`, following redirects (a page that
+`requires user` answers `/` with the login page, which is a page of the same
+build), until the answer is a 200 whose HTML contains `name="alder-build"
+content="<id>"`, or the build's process has exited, or the timeout passes.
+
+The 200 matters: a build started on a database that is ahead of it serves the
+maintenance page, which carries the same meta, with 503, and must not be
+switched to.
+
+On the `Ssh` target that is `curl` in a loop at the box, against the new
+build's own port; on Fly it is Go's HTTP client against the public address,
+which is the only way in.
+
+The id is the point: a check that only asked "does something answer on port
+443?" would pass against the old build.
 
 #### The binary's maintenance arguments
 
-The generated `main` (section
-7) takes two arguments besides serving: `--migrate-only` checks
-`ALDER_SECRET`, opens the database, applies the pending migrations
-(printing `migrated <name>` for each, which the engine reads into the
-record; a pending migration marked DROPS DATA on a database that had
-migrations is refused, `db.ErrDropsData`, unless
-`ALDER_ALLOW_DATA_LOSS=1`, so the data-loss rule holds where the
-migration runs, whatever drove it) and exits; `--backup-to FILE` writes a consistent copy with
-`VACUUM INTO` while another process serves the same file. Both run
-without constructing a single adapter, so a migration can run on a box
-where the mail server is down. An app with a `silo` (chapter 8) has four
-more, which the silo commands run at the target (chapter 16):
-`--silo-status` prints one JSON line per silo file
-(`{"key":"org","id":"…","state":"ok|migrating|pending-data-loss|ahead|failed|orphaned","detail":"…"}`)
-and changes nothing; `--migrate-silos [--allow-data-loss]` opens and
-checks every silo file now, printing `org/<id>: ok`, `org/<id>: migrated
-0002_x` or the state and why, and exits 1 when any is not served;
-`--verify-silos N` tries the pending migrations on the N largest silos in
-transactions it rolls back (a deploy's preflight); `--prune-silos …`
-removes the orphaned silos it is given, each checked again first.
+The generated `main` (section 7) takes two arguments besides serving:
+
+- `--migrate-only` checks `ALDER_SECRET`, opens the database, applies the
+  pending migrations (printing `migrated <name>` for each, which the
+  engine reads into the record; a pending migration marked DROPS DATA on a
+  database that had migrations is refused, `db.ErrDropsData`, unless
+  `ALDER_ALLOW_DATA_LOSS=1`, so the data-loss rule holds where the
+  migration runs, whatever drove it) and exits;
+- `--backup-to FILE` writes a consistent copy with `VACUUM INTO` while
+  another process serves the same file.
+
+Both run without constructing a single adapter, so a migration can run on
+a box where the mail server is down.
+
+An app with a `silo` (chapter 8) has four more, which the silo commands
+run at the target (chapter 16):
+
+- `--silo-status` prints one JSON line per silo file
+  (`{"key":"org","id":"…","state":"ok|migrating|pending-data-loss|ahead|failed|orphaned","detail":"…"}`)
+  and changes nothing;
+- `--migrate-silos [--allow-data-loss]` opens and checks every silo file
+  now, printing `org/<id>: ok`, `org/<id>: migrated 0002_x` or the state
+  and why, and exits 1 when any is not served;
+- `--verify-silos N` tries the pending migrations on the N largest silos
+  in transactions it rolls back (a deploy's preflight);
+- `--prune-silos …` removes the orphaned silos it is given, each checked
+  again first.
 
 #### The backup shipper
 
-`rt/backup` is a small Litestream. SQLite in
-WAL mode appends every committed change to `app.db-wal` as **frames**
-(a page of the database and a header), and only a **checkpoint** copies
-them back into `app.db`. With `ALDER_BACKUP_URL` set, the runtime opens
-its connections with `wal_autocheckpoint(0)`, so nothing checkpoints
-behind the shipper's back, and starts a goroutine (`Shipper`) that
-wakes every ten seconds: it takes the write lock (`BEGIN IMMEDIATE`:
-writers wait for a moment, readers do not), copies the frames committed
-since its last offset (it reads the WAL's header and walks frames to
-the last one whose commit field is set), runs a `PASSIVE` checkpoint,
-releases the lock, and uploads the copied frames as one segment. A new
-generation starts with a snapshot: the database file copied outside the
-write lock but inside a read transaction (only the shipper checkpoints,
-and it does not until the copy is done, so the file cannot change under
-it). The pre-migration copy a deploy takes is the other kind
-(`snapshot.go`: `VACUUM INTO`, while another process serves). One
-shipper runs per database (`flock` on `<db>-backup.lock`: the new
-build's waits for the old build's to exit). Uploads that fail stay
-queued on disk and are retried in order with a doubling wait; the queue
-is capped at 256 MB of WAL segments (the generation's snapshot is not
-counted, or a database larger than the cap would never ship), and past
-it the queue is dropped for a fresh generation. The
-upload is a plain HTTP `PUT` signed with AWS's Signature Version 4,
+`rt/backup` is a small Litestream. SQLite in WAL mode appends every
+committed change to `app.db-wal` as **frames** (a page of the database and
+a header), and only a **checkpoint** copies them back into `app.db`.
+
+With `ALDER_BACKUP_URL` set, the runtime opens its connections with
+`wal_autocheckpoint(0)`, so nothing checkpoints behind the shipper's back,
+and starts a goroutine (`Shipper`) that wakes every ten seconds. It:
+
+1. takes the write lock (`BEGIN IMMEDIATE`: writers wait for a moment,
+   readers do not);
+2. copies the frames committed since its last offset (it reads the WAL's
+   header and walks frames to the last one whose commit field is set);
+3. runs a `PASSIVE` checkpoint;
+4. releases the lock;
+5. and uploads the copied frames as one segment.
+
+A new generation starts with a snapshot: the database file copied outside
+the write lock but inside a read transaction (only the shipper
+checkpoints, and it does not until the copy is done, so the file cannot
+change under it). The pre-migration copy a deploy takes is the other kind
+(`snapshot.go`: `VACUUM INTO`, while another process serves).
+
+One shipper runs per database (`flock` on `<db>-backup.lock`: the new
+build's waits for the old build's to exit).
+
+Uploads that fail stay queued on disk and are retried in order with a
+doubling wait; the queue is capped at 256 MB of WAL segments (the
+generation's snapshot is not counted, or a database larger than the cap
+would never ship), and past it the queue is dropped for a fresh
+generation.
+
+The upload is a plain HTTP `PUT` signed with AWS's Signature Version 4,
 written out in `s3.go` (about 250 lines) instead of pulling in an SDK.
+
 Restoring (`restore.go`) downloads the newest snapshot before the
-asked-for time, writes each run of segments next to it as an
-`-wal` file and lets SQLite itself apply them (`PRAGMA
-wal_checkpoint(TRUNCATE)`), then checks the page count against the last
-commit frame: SQLite is the only program that ever interprets the WAL.
+asked-for time, writes each run of segments next to it as an `-wal` file
+and lets SQLite itself apply them (`PRAGMA wal_checkpoint(TRUNCATE)`),
+then checks the page count against the last commit frame: SQLite is the
+only program that ever interprets the WAL.
 
 #### The workflow
 
