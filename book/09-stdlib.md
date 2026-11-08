@@ -424,8 +424,9 @@ Url.external : Text -> Route                    -- external URL for href, src or
 Url.absolute : Route -> Text                    -- the route's URL with the site's address in front
 ```
 
-`Html.toText` takes `Html Never`, a view that sends no messages, because the
-markup is rendered without a running page to receive them.
+`Html.toText` takes an `Html`, rendered as plain markup: the links and
+buttons it holds are not followed, because no page is running to receive
+them.
 
 `Url.external` keeps a URL only when it is one of:
 

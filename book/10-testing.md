@@ -792,7 +792,7 @@ fake Markdown {
 
 `fake Markdown { … }` names the capability and holds one definition for
 each of its entries, here `render`, without a signature: its type is
-the entry's, so `text` is a `Text` and the body a `Query (Html Never)`.
+the entry's, so `text` is a `Text` and the body a `Query Html`.
 
 A test installs the fake with a step, `let _ <- Test.fake Markdown`.
 From then until the test ends, every call of `Markdown.render` (in

@@ -314,9 +314,7 @@ notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 ```
 
 `error` is shown when a request fails, and `notFound` for an address no
-route has. Their type is `Html Never`: markup with no buttons and no forms.
-(The `Never` is the type parameter that `Html` still has outside a route
-module; chapter 5.)
+route has. Their type is `Html`, like any view (chapter 5).
 
 ### The other files
 

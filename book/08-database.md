@@ -1069,7 +1069,7 @@ A silo that is not served answers **only its org's requests** with the
 app's `maintenance` page and status 503; every other org is served as
 usual.
 
-`App` may declare the page (`maintenance : Html Never`, like
+`App` may declare the page (`maintenance : Html`, like
 `notFound`); without one, a plain page says "Down for maintenance": this
 part of the app is being updated.
 

@@ -1787,7 +1787,7 @@ notFound =
   (chapter 7) changes it; a `Task` that fails leaves it as it was.
 - `login` names the route to redirect to when `requires` fails.
 - `error` and `notFound` render failure pages; an app with a `silo` may
-  add `maintenance : Html Never`, the 503 page of a silo not served.
+  add `maintenance : Html`, the 503 page of a silo not served.
 - `route` lines and their `update`s declare app-level routes (above). They
   are optional.
 
@@ -1818,9 +1818,10 @@ per kind of toast:
   five seconds. A form's own problems are better told with `invalid`, next
   to the form.
 
-> **Old names.** `Notice.with`, `Notice.success`, `Notice.warning` and
-> `Notice.error` are the old names of these, for the page-and-message syntax;
-> `alder fix --routes` rewrites them.
+> **Old names.** `Notice.*` is deprecated (W0012). `Notice.with`,
+> `Notice.success`, `Notice.warning` and `Notice.error` are the old names of
+> `Response.toast`, `Response.success`, `Response.warning` and
+> `Response.error`; `alder fix --routes` rewrites them.
 
 ### Notices without JavaScript
 

@@ -224,9 +224,8 @@ capability Markdown {
 ```
 
 `Posts.Show`'s `load` writes `let body <- Markdown.render post.body` and
-keeps the result in its Model. `Html Never` is markup that links and
-sends nothing, so the route's `view` can embed it in its own `Html`
-(chapter 5).
+keeps the result in its Model. An `Html` value is
+markup, so the route's `view` can embed it in its own `Html` (chapter 5).
 
 The capability has the same name as its module. From
 another module, `Markdown.render` therefore names the capability's
@@ -546,7 +545,7 @@ The other types:
 - `Result e a` `rt.Result[E, A]`.
 - `List a` `[]A`.
 - `Time` `time.Time`.
-- `Html Never` `html.Node`.
+- `Html` `html.Node`.
 
 The stub above lives
 inside the generated package; an adapter, in its own package, imports it
@@ -776,7 +775,7 @@ chapter 11): its names would start the same way.
 
 The blog's Markdown renderer is a whole adapter in a few lines. The
 capability is `Markdown` of module `Markdown`
-(`render : Text -> Query (Html Never)`, above), so the rule says
+(`render : Text -> Query Html`, above), so the rule says
 `adapters/markdown/` and `func Markdown()`. This is the top of
 `examples/blog/adapters/markdown/markdown.go`:
 
