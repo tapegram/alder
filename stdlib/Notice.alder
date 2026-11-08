@@ -1,9 +1,12 @@
 module Notice
 
-with : Text -> Nav -> Nav
+-- aliases of the Response builders for one release: `with` is `Response.toast`, the others
+-- `Response.success`, `warning` and `error`; each use warns (W0012)
 
-success : Text -> Nav -> Nav
+with : Text -> Response -> Response
 
-warning : Text -> Nav -> Nav
+success : Text -> Response -> Response
 
-error : Text -> Nav -> Nav
+warning : Text -> Response -> Response
+
+error : Text -> Response -> Response

@@ -23,9 +23,9 @@ func IsTestStep(name string) bool { _, ok := testSteps[name]; return ok }
 
 // stepExample is how each step is applied, for the message of a step used as a value.
 var stepExample = map[string]string{
-	"login": "Test.login { user: Just id }", "get": "Test.get (Todos.Index {})", "open": "Test.open (Todos.Index {})",
-	"fetch":  "Test.fetch (Report.Csv { id: id })",
-	"submit": "Test.submit NewTodo { title: \"Milk\" }", "submitRaw": "Test.submitRaw NewTodo [{ name: \"title\", value: \"\" }]",
+	"login": "Test.login { user: Just id }", "get": "Test.get (Todos.Index.Index {})", "open": "Test.open (Todos.Index.Index {})",
+	"fetch":  "Test.fetch (Report.Csv.Csv { id: id })",
+	"submit": "Test.submit Create { title: \"Milk\" }", "submitRaw": "Test.submitRaw Create [{ name: \"title\", value: \"\" }]",
 	"click": "Test.click (Toggle { id: id })",
 }
 
@@ -33,7 +33,7 @@ var stepExample = map[string]string{
 var selectorArg = map[string]int{"text": 0, "texts": 0, "has": 0, "count": 0, "attr": 1}
 
 // answerCtors are the constructors of the Prelude's test type `Answer`.
-var answerCtors = map[string]bool{"Shown": true, "Rerendered": true, "Rendered": true, "Refreshed": true, "Redirected": true, "FormRejected": true, "PageMissing": true, "RequestFailed": true}
+var answerCtors = map[string]bool{"Shown": true, "Rendered": true, "Refreshed": true, "Redirected": true, "FormRejected": true, "PageMissing": true, "RequestFailed": true}
 
 // testTypes are the Prelude types that exist only inside a `test`.
 var testTypes = map[string]bool{"Doc": true, "Answer": true}
@@ -239,7 +239,7 @@ func (mc *modCtx) testGet(name string, arg syntax.Expr, env *env, eff effect) ty
 		return types.Err
 	}
 	if page == "" {
-		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a page value such as `Todos.Index {}`, got `%s`", name, mc.source(arg.GetSpan()))
+		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a route written in place, such as `Todos.Index.Index {}`, got `%s`", name, mc.source(arg.GetSpan()))
 		mc.infer(arg, env, eff)
 		return types.Err
 	}
@@ -372,7 +372,7 @@ func (mc *modCtx) stepFormOf(step string, arg syntax.Expr, env *env, eff effect)
 		}
 	}
 	if arg != head || !isCt || ct.Ref.Kind != syntax.RefType || c.forms[c.key(ct.Ref.Module, ct.Ref.Name)] == nil {
-		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a form declared by a page, got `%s`", step, mc.source(arg.GetSpan()))
+		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a write route with `form`, such as `Create`, got `%s`", step, mc.source(arg.GetSpan()))
 		if !isCt || ct.Ref.Kind != syntax.RefType {
 			mc.infer(arg, env, eff)
 		}
@@ -389,7 +389,7 @@ func (mc *modCtx) stepFormOf(step string, arg syntax.Expr, env *env, eff effect)
 		}
 	}
 	if c.pages[mod] == nil && mod != "App" {
-		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a form declared by a page: `%s` is a form of `%s`, which is not a page", step, ct.Name, mod)
+		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a write route with `form`, got form `%s` of `%s`, which no route posts", step, ct.Name, mod)
 		return stepForm{}, false
 	}
 	var posts []*syntax.MsgDecl
@@ -491,7 +491,7 @@ func (mc *modCtx) testClick(arg syntax.Expr, env *env, eff effect) types.Type {
 		if page, _ := pageOf(arg); page != "" { // a link, not a button
 			got += ": follow a link with `Test.get` or `Test.open`"
 		}
-		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.click` wants a message of a page or of `App`, got %s", got)
+		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.click` wants a route, got %s", got)
 		return types.Err
 	}
 	if form := mc.msgForm(ct.Ref.Module, ct.Ref.Name); form != "" {

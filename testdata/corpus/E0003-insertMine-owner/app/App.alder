@@ -6,8 +6,8 @@ session { user: Maybe User.UserId, role: User.Role = Reader }
 
 login = Login.Login
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>not found</p>

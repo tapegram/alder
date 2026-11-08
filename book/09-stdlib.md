@@ -415,11 +415,11 @@ Date.fromText "2026-10-08"
 ## Html
 
 ```alder
-Html.unsafe : Text -> Html Never                -- unescaped markup; never for user text
-Html.none  : Html a                             -- renders nothing
-Html.text  : Text -> Html a
-Html.fragment : List (Html a) -> Html a         -- the nodes side by side, no wrapper element
-Html.toText : Html Never -> Text                -- the markup File.html serves
+Html.unsafe : Text -> Html                -- unescaped markup; never for user text
+Html.none  : Html                             -- renders nothing
+Html.text  : Text -> Html
+Html.fragment : List Html -> Html         -- the nodes side by side, no wrapper element
+Html.toText : Html -> Text                -- the markup File.html serves
 Url.external : Text -> Route                    -- external URL for href, src or Response.redirect
 Url.absolute : Route -> Text                    -- the route's URL with the site's address in front
 ```
@@ -552,7 +552,7 @@ bytes"); it has the few operations below, and a
 ```alder
 File.text       : { contentType: Text, body: Text } -> File      -- a 200 answer
 File.bytes      : { contentType: Text, body: Bytes } -> File     -- a 200 answer
-File.html       : Html Never -> File                             -- text/html; charset=utf-8, rendered verbatim: no doctype unless the node has one
+File.html       : Html -> File                             -- text/html; charset=utf-8, rendered verbatim: no doctype unless the node has one
 File.json       : Json.Value -> File                             -- application/json: Json.encode of the value
 File.withStatus : Int -> File -> File                            -- 200..599
 File.withHeader : { name: Text, value: Text } -> File -> File    -- Content-Disposition, Cache-Control, ETag, Last-Modified, Retry-After, Content-Language, X-…
@@ -918,7 +918,7 @@ Test.texts : Text -> Doc -> List Text            -- every match's text, in page 
 Test.has   : Text -> Doc -> Bool
 Test.count : Text -> Doc -> Int
 Test.attr  : Text -> Text -> Doc -> Maybe Text   -- attribute name, then selector: the first match's
-Test.doc   : Html a -> Doc                       -- a view rendered and parsed
+Test.doc   : Html -> Doc                       -- a view rendered and parsed
 ```
 
 A selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, or

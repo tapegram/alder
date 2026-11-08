@@ -31,13 +31,13 @@ printf '%s\n' "$a"
 	return dir
 }
 
-// clearApp is the scaffold (its guestbook a page module, #160) with `alder new msg Home Clear`:
-// holes ?clear (Home.update.Clear) and ?expected (the test "pressing Clear").
+// clearApp is the scaffold with `alder new form Home Clear note:Text`: holes ?answer
+// (Home.SubmitClear.update) and ?expected (the test "submitting Clear").
 func clearApp(t *testing.T) string {
 	t.Helper()
-	dir := genApp(t, "scaffold-page")
-	if code, out, errs := alderIn(t, dir, "", "new", "msg", "Home", "Clear"); code != 0 {
-		t.Fatalf("new msg: exit %d\n%s%s", code, out, errs)
+	dir := genApp(t, "scaffold")
+	if code, out, errs := alderIn(t, dir, "", "new", "form", "Home", "Clear", "note:Text"); code != 0 {
+		t.Fatalf("new form: exit %d\n%s%s", code, out, errs)
 	}
 	return dir
 }
@@ -53,12 +53,12 @@ func homeOf(t *testing.T, dir string) string {
 
 func TestFill_AI(t *testing.T) {
 	dir := clearApp(t)
-	fakeModel(t, "Task.succeed Rerender")
-	code, out, errs := alderIn(t, dir, "", "fill", "Home.update.Clear", "--ai")
-	if code != 0 || !strings.Contains(out, "edited app/Home.alder\n") || !strings.Contains(out, "+  Clear p -> Task.succeed Rerender,\n") || errs != "" {
+	fakeModel(t, "Task.succeed Response.refresh")
+	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.update", "--ai")
+	if code != 0 || !strings.Contains(out, "edited app/Home.alder\n") || !strings.Contains(out, "+SubmitClear.update params session = Task.succeed Response.refresh\n") || errs != "" {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
 	}
-	if !strings.Contains(homeOf(t, dir), "  Clear p -> Task.succeed Rerender,\n") {
+	if !strings.Contains(homeOf(t, dir), "SubmitClear.update params session = Task.succeed Response.refresh\n") {
 		t.Errorf("not written:\n%s", homeOf(t, dir))
 	}
 }
@@ -66,8 +66,8 @@ func TestFill_AI(t *testing.T) {
 func TestFill_AIDryRun(t *testing.T) {
 	dir := clearApp(t)
 	before := homeOf(t, dir)
-	fakeModel(t, "Task.succeed Rerender")
-	code, out, errs := alderIn(t, dir, "", "fill", "Home.update.Clear", "--ai", "--dry-run")
+	fakeModel(t, "Task.succeed Response.refresh")
+	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.update", "--ai", "--dry-run")
 	if code != 0 || !strings.Contains(out, "would edit app/Home.alder\n") || !strings.Contains(out, "dry run: nothing written") {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
 	}
@@ -80,7 +80,7 @@ func TestFill_AIRefusedWritesNothing(t *testing.T) {
 	dir := clearApp(t)
 	before := homeOf(t, dir)
 	prompts := fakeModel(t, "42")
-	code, out, errs := alderIn(t, dir, "", "fill", "Home.update.Clear", "--ai")
+	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.update", "--ai")
 	if code != 1 || !strings.Contains(errs, "alder fill: attempt 2 of 3: E0003 ") || !strings.Contains(errs, "alder fill: attempt 3 of 3: E0003 ") ||
 		!strings.HasSuffix(errs, "alder fill: the result does not check after 3 attempts: nothing was written\n") ||
 		!strings.Contains(out, "error[E0003]") || !strings.HasSuffix(out, "the model's last expression:\n42\n") {
@@ -97,8 +97,8 @@ func TestFill_AIRefusedWritesNothing(t *testing.T) {
 
 func TestFill_AIJSON(t *testing.T) {
 	dir := clearApp(t)
-	fakeModel(t, "Task.succeed Rerender")
-	code, out, errs := alderIn(t, dir, "", "fill", "Home.update.Clear", "--ai", "--json")
+	fakeModel(t, "Task.succeed Response.refresh")
+	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.update", "--ai", "--json")
 	var got struct {
 		Written    bool     `json:"written"`
 		Expression string   `json:"expression"`
@@ -109,12 +109,12 @@ func TestFill_AIJSON(t *testing.T) {
 	if code != 0 || json.Unmarshal([]byte(out), &got) != nil {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
 	}
-	if !got.Written || got.Expression != "Task.succeed Rerender" || got.Attempts != 1 || got.Model != "command" || got.Imports == nil {
+	if !got.Written || got.Expression != "Task.succeed Response.refresh" || got.Attempts != 1 || got.Model != "command" || got.Imports == nil {
 		t.Errorf("json %+v", got)
 	}
 	// refused: the error, the last expression, nothing written
 	fakeModel(t, "42")
-	code, out, _ = alderIn(t, dir, "", "fill", `Home."pressing Clear"`, "--ai", "--json")
+	code, out, _ = alderIn(t, dir, "", "fill", `Home."submitting Clear"`, "--ai", "--json")
 	var bad map[string]any
 	if code != 1 || json.Unmarshal([]byte(out), &bad) != nil || bad["written"] != false || bad["expression"] != "42" || bad["attempts"] != float64(3) ||
 		bad["error"] != "the result does not check after 3 attempts: nothing was written" {
@@ -124,11 +124,11 @@ func TestFill_AIJSON(t *testing.T) {
 
 func TestFill_Prompt(t *testing.T) {
 	dir := clearApp(t)
-	prompts := fakeModel(t, "Task.succeed Rerender")
-	code, out, errs := alderIn(t, dir, "", "fill", `Home."pressing Clear"`, "--prompt")
+	prompts := fakeModel(t, "Task.succeed Response.refresh")
+	code, out, errs := alderIn(t, dir, "", "fill", `Home."submitting Clear"`, "--prompt")
 	if code != 0 || errs != "" || !strings.HasPrefix(out, "You fill one typed hole") ||
-		!strings.Contains(out, "Fill the typed hole ?expected in \"pressing Clear\" of module Home (app/Home.alder).\nIt must have type: Bool\n") ||
-		!strings.Contains(out, "-- Fill ?expected with what pressing Clear must do") || !strings.HasSuffix(out, "Reply with the expression only.\n") {
+		!strings.Contains(out, "Fill the typed hole ?expected in \"submitting Clear\" of module Home (app/Home.alder).\nIt must have type: Answer\n") ||
+		!strings.Contains(out, "let r <- Test.submit SubmitClear { note: \"note-1\" }") || !strings.HasSuffix(out, "Reply with the expression only.\n") {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
 	}
 	if _, err := os.Stat(filepath.Join(prompts, "count")); err == nil {
@@ -138,23 +138,23 @@ func TestFill_Prompt(t *testing.T) {
 	ref := filepath.Join(t.TempDir(), "reference.md")
 	os.WriteFile(ref, []byte("THE REFERENCE\n"), 0o644)
 	t.Setenv("ALDER_FILL_REFERENCE", ref)
-	if code, out, errs = alderIn(t, dir, "", "fill", `Home."pressing Clear"`, "--prompt"); code != 0 || !strings.HasPrefix(out, "THE REFERENCE\n\nYou fill one typed hole") {
+	if code, out, errs = alderIn(t, dir, "", "fill", `Home."submitting Clear"`, "--prompt"); code != 0 || !strings.HasPrefix(out, "THE REFERENCE\n\nYou fill one typed hole") {
 		t.Errorf("with a reference: exit %d\n%.200s\n%s", code, out, errs)
 	}
 }
 
 func TestFill_AIUsageErrors(t *testing.T) {
 	dir := clearApp(t)
-	fakeModel(t, "Task.succeed Rerender")
+	fakeModel(t, "Task.succeed Response.refresh")
 	for _, c := range []struct {
 		args []string
 		msg  string
 	}{
-		{[]string{"fill", "Home.update.Clear", "-", "--ai"}, "alder fill: --ai reads no standard input: drop the `-`"},
-		{[]string{"fill", "Home.update.Clear", "-", "--prompt"}, "alder fill: --prompt reads no standard input: drop the `-`"},
-		{[]string{"fill", "--decl", "Home.update", "--ai"}, "alder fill: --ai fills a hole: it takes no --list or --decl"},
+		{[]string{"fill", "Home.SubmitClear.update", "-", "--ai"}, "alder fill: --ai reads no standard input: drop the `-`"},
+		{[]string{"fill", "Home.SubmitClear.update", "-", "--prompt"}, "alder fill: --prompt reads no standard input: drop the `-`"},
+		{[]string{"fill", "--decl", "Home.SubmitClear.update", "--ai"}, "alder fill: --ai fills a hole: it takes no --list or --decl"},
 		{[]string{"fill", "--list", "--ai"}, "alder fill: --ai fills a hole: it takes no --list or --decl"},
-		{[]string{"fill", "Home.update.Clear", "--ai", "--prompt"}, "alder fill: --ai and --prompt are two ways to run: give one"},
+		{[]string{"fill", "Home.SubmitClear.update", "--ai", "--prompt"}, "alder fill: --ai and --prompt are two ways to run: give one"},
 		{[]string{"fill", "--ai"}, "usage: alder fill"},
 	} {
 		code, _, errs := alderIn(t, dir, "", c.args...)
@@ -164,7 +164,7 @@ func TestFill_AIUsageErrors(t *testing.T) {
 	}
 	// no backend: exit 2, the variables named
 	t.Setenv("ALDER_FILL_COMMAND", "")
-	code, _, errs := alderIn(t, dir, "", "fill", "Home.update.Clear", "--ai")
+	code, _, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.update", "--ai")
 	if code != 2 || errs != "alder fill: set ANTHROPIC_API_KEY, or ALDER_FILL_COMMAND, in the environment\n" {
 		t.Errorf("no backend: exit %d, %q", code, errs)
 	}
@@ -174,14 +174,14 @@ func TestFill_AIUsageErrors(t *testing.T) {
 // printed with a warning (--json: "effects"), and a test's expectation gets the --mutate hint.
 func TestFill_AIEffectsWarned(t *testing.T) {
 	dir := clearApp(t)
-	fakeModel(t, "Session.put (\\s -> s) |> Task.map (\\u -> Rerender)")
-	code, out, errs := alderIn(t, dir, "", "fill", "Home.update.Clear", "--ai")
-	if code != 0 || !strings.Contains(out, "the model's expression:\nSession.put (\\s -> s) |> Task.map (\\u -> Rerender)\n") ||
+	fakeModel(t, "Session.put (\\s -> s) |> Task.map (\\u -> Response.refresh)")
+	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.update", "--ai")
+	if code != 0 || !strings.Contains(out, "the model's expression:\nSession.put (\\s -> s) |> Task.map (\\u -> Response.refresh)\n") ||
 		errs != "alder fill: warning: the model's expression uses Session.put, effects its hole's type does not limit: review it\n" {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
 	}
-	fakeModel(t, "r.answer == Rerendered")
-	code, out, errs = alderIn(t, dir, "", "fill", `Home."pressing Clear"`, "--ai", "--json")
+	fakeModel(t, "Refreshed")
+	code, out, errs = alderIn(t, dir, "", "fill", `Home."submitting Clear"`, "--ai", "--json")
 	var got struct{ Effects []string }
 	if code != 0 || json.Unmarshal([]byte(out), &got) != nil || got.Effects == nil || len(got.Effects) != 0 {
 		t.Fatalf("json: exit %d\n%s%s", code, out, errs)
@@ -190,8 +190,8 @@ func TestFill_AIEffectsWarned(t *testing.T) {
 
 func TestFill_AITestHint(t *testing.T) {
 	dir := clearApp(t)
-	fakeModel(t, "r.answer == Rerendered")
-	code, out, errs := alderIn(t, dir, "", "fill", `Home."pressing Clear"`, "--ai")
+	fakeModel(t, "Refreshed")
+	code, out, errs := alderIn(t, dir, "", "fill", `Home."submitting Clear"`, "--ai")
 	if code != 0 || !strings.HasSuffix(out, "a model wrote this test's expectation: `alder test --mutate` is the check that it tests something\n") || strings.Contains(errs, "warning") {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
 	}

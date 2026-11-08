@@ -5,7 +5,7 @@ text : { contentType: Text, body: Text } -> File
 -- a 200 answer with the bytes as its body
 bytes : { contentType: Text, body: Bytes } -> File
 -- text/html; charset=utf-8, rendered verbatim: no doctype unless the node has one
-html : Html Never -> File
+html : Html -> File
 -- application/json
 json : Json.Value -> File
 -- 200..599

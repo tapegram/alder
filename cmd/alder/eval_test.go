@@ -372,7 +372,7 @@ func TestEval_Closers(t *testing.T) {
 	dir := todosDir(t)
 	for _, c := range []struct{ in, out string }{
 		{"match Just 1 {\n  Just v -> v,\n  Nothing -> 0,\n}\n", "1 : Int\n"},
-		{"<ul>\n  <li>a</li>\n</ul>\n", "<ul><li>a</li></ul> : Html a\n"},
+		{"<ul>\n  <li>a</li>\n</ul>\n", "<ul><li>a</li></ul> : Html\n"},
 		{"let r = {\n  a: 1,\n}\nr.a\n", "1 : Int\n"},
 	} {
 		code, stdout, stderr := runEval(t, c.in, dir, "-")

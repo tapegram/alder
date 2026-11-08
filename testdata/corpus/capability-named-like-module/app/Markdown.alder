@@ -2,9 +2,9 @@ module Markdown
 
 -- A capability named like its module: other modules call its entries as `Markdown.render`.
 capability Markdown {
-  render : Text -> Query (Html Never),
+  render : Text -> Query Html,
 }
 
 -- Inside the module, the same name reaches the capability.
-twice : Text -> Query (List (Html Never))
+twice : Text -> Query (List Html)
 twice text = Query.all [Markdown.render text, Markdown.render text]

@@ -28,10 +28,10 @@ func TestGen_MainLog(t *testing.T) {
 		t.Skip("builds and runs an app")
 	}
 	dir := tempAppAbs(t, "../../testdata/corpus/url-absolute-ok", "olog")
-	// a page slower than ALDER_SLOW_MS=1 for the slow line (#92)
-	slowPage := "module Slow\n\npage \"/slow\" { }\n\ntype Model = { n: Int }\n\nload : Params -> Session -> Query Model\n" +
-		"load params session = {\n  let _ <- Query.delay 20\n  Query.succeed { n: 1 }\n}\n\n" +
-		"view : Model -> Session -> Html Msg\nview model session =\n  <html><body><p>slow</p></body></html>\n"
+	// a route slower than ALDER_SLOW_MS=1 for the slow line (#92)
+	slowPage := "module Slow\n\nroute Slow = GET \"/slow\" { }\n\nSlow.load : Slow.Params -> Session -> Query Int\n" +
+		"Slow.load params session = {\n  let _ <- Query.delay 20\n  Query.succeed 1\n}\n\n" +
+		"Slow.view : Int -> Session -> Html\nSlow.view n session =\n  <html><body><p>slow</p></body></html>\n"
 	if err := os.WriteFile(filepath.Join(dir, "app", "Slow.alder"), []byte(slowPage), 0o644); err != nil {
 		t.Fatal(err)
 	}

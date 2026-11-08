@@ -1,5 +1,5 @@
 (module Layout)
-(component Layout.Page : { title: Text, children: List (Html a) } -> Html a (props)
+(component Layout.Page : { title: Text, children: List Html } -> Html (props)
   (elem html
     (elem head
       (elem meta (attr charset text "utf-8"))
@@ -43,12 +43,12 @@
     (pure task
       (call (std Response.redirect)
         (route-ref Auth.Login.Login (record Auth.Login.Login.Params))))))
-(value App.error : Error -> Html Never (err)
+(value App.error : Error -> Html (err)
   (comp Layout.Page
     (record (title "Error"))
     (elem h1 (htext "Something went wrong"))
     (elem p (htext "Please try again."))))
-(value App.notFound : Html Never ()
+(value App.notFound : Html ()
   (comp Layout.Page (record (title "Not found")) (elem h1 (htext "Not found"))))
 (test "Logout clears the user and goes to log in" task
   (bind task r : { value: Result Text Response, trace: List Text }
@@ -141,7 +141,7 @@
       (case Nothing
         (pure task
           (call (std Response.invalid) "Email or password is incorrect."))))))
-(value Auth.Login.Login.view : Model -> App.Session -> Html Route (model session)
+(value Auth.Login.Login.view : Model -> App.Session -> Html (model session)
   (comp Layout.Page
     (record (title "Log in"))
     (elem h1 (htext "Log in"))
@@ -430,7 +430,7 @@
   (bind task _
     (db-delete-scoped Db.deleteMine user Table.Todo.Todo (field id (var p)))
     (pure task (std Response.refresh))))
-(value Todos.Index.Index.view : Model -> Index.Session -> Html Route (model session)
+(value Todos.Index.Index.view : Model -> Index.Session -> Html (model session)
   (comp Layout.Page
     (record (title "Todos"))
     (elem h1 (htext "Todos"))
@@ -472,7 +472,7 @@
         (attr type text "button")
         (attr click click (route-ref App.Logout))
         (htext "Log out")))))
-(component Todos.Index.Item : { todo: Table.Todo.Todo } -> Html Route (props)
+(component Todos.Index.Item : { todo: Table.Todo.Todo } -> Html (props)
   (elem li
     (attr class text (if (field done (field todo (var props))) "done" ""))
     (elem al-button (attr variant text "secondary") (attr size text "sm")
@@ -1013,7 +1013,7 @@
         (route-ref Todos.Index.Index
           (record Todos.Index.Index.Params
             (filter (ctor Table.Todo.Filter.All))))))))
-(value Todos.Show.Show.view : Model -> Show.Session -> Html Route (model session)
+(value Todos.Show.Show.view : Model -> Show.Session -> Html (model session)
   (comp Layout.Page
     (record (title (field title (field todo (var model)))))
     (elem h1 (hexpr text (field title (field todo (var model)))))

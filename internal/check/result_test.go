@@ -392,7 +392,7 @@ func TestDerivable(t *testing.T) {
 		{&types.App{Con: "List", Args: []types.Type{&types.App{Con: "Id", Args: []types.Type{card}}}}, ""},
 		{&types.Brand{Module: "Text", Name: "Email", Base: types.Text}, ""},
 		{&types.App{Con: "Dict", Args: []types.Type{types.Text, fn}}, "`Int -> Int`"},
-		{&types.App{Con: "List", Args: []types.Type{card}}, "`Html Unit` in field `view` of `M.Card`"},
+		{&types.App{Con: "List", Args: []types.Type{card}}, "`Html` in field `view` of `M.Card`"},
 		{types.File, "`File`"},
 		{&types.Con{Name: "HttpError", Module: "Http"}, "`Http.HttpError`"},
 	} {

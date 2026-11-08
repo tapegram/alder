@@ -256,7 +256,7 @@ function from a record of properties to HTML.
 ```alder part=guestbook/Layout
 module Layout
 
-Page : { title: Text, children: List (Html a) } -> Html a
+Page : { title: Text, children: List Html } -> Html
 Page props =
   <html>
     <head>
@@ -302,14 +302,14 @@ import Layout
 
 session { }
 
-error : Error -> Html Never
+error : Error -> Html
 error err =
   <Layout.Page title="Error">
     <h1>Something went wrong</h1>
     <p>Please try again.</p>
   </Layout.Page>
 
-notFound : Html Never
+notFound : Html
 notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 ```
 

@@ -21,14 +21,14 @@ Logout.update p session = {
   Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
 
-error : Error -> Html Never
+error : Error -> Html
 error err =
   <Layout.Page title="Error">
     <h1>Something went wrong</h1>
     <p>Please try again.</p>
   </Layout.Page>
 
-notFound : Html Never
+notFound : Html
 notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 
 -- From a page that `requires user` a refresh ends at the login page too; only a test of

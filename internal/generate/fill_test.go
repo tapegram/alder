@@ -74,15 +74,6 @@ func TestFill_ShortQualifier(t *testing.T) {
 	}
 }
 
-// A page is not a candidate for a short qualifier: `Show.x` is not an import of Teams.Show.
-func TestFill_ShortQualifierSkipsPages(t *testing.T) {
-	p := fillApp(t, map[string]string{"app/Teams/Show.alder": "module Teams.Show\n\npage \"/teams\" { }\n\ntype Model = { n: Int }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { n: 1 }\n\nview : Model -> Session -> Html Msg\nview model session = <p></p>\n\nhelper : Int\nhelper = 1\n"})
-	_, _, imports, err := Fill(p, "Home.Submit.update", "", "Task.succeed (if Show.helper == 1 then Response.refresh else Response.refresh)")
-	if err != nil || len(imports) != 0 {
-		t.Fatalf("imports %v err %v", imports, err)
-	}
-}
-
 // twoRoutes is a route module with two write routes, each `update` a hole, and a GET route whose
 // view is one: `Module.Route.member` names one route's member (#160).
 const twoRoutes = `module Notes

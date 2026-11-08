@@ -137,7 +137,7 @@ in Go:
 
 ```alder
 capability Email {
-  send : { to: Text.Email, subject: Text, body: Html Never } -> Task Unit,
+  send : { to: Text.Email, subject: Text, body: Html } -> Task Unit,
 }
 
 capability Weather {
@@ -219,7 +219,7 @@ module Markdown
 -- Rendering a post's body is outside the language: a capability implemented in Go
 -- (adapters/markdown/markdown.go), which builds the HTML node by node, so a post cannot inject markup.
 capability Markdown {
-  render : Text -> Query (Html Never),
+  render : Text -> Query Html,
 }
 ```
 

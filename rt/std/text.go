@@ -133,7 +133,7 @@ func UrlExternal(u string) rt.Route {
 // UrlAbsolute is `Url.absolute`: the page's URL (rt.PageURL, what `href` renders) with the
 // public base (rt.PublicURL) in front when it is a path of this site; any other page (an
 // external URL, a fragment, a sanitised "#") is its URL unchanged.
-func UrlAbsolute(p rt.Page) string {
+func UrlAbsolute(p rt.Route) string {
 	u := rt.PageURL(p)
 	if strings.HasPrefix(u, "/") {
 		return rt.PublicURL + u

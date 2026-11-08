@@ -3,9 +3,9 @@
 (module App)
 (record App.Session (user Maybe Text) (theme Text = "light"))
 (union App.Msg)
-(value App.error : Error -> Html Never (err)
+(value App.error : Error -> Html (err)
   (elem html (elem body (elem h1 (htext "Something went wrong")))))
-(value App.notFound : Html Never ()
+(value App.notFound : Html ()
   (elem html (elem body (elem h1 (htext "Not found")))))
 (module Table.Todo)
 (union Table.Todo.Filter (All) (Done))
@@ -24,7 +24,7 @@
 (record Auth.Login.Login.Params)
 (value Auth.Login.Login.load : Login.Params -> App.Session -> Query Model (params session)
   (pure query (record Model)))
-(value Auth.Login.Login.view : Model -> App.Session -> Html Route (model session)
+(value Auth.Login.Login.view : Model -> App.Session -> Html (model session)
   (elem html
     (elem body
       (elem a
@@ -33,7 +33,7 @@
             (record Todos.Index.Params (filter (ctor Table.Todo.Filter.All)))))
         (htext "Todos")))))
 (module Layout)
-(component Layout.Page : { title: Text, theme: Text, children: List (Html a) } -> Html a (props)
+(component Layout.Page : { title: Text, theme: Text, children: List Html } -> Html (props)
   (elem html
     (elem head (elem title (hexpr text (field title (var props)))))
     (elem body (attr class text (field theme (var props)))
@@ -60,7 +60,7 @@
       all)
     (pure query
       (record TodoList (filter (field filter (var params))) (todos (var todos))))))
-(value Todos.Index.view : TodoList -> Index.Session -> Html Route (model session)
+(value Todos.Index.view : TodoList -> Index.Session -> Html (model session)
   (comp Layout.Page
     (record (title "Todos") (theme (field theme (var session))))
     (elem nav
@@ -84,7 +84,7 @@
       (elem button (htext "Add")))))
 (value Todos.Row.load : Row.Params -> Index.Session -> Query Table.Todo.Todo (params session)
   (db-get-scoped Db.getMine user Table.Todo.Todo (field id (var params))))
-(value Todos.Row.view : Table.Todo.Todo -> Index.Session -> Html Route (t session)
+(value Todos.Row.view : Table.Todo.Todo -> Index.Session -> Html (t session)
   (elem li (attr id text (++ : Text "todo-" (field id (var t))))
     (elem button
       (attr click click
@@ -147,7 +147,7 @@
     (pure task (std Response.refresh))))
 (value Todos.About.load : About.Params -> App.Session -> Query Unit (params session)
   (pure query ()))
-(value Todos.About.view : Unit -> App.Session -> Html Route (model session)
+(value Todos.About.view : Unit -> App.Session -> Html (model session)
   (elem p (htext "Todos, by ") (hexpr text (field theme (var session)))))
 (test "a row is fetched, toggled, moved and refreshed" task
   (bind task me : Text

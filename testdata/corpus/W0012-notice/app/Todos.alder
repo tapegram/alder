@@ -1,0 +1,18 @@
+module Todos
+
+route Index = GET  "/"            { }
+route Clear = POST "/todos/clear" { }
+route Undo  = POST "/todos/undo"  { }
+
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <div><button click={Clear}>Clear</button><button click={Undo}>Undo</button></div>
+
+-- `Notice.*` still works for one release, with a warning naming the `Response` builder
+Clear.update : Clear.Params -> Session -> Task Response
+Clear.update params session = Task.succeed (Notice.success "Cleared" Response.refresh)
+
+Undo.update : Undo.Params -> Session -> Task Response
+Undo.update params session = Task.succeed (Response.refresh |> Notice.with "Undone" |> Notice.warning "Careful" |> Notice.error "Oops")

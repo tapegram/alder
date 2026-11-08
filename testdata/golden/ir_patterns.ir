@@ -165,7 +165,7 @@
           (let a : Int (var _m2) (let rest : List Int (var _m3) (var a))))
         (default (match list (var _m1) (case nil 0)))))
     (case Nothing -1)))
-(component P.View : { items: List (Maybe Int) } -> Html a (props)
+(component P.View : { items: List (Maybe Int) } -> Html (props)
   (elem ul
     (hfor item : Maybe Int
       (field items (var props))

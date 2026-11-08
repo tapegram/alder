@@ -13,7 +13,7 @@ route AddComment = POST "/posts/{slug}/_/AddComment" { slug: Post.Slug } form Ne
 
 type Model = {
   post: Post,
-  body: Html Never,
+  body: Html,
   comments: List Comment,
 }
 

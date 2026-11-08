@@ -2,7 +2,7 @@ module Layout
 
 import Theme
 
-Page : { theme: Theme.Theme, title: Text, children: List (Html a) } -> Html a
+Page : { theme: Theme.Theme, title: Text, children: List Html } -> Html
 Page props =
   <main class={if props.theme == Dark then "dark" else "light"}>
     <h1>{props.title}</h1>

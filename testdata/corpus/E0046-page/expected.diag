@@ -1,0 +1,1 @@
+app/Home.alder:4:1 E0046 `page` declarations are gone: a page is a GET route now (`route Name = GET "/path" { … }`); run `alder fix --routes` to rewrite this module

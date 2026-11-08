@@ -370,12 +370,7 @@ func (mc *modCtx) missingSig(d *syntax.ValueDecl, sig string) {
 func (mc *modCtx) reportHoles() {
 	for _, h := range mc.holes {
 		mc.c.res.Holes++
-		// a route's `view` is written `Html`, which means `Html Route`: the hole says what the signature says
-		ty := mc.ts(mc.c.u.Apply(h.t))
-		if ty == "Html Route" {
-			ty = "Html"
-		}
-		mc.c.bag.Warn("W0002", h.span, "hole ?%s has type %s", h.name, ty)
+		mc.c.bag.Warn("W0002", h.span, "hole ?%s has type %s", h.name, mc.ts(mc.c.u.Apply(h.t)))
 	}
 	mc.holes = nil
 	mc.c.checkDbTables()
@@ -1207,6 +1202,13 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Test" && IsTestStep(x.Ref.Name) { // applied, inferApp takes it
 			c.errorf(diag.TypeMismatch, x.Span, "`Test.%s` is a step: apply it to its argument%s, as in `%s`", x.Ref.Name, map[bool]string{true: "s", false: ""}[testSteps[x.Ref.Name] > 1], stepExample[x.Ref.Name])
 			return types.Err
+		}
+		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Notice" { // aliases for one release (#160)
+			b := x.Ref.Name
+			if b == "with" {
+				b = "toast"
+			}
+			c.bag.Warn(diag.NoticeDeprecated, x.Span, "`Notice.%s` is now `Response.%s`", x.Ref.Name, b)
 		}
 		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Session" && mc.fake != "" { // the entry's prefix names the fake
 			c.errorf(diag.TypeMismatch, x.Span, "a fake cannot use `Session`: an adapter has no session")

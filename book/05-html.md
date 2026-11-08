@@ -243,7 +243,7 @@ A component is a function from a record to `Html`, named with an
 uppercase letter:
 
 ```alder
-TodoItem : { todo: Todo } -> Html a
+TodoItem : { todo: Todo } -> Html
 TodoItem props =
   <li class={if props.todo.done then "done" else ""}>
     <span>{props.todo.title}</span>
@@ -259,7 +259,7 @@ It is used as an element, with props as attributes:
 Children are passed through a `children` field of type `List (Html a)`:
 
 ```alder
-Layout : { title: Text, children: List (Html a) } -> Html a
+Layout : { title: Text, children: List Html } -> Html
 Layout props =
   <html>
     <head><title>{props.title}</title></head>

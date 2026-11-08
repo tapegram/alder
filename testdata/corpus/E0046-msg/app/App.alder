@@ -1,0 +1,17 @@
+module App
+
+session { user: Maybe Text }
+
+-- the old syntax: an app-level message, which `alder fix --routes` turns into a POST route
+msg Logout
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Logout -> Task.succeed Rerender,
+}
+
+error : Error -> Html
+error err = <h1>Something went wrong</h1>
+
+notFound : Html
+notFound = <h1>Not found</h1>

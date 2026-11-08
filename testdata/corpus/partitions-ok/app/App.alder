@@ -26,12 +26,12 @@ Leave.update params session = {
   Task.succeed (Response.redirect (Orgs.Index.Index {}))
 }
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <html><body><h1>error</h1></body></html>
 
-notFound : Html Never
+notFound : Html
 notFound = <html><body><h1>not found</h1></body></html>
 
 -- optional, like notFound: what a silo whose database cannot be served answers
-maintenance : Html Never
+maintenance : Html
 maintenance = <html><body><h1>down for maintenance</h1></body></html>

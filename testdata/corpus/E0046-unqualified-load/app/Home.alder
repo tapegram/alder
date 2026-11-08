@@ -1,0 +1,10 @@
+module Home
+
+-- a page module whose `page` line was deleted: its members are still the page's, unqualified
+type Model = { n: Int }
+
+load : Int -> Query Model
+load n = Query.succeed { n: n }
+
+view : Model -> Html
+view model = <p>{Text.fromInt model.n}</p>

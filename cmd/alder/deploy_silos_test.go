@@ -38,7 +38,7 @@ func siloDeployApp(t *testing.T, box *sshBox, decl string) (string, *deployCmds)
 	}
 	dir := tempAppAbs(t, "../../testdata/corpus/silo-ok", "siloapp")
 	os.RemoveAll(filepath.Join(dir, "build"))
-	writeFile(t, filepath.Join(dir, "app", "Home.alder"), "module Home\n\npage \"/\" { }\n\ntype Model = { }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { }\n\nview : Model -> Session -> Html Msg\nview model session = <html><body><h1>home</h1></body></html>\n")
+	writeFile(t, filepath.Join(dir, "app", "Home.alder"), "module Home\n\nroute Home = GET \"/\" { }\n\nHome.load : Home.Params -> Session -> Query Int\nHome.load params session = Query.succeed 1\n\nHome.view : Int -> Session -> Html\nHome.view n session = <html><body><h1>home</h1></body></html>\n")
 	editApp(t, dir, "Project.alder", "  name: Text,\n", "  name: Text,\n  note: Maybe Text = Nothing,\n")
 	if code, out, errs := runMigrate(t, dir); code != 0 {
 		t.Fatalf("migrate: %d\n%s%s", code, out, errs)

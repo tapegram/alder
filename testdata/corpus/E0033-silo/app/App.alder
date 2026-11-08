@@ -25,8 +25,8 @@ silo region { Note }
 
 silo nothing { Note }
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>not found</p>

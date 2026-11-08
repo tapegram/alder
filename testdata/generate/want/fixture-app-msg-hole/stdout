@@ -12,7 +12,7 @@ edited app/App.alder
 @@ -25,14 +26,22 @@
    </Layout.Page>
  
- notFound : Html Never
+ notFound : Html
 -notFound =
 -  <Layout.Page title="Not found">
 -    <h1>Not found</h1>

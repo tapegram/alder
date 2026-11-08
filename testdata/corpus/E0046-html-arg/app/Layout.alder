@@ -1,0 +1,8 @@
+module Layout
+
+-- the old markup types: `Html a` and `Html Msg` are `Html` now
+card : Text -> Html a -> Html a
+card title body = <section><h2>{title}</h2>{body}</section>
+
+empty : Html Never
+empty = Html.none

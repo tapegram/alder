@@ -39,7 +39,7 @@ var commandUsages = map[string]string{
 	"help":     helpUsage,
 	"version":  "usage: alder version",
 	"lsp":      "usage: alder lsp",
-	"explain":  "usage: alder explain <code>  (such as E0016)",
+	"explain":  "usage: alder explain <code>  (such as E0003)",
 }
 
 var newGeneratorUsages = map[string]string{

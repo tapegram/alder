@@ -201,7 +201,6 @@ func (p *Program) Resolve(bag *diag.Bag) {
 		r := &resolver{p: p, bag: bag, m: p.Modules[name], ms: p.scopes[name]}
 		r.module()
 	}
-	p.pageShadows(bag)
 	// stdlib signatures: resolve their type names so the checker can read them
 	var std []string
 	for name := range p.Std {
@@ -1145,11 +1144,6 @@ func (r *resolver) expr(e syntax.Expr, sc *Scope) {
 		r.expr(e.Expr, sc)
 	case *syntax.App:
 		r.expr(e.Fn, sc)
-		if ct, ok := e.Fn.(*syntax.CtorRef); ok && len(e.Args) == 1 {
-			if _, rec := e.Args[0].(*syntax.RecordLit); rec {
-				r.pageUse(ct)
-			}
-		}
 		for i, a := range e.Args {
 			if v, ok := e.Fn.(*syntax.Var); ok && i == 0 && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" {
 				switch v.Ref.Name {
@@ -1407,11 +1401,19 @@ func (r *resolver) ownQualified(span diag.Span, name string, declared, fix bool)
 	}
 }
 
+// removedNav maps each constructor of the old `Nav` (#160) to the `Response` builder that
+// replaces it: unresolved, it is E0046.
+var removedNav = map[string]string{"Rerender": "Response.refresh", "Redirect": "Response.redirect", "Reject": "Response.invalid"}
+
 // unresolvedCtor reports an unqualified constructor (or table) found nowhere this module can
 // see. A table of another module gets the table's message (E5 problem 2); a constructor some
 // app module declares names that module (message 4); a name no module declares is silent when
 // an import of this module names no module, since that import's error stands for it (message 3).
 func (r *resolver) unresolvedCtor(c *syntax.CtorRef) {
+	if b, ok := removedNav[c.Name]; ok && c.Module == "" {
+		r.bag.Error(diag.RemovedSyntax, c.Span, "`%s` is gone: write `%s`; %s", c.Name, b, diag.RemovedHint)
+		return
+	}
 	if owner, table, ok := r.tableInOtherModule(c.Name); ok {
 		r.tableMisplaced(c.Span, owner, table)
 		return

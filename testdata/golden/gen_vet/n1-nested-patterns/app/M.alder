@@ -73,7 +73,7 @@ flags r = match r {
   { a: False, b: _ } -> 0,
 }
 
-Items : { xs: List (Maybe Int) } -> Html a
+Items : { xs: List (Maybe Int) } -> Html
 Items p = <ul>{match p.xs {
   [Just a, Just b] -> <li>{Text.fromInt (a + b)}</li>,
   [Nothing, ..rest] -> <li>none</li>,
@@ -94,5 +94,5 @@ values = [
 texts : List Text
 texts = [results [Ok 0, Err "e"], Text.fromFloat (parse "1 2 3")]
 
-items : Html a
+items : Html
 items = <Items xs={[Just 1, Nothing]} />

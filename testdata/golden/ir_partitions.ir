@@ -17,7 +17,7 @@
   (bind task _
     (db-delete Project.Project (field id (var p)))
     (pure task (std Response.refresh))))
-(value Admin.Projects.Projects.view : Model -> Projects.Session -> Html Route (model session)
+(value Admin.Projects.Projects.view : Model -> Projects.Session -> Html (model session)
   (elem html
     (elem body
       (elem p (hexpr text (call (std Text.fromInt) (field n (var model))))))))
@@ -38,11 +38,11 @@
     (pure task
       (call (std Response.redirect)
         (route-ref Orgs.Index.Index (record Orgs.Index.Index.Params))))))
-(value App.error : Error -> Html Never (err)
+(value App.error : Error -> Html (err)
   (elem html (elem body (elem h1 (htext "error")))))
-(value App.notFound : Html Never ()
+(value App.notFound : Html ()
   (elem html (elem body (elem h1 (htext "not found")))))
-(value App.maintenance : Html Never ()
+(value App.maintenance : Html ()
   (elem html (elem body (elem h1 (htext "down for maintenance")))))
 (module Issue)
 (record Issue.Issue (id Text) (title Text) (project Text) (org Text))
@@ -53,7 +53,7 @@
 (record Login.Login.Params)
 (value Login.Login.load : Login.Params -> App.Session -> Query Model (params session)
   (pure query (record Model)))
-(value Login.Login.view : Model -> App.Session -> Html Route (model session)
+(value Login.Login.view : Model -> App.Session -> Html (model session)
   (elem html (elem body (elem h1 (htext "log in")))))
 (module Membership)
 (record Membership.Membership (id Text) (user Text) (org Text))
@@ -80,7 +80,7 @@
           (lambda (s : App.Session)
             (update (var s) (org (ctor Prelude.Maybe.Nothing)))))
         (pure task (std Response.refresh))))))
-(value Notes.Index.Index.view : Model -> Index.Session -> Html Route (model session)
+(value Notes.Index.Index.view : Model -> Index.Session -> Html (model session)
   (elem html
     (elem body
       (elem button (attr click click (route-ref Notes.Index.Add)) (htext "add")))))
@@ -105,7 +105,7 @@
     (pure task
       (call (std Response.redirect)
         (route-ref Projects.Index.Index (record Projects.Index.Index.Params))))))
-(value Orgs.Index.Index.view : Model -> Index.Session -> Html Route (model session)
+(value Orgs.Index.Index.view : Model -> Index.Session -> Html (model session)
   (elem html
     (elem body
       (elem ul
@@ -194,7 +194,7 @@
   (bind task _
     (db-insert-scoped Db.insertScoped org Label.Label (record (name "new")))
     (pure task (std Response.refresh))))
-(value Projects.Index.Index.view : Model -> Index.Session -> Html Route (model session)
+(value Projects.Index.Index.view : Model -> Index.Session -> Html (model session)
   (elem html
     (elem body
       (elem h1 (hexpr text (field org (var model))))
@@ -259,7 +259,7 @@
     (bind query others : List Project
       (db-run all (global Projects.Index.recent))
       (pure query (record Model (project (var project)) (others (var others)))))))
-(value Projects.Show.Show.view : Model -> Show.Session -> Html Route (model session)
+(value Projects.Show.Show.view : Model -> Show.Session -> Html (model session)
   (elem html
     (elem body (elem h1 (hexpr text (field name (field project (var model))))))))
 (table Org.Org (id id) (insert name))

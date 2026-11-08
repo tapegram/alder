@@ -1,8 +1,8 @@
 (module App)
 (record App.Session (user Maybe Text) (visits Int = 0))
 (union App.Msg)
-(value App.error : Error -> Html Never (err) (elem p (htext "error")))
-(value App.notFound : Html Never () (elem p (htext "not found")))
+(value App.error : Error -> Html (err) (elem p (htext "error")))
+(value App.notFound : Html () (elem p (htext "not found")))
 (module Edit)
 (union Edit.Color (Red) (Green))
 (record Edit.Model (n Int) (busy Bool))
@@ -16,7 +16,7 @@
   (pure task (std Response.refresh)))
 (value Edit.Ping.update : Ping.Params -> App.Session -> Task Response (params session)
   (pure task (std Response.refresh)))
-(value Edit.Edit.view : Model -> App.Session -> Html Route (model session)
+(value Edit.Edit.view : Model -> App.Session -> Html (model session)
   (elem div
     (elem a (attr href href (route-ref Other.Other)) (htext "other"))
     (elem button
@@ -38,7 +38,7 @@
 (record Other.Other.Params)
 (value Other.Other.load : Other.Params -> App.Session -> Query Model (params session)
   (pure query (record Model)))
-(value Other.Other.view : Model -> App.Session -> Html Route (model session)
+(value Other.Other.view : Model -> App.Session -> Html (model session)
   (elem a
     (attr href href (route-ref Edit.Edit (record Edit.Edit.Params (n 1))))
     (htext "edit")))
@@ -50,7 +50,7 @@
   (pure query (record Model)))
 (value Secret.greeting : Secret.Session -> Text (session)
   (++ : Text "hello " (field user (var session))))
-(value Secret.Secret.view : Model -> Secret.Session -> Html Route (model session)
+(value Secret.Secret.view : Model -> Secret.Session -> Html (model session)
   (elem p
     (hexpr text (call (global Secret.greeting) (var session)))
     (htext " (")

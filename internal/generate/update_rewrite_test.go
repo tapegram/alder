@@ -10,7 +10,7 @@ import (
 // `update <update>`.
 func updatePage(msgs, update string) string {
 	return "module Home\n\npage \"/\" { }\n\n" + msgs + "update : Msg -> Session -> Task Nav\nupdate " + update +
-		"\n\nview : Session -> Html Msg\nview session = <p>Hi</p>\n"
+		"\n\nview : Session -> Html\nview session = <p>Hi</p>\n"
 }
 
 // matchify parses src and runs matchifyUpdate on it with added.
@@ -101,7 +101,7 @@ func TestMatchifyUpdate_AlreadyMultiLine(t *testing.T) {
 	for _, src := range []string{
 		updatePage("msg Other\n\n", "msg session = match msg {\n  Other -> Task.succeed Rerender, -- a comment\n}"),
 		updatePage("msg Other\n\n", "msg session = match msg {\n}"),
-		"module Home\n\npage \"/\" { }\n\nview : Session -> Html Never\nview session = <p>Hi</p>\n", // no update
+		"module Home\n\npage \"/\" { }\n\nview : Session -> Html\nview session = <p>Hi</p>\n", // no update
 	} {
 		wantMatchify(t, src, src, "Submit")
 	}

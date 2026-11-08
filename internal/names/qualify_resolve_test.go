@@ -81,13 +81,13 @@ func wantRef(t *testing.T, m *syntax.Module, written string, want syntax.Ref) {
 	}
 }
 
-const tableTodoSrc = "module Table.Todo\n\ntype Todo = { title: Text }\n\ntype Status = Open | Done\n\nfind : Int -> Todo\nfind n = ?find\n\nCard : { t: Todo } -> Html a\nCard props = <p>x</p>\n"
+const tableTodoSrc = "module Table.Todo\n\ntype Todo = { title: Text }\n\ntype Status = Open | Done\n\nfind : Int -> Todo\nfind n = ?find\n\nCard : { t: Todo } -> Html\nCard props = <p>x</p>\n"
 
 // With `import Table.Todo` the module's members, types and components are written through its
 // qualifier `Todo`, and its eponymous type `Todo` by the qualifier alone; each Ref keeps the path.
 func TestQual_ShortForm(t *testing.T) {
 	_, bag, ms := resolveMods(t, std(t), tableTodoSrc,
-		"module Use\n\nimport Table.Todo\n\nx : Todo -> Todo.Status\nx t = ?x\n\ny : Todo\ny = Todo.find 1\n\nz : Html a\nz = <Todo.Card t={y} />\n")
+		"module Use\n\nimport Table.Todo\n\nx : Todo -> Todo.Status\nx t = ?x\n\ny : Todo\ny = Todo.find 1\n\nz : Html\nz = <Todo.Card t={y} />\n")
 	if len(bag.Items) != 0 {
 		t.Fatalf("unexpected: %s", codes(bag))
 	}
@@ -119,7 +119,7 @@ func TestQual_FullPathIsE0205(t *testing.T) {
 // Every full-path spelling (eponymous type, member type, value, element with its closing tag)
 // gets a fix; applied together they give a module that resolves cleanly.
 func TestQual_FullPathFixesApply(t *testing.T) {
-	src := "module Use\n\nimport Table.Todo\n\nx : Table.Todo -> Table.Todo.Status\nx t = ?x\n\ny : Table.Todo\ny = Table.Todo.find 1\n\nz : Html a\nz = <Table.Todo.Card t={y}>hi</Table.Todo.Card>\n"
+	src := "module Use\n\nimport Table.Todo\n\nx : Table.Todo -> Table.Todo.Status\nx t = ?x\n\ny : Table.Todo\ny = Table.Todo.find 1\n\nz : Html\nz = <Table.Todo.Card t={y}>hi</Table.Todo.Card>\n"
 	_, bag, _ := resolveMods(t, std(t), tableTodoSrc, src)
 	var fixes []diag.Fix
 	for _, d := range bag.Items {
@@ -135,7 +135,7 @@ func TestQual_FullPathFixesApply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "module Use\n\nimport Table.Todo\n\nx : Todo -> Todo.Status\nx t = ?x\n\ny : Todo\ny = Todo.find 1\n\nz : Html a\nz = <Todo.Card t={y}>hi</Todo.Card>\n"
+	want := "module Use\n\nimport Table.Todo\n\nx : Todo -> Todo.Status\nx t = ?x\n\ny : Todo\ny = Todo.find 1\n\nz : Html\nz = <Todo.Card t={y}>hi</Todo.Card>\n"
 	if fixed != want {
 		t.Fatalf("fixed:\n%s", fixed)
 	}
@@ -145,8 +145,8 @@ func TestQual_FullPathFixesApply(t *testing.T) {
 	}
 }
 
-const layoutSrc = "module Layout\n\nx : Int\nx = 1\n\nPage : { t: Int } -> Html a\nPage props = <p>x</p>\n"
-const adminLayoutSrc = "module Admin.Layout\n\nx : Int\nx = 2\n\nPage : { t: Int } -> Html a\nPage props = <p>y</p>\n"
+const layoutSrc = "module Layout\n\nx : Int\nx = 1\n\nPage : { t: Int } -> Html\nPage props = <p>x</p>\n"
+const adminLayoutSrc = "module Admin.Layout\n\nx : Int\nx = 2\n\nPage : { t: Int } -> Html\nPage props = <p>y</p>\n"
 
 func onlyFix(t *testing.T, bag *diag.Bag, code string) *diag.Diagnostic {
 	t.Helper()
@@ -239,7 +239,7 @@ func TestQual_PagesStayFull(t *testing.T) {
 		"module App\n\nmsg Logout\n",
 		"module Todos.Index\n\npage \"/todos\" { }\n\nhelper : Int\nhelper = 1\n",
 		"module Admin.User.Index\n\npage \"/admin/users\" { }\n",
-		"module Use\n\nimport Todos.Index\n\na : Int\na = Index.helper\n\nv : Html App.Msg\nv = <div><a href={Todos.Index {}}>x</a><a href={Admin.User.Index {}}>y</a><button click={App.Logout}>z</button></div>\n")
+		"module Use\n\nimport Todos.Index\n\na : Int\na = Index.helper\n\nv : Html\nv = <div><a href={Todos.Index {}}>x</a><a href={Admin.User.Index {}}>y</a><button click={App.Logout}>z</button></div>\n")
 	if len(bag.Items) != 0 {
 		t.Fatalf("unexpected: %s", codes(bag))
 	}
@@ -274,7 +274,7 @@ func TestQual_CapabilityAndFake(t *testing.T) {
 // `import Admin.Layout as AdminLayout`.
 func TestQual_ImportFixIsCanonical(t *testing.T) {
 	_, bag, _ := resolveMods(t, std(t), layoutSrc, adminLayoutSrc,
-		"module Use\n\nimport Layout\n\nv : Html a\nv = <Layout.Page t={1}><Admin.Layout.Page t={2} /></Layout.Page>\n")
+		"module Use\n\nimport Layout\n\nv : Html\nv = <Layout.Page t={1}><Admin.Layout.Page t={2} /></Layout.Page>\n")
 	d := onlyFix(t, bag, "E0201")
 	if d.Fix == nil || d.Fix.Replace != "import Admin.Layout as AdminLayout\n" {
 		t.Fatalf("%s, fix %+v", d.Message, d.Fix)
@@ -290,7 +290,7 @@ func TestQual_PageMembers(t *testing.T) {
 	if d := onlyFix(t, bag, "E0205"); d.Fix == nil || d.Fix.Replace != "Index.helper" {
 		t.Fatalf("%s, fix %+v", d.Message, d.Fix)
 	}
-	_, bag, _ = resolveMods(t, std(t), idx, "module Use\n\nimport Todos.Index\n\nv : Html a\nv = <button click={Index.Save}>x</button>\n")
+	_, bag, _ = resolveMods(t, std(t), idx, "module Use\n\nimport Todos.Index\n\nv : Html\nv = <button click={Index.Save}>x</button>\n")
 	if got := codes(bag); got != "E0002:`Save` belongs to page `Todos.Index`; a page can only send its own messages and `App` messages" {
 		t.Fatalf("got %s", got)
 	}
@@ -352,7 +352,7 @@ func TestQual_LongestModulePrefix(t *testing.T) {
 
 	edit := "module Admin.Users.Edit\n\npage \"/admin/users/edit\" { }\n\ntype Model = { n: Int }\n\nview : Int\nview = 1\n"
 	_, bag, ms := resolveMods(t, std(t), users, edit,
-		"module Use\n\nimport Admin.Users\n\na : Int\na = Users.n\n\nm : Admin.Users.Edit.Model -> Int\nm x = 1\n\nv : Html a\nv = <a href={Admin.Users.Edit {}}>e</a>\n")
+		"module Use\n\nimport Admin.Users\n\na : Int\na = Users.n\n\nm : Admin.Users.Edit.Model -> Int\nm x = 1\n\nv : Html\nv = <a href={Admin.Users.Edit {}}>e</a>\n")
 	if len(bag.Items) != 0 {
 		t.Fatalf("page type and value: %s", codes(bag))
 	}

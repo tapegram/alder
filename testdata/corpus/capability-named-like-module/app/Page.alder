@@ -4,7 +4,7 @@ import Markdown
 
 route Page = GET "/" { }
 
-type Model = { body: Html Never }
+type Model = { body: Html }
 
 Page.load : Page.Params -> Session -> Query Model
 Page.load params session = {

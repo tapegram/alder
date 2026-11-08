@@ -18,13 +18,13 @@ func TestStdlib_ResponseSignatures(t *testing.T) {
 		"warning : Text -> Response -> Response\nwarning = Response.warning\n\n" +
 		"fail : Text -> Response -> Response\nfail = Response.error\n\n" +
 		"external : Text -> Route\nexternal = Url.external\n\n" +
-		"asPage : Route -> Page\nasPage r = r\n\n" +
-		"error : Error -> Html Never\nerror err = <html><body></body></html>\n\nnotFound : Html Never\nnotFound = <html><body></body></html>\n"
+		"noticeWith : Text -> Response -> Response\nnoticeWith = Notice.with\n\n" +
+		"error : Error -> Html\nerror err = <html><body></body></html>\n\nnotFound : Html\nnotFound = <html><body></body></html>\n"
 	if _, errs := checkFiles(t, map[string]string{"App.alder": app}); len(errs) > 0 {
 		t.Fatalf("signatures: %v", errs)
 	}
 	for _, name := range []string{"status", "header", "json", "file", "remove", "patch", "stream"} {
-		src := "module App\n\nx : Int\nx = Response." + name + "\n\nerror : Error -> Html Never\nerror err = <html><body></body></html>\n\nnotFound : Html Never\nnotFound = <html><body></body></html>\n"
+		src := "module App\n\nx : Int\nx = Response." + name + "\n\nerror : Error -> Html\nerror err = <html><body></body></html>\n\nnotFound : Html\nnotFound = <html><body></body></html>\n"
 		if _, errs := checkFiles(t, map[string]string{"App.alder": src}); len(errs) == 0 {
 			t.Errorf("Response.%s checks, but it is not shipped", name)
 		}
@@ -35,7 +35,7 @@ func TestStdlib_ResponseSignatures(t *testing.T) {
 // constructors of the test type Answer.
 func TestStdlib_RouteResponseReserved(t *testing.T) {
 	for _, decl := range []string{"type Route = { n: Int }", "type Response = { n: Int }", "type Rendered = Rendered | Other", "type Refreshed = Refreshed | Other"} {
-		src := "module App\n\n" + decl + "\n\nerror : Error -> Html Never\nerror err = <html><body></body></html>\n\nnotFound : Html Never\nnotFound = <html><body></body></html>\n"
+		src := "module App\n\n" + decl + "\n\nerror : Error -> Html\nerror err = <html><body></body></html>\n\nnotFound : Html\nnotFound = <html><body></body></html>\n"
 		_, errs := checkFiles(t, map[string]string{"App.alder": src})
 		found := false
 		for _, e := range errs {

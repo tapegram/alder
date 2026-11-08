@@ -568,7 +568,7 @@ excerpt, of `app/Layout.alder` (the examples write their layouts as
 -- in Layout
 import Theme
 
-Page : { title: Text, theme: Theme, children: List (Html a) } -> Html a
+Page : { title: Text, theme: Theme, children: List Html } -> Html
 Page props =
   <html class={if props.theme == Dark then "dark" else ""}>
     ...
@@ -1769,14 +1769,14 @@ Logout.update p session = {
   Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
 
-error : Error -> Html Never
+error : Error -> Html
 error err =
   <Layout.Page title="Error">
     <h1>Something went wrong</h1>
     <p>Please try again.</p>
   </Layout.Page>
 
-notFound : Html Never
+notFound : Html
 notFound =
   <Layout.Page title="Not found">
     <h1>Not found</h1>

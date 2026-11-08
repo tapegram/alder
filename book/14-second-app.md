@@ -1671,21 +1671,21 @@ cannot keep an org, and the runtime clears it. `Leave` clears the org
 alone, back to the list.
 
 ```alder part=workspace/App
-error : Error -> Html Never
+error : Error -> Html
 error err =
   <Layout.Page title="Error">
     <h1>Something went wrong</h1>
     <p>Please try again.</p>
   </Layout.Page>
 
-notFound : Html Never
+notFound : Html
 notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 ```
 
 ```alder part=workspace/App
 -- What a request answers when its org's database cannot be served (behind by a migration that
 -- drops data, or ahead of this build: book 08, "Silos"): a 503, for that org only.
-maintenance : Html Never
+maintenance : Html
 maintenance =
   <Layout.Page title="Down for maintenance">
     <h1>Down for maintenance</h1>

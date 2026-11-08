@@ -380,7 +380,7 @@ func TestComplete_OtherwiseOffersQualifiers(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := strings.Replace(string(b), "import Layout\n", "import Admin.Layout as AdminLayout\nimport Layout\nimport Posts.Show\n", 1)
-	text += "\nuseAdmin : User.UserId -> Query Bool\nuseAdmin = AdminLayout.isAdmin\n\nuseShow : Post -> Html a\nuseShow post = <a href={Posts.Show.Show { slug: post.slug }}>x</a>\n"
+	text += "\nuseAdmin : User.UserId -> Query Bool\nuseAdmin = AdminLayout.isAdmin\n\nuseShow : Post -> Html\nuseShow post = <a href={Posts.Show.Show { slug: post.slug }}>x</a>\n"
 	if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}

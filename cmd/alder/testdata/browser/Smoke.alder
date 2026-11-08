@@ -18,7 +18,7 @@ update msg model session = match msg {
   Refresh p -> Task.succeed Rerender,
 }
 
-view : Model -> Session -> Html Msg
+view : Model -> Session -> Html
 view model session =
   <Layout.Page title="Smoke">
     <h1>Smoke</h1>

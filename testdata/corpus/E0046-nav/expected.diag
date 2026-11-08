@@ -1,0 +1,6 @@
+app/Todos.alder:16:14 E0046 `Nav` is gone: a write route's update answers `Task Response`; run `alder fix --routes` to rewrite this module
+app/Todos.alder:17:22 E0046 `Rerender` is gone: write `Response.refresh`; run `alder fix --routes` to rewrite this module
+app/Todos.alder:19:8 E0046 `Nav` is gone: a write route's update answers `Task Response`; run `alder fix --routes` to rewrite this module
+app/Todos.alder:20:8 E0046 `Redirect` is gone: write `Response.redirect`; run `alder fix --routes` to rewrite this module
+app/Todos.alder:22:10 E0046 `Nav` is gone: a write route's update answers `Task Response`; run `alder fix --routes` to rewrite this module
+app/Todos.alder:23:10 E0046 `Reject` is gone: write `Response.invalid`; run `alder fix --routes` to rewrite this module

@@ -1,0 +1,5 @@
+module Links
+
+-- the old link type: a link is a `Route` now
+link : Page -> Text -> Html
+link to label = <a href={to}>{label}</a>

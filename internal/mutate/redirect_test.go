@@ -13,30 +13,26 @@ import (
 func TestRedirectIsGuard(t *testing.T) {
 	dir := t.TempDir()
 	srcs := map[string]string{
-		"App.alder": "module App\n\nerror : Error -> Html Never\nerror err = <h1>Error</h1>\n\nnotFound : Html Never\nnotFound = <h1>Not found</h1>\n",
+		"App.alder": "module App\n\nerror : Error -> Html\nerror err = <h1>Error</h1>\n\nnotFound : Html\nnotFound = <h1>Not found</h1>\n",
 		"Home.alder": `module Home
 
-page "/" { go: Bool = False }
+route Home = GET "/" { go: Bool = False }
 
-type Model = { ok : Bool }
+Home.load : Home.Params -> Session -> Query Bool
+Home.load params session = if params.go then Query.redirect (Other.Other {}) else Query.succeed True
 
-load : Params -> Session -> Query Model
-load params session = if params.go then Query.redirect (Other {}) else Query.succeed { ok: True }
-
-view : Model -> Session -> Html Msg
-view model session = <p>home</p>
+Home.view : Bool -> Session -> Html
+Home.view ok session = <p>home</p>
 `,
 		"Other.alder": `module Other
 
-page "/other" { }
+route Other = GET "/other" { }
 
-type Model = { }
+Other.load : Other.Params -> Session -> Query Int
+Other.load params session = Query.succeed 1
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
-
-view : Model -> Session -> Html Msg
-view model session = <p>other</p>
+Other.view : Int -> Session -> Html
+Other.view n session = <p>other</p>
 `,
 	}
 	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
@@ -54,7 +50,7 @@ view model session = <p>other</p>
 			guards = append(guards, m)
 		}
 	}
-	if len(guards) != 1 || guards[0].After != "the redirect arm dropped" || !strings.Contains(guards[0].Before, "then Query.redirect (Other {}) else") {
+	if len(guards) != 1 || guards[0].After != "the redirect arm dropped" || !strings.Contains(guards[0].Before, "then Query.redirect (Other.Other {}) else") {
 		t.Fatalf("guard mutants: %+v", guards)
 	}
 }

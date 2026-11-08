@@ -30,14 +30,14 @@ edited migrations/schema.json
 @@ -25,21 +29,33 @@
  }
  
- error : Error -> Html Never
+ error : Error -> Html
 -error err =
 -  <Layout.Page title="Error">
 -    <h1>Something went wrong</h1>
 -  </Layout.Page>
 +error err = <Layout.Page title="Error"><h1>Something went wrong</h1></Layout.Page>
  
- notFound : Html Never
+ notFound : Html
 -notFound =
 -  <Layout.Page title="Not found">
 -    <h1>Not found</h1>

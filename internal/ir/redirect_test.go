@@ -7,43 +7,39 @@ import (
 	"testing"
 )
 
-// redirectApp is a page whose load redirects with Query.redirect: applied to a page value with a
+// redirectApp is a route whose load redirects with Query.redirect: applied to a route with a
 // path parameter, and passed as a function value (lowered through a Lambda).
 var redirectApp = map[string]string{
 	"App.alder": `module App
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>not found</p>
 `,
 	"Builder.alder": `module Builder
 
-page "/builder/{seed}" { seed: Text }
+route Builder = GET "/builder/{seed}" { seed: Text }
 
-type Model = { }
+Builder.load : Builder.Params -> Session -> Query Int
+Builder.load params session = Query.succeed 1
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
-
-view : Model -> Session -> Html Msg
-view model session = <p>builder</p>
+Builder.view : Int -> Session -> Html
+Builder.view n session = <p>builder</p>
 `,
 	"Start.alder": `module Start
 
-page "/start" { go: Text = "" }
+route Start = GET "/start" { go: Text = "" }
 
-type Model = { }
+Start.load : Start.Params -> Session -> Query Int
+Start.load params session =
+  if params.go == "builder" then Query.redirect (Builder.Builder { seed: "7" })
+  else if params.go == "maybe" then Maybe.withDefault (Query.succeed 1) (Maybe.map Query.redirect (Just (Builder.Builder { seed: "8" })))
+  else Query.succeed 1
 
-load : Params -> Session -> Query Model
-load params session =
-  if params.go == "builder" then Query.redirect (Builder { seed: "7" })
-  else if params.go == "maybe" then Maybe.withDefault (Query.succeed { }) (Maybe.map Query.redirect (Just (Builder { seed: "8" })))
-  else Query.succeed { }
-
-view : Model -> Session -> Html Msg
-view model session = <p>start</p>
+Start.view : Int -> Session -> Html
+Start.view n session = <p>start</p>
 `,
 }
 

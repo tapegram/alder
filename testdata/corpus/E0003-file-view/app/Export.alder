@@ -1,16 +1,14 @@
 module Export
 
-page "/export.csv" { }
+route Csv = GET "/export.csv" { }
 
-type Model = { }
+Csv.load : Csv.Params -> Session -> Query Int
+Csv.load params session = Query.succeed 1
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
-
-view : Model -> Session -> File
-view model session = File.text { contentType: "text/csv", body: "a,b" }
+Csv.view : Int -> Session -> File
+Csv.view n session = File.text { contentType: "text/csv", body: "a,b" }
 
 test "x" = {
-  let r <- Test.open (Export {})
+  let r <- Test.open (Csv {})
   Task.succeed True
 }

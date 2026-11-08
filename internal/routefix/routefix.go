@@ -491,6 +491,9 @@ func (r *rewriter) replace(n syntax.Spanned) (string, bool) {
 		if n.Name == "Nav" && len(n.Args) == 0 && !r.local[n.Name] { // in any module: a helper's answer
 			return "Response", true
 		}
+		if n.Name == "Html" && len(n.Args) == 1 && !r.local[n.Name] { // in any module: `Html` takes no argument (#160)
+			return "Html", true
+		}
 		if r.kind == kindOther {
 			return "", false
 		}
@@ -503,15 +506,6 @@ func (r *rewriter) replace(n syntax.Spanned) (string, bool) {
 			return r.route + ".Session", true
 		case n.Name == "Msg" && len(n.Args) == 0:
 			return "Route", true
-		case n.Name == "Html" && len(n.Args) == 1:
-			switch a := n.Args[0].(type) {
-			case *syntax.TypeVar:
-				return "Html", true
-			case *syntax.TypeName:
-				if a.Module == "" && a.Name == "Msg" && len(a.Args) == 0 {
-					return "Html", true
-				}
-			}
 		}
 	case *syntax.CtorRef:
 		return r.ctor(n)

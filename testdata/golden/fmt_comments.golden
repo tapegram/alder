@@ -118,7 +118,7 @@ items = [
   3,
 ]
 
-view : Html Never
+view : Html
 view =
   <div
     -- the class
@@ -139,7 +139,7 @@ view =
     -- after the last child
   </div>
 
-empty : Html Never
+empty : Html
 empty =
   <div>
     -- nothing to show
@@ -168,14 +168,14 @@ r = 2
 inSig : Int
 inSig = 1
 
-tagEnd : Html Never
+tagEnd : Html
 tagEnd =
   <input
     type="text"
     name="q" -- the query
   />
 
-tagDangling : Html Never
+tagDangling : Html
 tagDangling =
   <a
     href="/"
@@ -211,7 +211,7 @@ noMatch = match x {
   -- no arms yet
 }
 
-markupMatch : Html Never
+markupMatch : Html
 markupMatch =
   <div>
     {match msg {

@@ -7,5 +7,5 @@ type Model = { }
 About.load : About.Params -> Session -> Query Model
 About.load params session = Query.succeed {}
 
-About.view : Model -> Session -> Html Never
+About.view : Model -> Session -> Html
 About.view model session = <h1>About</h1>

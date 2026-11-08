@@ -2,7 +2,7 @@ module Home
 
 import Ui
 
-bar : Html a
+bar : Html
 bar = <div>
   <Ui.Btn label="save" />
   <Ui.Btn label="go" kind={Primary} size={9} />

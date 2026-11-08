@@ -7,7 +7,7 @@ type Model = { n: Int }
 Index.load : Index.Params -> Session -> Query Model
 Index.load params session = Query.succeed { n: 1 }
 
-body : Html Never
+body : Html
 body = <p>hi</p>
 
 Index.view : Model -> Session -> Html

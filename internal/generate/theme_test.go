@@ -84,7 +84,7 @@ func TestThemeEdit_InsertAfterSession(t *testing.T) {
 	if e == nil || len(edits) != 1 {
 		t.Fatalf("edits = %+v", edits)
 	}
-	want := "session { }\n\n" + radiusPrint + "\n\nerror : Error -> Html Never\n"
+	want := "session { }\n\n" + radiusPrint + "\n\nerror : Error -> Html\n"
 	if !strings.Contains(e.Body, want) {
 		t.Fatalf("body:\n%s\nwant it to contain:\n%s", e.Body, want)
 	}
@@ -102,27 +102,27 @@ func insertCase(t *testing.T, src string) string {
 }
 
 func TestThemeEdit_InsertAfterDeploy(t *testing.T) {
-	src := "module App\n\nimport Layout\n\nsession { }\n\ndeploy { local: Script \"./d.sh\" }\n\nnotFound : Html Never\nnotFound = <Layout.Page title=\"Not found\"><h1>Not found</h1></Layout.Page>\n"
+	src := "module App\n\nimport Layout\n\nsession { }\n\ndeploy { local: Script \"./d.sh\" }\n\nnotFound : Html\nnotFound = <Layout.Page title=\"Not found\"><h1>Not found</h1></Layout.Page>\n"
 	got := insertCase(t, src)
-	want := "deploy { local: Script \"./d.sh\" }\n\n" + radiusPrint + "\n\nnotFound : Html Never\n"
+	want := "deploy { local: Script \"./d.sh\" }\n\n" + radiusPrint + "\n\nnotFound : Html\n"
 	if !strings.Contains(got, want) {
 		t.Fatalf("written:\n%s", got)
 	}
 }
 
 func TestThemeEdit_InsertAfterImports(t *testing.T) {
-	src := "module App\n\nimport Layout\n\nnotFound : Html Never\nnotFound = <Layout.Page title=\"Not found\"><h1>Not found</h1></Layout.Page>\n"
+	src := "module App\n\nimport Layout\n\nnotFound : Html\nnotFound = <Layout.Page title=\"Not found\"><h1>Not found</h1></Layout.Page>\n"
 	got := insertCase(t, src)
-	want := "module App\n\nimport Layout\n\n" + radiusPrint + "\n\nnotFound : Html Never\n"
+	want := "module App\n\nimport Layout\n\n" + radiusPrint + "\n\nnotFound : Html\n"
 	if !strings.HasPrefix(got, want) {
 		t.Fatalf("written:\n%s", got)
 	}
 }
 
 func TestThemeEdit_InsertAfterModule(t *testing.T) {
-	src := "module App\n\nnotFound : Html Never\nnotFound = <h1>Not found</h1>\n"
+	src := "module App\n\nnotFound : Html\nnotFound = <h1>Not found</h1>\n"
 	got := insertCase(t, src)
-	want := "module App\n\n" + radiusPrint + "\n\nnotFound : Html Never\n"
+	want := "module App\n\n" + radiusPrint + "\n\nnotFound : Html\n"
 	if !strings.HasPrefix(got, want) {
 		t.Fatalf("written:\n%s", got)
 	}
@@ -223,10 +223,10 @@ func TestThemeEdit_EmptyDeletes(t *testing.T) {
 	}
 
 	// a blank line after the declaration goes with it
-	src := "module App\n\nimport Layout\n\nsession { }\n\n" + radiusPrint + "\n\nnotFound : Html Never\nnotFound = <Layout.Page title=\"Not found\"><h1>Not found</h1></Layout.Page>\n"
+	src := "module App\n\nimport Layout\n\nsession { }\n\n" + radiusPrint + "\n\nnotFound : Html\nnotFound = <Layout.Page title=\"Not found\"><h1>Not found</h1></Layout.Page>\n"
 	dir = scaffoldApp(t, map[string]string{appFile: src})
 	after = writeTheme(t, dir, theme.Theme{})
-	want = "module App\n\nimport Layout\n\nsession { }\n\nnotFound : Html Never\n"
+	want = "module App\n\nimport Layout\n\nsession { }\n\nnotFound : Html\n"
 	if !strings.HasPrefix(after, want) {
 		t.Fatalf("after:\n%s", after)
 	}

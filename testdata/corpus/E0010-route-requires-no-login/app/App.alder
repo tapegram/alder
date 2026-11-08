@@ -3,8 +3,8 @@ module App
 -- A route that `requires` needs App's `login`: where a request without the user is sent.
 session { user: Maybe Text }
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <p>error</p>
 
-notFound : Html Never
+notFound : Html
 notFound = <p>not found</p>

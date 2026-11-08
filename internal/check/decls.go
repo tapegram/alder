@@ -145,16 +145,13 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 						return types.Err
 					}
 				case "Msg":
-					if t.Ref.Module == "App" {
-						return c.appMsg
-					}
-					if mc.page != nil {
+					if mc.page != nil { // a page module is E0046 itself (rejectRemoved): quiet
+						if t.Ref.Module == "App" {
+							return c.appMsg
+						}
 						return mc.page.Msg
 					}
-					if mc.isApp {
-						return c.appMsg
-					}
-					c.errorf("E0601", t.Span, "`Msg` is only defined in page modules; a shared component is typed `Html a`").Fix = diag.ReplaceSpan(t.Span, "a")
+					c.errorf(diag.RemovedSyntax, t.Span, "`Msg` is gone: a click or a form names a route, whose type is `Route`; %s", removedHint)
 					return types.Err
 				case "Session":
 					if c.prog.Modules["App"] == nil && c.prog.Std[mc.m.Name] == nil {
@@ -174,8 +171,22 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 			if t.Ref.Module == "Prelude" && testTypes[name] {
 				mc.testTypeUse(name, t.Span)
 			}
-			if t.Ref.Module == "Prelude" && name == "Html" && len(args) == 0 && c.prog.IsRouteModule(mc.m.Name) {
-				args = []types.Type{types.Route} // plan call 2: a route module's `Html` is `Html Route`
+			if t.Ref.Module == "Prelude" {
+				switch name {
+				case "Html":
+					if len(args) > 0 {
+						c.errorf(diag.RemovedSyntax, t.Span, "`Html` takes no type argument now; %s", removedHint)
+						return types.Err
+					}
+					// markup's clicks and links are routes: the checker's `Html` is `Html Route`
+					return &types.App{Con: "Html", Args: []types.Type{types.Route}}
+				case "Nav":
+					c.errorf(diag.RemovedSyntax, t.Span, "`Nav` is gone: a write route's update answers `Task Response`; %s", removedHint)
+					return types.Err
+				case "Page":
+					c.errorf(diag.RemovedSyntax, t.Span, "`Page` is gone: a link's type is `Route`; %s", removedHint)
+					return types.Err
+				}
 			}
 			decl, ok := c.types[c.key(t.Ref.Module, name)]
 			if !ok {
@@ -956,11 +967,11 @@ func (mc *modCtx) reserveGenerated(where string, fixed map[string]string) {
 // preludeReserved are the Prelude types a program writes in its own signatures. A declaration
 // of one of these names (`form Query`) would hide it in its module, so every use of the name
 // there, such as `load`'s `Query Model`, would read as the declaration. The Prelude's other
-// types (`Order`, `Page`, `Form`, `Table`, `Id`, `Insert`, `Select`, `Condition`, `Column`) are
+// types (`Order`, `Form`, `Table`, `Id`, `Insert`, `Select`, `Condition`, `Column`) are
 // Db's and the runtime's plumbing, which apps do not write, and stay free for domain names
 // (`table Order`).
 var preludeReserved = map[string]bool{
-	"Query": true, "Task": true, "Html": true, "Maybe": true, "Result": true, "Nav": true,
+	"Query": true, "Task": true, "Html": true, "Maybe": true, "Result": true,
 	"List": true, "Dict": true, "Int": true, "Float": true, "Text": true, "Bool": true,
 	"Unit": true, "Date": true, "Time": true, "Never": true, "Error": true, "Doc": true, "Answer": true, "File": true, "Bytes": true, "Route": true, "Response": true,
 }
@@ -1095,31 +1106,13 @@ func lineOf(m *syntax.Module, line int) string {
 	return ""
 }
 
-// checkPagePaths reports E0016 for a page whose path answers the same requests as an earlier
-// page's (in module order): the same segments, with any parameter names, ignoring a trailing
-// slash, as rt/web matches them. A route answers its method at its path: two routes that answer
-// one method and path are E0043, a GET route and a page that answer one path E0016; routes that
-// differ in method may share a path.
+// checkPagePaths reports E0029 for a route path the router cannot serve and E0043 for a route
+// that answers the same method and requests as an earlier one (in module order): the same
+// segments, with any parameter names, ignoring a trailing slash, as rt/web matches them. Routes
+// that differ in method may share a path.
 func (c *Checker) checkPagePaths() {
-	type answer struct {
-		name  string
-		route bool
-	}
-	seen := map[string]answer{} // method and path shape → its first page or route
+	seen := map[string]string{} // method and path shape → its first route
 	for _, name := range c.prog.Order {
-		if pd := c.prog.Pages[name]; pd != nil && c.prog.IsPageModule(name) {
-			if why := PagePathProblem(pd.Path); why != "" {
-				c.errorf(diag.PagePath, pd.Span, "page path `%s` %s; %s", pd.Path, why, PagePathRule)
-			} else if first, ok := seen["GET "+pathShape(pd.Path)]; ok {
-				if first.route {
-					c.errorf(diag.DuplicatePage, pd.Span, "page `%s` and route `%s` both answer `%s`; give one of them another path", name, first.name, pd.Path)
-				} else {
-					c.errorf(diag.DuplicatePage, pd.Span, "pages `%s` and `%s` both answer `%s`; give one of them another path", first.name, name, pd.Path)
-				}
-			} else {
-				seen["GET "+pathShape(pd.Path)] = answer{name, false}
-			}
-		}
 		for _, r := range c.routes[name] {
 			d, full := r.Decl, name+"."+r.Name
 			k := r.Method + " " + pathShape(r.Path)
@@ -1129,12 +1122,10 @@ func (c *Checker) checkPagePaths() {
 				c.errorf(diag.PagePath, d.Span, "route path `%s` %s; give the route another path", r.Path, why)
 			case why != "":
 				c.errorf(diag.PagePath, d.Span, "route path `%s` %s; %s", r.Path, why, PagePathRule)
-			case dup && first.route:
-				c.errorf(diag.RouteDecl, d.Span, "routes `%s` and `%s` both answer `%s %s`; give one of them another path or method", first.name, full, r.Method, r.Path)
 			case dup:
-				c.errorf(diag.DuplicatePage, d.Span, "page `%s` and route `%s` both answer `%s`; give one of them another path", first.name, full, r.Path)
+				c.errorf(diag.RouteDecl, d.Span, "routes `%s` and `%s` both answer `%s %s`; give one of them another path or method", first, full, r.Method, r.Path)
 			default:
-				seen[k] = answer{full, true}
+				seen[k] = full
 			}
 		}
 	}
@@ -1147,7 +1138,7 @@ const PagePathRule = "a path is `/` followed by segments of letters, digits, `.`
 // "page path `…`" ("has an empty segment"), or "" when nothing does: a path is a single
 // leading `/` and segments of `[A-Za-z0-9._~-]+` or a whole `{param}`, with no empty segment
 // (`//evil.com`), no `.` or `..` (a browser resolves them away), and no query, fragment, space,
-// quote or backslash. A trailing `/` is allowed: the router serves `/x/` as `/x` (E0016).
+// quote or backslash. A trailing `/` is allowed: the router serves `/x/` as `/x` (E0043).
 func PagePathProblem(path string) string {
 	if !strings.HasPrefix(path, "/") {
 		return "does not begin with `/`"
@@ -1162,7 +1153,7 @@ func PagePathProblem(path string) string {
 			case r == ' ':
 				return "has a space"
 			case r == '?':
-				return "has a query (`?`): a page's query parameters are its `{ … }` fields without a `{param}` segment"
+				return "has a query (`?`): a route's query parameters are its `{ … }` fields without a `{param}` segment"
 			case r == '#':
 				return "has a fragment (`#`)"
 			case r < 0x21 || r > 0x7e:
@@ -1381,15 +1372,8 @@ func (mc *modCtx) declareValues() {
 			c.errorf(diag.MissingDecl, sp, "page module `%s` declares messages but has no `update`", mc.m.Name)
 		}
 	} else if !mc.isApp && c.prog.Std[mc.m.Name] == nil {
-		for _, bad := range []string{"load", "view", "update"} {
-			if has[bad] {
-				c.errorf(diag.MissingDecl, mc.m.Span, "`%s` belongs in a page module; `%s` has no `page` declaration", bad, mc.m.Name)
-			}
-		}
-		for _, d := range mc.m.Decls {
+		for _, d := range mc.m.Decls { // an unqualified load/view/update and a `msg` are E0046 (rejectRemoved)
 			switch d := d.(type) {
-			case *syntax.MsgDecl:
-				c.errorf(diag.InvalidDecl, d.Span, "`msg` is only allowed in a page module or `App`")
 			case *syntax.SessionDecl:
 				c.errorf(diag.InvalidDecl, d.Span, "`session` is only allowed in `App`")
 			case *syntax.LoginDecl:

@@ -677,7 +677,7 @@ func (g *adminGen) layout() {
 	}
 	var b strings.Builder
 	b.WriteString("-- The admin's frame: the app's layout around a nav of every table's list.\n")
-	b.WriteString("Page : { title: Text, children: List (Html a) } -> Html a\n")
+	b.WriteString("Page : { title: Text, children: List Html } -> Html\n")
 	b.WriteString("Page props =\n")
 	navBlock := "<nav aria-label=\"Admin\">\n  <al-stack direction=\"row\" gap=\"sm\">\n    <a href={" + routeOf(g.o.Module+".Index") + " {}}>Dashboard</a>\n" +
 		regionAt("    ", "nav", nav) + "\n  </al-stack>\n</nav>"

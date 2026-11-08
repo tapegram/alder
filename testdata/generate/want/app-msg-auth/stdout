@@ -7,7 +7,7 @@ edited app/App.alder
  route Logout = POST "/_/Logout" { }
 +route Ping   = POST "/_/Ping"   { }
  
- error : Error -> Html Never
+ error : Error -> Html
  error err =
 @@ -27,6 +28,9 @@
    Task.succeed (Response.redirect (Auth.Login.Login {}))

@@ -17,6 +17,7 @@ import (
 	"alder/internal/names"
 	"alder/internal/routefix"
 	"alder/internal/style"
+	"alder/internal/syntax"
 )
 
 const fixUsage = "usage: alder fix --routes [--name N] [--dry-run] [--dir app] [file…]"
@@ -65,22 +66,6 @@ func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 		return 2
 	}
 
-	// The rewrite reads a program that checks: on a broken one its holes and refusals would mix
-	// with the errors the app already has.
-	prog, _, bag, ioErrs := checkedApp(dir)
-	if reportLoadErrs("alder fix", ioErrs, stderr) {
-		return 2
-	}
-	if len(prog.Modules) == 0 && len(prog.Refused) == 0 {
-		fmt.Fprintf(stderr, "alder fix: no .alder files under %s\n", filepath.Join(dir, "app"))
-		return 2
-	}
-	if bag.HasErrors() {
-		printErrors(prog, bag, stderr)
-		fmt.Fprintln(stderr, "alder fix: `alder check` fails; fix its errors first, then run alder fix --routes again")
-		return 2
-	}
-
 	files := map[string][]byte{}
 	app := filepath.Join(dir, "app")
 	err := filepath.WalkDir(app, func(p string, d fs.DirEntry, err error) error {
@@ -100,6 +85,17 @@ func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 	})
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		fmt.Fprintf(stderr, "alder fix: %v\n", err)
+		return 2
+	}
+	if len(files) == 0 {
+		fmt.Fprintf(stderr, "alder fix: no .alder files under %s\n", app)
+		return 2
+	}
+	// The rewrite reads every file's syntax, so each must parse. It does not need the app to
+	// check: `alder check` rejects the page syntax it rewrites (E0046), and an app's other errors
+	// are reported by the check after the rewrite.
+	if parseErrors(files, stderr) {
+		fmt.Fprintln(stderr, "alder fix: a file does not parse; fix its syntax errors first, then run alder fix --routes again")
 		return 2
 	}
 
@@ -156,6 +152,7 @@ func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 		if reportLoadErrs("alder fix", ioErrs, stderr) {
 			return 2
 		}
+		dropRemovedOutside(bag, changes)
 		if n := printErrors(prog, bag, stderr); n > 0 {
 			fmt.Fprintf(stderr, "alder fix: rewriting only the files named leaves the app with %s: nothing written; name the files that refer to their pages too, or run alder fix --routes on the whole app\n",
 				plural(n, "error", "errors"))
@@ -219,6 +216,9 @@ func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 		if reportLoadErrs("alder fix", ioErrs, stderr) {
 			return 2
 		}
+		if len(want) > 0 {
+			dropRemovedOutside(bag, want)
+		}
 		for _, d := range bag.Items {
 			at := fmt.Sprintf("%s:%d", d.Span.File, d.Span.Start.Line)
 			if d.Code != "W0002" || seen[at] || len(want) > 0 && !want[d.Span.File] {
@@ -248,6 +248,16 @@ func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 	return 0
 }
 
+// dropRemovedOutside drops from bag the E0046 errors of the files not in keep (by key): with
+// files named, the rest of the app is left on pages for a later run, and its old syntax is not
+// this run's to report.
+func dropRemovedOutside[V any](bag *diag.Bag, keep map[string]V) {
+	bag.Items = slices.DeleteFunc(bag.Items, func(d diag.Diagnostic) bool {
+		_, kept := keep[d.Span.File]
+		return d.Code == diag.RemovedSyntax && !kept
+	})
+}
+
 // printErrors prints the errors of bag (not its warnings) and returns how many there were.
 func printErrors(prog *names.Program, bag *diag.Bag, w io.Writer) int {
 	sources := buildkit.Sources(prog)
@@ -259,6 +269,24 @@ func printErrors(prog *names.Program, bag *diag.Bag, w io.Writer) int {
 		}
 	}
 	return n
+}
+
+// parseErrors prints the syntax errors of files (by key, the path from the app root) and
+// reports whether there were any.
+func parseErrors(files map[string][]byte, w io.Writer) bool {
+	bad := false
+	for _, f := range slices.Sorted(maps.Keys(files)) {
+		_, errs := syntax.ParseFile(f, files[f])
+		lines := strings.Split(string(files[f]), "\n")
+		for _, d := range errs {
+			if d.Severity != "error" {
+				continue
+			}
+			bad = true
+			fmt.Fprint(w, diag.RenderTextStyled(d, lines, style.For(w)))
+		}
+	}
+	return bad
 }
 
 // plural is "1 hole" or "3 holes".

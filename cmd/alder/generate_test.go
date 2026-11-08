@@ -28,9 +28,7 @@ var updateGenerate = flag.Bool("update", false, "rewrite the generators' golden 
 // after it the app checks and, its typed holes filled with `alder fill`, `alder test` passes.
 
 // genApp makes a scratch copy of base ("scaffold" or "fixture", or a variant) and returns its
-// directory. "scaffold-page" is the scaffold with the guestbook written as a page module, as
-// `alder new` wrote it before routes (#160): the tests of the generators that still work on
-// pages use it until PR 7 migrates pages.
+// directory.
 func genApp(t *testing.T, base string) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "app")
@@ -39,32 +37,6 @@ func genApp(t *testing.T, base string) string {
 		var out, errb bytes.Buffer
 		if code := runNewTo([]string{dir}, &out, &errb); code != 0 {
 			t.Fatalf("alder new: exit %d: %s", code, errb.String())
-		}
-	case "scaffold-update-oneline", "scaffold-update-body": // #159: an `update` that is no match over several lines
-		var out, errb bytes.Buffer
-		if code := runNewTo([]string{dir}, &out, &errb); code != 0 {
-			t.Fatalf("alder new: exit %d: %s", code, errb.String())
-		}
-		// the guestbook as a page module, as `alder new` wrote it before routes (#160): #159 is
-		// about a page's `update`, kept until PR 7 migrates pages
-		if err := os.WriteFile(filepath.Join(dir, "app", "Home.alder"), []byte(oldHome), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		app := "\nmsg Ping\n\nupdate : Msg -> Session -> Task Nav\nupdate msg session = match msg { Ping p -> Task.succeed Rerender }\n"
-		if base == "scaffold-update-body" {
-			app = "\nupdate : Msg -> Session -> Task Nav\nupdate msg session = Task.succeed Rerender\n"
-		} else {
-			replaceIn(t, filepath.Join(dir, "app", "Home.alder"), "update msg model session = match msg {\n  Submit p -> {\n    let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }\n    Task.succeed (Notice.with \"Signed\" (Redirect (Home {})))\n  },\n}\n",
-				"update msg model session = match msg { Submit p -> Task.succeed (Redirect (Home {})) }\n")
-		}
-		replaceIn(t, filepath.Join(dir, "app", "App.alder"), "\nsession { }\n", "\nsession { }\n"+app)
-	case "scaffold-page": // the scaffold with its guestbook a page module, as before routes (#160)
-		var out, errb bytes.Buffer
-		if code := runNewTo([]string{dir}, &out, &errb); code != 0 {
-			t.Fatalf("alder new: exit %d: %s", code, errb.String())
-		}
-		if err := os.WriteFile(filepath.Join(dir, "app", "Home.alder"), []byte(oldHome), 0o644); err != nil {
-			t.Fatal(err)
 		}
 	case "fixture":
 		copyDir(t, "../../testdata/generate/fixture", dir)
@@ -75,75 +47,6 @@ func genApp(t *testing.T, base string) string {
 	}
 	return dir
 }
-
-// oldHome is the guestbook page `alder new` wrote before routes (#160).
-const oldHome = `module Home
-
-import Layout
-import Table.Entry
-
-page "/" { }
-
-type Model = { entries: List Entry }
-
-load : Params -> Session -> Query Model
-load params session = {
-  let entries <-
-    Db.from Entry
-      |> Db.orderBy Entry.created.desc
-      |> Db.all
-  Query.succeed { entries: entries }
-}
-
-form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
-
-msg Submit form Sign
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Submit p -> {
-    let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
-    Task.succeed (Notice.with "Signed" (Redirect (Home {})))
-  },
-}
-
-view : Model -> Session -> Html Msg
-view model session =
-  <Layout.Page title="Guestbook">
-    <h1>Guestbook</h1>
-
-    <al-card>
-      <h2 slot="header">Sign the guestbook</h2>
-      <form submit={Submit}>
-        <al-input field="name" label="Your name" />
-        <al-input field="message" label="Message" />
-        <al-button type="submit">Sign</al-button>
-      </form>
-    </al-card>
-
-    <ul id="entries">
-      {for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}
-    </ul>
-  </Layout.Page>
-
-test "signing adds an entry" = {
-  let _ <- Test.get (Home {})
-  let signed <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
-  let page <- Test.get (Home {})
-  Task.succeed (
-    { answer: signed.answer, entries: Test.count "#entries li" page.doc }
-      == { answer: Redirected (Home {}), entries: 1 }
-  )
-}
-
-test "entries are listed newest first" = {
-  let _ <- Test.get (Home {})
-  let _ <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "First" }
-  let _ <- Test.submit Sign { name: Text.NonEmpty "Grace", message: Text.NonEmpty "Second" }
-  let page <- Test.get (Home {})
-  Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
-}
-`
 
 // alderIn runs the alder command args (new, edit, fill, regen, remove, check or test) on the app in dir, with
 // stdin as standard input.
@@ -375,9 +278,6 @@ var genCases = []genCase{
 	{name: "fixture-edit-session", base: "fixture", args: []string{"edit", "session", "add-field", `theme:Text="light"`}, test: true},
 	{name: "remove-route", base: "scaffold", args: []string{"remove", "route", "Home"}},
 	// #159: an `update` on one line is laid out over several for the new arm
-	{name: "form-update-oneline", base: "scaffold-update-oneline", args: []string{"new", "form", "Home", "Quick", "name:Text.NonEmpty", "message:Text.NonEmpty"}},
-	{name: "app-msg-update-oneline", base: "scaffold-update-oneline", args: []string{"new", "msg", "App", "Pong"}},
-	{name: "auth-update-oneline", base: "scaffold-update-oneline", args: []string{"new", "auth"}},
 	{name: "fixture-remove-table", base: "fixture", args: []string{"remove", "table", "Comment"}, test: true},
 }
 
@@ -481,21 +381,21 @@ func TestGenerate_DoesNotCheck(t *testing.T) {
 	}
 
 	// fill: an expression of the wrong type
-	dir = genApp(t, "scaffold-page")
-	if code, _, errs := alderIn(t, dir, "", "new", "msg", "Home", "Clear"); code != 0 {
-		t.Fatalf("alder new msg: %s", errs)
+	dir = genApp(t, "scaffold")
+	if code, _, errs := alderIn(t, dir, "", "new", "form", "Home", "Clear", "note:Text"); code != 0 {
+		t.Fatalf("alder new form: %s", errs)
 	}
 	before = appFiles(t, dir)
-	code, out, errs = alderIn(t, dir, "42\n", "fill", `Home."pressing Clear"`, "-")
+	code, out, errs = alderIn(t, dir, "42\n", "fill", `Home."submitting Clear"`, "-")
 	if code != 1 || errs != "alder fill: the result does not check (the errors above): nothing was written\n" ||
-		!strings.Contains(out, "expected Bool, got Int") || strings.Contains(out, "edited app/") || strings.Contains(out, "+++ b/") {
+		!strings.Contains(out, "cannot compare `Answer` with `Int`") || strings.Contains(out, "edited app/") || strings.Contains(out, "+++ b/") {
 		t.Errorf("fill with a wrong type: exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
 	}
 	if len(changedFiles(before, appFiles(t, dir))) != 0 {
 		t.Errorf("a refused fill wrote files")
 	}
-	code, out, _ = alderIn(t, dir, "r.answer == Rerendered\n", "fill", `Home."pressing Clear"`, "-")
-	if code != 0 || !strings.Contains(out, "+  Task.succeed (r.answer == Rerendered)\n") {
+	code, out, _ = alderIn(t, dir, "Refreshed\n", "fill", `Home."submitting Clear"`, "-")
+	if code != 0 || !strings.Contains(out, "+  Task.succeed (r.answer == Refreshed)\n") {
 		t.Errorf("fill: exit %d\n%s", code, out)
 	}
 }
@@ -535,7 +435,6 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "form", "Home", "Contact", "name:Text", "--into", "Post"}, "", "alder new form: `--into Post`: `Post` is not a table of this app (its tables: Entry)"},
 		{"scaffold", []string{"new", "msg", "Home", "Submit"}, "", "alder new msg: `Home` already declares `Submit`: choose another route name"},
 		{"scaffold", []string{"new", "msg", "Nowhere", "Go"}, "", "alder new msg: there is no page `Nowhere`: `alder new page Nowhere /path` makes one"},
-		{"scaffold-update-body", []string{"new", "msg", "App", "Ping"}, "", "alder new msg: `update` handles no message yet, and its body is not a hole: write it as `match msg { … }` yourself"},
 		{"scaffold", []string{"new", "capability", "Weather", "now", "Query Float ->"}, "", "alder new capability: `Query Float ->` is not a type: "},
 		{"scaffold", []string{"edit", "table", "Entry", "drop-field", "id"}, "", "alder edit table: `id` is the id of `Entry`: a table keeps its id"},
 		{"scaffold", []string{"edit", "table", "Entry", "drop-field", "nope"}, "", "alder edit table: `Entry` has no field `nope` (its fields: id, name, message, created)"},
@@ -648,15 +547,16 @@ func TestGenerate_Refusals(t *testing.T) {
 	}
 
 	// two holes in one declaration, and a hole not there
-	dir = genApp(t, "scaffold-page")
-	alderIn(t, dir, "", "new", "msg", "Home", "Pin", "note:Text")
-	if code, _, errs := alderIn(t, dir, "Rerendered", "fill", `Home."pressing Pin"`, "-"); code != 1 || errs != "alder fill: `Home.\"pressing Pin\"` has 2 holes (?pinNote, ?expected): name one with --hole\n" {
+	dir = genApp(t, "scaffold")
+	alderIn(t, dir, "", "new", "test", "Home", "two holes")
+	alderIn(t, dir, "Text.length ?word == ?size", "fill", "--decl", `Home."two holes"`, "-")
+	if code, _, errs := alderIn(t, dir, "5", "fill", `Home."two holes"`, "-"); code != 1 || errs != "alder fill: `Home.\"two holes\"` has 2 holes (?word, ?size): name one with --hole\n" {
 		t.Errorf("two holes: exit %d, %q", code, errs)
 	}
-	if code, _, errs := alderIn(t, dir, "x", "fill", `Home."pressing Pin"`, "-", "--hole", "?nope"); code != 1 || errs != "alder fill: `Home.\"pressing Pin\"` has no hole `?nope` (it has ?pinNote, ?expected)\n" {
+	if code, _, errs := alderIn(t, dir, "x", "fill", `Home."two holes"`, "-", "--hole", "?nope"); code != 1 || errs != "alder fill: `Home.\"two holes\"` has no hole `?nope` (it has ?word, ?size)\n" {
 		t.Errorf("no such hole: exit %d, %q", code, errs)
 	}
-	if code, out, _ := alderIn(t, dir, "r.answer == Rerendered", "fill", `Home."pressing Pin"`, "-", "--hole", "?expected"); code != 0 || !strings.Contains(out, "Task.succeed (r.answer == Rerendered)") {
+	if code, out, _ := alderIn(t, dir, "5", "fill", `Home."two holes"`, "-", "--hole", "?size"); code != 0 || !strings.Contains(out, "test \"two holes\" = Text.length ?word == 5") {
 		t.Errorf("--hole: exit %d\n%s", code, out)
 	}
 
@@ -677,8 +577,8 @@ func TestGenerate_Refusals(t *testing.T) {
 // the refusal's sentence in "error".
 func TestGenerate_JSON(t *testing.T) {
 	t.Parallel()
-	dir := genApp(t, "scaffold-page")
-	code, out, _ := alderIn(t, dir, "", "new", "msg", "Home", "Clear", "--json")
+	dir := genApp(t, "scaffold")
+	code, out, _ := alderIn(t, dir, "", "new", "form", "Home", "Clear", "note:Text", "--json")
 	if code != 0 || strings.Count(out, "\n") != 1 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
@@ -702,11 +602,11 @@ func TestGenerate_JSON(t *testing.T) {
 	if len(got.Files) != 1 || got.Files[0].Path != "app/Home.alder" || got.Files[0].Action != "edited" || !strings.HasPrefix(got.Diff, "--- a/app/Home.alder\n+++ b/app/Home.alder\n@@ ") || !got.Written || got.Error != "" {
 		t.Errorf("result: %+v", got)
 	}
-	if len(got.Diags) != 2 || got.Diags[0].Code != "W0002" || got.Diags[0].Message != "hole ?clear has type Task Nav" {
+	if len(got.Diags) != 2 || got.Diags[0].Code != "W0002" || got.Diags[0].Message != "hole ?answer has type Task Response" {
 		t.Errorf("diagnostics: %+v", got.Diags)
 	}
-	if len(got.Holes) != 2 || got.Holes[0].Module != "Home" || got.Holes[0].Decl != "update" || got.Holes[0].Arm != "Clear" || got.Holes[0].Name != "clear" || got.Holes[0].Type != "Task Nav" ||
-		got.Holes[1].Decl != `"pressing Clear"` || got.Holes[1].Type != "Bool" {
+	if len(got.Holes) != 2 || got.Holes[0].Module != "Home" || got.Holes[0].Decl != "SubmitClear.update" || got.Holes[0].Arm != "" || got.Holes[0].Name != "answer" || got.Holes[0].Type != "Task Response" ||
+		got.Holes[1].Decl != `"submitting Clear"` || got.Holes[1].Type != "Answer" {
 		t.Errorf("holes: %+v", got.Holes)
 	}
 	code, out, errs := alderIn(t, dir, "", "new", "route", "Home", "/x", "--json")
@@ -714,11 +614,11 @@ func TestGenerate_JSON(t *testing.T) {
 		t.Errorf("a refusal: exit %d\n%s%s", code, out, errs)
 	}
 	code, out, _ = alderIn(t, dir, "", "fill", "--list", "--json")
-	if code != 0 || !strings.HasPrefix(out, `{"holes":[{"module":"Home","decl":"update","arm":"Clear","name":"clear","type":"Task Nav"`) {
+	if code != 0 || !strings.HasPrefix(out, `{"holes":[{"module":"Home","decl":"SubmitClear.update","name":"answer","type":"Task Response"`) {
 		t.Errorf("fill --list --json: exit %d\n%s", code, out)
 	}
 	code, out, _ = alderIn(t, dir, "", "fill", "--list")
-	if code != 0 || out != "Home update.Clear ?clear : Task Nav\nHome \"pressing Clear\" ?expected : Bool\n" {
+	if code != 0 || out != "Home SubmitClear.update ?answer : Task Response\nHome \"submitting Clear\" ?expected : Answer\n" {
 		t.Errorf("fill --list: exit %d\n%s", code, out)
 	}
 }
@@ -872,16 +772,15 @@ func TestGenerate_FillImports(t *testing.T) {
 }
 
 // TestGenerate_FillDecl: `alder fill --decl` replaces a whole body, a value's, a type's or a
-// test's, and writes only what checks. Review Focus 5: an `update` that drops an arm the view's
-// form posts is refused by the checker, and nothing is written.
+// test's, and writes only what checks. Review Focus 5: an `update` that does not answer a
+// Response is refused by the checker, and nothing is written.
 func TestGenerate_FillDecl(t *testing.T) {
 	t.Parallel()
-	dir := genApp(t, "scaffold-page")
+	dir := genApp(t, "scaffold")
 	before := appFiles(t, dir)
-	dropped := "match msg {\n}"
-	code, out, errs := alderIn(t, dir, dropped, "fill", "--decl", "Home.update", "-")
+	code, out, errs := alderIn(t, dir, "Task.succeed 1", "fill", "--decl", "Home.Submit.update", "-")
 	if code != 1 || errs != "alder fill: the result does not check (the errors above): nothing was written\n" || !strings.Contains(out, "error[") {
-		t.Errorf("an update without the Submit arm: exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
+		t.Errorf("an update that answers no Response: exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
 	}
 	if len(changedFiles(before, appFiles(t, dir))) != 0 {
 		t.Errorf("a refused --decl wrote files")
@@ -894,7 +793,7 @@ func TestGenerate_FillDecl(t *testing.T) {
 		t.Errorf("the same Model: exit %d\n%s%s", code, out, errs)
 	}
 	home, _ := os.ReadFile(filepath.Join(dir, "app", "Home.alder"))
-	_, view, _ := strings.Cut(string(home), "view model session =\n")
+	_, view, _ := strings.Cut(string(home), "Home.view model session =\n")
 	view, _, _ = strings.Cut(view, "\n\n test")
 	view, _, _ = strings.Cut(view, "</Layout.Page>\n")
 	var lines []string
@@ -902,7 +801,7 @@ func TestGenerate_FillDecl(t *testing.T) {
 		lines = append(lines, strings.TrimPrefix(l, "  "))
 	}
 	body := strings.Replace(strings.Join(lines, "\n"), "<h1>Guestbook</h1>", "<h1>The guestbook</h1>", 1)
-	code, out, errs = alderIn(t, dir, body, "fill", "--decl", "Home.view", "-")
+	code, out, errs = alderIn(t, dir, body, "fill", "--decl", "Home.Home.view", "-")
 	if code != 0 || !strings.Contains(out, "-    <h1>Guestbook</h1>\n+    <h1>The guestbook</h1>\n") || strings.Count(out, "\n+") != 2 {
 		t.Fatalf("view: exit %d\n%s%s", code, out, errs)
 	}
@@ -915,8 +814,8 @@ func TestGenerate_FillDecl(t *testing.T) {
 		t.Errorf("alder test: exit %d\n%s%s", code, out, errs)
 	}
 	src, _ := os.ReadFile(filepath.Join(dir, "app", "Home.alder"))
-	if !strings.Contains(string(src), "view model session =\n  <Layout.Page title=\"Guestbook\">\n    <h1>The guestbook</h1>\n\n    <al-card>\n") ||
-		!strings.Contains(string(src), "  </Layout.Page>\n\ntest \"signing adds an entry\" = {\n  let page <- Test.get (Home {})\n") {
+	if !strings.Contains(string(src), "Home.view model session =\n  <Layout.Page title=\"Guestbook\">\n    <h1>The guestbook</h1>\n\n    <al-card>\n") ||
+		!strings.Contains(string(src), "  </Layout.Page>\n\nform Sign") || !strings.Contains(string(src), "\ntest \"signing adds an entry\" = {\n  let page <- Test.get (Home {})\n") {
 		t.Errorf("Home:\n%s", src)
 	}
 }
@@ -981,33 +880,15 @@ func TestGenerate_TableInTypeModule(t *testing.T) {
 	}
 }
 
-// oldPage writes a blank page module the way `alder new page --blank` wrote it before routes
-// (#160): the generators that still work on pages (`new form`, `new auth`, `edit auth`, the
-// message of a page) are tested on it until PR 7 migrates the page syntax.
-func oldPage(t *testing.T, dir, module, path, requires string) {
-	t.Helper()
-	src := "module " + module + "\n\npage \"" + path + "\" { }" + requires + "\n\ntype Model = { }\n\nload : Params -> Session -> Query Model\nload params session = ?load\n\nview : Model -> Session -> Html Msg\nview model session = ?view\n"
-	file := filepath.Join(dir, "app", filepath.FromSlash(strings.ReplaceAll(module, ".", "/"))+".alder")
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(file, []byte(src), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// TestGenerate_ViewHole (I7): a form or a button needs a view to go in: on a page whose `view`
-// is still the hole ?view, `alder new form` and `alder new msg` refuse, saying to fill it first.
+// TestGenerate_ViewHole (I7): a button needs a view to go in: on a route whose `view` is still
+// the hole ?view, `alder new msg` refuses, saying to fill it first.
 func TestGenerate_ViewHole(t *testing.T) {
 	t.Parallel()
 	dir := genApp(t, "scaffold")
-	oldPage(t, dir, "Notes", "/notes", "")
 	if code, out, errs := alderIn(t, dir, "", "new", "route", "Other", "/other", "--blank"); code != 0 {
 		t.Fatalf("new route: exit %d\n%s%s", code, out, errs)
 	}
 	for _, args := range [][]string{
-		{"new", "form", "Notes", "Quick", "title:Text"},
-		{"new", "msg", "Notes", "Clear"},
 		{"new", "msg", "Other", "Clear"},
 	} {
 		code, _, errs := alderIn(t, dir, "", args...)
@@ -1268,70 +1149,6 @@ func TestGenerate_SiloMove(t *testing.T) {
 	}
 }
 
-// TestGenerate_NewMsgAddsMissingComma: Alder allows the last match arm without a trailing comma,
-// so a hand-written `update` often lacks one; `new msg` adds it rather than refusing (M6b plan 2).
-func TestGenerate_NewMsgAddsMissingComma(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct{ name, from, to, wantLine string }{
-		{"bare", "  },\n}\n\nview", "  }\n}\n\nview", "  },\n"},
-		{"comment after the arm", "  },\n}\n\nview", "  } -- the only arm so far\n}\n\nview", "  }, -- the only arm so far\n"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := genApp(t, "scaffold-page")
-			home := filepath.Join(dir, "app", "Home.alder")
-			src, err := os.ReadFile(home)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !strings.Contains(string(src), tc.from) {
-				t.Fatalf("scaffold Home.alder no longer has %q:\n%s", tc.from, src)
-			}
-			if err := os.WriteFile(home, []byte(strings.Replace(string(src), tc.from, tc.to, 1)), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			if code, out, errs := alderIn(t, dir, "", "new", "msg", "Home", "Clear"); code != 0 {
-				t.Fatalf("new msg on a page without the trailing comma: exit %d\n%s\n%s", code, out, errs)
-			}
-			after, _ := os.ReadFile(home)
-			if !strings.Contains(string(after), tc.wantLine) || !strings.Contains(string(after), "Clear p ->") {
-				t.Fatalf("comma not added before the new arm:\n%s", after)
-			}
-			if code, out, _ := alderIn(t, dir, "", "check"); code != 0 {
-				t.Fatalf("the edited page does not check:\n%s", out)
-			}
-		})
-	}
-}
-
-// TestGenerate_NewMsgEmptyMatch: an emptied `update` leaves the app unchecked, so `new msg`
-// refuses and writes nothing.
-func TestGenerate_NewMsgEmptyMatch(t *testing.T) {
-	t.Parallel()
-	dir := genApp(t, "scaffold-page")
-	home := filepath.Join(dir, "app", "Home.alder")
-	src, _ := os.ReadFile(home)
-	start := strings.Index(string(src), "update msg model session = match msg {\n")
-	end := strings.Index(string(src), "\n}\n\nview")
-	if start < 0 || end < 0 {
-		t.Fatalf("scaffold changed:\n%s", src)
-	}
-	// keep `msg Submit form Sign` so the form still has a message; empty the match
-	emptied := string(src[:start]) + "update msg model session = match msg {\n" + string(src[end:])
-	if err := os.WriteFile(home, []byte(emptied), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	code, out, errs := alderIn(t, dir, "", "new", "msg", "Home", "Clear")
-	after, _ := os.ReadFile(home)
-	// the emptied update no longer handles `Submit`, so the app does not check and nothing is
-	// written; the empty-match logic itself is covered by TestLastArmLine in internal/generate
-	if code == 0 || string(after) != emptied || !strings.Contains(out+errs, "error") {
-		t.Fatalf("exit %d, want a refusal that leaves the file unchanged\n%s\n%s\n%s", code, out, errs, after)
-	}
-	if strings.Contains(string(after), "match msg {,") {
-		t.Fatal("comma added to the match line")
-	}
-}
-
 // TestGenReport_Warnings: a file written unformatted is a warning on standard error after the
 // command's name, and the command still succeeds.
 func TestGenReport_Warnings(t *testing.T) {
@@ -1373,11 +1190,11 @@ func TestFill_OneLineBlockHole(t *testing.T) {
 func TestNewForm_OneLineView(t *testing.T) {
 	t.Parallel()
 	dir := genApp(t, "scaffold")
-	oldPage(t, dir, "Notes", "/notes", "")
 	for _, c := range []struct {
 		stdin string
 		args  []string
 	}{
+		{"", []string{"new", "route", "Notes", "/notes", "--blank"}},
 		{"Query.succeed { }", []string{"fill", "Notes.load", "-"}},
 		{"<Layout.Page title=\"Notes\">\n  <h1>Notes</h1>\n</Layout.Page>", []string{"fill", "Notes.view", "-"}},
 	} {
@@ -1476,12 +1293,12 @@ func TestGenerate_TableNameAddress(t *testing.T) {
 }
 
 // TestGenerate_AliasNotes (plan call 18): `new page`, `edit page` and `remove page` do what the
-// route commands do and say, on standard error, that they are now those; `new msg` says it on a
-// route module (where it adds a write route), not on a page module.
+// route commands do and say, on standard error, that they are now those; `new msg` says it adds
+// a write route.
 func TestGenerate_AliasNotes(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
-	viaRoute, viaPage := genApp(t, "scaffold"), genApp(t, "scaffold-page") // viaPage's Home is a page
+	viaRoute, viaPage := genApp(t, "scaffold"), genApp(t, "scaffold")
 	code, outR, errR := alderIn(t, viaRoute, "", "new", "route", "About", "/about")
 	if code != 0 || errR != "" {
 		t.Fatalf("new route: exit %d: %s", code, errR)
@@ -1500,7 +1317,6 @@ func TestGenerate_AliasNotes(t *testing.T) {
 		{[]string{"edit", "page", "About", "add-param", `q:Text=""`}, "`alder edit page` is now `alder edit route`\n"},
 		{[]string{"edit", "route", "About", "add-param", `r:Text=""`}, ""},
 		{[]string{"new", "msg", "About", "Clear"}, "`alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`\n"},
-		{[]string{"new", "msg", "Home", "Clear"}, ""},
 		{[]string{"remove", "page", "About"}, "`alder remove page` is now `alder remove route`\n"},
 	} {
 		if code, out, errs := alderIn(t, viaPage, "", c.args...); code != 0 || errs != c.want {

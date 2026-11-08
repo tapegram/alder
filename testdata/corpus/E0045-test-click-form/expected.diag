@@ -1,0 +1,1 @@
+app/Todos/Index.alder:32:23 E0045 `Test.click` sends a route without a form; `Submit` posts form `NewTodo`: use `Test.submit Submit { … }`

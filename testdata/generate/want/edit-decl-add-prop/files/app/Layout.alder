@@ -1,6 +1,6 @@
 module Layout
 
-Page : { title: Text, children: List (Html a), dark: Bool = False } -> Html a
+Page : { title: Text, children: List Html, dark: Bool = False } -> Html
 Page props =
   <html>
     <head>

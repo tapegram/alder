@@ -14,8 +14,8 @@ login = Login.Login
 
 silo org { Project }
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <html><body><h1>error</h1></body></html>
 
-notFound : Html Never
+notFound : Html
 notFound = <html><body><h1>not found</h1></body></html>

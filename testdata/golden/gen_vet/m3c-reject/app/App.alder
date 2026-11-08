@@ -16,8 +16,8 @@ Reset.update p session = {
   Task.succeed Response.refresh
 }
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <html><body><p>error</p></body></html>
 
-notFound : Html Never
+notFound : Html
 notFound = <html><body><p>nf</p></body></html>

@@ -1,6 +1,3 @@
-app/Layout.alder:4:98 E0003 expected a, got Route
-app/Layout.alder:6:26 E0601 `Msg` is only defined in page modules; a shared component is typed `Html a`
-  fix 6:26-6:29 a
 app/Layout.alder:7:20 E0003 expected Text, Html or List Html in `{…}`, got Int
   fix 7:20-7:27 Text.fromInt (props.x)
 app/Pg.alder:37:9 E0003 expected Text, Html or List Html in `{…}`, got Int

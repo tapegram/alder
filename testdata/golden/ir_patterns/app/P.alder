@@ -102,7 +102,7 @@ later n = ?todo
 nodeOf : Text -> Tree Text
 nodeOf v = Node { value: v, size: 1 }
 
-View : { items: List (Maybe Int) } -> Html a
+View : { items: List (Maybe Int) } -> Html
 View props =
   <ul>
     {for item in props.items ->

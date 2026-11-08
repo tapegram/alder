@@ -1122,7 +1122,7 @@ import Table.User
 -- @admin end
 
 -- The admin's frame: the app's layout around a nav of every table's list.
-Page : { title: Text, children: List (Html a) } -> Html a
+Page : { title: Text, children: List Html } -> Html
 Page props =
   <Layout.Page title={props.title ++ " · Admin"}>
     <nav aria-label="Admin">
@@ -3408,12 +3408,12 @@ edited migrations/schema.json
 +
 +route Logout = POST "/_/Logout" { }
 +
- error : Error -> Html Never
+ error : Error -> Html
  error err =
    <Layout.Page title="Error">
 @@ -13,3 +18,28 @@
  
- notFound : Html Never
+ notFound : Html
  notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 +
 +-- Logout empties the session's user and goes to log in: a `POST`, sent by a button
@@ -5098,7 +5098,7 @@ edited app/App.alder
 +route Logout      = POST "/_/Logout"      { }
 +route ToggleTheme = POST "/_/ToggleTheme" { dark: Bool }
  
- error : Error -> Html Never
+ error : Error -> Html
  error err =
 @@ -27,6 +28,9 @@
    Task.succeed (Response.redirect (Auth.Login.Login {}))
@@ -5153,8 +5153,8 @@ edited app/Layout.alder
 @@ -1,6 +1,6 @@
  module Layout
  
--Page : { title: Text, children: List (Html a) } -> Html a
-+Page : { title: Text, children: List (Html a), dark: Bool = False } -> Html a
+-Page : { title: Text, children: List Html } -> Html
++Page : { title: Text, children: List Html, dark: Bool = False } -> Html
  Page props =
    <html>
      <head>

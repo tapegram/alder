@@ -303,7 +303,7 @@ func finite(t types.Type, path map[string]bool) bool {
 var derivableCons = map[string]bool{"Int": true, "Float": true, "Bool": true, "Text": true, "Unit": true, "Bytes": true, "Date": true, "Time": true}
 
 // derivableIn reports whether `alder test` can derive a generator for the concrete type t (spec
-// §4). When it cannot, path names the offending part, as in "`Html Msg` in field `view` of
+// §4). When it cannot, path names the offending part, as in "`Html` in field `view` of
 // `Card`", its types printed by show.
 func derivableIn(t types.Type, show func(types.Type) string) (string, bool) {
 	bad, where := derive(t, show, map[string]bool{})

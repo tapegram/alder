@@ -206,6 +206,9 @@ func str(t Type, paren bool, home printer) string {
 		}
 		return s
 	case *App:
+		if t.Con == "Html" { // written with no argument: markup links and clicks routes (#160)
+			return "Html"
+		}
 		s := t.Con
 		for _, a := range t.Args {
 			s += " " + str(a, true, home)

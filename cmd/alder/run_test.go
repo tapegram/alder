@@ -815,7 +815,7 @@ func TestRun_FeedLifecycle(t *testing.T) {
 		t.Fatalf("build ok has no ms: %v", first[1])
 	}
 
-	edit(t, r.dir, "app/App.alder", "notFound : Html Never", "notFound : Int")
+	edit(t, r.dir, "app/App.alder", "notFound : Html", "notFound : Int")
 	got := lifecycleEvents(t, lines, 2, 60*time.Second)
 	if !isEvent(got[0], "build", "building") || !isEvent(got[1], "build", "failed") {
 		t.Fatalf("after the error: %v", got)
@@ -831,7 +831,7 @@ func TestRun_FeedLifecycle(t *testing.T) {
 		t.Fatalf("hello.build after the error = %q, want failed", b)
 	}
 
-	edit(t, r.dir, "app/App.alder", "notFound : Int", "notFound : Html Never")
+	edit(t, r.dir, "app/App.alder", "notFound : Int", "notFound : Html")
 	got = lifecycleEvents(t, lines, 3, 120*time.Second)
 	if !isEvent(got[0], "build", "building") || !isEvent(got[1], "build", "ok") || !isEvent(got[2], "app", "started") {
 		t.Fatalf("after the fix: %v", got)
@@ -920,7 +920,7 @@ func TestRun_RestartAfterFailedCheck(t *testing.T) {
 	t.Parallel()
 	r := startRun(t)
 	lines := liveEvents(t, r)
-	edit(t, r.dir, "app/App.alder", "notFound : Html Never", "notFound : Int")
+	edit(t, r.dir, "app/App.alder", "notFound : Html", "notFound : Int")
 	if got := lifecycleEvents(t, lines, 2, 60*time.Second); !isEvent(got[1], "build", "failed") {
 		t.Fatalf("after the error: %v", got)
 	}

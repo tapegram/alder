@@ -356,10 +356,10 @@ func TestTest_Fakes(t *testing.T) {
 
 session { n: Int = 0 }
 
-error : Error -> Html Never
+error : Error -> Html
 error err = <html><body><p>error</p></body></html>
 
-notFound : Html Never
+notFound : Html
 notFound = <html><body><p>nf</p></body></html>
 `
 	real := `

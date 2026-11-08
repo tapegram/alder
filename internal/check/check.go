@@ -203,6 +203,7 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 		c.declareTypeNames(m)
 	}
 	quiet := c.reservePrelude()
+	removed := c.rejectRemoved(quiet)
 	checkStart := len(bag.Items)
 	c.loadElements()
 	// App's Session exists from here on, so a type may name it (`{ s: Session }`); defineApp
@@ -271,6 +272,7 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 	c.checkInferredDictKeys()             // anything recorded after the last body
 	c.resolveFuzzAny(types.String, false) // a `Fuzz.any` checked outside every body (a field default)
 	quietErrors(bag, checkStart, quiet)
+	c.reportRemoved(removed)
 	return c.result()
 }
 
@@ -367,7 +369,6 @@ func (c *Checker) declareStd() {
 	for _, t := range []*types.Con{types.Int, types.Float, types.Bool, types.Text, types.Unit, types.Date, types.Time, types.Never, types.Error, types.Route, types.Response, types.File, types.Bytes} {
 		c.types[c.key("Prelude", t.Name)] = t // canonical singletons, so identity comparisons (e.g. `ft == types.Time`) hold
 	}
-	c.types[c.key("Prelude", "Page")] = types.Page // until PR 9 of #160: the Prelude's `Page` is `Route`
 }
 
 // isCon reports whether t is the builtin type constructor called name (compared by name, not identity).

@@ -6,14 +6,14 @@ session { }
 
 route ToggleTheme = POST "/_/ToggleTheme" { dark: Bool }
 
-error : Error -> Html Never
+error : Error -> Html
 error err =
   <Layout.Page title="Error">
     <h1>Something went wrong</h1>
     <p>Please try again.</p>
   </Layout.Page>
 
-notFound : Html Never
+notFound : Html
 notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 
 ToggleTheme.update : ToggleTheme.Params -> Session -> Task Response

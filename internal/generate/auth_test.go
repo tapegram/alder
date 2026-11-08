@@ -27,8 +27,8 @@ func scaffoldApp(t *testing.T, files map[string]string) string {
 	return dir
 }
 
-// appWithUpdate is an App with imports, a session with another field, an `update` with an arm
-// and a comment between declarations: what `alder new auth` must keep (RF1).
+// appWithUpdate is an App with imports, a session with another field, a route of its own with
+// its `update` and a comment between declarations: what `alder new auth` must keep (RF1).
 const appWithUpdate = `module App
 
 import Layout
@@ -37,24 +37,22 @@ import Theme
 -- the theme is the visitor's choice
 session { theme: Theme.Theme = Light }
 
-msg Toggle
+route Toggle = POST "/_/Toggle" { }
 
 -- Toggle switches the theme.
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Toggle p -> {
-    let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
-    Task.succeed Rerender
-  },
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update params session = {
+  let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
+  Task.succeed Response.refresh
 }
 
-error : Error -> Html Never
+error : Error -> Html
 error err =
   <Layout.Page title="Error">
     <h1>Something went wrong</h1>
   </Layout.Page>
 
-notFound : Html Never
+notFound : Html
 notFound =
   <Layout.Page title="Not found">
     <h1>Not found</h1>
@@ -105,19 +103,17 @@ login = Auth.Login.Login
 
 route Logout = POST "/_/Logout" { }
 
-msg Toggle
+route Toggle = POST "/_/Toggle" { }
 
 -- Toggle switches the theme.
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Toggle p -> {
-    let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
-    Task.succeed Rerender
-  },
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update params session = {
+  let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
+  Task.succeed Response.refresh
 }
 `
 	logout := "\n-- Logout empties the session's user and goes to log in: a `POST`, sent by a button\n-- (`click={App.Logout}`), a form without JavaScript.\nLogout.update : Logout.Params -> Session -> Task Response\nLogout.update params session = {\n  let _ <- Session.put (\\s -> { s | user: Nothing })\n  Task.succeed (Response.redirect (Auth.Login.Login {}))\n}\n"
-	if !strings.HasPrefix(app, want) || !strings.Contains(app, "\nnotFound : Html Never\n") || !strings.Contains(app, logout) ||
+	if !strings.HasPrefix(app, want) || !strings.Contains(app, "\nnotFound : Html\n") || !strings.Contains(app, logout) ||
 		!strings.Contains(app, "test \"Logout clears the user and goes to log in\"") || !strings.Contains(app, "let r <- Test.click Logout\n") {
 		t.Errorf("App:\n%s\nwant it to start:\n%s\nand have:\n%s", app, want, logout)
 	}
@@ -135,7 +131,7 @@ update msg session = match msg {
 		t.Fatal(err)
 	}
 	for _, e := range edits {
-		if e.Path == "app/App.alder" && !strings.Contains(e.Body, "session {\n  theme: Theme.Theme = Light,\n  user: Maybe User.UserId,\n}\n\nlogin = Auth.Login.Login\n\nroute Logout = POST \"/_/Logout\" { }\n\nmsg Toggle\n") {
+		if e.Path == "app/App.alder" && !strings.Contains(e.Body, "session {\n  theme: Theme.Theme = Light,\n  user: Maybe User.UserId,\n}\n\nlogin = Auth.Login.Login\n\nroute Logout = POST \"/_/Logout\" { }\n\nroute Toggle = POST \"/_/Toggle\" { }\n") {
 			t.Errorf("multi-line session:\n%s", e.Body)
 		}
 	}

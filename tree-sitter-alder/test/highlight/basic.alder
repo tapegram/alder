@@ -1,7 +1,7 @@
 module Demo
 -- <- keyword
 
-view : Int -> Html Never
+view : Int -> Html
 -- <- function
 --     ^ type
 

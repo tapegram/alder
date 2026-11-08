@@ -813,7 +813,7 @@ func TestFromProgramIgnoresFakeTables(t *testing.T) {
 // is still the column's.
 func TestOwnerLeavesSchema(t *testing.T) {
 	files := map[string]string{
-		"App.alder":  "module App\n\nimport User\n\nsession { user: Maybe User.UserId }\n\nerror : Error -> Html Never\nerror err = <p>error</p>\n\nnotFound : Html Never\nnotFound = <p>not found</p>\n",
+		"App.alder":  "module App\n\nimport User\n\nsession { user: Maybe User.UserId }\n\nerror : Error -> Html\nerror err = <p>error</p>\n\nnotFound : Html\nnotFound = <p>not found</p>\n",
 		"User.alder": "module User\n\ntype UserId = brand Text\n\ntable User {\n  id: UserId @id,\n  name: Text,\n}\n",
 		"Todo.alder": "module Todo\n\nimport User\n\ntype TodoId = brand Text\n\ntable Todo {\n  id: TodoId @id,\n  title: Text,\n  owner: User.UserId @ref User%s,\n}\n",
 	}

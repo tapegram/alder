@@ -1,36 +1,38 @@
 module Todos.Index
 
-page "/" { }
+type Filter = All | Active
 
-type Model = { n: Int }
-
-load : Params -> Session -> Query Model
-load params session = Query.succeed { n: 0 }
+route Index  = GET   "/"                  { }
+route Submit = POST  "/todos"             { } form NewTodo
+route Toggle = PATCH "/todos/{id}/toggle" { id: Text }
 
 form NewTodo = {
   title: Text,
 }
 
-form Orphan = {
-  note: Text,
-}
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 0
 
-msg Submit form NewTodo
-msg Toggle { id: Text }
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update params session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = Task.succeed Rerender
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update params session = Task.succeed Response.refresh
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Int -> Session -> Html
+Index.view n session =
   <form submit={Submit}>
     <Errors form />
     <Input field="title" label="Title" />
     <button click={Toggle { id: "a" }}>Toggle</button>
   </form>
 
-test "submit a form no message posts" = {
-  let _ <- Test.get (Todos.Index {})
+form Orphan = {
+  note: Text,
+}
+
+test "submit a form no route posts" = {
+  let _ <- Test.get (Index {})
   let r <- Test.submit Orphan { note: "x" }
   Task.succeed True
 }

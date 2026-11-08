@@ -108,8 +108,8 @@ func TestTableNamedByName(t *testing.T) {
 	}
 }
 
-// twoPostsApp has two modules ending in `Post`, Table.Post (a table) and Blog.Post, and a page
-// that imports both, so each is written with its canonical alias (`TablePost`, `BlogPost`).
+// twoPostsApp has two modules ending in `Post`, Table.Post (a table) and Blog.Post, and a route
+// module that imports both, so each is written with its canonical alias (`TablePost`, `BlogPost`).
 func twoPostsApp(t *testing.T) *Program {
 	t.Helper()
 	p, err := Load(twoPostsDir(t))
@@ -125,9 +125,9 @@ func twoPostsDir(t *testing.T) string {
 	return scaffoldApp(t, map[string]string{
 		"app/Table/Post.alder": "module Table.Post\n\ntype PostId = brand Text\n\ntable Post {\n  id: PostId @id,\n  title: Text,\n}\n",
 		"app/Blog/Post.alder":  "module Blog.Post\n\ntype Key = brand Text\n",
-		"app/Notes.alder": "module Notes\n\nimport Blog.Post as BlogPost\nimport Table.Post as TablePost\n\npage \"/notes\" { }\n\n" +
-			"type Model = { n: Int }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { n: 0 }\n\n" +
-			"view : Model -> Session -> Html Msg\nview model session = <al-page><h1>Notes</h1></al-page>\n",
+		"app/Notes.alder": "module Notes\n\nimport Blog.Post as BlogPost\nimport Table.Post as TablePost\n\nroute Notes = GET \"/notes\" { }\n\n" +
+			"Notes.load : Notes.Params -> Session -> Query Int\nNotes.load params session = Query.succeed 0\n\n" +
+			"Notes.view : Int -> Session -> Html\nNotes.view n session = <al-page><h1>Notes</h1></al-page>\n",
 	})
 }
 
@@ -147,10 +147,10 @@ func TestTypeTextCanonicalQualifiers(t *testing.T) {
 	}
 }
 
-// TestNewMsgIdOfAliasedTable: a message field typed with the aliased qualifier
+// TestNewMsgIdOfAliasedTable: a write route's parameter typed with the aliased qualifier
 // (`TablePost.PostId`) is the table's id, so the test clicks with a row it inserts, not a
-// hole, and the field keeps its qualifier. The test writes the table through the alias too
-// (#34): `Db.insert TablePost`, `Db.get TablePost`.
+// hole, and the parameter keeps its qualifier. The test writes the table through the alias too
+// (#34): `Db.insert TablePost`.
 func TestNewMsgIdOfAliasedTable(t *testing.T) {
 	dir := twoPostsDir(t)
 	p, err := Load(dir)
@@ -169,7 +169,7 @@ func TestNewMsgIdOfAliasedTable(t *testing.T) {
 	if e == nil {
 		t.Fatalf("no edit of Notes: %+v", edits)
 	}
-	for _, want := range []string{"Test.click (Feature { id: post1 })", "msg Feature { id: TablePost.PostId }", "Db.insert TablePost {", "Db.get TablePost post1"} {
+	for _, want := range []string{"Test.click (Feature { id: post1 })", "route Feature = POST \"/notes/_/Feature\" { id: TablePost.PostId }", "Db.insert TablePost {"} {
 		if !strings.Contains(e.Body, want) {
 			t.Errorf("missing %q in:\n%s", want, e.Body)
 		}

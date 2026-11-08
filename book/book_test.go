@@ -696,7 +696,7 @@ func TestBook_Classify(t *testing.T) {
 		{"-- a comment\n\nmodule Todos.Index\n", Module},
 		{"greeting : Text\ngreeting = \"hello\"\n", Decls},
 		{"add a b = a + b\n", Decls},
-		{"Item : { todo: Todo } -> Html Msg\n", Decls},
+		{"Item : { todo: Todo } -> Html\n", Decls},
 		{"type Filter = All | Active\n", Decls},
 		{"table Todo {\n  id: TodoId @id,\n}\n", Decls},
 		{"msg Toggle { id: TodoId }\n", Decls},

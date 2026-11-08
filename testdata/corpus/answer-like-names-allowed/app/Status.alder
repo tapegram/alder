@@ -1,7 +1,7 @@
 module Status
 
 -- Failed, Rejected and Missing are ordinary domain words: only the Prelude test type's own
--- constructors (Shown, Rerendered, Redirected, FormRejected, PageMissing, RequestFailed) are reserved.
+-- constructors (Shown, Rendered, Refreshed, Redirected, FormRejected, PageMissing, RequestFailed) are reserved.
 type Status = Pending | Failed | Rejected | Missing
 
 label : Status -> Text

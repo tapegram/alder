@@ -94,6 +94,14 @@ type Diagnostic struct {
 	NoSource bool
 }
 
+// RemovedHint ends every E0046 (RemovedSyntax) message.
+const RemovedHint = "run `alder fix --routes` to rewrite this module"
+
+// Retired codes (never reuse): E0016 (two pages on one path), E0034 (a message in a file page),
+// E0041 and W0011 (a constructor hiding a page), E0301 (a message sent without its parameters),
+// E0302 (an `update` missing a message's arm), E0601 (`Msg` outside a page module). Their only
+// triggers were the page syntax that E0046 now rejects (#160).
+
 // General codes. Spec codes (E0101..E0602) are declared where they are raised.
 const (
 	ParseError          = "E0001"
@@ -109,7 +117,6 @@ const (
 	InvalidDecl         = "E0011"
 	ModuleCase          = "E0014"
 	ReservedModule      = "E0015"
-	DuplicatePage       = "E0016"
 	StdModule           = "E0017"
 	TablePlacement      = "E0018"
 	SchemaChanged       = "E0019" // raised by buildkit.SchemaDrift, not the checker: the tables changed since the last migration
@@ -127,18 +134,17 @@ const (
 	WriteStores         = "E0031" // an update arm (or fake entry) whose Task writes to two stores: the shared store and a silo, or two silos
 	PartitionDecl       = "E0032" // a `@partition k`, a session field's `via T`, or a `choose k` the rules refuse
 	SiloDecl            = "E0033" // a `silo k { … }` the rules refuse (a table not partitioned by k, a `@ref` into a silo), or a page's `silo k` form
-	FilePageMsg         = "E0034" // a `msg`, `form` or `update` in a file page (view returns File)
 	FileHeader          = "E0035" // File.withHeader with a literal name outside the allow-list
 	ScratchInApp        = "E0036" // a *scratch.alder file under app/
 	DuplicateTable      = "E0037" // a table name declared by two app modules: table names are app-wide
 	NotDerivable        = "E0038" // a property's argument, or a `Fuzz.any`, whose type no generator can be derived for (not concrete, or a function)
 	PropertyOutsideTest = "E0039" // `Fuzz.forAll` or `Fuzz.forAllTask` anywhere but as a test's body
 	TestOnly            = "E0040" // something only tests may use (`Test.*`, `Doc`, `Answer`, a fake's table, a test helper) where no test helper can be
-	PageShadowed        = "E0041" // a constructor (or brand, or message) named like a single-segment page module, applied in its scope to a record it cannot take: there the page cannot be written
 	ThemeDecl           = "E0042" // a `theme` declaration the rules refuse: outside App, twice, an unknown or removed token, a value of the wrong kind or shape
 	RouteDecl           = "E0043" // a route declaration the rules refuse: `form` on GET, a missing or extra member, a member of the wrong type, a path two routes answer with one method, a path segment with no parameter, a module with both `page` and `route`
 	RouteName           = "E0044" // a route name that cannot be told apart (a module's, an import qualifier's, a constructor's in scope, another route's) or a qualified declaration naming no route
 	RouteTarget         = "E0045" // a route requested in a way its method refuses: `href`, `Test.get`/`open`/`fetch` to a write route, `submit` to a GET route, `Response.redirect`/`render` of a write route, `Test.submit` of a route without `form`, `Test.click` of one with it
+	RemovedSyntax       = "E0046" // page-era syntax (#160): `page`, `msg`, `Nav` and its constructors, `Page`, `Html` with a type argument, an unqualified `load`/`view`/`update`
 	ImportAlias         = "E0204" // an import's `as` is missing, redundant or not its canonical qualifier
 	FullPath            = "E0205" // a name written with an imported module's full path instead of its qualifier
 	NoQualifier         = "E0206" // an import with no usable qualifier: every candidate is taken or shared
@@ -150,7 +156,7 @@ const (
 	UnshownReject       = "W0005" // a message whose update may answer Reject, or a write route whose update may answer Response.invalid, posted by a form without <Errors form />
 	FormWireName        = "W0008" // a GET form's input named after a page parameter that reads another query key (#63)
 	ShadowedCapability  = "W0010" // an import whose qualifier, or a stdlib module, is the name of a capability in scope: `Q.entry` reaches the module
-	PageShadowedWarn    = "W0011" // E0041's clash where no page value was written in the constructor's scope: the program works
+	NoticeDeprecated    = "W0012" // `Notice.with`/`success`/`warning`/`error`, aliases of the `Response` builders for one release
 	DeployFilesNoBlock  = "W0009" // render.yaml or fly.toml in the project and no `deploy` block in App (#25)
 
 	// ScratchAppErrors is the language server's warning at 1:1 of a scratch file the app's errors

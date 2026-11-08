@@ -23,7 +23,7 @@
   (pure query (record Model)))
 (value Admin.Index.roleOf : Index.Session -> User.Role (session)
   (field role (var session)))
-(value Admin.Index.Index.view : Model -> Index.Session -> Html Route (model session)
+(value Admin.Index.Index.view : Model -> Index.Session -> Html (model session)
   (elem html
     (elem body
       (elem p (attr id text "role")
@@ -104,7 +104,7 @@
             (pure query (record Model))
             (not-found))))
       (case Nothing (not-found)))))
-(value Admin.Users.Users.view : Model -> Users.Session -> Html Route (model session)
+(value Admin.Users.Users.view : Model -> Users.Session -> Html (model session)
   (elem html (elem body (elem h1 (htext "users")))))
 (test "an admin is served" task
   (bind task me : Text
@@ -142,16 +142,16 @@
   (user Maybe Text)
   (role User.Role = (ctor User.Role.Reader)))
 (union App.Msg)
-(value App.error : Error -> Html Never (err)
+(value App.error : Error -> Html (err)
   (elem html (elem body (elem h1 (htext "error")))))
-(value App.notFound : Html Never ()
+(value App.notFound : Html ()
   (elem html (elem body (elem h1 (htext "not found")))))
 (module Login)
 (record Login.Model)
 (record Login.Login.Params)
 (value Login.Login.load : Login.Params -> App.Session -> Query Model (params session)
   (pure query (record Model)))
-(value Login.Login.view : Model -> App.Session -> Html Route (model session)
+(value Login.Login.view : Model -> App.Session -> Html (model session)
   (elem html (elem body (elem h1 (htext "log in")))))
 (module Todo)
 (record Todo.Todo
@@ -228,7 +228,7 @@
         (field id (var p))
         (lambda (t : Todo) (update (var t) (done True))))
       (pure task (std Response.refresh)))))
-(value Todos.Index.Index.view : Model -> Index.Session -> Html Route (model session)
+(value Todos.Index.Index.view : Model -> Index.Session -> Html (model session)
   (elem html
     (elem body
       (form-el (route Todos.Index.Add)
@@ -826,7 +826,7 @@
   (bind query todo : Todo
     (db-get-scoped Db.getMine user Todo.Todo (field id (var params)))
     (pure query (record Model (todo (var todo))))))
-(value Todos.Show.Show.view : Model -> Show.Session -> Html Route (model session)
+(value Todos.Show.Show.view : Model -> Show.Session -> Html (model session)
   (elem html
     (elem body (elem h1 (hexpr text (field title (field todo (var model))))))))
 (test "the owner sees their todo" task

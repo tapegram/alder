@@ -780,7 +780,7 @@ module Markdown
 -- Rendering a post's body is outside the language: a capability implemented in Go
 -- (adapters/markdown/markdown.go), which builds the HTML node by node, so a post cannot inject markup.
 capability Markdown {
-  render : Text -> Query (Html Never),
+  render : Text -> Query Html,
 }
 
 -- In a test, `let _ <- Test.fake Markdown` replaces the adapter with this: the body as plain
@@ -1942,7 +1942,7 @@ Test.texts : Text -> Doc -> List Text            -- every match's text, in page 
 Test.has   : Text -> Doc -> Bool                 -- whether anything matches
 Test.count : Text -> Doc -> Int                  -- how many elements match
 Test.attr  : Text -> Text -> Doc -> Maybe Text   -- an attribute of the first match
-Test.doc   : Html a -> Doc                       -- a view, as a document
+Test.doc   : Html -> Doc                       -- a view, as a document
 ```
 
 The first `Text` is a **selector**, as in CSS; `Test.attr`'s first is

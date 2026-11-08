@@ -18,5 +18,5 @@ names xs = xs |> List.map Text.toUpper |> Text.join ", "
 label : Maybe Int -> Text
 label m = "n = {Text.fromInt (m ?? 0)}"
 
-Card : { title: Text, children: List (Html a) } -> Html a
+Card : { title: Text, children: List Html } -> Html
 Card props = <div class="card"><h2>{props.title}</h2>{props.children}</div>

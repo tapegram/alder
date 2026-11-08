@@ -16,9 +16,9 @@
         (route-ref Auth.Login.Login (record Auth.Login.Login.Params))))))
 (value App.Send.update : Send.Params -> Session -> Task Response (p session)
   (pure task (std Response.refresh)))
-(value App.error : Error -> Html Never (err)
+(value App.error : Error -> Html (err)
   (elem html (elem body (elem h1 (htext "Something went wrong")))))
-(value App.notFound : Html Never ()
+(value App.notFound : Html ()
   (elem html (elem body (elem h1 (htext "Not found")))))
 (module Auth.Login)
 (record Auth.Login.Model)
@@ -50,7 +50,7 @@
       (case Nothing
         (pure task
           (call (std Response.invalid) "Email or password is incorrect."))))))
-(value Auth.Login.Login.view : Model -> App.Session -> Html Route (model session)
+(value Auth.Login.Login.view : Model -> App.Session -> Html (model session)
   (elem html
     (elem body
       (elem h1 (htext "Log in"))
@@ -260,7 +260,7 @@
     (pure task (std Response.refresh))))
 (value Notes.Index.SavePrefs.update : SavePrefs.Params -> Index.Session -> Task Response (p session)
   (pure task (std Response.refresh)))
-(value Notes.Index.Index.view : Model -> Index.Session -> Html Route (model session)
+(value Notes.Index.Index.view : Model -> Index.Session -> Html (model session)
   (elem html
     (elem body
       (elem h1 (htext "Notes"))
@@ -662,7 +662,7 @@
             (pure query (record Model (note (var note))))
             (not-found))))
       (case Nothing (not-found)))))
-(value Notes.Show.Show.view : Model -> Show.Session -> Html Route (model session)
+(value Notes.Show.Show.view : Model -> Show.Session -> Html (model session)
   (elem html
     (elem body (elem h1 (hexpr text (field title (field note (var model))))))))
 (table User.User (id id) (unique email) (insert email name))
