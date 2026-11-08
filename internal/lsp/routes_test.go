@@ -14,19 +14,19 @@ func TestRoutes_List(t *testing.T) {
 	if e := c.call("alder/routes", map[string]any{}, &out); e != nil {
 		t.Fatalf("rpc error %+v", e)
 	}
-	var page, msg bool
+	var get, post bool
 	for _, r := range out {
-		if r.Kind == "page" && r.Path == "/posts/{slug}" && r.Module == "Posts.Show" && r.Name == "page" &&
+		if r.Method == "GET" && r.Path == "/posts/{slug}" && r.Module == "Posts.Show" && r.Name == "Show" &&
 			r.URI == c.uri("app/Posts/Show.alder") && r.Range.Start == (Position{Line: 8, Character: 0}) {
-			page = true
+			get = true
 		}
-		if r.Kind == "msg" && r.Path == "/_m/Posts.Show/AddComment" && r.Name == "AddComment" &&
-			strings.HasSuffix(r.URI, "app/Posts/Show.alder") && r.Range.Start == (Position{Line: 45, Character: 0}) {
-			msg = true
+		if r.Method == "POST" && r.Path == "/posts/{slug}/_/AddComment" && r.Module == "Posts.Show" && r.Name == "AddComment" &&
+			strings.HasSuffix(r.URI, "app/Posts/Show.alder") && r.Range.Start == (Position{Line: 11, Character: 0}) {
+			post = true
 		}
 	}
-	if !page || !msg {
-		t.Fatalf("page %v msg %v in %+v", page, msg, out)
+	if !get || !post {
+		t.Fatalf("GET Show %v, POST AddComment %v in %+v", get, post, out)
 	}
 }
 

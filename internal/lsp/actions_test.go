@@ -272,7 +272,7 @@ func TestAction_OverlappingFixesAreOneAction(t *testing.T) {
 	}
 }
 
-// A page hook with the wrong signature offers "Change signature to …" as the first, preferred
+// A route hook with the wrong signature offers "Change signature to …" as the first, preferred
 // quick fix (issue 45), and the generators, which are not about the cursor, follow it as
 // refactor actions. The range starts on the line above the signature, which is unchanged since
 // the last good build, so the generators are offered too.
@@ -280,16 +280,16 @@ func TestCodeAction_HookSignatureFixFirst(t *testing.T) {
 	c := start(t, blogCopy(t))
 	rel := "app/Posts/Index.alder"
 	text := openClean(t, c, rel)
-	broken := strings.Replace(text, "load : Params -> Session -> Query Model", "load : Params -> Session -> Model", 1)
+	broken := strings.Replace(text, "Index.load : Index.Params -> Session -> Query Model", "Index.load : Index.Params -> Session -> Model", 1)
 	c.change(rel, broken)
 	c.diags(rel)
-	sig := c.at(rel, "load : Params", 0).Line
+	sig := c.at(rel, "Index.load : Index.Params", 0).Line
 	acts := actionsIn(t, c, rel, sig-1, sig+1)
 	if len(acts) == 0 {
 		t.Fatal("no actions")
 	}
 	first := acts[0]
-	want := "Params -> Session -> Query Model"
+	want := "Index.Params -> Session -> Query Model"
 	if first.Kind != "quickfix" || !first.IsPreferred || first.Title != "Change signature to `"+want+"`" || first.Edit == nil {
 		t.Fatalf("first action %+v", first)
 	}

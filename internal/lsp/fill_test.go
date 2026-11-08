@@ -17,19 +17,19 @@ import (
 
 const fillRel = "app/App.alder"
 
-// fillRoot is the blog with App's Logout arm ending in the hole ?out (Task Nav), and a module
+// fillRoot is the blog with App's Logout route's update ending in the hole ?out (Task Response), and a module
 // Helpers whose goLogin fills it (and needs an import).
 func fillRoot(t *testing.T) string {
 	t.Helper()
 	root := blogCopy(t)
 	p := filepath.Join(root, "app", "App.alder")
 	b, _ := os.ReadFile(p)
-	src := strings.Replace(string(b), "    Task.succeed (Redirect (Auth.Login {}))\n", "    ?out\n", 1)
+	src := strings.Replace(string(b), "  Task.succeed (Response.redirect (Auth.Login.Login {}))\n", "  ?out\n", 1)
 	if src == string(b) {
-		t.Fatal("no Logout arm to make a hole of")
+		t.Fatal("no Logout update to make a hole of")
 	}
 	os.WriteFile(p, []byte(src), 0o644)
-	os.WriteFile(filepath.Join(root, "app", "Helpers.alder"), []byte("module Helpers\n\ngoLogin : Task Nav\ngoLogin = Task.succeed (Redirect (Auth.Login {}))\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "app", "Helpers.alder"), []byte("module Helpers\n\ngoLogin : Task Response\ngoLogin = Task.succeed (Response.redirect (Auth.Login.Login {}))\n"), 0o644)
 	return root
 }
 
@@ -212,11 +212,11 @@ func TestCodeAction_FillHole(t *testing.T) {
 		t.Fatalf("no Fill action in %+v", acts)
 	}
 	a := acts[at]
-	if a.Title != "Fill ?out with AI (Task Nav)" || a.Kind != "quickfix" || len(a.Diagnostics) != 1 || a.Diagnostics[0].Code != "W0002" {
+	if a.Title != "Fill ?out with AI (Task Response)" || a.Kind != "quickfix" || len(a.Diagnostics) != 1 || a.Diagnostics[0].Code != "W0002" {
 		t.Errorf("action %+v", a)
 	}
 	arg := a.Command.Arguments[0]
-	if len(a.Command.Arguments) != 1 || arg["uri"] != c.uri(fillRel) || arg["version"] != float64(1) || arg["address"] != "App.update.Logout" || arg["hole"] != "out" {
+	if len(a.Command.Arguments) != 1 || arg["uri"] != c.uri(fillRel) || arg["version"] != float64(1) || arg["address"] != "App.Logout.update" || arg["hole"] != "out" {
 		t.Errorf("arguments %+v", a.Command.Arguments)
 	}
 	for _, b := range acts[:at] {
@@ -261,7 +261,7 @@ func TestCodeAction_FillHoleWithoutApplyEdit(t *testing.T) {
 func TestCodeAction_FillHoleStaleLine(t *testing.T) {
 	c := fillClient(t, fillRoot(t), &answers{list: []string{"x"}}, fullCaps)
 	pos := c.at(fillRel, "?out", 1)
-	c.change(fillRel, strings.Replace(c.disk(fillRel), "    ?out\n", "    ?out (\n", 1))
+	c.change(fillRel, strings.Replace(c.disk(fillRel), "  ?out\n", "  ?out (\n", 1))
 	c.diags(fillRel)
 	for _, a := range actionsAt(t, c, fillRel, pos) {
 		if a.Command != nil && a.Command.Command == "alder.fill" {
@@ -278,7 +278,7 @@ func TestFill_AppliesVersionedEdit(t *testing.T) {
 	}
 	m := c.request("window/workDoneProgress/create")
 	c.answer(m.ID, nil)
-	if v := progressValue(t, c); v["kind"] != "begin" || v["title"] != "alder: filling ?out : Task Nav" || v["message"] != "test-model" {
+	if v := progressValue(t, c); v["kind"] != "begin" || v["title"] != "alder: filling ?out : Task Response" || v["message"] != "test-model" {
 		t.Errorf("begin %v", v)
 	}
 	p := applyEdit(t, c, true)
@@ -296,7 +296,7 @@ func TestFill_AppliesVersionedEdit(t *testing.T) {
 		t.Fatalf("want two edits (the import, the hole), got %+v", dc.Edits)
 	}
 	after := applyTo(c.disk(fillRel), dc.Edits)
-	if !strings.Contains(after, "import Helpers\n") || !strings.Contains(after, "    Helpers.goLogin\n") || strings.Contains(after, "?out") {
+	if !strings.Contains(after, "import Helpers\n") || !strings.Contains(after, "  Helpers.goLogin\n") || strings.Contains(after, "?out") {
 		t.Errorf("applied:\n%s", after)
 	}
 	if strings.Contains(c.disk(fillRel), "Helpers.goLogin") {
@@ -305,7 +305,7 @@ func TestFill_AppliesVersionedEdit(t *testing.T) {
 }
 
 func TestFill_RetryThenApply(t *testing.T) {
-	b := &answers{list: []string{"42", "Task.succeed (Redirect (Auth.Login {}))"}}
+	b := &answers{list: []string{"42", "Task.succeed (Response.redirect (Auth.Login.Login {}))"}}
 	c := fillClient(t, fillRoot(t), b, fullCaps)
 	startFill(t, c)
 	c.answer(c.request("window/workDoneProgress/create").ID, nil)
@@ -314,7 +314,7 @@ func TestFill_RetryThenApply(t *testing.T) {
 		t.Errorf("report %v", v)
 	}
 	p := applyEdit(t, c, true)
-	if after := applyTo(c.disk(fillRel), p.Edit.DocumentChanges[0].Edits); !strings.Contains(after, "    Task.succeed (Redirect (Auth.Login {}))\n  },") {
+	if after := applyTo(c.disk(fillRel), p.Edit.DocumentChanges[0].Edits); !strings.Contains(after, "  Task.succeed (Response.redirect (Auth.Login.Login {}))\n}") {
 		t.Errorf("applied:\n%s", after)
 	}
 	if len(b.seen) != 2 || !strings.Contains(b.seen[1][2].Content, "E0003") {
@@ -340,14 +340,14 @@ func TestFill_GivesUpShowsMessage(t *testing.T) {
 // TestFill_ClientRefusesEdit: a buffer edited while the model answers gets no edit (Neovim
 // would apply a stale one), and the warning carries the expression.
 func TestFill_ClientRefusesEdit(t *testing.T) {
-	b := &answers{list: []string{"Task.succeed (Redirect (Auth.Login {}))"}, gate: make(chan struct{}), entered: make(chan struct{})}
+	b := &answers{list: []string{"Task.succeed (Response.redirect (Auth.Login.Login {}))"}, gate: make(chan struct{}), entered: make(chan struct{})}
 	c := fillClient(t, fillRoot(t), b, map[string]any{"workspace": map[string]any{"applyEdit": true}})
 	startFill(t, c)
 	<-b.entered
 	c.change(fillRel, c.disk(fillRel)+"\n-- typed meanwhile\n")
 	c.diags(fillRel)
 	close(b.gate)
-	if msg := showMessage(t, c); msg != "alder fill: app/App.alder changed while filling; the expression was:\nTask.succeed (Redirect (Auth.Login {}))" {
+	if msg := showMessage(t, c); msg != "alder fill: app/App.alder changed while filling; the expression was:\nTask.succeed (Response.redirect (Auth.Login.Login {}))" {
 		t.Errorf("message %q", msg)
 	}
 	select {
@@ -359,10 +359,10 @@ func TestFill_ClientRefusesEdit(t *testing.T) {
 
 // TestFill_ClientAnswersNotApplied: a client that answers applied: false gets the same warning.
 func TestFill_ClientAnswersNotApplied(t *testing.T) {
-	c := fillClient(t, fillRoot(t), &answers{list: []string{"Task.succeed (Redirect (Auth.Login {}))"}}, map[string]any{"workspace": map[string]any{"applyEdit": true}})
+	c := fillClient(t, fillRoot(t), &answers{list: []string{"Task.succeed (Response.redirect (Auth.Login.Login {}))"}}, map[string]any{"workspace": map[string]any{"applyEdit": true}})
 	startFill(t, c)
 	applyEdit(t, c, false)
-	if msg := showMessage(t, c); msg != "alder fill: app/App.alder changed while filling; the expression was:\nTask.succeed (Redirect (Auth.Login {}))" {
+	if msg := showMessage(t, c); msg != "alder fill: app/App.alder changed while filling; the expression was:\nTask.succeed (Response.redirect (Auth.Login.Login {}))" {
 		t.Errorf("message %q", msg)
 	}
 }
@@ -373,7 +373,7 @@ func TestFill_SilentClientReleasesTheFill(t *testing.T) {
 	old := requestTimeout
 	requestTimeout = 200 * time.Millisecond
 	defer func() { requestTimeout = old }()
-	c := fillClient(t, fillRoot(t), &answers{list: []string{"Task.succeed (Redirect (Auth.Login {}))"}}, fullCaps)
+	c := fillClient(t, fillRoot(t), &answers{list: []string{"Task.succeed (Response.redirect (Auth.Login.Login {}))"}}, fullCaps)
 	startFill(t, c)
 	c.request("window/workDoneProgress/create") // never answered
 	c.request("workspace/applyEdit")            // nor this
@@ -390,7 +390,7 @@ func TestFill_SilentClientReleasesTheFill(t *testing.T) {
 }
 
 func TestFill_OneAtATime(t *testing.T) {
-	b := &answers{list: []string{"Task.succeed (Redirect (Auth.Login {}))"}, gate: make(chan struct{})}
+	b := &answers{list: []string{"Task.succeed (Response.redirect (Auth.Login.Login {}))"}, gate: make(chan struct{})}
 	c := fillClient(t, fillRoot(t), b, map[string]any{"workspace": map[string]any{"applyEdit": true}})
 	if !startFill(t, c) {
 		t.Fatal("the first fill did not start")
@@ -427,9 +427,9 @@ func TestFill_NoBackendMessage(t *testing.T) {
 }
 
 func TestFill_UsesUnsavedBuffer(t *testing.T) {
-	b := &answers{list: []string{"Task.succeed (Redirect (Auth.Login {}))"}}
+	b := &answers{list: []string{"Task.succeed (Response.redirect (Auth.Login.Login {}))"}}
 	c := fillClient(t, fillRoot(t), b, map[string]any{"workspace": map[string]any{"applyEdit": true}})
-	text := strings.Replace(c.disk(fillRel), "login = Auth.Login\n", "login = Auth.Login\n\n-- an unsaved note\n", 1)
+	text := strings.Replace(c.disk(fillRel), "login = Auth.Login.Login\n", "login = Auth.Login.Login\n\n-- an unsaved note\n", 1)
 	c.change(fillRel, text)
 	c.diags(fillRel)
 	startFill(t, c)
@@ -438,7 +438,7 @@ func TestFill_UsesUnsavedBuffer(t *testing.T) {
 	if dc.TextDocument.Version == nil || *dc.TextDocument.Version != 2 {
 		t.Errorf("version %v", dc.TextDocument.Version)
 	}
-	if after := applyTo(text, dc.Edits); !strings.Contains(after, "-- an unsaved note\n") || !strings.Contains(after, "    Task.succeed (Redirect (Auth.Login {}))\n  },") {
+	if after := applyTo(text, dc.Edits); !strings.Contains(after, "-- an unsaved note\n") || !strings.Contains(after, "  Task.succeed (Response.redirect (Auth.Login.Login {}))\n}") {
 		t.Errorf("applied to the buffer:\n%s", after)
 	}
 	if !strings.Contains(b.seen[0][0].Content, "-- an unsaved note") {
@@ -447,7 +447,7 @@ func TestFill_UsesUnsavedBuffer(t *testing.T) {
 }
 
 func TestFill_NoProgressCapability(t *testing.T) {
-	c := fillClient(t, fillRoot(t), &answers{list: []string{"Task.succeed (Redirect (Auth.Login {}))"}}, map[string]any{"workspace": map[string]any{"applyEdit": true}})
+	c := fillClient(t, fillRoot(t), &answers{list: []string{"Task.succeed (Response.redirect (Auth.Login.Login {}))"}}, map[string]any{"workspace": map[string]any{"applyEdit": true}})
 	startFill(t, c)
 	select {
 	case m := <-c.requests:

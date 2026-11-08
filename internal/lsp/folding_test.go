@@ -28,19 +28,19 @@ func TestFoldingRange_Show(t *testing.T) {
 		kind, what string
 	}{
 		{2, 6, "imports", "the imports"},
-		{10, 14, "", "type Model"},
-		{16, 17, "comment", "the comment above load"},
-		{18, 39, "", "load"},
-		{21, 38, "", "the match in load"},
-		{43, 44, "comment", "the comment above msg"},
-		{64, 71, "", "<article>"},
+		{9, 10, "comment", "the comment above route AddComment"},
+		{13, 17, "", "type Model"},
+		{19, 20, "comment", "the comment above load"},
+		{21, 42, "", "load"},
+		{24, 41, "", "the match in load"},
+		{67, 74, "", "<article>"},
 	} {
 		if !has(w.start, w.end, w.kind) {
 			t.Errorf("no %q range %d–%d (%s)", w.kind, w.start, w.end, w.what)
 		}
 	}
 	for i, r := range got {
-		if r.StartLine == 41 {
+		if r.StartLine == 44 {
 			t.Errorf("the one-line form declaration folds: %+v", r)
 		}
 		if r.EndLine <= r.StartLine {

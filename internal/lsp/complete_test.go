@@ -195,7 +195,7 @@ func TestComplete_Otherwise(t *testing.T) {
 	openClean(t, c, "app/Posts/Index.alder")
 	p := typing(t, c, "app/Posts/Index.alder", afterQ, "  let z = pa")
 	got := labels(complete(t, c, "app/Posts/Index.alder", p))
-	for _, want := range []string{"params", "session", "q", "page", "perPage", "view", "Post", "Text", "match"} {
+	for _, want := range []string{"params", "session", "q", "page", "perPage", "Index", "Post", "Text", "match"} {
 		if _, ok := got[want]; !ok {
 			t.Errorf("no %s in %v", want, got)
 		}
@@ -370,8 +370,7 @@ func TestComplete_ImportInsertsAlias(t *testing.T) {
 
 // TestComplete_OtherwiseOffersQualifiers: an imported module is offered by its qualifier, the
 // spelling the compiler accepts (`AdminLayout`, not `Admin.Layout`, which is E0205 with a
-// member); an imported page module is offered by its qualifier, for its members, and by its full
-// path, for its page value.
+// member), an imported module of routes (Posts.Show) as well.
 func TestComplete_OtherwiseOffersQualifiers(t *testing.T) {
 	root := blogCopy(t)
 	rel := "app/Posts/Index.alder"
@@ -381,7 +380,7 @@ func TestComplete_OtherwiseOffersQualifiers(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := strings.Replace(string(b), "import Layout\n", "import Admin.Layout as AdminLayout\nimport Layout\nimport Posts.Show\n", 1)
-	text += "\nuseAdmin : User.UserId -> Query Bool\nuseAdmin = AdminLayout.isAdmin\n\nuseShow : Html a\nuseShow = <a href={Posts.Show { id: 1 }}>x</a>\n"
+	text += "\nuseAdmin : User.UserId -> Query Bool\nuseAdmin = AdminLayout.isAdmin\n\nuseShow : Post -> Html a\nuseShow post = <a href={Posts.Show.Show { slug: post.slug }}>x</a>\n"
 	if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -395,20 +394,10 @@ func TestComplete_OtherwiseOffersQualifiers(t *testing.T) {
 	if _, ok := got["Admin.Layout"]; ok {
 		t.Error("Admin.Layout offered by its full path")
 	}
-	for _, want := range []string{"Layout", "Show", "Posts.Show"} {
+	for _, want := range []string{"Layout", "Show"} {
 		if _, ok := got[want]; !ok {
 			t.Errorf("no %s", want)
 		}
 	}
 }
 
-// A page parameter declared `as "Key"` completes with its query key (#55).
-func TestComplete_RecordFieldsWire(t *testing.T) {
-	c := start(t, wireBlog(t))
-	openClean(t, c, "app/Posts/Index.alder")
-	p := typing(t, c, "app/Posts/Index.alder", afterQ, "  let z = params.")
-	got := labels(complete(t, c, "app/Posts/Index.alder", p))
-	if got["q"].Detail != `q : Text as "Q"` || got["page"].Detail != "page : Int" {
-		t.Fatalf("q: %+v, page: %+v", got["q"], got["page"])
-	}
-}

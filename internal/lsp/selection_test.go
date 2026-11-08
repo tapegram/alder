@@ -53,7 +53,7 @@ func TestSelectionRange_Show(t *testing.T) {
 		func(s string) bool {
 			return strings.HasPrefix(s, "<Layout.Page") && strings.HasSuffix(s, "</Layout.Page>")
 		},
-		func(s string) bool { return strings.HasPrefix(s, "view : Model") },
+		func(s string) bool { return strings.HasPrefix(s, "Show.view : Model") },
 		func(s string) bool { return strings.HasPrefix(s, "module Posts.Show") },
 	}
 	if len(texts) != len(checks) {

@@ -399,17 +399,16 @@ func (c *client) at(rel, needle string, off int) Position {
 	return Position{Line: line, Character: i - (strings.LastIndex(text[:i], "\n") + 1)}
 }
 
-// blogCopy copies examples/blog, before routes, to a temporary root (copyExample).
+// blogCopy copies examples/blog to a temporary root (copyExample).
 func blogCopy(t *testing.T) string {
 	t.Helper()
 	return copyExample(t, "blog")
 }
 
-// copyExample copies examples/<name> as it was before routes (testdata/fix: these tests read its
-// page modules until #160's PR 9), without build/ or databases, to a temporary root.
+// copyExample copies examples/<name>, without build/ or databases, to a temporary root.
 func copyExample(t *testing.T, name string) string {
 	t.Helper()
-	src, root := filepath.Join("../../testdata/fix", name), t.TempDir()
+	src, root := filepath.Join("../../examples", name), t.TempDir()
 	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err

@@ -95,13 +95,14 @@ func TestSemanticTokens_Show(t *testing.T) {
 		{"module Posts.Show", 7, "namespace", nil},
 		{"module Posts.Show", 13, "namespace", nil},
 		{"import Layout", 7, "namespace", nil},
-		{`page "/posts/{slug}"`, 0, "keyword", nil},
-		{`page "/posts/{slug}"`, 5, "string", nil},
+		{"route Show ", 0, "keyword", nil},
+		{`"/posts/{slug}"`, 0, "string", nil},
 		{"-- load finds", 0, "comment", []string{"documentation"}},
-		{"load : Params", 0, "function", []string{"declaration"}},
-		{"load params session", 0, "function", []string{"declaration"}},
-		{"load params session", 5, "parameter", []string{"declaration"}},
-		{"load params session", 12, "parameter", []string{"declaration"}},
+		{"Show.load : Show.Params", 0, "namespace", nil},
+		{"Show.load : Show.Params", 5, "function", []string{"declaration"}},
+		{"Show.load params session", 5, "function", []string{"declaration"}},
+		{"Show.load params session", 10, "parameter", []string{"declaration"}},
+		{"Show.load params session", 17, "parameter", []string{"declaration"}},
 		{"Post.bySlug", 0, "namespace", nil},
 		{"Post.bySlug", 5, "function", nil},
 		{"let found", 4, "variable", []string{"declaration"}},
@@ -127,9 +128,9 @@ func TestSemanticTokens_Show(t *testing.T) {
 		wantTok(t, c, toks, showRel, w.needle, w.off, w.typ, w.mods...)
 	}
 	wantNoTok(t, c, toks, showRel, "<Layout.Page title", 0)
-	for _, k := range toks { // the page path is one string: `{slug}` is not an interpolation there
+	for _, k := range toks { // the route path is one string: `{slug}` is not an interpolation there
 		if p := c.at(showRel, `"/posts/{slug}"`, 0); k.Line == p.Line && k.Char == p.Character && k.Len != len(`"/posts/{slug}"`) {
-			t.Errorf("page path length %d", k.Len)
+			t.Errorf("route path length %d", k.Len)
 		}
 	}
 }
