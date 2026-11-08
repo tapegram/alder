@@ -2,33 +2,31 @@ module Names
 
 import Name
 
-page "/" { }
+route Names = GET  "/"      { }
+route Add   = POST "/_/Add" { } form NewName
 
 type Model = { names: List Name.Name }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let names <- Db.from Name |> Db.orderBy Name.created.asc |> Db.all
+Names.load : Names.Params -> Session -> Query Model
+Names.load params session = {
+  let names <-
+    Db.from Name
+      |> Db.orderBy Name.created.asc
+      |> Db.all
   Query.succeed { names: names }
 }
 
-form NewName = {
-  name: Text.NonEmpty,
+form NewName = { name: Text.NonEmpty }
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insert Name { name: p.form.name }
+  let _ <- Session.put (\s -> { s | n: s.n + 1 })
+  Task.succeed (Response.invalid "taken")
 }
 
-msg Add form NewName
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add p -> {
-    let _ <- Db.insert Name { name: p.form.name }
-    let _ <- Session.put (\s -> { s | n: s.n + 1 })
-    Task.succeed (Reject "taken")
-  },
-}
-
-view : Model -> Session -> Html Msg
-view model session =
+Names.view : Model -> Session -> Html
+Names.view model session =
   <html>
     <head><title>Names</title></head>
     <body>
@@ -39,7 +37,9 @@ view model session =
         <button>Add</button>
         <button click={App.Reset}>Reset</button>
       </form>
-      <ul id="names">{for n in model.names -> <li>{n.name}</li>}</ul>
+      <ul id="names">
+        {for n in model.names -> <li>{n.name}</li>}
+      </ul>
       <p id="adds">{Text.fromInt session.n}</p>
     </body>
   </html>

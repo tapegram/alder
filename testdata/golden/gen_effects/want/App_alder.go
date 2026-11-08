@@ -20,22 +20,14 @@ type App__Msg struct {
 
 type tag__App__Msg uint8
 
-const (
-	is__App__Msg__Logout tag__App__Msg = 0
-)
+type App__Logout__Params struct{}
 
-var App__Msg__Logout__ = App__Msg{Tag: is__App__Msg__Logout}
-
-func App__update(msg App__Msg, session App__Session) eff.Task[rt.Nav] {
-	switch msg.Tag {
-	case is__App__Msg__Logout:
-		return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
-			return App__Session{User: rt.Nothing[string](), Theme: s.Theme}
-		}), func(_ struct{}) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Rerender())
-		})
-	}
-	panic("unreachable")
+func App__Logout__update(p App__Logout__Params, session App__Session) eff.Task[rt.Response] {
+	return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
+		return App__Session{User: rt.Nothing[string](), Theme: s.Theme}
+	}), func(_ struct{}) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRefresh())
+	})
 }
 
 func App__error(err error) html.Node {

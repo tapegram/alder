@@ -2,12 +2,12 @@ module App
 
 session { user: Maybe Text }
 
-login = Pg
+login = Pg.Pg
 
-msg Logout
+route Logout = POST "/_/Logout" { }
 
-update : Msg -> Session -> Task Nav
-update msg session = Task.succeed Rerender
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update params session = Task.succeed Response.refresh
 
 error : Error -> Html Never
 error err = <h1>x</h1>

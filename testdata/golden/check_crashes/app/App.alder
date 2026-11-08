@@ -2,7 +2,7 @@ module App
 
 session { user: Maybe Text }
 
-login = R
+login = R.R
 
 error : Error -> Html Never
 error err = <h1>Something went wrong</h1>

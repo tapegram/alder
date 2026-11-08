@@ -26,15 +26,16 @@ func TestAlderBrowser(t *testing.T) {
 			t.Errorf("%s %q: %+v", r.Module, r.Name, r)
 		}
 	}
-	// RF3: the click posts the URL the page rendered, with the page's parameter, and the
-	// re-render keeps it
-	want := []string{"Db.insert User", "Db.insert Note", "Test.login", "Test.get Notes.Index", "Db.all Note", "Time.now",
-		"Test.click Notes.Index.Toggle", "Db.all Note", "Time.now", "Db.get Note", "Db.update Note", "Db.all Note", "Time.now"}
+	// RF3: the click posts the URL the page rendered, and the refresh runs the page the browser
+	// is on, with its parameter, again (the before-view, then the page after the update)
+	want := []string{"Db.insert User", "Db.insert Note", "Test.login", "Test.get Notes.Index.Index", "Db.all Note", "Time.now",
+		"Test.click Notes.Index.Toggle", "Db.all Note", "Time.now", "Db.get Note", "Db.update Note", "Db.all Note", "Time.now",
+		"Db.all Note", "Time.now", "Db.all Note", "Time.now"}
 	if tr := got["Notes.Index a click keeps the page's parameter"].Trace; !reflect.DeepEqual(tr, want) {
 		t.Errorf("RF3 trace %q, want %q", tr, want)
 	}
 	// RF4: the login form through the fake
-	want = []string{"Test.fake Password", "Db.insert User", "Test.get Auth.Login", "Test.submit Credentials", "Password.verify",
+	want = []string{"Test.fake Password", "Db.insert User", "Test.get Auth.Login.Login", "Test.submit Credentials", "Password.verify",
 		"Db.first User", "Test.submit Credentials", "Password.verify", "Db.first User", "Session.put", "Db.all Note", "Time.now"}
 	if tr := got["Auth.Login logging in through the form"].Trace; !reflect.DeepEqual(tr, want) {
 		t.Errorf("RF4 trace %q, want %q", tr, want)
@@ -100,7 +101,7 @@ func TestEncodeDecodeForm(t *testing.T) {
 
 // The selector literals are parsed once, as package variables.
 func TestSelectorVars(t *testing.T) {
-	if !strings.Contains(rt.Show(rtesting.DocTextSel(selector__1, rtesting.ViewDoc(Notes__Show__view(Notes__Show__Model{Note: Note__Note{Title: "T"}}, Notes__Show__Session{})))), `Just "T"`) {
+	if !strings.Contains(rt.Show(rtesting.DocTextSel(selector__1, rtesting.ViewDoc(Notes__Show__Show__view(Notes__Show__Model{Note: Note__Note{Title: "T"}}, Notes__Show__Show__Session{})))), `Just "T"`) {
 		t.Error("selector__1 is h1")
 	}
 }

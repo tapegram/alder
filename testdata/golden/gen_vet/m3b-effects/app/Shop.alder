@@ -4,7 +4,7 @@ import Customer
 import Order
 
 -- M3b emission corpus: every column kind in conditions, @unique/@ref/@updated, a table passed
--- as a value, an effect in a record field, Nav built and matched in pure code, capabilities with
+-- as a value, an effect in a record field, a Response built and compared in pure code, capabilities with
 -- zero, one and two parameters, and the effectful stdlib. The tables are in their own modules
 -- (`Order`, `Customer`), and this module queries them through their imports.
 
@@ -22,18 +22,11 @@ job = { run: Task.succeed 1, label: "one" }
 runJob : Job -> Task Int
 runJob j = j.run
 
-after : Nav -> Nav
-after n = match n {
-  Redirect p -> Redirect p,
-  Reject t -> Reject "{t}!",
-  Rerender -> Rerender,
-}
+after : Response -> Response
+after r = Response.toast "done" r
 
-isRedirect : Nav -> Bool
-isRedirect n = match n {
-  Redirect p -> True,
-  _ -> False,
-}
+isRefresh : Response -> Bool
+isRefresh r = r == Response.refresh
 
 countIn : Table Order.Order -> Query Int
 countIn t = Db.count (Db.from t)

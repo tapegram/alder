@@ -6,16 +6,14 @@ module App
 
 session { n: Int = 0 }
 
-login = Names
+login = Names.Names
 
-msg Reset
+route Reset = POST "/_/Reset" { }
 
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Reset p -> {
-    let _ <- Session.put (\s -> { s | n: 0 })
-    Task.succeed Rerender
-  },
+Reset.update : Reset.Params -> Session -> Task Response
+Reset.update p session = {
+  let _ <- Session.put (\s -> { s | n: 0 })
+  Task.succeed Response.refresh
 }
 
 error : Error -> Html Never

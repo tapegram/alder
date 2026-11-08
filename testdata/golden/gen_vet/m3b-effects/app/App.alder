@@ -5,16 +5,14 @@ import Shop
 
 session { user: Maybe Customer.UserId, cart: Int = 0 }
 
-login = Home
+login = Login.Login
 
-msg Clear
+route Clear = POST "/_/Clear" { }
 
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Clear p -> {
-    let _ <- Session.put (\s -> { s | cart: 0 })
-    Task.succeed (Shop.after Rerender)
-  },
+Clear.update : Clear.Params -> Session -> Task Response
+Clear.update p session = {
+  let _ <- Session.put (\s -> { s | cart: 0 })
+  Task.succeed (Shop.after Response.refresh)
 }
 
 error : Error -> Html Never

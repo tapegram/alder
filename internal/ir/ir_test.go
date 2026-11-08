@@ -236,7 +236,7 @@ func noBrands(t *testing.T, p *Program) {
 }
 
 // TestIR_CtorPayloadShared: a record literal given to a constructor, directly or through `|>`,
-// is a Record of the constructor's own payload RecordType, and a message payload omits `form`.
+// is a Record of the constructor's own payload RecordType, and a write route's parameters omit `form`.
 func TestIR_CtorPayloadShared(t *testing.T) {
 	p := lowerDir(t, "../../testdata/golden/ir_patterns")
 	var boxed *Value
@@ -255,18 +255,24 @@ func TestIR_CtorPayloadShared(t *testing.T) {
 	if boxed == nil {
 		t.Fatal("ir_patterns has no `boxed`")
 	}
-	pg := lowerDir(t, "../../testdata/golden/ir_page")
+	pg := lowerDir(t, "../../testdata/golden/ir_route_app")
 	var save *Record
 	for _, m := range pg.Modules {
 		for _, v := range m.Values {
-			if v.Module == "Edit" && v.Name == "view" {
+			if v.Module == "Edit" && v.Name == "Edit.view" {
 				form := v.Body.(*Elem).Children[2].(*FormEl)
-				save = form.Attrs[0].Value.(*Ctor).Payload.(*Record)
+				save = form.Attrs[0].Value.(*RouteRef).Params.(*Record)
 			}
 		}
 	}
-	if save == nil || len(save.Fields) != 1 || save.Fields[0].Name != "n" || save.T != pg.Pages[0].Msgs[0].Params {
-		t.Fatalf("Save payload: %+v; want only field n, of the message's Params record", save)
+	var params *RecordType
+	for _, r := range pg.Routes {
+		if r.Module == "Edit" && r.Name == "Save" {
+			params = r.Params
+		}
+	}
+	if save == nil || len(save.Fields) != 1 || save.Fields[0].Name != "n" || params == nil || save.T != params {
+		t.Fatalf("Save parameters: %+v; want only field n, of the route's Params record", save)
 	}
 }
 

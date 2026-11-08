@@ -1,0 +1,11 @@
+module Other
+
+route Other = GET "/other" { }
+
+type Model = { }
+
+Other.load : Other.Params -> Session -> Query Model
+Other.load params session = Query.succeed {}
+
+Other.view : Model -> Session -> Html
+Other.view model session = <a href={Edit.Edit { n: 1 }}>edit</a>

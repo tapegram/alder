@@ -633,7 +633,7 @@ func TestGoName(t *testing.T) {
 // The IR goldens and the todos example exercise every match kind, partial application, holes,
 // routes and (stubbed) HTML: their emitted Go must vet.
 func TestGen_VetIRGoldens(t *testing.T) {
-	for _, dir := range []string{"ir_patterns", "ir_page", "../../examples/todos"} {
+	for _, dir := range []string{"ir_patterns", "ir_route_app", "../../examples/todos"} {
 		if !strings.Contains(dir, "/") {
 			dir = "../../testdata/golden/" + dir
 		}
@@ -1914,7 +1914,7 @@ func TestMaybeRecursion(t *testing.T) {
 // (the spec of effect emission): a Query block is Binds on Tasks wrapped in eff.Q once, each Db
 // operation an eff.Call over rt/db with the transaction of the running effect, a Query run as
 // a Task step (Time.now) converted with eff.T, and a Bool column's value encoded.
-const effectsLoad = `func Index__load(params Index__Params, session Index__Session) eff.Query[Index__Model] {
+const effectsLoad = `func Index__Index__load(params Index__Index__Params, session Index__Index__Session) eff.Query[Index__Model] {
 	return eff.Q(eff.Bind(eff.Call("Db.all Todo", false, func(_e1 *eff.Env) ([]Todo__Todo, error) {
 		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.Limit(10, db.OrderBy(db.Desc("created"), db.Where(db.CEq("owner", session.User), db.From(table__Todo__Todo)))))
 	}), func(todos []Todo__Todo) eff.Task[Index__Model] {
@@ -1956,7 +1956,7 @@ func TestGen_EffectsLoad(t *testing.T) {
 		"type Args__Index__Mailer__Send struct {\n\tTo   string\n\tBody string\n}",
 		`.Caps["Index.Mailer"].(Cap__Index__Mailer)`,
 		`panic("alder: capability \"Index.Mailer\" is not wired")`,
-		".Send(_e5.Ctx, struct {",
+		".Send(_e1.Ctx, struct {",
 	)
 	contains(t, files["app__alder.go"], "var Tables = []db.TableDesc{table__Todo__Todo.Desc()}",
 		`var Capabilities = []string{"Todo.Stats", "Index.Mailer"}`)
@@ -2394,8 +2394,9 @@ func TestShop(t *testing.T) {
 	if k, err := eff.Run(env, eff.KTask, Shop__runJob(Shop__job)); err != nil || k != 1 {
 		t.Errorf("runJob = %d, %v", k, err)
 	}
-	if nav := Shop__after(rt.Reject("no")); nav.Tag != rt.NavReject || nav.Text != "no!" || !Shop__isRedirect(rt.Redirect(rt.Page{Path: "/"})) {
-		t.Errorf("after = %+v", nav)
+	if r := Shop__after(rt.Invalid("no")); r.Kind != rt.RespInvalid || r.Text != "no" || len(r.Events) != 1 || r.Events[0].Toast.Text != "done" ||
+		!Shop__isRefresh(rt.Refresh()) || Shop__isRefresh(rt.Invalid("no")) {
+		t.Errorf("after = %+v", r)
 	}
 
 	// a capability's write is part of the Task: rolled back when the Task fails, kept when it
@@ -2465,11 +2466,11 @@ func TestShop(t *testing.T) {
 }
 `
 
-// TestGen_Routes: the routes of the ir_page app, against a golden written by hand before the
+// TestGen_Routes: the routes of the ir_route_app app, against a golden written by hand before the
 // emitter (the spec of route emission): decoders, page__/update__ functions, the GET and POST
 // routes and their helpers. The whole app vets.
 func TestGen_Routes(t *testing.T) {
-	files := emit(t, "../../testdata/golden/ir_page")
+	files := emit(t, "../../testdata/golden/ir_route_app")
 	want := "../../testdata/golden/gen_routes/want/routes__alder.go"
 	if *update {
 		if err := os.WriteFile(want, files["routes__alder.go"], 0o644); err != nil {
@@ -3342,13 +3343,13 @@ func TestGen_Fakes(t *testing.T) {
 // (testdata/e2e_browser_test.go.txt).
 func TestGen_Browser(t *testing.T) {
 	files := emitWith(t, "../../testdata/golden/gen_browser", true)
-	contains(t, files["Notes__Index_alder.go"], `eff.Call("Test.get Notes.Index", true,`, `.GetPage(_u`, `, "user")`, `rtesting.ModelOf[Notes__Index__Model](_u`,
-		`eff.Call("Test.click Notes.Index.Toggle", true,`, `.ClickMsg(rt.MsgRef{Module: "Notes.Index", Msg: "Toggle", Params: []rt.KV{{Key: "id", Value: _m`,
-		`rtesting.MsgName("Notes.Index.Toggle", _m`, `.SubmitForm("/_m/Notes.Index/Submit", "NewNote", encode__Notes__Index__NewNote(`,
+	contains(t, files["Notes__Index_alder.go"], `eff.Call("Test.get Notes.Index.Index", true,`, `.GetPage(_u`, `, "user")`, `rtesting.ModelOf[Notes__Index__Model](_u`,
+		`eff.Call("Test.click Notes.Index.Toggle", true,`, `.ClickRoute(rt.Route{Name: "Notes.Index.Toggle", Method: "POST", Path: "/_/Toggle", Query: []rt.KV{{Key: "id", Value: _m`,
+		`rtesting.MsgName("Notes.Index.Toggle", _m`, `.SubmitRoute(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/_/Submit"}, "NewNote", encode__Notes__Index__NewNote(`,
 		`rtesting.RawFields("NewNote", []string{"title", "due", "urgent", "priority", "weight", "kind", "remark", "contact"},`,
-		`rtesting.DocCountSel(selector__`, `rtesting.DocTexts(sel, `, `rtesting.DocCount(bad, `, `rtesting.ViewDoc(Notes__Index__view(`, `case rtesting.RequestFailed:`)
-	contains(t, files["Auth__Login_alder.go"], `eff.Call("Test.login", true,`, `eff.Call("Test.open Notes.Index", true,`, `.Open(_u`,
-		`rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}`, `rtesting.FormRejectedAnswer([]struct {`,
+		`rtesting.DocCountSel(selector__`, `rtesting.DocTexts(sel, `, `rtesting.DocCount(bad, `, `rtesting.ViewDoc(Notes__Index__Index__view(`, `case rtesting.RequestFailed:`)
+	contains(t, files["Auth__Login_alder.go"], `eff.Call("Test.login", true,`, `eff.Call("Test.open Notes.Index.Index", true,`, `.Open(_u`,
+		`rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Route{Name: "Auth.Login.Login", Method: "GET", Path: "/login"}}`, `rtesting.FormRejectedAnswer([]struct {`,
 		`eff.Call("Test.click App.Logout", true,`, `rtesting.MsgName("App.Logout", nil)`)
 	contains(t, files["routes__alder.go"], "func encode__Notes__Index__NewNote(r Notes__Index__NewNote) rtesting.Fields {")
 	contains(t, files["app__alder.go"], "func Web() web.Options {", `selector__1  = rtesting.Sel("h1")`)

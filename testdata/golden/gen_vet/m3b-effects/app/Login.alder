@@ -1,0 +1,10 @@
+module Login
+
+-- The page `login` names: a route without `requires`, as a visitor sent to log in must open it.
+route Login = GET "/login" { }
+
+Login.load : Login.Params -> Session -> Query Unit
+Login.load params session = Query.succeed ()
+
+Login.view : Unit -> Session -> Html
+Login.view model session = <p>log in</p>

@@ -20,25 +20,10 @@ type Auth__Login__Credentials struct {
 	Password string
 }
 
-type Auth__Login__Params struct{}
+type Auth__Login__Login__Params struct{}
 
-type Auth__Login__SubmitParams struct {
+type Auth__Login__Submit__Params struct {
 	Form Auth__Login__Credentials
-}
-
-type Auth__Login__Msg struct {
-	Tag    tag__Auth__Login__Msg
-	Submit *Auth__Login__SubmitParams
-}
-
-type tag__Auth__Login__Msg uint8
-
-const (
-	is__Auth__Login__Msg__Submit tag__Auth__Login__Msg = 0
-)
-
-func Auth__Login__Msg__Submit__(v Auth__Login__SubmitParams) Auth__Login__Msg {
-	return Auth__Login__Msg{Tag: is__Auth__Login__Msg__Submit, Submit: &v}
 }
 
 // Cap__Auth__Login__Password is capability Password of module Auth.Login, implemented by
@@ -69,43 +54,38 @@ func (fake__Auth__Login__Password) Verify(ctx context.Context, args Args__Auth__
 	return eff.RunInner(env, fakeentry__Auth__Login__Password__Verify(args))
 }
 
-func Auth__Login__load(params Auth__Login__Params, session App__Session) eff.Query[Auth__Login__Model] {
+func Auth__Login__Login__load(params Auth__Login__Login__Params, session App__Session) eff.Query[Auth__Login__Model] {
 	return eff.Q(eff.Pure(Auth__Login__Model{}))
 }
 
-func Auth__Login__update(msg Auth__Login__Msg, model Auth__Login__Model, session App__Session) eff.Task[rt.Nav] {
-	switch msg.Tag {
-	case is__Auth__Login__Msg__Submit:
-		p := *msg.Submit
-		return eff.Bind(eff.Call("Password.verify", true, func(_e1 *eff.Env) (rt.Maybe[string], error) {
-			_c2, _ok3 := _e1.Caps["Auth.Login.Password"].(Cap__Auth__Login__Password)
-			if !_ok3 {
-				panic("alder: capability \"Auth.Login.Password\" is not wired")
-			}
-			_v4, _err5 := _c2.Verify(_e1.Ctx, struct {
-				Email    string
-				Password string
-			}{Email: p.Form.Email, Password: p.Form.Password})
-			return _v4, eff.CapError("Password.verify", _err5)
-		}), func(found rt.Maybe[string]) eff.Task[rt.Nav] {
-			if found.Ok {
-				id := found.Val
-				return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
-					return App__Session{User: rt.Just[string](id), Visits: s.Visits}
-				}), func(_ struct{}) eff.Task[rt.Nav] {
-					return eff.Pure(rt.Redirect(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}))
-				})
-			}
-			return eff.Pure(rt.Reject("Email or password is incorrect."))
-		})
-	}
-	panic("unreachable")
+func Auth__Login__Submit__update(p Auth__Login__Submit__Params, session App__Session) eff.Task[rt.Response] {
+	return eff.Bind(eff.Call("Password.verify", true, func(_e1 *eff.Env) (rt.Maybe[string], error) {
+		_c2, _ok3 := _e1.Caps["Auth.Login.Password"].(Cap__Auth__Login__Password)
+		if !_ok3 {
+			panic("alder: capability \"Auth.Login.Password\" is not wired")
+		}
+		_v4, _err5 := _c2.Verify(_e1.Ctx, struct {
+			Email    string
+			Password string
+		}{Email: p.Form.Email, Password: p.Form.Password})
+		return _v4, eff.CapError("Password.verify", _err5)
+	}), func(found rt.Maybe[string]) eff.Task[rt.Response] {
+		if found.Ok {
+			id := found.Val
+			return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
+				return App__Session{User: rt.Just[string](id), Visits: s.Visits}
+			}), func(_ struct{}) eff.Task[rt.Response] {
+				return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Notes.Index.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}))
+			})
+		}
+		return eff.Pure(std.ResponseInvalid("Email or password is incorrect."))
+	})
 }
 
-func Auth__Login__view(model Auth__Login__Model, session App__Session) html.Node {
+func Auth__Login__Login__view(model Auth__Login__Model, session App__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("h1", nil, html.Text("Log in")),
-		html.FormTo(rt.MsgRef{Module: "Auth.Login", Msg: "Submit"}, nil,
+		html.FormToRoute(rt.Route{Name: "Auth.Login.Submit", Method: "POST", Path: "/login/_/Submit"}, nil,
 			html.Input(html.Control{Kind: "errors", Form: "Auth.Login.Credentials"}),
 			html.Input(html.Control{Kind: "input", Form: "Auth.Login.Credentials", Name: "email", Type: "email", Label: "Email", Required: true}),
 			html.Input(html.Control{Kind: "errors", Form: "Auth.Login.Credentials", Name: "email"}),
@@ -134,7 +114,7 @@ func fakeentry__Auth__Login__Password__Verify(args struct {
 
 // test__Auth__Login__1 is test "a page that requires a user redirects to the login page" of module Auth.Login.
 func test__Auth__Login__1() eff.Task[bool] {
-	return eff.Bind(eff.Call("Test.open Notes.Index", true, func(_e1 *eff.Env) (struct {
+	return eff.Bind(eff.Call("Test.open Notes.Index.Index", true, func(_e1 *eff.Env) (struct {
 		Answer  rtesting.Answer
 		Session App__Session
 		Doc     rtesting.Doc
@@ -146,8 +126,8 @@ func test__Auth__Login__1() eff.Task[bool] {
 		Url    string
 		Status int64
 	}, error) {
-		var _p2 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
-		_u3 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p2.Filter.Tag], "All")}})
+		_m2 := Notes__Index__Index__Params{Filter: Note__Filter__All__}
+		_u3 := rt.RouteURL(rt.Route{Name: "Notes.Index.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_m2.Filter.Tag], "All")}})
 		_b4 := rtesting.BrowserOf(_e1)
 		_r5, _err6 := _b4.Open(_u3)
 		if _err6 != nil {
@@ -197,7 +177,7 @@ func test__Auth__Login__1() eff.Task[bool] {
 			Answer rtesting.Answer
 			Title  rt.Maybe[string]
 			User   rt.Maybe[string]
-		}{Answer: rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}, Title: rt.Just[string]("Log in"), User: rt.Nothing[string]()}))
+		}{Answer: rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Route{Name: "Auth.Login.Login", Method: "GET", Path: "/login"}}, Title: rt.Just[string]("Log in"), User: rt.Nothing[string]()}))
 	})
 }
 
@@ -213,7 +193,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 		return eff.Bind(eff.Call("Db.insert User", true, func(_e2 *eff.Env) (string, error) {
 			return db.InsertRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__User__User, insertvals__User__User(insert__User__User{Email: "me@example.com", Name: "Me"}), _e2.Now())
 		}), func(me string) eff.Task[bool] {
-			return eff.Bind(eff.Call("Test.get Auth.Login", true, func(_e3 *eff.Env) (struct {
+			return eff.Bind(eff.Call("Test.get Auth.Login.Login", true, func(_e3 *eff.Env) (struct {
 				Model   Auth__Login__Model
 				Session App__Session
 				Doc     rtesting.Doc
@@ -225,11 +205,11 @@ func test__Auth__Login__2() eff.Task[bool] {
 				Url    string
 				Status int64
 			}, error) {
-				_u5 := rt.PageURL(rt.Page{Path: "/login"})
-				_b6 := rtesting.BrowserOf(_e3)
-				_r7, _err8 := _b6.GetPage(_u5, "")
-				if _err8 != nil {
-					var _z9 struct {
+				_u4 := rt.RouteURL(rt.Route{Name: "Auth.Login.Login", Method: "GET", Path: "/login"})
+				_b5 := rtesting.BrowserOf(_e3)
+				_r6, _err7 := _b5.GetPage(_u4, "")
+				if _err7 != nil {
+					var _z8 struct {
 						Model   Auth__Login__Model
 						Session App__Session
 						Doc     rtesting.Doc
@@ -241,11 +221,11 @@ func test__Auth__Login__2() eff.Task[bool] {
 						Url    string
 						Status int64
 					}
-					return _z9, _err8
+					return _z8, _err7
 				}
-				_m10, _err8 := rtesting.ModelOf[Auth__Login__Model](_u5, _r7)
-				if _err8 != nil {
-					var _z11 struct {
+				_m9, _err7 := rtesting.ModelOf[Auth__Login__Model](_u4, _r6)
+				if _err7 != nil {
+					var _z10 struct {
 						Model   Auth__Login__Model
 						Session App__Session
 						Doc     rtesting.Doc
@@ -257,7 +237,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 						Url    string
 						Status int64
 					}
-					return _z11, _err8
+					return _z10, _err7
 				}
 				return struct {
 					Model   Auth__Login__Model
@@ -270,7 +250,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 					}
 					Url    string
 					Status int64
-				}{Model: _m10, Session: rtesting.SessionOf[App__Session](_r7.Session), Doc: rtesting.DocOf(_r7.Doc), Notices: _r7.Notices, Toasts: _r7.Toasts, Url: _r7.URL, Status: _r7.Status}, nil
+				}{Model: _m9, Session: rtesting.SessionOf[App__Session](_r6.Session), Doc: rtesting.DocOf(_r6.Doc), Notices: _r6.Notices, Toasts: _r6.Toasts, Url: _r6.URL, Status: _r6.Status}, nil
 			}), func(_ struct {
 				Model   Auth__Login__Model
 				Session App__Session
@@ -283,7 +263,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 				Url    string
 				Status int64
 			}) eff.Task[bool] {
-				return eff.Bind(eff.Call("Test.submit Credentials", true, func(_e12 *eff.Env) (struct {
+				return eff.Bind(eff.Call("Test.submit Credentials", true, func(_e11 *eff.Env) (struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
@@ -295,9 +275,9 @@ func test__Auth__Login__2() eff.Task[bool] {
 					Url    string
 					Status int64
 				}, error) {
-					_r13, _err14 := rtesting.BrowserOf(_e12).SubmitForm("/_m/Auth.Login/Submit", "Credentials", encode__Auth__Login__Credentials(Auth__Login__Credentials{Email: "me@example.com", Password: "nope"}))
-					if _err14 != nil {
-						var _z15 struct {
+					_r12, _err13 := rtesting.BrowserOf(_e11).SubmitRoute(rt.Route{Name: "Auth.Login.Submit", Method: "POST", Path: "/login/_/Submit"}, "Credentials", encode__Auth__Login__Credentials(Auth__Login__Credentials{Email: "me@example.com", Password: "nope"}))
+					if _err13 != nil {
+						var _z14 struct {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
@@ -309,7 +289,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 							Url    string
 							Status int64
 						}
-						return _z15, _err14
+						return _z14, _err13
 					}
 					return struct {
 						Answer  rtesting.Answer
@@ -322,7 +302,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 						}
 						Url    string
 						Status int64
-					}{Answer: _r13.Answer, Session: rtesting.SessionOf[App__Session](_r13.Session), Doc: rtesting.DocOf(_r13.Doc), Notices: _r13.Notices, Toasts: _r13.Toasts, Url: _r13.URL, Status: _r13.Status}, nil
+					}{Answer: _r12.Answer, Session: rtesting.SessionOf[App__Session](_r12.Session), Doc: rtesting.DocOf(_r12.Doc), Notices: _r12.Notices, Toasts: _r12.Toasts, Url: _r12.URL, Status: _r12.Status}, nil
 				}), func(wrong struct {
 					Answer  rtesting.Answer
 					Session App__Session
@@ -335,7 +315,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 					Url    string
 					Status int64
 				}) eff.Task[bool] {
-					return eff.Bind(eff.Call("Test.submit Credentials", true, func(_e16 *eff.Env) (struct {
+					return eff.Bind(eff.Call("Test.submit Credentials", true, func(_e15 *eff.Env) (struct {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
@@ -347,9 +327,9 @@ func test__Auth__Login__2() eff.Task[bool] {
 						Url    string
 						Status int64
 					}, error) {
-						_r17, _err18 := rtesting.BrowserOf(_e16).SubmitForm("/_m/Auth.Login/Submit", "Credentials", encode__Auth__Login__Credentials(Auth__Login__Credentials{Email: "me@example.com", Password: "secret"}))
-						if _err18 != nil {
-							var _z19 struct {
+						_r16, _err17 := rtesting.BrowserOf(_e15).SubmitRoute(rt.Route{Name: "Auth.Login.Submit", Method: "POST", Path: "/login/_/Submit"}, "Credentials", encode__Auth__Login__Credentials(Auth__Login__Credentials{Email: "me@example.com", Password: "secret"}))
+						if _err17 != nil {
+							var _z18 struct {
 								Answer  rtesting.Answer
 								Session App__Session
 								Doc     rtesting.Doc
@@ -361,7 +341,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 								Url    string
 								Status int64
 							}
-							return _z19, _err18
+							return _z18, _err17
 						}
 						return struct {
 							Answer  rtesting.Answer
@@ -374,7 +354,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 							}
 							Url    string
 							Status int64
-						}{Answer: _r17.Answer, Session: rtesting.SessionOf[App__Session](_r17.Session), Doc: rtesting.DocOf(_r17.Doc), Notices: _r17.Notices, Toasts: _r17.Toasts, Url: _r17.URL, Status: _r17.Status}, nil
+						}{Answer: _r16.Answer, Session: rtesting.SessionOf[App__Session](_r16.Session), Doc: rtesting.DocOf(_r16.Doc), Notices: _r16.Notices, Toasts: _r16.Toasts, Url: _r16.URL, Status: _r16.Status}, nil
 					}), func(right struct {
 						Answer  rtesting.Answer
 						Session App__Session
@@ -405,7 +385,7 @@ func test__Auth__Login__2() eff.Task[bool] {
 						}{struct {
 							Field   string
 							Message string
-						}{Field: "", Message: "Email or password is incorrect."}}), WrongUser: rt.Nothing[string](), Right: rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}}, User: rt.Just[string](me), Title: rt.Just[string]("Notes")}))
+						}{Field: "", Message: "Email or password is incorrect."}}), WrongUser: rt.Nothing[string](), Right: rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Route{Name: "Notes.Index.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}}, User: rt.Just[string](me), Title: rt.Just[string]("Notes")}))
 					})
 				})
 			})
@@ -425,7 +405,7 @@ func test__Auth__Login__3() eff.Task[bool] {
 			}
 			return struct{}{}, nil
 		}), func(_ struct{}) eff.Task[bool] {
-			return eff.Bind(eff.Call("Test.open Notes.Index", true, func(_e4 *eff.Env) (struct {
+			return eff.Bind(eff.Call("Test.open Notes.Index.Index", true, func(_e4 *eff.Env) (struct {
 				Answer  rtesting.Answer
 				Session App__Session
 				Doc     rtesting.Doc
@@ -437,8 +417,8 @@ func test__Auth__Login__3() eff.Task[bool] {
 				Url    string
 				Status int64
 			}, error) {
-				var _p5 Notes__Index__Params = Notes__Index__Params{Filter: Note__Filter__All__}
-				_u6 := rt.PageURL(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_p5.Filter.Tag], "All")}})
+				_m5 := Notes__Index__Index__Params{Filter: Note__Filter__All__}
+				_u6 := rt.RouteURL(rt.Route{Name: "Notes.Index.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[_m5.Filter.Tag], "All")}})
 				_b7 := rtesting.BrowserOf(_e4)
 				_r8, _err9 := _b7.Open(_u6)
 				if _err9 != nil {
@@ -492,7 +472,7 @@ func test__Auth__Login__3() eff.Task[bool] {
 					Url    string
 					Status int64
 				}, error) {
-					_r12, _err13 := rtesting.BrowserOf(_e11).ClickMsg(rt.MsgURL("App", "Logout"), rtesting.MsgName("App.Logout", nil))
+					_r12, _err13 := rtesting.BrowserOf(_e11).ClickRoute(rt.Route{Name: "App.Logout", Method: "POST", Path: "/_/Logout"}, rtesting.MsgName("App.Logout", nil))
 					if _err13 != nil {
 						var _z14 struct {
 							Answer  rtesting.Answer
@@ -540,7 +520,7 @@ func test__Auth__Login__3() eff.Task[bool] {
 						Shown rtesting.Answer
 						Out   rtesting.Answer
 						User  rt.Maybe[string]
-					}{Shown: rtesting.Answer{Tag: rtesting.Shown}, Out: rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}, User: rt.Nothing[string]()}))
+					}{Shown: rtesting.Answer{Tag: rtesting.Shown}, Out: rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Route{Name: "Auth.Login.Login", Method: "GET", Path: "/login"}}, User: rt.Nothing[string]()}))
 				})
 			})
 		})

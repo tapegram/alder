@@ -13,19 +13,20 @@ import (
 	"strings"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every message of the
-// pages and of App (POST), in module order.
+// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
+// write routes, in declaration order), then every message of the pages and of App (POST), in module
+// order.
 var Routes = []web.Route{
-	Route__Edit__page(),
-	Route__Other__page(),
-	Route__Secret__page(),
+	Route__Edit__Edit(),
 	Route__Edit__Save(),
 	Route__Edit__Ping(),
+	Route__Other__Other(),
+	Route__Secret__Secret(),
 }
 
-// decode__Edit__Params decodes page Edit's parameters: the path's from params, the others from q. A
-// parameter that does not decode is an error (the route answers 404).
-func decode__Edit__Params(params map[string]string, _ url.Values) (r Edit__Params, errs []web.FieldError) {
+// decode__Edit__Edit__Params decodes route Edit.Edit's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Edit__Edit__Params(params map[string]string, _ url.Values) (r Edit__Edit__Params, errs []web.FieldError) {
 	pv := url.Values{}
 	for k, v := range params {
 		pv[k] = []string{v}
@@ -40,12 +41,54 @@ func decode__Edit__Params(params map[string]string, _ url.Values) (r Edit__Param
 	return r, errs
 }
 
-// decode__Edit__SaveParams decodes the parameters of message Save from its URL's query q; the form
-// is decoded apart. A parameter that does not decode is an error (the route answers 404).
-func decode__Edit__SaveParams(q url.Values) (r Edit__SaveParams, errs []web.FieldError) {
-	if s, _ := web.Text(q, "n", false); strings.TrimSpace(s) == "" {
+// page__Edit__Edit runs route Edit.Edit for rq up to its model: load (with params and the session
+// of rq.Env). It returns the model and the session view and update take, or the response that ends
+// the request, which stores keep (the session a successful update left, or nil).
+func page__Edit__Edit(rq *web.Request, params Edit__Edit__Params, keep any) (Edit__Model, App__Session, *web.Response) {
+	session := rq.Env.Session.(App__Session)
+	model, err := eff.RunQuery(rq.Env, Edit__Edit__load(params, session))
+	if err != nil {
+		r := route__fail(err)
+		r.Session = keep
+		return model, session, &r
+	}
+	return model, session, nil
+}
+
+// params__Edit__Edit are route Edit.Edit's parameters as text (html.FormState.PageParams), for the
+// posted form's state its view renders with when a write renders it again.
+func params__Edit__Edit(p Edit__Edit__Params) []rt.KV {
+	return []rt.KV{{Key: "n", Value: std.TextFromInt(p.N)}}
+}
+
+// Route__Edit__Edit serves route Edit.Edit, GET /edit/{n}: decode the parameters (404 when they do
+// not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
+// in rq.Model, which a test's browser reads).
+func Route__Edit__Edit() web.Route {
+	return web.Route{Method: "GET", Pattern: "/edit/{n}", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Edit__Edit__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		model, session, stop := page__Edit__Edit(rq, params, nil)
+		if stop != nil {
+			return *stop
+		}
+		rq.Model = model
+		return web.PageResponse(Edit__Edit__view(model, session), web.WithPageParams(rq.FormState, params__Edit__Edit(params)), rq.Session, false)
+	}}
+}
+
+// decode__Edit__Save__Params decodes route Edit.Save's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Edit__Save__Params(params map[string]string, _ url.Values) (r Edit__Save__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, _ := web.Text(pv, "n", false); strings.TrimSpace(s) == "" {
 		errs = append(errs, web.Missing("n"))
-	} else if x, msg := web.Int(q, "n"); msg != "" {
+	} else if x, msg := web.Int(pv, "n"); msg != "" {
 		errs = append(errs, web.FieldError{Field: "n", Message: msg})
 	} else {
 		r.N = x
@@ -71,134 +114,98 @@ func decode__Edit__Note(v url.Values) (r Edit__Note, errs []web.FieldError) {
 	return r, errs
 }
 
-// page__Edit runs page Edit for rq up to its model: load (with params and the session of rq.Env).
-// It returns the model and the session view and update take, or the response that ends the request,
-// which stores keep (the session a successful update left, or nil).
-func page__Edit(rq *web.Request, params Edit__Params, keep any) (Edit__Model, App__Session, *web.Response) {
-	session := rq.Env.Session.(App__Session)
-	model, err := eff.RunQuery(rq.Env, Edit__load(params, session))
-	if err != nil {
-		r := route__fail(err)
-		r.Session = keep
-		return model, session, &r
-	}
-	return model, session, nil
-}
-
-// params__Edit are page Edit's parameters as text for its message URLs (html.FormState.PageParams):
-// each message route decodes them back from the URL's _p. keys.
-func params__Edit(p Edit__Params) []rt.KV {
-	return []rt.KV{{Key: "n", Value: std.TextFromInt(p.N)}}
-}
-
-// update__Edit runs page Edit's update for msg and answers its Nav (book 06): load, update (a Task,
-// whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on a form
-// (st, the state of the form that sent the message; nil for a message without one) load and view
-// again with t on the form (patched into the page under Datastar); for Rerender (and a Reject
-// without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh
-// does not post again). A failed Task changes nothing: 500 (App.error), 404 for Query.notFound or
-// Task.notFound, or a 303 for Query.redirect.
-func update__Edit(rq *web.Request, params Edit__Params, msg Edit__Msg, st *html.FormState) web.Response {
-	model, session, stop := page__Edit(rq, params, nil)
-	if stop != nil {
-		return *stop
-	}
-	model0, session0 := model, session // the page the client shows: Before
-	nav, err := eff.Run(rq.Env, eff.KTask, Edit__update(msg, model, session))
-	if err != nil {
-		return route__fail(err)
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	switch {
-	case nav.Tag == rt.NavRedirect:
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	case nav.Tag == rt.NavReject && st != nil:
-		st.FormError = nav.Text
-	case !rq.Datastar:
-		return web.RedirectResponse(rt.PageAt("/edit/{n}", params__Edit(params)), rq.Env.Session)
-	default:
-		st = &html.FormState{}
-	}
-	st.PageParams = params__Edit(params)
-	model, session, stop = page__Edit(rq, params, rq.Env.Session)
-	if stop != nil {
-		return *stop
-	}
-	return web.PageResponse(Edit__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Edit__view(model0, session0) })
-}
-
-// Route__Edit__page serves page Edit, GET /edit/{n} (book 06): decode the parameters (404 when they
-// do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model
-// also in rq.Model, which a test's browser reads).
-func Route__Edit__page() web.Route {
-	return web.Route{Method: "GET", Pattern: "/edit/{n}", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Edit__Params(rq.Params, rq.Query)
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		model, session, stop := page__Edit(rq, params, nil)
-		if stop != nil {
-			return *stop
-		}
-		rq.Model = model
-		return web.PageResponse(Edit__view(model, session), &html.FormState{PageParams: params__Edit(params)}, rq.Session, false)
-	}}
-}
-
-// Route__Edit__Save serves message Save of page Edit, POST /_m/Edit/Save (book 06): decode the
-// page's parameters (the message URL's _p. keys, which the rendered page put there) and the
-// message's (from the query): 404 when they do not decode; decode form Note from the body: when it
-// does not, re-render the page with the submitted values (no Text.Secret field) and the errors,
-// without calling update; then update__Edit.
+// Route__Edit__Save serves route Edit.Save, POST /edit/{n}/_/Save: decode the parameters (404 when
+// they do not); decode form Note from the body (when it does not: 422, the page the browser is on
+// rendered again with the submitted values, no Text.Secret field, and the errors, without calling
+// update); render the page the browser is on before the update (refresh and invalid are diffed
+// against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
+// or Task.notFound, 303 for Query.redirect).
 func Route__Edit__Save() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Edit/Save", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Edit__Params(rt.PageParams(rq.Query))
+	return web.Route{Method: "POST", Pattern: "/edit/{n}/_/Save", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Edit__Save__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		p, errs := decode__Edit__SaveParams(rq.Query)
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
+		session := rq.Env.Session.(App__Session)
+		key := rt.RouteKey(rt.Route{Name: "Edit.Save", Method: "POST", Path: rt.Concat("/edit/", rt.PathSegment(std.TextFromInt(params.N)), "/_/Save")})
 		values := route__values(rq.Form)
 		form, errs := decode__Edit__Note(rq.Form)
 		if errs != nil {
-			model, session, stop := page__Edit(rq, params, nil)
-			if stop != nil {
-				return *stop
+			resp := web.InvalidResponse(&html.FormState{Form: "Edit.Note", Msg: key, Values: values, Errors: route__errors(errs)}, nil)
+			if rq.Datastar {
+				resp.Shown, _ = rq.RenderShown(nil)
 			}
-			return web.PageResponse(Edit__view(model, session), &html.FormState{Form: "Edit.Note", Msg: rt.MsgKey("/_m/Edit/Save", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Edit(params)}, nil, true).WithBefore(func() html.Node { return Edit__view(model, session) })
+			return resp
 		}
-		p.Form = form
-		return update__Edit(rq, params, Edit__Msg__Save__(p), &html.FormState{Form: "Edit.Note", Msg: rt.MsgKey("/_m/Edit/Save", rq.Query), Values: values})
+		params.Form = form
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Edit__Save__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		ans := web.AnswerResponse(resp, before, rq.Env.Session)
+		if resp.Kind == rt.RespInvalid {
+			ans.State = &html.FormState{Form: "Edit.Note", Msg: key, Values: values}
+		}
+		return ans
 	}}
 }
 
-// Route__Edit__Ping serves message Ping of page Edit, POST /_m/Edit/Ping (book 06): decode the
-// page's parameters (the message URL's _p. keys, which the rendered page put there): 404 when they
-// do not decode; then update__Edit.
-func Route__Edit__Ping() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Edit/Ping", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Edit__Params(rt.PageParams(rq.Query))
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		return update__Edit(rq, params, Edit__Msg__Ping__, nil)
-	}}
-}
-
-// decode__Other__Params decodes page Other's parameters: the path's from params, the others from q.
-// A parameter that does not decode is an error (the route answers 404).
-func decode__Other__Params(_ map[string]string, _ url.Values) (r Other__Params, errs []web.FieldError) {
+// decode__Edit__Ping__Params decodes route Edit.Ping's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Edit__Ping__Params(params map[string]string, _ url.Values) (r Edit__Ping__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, _ := web.Text(pv, "n", false); strings.TrimSpace(s) == "" {
+		errs = append(errs, web.Missing("n"))
+	} else if x, msg := web.Int(pv, "n"); msg != "" {
+		errs = append(errs, web.FieldError{Field: "n", Message: msg})
+	} else {
+		r.N = x
+	}
 	return r, errs
 }
 
-// page__Other runs page Other for rq up to its model: load (with params and the session of rq.Env).
-// It returns the model and the session view and update take, or the response that ends the request,
-// which stores keep (the session a successful update left, or nil).
-func page__Other(rq *web.Request, params Other__Params, keep any) (Other__Model, App__Session, *web.Response) {
+// Route__Edit__Ping serves route Edit.Ping, POST /edit/{n}/_/Ping: decode the parameters (404 when
+// they do not); render the page the browser is on before the update (refresh and invalid are diffed
+// against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
+// or Task.notFound, 303 for Query.redirect).
+func Route__Edit__Ping() web.Route {
+	return web.Route{Method: "POST", Pattern: "/edit/{n}/_/Ping", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Edit__Ping__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		session := rq.Env.Session.(App__Session)
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Edit__Ping__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
+	}}
+}
+
+// decode__Other__Other__Params decodes route Other.Other's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Other__Other__Params(_ map[string]string, _ url.Values) (r Other__Other__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// page__Other__Other runs route Other.Other for rq up to its model: load (with params and the
+// session of rq.Env). It returns the model and the session view and update take, or the response
+// that ends the request, which stores keep (the session a successful update left, or nil).
+func page__Other__Other(rq *web.Request, params Other__Other__Params, keep any) (Other__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
-	model, err := eff.RunQuery(rq.Env, Other__load(params, session))
+	model, err := eff.RunQuery(rq.Env, Other__Other__load(params, session))
 	if err != nil {
 		r := route__fail(err)
 		r.Session = keep
@@ -207,49 +214,49 @@ func page__Other(rq *web.Request, params Other__Params, keep any) (Other__Model,
 	return model, session, nil
 }
 
-// params__Other are page Other's parameters as text for its message URLs
-// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
-func params__Other(_ Other__Params) []rt.KV {
+// params__Other__Other are route Other.Other's parameters as text (html.FormState.PageParams), for
+// the posted form's state its view renders with when a write renders it again.
+func params__Other__Other(_ Other__Other__Params) []rt.KV {
 	return nil
 }
 
-// Route__Other__page serves page Other, GET /other (book 06): decode the parameters (404 when they
-// do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model
-// also in rq.Model, which a test's browser reads).
-func Route__Other__page() web.Route {
+// Route__Other__Other serves route Other.Other, GET /other: decode the parameters (404 when they do
+// not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
+// in rq.Model, which a test's browser reads).
+func Route__Other__Other() web.Route {
 	return web.Route{Method: "GET", Pattern: "/other", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Other__Params(rq.Params, rq.Query)
+		params, errs := decode__Other__Other__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Other(rq, params, nil)
+		model, session, stop := page__Other__Other(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Other__view(model, session), &html.FormState{PageParams: params__Other(params)}, rq.Session, false)
+		return web.PageResponse(Other__Other__view(model, session), web.WithPageParams(rq.FormState, params__Other__Other(params)), rq.Session, false)
 	}}
 }
 
-// decode__Secret__Params decodes page Secret's parameters: the path's from params, the others from
-// q. A parameter that does not decode is an error (the route answers 404).
-func decode__Secret__Params(_ map[string]string, _ url.Values) (r Secret__Params, errs []web.FieldError) {
+// decode__Secret__Secret__Params decodes route Secret.Secret's parameters: the path's from params,
+// the others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Secret__Secret__Params(_ map[string]string, _ url.Values) (r Secret__Secret__Params, errs []web.FieldError) {
 	return r, errs
 }
 
-// page__Secret runs page Secret for rq up to its model: `requires user` (a 303 to App.login,
-// storing keep, when the session's user is Nothing), then load (with params and the narrowed
-// session). It returns the model and the session view and update take, or the response that ends
-// the request, which stores keep (the session a successful update left, or nil).
-func page__Secret(rq *web.Request, params Secret__Params, keep any) (Secret__Model, Secret__Session, *web.Response) {
+// page__Secret__Secret runs route Secret.Secret for rq up to its model: `requires user` (a 303 to
+// App.login, storing keep, when the session's user is Nothing), then load (with params and the
+// narrowed session). It returns the model and the session view and update take, or the response
+// that ends the request, which stores keep (the session a successful update left, or nil).
+func page__Secret__Secret(rq *web.Request, params Secret__Secret__Params, keep any) (Secret__Model, Secret__Secret__Session, *web.Response) {
 	var model Secret__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
 		r := web.RedirectResponse(rq.Login, keep)
-		return model, Secret__Session{}, &r
+		return model, Secret__Secret__Session{}, &r
 	}
-	session := Secret__Session{User: app.User.Val, Visits: app.Visits}
-	model, err := eff.RunQuery(rq.Env, Secret__load(params, session))
+	session := Secret__Secret__Session{User: app.User.Val, Visits: app.Visits}
+	model, err := eff.RunQuery(rq.Env, Secret__Secret__load(params, session))
 	if err != nil {
 		r := route__fail(err)
 		r.Session = keep
@@ -258,27 +265,27 @@ func page__Secret(rq *web.Request, params Secret__Params, keep any) (Secret__Mod
 	return model, session, nil
 }
 
-// params__Secret are page Secret's parameters as text for its message URLs
-// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
-func params__Secret(_ Secret__Params) []rt.KV {
+// params__Secret__Secret are route Secret.Secret's parameters as text (html.FormState.PageParams),
+// for the posted form's state its view renders with when a write renders it again.
+func params__Secret__Secret(_ Secret__Secret__Params) []rt.KV {
 	return nil
 }
 
-// Route__Secret__page serves page Secret, GET /secret (book 06): decode the parameters (404 when
+// Route__Secret__Secret serves route Secret.Secret, GET /secret: decode the parameters (404 when
 // they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect,
 // 500 on a failure), view (the model also in rq.Model, which a test's browser reads).
-func Route__Secret__page() web.Route {
+func Route__Secret__Secret() web.Route {
 	return web.Route{Method: "GET", Pattern: "/secret", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Secret__Params(rq.Params, rq.Query)
+		params, errs := decode__Secret__Secret__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Secret(rq, params, nil)
+		model, session, stop := page__Secret__Secret(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Secret__view(model, session), &html.FormState{PageParams: params__Secret(params)}, rq.Session, false)
+		return web.PageResponse(Secret__Secret__view(model, session), web.WithPageParams(rq.FormState, params__Secret__Secret(params)), rq.Session, false)
 	}}
 }
 

@@ -48,8 +48,7 @@ func (c Caps) Registry() map[string]any {
 
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
-	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{"Logout"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Index__Msg(0)), []string{"Add", "Toggle", "Remove", "Notify"})
+	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that
@@ -163,8 +162,8 @@ func Web() web.Options {
 		Session:     session__codec{},
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
-		Login:       "/pair/{a}/{b}",
-		DevMap:      "{\"pages\":[{\"module\":\"Index\",\"path\":\"/pair/{a}/{b}\",\"requires\":\"user\",\"params\":[\"a: Text\",\"b: Text\"],\"msgs\":[\"Add\",\"Toggle\",\"Remove\",\"Notify\"]}],\"tables\":[{\"name\":\"Todo.Todo\",\"sql\":\"Todo__Todo\",\"columns\":[\"id: Text\",\"title: Text\",\"done: Bool\",\"due: Maybe Date\",\"owner: Text\",\"created: Time\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"title\",\"type\":\"Text\",\"sql\":\"title\",\"sqlType\":\"TEXT\"},{\"name\":\"done\",\"type\":\"Bool\",\"sql\":\"done\",\"sqlType\":\"INTEGER\"},{\"name\":\"due\",\"type\":\"Maybe Date\",\"sql\":\"due\",\"sqlType\":\"TEXT\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"},{\"name\":\"created\",\"type\":\"Time\",\"sql\":\"created\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"created\":\"created\"}],\"caps\":[\"Index.Mailer\",\"Todo.Stats\"],\"session\":[\"user: Maybe Text\",\"theme: Text\"],\"appMsgs\":[\"Logout\"]}",
+		Login:       "/login",
+		DevMap:      "{\"pages\":[],\"tables\":[{\"name\":\"Todo.Todo\",\"sql\":\"Todo__Todo\",\"columns\":[\"id: Text\",\"title: Text\",\"done: Bool\",\"due: Maybe Date\",\"owner: Text\",\"created: Time\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"title\",\"type\":\"Text\",\"sql\":\"title\",\"sqlType\":\"TEXT\"},{\"name\":\"done\",\"type\":\"Bool\",\"sql\":\"done\",\"sqlType\":\"INTEGER\"},{\"name\":\"due\",\"type\":\"Maybe Date\",\"sql\":\"due\",\"sqlType\":\"TEXT\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"},{\"name\":\"created\",\"type\":\"Time\",\"sql\":\"created\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"created\":\"created\"}],\"caps\":[\"Index.Mailer\",\"Todo.Stats\"],\"session\":[\"user: Maybe Text\",\"theme: Text\"]}",
 	}
 }
 

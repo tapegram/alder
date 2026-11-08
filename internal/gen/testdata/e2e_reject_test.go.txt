@@ -1,9 +1,9 @@
 package app
 
 // TestE2E_RejectKeepsWrites (M3c Task 5): gen_vet/m3c-reject's Names.Add inserts a row, stores
-// the session and answers Reject "taken". Reject is a successful Task: the insert is committed,
-// the session stored, and the page re-rendered (200) with the rejection on the form that sent
-// the message. internal/gen's TestE2E_RejectKeepsWrites writes this file into the module the
+// the session and answers Response.invalid "taken". invalid is a successful Task: the insert is
+// committed, the session stored, and the page the browser is on rendered again (422) with the
+// text on the form that was posted. internal/gen's TestE2E_RejectKeepsWrites writes this file into the module the
 // app is emitted to and runs it.
 
 import (
@@ -99,20 +99,20 @@ func TestE2E_RejectKeepsWrites(t *testing.T) {
 		t.Fatalf("GET / stored the session: %q", sc)
 	}
 
-	// post to the URL the form renders (no Referer: a page message carries its page's params)
+	// post to the URL the form renders (no Referer: the page shown again is then "/", the form's)
 	m := regexp.MustCompile(`action="([^"]*)"`).FindStringSubmatch(body)
 	if m == nil {
 		t.Fatalf("no form action:\n%s", body)
 	}
 	add := html.UnescapeString(m[1])
-	if !strings.HasPrefix(add, "/_m/Names/Add") {
+	if !strings.HasPrefix(add, "/_/Add") {
 		t.Fatalf("form action %q", add)
 	}
 	res, body = do("POST", add, url.Values{"name": {"ann"}})
-	if res.StatusCode != 200 || res.Header.Get("Content-Type") != "text/html; charset=utf-8" {
+	if res.StatusCode != 422 || res.Header.Get("Content-Type") != "text/html; charset=utf-8" {
 		t.Fatalf("Add = %d %q:\n%s", res.StatusCode, res.Header.Get("Content-Type"), body)
 	}
-	// the rejection on the form, the submitted value kept, the row inserted by the same Task
+	// the text on the form, the submitted value kept, the row inserted by the same Task
 	has(body, `<ul class="errors" data-errors="form"><li>taken</li></ul>`, `value="ann"`, `<ul id="names"><li>ann</li></ul>`, `<p id="adds">1</p>`)
 	if s := session(res); s.N != 1 {
 		t.Fatalf("n after Add = %d, want 1", s.N)
@@ -130,7 +130,7 @@ func TestE2E_RejectKeepsWrites(t *testing.T) {
 
 	// a form error: update does not run, nothing is written, the session is not stored
 	res, body = do("POST", add, url.Values{"name": {""}})
-	if res.StatusCode != 200 {
+	if res.StatusCode != 422 {
 		t.Fatalf("Add with an empty name = %d:\n%s", res.StatusCode, body)
 	}
 	has(body, `<ul class="errors" data-errors="name"><li>must not be empty</li></ul>`, `<ul class="errors" data-errors="form"></ul>`, `<ul id="names"><li>ann</li><li>bob</li></ul>`, `<p id="adds">2</p>`)
@@ -149,7 +149,7 @@ func TestE2E_RejectKeepsWrites(t *testing.T) {
 	// Datastar posts on click (preventing the form's submission). Without JavaScript the browser
 	// posts the form's fields there; App.Reset has no form and ignores them: a 303 back to the
 	// page, the session reset
-	has(body, `<button type="submit" formaction="/_m/App/Reset" formmethod="post" formnovalidate data-on:click__prevent="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Reset&#39;, window._alderO?.()))">Reset</button></form>`)
+	has(body, `<button type="submit" formaction="/_/Reset" formmethod="post" formnovalidate data-on:click__prevent="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_/Reset&#39;, window._alderO?.()))">Reset</button></form>`)
 	fm := regexp.MustCompile(`formaction="([^"]*)"`).FindStringSubmatch(body)
 	if fm == nil {
 		t.Fatalf("no formaction:\n%s", body)
@@ -165,12 +165,13 @@ func TestE2E_RejectKeepsWrites(t *testing.T) {
 	has(body, `<ul id="names"><li>ann</li><li>bob</li></ul>`, `<p id="adds">0</p>`)
 }
 
-// TestE2E_AppRerenderToReferer: gen_vet/m3c-reject's App.Reset answers Rerender. App has no page
-// of its own, so the runtime sends the browser back to the page that posted the message: the
-// Referer's path and query. Under Datastar that is a navigation event (a script assigning
-// window.location); without it, a 303. An off-site Referer keeps only its path and query (never
-// a redirect out of the app), and a missing or protocol-relative one goes to "/".
-func TestE2E_AppRerenderToReferer(t *testing.T) {
+// TestE2E_AppRefreshToReferer: gen_vet/m3c-reject's App.Reset answers Response.refresh: the page
+// the browser is on, the Referer's path and query, again. Without Datastar that is a 303 there;
+// under Datastar the page is run again and its body patched in when a GET route of the app
+// matches it, and a navigation (a script assigning window.location) when none does. An off-site
+// Referer keeps only its path and query (never a redirect out of the app), and a missing or
+// protocol-relative one goes to "/".
+func TestE2E_AppRefreshToReferer(t *testing.T) {
 	h, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true, Secret: []byte("test-secret-0123456789")})
 	if err != nil {
 		t.Fatal(err)
@@ -181,7 +182,7 @@ func TestE2E_AppRerenderToReferer(t *testing.T) {
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	reset := func(hdr ...string) (*http.Response, string) {
 		t.Helper()
-		req, _ := http.NewRequest("POST", srv.URL+"/_m/App/Reset", nil)
+		req, _ := http.NewRequest("POST", srv.URL+"/_/Reset", nil)
 		for _, h := range hdr {
 			k, v, _ := strings.Cut(h, ": ")
 			req.Header.Set(k, v)
@@ -204,31 +205,43 @@ func TestE2E_AppRerenderToReferer(t *testing.T) {
 			t.Fatalf("Reset %q stored no session", hdr)
 		}
 	}
-	navigate := func(loc string, hdr ...string) {
+	datastar := func(hdr ...string) string {
 		t.Helper()
 		res, body := reset(append(hdr, "Datastar-Request: true")...)
-		// a page of this app: the router serves it and answers with its morph and a history
-		// push of loc (M13 boosted navigation)
-		j, _ := json.Marshal(loc)
-		push := `<script data-effect="el.remove()">(function(){var u=` + string(j) + `;`
-		if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "text/event-stream" || res.Header.Get("Location") != "" ||
-			!strings.HasPrefix(body, "event: datastar-patch-elements\ndata: selector body\ndata: mode outer\ndata: elements <body>") || !strings.Contains(body, push) {
-			t.Fatalf("Reset (Datastar) %q = %d %q Location %q:\n%q\nwant a navigation to %s", hdr, res.StatusCode, res.Header.Get("Content-Type"), res.Header.Get("Location"), body, loc)
+		if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "text/event-stream" || res.Header.Get("Location") != "" {
+			t.Fatalf("Reset (Datastar) %q = %d %q Location %q:\n%q", hdr, res.StatusCode, res.Header.Get("Content-Type"), res.Header.Get("Location"), body)
 		}
 		if !strings.HasPrefix(res.Header.Get("Set-Cookie"), "alder_session=") {
 			t.Fatalf("Reset (Datastar) %q stored no session", hdr)
 		}
+		return body
 	}
-
+	// a page of this app: run again, its body patched in; the browser stays on it
+	patched := func(hdr ...string) {
+		t.Helper()
+		body := datastar(hdr...)
+		if !strings.HasPrefix(body, "event: datastar-patch-elements\ndata: selector body\ndata: mode outer\ndata: elements <body>") ||
+			!strings.Contains(body, `<p id="adds">0</p>`) || strings.Contains(body, "location") {
+			t.Fatalf("Reset (Datastar) %q:\n%q\nwant the page's body patched in", hdr, body)
+		}
+	}
+	// a path no route of this app matches: a navigation there
+	assigned := func(loc string, hdr ...string) {
+		t.Helper()
+		j, _ := json.Marshal(loc)
+		if body := datastar(hdr...); !strings.Contains(body, "window.location.assign("+string(j)+")") {
+			t.Fatalf("Reset (Datastar) %q:\n%q\nwant a navigation to %s", hdr, body, loc)
+		}
+	}
 	// the Referer's path and query
 	back("/?filter=Active", "Referer: "+srv.URL+"/?filter=Active")
-	navigate("/?filter=Active", "Referer: "+srv.URL+"/?filter=Active")
+	patched("Referer: " + srv.URL + "/?filter=Active")
 	// an off-site Referer: its path and query only, on this app
 	back("/steal?x=1", "Referer: https://evil.example/steal?x=1")
-	navigate("/steal?x=1", "Referer: https://evil.example/steal?x=1")
+	assigned("/steal?x=1", "Referer: https://evil.example/steal?x=1")
 	// a path that a browser would read as another host, and no Referer at all: "/"
 	back("/", "Referer: https://evil.example//evil.example/x")
-	navigate("/", "Referer: https://evil.example//evil.example/x")
+	patched("Referer: https://evil.example//evil.example/x")
 	back("/")
-	navigate("/")
+	patched()
 }

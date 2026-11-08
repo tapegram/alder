@@ -1,8 +1,6 @@
 module App
 
-msg Go
+route Go = POST "/_/Go" { }
 
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Go -> Task.succeed Nowhere,
-}
+Go.update : Go.Params -> Session -> Task Response
+Go.update params session = Task.succeed Nowhere

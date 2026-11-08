@@ -20,54 +20,35 @@ type Index__Model struct {
 	First rt.Maybe[Todo__Todo]
 }
 
-type Index__Params struct {
+type Index__Index__Params struct {
 	A string
 	B string
 }
 
-type Index__AddParams struct {
+type Index__Add__Params struct {
+	A     string
+	B     string
 	Title string
 }
 
-type Index__ToggleParams struct {
+type Index__Toggle__Params struct {
+	A  string
+	B  string
 	Id string
 }
 
-type Index__RemoveParams struct {
+type Index__Remove__Params struct {
+	A  string
+	B  string
 	Id string
 }
 
-type Index__Msg struct {
-	Tag    tag__Index__Msg
-	Add    *Index__AddParams
-	Toggle *Index__ToggleParams
-	Remove *Index__RemoveParams
+type Index__Notify__Params struct {
+	A string
+	B string
 }
 
-type tag__Index__Msg uint8
-
-const (
-	is__Index__Msg__Add    tag__Index__Msg = 0
-	is__Index__Msg__Toggle tag__Index__Msg = 1
-	is__Index__Msg__Remove tag__Index__Msg = 2
-	is__Index__Msg__Notify tag__Index__Msg = 3
-)
-
-func Index__Msg__Add__(v Index__AddParams) Index__Msg {
-	return Index__Msg{Tag: is__Index__Msg__Add, Add: &v}
-}
-
-func Index__Msg__Toggle__(v Index__ToggleParams) Index__Msg {
-	return Index__Msg{Tag: is__Index__Msg__Toggle, Toggle: &v}
-}
-
-func Index__Msg__Remove__(v Index__RemoveParams) Index__Msg {
-	return Index__Msg{Tag: is__Index__Msg__Remove, Remove: &v}
-}
-
-var Index__Msg__Notify__ = Index__Msg{Tag: is__Index__Msg__Notify}
-
-type Index__Session struct {
+type Index__Index__Session struct {
 	User  string
 	Theme string
 }
@@ -85,11 +66,11 @@ type Args__Index__Mailer__Send struct {
 	Body string
 }
 
-func widen__Index__Session(s Index__Session) App__Session {
+func widen__Index__Index__Session(s Index__Index__Session) App__Session {
 	return App__Session{User: rt.Just(s.User), Theme: s.Theme}
 }
 
-func Index__load(params Index__Params, session Index__Session) eff.Query[Index__Model] {
+func Index__Index__load(params Index__Index__Params, session Index__Index__Session) eff.Query[Index__Model] {
 	return eff.Q(eff.Bind(eff.Call("Db.all Todo", false, func(_e1 *eff.Env) ([]Todo__Todo, error) {
 		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.Limit(10, db.OrderBy(db.Desc("created"), db.Where(db.CEq("owner", session.User), db.From(table__Todo__Todo)))))
 	}), func(todos []Todo__Todo) eff.Task[Index__Model] {
@@ -116,76 +97,75 @@ func Index__load(params Index__Params, session Index__Session) eff.Query[Index__
 	}))
 }
 
-func Index__update(msg Index__Msg, model Index__Model, session Index__Session) eff.Task[rt.Nav] {
-	switch msg.Tag {
-	case is__Index__Msg__Add:
-		p := *msg.Add
-		return eff.Bind(eff.Call("Db.insert Todo", true, func(_e1 *eff.Env) (string, error) {
-			return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Todo__Todo, insertvals__Todo__Todo(insert__Todo__Todo{Title: p.Title, Done: false, Due: rt.Nothing[rt.Date](), Owner: session.User}), _e1.Now())
-		}), func(id string) eff.Task[rt.Nav] {
-			return eff.Bind(std.LogInfo(rt.Concat("added ", id)), func(_ struct{}) eff.Task[rt.Nav] {
-				return eff.Bind(std.LogDebug(rt.Concat("debug ", id)), func(_ struct{}) eff.Task[rt.Nav] {
-					return eff.Bind(std.LogError(rt.Concat("error ", id)), func(_ struct{}) eff.Task[rt.Nav] {
-						return eff.Pure(rt.Redirect(rt.Page{Path: rt.Concat("/pair/", rt.PathSegment(id), "/", rt.PathSegment(id))}))
-					})
+func Index__Add__update(p Index__Add__Params, session Index__Index__Session) eff.Task[rt.Response] {
+	return eff.Bind(eff.Call("Db.insert Todo", true, func(_e1 *eff.Env) (string, error) {
+		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Todo__Todo, insertvals__Todo__Todo(insert__Todo__Todo{Title: p.Title, Done: false, Due: rt.Nothing[rt.Date](), Owner: session.User}), _e1.Now())
+	}), func(id string) eff.Task[rt.Response] {
+		return eff.Bind(std.LogInfo(rt.Concat("added ", id)), func(_ struct{}) eff.Task[rt.Response] {
+			return eff.Bind(std.LogDebug(rt.Concat("debug ", id)), func(_ struct{}) eff.Task[rt.Response] {
+				return eff.Bind(std.LogError(rt.Concat("error ", id)), func(_ struct{}) eff.Task[rt.Response] {
+					return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Index.Index", Method: "GET", Path: rt.Concat("/pair/", rt.PathSegment(id), "/", rt.PathSegment(id))}))
 				})
 			})
 		})
-	case is__Index__Msg__Toggle:
-		p := *msg.Toggle
-		return eff.Bind(eff.Call("Db.update Todo", true, func(_e2 *eff.Env) (struct{}, error) {
-			return struct{}{}, db.UpdateRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Todo__Todo, p.Id, func(t Todo__Todo) Todo__Todo {
-				return Todo__Todo{Id: t.Id, Title: t.Title, Done: !t.Done, Due: t.Due, Owner: t.Owner, Created: t.Created}
-			}, _e2.Now())
-		}), func(_ struct{}) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Rerender())
-		})
-	case is__Index__Msg__Remove:
-		p := *msg.Remove
-		return eff.Bind(eff.Call("Db.get Todo", false, func(_e3 *eff.Env) (rt.Maybe[Todo__Todo], error) {
-			return db.GetRow(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), table__Todo__Todo, p.Id)
-		}), func(found rt.Maybe[Todo__Todo]) eff.Task[rt.Nav] {
-			if found.Ok {
-				t := found.Val
-				return eff.Bind(eff.Call("Db.delete Todo", true, func(_e4 *eff.Env) (struct{}, error) {
-					return struct{}{}, db.DeleteRow(_e4.Ctx, _e4.Store.(db.Store), db.TxOf(_e4), table__Todo__Todo, t.Id)
-				}), func(_ struct{}) eff.Task[rt.Nav] {
-					return eff.Pure(rt.Rerender())
-				})
-			}
-			return eff.Fail[rt.Nav]("no such todo")
-		})
-	case is__Index__Msg__Notify:
-		return eff.Bind(std.RandomId(), func(token string) eff.Task[rt.Nav] {
-			return eff.Bind(eff.All([]eff.Task[bool]{eff.Call("Mailer.send", true, func(_e5 *eff.Env) (bool, error) {
-				_c6, _ok7 := _e5.Caps["Index.Mailer"].(Cap__Index__Mailer)
-				if !_ok7 {
-					panic("alder: capability \"Index.Mailer\" is not wired")
-				}
-				_v8, _err9 := _c6.Send(_e5.Ctx, struct {
-					To   string
-					Body string
-				}{To: "a@b.c", Body: token})
-				return _v8, eff.CapError("Mailer.send", _err9)
-			})}), func(sent []bool) eff.Task[rt.Nav] {
-				return eff.Bind(eff.Map(std.ListLength[bool], eff.Pure(sent)), func(n int64) eff.Task[rt.Nav] {
-					return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
-						return App__Session{User: s.User, Theme: "dark"}
-					}), func(_ struct{}) eff.Task[rt.Nav] {
-						return eff.Pure(func() rt.Nav {
-							if n > 0 {
-								return rt.Rerender()
-							}
-							return rt.Reject("not sent")
-						}())
-					})
-				})
-			})
-		})
-	}
-	panic("unreachable")
+	})
 }
 
-func Index__view(model Index__Model, session Index__Session) html.Node {
+func Index__Toggle__update(p Index__Toggle__Params, session Index__Index__Session) eff.Task[rt.Response] {
+	return eff.Bind(eff.Call("Db.update Todo", true, func(_e1 *eff.Env) (struct{}, error) {
+		return struct{}{}, db.UpdateRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Todo__Todo, p.Id, func(t Todo__Todo) Todo__Todo {
+			return Todo__Todo{Id: t.Id, Title: t.Title, Done: !t.Done, Due: t.Due, Owner: t.Owner, Created: t.Created}
+		}, _e1.Now())
+	}), func(_ struct{}) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRefresh())
+	})
+}
+
+func Index__Remove__update(p Index__Remove__Params, session Index__Index__Session) eff.Task[rt.Response] {
+	return eff.Bind(eff.Call("Db.get Todo", false, func(_e1 *eff.Env) (rt.Maybe[Todo__Todo], error) {
+		return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Todo__Todo, p.Id)
+	}), func(found rt.Maybe[Todo__Todo]) eff.Task[rt.Response] {
+		if found.Ok {
+			t := found.Val
+			return eff.Bind(eff.Call("Db.delete Todo", true, func(_e2 *eff.Env) (struct{}, error) {
+				return struct{}{}, db.DeleteRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Todo__Todo, t.Id)
+			}), func(_ struct{}) eff.Task[rt.Response] {
+				return eff.Pure(std.ResponseRefresh())
+			})
+		}
+		return eff.Fail[rt.Response]("no such todo")
+	})
+}
+
+func Index__Notify__update(p Index__Notify__Params, session Index__Index__Session) eff.Task[rt.Response] {
+	return eff.Bind(std.RandomId(), func(token string) eff.Task[rt.Response] {
+		return eff.Bind(eff.All([]eff.Task[bool]{eff.Call("Mailer.send", true, func(_e1 *eff.Env) (bool, error) {
+			_c2, _ok3 := _e1.Caps["Index.Mailer"].(Cap__Index__Mailer)
+			if !_ok3 {
+				panic("alder: capability \"Index.Mailer\" is not wired")
+			}
+			_v4, _err5 := _c2.Send(_e1.Ctx, struct {
+				To   string
+				Body string
+			}{To: "a@b.c", Body: token})
+			return _v4, eff.CapError("Mailer.send", _err5)
+		})}), func(sent []bool) eff.Task[rt.Response] {
+			return eff.Bind(eff.Map(std.ListLength[bool], eff.Pure(sent)), func(n int64) eff.Task[rt.Response] {
+				return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
+					return App__Session{User: s.User, Theme: "dark"}
+				}), func(_ struct{}) eff.Task[rt.Response] {
+					return eff.Pure(func() rt.Response {
+						if n > 0 {
+							return std.ResponseRefresh()
+						}
+						return std.ResponseInvalid("not sent")
+					}())
+				})
+			})
+		})
+	})
+}
+
+func Index__Index__view(model Index__Model, session Index__Index__Session) html.Node {
 	return html.El("p", nil, html.Text(std.TextFromInt(model.Count)))
 }
