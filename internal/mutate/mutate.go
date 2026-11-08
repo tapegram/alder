@@ -3,20 +3,19 @@
 // Each operator is named by the behaviour it breaks; a mutant its tests do not notice is a test
 // that is missing.
 //
-// Collect walks every non-test module in IR order: per module, a page's `requires` first, then
+// Collect walks every non-test module in IR order: per module, its routes' `requires` first, then
 // its tables (field by field), then its values in declaration order, each body in pre-order.
 // Mutant ids are 1-based in that order, so they are stable across runs of the same program; an
 // edit renumbers the mutants after it. Module order is the program's (names.Program.Order):
 // import-topological, dependencies first, roots alphabetical. So adding an import can move a
 // module, renumbering the mutants of modules the edit never touched.
 //
-// Never mutated: test bodies, fake entries, a page's `view` (a file page's is mutated: see
-// below), components and any value whose result is
-// Html, any value whose result is a Fuzzer (a generator), HTML nodes inside other values, brands' `where` checks, the stdlib. A node Lower shares
-// between several places (a record field's default filled into a literal, a match's shared
-// fallback) is mutated once, at its first occurrence; a default is mutated only as a schema
-// mutant (`default changed`). A file page's `view` returns File, not Html, so it is
-// mutated like any value.
+// Never mutated: test bodies, fake entries, components and any value whose result is Html (a
+// route's `view` among them), any value whose result is a Fuzzer (a generator), HTML nodes inside
+// other values, brands' `where` checks, the stdlib. A node Lower shares between several places
+// (a record field's default filled into a literal, a match's shared fallback) is mutated once,
+// at its first occurrence; a default is mutated only as a schema mutant (`default changed`). A
+// file route's `view` returns File, not Html, so it is mutated like any value.
 package mutate
 
 import (

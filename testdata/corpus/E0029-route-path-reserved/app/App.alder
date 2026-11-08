@@ -1,7 +1,0 @@
-module App
-
-error : Error -> Html
-error err = <p>error</p>
-
-notFound : Html
-notFound = <p>not found</p>

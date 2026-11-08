@@ -433,7 +433,7 @@ func routeGuard(r *ir.Route) guarded {
 // routeKey is route r's qualified name, "Todos.Row".
 func routeKey(r *ir.Route) string { return r.Module + "." + r.Name }
 
-// pageFunc writes page__X for gd (a page or a GET route): `requires`, then load.
+// pageFunc writes page__M__R for gd (a GET route): `requires`, then load.
 func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, gd guarded) {
 	model, session := gd.model, GoName(gd.session.Module, gd.session.Name)
 	app := GoName(p.Session.Module, p.Session.Name)
@@ -566,7 +566,7 @@ func (g *gen) partitionKey(k string) bool {
 	return false
 }
 
-// roleRefused is the Go condition under which gd's (a page's or a route's) `requires user, role
+// roleRefused is the Go condition under which gd's (a route's) `requires user, role
 // R | …` refuses the App session app: its role is none of gd's roles. In a mutate build each
 // `role dropped` mutant of gd lets every role through under its id (mutation.go).
 func (g *gen) roleRefused(p *ir.Program, gd guarded, app string) string {
@@ -592,8 +592,8 @@ func (g *gen) roleRefused(p *ir.Program, gd guarded, app string) string {
 
 // ---- decoders
 
-// paramsDecoderOf writes name, the decoder of the parameters rec (Go type typ) of what (a page or
-// a route) at path.
+// paramsDecoderOf writes name, the decoder of the parameters rec (Go type typ) of what (a
+// route) at path.
 func (g *gen) paramsDecoderOf(b *strings.Builder, name, what, typ, path string, rec *ir.RecordType) {
 	inPath := map[string]bool{}
 	for _, seg := range strings.Split(path, "/") {

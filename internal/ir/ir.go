@@ -193,7 +193,7 @@ type FieldT struct {
 	Wire string
 }
 
-// Key is the URL key of a page or message parameter f: its wire name, else its name.
+// Key is the URL key of a route parameter f: its wire name, else its name.
 func (f FieldT) Key() string {
 	if f.Wire != "" {
 		return f.Wire
