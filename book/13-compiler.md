@@ -2540,7 +2540,9 @@ the whole test, and the test's savepoints (`Test.run`, each browser
 request) span all of them. A browser request's `Task` is bound by the
 same `db.Enter` as production's. A `Test.run`'s `Task` is bound too
 (`rtesting.Inner` sets `Env.Pending`): to the store its first write
-lands in, so a write to a second store fails it as a request's would. The
+lands in, or, for a route's `update`, to the route's store beforehand
+(`rtesting.InnerOn`), so a write to a second store fails it as a
+request's would. The
 test's own body is not bound: it may set up rows in the shared database and
 in several silos.
 

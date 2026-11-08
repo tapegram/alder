@@ -73,9 +73,10 @@ func Inner[T any](env *eff.Env, t eff.Task[T]) (v T, msg string, ok bool, trace 
 	return inner(env, "", false, t)
 }
 
-// InnerOn is Inner for Test.run of a page's update: t is bound to the store of the arm msg takes
-// (key, the generated store__M(msg): a silo key, "" for the shared store), as the request's
-// db.Enter binds it, so a Test.run fails where the request would.
+// InnerOn is Inner for Test.run of a page's or a route's update: t is bound to key (a silo key,
+// "" for the shared store) — for a page the store of the arm msg takes (the generated
+// store__M(msg)), for a route its Route.Store — as the request's db.Enter binds it, so a
+// Test.run fails where the request would.
 func InnerOn[T any](env *eff.Env, key string, t eff.Task[T]) (v T, msg string, ok bool, trace []string, err error) {
 	return inner(env, key, true, t)
 }

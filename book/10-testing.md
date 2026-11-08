@@ -450,9 +450,9 @@ like the page's. Things to know:
   answers the not-found page (a 404 in production, not a 500), which a
   test sees as `PageMissing`.
 - **One store per `Test.run`.** A `Test.run` runs its `Task` as a request
-  runs one, on one store: the first one it writes, or for `Test.run
-  (Create.update p session)` too: unlike its request, a route's `update` is not
-  bound to its store first ([#191](https://github.com/tapegram/alder/issues/191)). A `Test.run` whose `Task` writes the shared
+  runs one, on one store: the first one it writes, and for `Test.run
+  (Create.update p session)` the route's store, bound first as its request's
+  is, so a `Test.run` fails where the request would. A `Test.run` whose `Task` writes the shared
   database and a silo fails the test with the internal error production
   answers 500 with ("Db.insert Project writes silo org in a Task on the
   shared store (one store per Task)"). The test's own body is not one

@@ -359,6 +359,10 @@ func (f *fn) testRun(x *ir.TestRun, s *scope) string {
 			args := append([]ir.Expr{&ir.Var{Typed: ir.Typed{Ty: call.Args[0].Type()}, Kind: ir.VarLocal, Name: key}}, call.Args[1:]...)
 			task = f.task(&ir.Call{Typed: call.Typed, Pos: call.Pos, Fn: call.Fn, Args: args}, c)
 			inner = "rtesting.InnerOn(" + env + ", store__" + strings.ReplaceAll(m, ".", "__") + "(" + g + "), "
+		} else if r := f.routeUpdate(x.Task); r != nil {
+			// a route's update: bound to the route's store, as the request's db.Enter binds it
+			task = f.task(x.Task, c)
+			inner = "rtesting.InnerOn(" + env + ", " + strconv.Quote(r.Store.Silo) + ", "
 		} else {
 			task = f.task(x.Task, c)
 		}
@@ -393,6 +397,32 @@ func (f *fn) pageUpdate(e ir.Expr) (*ir.Call, string) {
 		return nil, ""
 	}
 	return call, v.Module
+}
+
+// routeUpdate is, in an app with silos, the write route whose update e calls (`R.update params
+// session`); nil otherwise. Test.run binds such a Task to the route's store (Route.Store), as the
+// request's db.Enter does (writeRoute).
+func (f *fn) routeUpdate(e ir.Expr) *ir.Route {
+	if len(f.g.prog.Silos) == 0 {
+		return nil
+	}
+	call, ok := e.(*ir.Call)
+	if !ok {
+		return nil
+	}
+	v, ok := call.Fn.(*ir.Var)
+	if !ok || v.Kind != ir.VarGlobal || !strings.HasSuffix(v.Name, ".update") {
+		return nil
+	}
+	if _, isMutant := f.hoisted(e); isMutant || f.mutantsOf(e) != nil {
+		return nil
+	}
+	for _, r := range f.g.routes[v.Module] {
+		if r.Update != nil && r.Name+".update" == v.Name {
+			return r
+		}
+	}
+	return nil
 }
 
 // bind is eff.Bind(effect, continuation): the continuation returns its body as a Task.
