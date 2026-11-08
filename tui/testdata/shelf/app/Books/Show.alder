@@ -4,14 +4,14 @@ import Layout
 import Table.Book
 import Table.Loan
 
-page "/books/{id}" { id: Book.BookId }
+route Show = GET "/books/{id}" { id: Book.BookId }
 
 type Model = { book: Book, shelf: List { book: Book, lent: Bool } }
 
 -- load looks up each book's loan on its own, one query per book under a Query.all: an N+1 on
 -- purpose. alder-tui's live test opens this page to see the dev panel report it.
-load : Params -> Session -> Query Model
-load params session = {
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
   let found <- Db.get Book params.id
   let books <-
     Db.from Book
@@ -34,8 +34,8 @@ load params session = {
   }
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Show.view : Model -> Session -> Html
+Show.view model session =
   <Layout.Page title={model.book.title}>
     <h1>{model.book.title}</h1>
     <p id="author">{model.book.author}</p>
@@ -43,16 +43,16 @@ view model session =
     <ul id="shelf">
       {for s in model.shelf ->
         <li class={if s.lent then "lent" else ""}>
-          <a href={Books.Show { id: s.book.id }}>{s.book.title}</a>
+          <a href={Show { id: s.book.id }}>{s.book.title}</a>
           {if s.lent then " (lent)" else ""}
         </li>}
     </ul>
-    <a href={Books.Index {}}>Back</a>
+    <a href={Books.Index.Index {}}>Back</a>
   </Layout.Page>
 
 test "the page shows the book and marks the lent ones" = {
   let _ <- Db.insert Loan { book: Book.BookId "2" }
-  let r <- Test.open (Books.Show { id: Book.BookId "1" })
+  let r <- Test.open (Show { id: Book.BookId "1" })
   Task.succeed (
     {
       answer: r.answer,
@@ -67,6 +67,6 @@ test "the page shows the book and marks the lent ones" = {
 }
 
 test "a missing book is not found" = {
-  let r <- Test.open (Books.Show { id: Book.BookId "missing" })
+  let r <- Test.open (Show { id: Book.BookId "missing" })
   Task.succeed (r.answer == PageMissing)
 }

@@ -2,9 +2,13 @@ module App
 
 import User
 
-session { user: Maybe User.UserId, visits: Maybe Int, team: Maybe User.TeamId }
+session {
+  user: Maybe User.UserId,
+  visits: Maybe Int,
+  team: Maybe User.TeamId,
+}
 
-login = Login
+login = Login.Login
 
 error : Error -> Html Never
 error err = <p>Error</p>

@@ -1,6 +1,6 @@
-1   Admin   requires:4      requires dropped    requires user → served without user (user = User.UserId "mutant")
-2   Admin   requires:4      role dropped        requires user, role Admin → requires user
-3   Home    requires:4      requires dropped    requires user → served without user (user = User.UserId "mutant")
+1   Admin   Admin:4         requires dropped    requires user → served without user (user = User.UserId "mutant")
+2   Admin   Admin:4         role dropped        requires user, role Admin → requires user
+3   Home    Home:4          requires dropped    requires user → served without user (user = User.UserId "mutant")
 4   Routes  Show:7          requires dropped    requires user → served without user (user = User.UserId "mutant")
 5   Routes  Show:7          role dropped        requires user, role Admin → requires user
 6   Routes  Home:8          requires dropped    requires user → served without user (user = User.UserId "mutant")
@@ -19,6 +19,6 @@
 19  Routes  Find.update:34  redirect → refresh  Response.redirect (Show {}) → Response.refresh
 20  Routes  Back.update:37  redirect → refresh  Response.redirect (Home {}) → Response.refresh
 21  Routes  Pick.update:40  redirect → refresh  Response.redirect (Teams {}) → Response.refresh
-22  Staff   requires:4      requires dropped    requires user → served without user (user = User.UserId "mutant")
-23  Staff   requires:4      role dropped        requires user, role Author | Admin → requires user
+22  Staff   Staff:4         requires dropped    requires user → served without user (user = User.UserId "mutant")
+23  Staff   Staff:4         role dropped        requires user, role Author | Admin → requires user
 -   Routes  Find:11         role dropped        equivalent: the update only redirects to Show, whose role check refuses every other role too

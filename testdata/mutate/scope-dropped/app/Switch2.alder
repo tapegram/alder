@@ -2,12 +2,13 @@ module Switch2
 
 import Item
 
-page "/switch2/{id}" { id: Item.ItemId } requires user
+route Switch2 = GET  "/switch2/{id}"        { id: Item.ItemId } requires user
+route Drop    = POST "/switch2/{id}/_/Drop" { id: Item.ItemId } requires user
 
 type Model = { item: Item }
 
-load : Params -> Session -> Query Model
-load params session = {
+Switch2.load : Switch2.Params -> Session -> Query Model
+Switch2.load params session = {
   let item <- Db.getMine Item params.id
   Query.succeed { item: item }
 }
@@ -16,16 +17,12 @@ load params session = {
 hop : Task Unit
 hop = Session.put (\s -> { s | user: Nothing })
 
-msg Drop
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Drop p -> {
-    let _ <- hop
-    let _ <- Db.deleteMine Item model.item.id
-    Task.succeed Rerender
-  },
+Drop.update : Drop.Params -> Session -> Task Response
+Drop.update p session = {
+  let _ <- hop
+  let _ <- Db.deleteMine Item p.id
+  Task.succeed Response.refresh
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>{model.item.title}</p>
+Switch2.view : Model -> Session -> Html
+Switch2.view model session = <p>{model.item.title}</p>

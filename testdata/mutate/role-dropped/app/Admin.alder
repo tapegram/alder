@@ -1,12 +1,12 @@
 module Admin
 
 -- A mutant: the page serves any signed-in user.
-page "/admin" { } requires user, role Admin
+route Admin = GET "/admin" { } requires user, role Admin
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Admin.load : Admin.Params -> Session -> Query Model
+Admin.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <p>Admin</p>
+Admin.view : Model -> Session -> Html
+Admin.view model session = <p>Admin</p>
