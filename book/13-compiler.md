@@ -118,7 +118,8 @@ lower-case name.)
 
 The **column-1 rule** settles this. Words that start a declaration (`module`,
 `import`, `type`, `route`, `form`, `table`, `capability`, `fake`, `session`,
-`login`, `test`; `page` and `msg` too, for code from before routes) are
+`login`, `test`; `page` and `msg` too, which only `alder fix --routes` still
+reads) are
 keywords only when they are the first thing on a line. Anywhere else they are
 ordinary names.
 
@@ -299,8 +300,7 @@ resolver reports it.
 
 `testdata/golden/check_poison/app/Index.alder` forgets `import Todo` and
 then uses `Todo` four times: as a type in `Model`, in `Db.from Todo`, in
-`Todo.title.asc`, and in a form field `priority: Todo.Priority`. (This
-fixture is older than routes and declares its module with `page`.) Running
+`Todo.title.asc`, and in a form field `priority: Todo.Priority`. Running
 `alder check testdata/golden/check_poison` prints exactly one diagnostic:
 
 ```
@@ -348,8 +348,7 @@ To the checker, a **type** is a Go value from `internal/types/types.go`: a
 `Con` for a built-in like `Int` or `Float`, a `Record` or `Union` for your
 declarations, a `Fun` for a function, an `App` for things like `List Text`,
 a `Brand` for a brand, a `Param` for a type parameter (the `a` in
-`Card`'s `Html a`, which stands for any type, so one component serves every
-module's markup), or a `Var` for a type not yet known.
+`List a`, which stands for any type, so one function serves every element type), or a `Var` for a type not yet known.
 
 ### Unification
 
@@ -781,7 +780,7 @@ The emitter (`internal/gen`) walks the IR and prints Go, formatted with
 | `Maybe a` | `rt.Maybe[T]` |
 | `Result e a` | `rt.Result[E, T]` |
 | `Dict k v` | `rt.Dict[K, V]` |
-| `Html a` | `html.Node` |
+| `Html` | `html.Node` |
 | `Route` | `rt.Route` |
 | `Response` | `rt.Response` |
 | a record | a `struct` (named for a declared record, anonymous otherwise) |
@@ -4827,8 +4826,7 @@ Each step lowers to a node of its own (`internal/ir`):
 `Test.open`, `Fetch` for `Test.fetch`), `TestSubmit{Form, Route, Params,
 Record}`, `TestSubmitRaw{…, Fields}`, `TestClick{Route, Params}` and
 `TestRefresh`. `Route` is the `*ir.Route` the test names and `Params` the
-record of its parameters, nil when the test wrote the route bare (an old
-`page` or `msg` is the same node with `Page` and `Msg` set instead). The queries stay
+record of its parameters, nil when the test wrote the route bare. The queries stay
 ordinary calls.
 
 #### A step is a `Call`
@@ -5127,8 +5125,6 @@ data-errors="…">` lists, in page order (`data-errors="form"` as the field
 
 A click on a GET route is an element fetch and is `Rendered r` too. A redirect
 is `Redirected`; a 404 or a 500 is `PageMissing` or `RequestFailed`.
-`Rerendered` is what a patch with no `Answered` response comes to, the older
-form's re-render.
 
 #### Controls
 
@@ -6233,8 +6229,8 @@ is one `html/template` over two things:
 
 - `Options.DevMap`, a compact JSON the generator wrote into `Web()`
   (`internal/gen/devmap.go`: the tables with columns and attributes, the
-  capability names, the session's fields, and, for a module with an older
-  `page`, its path, `requires`, roles, parameters and messages);
+  capability names, the session's fields and, for each GET route, its path,
+  `requires`, roles and parameters);
 - what only the running server knows (the build id, the migrations the
   database has, how each capability is wired, and the routes: the method
   and pattern of every route the router holds).
@@ -7291,16 +7287,15 @@ and `Here` says whether the generator applies at the cursor and prefills a
 form if it does.
 
 `HereCtx` is where the cursor is (module, whether it holds routes, the
-declaration around it, a hole under it; the field is still called `IsPage`,
-and the language server sets it for a module with a `page` or with routes,
-`hereCtx` in `actions.go`); `inPage`, for example, is the `Here` of `new msg`:
+declaration around it, a hole under it; the language server sets it,
+`hereCtx` in `actions.go`); `inRoute`, for example, is the `Here` of `new msg`:
 
 ```go
-func inPage(c HereCtx) *Match {
-	if !c.IsPage {
+func inRoute(c HereCtx) *Match {
+	if !c.IsRoute {
 		return nil
 	}
-	return &Match{Sets: map[string]string{"page": c.Module}, Why: "the page at the cursor"}
+	return &Match{Sets: map[string]string{"page": c.Module}, Why: "the route module at the cursor"}
 }
 ```
 
@@ -7313,12 +7308,12 @@ The server has a fourth custom request that needs no `Spec`: `alder/routes`
 returns every route of the app, GET and write (`buildkit.Routes`, which
 `alder routes` prints too), with its method, path, module, name and place
 (the `route` line), for an editor's route picker (chapter 11). `kind` is
-still `page` for a GET route and `msg` for any other, so an older editor
-plugin keeps working. For the blog's `Posts.Index`:
+always `route` (an older editor plugin reads `page` and `msg` of earlier
+versions as well). For the blog's `Posts.Index`:
 
 ```text
 -> {"jsonrpc":"2.0","id":6,"method":"alder/routes","params":{}}
-<- {"id":6,"jsonrpc":"2.0","result":[…,{"kind":"page","method":"GET","path":"/","module":"Posts.Index","name":"Index","uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":6,"character":0},"end":{"line":6,"character":63}}},{"kind":"msg","method":"POST","path":"/_/Search","module":"Posts.Index","name":"Search","uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":9,"character":0},"end":{"line":9,"character":51}}},…]}
+<- {"id":6,"jsonrpc":"2.0","result":[…,{"kind":"route","method":"GET","path":"/","module":"Posts.Index","name":"Index","uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":6,"character":0},"end":{"line":6,"character":63}}},{"kind":"route","method":"POST","path":"/_/Search","module":"Posts.Index","name":"Search","uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":9,"character":0},"end":{"line":9,"character":51}}},…]}
 ```
 
 The routes come in the order the program declares them (the older pages and

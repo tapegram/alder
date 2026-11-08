@@ -2609,12 +2609,11 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 #### E0010 — required declaration missing
 
 - `App`'s `error`/`notFound`/`login`/`session`.
-- In a module still written with `page`, its `load`/`view`/`update`.
 - A route's missing members are E0043.
 
 #### E0011 — invalid declaration
 
-- Unstorable table field, unusable page or form field, bad `@id`.
+- Unstorable table field, unusable route parameter or form field, bad `@id`.
 - Brand constructor used outside its module.
 - A record that contains itself by value.
 - A delete rule such as `@cascade` on a field without `@ref`, before `@ref T`, or two on one field.
@@ -2622,9 +2621,9 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 
 #### E0012 — a type named like a Prelude type
 
-- **Prelude types.** A type, table, form or union named like a Prelude type a program writes (`Query`, `Task`, `Html`, `Maybe`, `Result`, `Nav`, `List`, `Dict`, `Int`, `Float`, `Text`, `Bool`, `Unit`, `Date`, `Time`, `Never`, `Error`, `File`, `Bytes`, `Route` and `Response`; not Db's `Order`, `Page`, `Form`, `Table`, `Id`, `Insert`, `Select`, `Condition`, `Column`) or like the Prelude's test types `Doc` and `Answer`, whose module's other errors wait for the rename.
-- **`Answer`'s constructors.** In any module, a constructor named like one of `Answer`'s (`Shown`, `Rerendered`, `Rendered`, `Refreshed`, `Redirected`, `FormRejected`, `PageMissing`, `RequestFailed`: "`PageMissing` is a constructor of the Prelude's test type `Answer`; name the constructor differently (for example `MissingLookup`)").
-- **Generated types.** In `App` and in a module still written with `page`, also the types the compiler generates there (`Msg`, `Session`, and in a page module `Params`, `<Msg>Params`).
+- **Prelude types.** A type, table, form or union named like a Prelude type a program writes (`Query`, `Task`, `Html`, `Maybe`, `Result`, `List`, `Dict`, `Int`, `Float`, `Text`, `Bool`, `Unit`, `Date`, `Time`, `Never`, `Error`, `File`, `Bytes`, `Route` and `Response`; not Db's `Order`, `Form`, `Table`, `Id`, `Insert`, `Select`, `Condition`, `Column`) or like the Prelude's test types `Doc` and `Answer`, whose module's other errors wait for the rename.
+- **`Answer`'s constructors.** In any module, a constructor named like one of `Answer`'s (`Shown`, `Rendered`, `Refreshed`, `Redirected`, `FormRejected`, `PageMissing`, `RequestFailed`: "`PageMissing` is a constructor of the Prelude's test type `Answer`; name the constructor differently (for example `MissingLookup`)").
+- **Generated types.** In `App`, also the type the compiler generates there (`Session`).
 
 A route module generates none: `R.Params` is reached through the route's name.
 
@@ -2633,11 +2632,6 @@ A route module generates none: `R.Params` is reached through the route's name.
 #### E0015 — a reserved first module segment
 
 - A module whose first name segment is exactly `Route`, `Cap` or `Args` (`Cap.Mail` is refused, `Caps.Mail` and `My.Cap` are fine): the generated Go uses those prefixes for exported names.
-
-#### E0016 — two `page`s or routes on one path
-
-- Two `page`s, or a `page` and a GET route, answer the same path (`/x/{id}` and `/x/{slug}`, or `/x` and `/x/`).
-- Two routes that share a method and a path are E0043.
 
 #### E0017 — a module named like a standard-library module
 
@@ -2663,14 +2657,9 @@ A route module generates none: `R.Params` is reached through the route's name.
 
 #### E0040 — test-only construct used outside tests
 
-- Something only tests may use (`Test.*`, `Doc`, `Answer`, a fake's table, a test helper) where no test helper can be: a page's `load`/`view`/`update`, `App`'s values, a fake's entry, a brand check, a field default.
+- Something only tests may use (`Test.*`, `Doc`, `Answer`, a fake's table, a test helper) where no test helper can be: a route's `load`/`view`/`update`, `App`'s values, a fake's entry, a brand check, a field default.
 - "`fetchText` is a test helper (it uses `Test.fetch`): only a `test` or another test helper may use it".
-- "`Test.fetch` is only available in a `test` or a test helper: `view` is the page's view, not a helper" (chapter 10, "Test helpers").
-
-#### E0041 — a constructor named like a page module
-
-- A union constructor or brand (in its module and the modules importing it) named like a one-segment page module, where some module in that scope writes `Status { … }` and the constructor takes no record: "constructor `Status` (of `Types.Code`) shadows page `Status` in `Types` and the modules importing it: there `Status { … }` is the constructor, so the page cannot be linked or fetched; rename the constructor or the page module (for example `module StatusPage`)".
-- Reported at the constructor (W0011 when nothing breaks; a `msg` is always W0011).
+- "`Test.fetch` is only available in a `test` or a test helper: `Index.view` is the route's view, not a helper" (chapter 10, "Test helpers").
 
 #### E0042 — a refused `theme` declaration
 
@@ -2691,7 +2680,6 @@ A `route` declaration the rules refuse (chapter 6):
 - `form F` on a GET route.
 - A `{segment}` that names no parameter.
 - Two routes with one method and path.
-- A module with both a `page` and a `route`.
 
 #### E0044 — a route name that cannot be told apart
 
@@ -2708,6 +2696,21 @@ A route requested the way its method refuses (chapter 6, 10):
 - `Response.redirect` or `Response.render` of a write route.
 - `Test.submit` of a route without `form`.
 - `Test.click` of a route with one.
+
+#### E0046 — page-era syntax that routes replaced
+
+The `page` and `msg` declarations, `Nav` and its constructors, the `Page`
+type, a type argument on `Html`, and an unqualified `load`, `view` or
+`update` are gone (chapter 6, 11):
+
+- A `page` is a GET route (`route Index = GET "/" { }` with `Index.load` and
+  `Index.view`), and a `msg` is a write route whose `Toggle.update` answers
+  `Task Response`.
+- `Rerender` is `Response.refresh`, `Redirect r` is `Response.redirect r`,
+  `Reject t` is `Response.invalid t`, and `Html Msg` is `Html`.
+- Every message ends with "run `alder fix --routes` to rewrite this module".
+
+**Fix offered:** `alder fix --routes`
 
 #### E0019 — `migrations/` is behind the app or disagrees with itself
 
@@ -2728,7 +2731,7 @@ Reported at `migrations/schema.json:1:1` by every command but `alder migrate`:
 
 #### E0021 — a fake's table used outside tests
 
-- A fake's table used outside a `test`, a test helper and the fake's own entries (a page's `load`, another fake's entry, a type declaration, an app table's `@ref`): "`Charge` is a fake's table: only tests and `fake Stripe` may use it".
+- A fake's table used outside a `test`, a test helper and the fake's own entries (a route's `load`, another fake's entry, a type declaration, an app table's `@ref`): "`Charge` is a fake's table: only tests and `fake Stripe` may use it".
 
 #### E0022 — a table field's default that is not a literal (`count: Int = 1 + 1`): migrations write a table default into the database as SQL
 
@@ -2788,7 +2791,7 @@ A custom element (a tag with a hyphen) the manifests do not vouch for (chapter 5
 
 #### E0029 — a path the router cannot serve
 
-A route's path (or a `page "…"` path) the router cannot serve (chapter 6):
+A route's path the router cannot serve (chapter 6):
 
 - "route path `//evil.com` has an empty segment; a path is `/` followed by segments of letters, digits, `.`, `_`, `~`, `-` or `{param}`".
 - Likewise "has a space", "has a query (`?`)", "has a fragment (`#`)", "has the character `\`", "has the segment `..`, which a browser resolves away", "has the segment `a{id}`, which is neither a name nor a whole `{param}`".
@@ -2816,9 +2819,9 @@ A `deploy` declaration `alder deploy` cannot use (chapter 16):
 
 A `Task` that writes to two stores (chapter 8, "Partitions and silos"):
 
-- A shared table and a silo: "`Create` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message."
-- Two silos: "… `Board` (silo `team`): a Task writes to one store. Send one of the writes from its own message."
-- The arm is named by its constructor, "the `_` arm", or "`update`" when the update is not a `match` on its message.
+- A shared table and a silo: "`Create` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from a write route of its own."
+- Two silos: "… `Board` (silo `team`): a Task writes to one store. Send one of the writes from a write route of its own."
+- The write route whose `update` holds the writes is named.
 
 #### E0032 — a refused partition declaration
 
@@ -2851,15 +2854,11 @@ A `silo` the rules refuse:
 The admin form `requires user, role Admin, silo org`:
 
 - "`silo org` needs a role check: …".
-- "`silo org` takes `org` from the page's parameter: add `org: Org.OrgId` to the page's parameters".
-
-#### E0034 — a message on a file page
-
-- In a module still written with `page`, a file page with a message: "a file page has no messages: `view` returns `File`, so nothing can be posted from it; move the message to an HTML page" (the same for a `form` and an `update`).
+- "`silo org` takes `org` from the route's parameter: add `org: Org.OrgId` to the route's parameters".
 
 #### E0035 — a header a file page cannot set
 
-- A header a file page cannot set: "`Set-Cookie` cannot be set from a page; the headers a file may set are `Content-Disposition`, `Cache-Control`, `ETag`, `Last-Modified`, `Retry-After`, `Content-Language` and `X-…` names".
+- A header a file page cannot set: "`Set-Cookie` cannot be set from a file route; the headers a file may set are `Content-Disposition`, `Cache-Control`, `ETag`, `Last-Modified`, `Retry-After`, `Content-Language` and `X-…` names".
 
 #### E0036 — a scratch file under `app/`
 
@@ -2902,17 +2901,11 @@ The admin form `requires user, role Admin, silo org`:
 - Its whole joined path is taken, or equals another import's.
 - The message suggests renaming a module.
 
-#### E0301 — a `msg` of the old form sent without its parameters
+#### E0301 — a route sent without its parameters
 
 - A route's value without its parameters is E0003: "expected Route, got Todos.Index.Toggle.Params -> Route".
 
 **Fix offered:** `M { field: ?field }`
-
-#### E0302 — a page module's `update` missing an arm
-
-- A route's `update` answers one request: no arms.
-
-**Fix offered:** arm skeleton
 
 #### E0303 — `href` with a `Text`: write a route value or `Url.external "…"`
 
@@ -2929,10 +2922,6 @@ The admin form `requires user, role Admin, silo org`:
 #### E0501 — `@id`, `@created`, `@updated` supplied on insert
 
 #### E0502 — `@ref` with the wrong id type
-
-#### E0601 — `Html Msg` in a module that is not a page module (a route module's `Html` has no argument; a shared component is typed `Html a`)
-
-**Fix offered:** `Html a`
 
 #### E0602 — `case ... of`, `let ... in`, tuple, alias
 
@@ -2955,7 +2944,7 @@ The admin form `requires user, role Admin, silo org`:
 
 #### W0005 — a form with no `<Errors form />` for an invalid answer
 
-- A form posting a write route whose `update` can answer `Response.invalid` (a page's message whose arm can answer `Reject`), but without `<Errors form />` to show the text: "`Submit` can answer `Response.invalid`, but this form has no `<Errors form />`: the user never sees its text" (chapter 10, "`Test.submitRaw`: input the types forbid").
+- A form posting a write route whose `update` can answer `Response.invalid`, but without `<Errors form />` to show the text: "`Submit` can answer `Response.invalid`, but this form has no `<Errors form />`: the user never sees its text" (chapter 10, "`Test.submitRaw`: input the types forbid").
 
 #### W0006 — an adapter reads an environment variable `deploy.requires` does not name
 
@@ -2983,10 +2972,10 @@ The admin form `requires user, role Admin, silo org`:
 - Or a capability named like a standard-library module, reported at the capability.
 - A call the module lacks is E0002 with the hint instead; the E0002 of a hidden call gets the capability's spelling.
 
-#### W0011 — E0041's clash where nothing in the constructor's scope breaks
+#### W0012 — a deprecated `Notice` function
 
-- A role `Admin` beside `module Admin`, a `msg Go` beside `module Go`, or a Prelude constructor such as `Ok` naming a page.
-- The program works, but the page cannot be linked or fetched from there.
+- `Notice.with`, `Notice.success`, `Notice.warning` or `Notice.error`: "`Notice.success` is now `Response.success`" (chapter 9, "Response").
+- The old names still work, as aliases, for one release.
 
 #### W0009 — deploy files exist but App.alder has no `deploy` block
 

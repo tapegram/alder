@@ -1296,7 +1296,6 @@ route value written in place.)
 
 ```text
 type Answer = Shown
-            | Rerendered
             | Rendered Route
             | Refreshed
             | Redirected Route
@@ -1319,10 +1318,9 @@ type Answer = Shown
 `Response.refresh` as the browser sees them: the first patches one
 element, the second the regions that changed (section 10).
 
-`Rerendered`
-is the older name of a re-render, kept in the union until the old
-page-and-message syntax is removed; a route's answer is one of the other
-seven, and a new test never writes it.
+`Rerendered`, the answer of the old page-and-message form's re-render,
+is gone with that form. A test that names it is E0002; `alder fix
+--routes` rewrites it to `Refreshed` in a module written the old way.
 
 A redirect to another site (`Url.external`, chapter 6) is reported,
 `Redirected` with that address, but not followed: the browser keeps the
@@ -1332,7 +1330,7 @@ page it had. A redirect to a page that is then a 404 is `PageMissing`.
 `Task.fail "nope"`, `"panic: …"` for a Go panic.
 
 The 404 answer is `PageMissing`, not `NotFound`, so that an app keeps the
-name `NotFound` for a constructor of its own. The eight names are kept for
+name `NotFound` for a constructor of its own. The seven names are kept for
 `Answer` everywhere: a union of the app may not use one (E0012), nor may
 a type be named `Doc` or `Answer`.
 
@@ -2346,7 +2344,6 @@ lists.
 
 A 404 or a 500, which come back as a patch too (with the status
 in a header, `Alder-Status`), are `PageMissing` and `RequestFailed`.
-`Rerendered` is what the old page-and-message form's re-render came to.
 
 `Test.get` and `Test.open` are plain `GET`s, like typing an address. A
 `303` answer, such as `requires` sending a visitor to `/login`, is
@@ -2769,16 +2766,11 @@ are reported apart, in `--json`'s last object (below):
     where the clause would have sent it;
   - a `default changed` on a field that no record of the app's code leaves
     out (no `Db.insert` row, no `Insert T` a helper builds), so the default
-    never applies (the blog's `User.role`, which only tests rely on);
-  - and, in the page-and-message form, a `scope dropped` of a
-    `Db.updateMine` or `Db.deleteMine` in a page's `update` whose id is
-    `model.f.id`, where the page's `load` filled `f` with a row of the same
-    table read by `Db.getMine` ("load fetched it with getMine": every
-    message runs `load` first, so the id is always the user's own row).
+    never applies (the blog's `User.role`, which only tests rely on).
 
-  A write route has no such `load`: its id comes from the request, and its
-  `scope dropped` mutants are never suppressed (the six of the report
-  above).
+  A `scope dropped` mutant is never suppressed. A write route runs no
+  `load`: its id comes from the request, so nothing proves the row is the
+  user's own (the six of the report above).
 
 - **Skipped** (`skipped`): the operator does not apply, or another
   operator already makes the same program.

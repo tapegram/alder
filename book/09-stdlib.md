@@ -787,8 +787,8 @@ A toast is a one-line notice shown once, in the next page the browser shows
 
 > **Deprecated:** `Notice.with`, `Notice.success`, `Notice.warning` and
 > `Notice.error` are the old names of `Response.toast`, `success`, `warning`
-> and `error`, from the page-and-message form, where they wrap a `Nav`. Write
-> the `Response` builders.
+> and `error`. They still work, as aliases, and each use is W0012. Write the
+> `Response` builders.
 
 ## Test
 
@@ -899,13 +899,12 @@ Two types of the Prelude exist only in tests and test helpers:
 They are `Doc`, a parsed page, which has `==`, and
 
 ```text
-type Answer = Shown | Rerendered | Rendered Route | Refreshed | Redirected Route | FormRejected (List { field: Text, message: Text }) | PageMissing | RequestFailed Text
+type Answer = Shown | Rendered Route | Refreshed | Redirected Route | FormRejected (List { field: Text, message: Text }) | PageMissing | RequestFailed Text
 ```
 
-Their names, and `Answer`'s eight constructors, are taken in every module
-(E0012). `Rerendered` is the old name of a re-render, kept until the old
-page-and-message syntax is removed; a route's answers are the other seven
-(chapter 10, "`Answer`: what a request came to").
+Their names, and `Answer`'s seven constructors, are taken in every module
+(E0012). A route's answers are described in chapter 10, "`Answer`: what a
+request came to".
 
 #### Queries
 

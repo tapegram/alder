@@ -244,11 +244,10 @@ show.
 `requires`. Where a route's `Session` is named from outside its members (a
 helper that takes it), it is `R.Session`.
 
-A module with one GET route is a page file without a `page` line and without
-a `Model` slot, which is most files. A module with a `route` line is a route
-module; one with a `page` line (the old form of a page and its messages) is
-not, and a module is one or the other (E0043). `alder fix --routes` rewrites a
-page module as a route module.
+A module with one GET route is a page file without a `Model` slot, which is
+most files. A module with a `route` line is a route module. The old form, a
+module with a `page` line and its messages, is E0046, and `alder fix --routes`
+rewrites it as a route module.
 
 ## Names
 
@@ -496,8 +495,8 @@ Logout.update p session = {
 <button click={App.Logout}>Log out</button>
 ```
 
-An `App` route's value is accepted in `Html a` for every `a`, so a layout
-component typed `Html a` can contain `click={App.Logout}`.
+An `App` route's value can be written in any markup, so a layout component
+typed `Html` can contain `click={App.Logout}`.
 
 ### Example: a theme switch
 
@@ -562,7 +561,7 @@ is still the way to keep the choice in the session.
 The layout cannot read the session; it takes the theme as a prop, sets a
 class on `<html>` for the stylesheet, and shows the button. Also an
 excerpt, of `app/Layout.alder` (the examples write their layouts as
-`Html a`, which serves a route's markup too):
+`Html`, like any markup):
 
 ```alder fragment
 -- in Layout
@@ -772,7 +771,7 @@ router already does:
 
 A literal name outside the list is E0035:
 
-```alder error=E0035 "`Set-Cookie` cannot be set from a page"
+```alder error=E0035 "`Set-Cookie` cannot be set from a file route"
 module Todos.Cookie
 
 route Cookie = GET "/cookie" { }

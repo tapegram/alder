@@ -661,7 +661,7 @@ page and no button) is made with `alder new route … --method POST` instead.
   Reply.ReplyId }`.
 
 - **Its path** is its module's route path with `/_/` and its name on the end
-  (the `<path>/_/<Msg>` convention), and it takes the parameters of the route
+  (the `<path>/_/<Name>` convention), and it takes the parameters of the route
   it was added to.
 
 - **Its `Delete.update`** answers with a `Response` (chapter 6), and starts as
@@ -5068,8 +5068,8 @@ E11 (below) found four things the commands could not do.
 ### A button in `App`
 
 The first was a button that is on every page (`click={App.Logout}` is one):
-`alder new msg App <Name> [fields]` declared a message in `App` for it. On
-routes, `App` holds write routes like any module: `route Logout = POST
+`alder new msg App <Name> [fields]` makes one. `App` holds write routes like
+any module: `route Logout = POST
 "/_/Logout"` is one, written by `alder new auth`.
 
 So `alder new msg App <Name>` writes a route there too, `route <Name> =
@@ -5125,10 +5125,6 @@ page (`click={App.ToggleTheme { dark: True }}`), and which page has the
 button is for you to say. The test opens the first plain page of the app
 and presses the route, so it fails ("the click finds no control") until
 that page has the button, as the comment above it says.
-
-> **An older `App`.** An `App` written before routes, with a `msg` and an
-> `update` of its own, keeps the old form of the command until it is moved
-> to routes.
 
 ### A prop
 
