@@ -54,10 +54,11 @@ Three routes. `Index` is a page: its view includes the layout. `Row` is a
 GET route whose view is one `<li>`; the page's view uses it for every todo,
 and `Toggle` uses it to answer a click. `Toggle` is a `PATCH`: it flips one
 todo and answers `Response.render (Row { id: … })`, which sends that one
-`<li>` to the browser and nothing else. The to-do app in
-`examples/todos` is this with a form to add a todo and a button to delete
-one; its `Toggle` is a `POST` that answers `Response.refresh`, the other
-way to answer ("`Response`", below).
+`<li>` to the browser and nothing else.
+
+The to-do app in `examples/todos` is this with a form to add a todo and a
+button to delete one; its `Toggle` is a `POST` that answers
+`Response.refresh`, the other way to answer ("`Response`", below).
 
 `Db.mine Todo`, `Db.getMine` and `Db.updateMine` are the to-do table's
 **scoped** operations: they read and write only the todos of the signed-in
@@ -67,6 +68,7 @@ The compiler checks each route module against the shape of its routes.
 A GET route has exactly one `load` and one `view`; a write route has
 exactly one `update` and neither of those. There is no `Model` slot and no
 `Msg`: the model is whatever `load` returns, and a button names a route.
+
 `R.Params` is generated from the route line and must not be written by hand.
 `view` receives the session so that per-user presentation (theme, "logged in
 as") needs no model field.
@@ -82,73 +84,119 @@ route Delete = DELETE "/todos/{id}"        { id: Todo.TodoId }           require
 route Write  = GET    "/write"             { }                           requires user, role Author
 ```
 
-A route line is `route NAME = METHOD "path" { params } [form F] [requires …]`.
+A route line has this shape:
 
-- `NAME` is a constructor, and a **route value** is the name applied to its
-  parameter record: `Index { filter: Done }`. It is what `href`, `click` and
-  `submit` take, what `Response.redirect` and `Response.render` take, and
-  what a test passes to `Test.get`.
-- The method is `GET`, `POST`, `PUT`, `PATCH` or `DELETE`. `form F` is for
-  write routes only: a GET route has no body to decode.
-- The path is a literal with `{name}` segments. Each segment must appear in
-  the parameter record; parameters not in the path ride in the query string
-  of the request URL, for every method (`POST "/like" { postId: PostId }`
-  posts to `/like?postId=…`). Segments are letters, digits, `.`, `_`, `~`,
-  `-`, or a whole `{param}`; anything else (`//x`, a space, `?`) is E0029.
-- A query parameter whose pair does not parse — a raw `;` in it (write
-  `%3B`), or a bad `%` escape — is a `400` naming the parameter, never a
-  parameter quietly at its default.
-- Parameter types must be one of: `Int`, `Text`, `Bool`, a brand of those,
-  a union with no payloads, `Maybe` of those, or `List` of those.
-- A parameter with a default is optional in links and in the URL.
-- A `List` parameter repeats its key in the URL: `{ tag: List Text }` with
-  `["a", "b"]` is `?tag=a&tag=b`, and `[]` is no key at all.
-- A query parameter's key is its name, unless the field gives another with
-  `as "Key"` after its type or default. That is for URLs whose shape is not
-  yours to choose, such as a capitalised key (`ElectionId`) that no field name
-  can spell:
+```
+route NAME = METHOD "path" { params } [form F] [requires …]
+```
 
-  ```alder fragment
-  route Results = GET "/r/{cfg}/wood/Results" { cfg: Text, electionId: Text = "" as "ElectionId", contestId: Maybe Int as "ContestId" }
-  ```
+### Name and method
 
-  The code still says `params.electionId` and `Sites.Wood.Results { cfg: c, electionId: "17" }`;
-  the request decoder reads `?ElectionId=17`, and every URL of the route (links,
-  redirects, a test's `Test.get`) writes `ElectionId=17`. The key
-  is letters, digits, `-`, `_`, `.` and `~`, two parameters may not read one
-  key, and a `{segment}` parameter takes no `as` (E0011).
-  The `as` may start the line after the type or default. In a default, `as` is an
-  ordinary name inside parentheses, a list's brackets, and the braces of a record,
-  a record update or a block: `f (g as) as "A"` passes a value named `as` to `g`.
-  Anywhere else in the default, a `match` arm and an element's `{…}` included,
-  `as` starts the key, so a value named `as` there is an error; wrap it in
-  parentheses.
-  A hand-written GET form names its inputs by the key, not the field:
-  `<form method="get" action="/r/c/wood/Results"><input name="ElectionId" /></form>`.
-  The browser sends the input's `name` as the key, so `name="electionId"` would
-  set nothing; `alder check` warns about it (W0008) when the form's `action` and
-  the input's `name` are literal text, and its fix writes the key.
-- `R.Params` is the parameter record type of route `R`. On a write route
-  with `form F` it has one more field, `form : F`, which the runtime fills in.
+- **`NAME`** is a constructor. A **route value** is the name applied to its
+  parameter record: `Index { filter: Done }`.
+
+  A route value is what `href`, `click` and `submit` take, what
+  `Response.redirect` and `Response.render` take, and what a test passes to
+  `Test.get`.
+
+- **The method** is `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
+
+- **`form F`** is for write routes only: a GET route has no body to decode.
+
+### The path
+
+The path is a literal with `{name}` segments.
+
+- Each segment must appear in the parameter record.
+- Parameters not in the path ride in the query string, for every method:
+  `POST "/like" { postId: PostId }` posts to `/like?postId=…`.
+- A segment is letters, digits, `.`, `_`, `~`, `-`, or a whole `{param}`.
+  Anything else (`//x`, a space, `?`) is E0029.
+- A query parameter whose pair does not parse is a `400` naming the
+  parameter, never a parameter quietly at its default. That covers a raw `;`
+  (write `%3B`) and a bad `%` escape.
+
+### Parameters
+
+| Rule | Example |
+|---|---|
+| Allowed types: `Int`, `Text`, `Bool`, a brand of those, a union with no payloads, `Maybe` or `List` of those | `{ id: Todo.TodoId }` |
+| A parameter with a default is optional in links and in the URL | `{ filter: Todo.Filter = All }` |
+| A `List` parameter repeats its key; `[]` is no key at all | `{ tag: List Text }` with `["a", "b"]` → `?tag=a&tag=b` |
+
+#### Query keys: `as "Key"`
+
+A query parameter's key is its name, unless the field gives another with
+`as "Key"` after its type or default. Use it for URLs whose shape is not
+yours to choose, such as a capitalised key (`ElectionId`) no field name can
+spell:
+
+```alder fragment
+route Results = GET "/r/{cfg}/wood/Results" { cfg: Text, electionId: Text = "" as "ElectionId", contestId: Maybe Int as "ContestId" }
+```
+
+The code still says `params.electionId` and
+`Sites.Wood.Results { cfg: c, electionId: "17" }`. The request decoder reads
+`?ElectionId=17`, and every URL of the route (links, redirects, a test's
+`Test.get`) writes `ElectionId=17`.
+
+Rules for the key:
+
+- It is letters, digits, `-`, `_`, `.` and `~`.
+- Two parameters may not read one key.
+- A `{segment}` parameter takes no `as` (E0011).
+- The `as` may start the line after the type or default.
+
+> **`as` inside a default.** Inside parentheses, a list's brackets, and the
+> braces of a record, a record update or a block, `as` is an ordinary name:
+> `f (g as) as "A"` passes a value named `as` to `g`. Anywhere else (a
+> `match` arm and an element's `{…}` included), `as` starts the key; wrap a
+> value named `as` in parentheses.
+
+**Hand-written GET forms** name their inputs by the key, not the field:
+
+```html
+<form method="get" action="/r/c/wood/Results"><input name="ElectionId" /></form>
+```
+
+The browser sends the input's `name` as the key, so `name="electionId"`
+would set nothing. `alder check` warns about it (W0008) when the form's
+`action` and the input's `name` are literal text, and its fix writes the key.
+
+### `R.Params`
+
+`R.Params` is the parameter record type of route `R`. On a write route with
+`form F` it has one more field, `form : F`, which the runtime fills in.
+
+### Shared paths and matching
+
 - Two routes may share a path when their methods differ (`GET "/todos/new"`
-  and `POST "/todos/new"`), but not a method and a path: `/x/{id}` and
-  `/x/{slug}` are the same pattern, so the second is an error (E0043).
-  Patterns that merely overlap are fine, whatever the module order: a
+  and `POST "/todos/new"`).
+- They may not share a method and a path. `/x/{id}` and `/x/{slug}` are the
+  same pattern, so the second is an error (E0043).
+- Patterns that merely overlap are fine, whatever the module order. A
   literal segment is matched before a parameter, left to right, so
-  `/todos/new` is served before `/todos/{id}`. A request whose path some
-  route declares, but not for its method, is a `405` with an `Allow`
-  header.
-- `requires` names a field of `Session` whose type is `Maybe a`. The route is
-  served only when that field is `Just`; otherwise the runtime redirects to
-  the route named in `App.login`. `requires user, role Author` adds a role:
-  the route is also a 404 for a signed-in user whose session's `role` is
-  not `Author` ("Rules", below). Inside the route's members `session.<field>`
-  has type `a`, not `Maybe a`. The route's `Session` is then a type of its own
-  (`R.Session` names it), and it can be passed wherever the app's `Session`
-  is expected (to a function in a shared module, say), where the field is
-  `Just` its value again. The other direction is a type error (E0003): a
-  function of the route that takes its `Session` cannot be given the app's,
-  whose field may be `Nothing`.
+  `/todos/new` is served before `/todos/{id}`.
+- A request whose path some route declares, but not for its method, is a
+  `405` with an `Allow` header.
+
+### `requires`
+
+`requires` names a field of `Session` whose type is `Maybe a`. The route is
+served only when that field is `Just`; otherwise the runtime redirects to
+the route named in `App.login`.
+
+`requires user, role Author` adds a role: the route is also a 404 for a
+signed-in user whose session's `role` is not `Author` ("Rules", below).
+
+Inside the route's members, `session.<field>` has type `a`, not `Maybe a`:
+
+- The route's `Session` is a type of its own (`R.Session` names it).
+- It can be passed wherever the app's `Session` is expected (a function in a
+  shared module, say), where the field is `Just` its value again.
+- The other direction is a type error (E0003): a function of the route that
+  takes its `Session` cannot be given the app's, whose field may be
+  `Nothing`.
 
 A route value is the only thing `href` accepts, and it must be a GET
 route's:
@@ -223,9 +271,11 @@ A dotted name is read as the longest module path the program knows, then a
 route of that module, then a member. That is why a route's module and its
 name often repeat: the to-do list is the module `Todos.Index`, its page is
 the route `Index`, and the page's value is **`Todos.Index.Index {}`**. Read
-it as module, route, parameters. The login page is `Auth.Login.Login {}`,
-and `App` names it with `login = Auth.Login.Login`. A route that shares its
-module's last name is the usual one-route file; nothing shortens it.
+it as module, route, parameters.
+
+The login page is `Auth.Login.Login {}`, and `App` names it with
+`login = Auth.Login.Login`. A route that shares its module's last name is the
+usual one-route file; nothing shortens it.
 
 Two things would make a name ambiguous, and both are E0044:
 
@@ -317,12 +367,15 @@ on again, with the values that were posted, and `t` shown in the form's
 
 The rule a developer needs, in one sentence: **`render` is for something
 already on the page; `refresh` is for things that appear or disappear, or when
-more than one place changes.** The reason is cost. `render` costs the `load`
-of the route it shows (one read by key, for a row) and sends one element.
-`refresh` costs what loading the page costs (twice: the runtime renders the
-page before the `update`, to know what changed) and sends the regions that
-differ. A toggle edits a row that is there: `render`. A delete removes one, and
-the count in the page's footer changes too: `refresh`.
+more than one place changes.**
+
+The reason is cost. `render` costs the `load` of the route it shows (one read
+by key, for a row) and sends one element. `refresh` costs what loading the
+page costs (twice: the runtime renders the page before the `update`, to know
+what changed) and sends the regions that differ.
+
+A toggle edits a row that is there: `render`. A delete removes one, and the
+count in the page's footer changes too: `refresh`.
 
 `invalid` is a successful result, not a failure: the `Task` that produced it
 commits, so anything it wrote and any `Session.put` it ran are kept. To
@@ -402,11 +455,15 @@ When a submitted form fails to decode (missing field, failed refinement,
 wrong type), the runtime does **not** call `update`. It answers `422` with
 the page the browser is on, rendered again with the submitted values and
 errors attached to that form; `<Input>` and `<Errors>` show them. The program
-never sees an invalid form. Only the form that posted shows them: on a page
-with one form per row, the other rows keep their own values. A field's errors
-go to its `<Errors field="…" />`; the errors of a field without one are listed
-in the form's `<Errors form />`, after its name ("due must be a date
-(YYYY-MM-DD)"). A form with neither for a field gets warning W0003.
+never sees an invalid form.
+
+Only the form that posted shows them: on a page with one form per row, the
+other rows keep their own values.
+
+A field's errors go to its `<Errors field="…" />`; the errors of a field
+without one are listed in the form's `<Errors form />`, after its name ("due
+must be a date (YYYY-MM-DD)"). A form with neither for a field gets warning
+W0003.
 
 When the form decodes and `update` still refuses it, `update` answers
 `Response.invalid "…"`: the same `422`, the same page, with the text in
@@ -419,10 +476,11 @@ back unchanged and not know why.
 Actions that belong to no page (log out, switch theme) are write routes
 declared in the `App` module. Any page can send them, as
 `click={App.Logout}`, and a route of `App` is like any other route except
-that it has no page of its own. It answers `redirect r`, to go to the
-route `r`, or `refresh`, which reloads the page the browser is on, because
-that is where the request came from (the page's address is sent with every
-write, "Delivery", below).
+that it has no page of its own.
+
+It answers `redirect r`, to go to the route `r`, or `refresh`, which reloads
+the page the browser is on, because that is where the request came from (the
+page's address is sent with every write, "Delivery", below).
 
 ```alder fragment
 -- in App
@@ -446,10 +504,12 @@ component typed `Html a` can contain `click={App.Logout}`.
 The to-do app has one app-level route, `Logout`. A switch between a light
 and a dark theme is the other usual one, and it uses every piece an app-level
 route can involve: a type for the state, a session field to keep it in, the
-route and its `update`, and a button that every page shows. (The example app
-leaves it out, so that its `App`, `Layout` and login page are a skeleton a new
-app can copy and check with nothing to write except its own home page.) Here
-is how to add it.
+route and its `update`, and a button that every page shows. Here is how to
+add it.
+
+> **Not in the example app.** The example app leaves it out, so that its
+> `App`, `Layout` and login page are a skeleton a new app can copy and check
+> with nothing to write except its own home page.
 
 The state is a union, in a module of its own, `app/Theme.alder`:
 
@@ -524,13 +584,16 @@ Page props =
 One thing to check first. A Layout from `alder new` carries a small theme
 script in its `<head>`: on every full page load it reads the visitor's
 choice from the browser (`localStorage`) or their operating system's
-preference, and sets or removes the `dark` class on `<html>` itself. That
-would overwrite the class the server just rendered from the session, and your
-button would seem to do nothing whenever the two disagree. So a Layout whose
-theme comes from the session drops the theme script: the session owns the
-class. (The other way to do it, a button in the browser that remembers the
-choice in `localStorage`, keeps the script; it is described under "Light and
-dark" in Appendix C.)
+preference, and sets or removes the `dark` class on `<html>` itself.
+
+That would overwrite the class the server just rendered from the session, and
+your button would seem to do nothing whenever the two disagree. So a Layout
+whose theme comes from the session drops the theme script: the session owns
+the class.
+
+> **The other way.** A button in the browser that remembers the choice in
+> `localStorage` keeps the script; it is described under "Light and dark" in
+> Appendix C.
 
 The `dark` class does something without any rules of yours, because
 alder-ui follows `html.dark` itself: its own colours switch to the dark
@@ -561,11 +624,14 @@ pass `Light`:
 That is the cost of the feature, and why the example does without it:
 every route's `view` passes the theme on, and a test that builds a session
 by hand names the field too, `{ user: me, theme: Light }` (chapter 10,
-"Testing effects"), and the test's module imports `Theme` for `Light`,
-because a record literal lists every field, defaults or not: defaults
-apply at the boundaries, the cookie, a route parameter or an insert
-(chapter 12, "No defaulted record literals"). A literal that leaves `theme` out is refused, for
-App's `Session` and a `requires` route's alike:
+"Testing effects"), and the test's module imports `Theme` for `Light`.
+
+The reason is that a record literal lists every field, defaults or not:
+defaults apply at the boundaries, the cookie, a route parameter or an insert
+(chapter 12, "No defaulted record literals").
+
+A literal that leaves `theme` out is refused, for App's `Session` and a
+`requires` route's alike:
 
 ```
 error[E0003]: record literal for `Session` is missing `theme` (a default applies only to an insert, the session cookie, a page or message parameter, or a form, not to a literal)
@@ -582,13 +648,16 @@ sends the file's bytes as the whole answer.
 
 ### Declaring a file page
 
-Two small ideas first, because a file has to say both. A **content type**
-is the label that tells the browser what the bytes are (`text/csv` is a
-spreadsheet-like table of text, `application/zip` an archive,
-`text/html` a web page), and the browser chooses what to do with the
-answer by it. A **status** is the three-digit number that says how the
-request went (`200` it worked, `404` there is nothing here, `503` try
-again later). A `File` carries both, plus its body and any extra headers.
+Two small ideas first, because a file has to say both:
+
+- A **content type** is the label that tells the browser what the bytes are
+  (`text/csv` is a spreadsheet-like table of text, `application/zip` an
+  archive, `text/html` a web page), and the browser chooses what to do with
+  the answer by it.
+- A **status** is the three-digit number that says how the request went
+  (`200` it worked, `404` there is nothing here, `503` try again later).
+
+A `File` carries both, plus its body and any extra headers.
 
 The compiler decides a route is a file page by the type of its `view`. Here
 is one that downloads the signed-in user's todos as a CSV file:
@@ -624,8 +693,9 @@ Export.view model session =
 same for `Bytes` (chapter 7, "A capability returning bytes"), and
 `File.json` takes a `Json.Value` built with the `Json` module (chapter 9,
 "Json"), encodes it and labels it `application/json`; text that is already
-JSON goes through `File.text` with that content type. The
-`Content-Disposition` header, set with `File.withHeader`, asks the browser
+JSON goes through `File.text` with that content type.
+
+The `Content-Disposition` header, set with `File.withHeader`, asks the browser
 to save the answer as `todos.csv` instead of showing it.
 
 A route's path is made of whole segments: `"/todos.csv"` is one segment,
@@ -690,12 +760,17 @@ Busy.view model session =
 A header **name** is one of `Content-Disposition`, `Cache-Control`,
 `ETag`, `Last-Modified`, `Retry-After`, `Content-Language`, or any name
 that starts with `X-`, in any case (`etag` and `ETag` are the same). Set
-twice, a named header keeps the last value; `X-` names may repeat. The
-router owns every other header, because each is part of something the
-router already does: `Content-Type` comes from the file, `Set-Cookie`
-from the session, `Location` from a redirect, `Content-Length` and the
-connection headers from the server. A literal name outside the list is
-E0035:
+twice, a named header keeps the last value; `X-` names may repeat.
+
+The router owns every other header, because each is part of something the
+router already does:
+
+- `Content-Type` comes from the file.
+- `Set-Cookie` comes from the session.
+- `Location` comes from a redirect.
+- `Content-Length` and the connection headers come from the server.
+
+A literal name outside the list is E0035:
 
 ```alder error=E0035 "`Set-Cookie` cannot be set from a page"
 module Todos.Cookie
@@ -733,10 +808,13 @@ that belong to the app stay the app's HTML pages: a `404` from
 `Query.notFound` or a parameter that does not decode (`App.notFound`), a
 failed `Task` or `load` (`App.error`), the maintenance `503`, and the
 redirect to the login page when the route `requires` something the session
-lacks. A file page's `load` that ends in `Query.redirect r` is a plain
-`303` to `r`, as its `Query.notFound` is the app's `404`. A file page that
-answers its own `503` (above) is different: that `503` is the page's own
-file.
+lacks.
+
+A file page's `load` that ends in `Query.redirect r` is a plain `303` to `r`,
+as its `Query.notFound` is the app's `404`.
+
+> **Its own `503`.** A file page that answers its own `503` (above) is
+> different: that `503` is the page's own file.
 
 A file page is not a document, so nothing on it can post a form or send a
 click; put the button on an HTML route that links to the file. A test reads a
@@ -790,11 +868,14 @@ whose owner is the signed-in user:
 
 | Operation | Type | What it does |
 |---|---|---|
-| `Db.mine Todo` | `Select Todo` | The rows whose `owner` is the signed-in user. It is a `Select`, like `Db.from Todo`, so `Db.where`, `Db.orderBy`, `Db.limit`, `Db.all`, `Db.count` and the rest apply to it |
+| `Db.mine Todo` | `Select Todo` | The rows whose `owner` is the signed-in user |
 | `Db.getMine Todo id` | `Query Todo` | The row with that id, when it is the user's; otherwise not found |
 | `Db.updateMine Todo id f` | `Task Unit` | Changes the row with `f`, when it is the user's; otherwise not found |
 | `Db.deleteMine Todo id` | `Task Unit` | Deletes the row, when it is the user's; otherwise not found |
 | `Db.insertMine Todo { … }` | `Task TodoId` | Inserts a row whose owner is the user |
+
+`Db.mine` is a `Select`, like `Db.from Todo`, so `Db.where`, `Db.orderBy`,
+`Db.limit`, `Db.all`, `Db.count` and the rest apply to it.
 
 The to-do list uses four of them
 (`examples/todos/app/Todos/Index.alder`):
@@ -925,9 +1006,10 @@ Index.view model session = <p>{Text.fromInt model.open}</p>
 The rule follows a helper: a value that uses a scoped operation is checked
 where it is used, not where it is written, so a route that does not `requires
 user` and calls `recent` is E0026 at that call ("`recent` uses `Db.mine`,
-which needs a route that `requires user`: `Index` does not"). A `fake`
-(chapter 10) has no session either: "`Db.mine` cannot be used in a fake:
-a fake has no session" (an excerpt: the message begins with where the
+which needs a route that `requires user`: `Index` does not").
+
+A `fake` (chapter 10) has no session either: "`Db.mine` cannot be used in a
+fake: a fake has no session" (an excerpt: the message begins with where the
 use is, such as "in `fake Counter`'s `count`:"). Tests may use them (below).
 
 A table without `@owner` has nothing to scope by (E0025):
@@ -962,10 +1044,12 @@ It shows in two places:
 - **A test** that calls `update` (or `load`) itself, with a session
   record it wrote, does not choose the user that way: the scoped
   operations act for the test's own session, which `Test.login` sets
-  (chapter 10, "Tests that use the rules"). A test that never logged in
-  has no user, and a scoped operation fails with `Db.mine Todo: no
-  signed-in user` (or `Db.getMine Todo: …`, and so on). It never quietly
-  returns nothing.
+  (chapter 10, "Tests that use the rules").
+
+  A test that never logged in has no user, and a scoped operation fails with
+  `Db.mine Todo: no signed-in user` (or `Db.getMine Todo: …`, and so on).
+  It never quietly returns nothing.
+
 - **`Session.put`** in the middle of an `update` changes the user for
   every scoped operation after it in the same `Task`: they act for the
   session as it now is.
@@ -1004,9 +1088,11 @@ Adding `role` to the session changes the tests. A session record a test
 writes for a route's `load` or `update` is a record literal, and names every
 field: `{ user: author }` becomes `{ user: author, role: Author }`, or
 E0003 says `role` is missing (a default applies at the boundaries, not
-to a literal, as the theme switch earlier in this chapter shows). `Test.login`'s record
-is a boundary, the cookie's value, so `Test.login { user: Just me }` may
-leave `role` out and gets its default, `Reader`.
+to a literal, as the theme switch earlier in this chapter shows).
+
+`Test.login`'s record is a boundary, the cookie's value, so
+`Test.login { user: Just me }` may leave `role` out and gets its default,
+`Reader`.
 
 A route for authors only says so on its `route` line:
 
@@ -1049,21 +1135,24 @@ Reports.view model session = <p>reports</p>
 
 **Generated routes say the same.** `alder new route … --requires user`
 writes the clause, and `--role R` adds `, role R` (and implies
-`--requires user`), each with its test (chapter 15). Every route of
-`alder new admin`'s admin `requires user, role Admin`: so it needs a
-session `role` with an `Admin` constructor; and when the user table
+`--requires user`), each with its test (chapter 15).
+
+Every route of `alder new admin`'s admin `requires user, role Admin`: so it
+needs a session `role` with an `Admin` constructor; and when the user table
 holds the role, each of its routes also re-reads the user's row (in `load`,
-and at the start of each write route), the idiom below, so a demoted Admin is turned away at once
-(chapter 15, "The dashboard and the layout").
+and at the start of each write route), the idiom below, so a demoted Admin is
+turned away at once (chapter 15, "The dashboard and the layout").
 
 **A role is read at login.** The check reads the session cookie and
-nothing else, so it costs no query. A role in the cookie lasts until
-logout, or the session's 30-day lifetime from login (visiting does not
-renew the cookie: "The session cookie", below). Until then an author
-demoted to Reader still passes `requires user, role Author`, and a
-Reader promoted to Author must log in again. A route where a demotion
-must apply at once also reads the user's row, the **re-read idiom**, as
-the blog's Write routes do with helpers in `User`
+nothing else, so it costs no query.
+
+A role in the cookie lasts until logout, or the session's 30-day lifetime from
+login (visiting does not renew the cookie: "The session cookie", below). Until
+then an author demoted to Reader still passes `requires user, role Author`,
+and a Reader promoted to Author must log in again.
+
+A route where a demotion must apply at once also reads the user's row, the
+**re-read idiom**, as the blog's Write routes do with helpers in `User`
 (`examples/blog/app/Table/User.alder`):
 
 ```alder fragment
@@ -1123,10 +1212,14 @@ On an owned table outside those cases, an unscoped operation means the
 check is yours to write again, and a test is yours to write for it.
 
 A row a page has already shown is not one of the cases either: write the
-scoped form; it costs nothing. A write route runs no `load` before it, so it
+scoped form; it costs nothing.
+
+A write route runs no `load` before it, so it
 has not read the row: it takes the id from its path (`Todos.Show`'s `Save` and
 `Delete` are `POST "/todos/{id}/_/Save"` and `POST "/todos/{id}/_/Delete"`),
-and the scoped write is what makes that id safe. `Todos.Show` writes
+and the scoped write is what makes that id safe.
+
+`Todos.Show` writes
 `Db.updateMine Todo p.id …` and `Db.deleteMine Todo p.id`, and so does the
 blog's `Write.Edit`; the test that sends a stranger's id and gets a 404
 (`Todos.Show`'s "saving or deleting another user's todo is not found") is what
@@ -1147,26 +1240,33 @@ built to fit:
   `DELETE … WHERE "id" = ? AND "owner" = ?`. `Db.updateMine` is a
   predicated read then a predicated write (`UPDATE … WHERE "id" = ? AND
   "owner" = ?`), both in the `Task`'s transaction, on the primary. Each
-  counts the rows it changed. A hand-written check that reads on a
-  replica and writes on the primary can approve a write the primary
-  would refuse, when the replica is behind or another request changed
-  the row in between. With the predicate in the write, the primary
-  decides ownership where it writes. (A `Db.getMine` in `load` and then a
-  plain write of that row, in a later request, would have that gap if the
-  row changed owner between the two; the examples' write routes carry the
-  predicate themselves, so they have none.) Chapter 13 shows the SQL.
+  counts the rows it changed. Chapter 13 shows the SQL.
+
+  A hand-written check that reads on a replica and writes on the primary can
+  approve a write the primary would refuse, when the replica is behind or
+  another request changed the row in between. With the predicate in the
+  write, the primary decides ownership where it writes.
+
+  > **A gap the examples do not have.** A `Db.getMine` in `load` and then a
+  > plain write of that row, in a later request, would have that gap if the
+  > row changed owner between the two; the examples' write routes carry the
+  > predicate themselves, so they have none.
 
 ### Partitions
 
 `@owner` says that a row belongs to one user. Many apps have a second
 kind of owner: a row belongs to an **org** (a team, a workspace, a
 company), every member of the org may see it, and a user works in one
-org at a time. The rule is the same shape as ownership, with another
-session field in place of `user`, so Alder declares it the same way.
-This section follows `examples/workspace` (chapter 14), whose orgs have
-projects, and whose users belong to orgs through a `Membership` table.
+org at a time.
 
-**A key in the session.** The org a user works in is a session field, a
+The rule is the same shape as ownership, with another session field in place
+of `user`, so Alder declares it the same way. This section follows
+`examples/workspace` (chapter 14), whose orgs have projects, and whose users
+belong to orgs through a `Membership` table.
+
+#### A key in the session
+
+The org a user works in is a session field, a
 **key**, beside the user (`examples/workspace/app/App.alder`):
 
 ```alder fragment
@@ -1176,7 +1276,9 @@ session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: Us
 It is a `Maybe` of a table's id, like `user`: a new session has no org
 yet. `via Membership` is the rule for setting it, below.
 
-**`@partition org`.** A table says which of its columns holds the key
+#### `@partition org`
+
+A table says which of its columns holds the key
 (`examples/workspace/app/Table/Project.alder`):
 
 ```alder fragment
@@ -1191,16 +1293,24 @@ table Project {
 `@partition k` marks one `@ref` column whose type is the session field
 `k` without its `Maybe`: `org: Maybe Org.OrgId` in the session means
 `Org.OrgId` here. `@owner` is exactly `@partition user`, kept as the
-short way to write it. The rules, E0032 when broken: the session has a
-field `k` of type `Maybe` of the column's type ("`@partition org` needs
-a session field `org` of type `Maybe Org.OrgId`"); the column is a
-`@ref` ("`@partition org` must mark a `@ref` column; `name` is `Text`
-without `@ref`"); and a table has one partition column ("a table has
-one partition column: `Board` marks `org` and `owner`"). Like `@owner`,
-it changes nothing in the database by itself: chapter 8's `silo` is
-what gives each org a database of its own.
+short way to write it.
 
-**The scoped operations, for any key.** A partitioned table has five
+The rules, E0032 when broken:
+
+- The session has a field `k` of type `Maybe` of the column's type
+  ("`@partition org` needs a session field `org` of type
+  `Maybe Org.OrgId`").
+- The column is a `@ref` ("`@partition org` must mark a `@ref` column; `name`
+  is `Text` without `@ref`").
+- A table has one partition column ("a table has one partition column:
+  `Board` marks `org` and `owner`").
+
+Like `@owner`, it changes nothing in the database by itself: chapter 8's
+`silo` is what gives each org a database of its own.
+
+#### The scoped operations, for any key
+
+A partitioned table has five
 generic scoped operations, which do for its key what the `mine` family
 does for the user (chapter 9 has their types):
 
@@ -1214,14 +1324,18 @@ does for the user (chapter 9 has their types):
 
 The `mine` family is these five on a table partitioned by `user`, and
 the same code: `Db.mine Todo` and `Db.scoped Todo` are one operation.
+
 On a table partitioned by another key `Db.mine` is refused, naming the
 fix (E0025): "`Project` is partitioned by `org`, not by the session's
 `user`: `Db.mine` is for `@owner` tables; write `Db.scoped Project`".
+
 What a stranger gets is what it is for `@owner`: a row of another org is
 answered as a row that does not exist, not found, so there is no arm to
 write for it and nothing to give away.
 
-**`requires user, org`.** A scoped operation on `Project` needs a
+#### `requires user, org`
+
+A scoped operation on `Project` needs a
 session whose `org` is set, so it is allowed only in the members of a route
 that `requires org` (E0026 otherwise: "`Db.scoped Project` needs a route
 that `requires org`: `Index` does not"). The workspace's projects page and
@@ -1268,7 +1382,9 @@ send with another org's project's id; `Db.deleteScoped` looks for it in
 the session's org only, finds nothing, and the `Task` fails with not
 found (the workspace's test "another org's project cannot be removed").
 
-**`via`: who may set the key.** The session's `org` is set as any field
+#### `via`: who may set the key
+
+The session's `org` is set as any field
 is, with `Session.put`. `via Membership` adds one rule: a `Session.put`
 that sets `org` to `Just v` fails, the whole `Task` with it, unless the
 `Membership` table has a row whose user is the session's user and whose
@@ -1299,40 +1415,50 @@ had (`Orgs.Index "a non-member's switch is refused"`). The details:
   `Nothing`) clears every `via` key with it.
 - The `via` table must have exactly one `@ref` to the user table and one
   to the key's table (E0032: "`via Seat`: `Seat` needs exactly one `@ref
-  User` column and one `@ref Org` column; it has 0 and 1"); the session
-  must have a `user` ("`org` is `via Membership`, which needs a session
-  field `user`: a membership is a user's"); and, for now, a session has
-  one `via` field ("`other` is `via Membership`: one `via` field per
-  session (for now)").
+  User` column and one `@ref Org` column; it has 0 and 1").
+- The session must have a `user` ("`org` is `via Membership`, which needs a
+  session field `user`: a membership is a user's").
+- For now, a session has one `via` field ("`other` is `via Membership`: one
+  `via` field per session (for now)").
 - A key without `via` (a `region` chosen from a fixed list, say) is set
   freely; the pages that use it still `requires region`.
 
-**`choose`: where a session without the key goes.** `App` names the page
-that picks the key (`examples/workspace/app/App.alder`):
+#### `choose`: where a session without the key goes
+
+`App` names the page that picks the key (`examples/workspace/app/App.alder`):
 
 ```alder fragment
 choose org = Orgs.Index.Index
 ```
 
 A route that `requires user, org` sends a session without an org there.
-It is required as soon as a route requires a `via` key (E0032: "`org` is
-`via Membership` and `Projects` `requires org`: `App` needs `choose org =
-Page`, the page a request without `org` is sent to (it picks one)"), and
-the route it names must not require the key itself, or a request would
-be sent back to it for ever ("`choose org = Picker`: `Picker` `requires
-org` itself, so a request without `org` would be sent back to it"). The
-user is chosen by `login`, never by `choose` ("`choose user`: the
-signed-in user is chosen by `login`; `choose` names the page for another
-key"). The workspace's login puts the first org the user joined in the
-session as it signs them in, through the same rule (one `Db.first` and
-one `Session.put`); a user in no org gets none, and the projects page
-sends them to `Orgs.Index.Index` to make one.
 
-**The re-read idiom, for a membership.** Like a role, the key is checked
+The rules:
+
+- A `choose` is required as soon as a route requires a `via` key (E0032:
+  "`org` is `via Membership` and `Projects` `requires org`: `App` needs
+  `choose org = Page`, the page a request without `org` is sent to (it picks
+  one)").
+- The route it names must not require the key itself, or a request would be
+  sent back to it for ever ("`choose org = Picker`: `Picker` `requires org`
+  itself, so a request without `org` would be sent back to it").
+- The user is chosen by `login`, never by `choose` ("`choose user`: the
+  signed-in user is chosen by `login`; `choose` names the page for another
+  key").
+
+The workspace's login puts the first org the user joined in the session as it
+signs them in, through the same rule (one `Db.first` and one `Session.put`);
+a user in no org gets none, and the projects page sends them to
+`Orgs.Index.Index` to make one.
+
+#### The re-read idiom, for a membership
+
+Like a role, the key is checked
 when it is put, and the cookie keeps it: it is **not** checked again on
 every request. A member removed from the org keeps the org in their
-cookie until they log out, pick another, or the cookie's 30 days end. A
-route that must notice a removal at once reads the membership again, the
+cookie until they log out, pick another, or the cookie's 30 days end.
+
+A route that must notice a removal at once reads the membership again, the
 re-read idiom of "Roles" above, with helpers in `Membership`
 (`examples/workspace/app/Table/Membership.alder`):
 
@@ -1366,12 +1492,16 @@ Index.load params session = {
 and a write route begins with `memberOnly`, because no `load` runs before
 it (`Create.update` and `Remove.update` above do). A removed member's
 requests are refused either way: the tests "a member removed from the org
-loses access at once". It costs one query a request, on the shared
-database; an app that can wait for the next login leaves it out. It is the
-recommended way for routes whose data matter, and the generated admin's
-routes, which check the Admin's role the same way, use it.
+loses access at once".
 
-**The admin form: `requires user, role Admin, silo org`.** An admin
+It costs one query a request, on the shared database; an app that can wait
+for the next login leaves it out. It is the recommended way for routes whose
+data matter, and the generated admin's routes, which check the Admin's role
+the same way, use it.
+
+#### The admin form: `requires user, role Admin, silo org`
+
+An admin
 manages every org's rows, a member or not, so `via` cannot give it the
 org. Its routes take the org from their own parameter instead, and the
 role check is what guards them:
@@ -1381,34 +1511,46 @@ route Index = GET "/admin/orgs/{org}/project" { org: Org.OrgId, … } requires u
 ```
 
 Inside, `session.org` is the parameter's `Org.OrgId`, and the route reads
-and writes that org's rows as a member's route would. The rules (E0033):
-the clause needs the role ("`silo org` needs a role check: the route takes
-`org` from its parameter, which only the role check guards; write
-`requires user, role Admin, silo org`"), and the parameter, of the key's
-type ("`silo org` takes `org` from the route's parameter: add `org:
-Org.OrgId` to the route's parameters"). `alder new admin` writes these
-routes for the tables of a silo (chapter 15).
+and writes that org's rows as a member's route would. `alder new admin`
+writes these routes for the tables of a silo (chapter 15).
 
-The role is the only guard, so it must be a role only some users have.
-`requires user, role Admin, silo org` opens every org to an Admin; with
-`role Member | Admin`, where every signed-in user is a `Member` (the
-workspace's default role), it opens every org to every user, a
-non-member included, since the route takes the org from its address, not
-from a membership. The checker cannot tell a role everyone has from one
-few have: give the admin form a role that is granted, never a default.
+The rules (E0033):
 
-**Where the rules are kept.** Only where the key is narrowed: in the
+- The clause needs the role ("`silo org` needs a role check: the route takes
+  `org` from its parameter, which only the role check guards; write
+  `requires user, role Admin, silo org`").
+- The route needs the parameter, of the key's type ("`silo org` takes `org`
+  from the route's parameter: add `org: Org.OrgId` to the route's
+  parameters").
+
+> **The role is the only guard.** It must be a role only some users have.
+> `requires user, role Admin, silo org` opens every org to an Admin; with
+> `role Member | Admin`, where every signed-in user is a `Member` (the
+> workspace's default role), it opens every org to every user, a
+> non-member included, since the route takes the org from its address, not
+> from a membership.
+>
+> The checker cannot tell a role everyone has from one few have: give the
+> admin form a role that is granted, never a default.
+
+#### Where the rules are kept
+
+Only where the key is narrowed: in the
 members of a route that `requires` it (or the admin form) and the helpers
-they call, and in tests, which run with the test's session. A fake has no
-session ("`Db.scoped Project` cannot be used in a fake: a fake has no
-session"). A helper that uses a scoped operation, called from a route that
-does not narrow the key, is refused at the call, as for `@owner`
-("`recent` uses `Db.scoped Project`, which needs a route that `requires
-org`: `Public` does not"). Rows that are
-anyone's (an org's name, a user's) stay unscoped: the workspace reads
-`Db.get Org session.org` beside its scoped projects.
+they call, and in tests, which run with the test's session.
 
-**One org's database.** With `silo org { Project, Todo }` in `App`
+- A fake has no session ("`Db.scoped Project` cannot be used in a fake: a
+  fake has no session").
+- A helper that uses a scoped operation, called from a route that does not
+  narrow the key, is refused at the call, as for `@owner` ("`recent` uses
+  `Db.scoped Project`, which needs a route that `requires org`: `Public` does
+  not").
+- Rows that are anyone's (an org's name, a user's) stay unscoped: the
+  workspace reads `Db.get Org session.org` beside its scoped projects.
+
+#### One org's database
+
+With `silo org { Project, Todo }` in `App`
 (chapter 8, "Silos") each org's projects and to-dos are in a database of
 the org's own, and the scoped operations read and write that file: a
 row of another org is not merely filtered out but absent. A `Task`
@@ -1436,63 +1578,94 @@ for the `Row` route and puts the answer where the `<li id="todo-…">` stands.
 A view delivered **from an element** needs a root element with an `id`, since
 that is where the answer goes. A view whose first root element has none is a
 runtime error: it is logged, shown in the dev panel, and the page is left as
-it was. (If a view has several root elements, all of them are morphed in
-and the first one's `id` is the target.)
+it was.
 
-Three request headers carry what the server does not remember:
+> **Several root elements.** If a view has several root elements, all of them
+> are morphed in and the first one's `id` is the target.
 
-- **`Alder-Page`** is the path and query of the page the browser is on
-  (`location.pathname + location.search`). Every write sent from the page
-  carries it, because a write route does not know which page it was
-  clicked on (`Toggle` may be used from the index and from a detail page),
-  and `refresh` and `invalid` need it. The router resolves it to a GET route
-  with the matcher a GET uses. Without JavaScript there is no such header,
-  and the router reads the `Referer` instead. Both go through `rt.BackURL`,
-  which keeps the path and query, drops the scheme and host, and refuses a
-  path that starts with `//`, so the answer never leads to another site.
-- **`Alder-Build`** is the build id of the page, on every Datastar request.
-  A page from an older build has its `<head>` (stylesheet, scripts), and
-  a morph would keep it. So a mismatch answers a full reload, never a patch:
-  a link loads its address, an element fetch reloads the page it was made
-  from, and a write still runs (its decoders guard it) and then reloads:
-  `redirect r` goes to `r`, anything else reloads `Alder-Page`.
-- **`Alder-Shown`** is the hash of the body as the server last rendered it for this page
-  (the whole body, or the hash sent after region patches). A write
-  sent without it (before the page's script ran) is answered with the whole
-  body. The server compares its own render before the `update` with the one
-  after it: when they are equal, no element event is sent.
+### Request headers
+
+Three request headers carry what the server does not remember.
+
+#### `Alder-Page`
+
+It is the path and query of the page the browser is on
+(`location.pathname + location.search`). Every write sent from the page
+carries it, because a write route does not know which page it was
+clicked on (`Toggle` may be used from the index and from a detail page),
+and `refresh` and `invalid` need it. The router resolves it to a GET route
+with the matcher a GET uses.
+
+Without JavaScript there is no such header, and the router reads the
+`Referer` instead. Both go through `rt.BackURL`, which keeps the path and
+query, drops the scheme and host, and refuses a path that starts with `//`,
+so the answer never leads to another site.
+
+#### `Alder-Build`
+
+It is the build id of the page, on every Datastar request. A page from an
+older build has its `<head>` (stylesheet, scripts), and a morph would keep
+it. So a mismatch answers a full reload, never a patch:
+
+- A link loads its address.
+- An element fetch reloads the page it was made from.
+- A write still runs (its decoders guard it) and then reloads: `redirect r`
+  goes to `r`, anything else reloads `Alder-Page`.
+
+#### `Alder-Shown`
+
+It is the hash of the body as the server last rendered it for this page (the
+whole body, or the hash sent after region patches). A write sent without it
+(before the page's script ran) is answered with the whole body.
+
+The server compares its own render before the `update` with the one after it:
+when they are equal, no element event is sent.
 
 ### A write's response, with JavaScript
 
-- `redirect r` (303): the browser goes to `r` as a boosted link would:
+- **`redirect r` (303)**: the browser goes to `r` as a boosted link would:
   `load`, view, body morphed in, title, a history entry for `r`'s URL. It is
   never diffed against the page, even when `r` is the page the browser is on,
-  and no before-view is rendered for it. A `redirect` to another site
-  (`Url.external`) is a real navigation.
-- `render r` (200): the runtime runs `r`'s `load` and `view` with the session
-  the write left, and sends one patch by the root `id`, mode outer. No
-  before-view, no page load. If `r` cannot answer its view (the row was
-  deleted meanwhile), nothing is patched and an error toast says so.
-- `refresh` (200): the page the browser is on (`Alder-Page`) is loaded
+  and no before-view is rendered for it.
+
+  A `redirect` to another site (`Url.external`) is a real navigation.
+
+- **`render r` (200)**: the runtime runs `r`'s `load` and `view` with the
+  session the write left, and sends one patch by the root `id`, mode outer.
+  No before-view, no page load.
+
+  If `r` cannot answer its view (the row was deleted meanwhile), nothing is
+  patched and an error toast says so.
+
+- **`refresh` (200)**: the page the browser is on (`Alder-Page`) is loaded
   again and diffed against the before-view; the regions that differ are
   patched, and the URL stays. A region is an element with an `id`
   (chapter 5, "Partial updates"); when the diff cannot be cut into regions
   safely, the whole body is morphed.
-- `invalid t` (422): the same, with the posted form's values and `t`
+
+- **`invalid t` (422)**: the same, with the posted form's values and `t`
   attached to that form.
 
+#### The before-view
+
 The before-view is the page rendered before `update` runs, so there is
-something to diff against. The compiler works out per write route whether
-it can be needed: a route renders one only when its `update` mentions
-`Response.refresh` or `Response.invalid`, or calls an app function whose
-result type contains `Response`. A route that only `redirect`s or `render`s
-renders none, which is why a toggle by `render` costs one read by key.
+something to diff against.
+
+The compiler works out per write route whether it can be needed: a route
+renders one only when its `update` mentions `Response.refresh` or
+`Response.invalid`, or calls an app function whose result type contains
+`Response`. A route that only `redirect`s or `render`s renders none, which is
+why a toggle by `render` costs one read by key.
+
+#### What the browser keeps
 
 Regions the server did not change are left as the browser has them.
 `render` and an element fetch change the DOM without the server rendering
 the page, so the hash `Alder-Shown` is out of date after them by design; the
 guarantee is the one a partial page gives you: every region the server sent
-is right. Rows a click fetched, or an inline edit that is open, survive a `refresh`
+is right.
+
+Rows a click fetched, or an inline edit that is open, survive a `refresh`
 that did not touch them.
 
 ### A write's response, without JavaScript
@@ -1529,15 +1702,19 @@ uses. Each is a few lines of routes and uses nothing else:
 | inline edit | `EditRow = GET`, asked for by `click`; `Save = PUT` answering `render (Row …)`; cancel is `click={Row …}` | the row becomes a form and back, in place | 1 row each |
 | modal form | `NewDialog = GET`, asked for by `click` into `#dialog`; `Create` answering `redirect (Index {})` | the dialog, then the page | 1 |
 | wizard | `Step2 = GET { name }`; `Next1 = POST` answering `redirect (Step2 { name: … })` | one URL per step; Back works | 1 |
-| login, logout, theme | a `POST` that runs `Session.put` and answers `redirect` or `refresh` | as above (a class on `<html>` changes only on a full load, [#189](https://github.com/tapegram/alder/issues/189)) | 1 or 2 |
+| login, logout, theme | a `POST` that runs `Session.put` and answers `redirect` or `refresh` | as above | 1 or 2 |
 | CSV export | `Export = GET "/export.csv"` whose view returns a `File` | the file ("File pages", above) | 1 |
 
-("Loads" counts the `load`s of GET routes a click costs; `refresh`
-loads the page twice, once for the before-view.) Search as you type, "load
-more" on scroll, a widget that fills in when it appears and a badge that
-polls are not in Alder yet: they need elements that request a route on
-`input`, `intersect`, `load` or a timer, and `click` is the only element
-attribute that requests a route today.
+"Loads" counts the `load`s of GET routes a click costs; `refresh` loads the
+page twice, once for the before-view.
+
+> **Theme switch.** A class on `<html>` changes only on a full load
+> ([#189](https://github.com/tapegram/alder/issues/189)).
+
+> **Not yet:** search as you type, "load more" on scroll, a widget that fills
+> in when it appears and a badge that polls. They need elements that request
+> a route on `input`, `intersect`, `load` or a timer, and `click` is the only
+> element attribute that requests a route today.
 
 ## The request lifecycle
 
@@ -1617,13 +1794,16 @@ notFound =
 
 ## Notices and in-flight state
 
+### Toasts
+
 A write route can answer with a toast. `Response.refresh |> Response.toast
 "Saved"` is the `refresh` it wraps, plus a notice: after the page's regions are
 patched in, the runtime appends `<al-toast variant="info" timeout="5000">Saved</al-toast>` to
 the page's `<al-toasts>` region as an event of its own, so a later morph does
-not show it again. Put `<al-toasts>` in the layout, outside anything a
-route re-renders; a page without one gets a region the runtime adds to the
-body of the answer.
+not show it again.
+
+Put `<al-toasts>` in the layout, outside anything a route re-renders; a page
+without one gets a region the runtime adds to the body of the answer.
 
 `Response` has four toast functions, each `Text -> Response -> Response`, one
 per kind of toast:
@@ -1639,31 +1819,44 @@ per kind of toast:
   five seconds. A form's own problems are better told with `invalid`, next
   to the form.
 
-(`Notice.with`, `Notice.success`, `Notice.warning` and `Notice.error` are
-the old names of these, for the page-and-message syntax; `alder fix --routes`
-rewrites them.)
+> **Old names.** `Notice.with`, `Notice.success`, `Notice.warning` and
+> `Notice.error` are the old names of these, for the page-and-message syntax;
+> `alder fix --routes` rewrites them.
 
-Without JavaScript there is no toast (the region is
-hidden), so a request made without the script (a form posted with
-JavaScript off) gets its notice as an `<al-alert>` of the same kind at the top
-of the page that answers it (`role="alert"` for a warning or an error, so a
-screen reader reads it out at once, else `role="status"`): the page itself on
-an `invalid`, the next page after a `303` (a `redirect`, or a `refresh` or
-`render` that went back to the referring page): the kind and text ride a
-cookie signed with the app's key, `alder_notice`, for that one page. Appendix C
-lists the exact markup of each kind. A browser test reads the toasts of a
-step as `r.notices`, their texts, and `r.toasts`, their kinds and texts
-(chapter 10).
+### Notices without JavaScript
+
+Without JavaScript there is no toast (the region is hidden), so a request
+made without the script (a form posted with JavaScript off) gets its notice
+as an `<al-alert>` of the same kind at the top of the page that answers it.
+The alert has `role="alert"` for a warning or an error, so a screen reader
+reads it out at once, else `role="status"`.
+
+The page that answers it is:
+
+- the page itself, on an `invalid`;
+- the next page, after a `303` (a `redirect`, or a `refresh` or `render` that
+  went back to the referring page).
+
+The kind and text ride a cookie signed with the app's key, `alder_notice`, for
+that one page. Appendix C lists the exact markup of each kind.
+
+A browser test reads the toasts of a step as `r.notices`, their texts, and
+`r.toasts`, their kinds and texts (chapter 10).
+
+### In-flight state
 
 While a write is pending, the form (or the form around a `click` button)
 that sent it is `inert` and `aria-busy="true"`, and a two-pixel bar runs along
-the top of the page; both go when the answer arrives. An inert form loses the
-keyboard focus, so when the answer arrives the runtime puts it back on the
-field that had it (or the element that now carries its `id`), unless the
-focus has gone somewhere else meanwhile: a refused form leaves the cursor
-where the user was typing. A boosted link shows the
+the top of the page; both go when the answer arrives. A boosted link shows the
 bar too, and Back during a pending GET still ends on the page Back returned
-to. The bar is a rule the runtime puts in the head (`html[data-alder-pending]`),
+to.
+
+An inert form loses the keyboard focus, so when the answer arrives the runtime
+puts it back on the field that had it (or the element that now carries its
+`id`), unless the focus has gone somewhere else meanwhile: a refused form
+leaves the cursor where the user was typing.
+
+The bar is a rule the runtime puts in the head (`html[data-alder-pending]`),
 not part of the design library.
 
 
@@ -1674,11 +1867,13 @@ the server that `alder build` makes (chapter 11) does with each request, so
 that nothing in the lifecycle above is a mystery. Chapter 13 follows one
 request through it byte by byte.
 
-Four pieces of Go do the work. `rt/web` is the router and the session
-cookie. `build/<app>/routes__alder.go`, which the compiler writes for your
-app, holds one handler for each route. `rt/html`
-renders the page, and `rt/datastar` writes the answer a Datastar request
-gets.
+Four pieces of Go do the work:
+
+- `rt/web` is the router and the session cookie.
+- `build/<app>/routes__alder.go`, which the compiler writes for your app,
+  holds one handler for each route.
+- `rt/html` renders the page.
+- `rt/datastar` writes the answer a Datastar request gets.
 
 ### The router
 
@@ -1695,18 +1890,23 @@ request it does these things, in order:
 3. For a `POST`, the body is read (for a write: every method but `GET` and `HEAD`): a
    url-encoded form is parsed (at most 1 MiB, else status 413), a multipart
    body is refused (415), and any other body is an empty form. Datastar
-   sends a button's request with a JSON body, which Alder ignores. A `POST`
-   whose form carries `_method` is routed by it: `PUT`, `PATCH` or `DELETE`,
-   exactly one value, else `400`. On any other method `_method` is ignored,
-   and in the query string it is never read, so a link from another site
-   can never become a write.
+   sends a button's request with a JSON body, which Alder ignores.
+
+   A `POST` whose form carries `_method` is routed by it: `PUT`, `PATCH` or
+   `DELETE`, exactly one value, else `400`. On any other method `_method` is
+   ignored, and in the query string it is never read, so a link from another
+   site can never become a write.
+
 4. The method and path are matched against the generated list `Routes`.
    A route is its method at its pattern, such as `POST /_/Toggle` or
    `PATCH /todos/Em2Gv4v9BaA0Wf9ujESN/toggle`. The most specific pattern is
    tried first: segment by segment from the left, a literal before a
-   parameter. A path that some route declares, but not for this method, is
-   a `405` with an `Allow` header listing the methods it has. Anything else
-   is a 404 rendered with `App.notFound`.
+   parameter.
+
+   A path that some route declares, but not for this method, is a `405` with
+   an `Allow` header listing the methods it has. Anything else is a 404
+   rendered with `App.notFound`.
+
 5. The session cookie is decoded (below).
 6. The route's handler runs, and its answer is written.
 
@@ -1714,22 +1914,30 @@ A Datastar request from a tab of another build (its `Alder-Build` is not this
 build's) ends in a reload instead of a patch ("Delivery", above).
 
 A Go panic anywhere in the request becomes a 500 page rendered with
-`App.error`. The router also adds tags to the `<head>` of every
-page it writes, so your layout stays plain Alder. Right after `<head>`:
-`<meta name="color-scheme" content="light dark" />`, which tells the
-browser the page has a light and a dark theme, so even its first frame,
-painted before the stylesheet arrives, is dark in dark mode;
-`<meta name="alder-build" content="…">`, the id of this build, which the page
-sends back as `Alder-Build`; the rule for the progress bar ("Notices and
-in-flight state", above); and the Datastar script tag,
-`<script type="module" src="/_alder/datastar-v1.0.0.js"></script>`. Just
-before `</head>`: the *boost*, a `<meta name="alder-boost">` whose
+`App.error`.
+
+#### Tags the router adds to the head
+
+The router also adds tags to the `<head>` of every page it writes, so your
+layout stays plain Alder. Right after `<head>`:
+
+- `<meta name="color-scheme" content="light dark" />`, which tells the
+  browser the page has a light and a dark theme, so even its first frame,
+  painted before the stylesheet arrives, is dark in dark mode.
+- `<meta name="alder-build" content="…">`, the id of this build, which the page
+  sends back as `Alder-Build`.
+- The rule for the progress bar ("Notices and in-flight state", above).
+- The Datastar script tag,
+  `<script type="module" src="/_alder/datastar-v1.0.0.js"></script>`.
+
+Just before `</head>`: the *boost*, a `<meta name="alder-boost">` whose
 attributes make the links of the page work without reloading it ("Links
 and navigation", below). The boost is about a kilobyte, so it goes last:
 a `<meta charset>` at the top of your `<head>` stays within the first
-1024 bytes of the page, where the browser looks for it. On a page without
-`<head>`, all of them go where the browser still reads them as the head:
-right after `<html>`, or else before `<body>`.
+1024 bytes of the page, where the browser looks for it.
+
+On a page without `<head>`, all of them go where the browser still reads them
+as the head: right after `<html>`, or else before `<body>`.
 
 ### One handler per route
 
@@ -1760,19 +1968,25 @@ func Route__Todos__Index__Toggle() web.Route {
 }
 ```
 
-It decodes the route's parameters and answers 404 if that fails
-(`html.None()` is an empty document, which the router replaces with
-`App.notFound`). `guard__…` is `requires` and the role: a 303 to `App.login`
-or a 404 when the session falls short, otherwise the narrowed `Session` that
-`update` takes. Because `Toggle.update` mentions `Response.refresh`, the
-handler also renders the page the browser is on, before the update, for a
-Datastar request (`rq.RenderShown`); a route that only redirects or renders
-has no such lines. Then the runtime runs the `update` `Task`, and
-`web.AnswerResponse` hands the `Response` and the before-view to the router,
-which delivers them ("Delivery", above). The names are the route's
-qualified name with each dot written as `__`: the route `Toggle` of module
-`Todos.Index` is `Todos__Index__Toggle`, and its member `update` is
-`Todos__Index__Toggle__update`.
+It runs these steps:
+
+- It decodes the route's parameters and answers 404 if that fails
+  (`html.None()` is an empty document, which the router replaces with
+  `App.notFound`).
+- `guard__…` is `requires` and the role: a 303 to `App.login` or a 404 when
+  the session falls short, otherwise the narrowed `Session` that `update`
+  takes.
+- Because `Toggle.update` mentions `Response.refresh`, the handler also
+  renders the page the browser is on, before the update, for a Datastar
+  request (`rq.RenderShown`); a route that only redirects or renders has no
+  such lines.
+- Then the runtime runs the `update` `Task`, and `web.AnswerResponse` hands
+  the `Response` and the before-view to the router, which delivers them
+  ("Delivery", above).
+
+The names are the route's qualified name with each dot written as `__`: the
+route `Toggle` of module `Todos.Index` is `Todos__Index__Toggle`, and its
+member `update` is `Todos__Index__Toggle__update`.
 
 A GET route has its own handler, `Route__Todos__Index__Index`: it decodes the
 path and query, checks `requires`, runs `load`, and renders `view`.
@@ -1796,7 +2010,9 @@ JavaScript too; "With and without JavaScript", below, explains it.)
 `id` is the route's own parameter, in the query string because it is not in
 the route's path (`/_/Toggle`). The page's parameters are not in the URL at
 all: the filter is in `Alder-Page: /?filter=Active`, which the post carries as a
-header. A route whose parameters are in its path puts them there, as `Todos.Show`'s
+header.
+
+A route whose parameters are in its path puts them there, as `Todos.Show`'s
 `Save` does (`/todos/Vggu4dUM2D0o1KQ-UzWf/_/Save`).
 
 A `List` parameter repeats its key, as in links (`rt.QueryKVs` in
@@ -1805,12 +2021,15 @@ A `List` parameter repeats its key, as in links (`rt.QueryKVs` in
 
 Without JavaScript there is no `Alder-Page`, and the router reads the
 `Referer` header instead. Both go through `rt.BackURL` (`rt/core.go`), which
-keeps only the path and query, so the answer never leads to another site. A
-write from a page the router cannot match to a GET route (another app, a
+keeps only the path and query, so the answer never leads to another site.
+
+A write from a page the router cannot match to a GET route (another app, a
 stale build) is answered by going to that address: a 303, or a navigation
 under Datastar.
 
 ### The session cookie
+
+#### What is in it
 
 The session lives in one cookie, `alder_session`. Its value is two parts
 joined by a dot: a small JSON document, then an HMAC-SHA256 signature of
@@ -1829,14 +2048,19 @@ keeps, and a cookie without `iss` is no session at all.
 
 A union without payloads, such as the `Theme` of "App-level routes"
 above, is stored by its constructor's name (`"Theme":"Dark"`), so
-reordering the constructors doesn't change what an old cookie means. A field the cookie lacks, or whose value no longer decodes, gets its
-default.
+reordering the constructors doesn't change what an old cookie means.
+
+A field the cookie lacks, or whose value no longer decodes, gets its default.
+
+#### Signed, not encrypted
 
 The cookie is **signed, not encrypted**. Anyone holding it can read it, so
 never put a `Text.Secret`, or anything the user must not see, in the
 session. What the signature does is stop anyone from changing it. A cookie
 whose signature doesn't match is ignored, and the request sees the default
 session: every field at its default, so `user` is `Nothing`.
+
+#### The signing key
 
 The signing key comes from the environment variable `ALDER_SECRET`, which
 must be at least 16 bytes. Without it (unset, **or shorter than 16
@@ -1857,26 +2081,35 @@ warn: ALDER_SECRET is not set (or shorter than 16 bytes); dev mode signs session
 Anyone can forge a session signed with that key, which is why production
 needs its own.
 
+#### Attributes
+
 The cookie is `HttpOnly` (page scripts cannot read it), `SameSite=Lax`,
 `Path=/`, and lasts 30 days from the time it was issued (its
 `Max-Age`, and the `iss` signed into it). It is
 `Secure` when the request came over HTTPS, or carries the header
 `X-Forwarded-Proto: https` (set by a proxy in front of the server).
 
-The cookie is stored only when the answer **changes** the session: after
-an `update` whose `Session.put` ran (even one that wrote the value the
-session already had, such as logging in again as the same user) or that
-left a different session, whether the answer is a page, a 303 or a
-navigation event; and on a 404 or 500 when such an `update` succeeded
-and the page then failed to load again (what the `update` committed is
-kept). A stored cookie is issued then, for a fresh 30 days. Any other
-answer sends no cookie: a page view, a form that fails to decode, a
-failed `Task`. The browser keeps the cookie it has, with its issued
-time, so visiting does not renew a session: a user who keeps using the
-app still logs in again 30 days after logging in. The lifetime is
-absolute on purpose. Whatever the login wrote into the session, such as
-a role (above), lasts until logout or 30 days after it was written, and
-no longer.
+#### When it is stored
+
+The cookie is stored only when the answer **changes** the session:
+
+- After an `update` whose `Session.put` ran (even one that wrote the value
+  the session already had, such as logging in again as the same user) or that
+  left a different session, whether the answer is a page, a 303 or a
+  navigation event.
+- On a 404 or 500 when such an `update` succeeded and the page then failed to
+  load again (what the `update` committed is kept).
+
+A stored cookie is issued then, for a fresh 30 days. Any other answer sends no
+cookie: a page view, a form that fails to decode, a failed `Task`.
+
+The browser keeps the cookie it has, with its issued time, so visiting does
+not renew a session: a user who keeps using the app still logs in again 30
+days after logging in.
+
+The lifetime is absolute on purpose. Whatever the login wrote into the
+session, such as a role (above), lasts until logout or 30 days after it was
+written, and no longer.
 
 ### Form errors
 
@@ -1893,43 +2126,55 @@ where `<Errors field="title" />` stands. The values and errors go only to
 the form that posted: the form state names the request the form makes, its
 route with its own parameters (`rt.RouteKey`), and the renderer matches it
 against each `<form>`'s route, so a per-row form of another row keeps its
-initial values. The value of a `Text.Secret` field is never sent back: its
-input is a password input, and it comes back empty.
+initial values.
+
+The value of a `Text.Secret` field is never sent back: its input is a
+password input, and it comes back empty.
 
 `Response.invalid t` renders the same way, with `t` in `<Errors form />` of
 the form that posted. Unlike a form error, the `update` that answered
-`invalid` ran and committed. A form the re-rendered page no longer draws (a
-stale page: the state changed after it was loaded) shows nothing, and so
-does a form with no `<Errors form />`: the page comes back unchanged
-(W0005).
+`invalid` ran and committed.
+
+A form the re-rendered page no longer draws (a stale page: the state changed
+after it was loaded) shows nothing, and so does a form with no
+`<Errors form />`: the page comes back unchanged (W0005).
 
 ### With and without JavaScript
 
 The browser either runs Datastar (the usual case) or does not. The answers
 differ.
 
-With Datastar, a write is sent with the header `Datastar-Request: true`,
+#### With Datastar
+
+A write is sent with the header `Datastar-Request: true`,
 and the headers of "Delivery" above. A `refresh`, an `invalid`, a form
 error, a `render`, a 404 or a 500 is answered with status 200 and
-server-sent events: for `refresh` and `invalid`, the regions that differ
-(`datastar.PatchRegion`; the whole `<body>`, with `datastar.PatchBody`, when
-the page cannot be cut into regions safely), for `render` one element, for a
-404 or a 500 the failure page's `<body>`. Datastar morphs what it is sent
-into the page, so only what changed is touched. A 404 or 500 is sent as an
-event too, because Datastar ignores answers that are not 2xx; the real
-status of an `invalid` or a form error (422), a 404 or a 500 is in the
-header `Alder-Status`.
+server-sent events:
+
+- For `refresh` and `invalid`, the regions that differ
+  (`datastar.PatchRegion`; the whole `<body>`, with `datastar.PatchBody`, when
+  the page cannot be cut into regions safely).
+- For `render`, one element.
+- For a 404 or a 500, the failure page's `<body>`.
+
+Datastar morphs what it is sent into the page, so only what changed is
+touched. A 404 or 500 is sent as an event too, because Datastar ignores
+answers that are not 2xx; the real status of an `invalid` or a form error
+(422), a 404 or a 500 is in the header `Alder-Status`.
+
+#### A redirect under Datastar
 
 A `redirect` (and a `requires` that sends the user to the login page) is
 not a 303 under Datastar. Datastar posts with `fetch`, which would follow a
 303 by itself: the new page would be morphed into the old one while the
-address bar and the history stayed at the old URL. So when the target is
-a page of this app (a path starting with `/`), the router fetches it
-itself, in the same request: it serves a `GET` of the target, with the
-session the write just stored, and answers with that page the way it
-answers a link ("Links and navigation", below): the target's `<body>`
-morphed in, its `<title>`, and a script that records the new URL in the
-browser's history. Logging out of the blog answers (bodies shortened)
+address bar and the history stayed at the old URL.
+
+So when the target is a page of this app (a path starting with `/`), the
+router fetches it itself, in the same request: it serves a `GET` of the
+target, with the session the write just stored, and answers with that page
+the way it answers a link ("Links and navigation", below): the target's
+`<body>` morphed in, its `<title>`, and a script that records the new URL in
+the browser's history. Logging out of the blog answers (bodies shortened)
 
 ```
 event: datastar-patch-elements
@@ -1952,6 +2197,8 @@ data: elements <script data-effect="el.remove()">(function(){var u="/login";…h
 with the session cookie in its headers, as a 303 would carry it. The
 browser makes one request instead of two, and nothing reloads.
 
+#### A redirect to another site
+
 A `redirect` to another site (an `Url.external` URL) cannot be fetched
 that way, so its answer is a 200 event that appends a script to the
 `<body>`; the script removes itself and tells the browser to go to the
@@ -1968,48 +2215,70 @@ data: elements <script data-effect="el.remove()">window.location.assign("https:/
 
 The URL is a JSON string in both scripts, so `<`, `>` and `&` in it are
 escaped and it can never end the script. Without Datastar, `redirect` is
-a plain 303. Either way the target must be a path of this site or an
-`http:`/`https:` URL: `Url.external` turns anything else (a `javascript:`
-URL from user input, say) into `#` (chapter 9), and the router answers a
-redirect to such a URL with a 500 rather than send it.
+a plain 303.
+
+Either way the target must be a path of this site or an `http:`/`https:` URL:
+`Url.external` turns anything else (a `javascript:` URL from user input, say)
+into `#` (chapter 9), and the router answers a redirect to such a URL with a
+500 rather than send it.
+
+#### The event format
 
 Every line of an event's elements is a `data: elements` line, and an event
 ends at a blank line. A carriage return in your data could end a line
 early and start a field of its own, so the renderer writes it as `&#13;`
 and `PatchBody` turns any line end into a plain newline first.
 
-A form and a `click` button travel differently under Datastar. A form posts
+#### Forms and `click` buttons under Datastar
+
+A form and a `click` button travel differently under Datastar.
+
+A form posts
 with `data-on:submit="@post('<url>', window._alderO?.('form')||{contentType: 'form'})"`, so
 its fields arrive url-encoded and are decoded as the form. The
 `window._alderO` helper (defined once in the page's `<head>`) gives the post
 its options: the content type, the `Alder-Shown` header (chapter 5,
 "Partial updates"), `Alder-Page` and `Alder-Build`, and the page's one
-navigation signal, shared with boosted links ("Links and navigation" below):
-a new post or click aborts the request still in flight, so a slow answer
-never lands over a newer page. A `click` button's request carries its
-parameters in the URL, and its body is ignored. A `PUT` or `PATCH` route is
-sent with its own method (`@put`, `@patch`). A `DELETE` is posted (`@post`)
-with `_method=DELETE` in the body whenever it sends a form: a form, and a
-`click` button outside a form, which is rendered in a form of its own. Only a
-`click` button inside another form (or another element with `click`) sends
-`@delete`, because Datastar puts the fields of a `DELETE` in its query, where
-the router never reads `_method`. A `click` on a GET
-route is not a post at all: it is a Datastar `GET` with `Alder-Fetch: 1`
-(`window._alderF`), and the answer is the route's view as one element.
+navigation signal, shared with boosted links ("Links and navigation" below).
+
+That signal is why a new post or click aborts the request still in flight, so
+a slow answer never lands over a newer page.
+
+A `click` button's request carries its parameters in the URL, and its body is
+ignored. The method it uses depends on the route:
+
+- A `PUT` or `PATCH` route is sent with its own method (`@put`, `@patch`).
+- A `DELETE` is posted (`@post`) with `_method=DELETE` in the body whenever it
+  sends a form: a form, and a `click` button outside a form, which is
+  rendered in a form of its own.
+- Only a `click` button inside another form (or another element with
+  `click`) sends `@delete`, because Datastar puts the fields of a `DELETE` in
+  its query, where the router never reads `_method`.
+- A `click` on a GET route is not a post at all: it is a Datastar `GET` with
+  `Alder-Fetch: 1` (`window._alderF`), and the answer is the route's view as
+  one element.
+
+#### A `click` button without JavaScript
 
 A `click` button works without JavaScript too. Outside a form, it is
 rendered inside a form of its own, as the Done button above shows: without
 Datastar the browser posts that form to the route's URL (a hidden `_method`
 field carries `PUT`, `PATCH` or `DELETE`); with it, Datastar posts it on
-submit. The wrapper has the class `_alder-click`; the design system's
+submit.
+
+The wrapper has the class `_alder-click`; the design system's
 stylesheet gives it `display: contents`, so it takes no part in the
 layout and the button stays in line (without `al.css`, write that rule
 yourself, and keep your own `form` rules off it with
-`form:not(._alder-click)`, as the to-do app's `static/app.css` does). The Done button is
+`form:not(._alder-click)`, as the to-do app's `static/app.css` does).
+
+The Done button is
 an `<al-button>` (Appendix C), which the compiler renders with a real
 `<button>` inside it; the wrapping form then goes around the whole
 `<al-button>`, so the design system's stylesheet still finds the button
-as the element's child. Inside a
+as the element's child.
+
+Inside a
 `<form submit>`, where forms cannot nest, a `click` button on a write route
 is a submit button with its own target instead:
 
@@ -2019,20 +2288,26 @@ is a submit button with its own target instead:
 
 Datastar sends the request on click and stops the form's own submission.
 Without JavaScript the browser posts the enclosing form's fields to the
-button's URL; a route without a form ignores them. (`formnovalidate`
-keeps an empty `required` field of the form from blocking the button,
-and so does leaving the fields out of the Datastar post: the browser would
-otherwise refuse to send a form with an empty required field.) A `click` on
-a GET route inside a form, and a `click` on another element, such as a
-`<li>`, need JavaScript.
+button's URL; a route without a form ignores them.
+
+> **`formnovalidate`.** It keeps an empty `required` field of the form from
+> blocking the button, and so does leaving the fields out of the Datastar
+> post: the browser would otherwise refuse to send a form with an empty
+> required field.
+
+A `click` on a GET route inside a form, and a `click` on another element,
+such as a `<li>`, need JavaScript.
+
+#### Answers without JavaScript
 
 Without JavaScript, the answer to a write is a whole page for a form
 error or an `invalid` (they must show what was submitted: `422`), and a 303
 for everything else: `redirect` goes to its route, and `refresh` and `render`
 go back to the page that sent the write, rebuilt from its address in the
 `Referer` header (`rt.BackURL`), so the address bar never shows a write URL
-and a refresh never posts again (Post/Redirect/Get). Toggling Milk on
-`/?filter=Active` without JavaScript answers
+and a refresh never posts again (Post/Redirect/Get).
+
+Toggling Milk on `/?filter=Active` without JavaScript answers
 
 ```
 HTTP/1.1 303 See Other
@@ -2047,25 +2322,36 @@ The handler for an `App` route is an ordinary write route's: there is no page
 of its own to show, so what it answers is read like any other, with the page
 the write came from taken from `Alder-Page` (or `Referer`). A `redirect`
 goes to its route; a `refresh` reloads the page the button was on, with the
-new session. Clicking "Log out" on `/?filter=Active` answers a cookie whose
-`User` is `Nothing` and a redirect to `/login`. With the theme switch of
-"App-level routes" (its `update` answers `refresh`), clicking "Dark mode"
-there answers a cookie whose `Theme` is `"Dark"` and, under Datastar, the
-`<body>` changes that the theme causes, but not the class on `<html>` (it
-arrives with the next full load, [#189](https://github.com/tapegram/alder/issues/189));
-without JavaScript it answers `303 /?filter=Active`, which loads the whole page.
+new session.
+
+Clicking "Log out" on `/?filter=Active` answers a cookie whose `User` is
+`Nothing` and a redirect to `/login`.
+
+With the theme switch of "App-level routes" (its `update` answers `refresh`),
+clicking "Dark mode" there answers a cookie whose `Theme` is `"Dark"` and,
+under Datastar, the `<body>` changes that the theme causes. Without
+JavaScript it answers `303 /?filter=Active`, which loads the whole page.
+
+> **Not yet:** under Datastar the class on `<html>` does not change; it
+> arrives with the next full load
+> ([#189](https://github.com/tapegram/alder/issues/189)).
 
 ### Links and navigation
 
+#### The boost
+
 A link in an Alder page is a plain `<a href>`, and without JavaScript a
-click on it loads the page it names, as on any site. With Datastar, a
+click on it loads the page it names, as on any site.
+
+With Datastar, a
 click on a link to a page of this app does not load anything. The boost
 in the page's `<head>` catches the click, cancels the browser's own
 navigation and asks for the page with Datastar instead, as
 `GET /posts/42` with the header `Datastar-Request: true` (and without
 `Alder-Fetch`, which marks a `click` on a GET route and is answered with one
-element instead, "Delivery" above). The router answers that request with
-three events, in this order:
+element instead, "Delivery" above).
+
+The router answers that request with three events, in this order:
 
 1. the page's `<body>`, which Datastar morphs into the current one, so
    what is the same on both pages (the header, the layout) is not
@@ -2078,37 +2364,51 @@ three events, in this order:
 
 The `<head>` is never replaced, so the stylesheet is not loaded again and
 the page does not go blank in between: no white flash between two dark
-pages. Back and Forward work as usual. The boost listens for them too
+pages.
+
+#### Back and Forward
+
+Back and Forward work as usual. The boost listens for them too
 (the browser's `popstate` event): it asks for the page of the URL the
 browser went back or forward to, and the answer replaces the history
 entry instead of adding one, and scrolls to where you were on that page.
-(The boost keeps each entry's scroll position in the entry's history
-state as you scroll, so both directions find it.) Back and Forward fetch
-the page again rather than restoring it from a cache: what you typed
-into a form on that page is gone, and the page shows the data as it is
-now.
+The boost keeps each entry's scroll position in the entry's history
+state as you scroll, so both directions find it.
+
+Back and Forward fetch the page again rather than restoring it from a cache:
+what you typed into a form on that page is gone, and the page shows the data
+as it is now.
+
+#### While a page is on its way
 
 While a boosted page is on its way, the old page stays as it is: nothing
 says a click is pending, and if the server is down Datastar retries the
-request quietly instead of showing an error. A loading indicator is for
-a later version (M7b).
+request quietly instead of showing an error.
+
+> **Not yet:** a loading indicator is for a later version (M7b).
 
 Only the newest navigation's answer is applied. The boosted GETs and
 every write a page sends (a form's submit, a `click`) share one
 `AbortController`, `window._alderAC`: each starts by aborting the
 request still in flight. So a slow post followed by a click on a link
-ends on the link's page, never on the post's late answer. The post
-itself may still have run on the server (aborting stops the browser
-waiting, not the server), and a form whose post was aborted keeps what
-was typed into it, with nothing to say it was not sent (also M7b's:
-inert forms while a post is pending).
+ends on the link's page, never on the post's late answer.
+
+> **An aborted post.** The post itself may still have run on the server
+> (aborting stops the browser waiting, not the server), and a form whose post
+> was aborted keeps what was typed into it, with nothing to say it was not
+> sent (also M7b's: inert forms while a post is pending).
+
+#### Failing pages
 
 The answer to a link whose page fails is the same three events with the
 `App.notFound` or `App.error` page as the body, and the status in the
 header `Alder-Status` (`404` or `500`): the address bar shows the URL you
-asked for, as after a page load. A link to a page whose `requires` sends
-the visitor to the login page ends on the login page, and its URL is the
-one recorded.
+asked for, as after a page load.
+
+A link to a page whose `requires` sends the visitor to the login page ends on
+the login page, and its URL is the one recorded.
+
+#### Clicks the boost leaves alone
 
 The boost leaves these clicks to the browser:
 
@@ -2131,6 +2431,8 @@ The boost leaves these clicks to the browser:
   router answers a Datastar `GET` of such a path (from an older page's
   boost) with a real navigation to it, too.
 
+#### `data-alder-reload`
+
 The last one is the way out. Give a link the attribute
 `data-alder-reload` when it must load its page for real, such as a link
 to a page that needs a fresh `<head>`. A `data-*` attribute takes a
@@ -2152,20 +2454,27 @@ not boosted: it loads its page as usual.
 A path no route matches, a route parameter that doesn't decode,
 `Query.notFound` and `Task.notFound` are answered with `App.notFound`,
 status 404. `Query.redirect p` is not a failure page: it is a 303 to `p`,
-answered as a `redirect` is (under Datastar, the target morphed in). A failed
-`Task` is answered with `App.error`, status 500, and logged as an `error`
-line naming the request. With `ALDER_DEV=1` (chapter 11), the error's text
-is added at the end of the page's `<body>` as an HTML comment, such as
+answered as a `redirect` is (under Datastar, the target morphed in).
+
+A failed `Task` is answered with `App.error`, status 500, and logged as an
+`error` line naming the request.
+
+With `ALDER_DEV=1` (chapter 11), the error's text is added at the end of the
+page's `<body>` as an HTML comment, such as
 `<!-- error: Db.update Todo: no row with id "nope" -->`. Without it, the
 page never shows the text.
 
 ### Deploying
 
 An app also says where it ships. A `deploy { … }` declaration in `App`
-names the environments (a server reached by SSH, a Fly or Render app, or a script of
-your own) and what must hold before a build goes out: the least mutation
-score, the commands to run, the environment variables the target must
-provide. It is data that the `alder deploy` command reads; it adds no page,
-no route and no code to the running program, and it never holds a secret,
-only the names of the variables that do. Chapter 16 writes the declaration,
-the command and the gate in full.
+names the environments (a server reached by SSH, a Fly or Render app, or a
+script of your own) and what must hold before a build goes out:
+
+- the least mutation score,
+- the commands to run,
+- the environment variables the target must provide.
+
+It is data that the `alder deploy` command reads; it adds no page, no route
+and no code to the running program, and it never holds a secret, only the
+names of the variables that do. Chapter 16 writes the declaration, the
+command and the gate in full.

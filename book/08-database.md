@@ -18,6 +18,8 @@ table Todo {
 }
 ```
 
+### Fields and attributes
+
 - Exactly one field has `@id`. Its type is a brand of `Text`; the runtime
   generates the value on insert.
 - `@ref T` marks a foreign key to table `T`'s id. The field's type must be
@@ -33,33 +35,46 @@ table Todo {
   the user table, of the session's user type. It gives the table the
   scoped operations `Db.mine`, `Db.getMine`, `Db.updateMine`,
   `Db.deleteMine` and `Db.insertMine` ("Your own rows", under Writing; chapter
-  6, "Rules"). It changes nothing in the database: the column is stored,
-  indexed and referenced exactly as without it, so adding or removing
-  `@owner` makes no migration.
+  6, "Rules").
+
+  It changes nothing in the database: the column is stored, indexed and
+  referenced exactly as without it, so adding or removing `@owner` makes no
+  migration.
+
 - Field types: `Int`, `Float`, `Bool`, `Text`, `Date`, `Time`, brands of
   those, unions with no payloads, and `Maybe` of any of those. Nothing
   nested; model nesting with a second table and `@ref`.
 
+### Where a table is declared
+
 A table is declared in a module named after it, together with the brand for
 its id and any functions that belong to it. By convention that module is in
 `Table/`: `Todo` in `app/Table/Todo.alder`, written `Todo` after
-`import Table.Todo`. The compiler's rule is that the module's name **ends in
+`import Table.Todo`.
+
+The compiler's rule is that the module's name **ends in
 the table's name** (`Todo`, `Table.Todo` or `Table.Billing.Invoice` for
 `Invoice`), so subfolders can group related tables, and a module holds one
-table. A table declared in any other module is an error at its declaration
+table.
+
+A table declared in any other module is an error at its declaration
 (E0018): `table Comment` in `app/Post.alder` belongs in
-`app/Table/Comment.alder`, even if only `Post` uses it. Table names are
-app-wide (a table is `Todo` everywhere, whichever folder it is in), so two
-tables of one name, in two folders, are E0037.
+`app/Table/Comment.alder`, even if only `Post` uses it.
+
+Table names are app-wide (a table is `Todo` everywhere, whichever folder it is
+in), so two tables of one name, in two folders, are E0037.
+
+### Defaults
 
 A table field's default must be a **literal**: `True` or `False`, a
 number, a string without `{…}`, a constructor without a payload
 (`Reader`, `Nothing`), or `Just` of one of those. The default is not only
 used by `Db.insert`: migrations (`alder migrate`) write it into the
 database as SQL, to fill a new field in the rows that already exist, or
-to replace `Nothing` when a field stops being a `Maybe`. The compiler
-turns a literal into SQL text when it lowers the table (`True` becomes
-`1`, `Reader` becomes `'Reader'`, `Nothing` becomes `NULL`); an
+to replace `Nothing` when a field stops being a `Maybe`.
+
+The compiler turns a literal into SQL text when it lowers the table (`True`
+becomes `1`, `Reader` becomes `'Reader'`, `Nothing` becomes `NULL`); an
 expression would have to be run by the program, so it is refused (E0022):
 
 ```alder error=E0022 "a table field's default must be a literal"
@@ -79,11 +94,14 @@ table Note {
 Defaults of forms, records, the session and route parameters are never
 stored, and may be any expression.
 
+### Renaming: `@renamed`
+
 When you rename a table or a field, say so with **`@renamed "old"`**,
 after the table's name or after the field's type (and default). The next
 migration then renames the table or column, keeping its data, instead of
 dropping the old one and creating an empty new one; without the
 attribute a rename looks exactly like a removed field and an added one.
+
 The attribute may stay once the migration is made (the migration's
 snapshot already has the new name):
 
@@ -107,8 +125,10 @@ E0011).
 Moving a table to another module, as when `app/Todo.alder` becomes
 `app/Table/Todo.alder`, needs no `@renamed`: the migration sees the same
 table name leave one module and arrive in another, and renames the table,
-so its rows stay. (`@renamed "Note"` likewise finds a table of `Table/`
-by its short name.)
+so its rows stay.
+
+> **Short names.** `@renamed "Note"` likewise finds a table of `Table/` by
+> its short name.
 
 ## Reading
 
@@ -156,6 +176,8 @@ Db.or  : List (Condition t) -> Condition t
 Db.not : Condition t -> Condition t
 ```
 
+### How a `Select` combines
+
 A `Select` is a description that the steps add to, not a pipeline that
 runs in order: where a step sits does not change what it means.
 
@@ -168,27 +190,39 @@ runs in order: where a step sits does not change what it means.
 - `Db.first` is the first row: a `Select` with limit 1, or with its own
   limit when that is smaller (`Db.limit 0 |> Db.first` is `Nothing`).
 
+### Columns and tables must be concrete
+
 A column must be written in place, `Todo.done.eq False`: a column
 method on a variable or record field holding a column (`let c = Todo.done`,
-then `c.eq False`) is E0003. And the database functions need to know their
+then `c.eq False`) is E0003.
+
+And the database functions need to know their
 table where they are used: `countAll : Table t -> Query Int` calling
 `Db.count (Db.from t)` is E0003 (`` `Db.count` needs a concrete table; `t`
 is a type parameter``); write one function per table, `Table Todo`.
 
-**`Maybe` columns.** A condition on a `Maybe` column is true or false for
+### `Maybe` columns
+
+A condition on a `Maybe` column is true or false for
 every row, never unknown. `Nothing` is matched by `.isNothing`,
 `.eq Nothing` and an `.in` list that contains `Nothing`
 (`Todo.due.in [Just d, Nothing]`), and `.eq (Just d)` and `.ne Nothing`
-never match it. `Db.not c` matches exactly the rows `c`
+never match it.
+
+`Db.not c` matches exactly the rows `c`
 does not, so `Db.not (Todo.due.eq (Just d))` includes the rows with no due
 date. Ordering by a `Maybe` column puts `Nothing` first with `.asc` and
 last with `.desc`.
 
-**Search.** `.contains` matches a column whose text has the argument
+### Search
+
+`.contains` matches a column whose text has the argument
 somewhere in it, and `.startsWith` one whose text begins with it. Both
 work on `Text` columns and brands of `Text` only (on a brand, the
 argument is still plain `Text`), and both ignore the case of the letters
-A–Z. The argument is matched literally: `%`, `_` and `\` have no special
+A–Z.
+
+The argument is matched literally: `%`, `_` and `\` have no special
 meaning, so `Todo.title.startsWith "100%"` finds `100% done` and not
 `1000 ways`. An empty argument matches every row. To search two columns,
 combine the conditions with `Db.or`:
@@ -216,8 +250,9 @@ search q =
 
 A search costs the column's length times the argument's for every row,
 and SQLite refuses a pattern much over 50 KB, so a search text over
-10,000 bytes fails the query with `search text too long`. Cut a query a
-visitor typed before searching with it, as the blog does with
+10,000 bytes fails the query with `search text too long`.
+
+Cut a query a visitor typed before searching with it, as the blog does with
 `Text.slice 0 100` (chapter 14).
 
 On any other column the method is an error (E0003):
@@ -240,11 +275,14 @@ Db.delete : Table t -> Id t -> Task Unit
 `Insert t` is the table record without `@id`, `@created`, and `@updated`
 fields, and with defaulted fields optional. `Db.update` reads the row,
 applies the function, and writes it back; updating a row that doesn't exist
-fails the task. The function may not change the `@id` field: if it
+fails the task.
+
+The function may not change the `@id` field: if it
 returns a record with a different id, the task fails with
 `Db.update Todo: update may not change the id` and nothing is written
-(`UpdateRow` in `rt/db/store.go`). Deleting a row that doesn't exist is
-not an error.
+(`UpdateRow` in `rt/db/store.go`).
+
+Deleting a row that doesn't exist is not an error.
 
 ```alder fragment
 let id <- Db.insert Todo { title: p.form.title, due: p.form.due, owner: session.user }
@@ -252,14 +290,19 @@ let _ <- Db.update Todo id (\t -> { t | done: True })
 let _ <- Db.delete Todo id
 ```
 
+### Transactions and `@unique`
+
 Writes in one `update` run in a single transaction. If the task fails,
 nothing is written. Inserting or updating a row that violates `@unique`
 fails the task with a message such as `User.email must be unique`, and
 everything the task wrote before is rolled back; check first with a query
 and answer `Response.invalid` if the user should see a message.
-`Response.invalid` is a successful result, so the transaction commits and
-writes made before it are kept (chapter 6, "`Response`"): decide first, then
-write.
+
+> **`Response.invalid` keeps earlier writes.** It is a successful result, so
+> the transaction commits and writes made before it are kept (chapter 6,
+> "`Response`"): decide first, then write.
+
+### Delete rules
 
 `@ref` is checked the same way. Inserting or updating a row whose `@ref`
 field names a row that does not exist fails the task with
@@ -270,11 +313,13 @@ after `@ref T`:
 - **`@restrict`**, the default, refuses: `Db.delete` fails with
   ``User QXZMRYnkC2vuE_TefkuR is referenced by a row of Todo (`Todo.owner`)``
   (the table and the id, then the table and the field that refer to it).
+  Delete or re-point the referring rows first.
+
   The blocking row can be further down a chain: if comments cascade
   from posts, a `@restrict` reference to a comment refuses the post's
   delete, with ``Post … is referenced by another row, directly or
-  through rows that `@cascade` would delete with it``. Delete or re-point
-  the referring rows first.
+  through rows that `@cascade` would delete with it``.
+
 - **`@cascade`** deletes the referring rows too, and theirs in turn if
   other tables cascade from them.
 - **`@setNull`** sets the referring field to `Nothing`; the field must be
@@ -301,9 +346,11 @@ table Note {
 
 The rules are carried out by SQLite inside the delete statement, not by
 the runtime: `Db.delete Todo id` is one step in a test's trace
-(chapter 10) however many notes go with it. A field takes at most one
-rule, and only a `@ref` field takes one, after `@ref T` (`@cascade` alone,
-or before `@ref T`, is E0011).
+(chapter 10) however many notes go with it.
+
+A field takes at most one rule, and only a `@ref` field takes one, after
+`@ref T` (`@cascade` alone, or before `@ref T`, is E0011).
+
 `@setNull` on a field that is not a `Maybe` is E0003, since the field
 could not hold the `Nothing` it would be set to:
 
@@ -337,10 +384,11 @@ Db.insertMine : Table t -> Insert t -> Task (Id t)   -- the row without its owne
 They act for the user of the running request (or test), and answer a
 row that is someone else's as a missing one: not found, a 404.
 `Db.getMine` is a `Query t`, not a `Query (Maybe t)`: there is nothing
-to match, because a missing row ends the request. They are allowed only in
-the members of a route that `requires user`. Chapter 6, "Rules", explains
-them in full, and chapter 13 shows their SQL: each puts `"owner" = ?` in
-its statement.
+to match, because a missing row ends the request.
+
+They are allowed only in the members of a route that `requires user`.
+Chapter 6, "Rules", explains them in full, and chapter 13 shows their SQL:
+each puts `"owner" = ?` in its statement.
 
 ### Partitions
 
@@ -348,7 +396,9 @@ A table may be partitioned by any session key, not only the user: `org:
 Org.OrgId @ref Org @partition org` keeps a table's rows to the session's
 org as `@owner` keeps them to its user (chapter 6, "Partitions"), with the
 generic scoped operations `Db.scoped`, `Db.getScoped`, `Db.updateScoped`,
-`Db.deleteScoped` and `Db.insertScoped` (chapter 9). By itself a
+`Db.deleteScoped` and `Db.insertScoped` (chapter 9).
+
+By itself a
 partition is a predicate: the rows of every org are in one table of one
 database, and each scoped statement carries `"org" = ?`. The next
 section gives an org a database of its own.
@@ -388,7 +438,9 @@ Every column except a `Maybe` is `NOT NULL`. The `@id` is the primary key,
 `ON DELETE CASCADE` for `@cascade` and `ON DELETE SET NULL` for
 `@setNull` (`@restrict` adds nothing: SQLite refuses such a delete by
 default), and a `Bool` or union column gets a `CHECK` listing its
-allowed values. For the to-do example's
+allowed values.
+
+For the to-do example's
 `Todo` table the runtime creates:
 
 ```
@@ -543,14 +595,18 @@ updated migrations/schema.json
 
 **A migration never loses data silently.** Every step that can lose data
 is marked `DROPS DATA`, in the output (`!!`) and in the file's header.
-Read those lines before you commit. A migration you have not shared yet
+Read those lines before you commit.
+
+A migration you have not shared yet
 can be thrown away: delete the file, restore the snapshot with
 `git checkout migrations/schema.json`, change the tables, and run
 `alder migrate` again. Once a migration has run against a database you
-keep, never edit or delete it; write the next one instead. (A file
-whose statements were edited is caught when the app applies it, at
-startup: the tables do not come out as its header says, and the app
-refuses to start; `alder test` runs every file, so it finds it first.)
+keep, never edit or delete it; write the next one instead.
+
+> **An edited file.** A file whose statements were edited is caught when the
+> app applies it, at startup: the tables do not come out as its header says,
+> and the app refuses to start; `alder test` runs every file, so it finds it
+> first.
 
 The file's name comes from its steps (`add_summary`, `change_post` for
 a rebuild), or from `--name some_name`. With nothing changed,
@@ -573,14 +629,20 @@ a rebuild), or from `--name some_name`. With nothing changed,
 - **A rename** declared with `@renamed` is `RENAME COLUMN` or
   `RENAME TO`.
 - **Anything else is a rebuild.** SQLite's `ALTER TABLE` can only
-  append, drop and rename columns. To change a type, make a field a
-  `Maybe` or not, change a union's constructors, add or remove `@unique`,
-  `@ref` or a delete rule, add a field anywhere but last, reorder fields,
-  or add a field that is not a `Maybe` or has a `Just` default (filled
-  with the default), the migration builds the table again: it creates
-  the new table under a temporary name, copies every row into it,
-  converting each value, drops the old table and renames the new one.
-  Adding `views: Int = 0` to `Post`:
+  append, drop and rename columns. These changes build the table again:
+
+  - changing a type;
+  - making a field a `Maybe` or not;
+  - changing a union's constructors;
+  - adding or removing `@unique`, `@ref` or a delete rule;
+  - adding a field anywhere but last, or reordering fields;
+  - adding a field that is not a `Maybe` or has a `Just` default (filled with
+    the default).
+
+The migration creates
+the new table under a temporary name, copies every row into it,
+converting each value, drops the old table and renames the new one.
+Adding `views: Int = 0` to `Post`:
 
 ```text
 -- step: rebuild table Post: Post.views: new column filled with 0
@@ -592,16 +654,24 @@ ALTER TABLE "Post__Post__alder__new" RENAME TO "Post__Post";
 CREATE INDEX IF NOT EXISTS "Post__Post__author" ON "Post__Post"("author");
 ```
 
+#### Conversions that lose data
+
 A conversion that cannot keep every value is marked `DROPS DATA` and
-says what is lost: `Float` to `Int` cuts off fractions; `Text` to `Int`
-keeps the leading whole number (`'12abc'` becomes `12`) and turns other
-text into `0`; a removed constructor deletes the rows that hold it (the
-line adds `(to keep them, add an UPDATE first)`, a statement you write
-at the top of the file); a `Maybe` field made required replaces `Nothing` with the
-default, or, without one, deletes those rows. A change with no sensible conversion
-(`Date` to `Int`, say) is refused: remove the field and add one under a
-new name. Adding `@unique` to a column that holds duplicates fails when
-the migration runs, and nothing is changed.
+says what is lost:
+
+- `Float` to `Int` cuts off fractions.
+- `Text` to `Int` keeps the leading whole number (`'12abc'` becomes `12`) and
+  turns other text into `0`.
+- A removed constructor deletes the rows that hold it (the line adds `(to keep
+  them, add an UPDATE first)`, a statement you write at the top of the file).
+- A `Maybe` field made required replaces `Nothing` with the default, or,
+  without one, deletes those rows.
+
+A change with no sensible conversion (`Date` to `Int`, say) is refused: remove
+the field and add one under a new name. Adding `@unique` to a column that
+holds duplicates fails when the migration runs, and nothing is changed.
+
+#### Defaults and indexes
 
 A default lives in the program, not the database, so changing only a
 default needs no migration. Every `@ref` column gets an index (the
@@ -681,15 +751,17 @@ before it stay applied, and nothing else changes. Word for word:
 alder: db: the database's tables are not the app's schema: the database was changed outside migrations since 0004_drop_excerpt (changed tables: Post): restore a backup; to start over, run in dev mode (ALDER_DEV=1 recreates the database empty: every row is deleted)
 ```
 
-`alder check` catches the file problems first, as E0019: a missing or
-edited header (``migration 0004_drop_excerpt does not follow
-0002_add_summary: a file is missing or edited; restore migrations/ from
-version control (`git checkout migrations/`)``), a malformed file
-(``migration 0002_x: line 6: a statement must end in `;` ``), and two
-files with one number, which happens when two branches each add the next
-migration: ``two migrations are numbered 0005 (likely two branches:
-0005_a.sql, 0005_b.sql): keep the one already merged or deployed, delete
-the other, restore schema.json to its result, run `alder migrate` ``.
+`alder check` catches the file problems first, as E0019:
+
+- A missing or edited header (``migration 0004_drop_excerpt does not follow
+  0002_add_summary: a file is missing or edited; restore migrations/ from
+  version control (`git checkout migrations/`)``).
+- A malformed file (``migration 0002_x: line 6: a statement must end in `;` ``).
+- Two files with one number, which happens when two branches each add the next
+  migration: ``two migrations are numbered 0005 (likely two branches:
+  0005_a.sql, 0005_b.sql): keep the one already merged or deployed, delete
+  the other, restore schema.json to its result, run `alder migrate` ``.
+
 A file whose header is intact but whose statements were edited is found
 only when it runs, by the `to` check above; `alder test` runs every
 file, so it finds it before a deploy does.
@@ -736,7 +808,9 @@ and your `UPDATE` is why they no longer do.
 
 **A database from before migrations.** An app that ran before it had
 `migrations/` has a database `Ensure` made (below), with tables but no
-`_alder_migrations`. If its tables are exactly what one of the files
+`_alder_migrations`.
+
+If its tables are exactly what one of the files
 leads to, usually `0001_initial`, the executable *adopts* it: it records
 that file and the ones before it as applied without running them, logs
 `adopted the database at 0001_initial`, applies the rest, and creates
@@ -776,8 +850,10 @@ info: recreated the database (dev mode): it was changed outside migrations
 Every refusal that dev mode would get past says what it costs:
 `ALDER_DEV=1 recreates the database empty: every row is deleted`. A
 file missing, out of order or edited is refused in dev mode too: the
-files, not the database, are wrong. `alder eval --run` and the REPL
-never recreate the database; they say ``to start over, start `alder run`
+files, not the database, are wrong.
+
+`alder eval --run` and the REPL never recreate the database; they say
+``to start over, start `alder run`
 (it recreates build/<app>/dev.db empty: every row is deleted) or delete
 it`` instead.
 
@@ -828,11 +904,14 @@ Each org then has a database of its own holding its projects and its
 to-dos, and nothing else. Everything else (the users, the orgs, the
 memberships, here also the `Activity` log, which is partitioned by `org`
 but in no silo) is in the **shared** database, the one an app without
-silos has. Why an app wants that: one org's rows cannot appear in
-another's answer by any query, a mistake included, since they are not in
-the file the request reads; an org can be backed up, restored, exported
-or deleted as one file; and one big org does not slow the others' small
-ones.
+silos has.
+
+Why an app wants that:
+
+- One org's rows cannot appear in another's answer by any query, a mistake
+  included, since they are not in the file the request reads.
+- An org can be backed up, restored, exported or deleted as one file.
+- One big org does not slow the others' small ones.
 
 ### The rules
 
@@ -872,32 +951,44 @@ refuses one whose writes fall in two stores (E0031):
 What it counts is every mention of a write function — `Db.insert`,
 `Db.update`, `Db.delete` and their scoped forms — anywhere the `update` can
 reach: in the `update`, in every helper it mentions (in any module, a helper
-of a helper too), in a lambda, in a `Task.all` over a `List.map`. It
-does not matter whether the function is called where it is written:
+of a helper too), in a lambda, in a `Task.all` over a `List.map`.
+
+It does not matter whether the function is called where it is written:
 `let ins = Db.insert` and then `ins AuditLog { … }`, or a lambda that is
 handed `Db.insert` and applies it, write `AuditLog` all the same. The
 table is read from the type the function has at that mention (a `Db`
 function always names its table there: `Table t` is refused, E0003).
+
 The count errs on the side of too many: a helper that is mentioned and
 never called still counts.
 
 That is what the checker proves: an `update` it accepts mentions no
 write of a second store. It does not look at a `test`'s own Tasks, nor
-inside a capability's adapter (Go code). There the runtime holds the
+inside a capability's adapter (Go code).
+
+There the runtime holds the
 rule: a request's `Task` is bound to its route's store before it runs, a
 `Test.run`'s to the store it writes first (`Test.run` of a route's `update`
-to the route's store, as its request is), and a write of another store fails the `Task` with an
+to the route's store, as its request is), and a write of another store fails
+the `Task` with an
 internal error: a 500 in production, a failed test under `alder test`.
 
-Reads may mix: an `update`, or a `load`, may read the shared database and a
+#### Reads may mix
+
+An `update`, or a `load`, may read the shared database and a
 silo, as the workspace's projects page reads its org's name (shared)
 beside its projects (the org's file). A `Session.put` writes the cookie,
-not a store, and a capability is outside both, so neither counts. The
-workspace keeps its `Activity` log in the shared database for this
+not a store, and a capability is outside both, so neither counts.
+
+The workspace keeps its `Activity` log in the shared database for this
 reason: a line of activity is written with the membership it is about
-(shared), never with a project. A write that must follow another in a
-different store is sent from its own route; a transaction across
-databases (an outbox) is a later milestone's.
+(shared), never with a project.
+
+A write that must follow another in a different store is sent from its own
+route.
+
+> **Not yet:** a transaction across databases (an outbox) is a later
+> milestone's.
 
 ### Where the files live
 
@@ -912,9 +1003,13 @@ is a file next to it:
 `<name>` is the org's id written in base32hex, lowercase, without
 padding (RFC 4648): the id `A` is `84.db`, the id `a` is `c4.db`. The
 id's own text is never the name, since ids are case-sensitive and a file
-system may not be. Only an id can name a silo (letters, digits, `-` and
+system may not be.
+
+Only an id can name a silo (letters, digits, `-` and
 `_`, at most 64 characters, the alphabet of the ids Alder makes): any
-other value of `org` is not found, and makes no file. Under `alder run`
+other value of `org` is not found, and makes no file.
+
+Under `alder run`
 the shared database is `build/<app>/dev.db`, so the silos are under
 `build/<app>/silos/`; at a server they are under `<path>/db/silos/`
 (chapter 16); with `ALDER_DB=:memory:` every silo is in memory too.
@@ -922,10 +1017,13 @@ the shared database is `build/<app>/dev.db`, so the silos are under
 A silo's file is made the first time a request needs it, and only for an
 org whose row exists in the shared database: a request for an org that
 was never made is not found and leaves no file. The file holds the
-silo's tables and nothing else. A reference to another table of the
+silo's tables and nothing else.
+
+A reference to another table of the
 silo is a real foreign key (a project's `@cascade` deletes its to-dos in
 that file); a reference to a shared table (`org`, an assignee) is an
 indexed column without one, since the row it names is in another file.
+
 So **deleting an org does not delete its silo**: the file stays,
 unreachable, an **orphan**; `alder silos prune <env>` lists and removes
 orphans (chapter 11). The shared database has the siloed tables too,
@@ -936,10 +1034,14 @@ created by the same migrations, and they stay empty.
 Each silo's file records the schema it is at: a table
 `_alder_schema` with one row, a fingerprint of the tables (as
 `_alder_meta` does for the shared database) and of which tables live in
-which silo, and the name of the last migration applied. The silos'
+which silo, and the name of the last migration applied.
+
+The silos'
 tables are in the fingerprint so that a table moved into a silo (below)
 makes every silo made before the move behind, not equal: equal would
-serve it without the table. A deploy migrates the shared database at start-up
+serve it without the table.
+
+A deploy migrates the shared database at start-up
 ("When the app starts", above), but not the thousands of silos: each is
 checked when the running app first opens it, and the answer is cached
 for the process. Three outcomes, besides a new file, which is created at
@@ -952,9 +1054,12 @@ the app's schema:
    migrations after it are applied to the file then and there (only
    their statements on the silo's tables), checked as at start-up, and
    the silo is served, unless one of them **drops data** (its file has a
-   `DROPS DATA` line). That silo is then not migrated on its own: it
+   `DROPS DATA` line).
+
+   That silo is then not migrated on its own: it
    answers the maintenance page until `alder migrate silos <env>
    --allow-data-loss` applies it on purpose (chapter 16).
+
 3. **Ahead**: the row names a migration after this app's last, written
    by a newer build (an older build was rolled back to). It is never
    touched: the silo answers the maintenance page, and `alder status`
@@ -962,9 +1067,13 @@ the app's schema:
 
 A silo that is not served answers **only its org's requests** with the
 app's `maintenance` page and status 503; every other org is served as
-usual. `App` may declare the page (`maintenance : Html Never`, like
+usual.
+
+`App` may declare the page (`maintenance : Html Never`, like
 `notFound`); without one, a plain page says "Down for maintenance": this
-part of the app is being updated. The app checks such a silo again a minute later, so a silo
+part of the app is being updated.
+
+The app checks such a silo again a minute later, so a silo
 fixed by `alder migrate silos` is served without a restart. `alder
 status <env>` lists each key's silos by state (chapter 11).
 
@@ -1005,7 +1114,9 @@ CREATE INDEX IF NOT EXISTS "Activity__Activity__org" ON "Activity__Activity"("or
 It changes no table, so it leads from the schema to the same schema.
 In the shared database, which has the table, its statements do nothing.
 In a silo made before the move, which is behind by it (the fingerprint
-above), they create the table when the silo is next opened. Its `DROPS
+above), they create the table when the silo is next opened.
+
+Its `DROPS
 DATA` line is the shared database's: rows it holds of the table stay
 there, never read again. So a deploy that applies it needs
 `--allow-data-loss` (chapter 16), which is the point: the deploy plan

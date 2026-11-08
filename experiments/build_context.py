@@ -201,7 +201,7 @@ TRIMS = {
            ("The to-do list uses four of them\n", "Why a write route needs them as much as a `load` does",
             "The to-do list uses four of them, and `Todos.Show` reads its todo with the fifth\n"
             "(`examples/todos/app/Todos/Index.alder` and `Todos/Show.alder`, in the example app below).\n\n"),
-           ("Two small ideas first, because a file has to say both.", "The compiler decides a route is a file page",
+           ("Two small ideas first, because a file has to say both:", "The compiler decides a route is a file page",
             "A `File` carries a content type (`text/csv`), a status (`200`, `404`, `503`), a body and extra headers.\n\n"),
            ("`File.text` answers `200` with the text", "`File.html` is the way to answer a web page",
             "`File.withHeader` sets a header: `Content-Disposition: attachment; filename=todos.csv` saves the answer\n"
