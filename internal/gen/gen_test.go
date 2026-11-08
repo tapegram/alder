@@ -631,9 +631,9 @@ func TestGoName(t *testing.T) {
 }
 
 // The IR goldens and the todos example exercise every match kind, partial application, holes,
-// pages and (stubbed) HTML: their emitted Go must vet.
+// routes and (stubbed) HTML: their emitted Go must vet.
 func TestGen_VetIRGoldens(t *testing.T) {
-	for _, dir := range []string{"ir_patterns", "ir_page", "../../testdata/fix/todos"} {
+	for _, dir := range []string{"ir_patterns", "ir_page", "../../examples/todos"} {
 		if !strings.Contains(dir, "/") {
 			dir = "../../testdata/golden/" + dir
 		}
@@ -2000,7 +2000,7 @@ func TestServeMigrates(t *testing.T) {
 // built as effect trees, run with eff.Run against an in-memory SQLite store created from the
 // generated table descriptors, with a stub for the Auth.Login.Password capability.
 func TestGen_RunTodos(t *testing.T) {
-	dir := emitApp(t, "../../testdata/fix/todos")
+	dir := emitApp(t, "../../examples/todos")
 	if err := os.WriteFile(filepath.Join(dir, "zz_run_test.go"), []byte(runTodosTest+runTodosShowTest), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -2068,8 +2068,8 @@ func TestTodos(t *testing.T) {
 				t.Errorf("unwired capability: recovered %v", r)
 			}
 		}()
-		msg := Auth__Login__Msg__Submit__(Auth__Login__SubmitParams{Form: Auth__Login__Credentials{Email: "a@b.c", Password: "pw"}})
-		eff.Run(env, eff.KTask, Auth__Login__update(msg, Auth__Login__Model{}, env.Session.(App__Session)))
+		p := Auth__Login__Submit__Params{Form: Auth__Login__Credentials{Email: "a@b.c", Password: "pw"}}
+		eff.Run(env, eff.KTask, Auth__Login__Submit__update(p, env.Session.(App__Session)))
 	}()
 	env.Caps["Auth.Login.Password"] = password{user: uid}
 
@@ -2086,39 +2086,38 @@ func TestTodos(t *testing.T) {
 	calls("setup", "Db.insert User", "Password.verify")
 
 	// log in: a wrong password is rejected, the right one redirects to / and sets the session
-	login := func(pw string) rt.Nav {
+	login := func(pw string) rt.Response {
 		t.Helper()
-		msg := Auth__Login__Msg__Submit__(Auth__Login__SubmitParams{Form: Auth__Login__Credentials{Email: "a@b.c", Password: pw}})
-		nav, err := eff.Run(env, eff.KTask, Auth__Login__update(msg, Auth__Login__Model{}, env.Session.(App__Session)))
+		p := Auth__Login__Submit__Params{Form: Auth__Login__Credentials{Email: "a@b.c", Password: pw}}
+		r, err := eff.Run(env, eff.KTask, Auth__Login__Submit__update(p, env.Session.(App__Session)))
 		if err != nil {
 			t.Fatalf("login: %v", err)
 		}
-		return nav
+		return r
 	}
-	if nav := login("nope"); nav.Tag != rt.NavReject || nav.Text != "Email or password is incorrect." {
-		t.Fatalf("bad login: %+v", nav)
+	if r := login("nope"); r.Kind != rt.RespInvalid || r.Text != "Email or password is incorrect." {
+		t.Fatalf("bad login: %+v", r)
 	}
 	if s := env.Session.(App__Session); s.User.Ok {
 		t.Fatalf("bad login set the user: %+v", s)
 	}
-	if nav := login("pw"); nav.Tag != rt.NavRedirect || nav.Page.Path != "/" {
-		t.Fatalf("login: %+v", nav)
+	if r := login("pw"); r.Kind != rt.RespRedirect || r.Target.Path != "/" {
+		t.Fatalf("login: %+v", r)
 	}
 	calls("login", "Password.verify", "Password.verify", "Db.get User", "Session.put") // the login reads the row for its role
 	app := env.Session.(App__Session)
 	if !app.User.Ok || app.User.Val != uid {
 		t.Fatalf("login did not set the session user: %+v", app)
 	}
-	session := Todos__Index__Session{User: app.User.Val}
-	model := Todos__Index__Model{Filter: Table__Todo__Filter__All__}
+	session := Todos__Index__Index__Session{User: app.User.Val}
 
-	update := func(msg Todos__Index__Msg) (rt.Nav, error) {
+	run := func(task eff.Task[rt.Response]) (rt.Response, error) {
 		t.Helper()
-		return eff.Run(env, eff.KTask, Todos__Index__update(msg, model, session))
+		return eff.Run(env, eff.KTask, task)
 	}
 	load := func(f Table__Todo__Filter) []Table__Todo__Todo {
 		t.Helper()
-		m, err := eff.RunQuery(env, Todos__Index__load(Todos__Index__Params{Filter: f}, session))
+		m, err := eff.RunQuery(env, Todos__Index__Index__load(Todos__Index__Index__Params{Filter: f}, session))
 		if err != nil {
 			t.Fatalf("load: %v", err)
 		}
@@ -2126,10 +2125,12 @@ func TestTodos(t *testing.T) {
 	}
 
 	// add
-	add := Todos__Index__Msg__Submit__(Todos__Index__SubmitParams{Form: Todos__Index__NewTodo{Title: "Buy milk", Due: rt.Just(rt.Date{Y: 2026, M: 10, D: 31})}})
-	nav, err := update(add)
-	if err != nil || nav.Tag != rt.NavRedirect || nav.Page.Path != "/" {
-		t.Fatalf("add: %+v, %v", nav, err)
+	add := func() eff.Task[rt.Response] {
+		return Todos__Index__Submit__update(Todos__Index__Submit__Params{Form: Todos__Index__NewTodo{Title: "Buy milk", Due: rt.Just(rt.Date{Y: 2026, M: 10, D: 31})}}, session)
+	}
+	r, err := run(add())
+	if err != nil || r.Kind != rt.RespRedirect || r.Target.Path != "/" {
+		t.Fatalf("add: %+v, %v", r, err)
 	}
 	calls("add", "Db.insertMine Todo") // the owner comes from the session (env.Session)
 	todos := load(Table__Todo__Filter__All__)
@@ -2146,9 +2147,9 @@ func TestTodos(t *testing.T) {
 
 	// toggle
 	mark = len(env.Trace)
-	nav, err = update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: td.Id}))
-	if err != nil || nav.Tag != rt.NavRerender {
-		t.Fatalf("toggle: %+v, %v", nav, err)
+	r, err = run(Todos__Index__Toggle__update(Todos__Index__Toggle__Params{Id: td.Id}, session))
+	if err != nil || r.Kind != rt.RespRefresh {
+		t.Fatalf("toggle: %+v, %v", r, err)
 	}
 	calls("toggle", "Db.updateMine Todo") // one statement: WHERE id = ? AND owner = ?
 	if todos = load(Table__Todo__Filter__All__); len(todos) != 1 || !todos[0].Done {
@@ -2160,32 +2161,32 @@ func TestTodos(t *testing.T) {
 
 	// the show page loads the user's own todo, and not one that does not exist
 	mark = len(env.Trace)
-	shown, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: td.Id}, Todos__Show__Session{User: uid}))
+	shown, err := eff.RunQuery(env, Todos__Show__Show__load(Todos__Show__Show__Params{Id: td.Id}, Todos__Show__Show__Session{User: uid}))
 	if err != nil || shown.Todo.Title != "Buy milk" {
 		t.Fatalf("show: %+v, %v", shown, err)
 	}
 	calls("Show.load", "Db.getMine Todo")
-	if _, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: "nope"}, Todos__Show__Session{User: uid})); err != eff.ErrNotFound {
+	if _, err := eff.RunQuery(env, Todos__Show__Show__load(Todos__Show__Show__Params{Id: "nope"}, Todos__Show__Show__Session{User: uid})); err != eff.ErrNotFound {
 		t.Fatalf("show missing: err = %v, want ErrNotFound", err)
 	}
 
 	// toggling a todo that does not exist is Task.notFound (a 404)
-	if _, err := update(Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: "nope"})); err != eff.ErrNotFound {
+	if _, err := run(Todos__Index__Toggle__update(Todos__Index__Toggle__Params{Id: "nope"}, session)); err != eff.ErrNotFound {
 		t.Fatalf("toggle missing: err = %v, want ErrNotFound", err)
 	}
 	// so is another user's: the scoped operations act for the ambient session (env.Session), not
 	// for the session argument
 	env.Session = App__Session{User: rt.Just("someone else")}
-	if _, err := eff.RunQuery(env, Todos__Show__load(Todos__Show__Params{Id: td.Id}, Todos__Show__Session{User: uid})); err != eff.ErrNotFound {
+	if _, err := eff.RunQuery(env, Todos__Show__Show__load(Todos__Show__Show__Params{Id: td.Id}, Todos__Show__Show__Session{User: uid})); err != eff.ErrNotFound {
 		t.Fatalf("show other's: err = %v, want ErrNotFound", err)
 	}
-	if _, err := eff.Run(env, eff.KTask, Todos__Index__update(Todos__Index__Msg__Delete__(Todos__Index__DeleteParams{Id: td.Id}), model, session)); err != eff.ErrNotFound {
+	if _, err := run(Todos__Index__Delete__update(Todos__Index__Delete__Params{Id: td.Id}, session)); err != eff.ErrNotFound {
 		t.Fatalf("delete other's: err = %v, want ErrNotFound", err)
 	}
 	env.Session = app
 
 	// rollback: an add followed by a failure leaves no row
-	failing := eff.Bind(Todos__Index__update(add, model, session), func(rt.Nav) eff.Task[rt.Nav] { return eff.Fail[rt.Nav]("boom") })
+	failing := eff.Bind(add(), func(rt.Response) eff.Task[rt.Response] { return eff.Fail[rt.Response]("boom") })
 	var fail *eff.ErrFail
 	if _, err := eff.Run(env, eff.KTask, failing); !errors.As(err, &fail) || fail.Msg != "boom" {
 		t.Fatalf("failing add: err = %v", err)
@@ -2196,9 +2197,9 @@ func TestTodos(t *testing.T) {
 
 	// delete
 	mark = len(env.Trace)
-	nav, err = update(Todos__Index__Msg__Delete__(Todos__Index__DeleteParams{Id: td.Id}))
-	if err != nil || nav.Tag != rt.NavRerender {
-		t.Fatalf("delete: %+v, %v", nav, err)
+	r, err = run(Todos__Index__Delete__update(Todos__Index__Delete__Params{Id: td.Id}, session))
+	if err != nil || r.Kind != rt.RespRefresh {
+		t.Fatalf("delete: %+v, %v", r, err)
 	}
 	calls("delete", "Db.deleteMine Todo")
 	if n := len(load(Table__Todo__Filter__All__)); n != 0 {
@@ -2210,16 +2211,16 @@ func TestTodos(t *testing.T) {
 	// that touches no table begins no transaction (I2: the in-memory store's single connection
 	// would otherwise be held)
 	before := env.Session.(App__Session)
-	logoutThenFail := eff.Bind(App__update(App__Msg__Logout__, before), func(rt.Nav) eff.Task[rt.Nav] { return eff.Fail[rt.Nav]("boom") })
+	logoutThenFail := eff.Bind(App__Logout__update(App__Logout__Params{}, before), func(rt.Response) eff.Task[rt.Response] { return eff.Fail[rt.Response]("boom") })
 	if _, err := eff.Run(env, eff.KTask, logoutThenFail); !errors.As(err, &fail) || fail.Msg != "boom" {
 		t.Fatalf("logout then fail: err = %v", err)
 	}
 	if s := env.Session.(App__Session); s != before || !s.User.Ok {
 		t.Fatalf("failed Task kept its session change: %+v, want %+v", s, before)
 	}
-	// App's update: log out
-	if nav, err := eff.Run(env, eff.KTask, App__update(App__Msg__Logout__, env.Session.(App__Session))); err != nil || nav.Tag != rt.NavRedirect || nav.Page.Path != "/login" {
-		t.Fatalf("logout: %+v, %v", nav, err)
+	// App's Logout route: log out
+	if r, err := run(App__Logout__update(App__Logout__Params{}, env.Session.(App__Session))); err != nil || r.Kind != rt.RespRedirect || r.Target.Path != "/login" {
+		t.Fatalf("logout: %+v, %v", r, err)
 	}
 	if s := env.Session.(App__Session); s.User.Ok {
 		t.Fatalf("logout kept the user: %+v", s)
@@ -3025,8 +3026,8 @@ func TestProbe(t *testing.T) {
 `)
 }
 
-// Every union of the program, page and App Msg unions included, registers its constructor
-// names from app__alder.go's init, in declaration order, so rt.Show prints its values.
+// Every union of the program, from every module file, registers its constructor names from
+// app__alder.go's init, in declaration order, so rt.Show prints its values.
 func TestGen_RegistersUnions(t *testing.T) {
 	files := emit(t, "../../testdata/golden/gen_basic")
 	contains(t, files[appFile], `rt.RegisterUnion(reflect.TypeOf(tag__M__Shape(0)), []string{"Circle", "Rect"})`)
@@ -3054,14 +3055,14 @@ func TestShow(t *testing.T) {
 	}
 }
 `)
-	todos := emit(t, "../../testdata/fix/todos")
+	todos := emit(t, "../../examples/todos")
 	contains(t, todos[appFile],
-		`rt.RegisterUnion(reflect.TypeOf(tag__Todos__Index__Msg(0)), []string{"Submit", "Toggle", "Delete"})`,
-		`rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{`)
+		`rt.RegisterUnion(reflect.TypeOf(tag__Table__Todo__Filter(0)), []string{"All", "Active", "Completed"})`,
+		`rt.RegisterUnion(reflect.TypeOf(tag__Table__User__Role(0)), []string{"Member", "Admin"})`)
 }
 
-// runTodosShowTest prints todos values with rt.Show: unions from every module file (Todo,
-// the page's and App's Msg) print by their constructor names, never as Go.
+// runTodosShowTest prints todos values with rt.Show: unions from every module file (Todo's
+// Filter, User's Role) print by their constructor names, and route parameters as records, never as Go.
 const runTodosShowTest = `
 
 func TestTodosShow(t *testing.T) {
@@ -3070,10 +3071,9 @@ func TestTodosShow(t *testing.T) {
 		v    any
 		want string
 	}{
-		{Todos__Index__Msg__Toggle__(Todos__Index__ToggleParams{Id: "x"}), "Toggle { id: \"x\" }"},
-		{Todos__Index__Msg__Submit__(Todos__Index__SubmitParams{Form: Todos__Index__NewTodo{Title: "Milk", Due: due}}),
-			"Submit { form: { title: \"Milk\", due: Just 2026-10-09 } }"},
-		{App__Msg__Logout__, "Logout"},
+		{Todos__Index__Toggle__Params{Id: "x"}, "{ id: \"x\" }"},
+		{Todos__Index__Submit__Params{Filter: Table__Todo__Filter__Completed__, Form: Todos__Index__NewTodo{Title: "Milk", Due: due}},
+			"{ filter: Completed, form: { title: \"Milk\", due: Just 2026-10-09 } }"},
 		{App__Session{User: rt.Just("u1")}, "{ user: Just \"u1\", role: Member }"}, // a union's zero value is its first constructor
 		{Todos__Index__Model{Filter: Table__Todo__Filter__Active__, Todos: []Table__Todo__Todo{{Id: "1", Title: "a", Created: time.Unix(0, 0)}}},
 			"{ filter: Active, todos: [{ id: \"1\", title: \"a\", done: False, due: Nothing, owner: \"\", created: 1970-01-01T00:00:00Z }] }"},

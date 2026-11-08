@@ -16,11 +16,11 @@ import (
 
 // TestE2E_Todos runs the to-do app's scenario (testdata/e2e_todos_test.go.txt), steps 1–13: log
 // in, add, toggle (a Datastar patch; without JavaScript a 303 back), show, delete, another user's
-// messages (404), a tampered cookie, a failing capability (500, rollback, dev vs production
-// pages), App messages, Datastar redirects as navigation events; and
+// write routes (404), a tampered cookie, a failing capability (500, rollback, dev vs production
+// pages), App's Logout route, Datastar redirects as navigation events; and
 // TestE2E_RequiresUnderDatastar.
 func TestE2E_Todos(t *testing.T) {
-	runE2E(t, "../../testdata/fix/todos", "testdata/e2e_todos_test.go.txt", "TestE2E_Todos", "TestE2E_RequiresUnderDatastar")
+	runE2E(t, "../../examples/todos", "testdata/e2e_todos_test.go.txt", "TestE2E_Todos", "TestE2E_RequiresUnderDatastar")
 }
 
 // TestE2E_RejectKeepsWrites runs gen_vet/m3c-reject (an update that inserts a row, stores the
