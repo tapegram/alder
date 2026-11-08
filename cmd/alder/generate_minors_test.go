@@ -8,7 +8,7 @@ import (
 	"alder/internal/generate"
 )
 
-// #35: help --json exposes which of a generator's args are required: `new page`'s module is
+// #35: help --json exposes which of a generator's args are required: `new route`'s module is
 // optional, its path is not.
 func TestHelpJSON_RequiredArgs(t *testing.T) {
 	t.Parallel()
@@ -43,8 +43,8 @@ func TestAsWrittenKeepsOtherTableNames(t *testing.T) {
 	}
 }
 
-// #35: `alder new page --list T --show U` is a usage error (exit 2), not a silent --list.
-func TestGenerate_NewPageListAndShowConflict(t *testing.T) {
+// #35: `alder new route --list T --show U` is a usage error (exit 2), not a silent --list.
+func TestGenerate_NewRouteListAndShowConflict(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
 	dir := genApp(t, "scaffold")

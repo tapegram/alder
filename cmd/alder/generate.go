@@ -18,7 +18,7 @@ import (
 	"alder/internal/theme"
 )
 
-// The generators: `alder new page|table|form|msg|capability`, `alder edit table` and `alder
+// The generators: `alder new route|table|form|msg|capability`, `alder edit table` and `alder
 // fill` (book chapter 15). Each reads the app in --dir (default "."), computes its edits
 // (internal/generate), applies them to a copy of the app, checks the copy as `alder check`
 // does, and writes the files only when the copy checks (generate.Apply). It prints the files
@@ -99,7 +99,7 @@ type unplacedJSON struct {
 }
 
 // runGeneratorWith ends every generator: it applies edits (computed by gen, from the loaded app)
-// with o, then reports. cmd names the command in messages ("alder new page"). The app is loaded by load (nil: generate.Load, or
+// with o, then reports. cmd names the command in messages ("alder new route"). The app is loaded by load (nil: generate.Load, or
 // LoadWithErrors for o.WriteDespiteErrors), and --json's object completed by extra (nil for
 // none) before it is written.
 func runGeneratorWith(cmd string, g genArgs, o generate.Options, load func(dir string) (*generate.Program, error), gen func(p *generate.Program) ([]generate.Edit, error), extra func(*genJSON), stdout, stderr io.Writer) (code int) {
@@ -285,7 +285,7 @@ const newDeclUsage = "usage: alder new decl <Module> <name> \"<Type>\" [--dir ap
 
 const newTestUsage = "usage: alder new test <Module> \"<test name>\" [--dir app] [--json] [--dry-run]"
 
-const newAuthUsage = "usage: alder new auth [--users User] [--role Role] [--to Page] [--dir app] [--json] [--dry-run]"
+const newAuthUsage = "usage: alder new auth [--users User] [--role Role] [--to Route] [--dir app] [--json] [--dry-run]"
 
 const newSiloUsage = "usage: alder new silo <key> <Table> … [--empty] [--dir app] [--json] [--dry-run]"
 
@@ -399,14 +399,6 @@ func countTrue(bs ...bool) (n int) {
 
 // newGenerator is the Spec of `alder new <kind>`, or nil when kind is an app name.
 func newGenerator(kind string) *generate.Spec { return generate.SpecByID("new " + kind) }
-
-// aliasNote prints, on standard error, that the command was typed with an older name of its
-// generator (`alder new page` for `alder new route`); nothing when it was typed with its own.
-func aliasNote(stderr io.Writer, s *generate.Spec, used string) {
-	if note := generate.AliasNote(s, used); note != "" {
-		fmt.Fprintln(stderr, note)
-	}
-}
 
 // themeImportExtra is `alder theme import`'s --json fields: file (the one written, "" when
 // none), theme, unplaced and skipped, present even when nothing was imported.

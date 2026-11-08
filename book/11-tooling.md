@@ -117,7 +117,7 @@ usage: alder <command> [arguments]
   build     compile the app to a single binary
   run       run the app with live reload
   tui       the terminal UI for alder run (the separate alder-tui program)
-  routes    list the app's routes: pages (GET) and messages (POST)
+  routes    list the app's routes, with their methods and paths
   dump      print a file's tokens or syntax tree, or an app's IR
   eval      evaluate an expression in the app
   scratch   run a scratch file's watches against the app
@@ -127,8 +127,8 @@ usage: alder <command> [arguments]
   fix       rewrite an app written with page and msg into routes
   repl      an interactive session in the app (deprecated: use alder scratch)
   new       create an app, or generate code in one
-  edit      change a table, page, declaration, auth or the session
-  remove    remove a page or a table
+  edit      change a table, route, declaration, auth or the session
+  remove    remove a route module or a table
   fill      fill a typed hole with an expression from stdin
   regen     regenerate generated code
   theme     start from a theme, or import one from CSS or DTCG tokens
@@ -268,11 +268,8 @@ prints them (`wrote app/About.alder`, `edited app/Home.alder`), the
 unified diff of every edited one, and the copy's diagnostics, its typed
 holes (W0002) with their types among them.
 
-`alder new page` is the old name of `alder new route`, and `alder edit page`
-and `alder remove page` of `alder edit route` and `alder remove route`: the
-old names still work, and print a note that says so. `alder new msg` adds a
-write route to a route module; a write route in a module of its own is
-`alder new route <Module> <path> --method POST`.
+`alder new msg` adds a write route to a route module; a write route in a
+module of its own is `alder new route <Module> <path> --method POST`.
 
 #### `alder new route [<Module>] <path>`
 
@@ -524,9 +521,10 @@ was written, so no file is named.
 `"error"` (the sentence; the diagnostics are in `"diagnostics"`) for a
 refusal.
 
-The words `route` (and `page`, its old name), `table`, `form`, `msg`,
+The words `route`, `table`, `form`, `msg`,
 `capability`, `admin`, `auth`, `type`, `decl`, `test` and `silo` name
-generators, so `alder new` refuses them as app names.
+generators, so `alder new` refuses them as app names (and `page`, which
+named one before routes, with a pointer to `alder new route`).
 
 ### `alder routes`
 

@@ -10,7 +10,6 @@ import (
 	"text/template"
 
 	"alder/internal/check"
-	"alder/internal/syntax"
 	"alder/internal/types"
 )
 
@@ -672,25 +671,6 @@ func routeGuard(p *Program, o RouteOptions) (keys []string, key, requires string
 		}
 	}
 	return keys, key, requires, nil
-}
-
-// isFilePage reports whether m's `view` returns `File`: the signature walk of the checker's
-// viewReturnsFile (unexported), repeated here.
-func isFilePage(m *syntax.Module) bool {
-	v := valueDecl(m, "view")
-	if v == nil || v.Sig == nil {
-		return false
-	}
-	t := v.Sig
-	for {
-		ft, ok := t.(*syntax.FunType)
-		if !ok {
-			break
-		}
-		t = ft.Result
-	}
-	tn, ok := t.(*syntax.TypeName)
-	return ok && tn.Name == "File" && (tn.Module == "" || tn.Module == "Prelude") && len(tn.Args) == 0
 }
 
 // uniqueColumns lists t's `@unique` columns for a message, "none" when it has none.

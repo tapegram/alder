@@ -96,14 +96,9 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 				home, homeParams = r.Ref("Auth.Login")+" {}", routeHasRequiredParams(r)
 			}
 		}
-		for _, pg := range p.Pages {
-			if pg.Path == "/" && home == "" {
-				home, homeParams = pageLit(pg.Module, nil), hasRequiredParams(pg)
-			}
-		}
 	}
 	if home != "" && homeParams {
-		return nil, false, Refusef("`%s` has parameters: a login goes to a page without, name one with `--to <Page>`", strings.TrimSuffix(home, " {}"))
+		return nil, false, Refusef("`%s` has parameters: a login goes to a page without, name one with `--to <Route>`", strings.TrimSuffix(home, " {}"))
 	}
 
 	var edits []Edit
@@ -370,9 +365,6 @@ const loginRoute = "Auth.Login.Login"
 // before routes; hasParams when it has a parameter without a default; ok false when name is
 // none of these.
 func loginTarget(p *Program, name, home string) (lit string, hasParams, ok bool) {
-	if pg := p.PageNamed(name); pg != nil {
-		return pageLit(name, nil), hasRequiredParams(pg), true
-	}
 	r := p.RouteModule(name)
 	if r == nil {
 		for _, c := range p.Routes {

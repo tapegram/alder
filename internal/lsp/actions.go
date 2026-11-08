@@ -351,7 +351,7 @@ func hereTitle(id string, sets map[string]string) string {
 }
 
 // hereCtx is where pos (a compiler position) is in rel, in a: its module, whether that module
-// declares a page, the enclosing declaration's name and kind, and the hole under pos. It is the
+// declares a route, the enclosing declaration's name and kind, and the hole under pos. It is the
 // zero HereCtx when a has no module for rel.
 func hereCtx(a *analysis, rel string, pos diag.Pos) generate.HereCtx {
 	var c generate.HereCtx
@@ -369,7 +369,7 @@ func hereCtx(a *analysis, rel string, pos diag.Pos) generate.HereCtx {
 		return c
 	}
 	c.Module = m.Name
-	c.IsPage = a.prog.IsRouteModule(m.Name)
+	c.IsRoute = a.prog.IsRouteModule(m.Name)
 	if d := declAt(m, pos); d != nil {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:

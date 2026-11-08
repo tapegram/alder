@@ -122,10 +122,6 @@ a nested module, one directory per dot: `alder new route Sites.Clarity.Index
 like `About`, writes `app/About.alder`). `alder new route --help` says so, and
 `alder routes` (chapter 11) lists where every route ended up.
 
-> **The old name.** `alder new page` is the old name of the command; it still
-> works, and prints "`alder new page` is now `alder new route`" after doing
-> what `new route` does.
-
 The file:
 
 ```alder written=guestbook/app/About.alder
@@ -3994,9 +3990,6 @@ comments once their holes are filled.
 `alder edit route <Route> add-param <name>:<Type>[=default]` adds a
 parameter to a route: a query parameter, such as a search box's `q`.
 
-> **The old name.** `alder edit page` is the old name, and prints that it is
-> now `alder edit route`.
-
 The command:
 
 ```text command=guestbook
@@ -4386,8 +4379,7 @@ refuses the edit with the checker's errors, and nothing is written.
 
 ### Removing
 
-`alder remove route <Module>` removes the route module's file (`alder
-remove page` is the old name). `alder remove table <T>` removes the
+`alder remove route <Module>` removes the route module's file. `alder remove table <T>` removes the
 table's declaration, its id type and its module's tests (the whole file,
 when the module holds nothing else), and writes the migration that drops
 the table, marked `DROPS DATA`.

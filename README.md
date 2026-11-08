@@ -48,9 +48,9 @@ Then grow it from the command line. Every generator writes plain, checked Alder 
 tests, and refuses rather than overwrite or write what does not check:
 
 ```
-alder new page About /about                          # a page
+alder new route About /about                         # a page (a GET route)
 alder new table Reply entry:Entry.EntryId@ref=Entry@cascade message:Text.NonEmpty
-alder new page Replies /replies --list Reply         # a page of a table's rows
+alder new route Replies /replies --list Reply        # a page of a table's rows
 alder new form Replies NewReply entry:Entry.EntryId message:Text.NonEmpty
 ```
 

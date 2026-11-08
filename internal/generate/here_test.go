@@ -5,7 +5,7 @@ import (
 )
 
 func TestHere_PerSpec(t *testing.T) {
-	page := HereCtx{Module: "Posts.Index", IsPage: true, Decl: "view", DeclKind: "value"}
+	page := HereCtx{Module: "Posts.Index", IsRoute: true, Decl: "view", DeclKind: "value"}
 	table := HereCtx{Module: "Post", Decl: "Post", DeclKind: "table"}
 	plain := HereCtx{Module: "Markdown"}
 	cases := []struct {
@@ -15,8 +15,8 @@ func TestHere_PerSpec(t *testing.T) {
 	}{
 		{page, "new msg", map[string]string{"page": "Posts.Index"}},
 		{page, "new form", map[string]string{"page": "Posts.Index"}},
-		{page, "edit page", map[string]string{"page": "Posts.Index"}},
-		{page, "remove page", map[string]string{"page": "Posts.Index"}},
+		{page, "edit route", map[string]string{"page": "Posts.Index"}},
+		{page, "remove route", map[string]string{"page": "Posts.Index"}},
 		{page, "new test", map[string]string{"module": "Posts.Index"}},
 		{page, "edit decl", map[string]string{"address": "Posts.Index.view"}},
 		{table, "edit table", map[string]string{"table": "Post"}},

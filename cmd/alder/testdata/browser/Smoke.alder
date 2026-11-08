@@ -4,31 +4,34 @@ import Layout
 
 -- The smoke test's page of the interactive elements, written as Appendix C writes them: added
 -- to the copy of the blog the browser test serves (browser_test.go), never to the example.
-page "/smoke" { }
+route Smoke   = GET  "/smoke"           { }
+route Refresh = POST "/smoke/_/Refresh" { }
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Smoke.load : Smoke.Params -> Session -> Query Model
+Smoke.load params session = Query.succeed {}
 
-msg Refresh
+Refresh.update : Refresh.Params -> Session -> Task Response
+Refresh.update p session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Refresh p -> Task.succeed Rerender,
-}
-
-view : Model -> Session -> Html
-view model session =
+Smoke.view : Model -> Session -> Html
+Smoke.view model session =
   <Layout.Page title="Smoke">
     <h1>Smoke</h1>
-    <a id="file" href={SmokeFile {}}>file</a>
-    <al-button variant="outline"><button type="button" id="more-button" commandfor="more" command="toggle-popover">More</button></al-button>
+    <a id="file" href={SmokeFile.SmokeFile {}}>file</a>
+    <al-button variant="outline">
+      <button type="button" id="more-button" commandfor="more" command="toggle-popover">
+        More
+      </button>
+    </al-button>
     <al-menu id="more" popover>
-      <a href={Posts.Index {}}>Home</a>
+      <a href={Posts.Index.Index {}}>Home</a>
       <button type="button">Second</button>
     </al-menu>
-    <al-button variant="outline"><button type="button" id="who-button" popovertarget="who">Who can see this?</button></al-button>
+    <al-button variant="outline">
+      <button type="button" id="who-button" popovertarget="who">Who can see this?</button>
+    </al-button>
     <al-popover id="who" popover placement="bottom">Only people with the link.</al-popover>
     <al-tabs>
       <al-tab name="view" selected>
@@ -41,14 +44,20 @@ view model session =
       </al-tab>
     </al-tabs>
     <al-button variant="outline" click={Refresh}>Refresh</al-button>
-    <al-button variant="ghost"><button type="button" id="save-help" title="Saves a draft">?</button></al-button>
+    <al-button variant="ghost">
+      <button type="button" id="save-help" title="Saves a draft">?</button>
+    </al-button>
     <al-tooltip for="save-help">Saves a draft</al-tooltip>
-    <al-button><button type="button" id="own-button" commandfor="own" command="show-modal">Open</button></al-button>
+    <al-button>
+      <button type="button" id="own-button" commandfor="own" command="show-modal">Open</button>
+    </al-button>
     <al-dialog size="sm">
       <dialog id="own" closedby="any" aria-labelledby="own-title">
         <h2 slot="header" id="own-title">Your own</h2>
         <p>Written by hand.</p>
-        <div slot="actions"><button type="button" commandfor="own" command="close">Close</button></div>
+        <div slot="actions">
+          <button type="button" commandfor="own" command="close">Close</button>
+        </div>
       </dialog>
     </al-dialog>
   </Layout.Page>

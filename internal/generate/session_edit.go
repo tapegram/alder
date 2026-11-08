@@ -275,9 +275,6 @@ func codeOf(line string) string {
 // route module's GET route (`Orgs.Index.Index`), or a GET route `Module.Route` as it is; ok
 // false when name is none of these.
 func chooseTarget(p *Program, name string) (string, bool) {
-	if p.PageNamed(name) != nil {
-		return name, true
-	}
 	if r := p.RouteModule(name); r != nil {
 		return r.Module + "." + r.Name, true
 	}

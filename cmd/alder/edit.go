@@ -6,7 +6,7 @@ import (
 	"alder/internal/generate"
 )
 
-const editUsage = "usage: alder edit table <T> add-field <field>:<Type>[=default][@attr…] | rename-field <old> <new> | drop-field <field>  [--strict] [--dir app] [--json] [--dry-run]\n       alder edit route <Route module> add-param <name>:<Type>[=default] [--dir app] [--json] [--dry-run]\n       alder edit decl <Module>.<Name> add-prop <name>:<Type>=<default> [--dir app] [--json] [--dry-run]\n       alder edit auth --to <Page> [--dir app] [--json] [--dry-run]\n       alder edit session add-field <name>:<Type>=<default> | add-field <key>:<T>.<T>Id via <Membership> [--choose <Page>]  [--strict] [--dir app] [--json] [--dry-run]"
+const editUsage = "usage: alder edit table <T> add-field <field>:<Type>[=default][@attr…] | rename-field <old> <new> | drop-field <field>  [--strict] [--dir app] [--json] [--dry-run]\n       alder edit route <Route module> add-param <name>:<Type>[=default] [--dir app] [--json] [--dry-run]\n       alder edit decl <Module>.<Name> add-prop <name>:<Type>=<default> [--dir app] [--json] [--dry-run]\n       alder edit auth --to <Route> [--dir app] [--json] [--dry-run]\n       alder edit session add-field <name>:<Type>=<default> | add-field <key>:<T>.<T>Id via <Membership> [--choose <Route>]  [--strict] [--dir app] [--json] [--dry-run]"
 
 const removeUsage = "usage: alder remove route <Route module> | alder remove table <T>  [--dir app] [--json] [--dry-run]"
 
@@ -14,11 +14,10 @@ const removeUsage = "usage: alder remove route <Route module> | alder remove tab
 // (In help --json the group node has no Usage of its own flags: each subcommand node carries
 // its Args and Flags, and the group's usage line is the text printed here.)
 func runGroup(group, usage string, args []string, stdout, stderr io.Writer) int {
-	s, rest, used := generate.SelectNamed(group, args, generate.Specs())
+	s, rest := generate.Select(group, args, generate.Specs())
 	if s == nil {
 		return genUsage(stderr, usage, nil)
 	}
-	aliasNote(stderr, s, used)
 	return runSpec(s, rest, usage, stdout, stderr)
 }
 

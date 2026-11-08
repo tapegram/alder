@@ -601,8 +601,6 @@ func (g *adminGen) wire(page, name string) string {
 	var params []*Param
 	if r := g.p.RouteModule(page); r != nil {
 		params = r.Params
-	} else if pg := g.p.PageNamed(page); pg != nil {
-		params = pg.Params
 	}
 	for _, par := range params {
 		if par.Name == name && par.Wire != "" {

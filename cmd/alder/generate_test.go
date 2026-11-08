@@ -180,11 +180,10 @@ var genCases = []genCase{
 	{name: "route-list", base: "scaffold", args: []string{"new", "route", "Entries.Index", "/entries", "--list", "Entry"}, test: true},
 	{name: "route-show", base: "scaffold", args: []string{"new", "route", "Entries.Show", "/entries", "--show", "Entry"}, test: true},
 	{name: "route-from", base: "scaffold", args: []string{"new", "route", "Dash", "/dash", "--from", "Entry"}, test: true},
-	// #160: a write route, a page alias, a message on a route module
+	// #160: a write route, a message on a route module
 	{name: "route-post", base: "fixture", args: []string{"new", "route", "Like", "/like", "--method", "POST", "--param", "postId:Post.PostId"}, test: true},
 	{name: "route-post-form", base: "scaffold", args: []string{"new", "route", "Contact", "/contact", "--method", "POST", "--form", "Message"}, test: true},
 	{name: "fixture-route-patch-path", base: "fixture", args: []string{"new", "route", "Posts.Feature", "/posts/{id}/feature", "--method", "PATCH", "--param", "id:Post.PostId", "--requires", "user"}, test: true},
-	{name: "page-alias", base: "scaffold", args: []string{"new", "page", "About", "/about"}, test: true},
 	{name: "msg-route", base: "scaffold", pre: [][]string{{"new", "route", "About", "/about"}}, args: []string{"new", "msg", "About", "Clear"}, test: true},
 	{name: "msg-route-id", base: "scaffold", pre: [][]string{{"new", "route", "About", "/about"}}, args: []string{"new", "msg", "About", "Clear", "--id", "clear"}, test: true},
 	{name: "fixture-msg-route-params", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "msg", "Posts.Show", "Feature", "note:Text"}},
@@ -431,10 +430,10 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "form", "Home", "Sign", "name:Text"}, "", "alder new form: `Home` already declares `Sign`: choose another name"},
 		{"scaffold", []string{"new", "form", "Home", "Entry", "name:Text"}, "", "alder new form: `Entry` names a table of this app: a form named like it hides the table's row type in `Home`; choose another form name, such as `EntryForm`"},
 		{"scaffold", []string{"new", "table", "Tag", "n:Int=1 -- evil"}, "", "alder new table: field `n`: the default `1 -- evil` holds `--`, which begins a comment in Alder source: write the value without it"},
-		{"scaffold", []string{"new", "form", "Table.Entry", "Sign", "name:Text"}, "", "alder new form: `Table.Entry` is not a page (it has no `page` declaration): `alder new page Table.Entry /path` makes one"},
+		{"scaffold", []string{"new", "form", "Table.Entry", "Sign", "name:Text"}, "", "alder new form: `Table.Entry` is not a route module (it declares no route): `alder new route Table.Entry /path` makes one"},
 		{"scaffold", []string{"new", "form", "Home", "Contact", "name:Text", "--into", "Post"}, "", "alder new form: `--into Post`: `Post` is not a table of this app (its tables: Entry)"},
 		{"scaffold", []string{"new", "msg", "Home", "Submit"}, "", "alder new msg: `Home` already declares `Submit`: choose another route name"},
-		{"scaffold", []string{"new", "msg", "Nowhere", "Go"}, "", "alder new msg: there is no page `Nowhere`: `alder new page Nowhere /path` makes one"},
+		{"scaffold", []string{"new", "msg", "Nowhere", "Go"}, "", "alder new msg: there is no route module `Nowhere`: `alder new route Nowhere /path` makes one"},
 		{"scaffold", []string{"new", "capability", "Weather", "now", "Query Float ->"}, "", "alder new capability: `Query Float ->` is not a type: "},
 		{"scaffold", []string{"edit", "table", "Entry", "drop-field", "id"}, "", "alder edit table: `id` is the id of `Entry`: a table keeps its id"},
 		{"scaffold", []string{"edit", "table", "Entry", "drop-field", "nope"}, "", "alder edit table: `Entry` has no field `nope` (its fields: id, name, message, created)"},
@@ -472,7 +471,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "route", "Notes", "/notes", "--blank", "--list", "Entry"}, "", "alder new route: --blank takes no --list or --from"},
 		{"scaffold", []string{"new", "msg", "Home", "Hide", "--in-for", "x"}, "", "alder new msg: `Home`'s `view` has no `{for x in …}`: name the loop variable of one of its loops"},
 		{"scaffold", []string{"new", "msg", "Home", "Hide", "--when", "a b c,"}, "", "alder new msg: `--when a b c,` is not one expression"},
-		{"scaffold", []string{"edit", "route", "Table.Entry", "add-param", "q:Text"}, "", "alder edit route: `Table.Entry` is not a page (it has no `page` declaration)"},
+		{"scaffold", []string{"edit", "route", "Table.Entry", "add-param", "q:Text"}, "", "alder edit route: `Table.Entry` is not a route module (it declares no route): `alder new route Table.Entry /path` makes one"},
 		{"scaffold", []string{"edit", "route", "Home", "add-param", "q:Text"}, "", "alder edit route: the result does not check (the errors above): nothing was written"},
 		{"scaffold", []string{"fill", "--decl", "Home.update.Submit", "-"}, "Task.succeed Rerender", "alder fill: `Home.update.Submit` names an arm: --decl replaces a whole declaration, `Home.update`"},
 		{"scaffold", []string{"fill", "--decl", "Home.nope", "-"}, "1", "alder fill: `Home` has no declaration `nope` with a body (a value, a type or a test)"},
@@ -498,7 +497,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"edit", "table", "Entry", "add-field", "bad:Theme=Nope"}, "", "alder edit table: the result does not check (the errors above): nothing was written"},
 		{"scaffold", []string{"edit", "table", "Entry", "add-field", "n:Int=\"x\""}, "", "alder edit table: the result does not check (the errors above): nothing was written"},
 		{"scaffold", []string{"remove", "table", "Entry"}, "", "alder remove table: table `Entry` is still used (the errors above): remove those uses first; nothing was removed"},
-		{"scaffold", []string{"remove", "route", "Table.Entry"}, "", "alder remove route: `Table.Entry` is not a page"},
+		{"scaffold", []string{"remove", "route", "Table.Entry"}, "", "alder remove route: `Table.Entry` is not a route module (it declares no route): `alder new route Table.Entry /path` makes one"},
 		{"scaffold", []string{"remove", "table", "Home"}, "", "alder remove table: `Home` is not a table of this app"},
 		{"fixture", []string{"remove", "route", "Auth.Login"}, "", "alder remove route: `Auth.Login` is still used (the errors above)"},
 		{"scaffold", []string{"fill", "--decl", "Home.Model", "-"}, "{ entries: List Entry, params: Params }", "alder fill: the result does not check (the errors above): nothing was written"}, // I6: a diagnostic, not a crash
@@ -562,11 +561,15 @@ func TestGenerate_Refusals(t *testing.T) {
 
 	// the generators' names are not app names
 	base := t.TempDir()
-	if code, _, errs := runNew(t, filepath.Join(base, "page")); code != 1 || errs != "alder new: `page` names a generator (`alder new page …`), so it cannot name an app: choose another name\n" {
-		t.Errorf("an app named page: exit %d, %q", code, errs)
+	if code, _, errs := runNew(t, filepath.Join(base, "route")); code != 1 || errs != "alder new: `route` names a generator (`alder new route …`), so it cannot name an app: choose another name\n" {
+		t.Errorf("an app named route: exit %d, %q", code, errs)
 	}
-	if code, _, errs := runNew(t, "page"); code != 2 || errs != "`alder new page` is now `alder new route`\n"+newRouteUsage+"\n" {
-		t.Errorf("alder new page alone: exit %d, %q", code, errs)
+	// `new page` was removed (#160): it points at `new route`, and creates no app
+	if code, _, errs := runNew(t, "page"); code != 2 || errs != "alder new: `alder new page` is gone: a page is a route now; use `alder new route [<Module>] <path>`\n" {
+		t.Errorf("alder new page: exit %d, %q", code, errs)
+	}
+	if code, _, errs := runNew(t, "page", "About", "/about"); code != 2 || !strings.Contains(errs, "use `alder new route") {
+		t.Errorf("alder new page About /about: exit %d, %q", code, errs)
 	}
 	if code, _, errs := runNew(t, "route"); code != 2 || errs != newRouteUsage+"\n" {
 		t.Errorf("alder new route alone: exit %d, %q", code, errs)
@@ -923,7 +926,7 @@ func TestHelp(t *testing.T) {
 	}
 }
 
-// TestHelp_DottedModule: `alder new page --help` shows a nested module and where it is written.
+// TestHelp_DottedModule: `alder new route --help` shows a nested module and where it is written.
 func TestHelp_DottedModule(t *testing.T) {
 	t.Parallel()
 	var b bytes.Buffer
@@ -1041,7 +1044,7 @@ func TestGenerate_E11Messages(t *testing.T) {
 		return code, out + errs
 	}
 	if code, o := run("", "new", "route", "Notes", "/notes", "--blank"); code != 0 {
-		t.Fatalf("new page: %s", o)
+		t.Fatalf("new route: %s", o)
 	}
 	for _, args := range [][]string{{"fill", "Notes.load", "-"}, {"fill", "--decl", "Notes.load", "-"}} {
 		code, o := run("\\params session -> Query.succeed { }", args...)
@@ -1292,39 +1295,43 @@ func TestGenerate_TableNameAddress(t *testing.T) {
 	}
 }
 
-// TestGenerate_AliasNotes (plan call 18): `new page`, `edit page` and `remove page` do what the
-// route commands do and say, on standard error, that they are now those; `new msg` says it adds
-// a write route.
-func TestGenerate_AliasNotes(t *testing.T) {
+// TestGenerate_PageCommandsRemoved (#160): `edit page` and `remove page` are not commands any
+// more (the group's usage, which names `route`), and `new msg` still says it adds a write route.
+func TestGenerate_PageCommandsRemoved(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
-	viaRoute, viaPage := genApp(t, "scaffold"), genApp(t, "scaffold")
-	code, outR, errR := alderIn(t, viaRoute, "", "new", "route", "About", "/about")
-	if code != 0 || errR != "" {
-		t.Fatalf("new route: exit %d: %s", code, errR)
-	}
-	code, outP, errP := alderIn(t, viaPage, "", "new", "page", "About", "/about")
-	if code != 0 || errP != "`alder new page` is now `alder new route`\n" || outP != outR {
-		t.Errorf("new page: exit %d, stderr %q, stdout %q (new route's: %q)", code, errP, outP, outR)
-	}
-	if appFiles(t, viaRoute)["app/About.alder"] != appFiles(t, viaPage)["app/About.alder"] {
-		t.Errorf("new page wrote another file than new route")
+	dir := genApp(t, "scaffold")
+	if code, _, errs := alderIn(t, dir, "", "new", "route", "About", "/about"); code != 0 {
+		t.Fatalf("new route: exit %d: %s", code, errs)
 	}
 	for _, c := range []struct {
 		args []string
 		want string
 	}{
-		{[]string{"edit", "page", "About", "add-param", `q:Text=""`}, "`alder edit page` is now `alder edit route`\n"},
+		{[]string{"edit", "page", "About", "add-param", `q:Text=""`}, editUsage + "\n"},
+		{[]string{"remove", "page", "About"}, removeUsage + "\n"},
+	} {
+		if code, out, errs := alderIn(t, dir, "", c.args...); code != 2 || errs != c.want || out != "" {
+			t.Errorf("alder %s: exit %d, stderr %q, want %q (stdout %q)", strings.Join(c.args, " "), code, errs, c.want, out)
+		}
+	}
+	if _, ok := appFiles(t, dir)["app/About.alder"]; !ok {
+		t.Errorf("remove page removed app/About.alder")
+	}
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
 		{[]string{"edit", "route", "About", "add-param", `r:Text=""`}, ""},
 		{[]string{"new", "msg", "About", "Clear"}, "`alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`\n"},
-		{[]string{"remove", "page", "About"}, "`alder remove page` is now `alder remove route`\n"},
+		{[]string{"remove", "route", "About"}, ""},
 	} {
-		if code, out, errs := alderIn(t, viaPage, "", c.args...); code != 0 || errs != c.want {
+		if code, out, errs := alderIn(t, dir, "", c.args...); code != 0 || errs != c.want {
 			t.Errorf("alder %s: exit %d, stderr %q, want %q\n%s", strings.Join(c.args, " "), code, errs, c.want, out)
 		}
 	}
-	if _, ok := appFiles(t, viaPage)["app/About.alder"]; ok {
-		t.Errorf("remove page left app/About.alder")
+	if _, ok := appFiles(t, dir)["app/About.alder"]; ok {
+		t.Errorf("remove route left app/About.alder")
 	}
 }
 

@@ -38,9 +38,12 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 	}()
 	if len(args) > 0 {
 		if s := newGenerator(args[0]); s != nil {
-			aliasNote(stderr, s, "new "+args[0])
 			return runSpec(s, args[1:], specUsage[s.ID], stdout, stderr)
 		}
+	}
+	if len(args) > 0 && args[0] == "page" { // removed in #160: a route is what a page was
+		fmt.Fprintln(stderr, "alder new: `alder new page` is gone: a page is a route now; use `alder new route [<Module>] <path>`")
+		return 2
 	}
 	bare, hasTheme, themeName := false, false, ""
 	var rest []string
