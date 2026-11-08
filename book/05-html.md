@@ -5,7 +5,7 @@ a button, a form or a link leads to is a **route** (chapter 6), written in
 the markup as a value, so the type of the markup does not have to say it.
 
 In a route module `Html` is the whole type. In a module without routes
-(`Layout`, `App`, a shared component) `Html` still takes a type argument for
+(`Layout`, an `App` without routes, a shared component) `Html` still takes a type argument for
 now: write `Html a`, and `Html Never` for markup that sends nothing, such as
 `App.error`. The argument is on its way out.
 
@@ -173,7 +173,7 @@ so it works without JavaScript too. This is `click={Toggle { id: "7" }}` for
 The router honours `_method` on a `POST` only, and never in the query string,
 so a link from another site cannot become a write. With JavaScript, Datastar
 sends the request with the route's own method (`@patch` above) and the field
-is not needed. A `<form submit={R}>` whose route is a `PUT`, `PATCH` or
+is not needed (a `DELETE` is sent as `@post` with `_method=DELETE`; chapter 6). A `<form submit={R}>` whose route is a `PUT`, `PATCH` or
 `DELETE` does the same: the form's own submit button carries
 `name="_method" value="PATCH"`, or the form gets a hidden `_method` field when
 it has no submit button of its own.
@@ -635,7 +635,7 @@ the rest of the page alone. Two other answers skip the comparison. `render r`
 sends the one element that `r`'s view draws, by its root `id`. `redirect r`
 sends the page `r` as a link does, never compared with the one on screen
 (chapter 6, "Delivery"). Without Datastar (JavaScript off), a write answers
-with a `303` and the browser loads the whole page (chapter 6, "With and
+with a `303` (`invalid`: a `422`) and the browser loads the whole page (chapter 6, "With and
 without JavaScript").
 
 An element with an `id` is a **region**. The `<body>` is the outermost

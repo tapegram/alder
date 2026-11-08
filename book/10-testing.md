@@ -451,8 +451,8 @@ like the page's. Things to know:
   test sees as `PageMissing`.
 - **One store per `Test.run`.** A `Test.run` runs its `Task` as a request
   runs one, on one store: the first one it writes, or for `Test.run
-  (Create.update p session)` the store the route's `update` is bound to,
-  as the request's route binds it. A `Test.run` whose `Task` writes the shared
+  (Create.update p session)` too: unlike its request, a route's `update` is not
+  bound to its store first ([#191](https://github.com/tapegram/alder/issues/191)). A `Test.run` whose `Task` writes the shared
   database and a silo fails the test with the internal error production
   answers 500 with ("Db.insert Project writes silo org in a Task on the
   shared store (one store per Task)"). The test's own body is not one
@@ -1083,7 +1083,7 @@ Line by line:
    `Submit` route with the record and posts it. A route value is a global
    address, so another module writes it with the full path. Even when
    the test file imports `Todos.Index`, the short `Index.Submit` is an
-   error (E0205), and its fix writes `Todos.Index.Submit`. The page held
+   error (E0002), and its fix writes `Todos.Index.Submit`. The page held
    must show that form: the browser posts only what a user could. The
    route's `update` inserts the todo and answers `Response.redirect
    (Index { filter: p.filter })`; the browser follows the redirect, as a

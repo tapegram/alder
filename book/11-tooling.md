@@ -1032,7 +1032,7 @@ looking does not change what you see.
 **The map of the app: `/_dev/map.json`.** `GET /_dev/map.json` is the page at
 `/_dev`, as data. The compiler knows the app's tables and silos (and the
 pages of a module still written with `page`; a module on routes has none, so
-`pages` is empty for it), and writes them into the program as one JSON text;
+`pages` is empty for it, [#190](https://github.com/tapegram/alder/issues/190)), and writes them into the program as one JSON text;
 the running app adds what only it knows: the build id, the migrations
 applied, which capabilities have a real adapter and which a fake, and the
 routes, each with its `method` and `pat` (its path pattern). A tool that wants to show your
@@ -1845,7 +1845,7 @@ Playwright (a browser-automation library for Node.js) with the script
   are morphed in with the panel answering not found and error, its tabs working;
 - the panel's History lists the tab's requests (newest first, at most 20, kept
   across a page load), a click reopens one, and Copy as curl copies the line;
-- a bulk delete's `Notice.success` shows a toast in the open region and it times
+- a bulk delete's `Response.success` shows a toast in the open region and it times
   out, and the panel after it is the delete's: its `DELETE`s, then "then GET
   /admin/user", on the tab chosen before;
 - on 205 users, the admin's new-post form offers 50 authors and a search form;

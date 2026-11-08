@@ -885,8 +885,8 @@ That is what the checker proves: an `update` it accepts mentions no
 write of a second store. It does not look at a `test`'s own Tasks, nor
 inside a capability's adapter (Go code). There the runtime holds the
 rule: a request's `Task` is bound to its route's store before it runs, a
-`Test.run`'s to the store it writes first (to its route's, for a route's
-`update`), and a write of another store fails the `Task` with an
+`Test.run`'s to the store it writes first (a route's `update` is not pre-bound
+there, [#191](https://github.com/tapegram/alder/issues/191)), and a write of another store fails the `Task` with an
 internal error: a 500 in production, a failed test under `alder test`.
 
 Reads may mix: an `update`, or a `load`, may read the shared database and a

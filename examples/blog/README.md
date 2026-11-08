@@ -1,7 +1,7 @@
 # blog
 
 The second example, which chapter 14 tours: posts with drafts, comments, a Reader/Author/Admin
-role, a Markdown capability, routes of results and a search, the author's own pages under
+role, a Markdown capability, pages of results and a search, the author's own pages under
 `/write`, and a site admin under `/admin` that `alder new admin` generated (book 15). `alder
 check`, `alder build` and `alder test` take this directory; chapter 11 explains each command.
 

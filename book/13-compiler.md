@@ -5251,7 +5251,7 @@ with an older `page`, its path, `requires`, roles, parameters and messages),
 and what only the running server knows (the build id, the migrations the
 database has, how each capability is wired, and the routes: the method and
 pattern of every route the router holds). The generated map has no entry for a
-route yet, so for an app on routes its `pages` list is empty and the routes
+route yet ([#190](https://github.com/tapegram/alder/issues/190)), so for an app on routes its `pages` list is empty and the routes
 come from the router. Neither is served without `ALDER_DEV=1`:
 `/_dev` is a 404 and no page carries the panel or its script (a test builds
 an example, runs it without `ALDER_DEV` and checks both). A toast is an event
