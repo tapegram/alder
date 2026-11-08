@@ -31,8 +31,12 @@ nothing installed; `go test ./book` runs this deploy for chapter 16.
 To put it on a server, add an environment to the declaration in `app/App.alder`, such as
 `production: Ssh "deploy@box.example.com" { domain: "blog.example.com", path: "/srv/blog" }`,
 write `ALDER_SECRET=…` (16 bytes or more) into `/srv/blog/env` on the box, and run `alder
-deploy production`; `alder ci init` writes the GitHub workflow that does it on every push to
-`main`. The example's login is the development stub, which refuses every password outside
+deploy production`;
+
+`alder ci init` writes the GitHub workflow that does it on every push to
+`main`.
+
+The example's login is the development stub, which refuses every password outside
 `alder run`: a real deployment needs a real `Password` adapter (book 7).
 
 ## Mutation score
@@ -41,14 +45,20 @@ deploy production`; `alder ci init` writes the GitHub workflow that does it on e
 killed, 6 survived (score 0.97). `TestExample_Blog` fails if the score drops below 0.97, the
 exact 0.970 rounded down, or the number of mutants is not 202.
 
-- The generated admin (`app/Admin/`, "Replaying the admin" below): 147 mutants, 144 killed
-  by its generated tests, kept as `alder new admin` wrote them. The three survivors are equivalent:
-  `postsTotal > 200` and `authorsTotal > 200` flipped to `>= 200` in the `where` of the Comment
-  and Post New routes' lists (a search of "" matches every row), and `Post.author.in ids` dropped
-  from the user bulk route's `load` (`refused` is only asked of the chosen rows). The Edit routes'
-  lists have no such survivor: the row's own value is read by itself and comes first, the search
-  leaves it out, and the generated test of exactly 200 rows tells `>` from `>=`.
-- The rest of the blog: 55 mutants, 52 killed, 3 survived, as before the admin (below).
+- **The generated admin** (`app/Admin/`, "Replaying the admin" below): 147 mutants, 144 killed
+  by its generated tests, kept as `alder new admin` wrote them.
+
+  The three survivors are equivalent:
+
+  - `postsTotal > 200` and `authorsTotal > 200` flipped to `>= 200` in the `where` of the Comment
+    and Post New routes' lists (a search of "" matches every row).
+  - `Post.author.in ids` dropped from the user bulk route's `load` (`refused` is only asked of
+    the chosen rows).
+
+  The Edit routes' lists have no such survivor: the row's own value is read by itself and comes
+  first, the search leaves it out, and the generated test of exactly 200 rows tells `>` from `>=`.
+
+- **The rest of the blog:** 55 mutants, 52 killed, 3 survived, as before the admin (below).
 
 The history of the rest:
 
@@ -60,18 +70,25 @@ The rules are declared (book 06, "Rules"): `Post.author` is the table's `@owner`
 holds the user's `role` from login, and `Write` and `Write.Edit` `requires user, role Author`.
 The cookie keeps the role until logout (or the session's 30 days), so both routes' `load` also
 re-read the user's row (`User.isAuthor`, the re-read idiom): a demoted author is turned away at
-once. Their mutants are killed: the re-reads (`guard dropped`) by `Write "a
-demoted author cannot open the write page"` and `Write.Edit "a demoted author is turned away at
-once"`; the two `scope dropped` (`Db.mine Post`, `Db.getMine Post`)
-by `Write "the write page lists the author's own posts, newest first"` and `Write.Edit "another
-author's post is not found"`, which since routes (#160) also kills the `scope dropped` of
-`Write.Edit`'s write routes (no `load` runs before them, so their `Db.updateMine` and
-`Db.deleteMine` are the check); the dropped `role` of the login's and the logout's `Session.put` by
-`Auth.Login "logging in through the form"` and `Posts.Index "logging out from the front page
-goes to log in"`. (A `role dropped` mutant exists only for the old `page` form, alder#187; the tests
-`Write "a promoted reader logs in again first"` and `Write.Edit "a promoted reader logs in again
-before editing"` still pin the role check, the row saying Author while the cookie says Reader, and
-kill no mutant.)
+once.
+
+Their mutants are killed:
+
+- **The re-reads** (`guard dropped`) by `Write "a demoted author cannot open the write page"` and
+  `Write.Edit "a demoted author is turned away at once"`.
+- **The two `scope dropped`** (`Db.mine Post`, `Db.getMine Post`) by
+  `Write "the write page lists the author's own posts, newest first"` and
+  `Write.Edit "another author's post is not found"`, which since routes (#160) also kills the
+  `scope dropped` of `Write.Edit`'s write routes (no `load` runs before them, so their
+  `Db.updateMine` and `Db.deleteMine` are the check).
+- **The dropped `role`** of the login's and the logout's `Session.put` by
+  `Auth.Login "logging in through the form"` and
+  `Posts.Index "logging out from the front page goes to log in"`.
+
+> **No `role dropped` mutant.** A `role dropped` mutant exists only for the old `page` form,
+> alder#187; the tests `Write "a promoted reader logs in again first"` and
+> `Write.Edit "a promoted reader logs in again before editing"` still pin the role check, the row
+> saying Author while the cookie says Reader, and kill no mutant.
 
 The ten tests that closed the gaps:
 
@@ -117,18 +134,22 @@ leaves out) and skips 41 that do not apply; neither count is part of the score.
 
 Every file under `app/Admin/` is exactly what `alder new admin` wrote; none was edited by hand.
 The author's modules were `Admin` and `Admin.Edit` until then, at `/admin`; the admin needs that
-module and path, so they became `Write` and `Write.Edit`, at `/write` and `/write/{id}`. The
-steps, from the blog before the admin:
+module and path, so they became `Write` and `Write.Edit`, at `/write` and `/write/{id}`.
+
+The steps, from the blog before the admin:
 
 1. `User.Role` gains `Admin` (`type Role = Reader | Author | Admin`). The session already had
    `role: User.Role = Reader`, set at login from the user's row (`Auth.Login`), which is what
    `alder new admin` needs.
 2. `migrations/0001_initial.sql` was written again from the tables (`rm migrations/*` and
-   `alder migrate`) at this step: the example had no data to keep, so it kept one migration. The
-   tables have since moved into `app/Table/` (`0002_rename_*`, see Layout above), so do not
+   `alder migrate`) at this step: the example had no data to keep, so it kept one migration.
+
+   The tables have since moved into `app/Table/` (`0002_rename_*`, see Layout above), so do not
    `rm migrations/*` now: it would delete that rename. An app with
    data runs `alder migrate` instead, which rebuilds `User` with `'Admin'` in the column's
-   `CHECK`. A `blog.db` that `alder run` made before this step no longer matches `0001`, and
+   `CHECK`.
+
+   A `blog.db` that `alder run` made before this step no longer matches `0001`, and
    the app refuses to start on it: delete it, or run once with `ALDER_DEV=1`, which recreates
    the database empty (book 8).
 3. `alder new admin` writes the admin:
@@ -160,10 +181,12 @@ steps, from the blog before the admin:
 4. The development login (`adapters/auth/password.go`) gains `admin@example.com`, an Admin.
 
 The admin never shows or edits `User.passwordHash`, a secret by its name (book 15): a user it
-creates starts with an empty one. Every admin page reads the user's row again, so an Admin made
-a Reader is turned away at once. An Admin cannot delete their own account or change their own
-role there, and each list filters by its `Bool` and union columns (`/admin/post?published=yes`,
-`/admin/user?role=Admin`).
+creates starts with an empty one.
+
+- Every admin page reads the user's row again, so an Admin made a Reader is turned away at once.
+- An Admin cannot delete their own account or change their own role there.
+- Each list filters by its `Bool` and union columns (`/admin/post?published=yes`,
+  `/admin/user?role=Admin`).
 
 To check that the committed admin is still what the generator writes, in a copy of the blog:
 `rm -r app/Admin && alder new admin`, then `git diff --stat` shows nothing. After a change to a
