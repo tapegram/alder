@@ -3459,6 +3459,7 @@ up its signal handling:
 end is closed. `stop` is the function `signal.NotifyContext` returned:
 it cancels `ctx`, which is exactly what a `SIGTERM` does, so the app
 shuts down the same graceful way (requests in flight get 5 seconds).
+
 The variable is cleared once read: a process the app starts inherits
 the app's environment, and its standard input is not the dev server's
 pipe. Without the variable the app never reads its standard input, so a
@@ -3516,60 +3517,73 @@ func Compile(appDir string, extra *Module, mainGo string, purpose, out string) B
 Here is `alder eval examples/todos 'Todo.filterLabel Active'`, step by step
 (`cmd/alder/eval.go`):
 
-1. **The scratch module.** `parseItems` (`cmd/alder/evalinput.go`)
-   splits the input into its items, the `let`s and the expression (a
-   `let`'s name must start with a lowercase letter or `_`: `let Todo = 1` would
-   otherwise be shadowed by the module `Todo`), and
-   `assemble` joins them into the source of module `Scratch`, line for
-   line (two steps, so that a REPL can keep the `let`s of earlier
-   entries and assemble them again with each new one): the expression's
-   first line
-   becomes `it = Todo.filterLabel Active`, and each `let name = expr` before it a
-   top-level `name = expr` (an annotated `let name : T = expr` becomes the
-   two lines `name : T` and `name = expr`, which is why eval keeps a map
-   from each line it wrote back to the input's). Where each item starts
-   is `snippets.Starts` (`internal/snippets`): a line at column 1 that is
-   not blank, a comment, or a closer such as `}` or `</ul>`; the book
-   verifier uses the same rule. None of the values has a signature.
-2. **Check.** `scratch.Check` adds `module Scratch` and an `import` of
-   every app module but `App` (a name an app or stdlib module already
-   has is an error, `ModuleExistsError`; `--module` picks another name), and checks the program with `check.Options{InferModule:
-   "Scratch"}`: that module's values without a signature are inferred
-   instead of being E0007, and it may use any module's brand
-   constructors, as a `test` may. A function may call itself: while its
-   body is inferred, its own name has a fresh type variable, unified
-   with the body's type at the end (let-rec); a value defined after it is
-   not known yet, and using one is E0007. Diagnostics are mapped back
-   through the inserted lines (`MapDiag`, which also maps the line an
-   E0009 message names) and the rewriting of step 1, and come out as
-   `input:1:18`.
+1. **The scratch module.** `parseItems` (`cmd/alder/evalinput.go`) splits
+   the input into its items, the `let`s and the expression (a `let`'s name
+   must start with a lowercase letter or `_`: `let Todo = 1` would
+   otherwise be shadowed by the module `Todo`), and `assemble` joins them
+   into the source of module `Scratch`, line for line (two steps, so that a
+   REPL can keep the `let`s of earlier entries and assemble them again with
+   each new one).
 
-   `--in Table.Todo` changes what step 2 builds. There is no `Scratch` module:
-   the file `app/Table/Todo.alder` is overlaid with its own text plus the
-   session, appended (a newline is added first when the file lacks one),
-   so the session is simply the end of `Table.Todo`. `Build.BaseLines` records
-   how many lines are the module's own, which is how a line of the
-   overlay is told from a line of the session. `InSession` says whether a
-   diagnostic is about the session, and `MapDiag` leaves one in the
-   module's own lines alone, still `app/Table/Todo.alder:L:C`, so that a
-   mistake in the module is not shown as a mistake in your input.
-   `Module.In` must name an app module exactly; anything else is a
-   `NoModuleError`.
+   The expression's first line becomes `it = Todo.filterLabel Active`, and
+   each `let name = expr` before it a top-level `name = expr` (an annotated
+   `let name : T = expr` becomes the two lines `name : T` and `name = expr`,
+   which is why eval keeps a map from each line it wrote back to the
+   input's).
+
+   Where each item starts is `snippets.Starts` (`internal/snippets`): a line
+   at column 1 that is not blank, a comment, or a closer such as `}` or
+   `</ul>`; the book verifier uses the same rule. None of the values has a
+   signature.
+
+2. **Check.** `scratch.Check` adds `module Scratch` and an `import` of
+   every app module but `App` (a name an app or stdlib module already has
+   is an error, `ModuleExistsError`; `--module` picks another name), and
+   checks the program with `check.Options{InferModule: "Scratch"}`: that
+   module's values without a signature are inferred instead of being E0007,
+   and it may use any module's brand constructors, as a `test` may.
+
+   A function may call itself: while its body is inferred, its own name has
+   a fresh type variable, unified with the body's type at the end
+   (let-rec); a value defined after it is not known yet, and using one is
+   E0007.
+
+   Diagnostics are mapped back through the inserted lines (`MapDiag`, which
+   also maps the line an E0009 message names) and the rewriting of step 1,
+   and come out as `input:1:18`.
+
+   `--in Table.Todo` changes what step 2 builds. There is no `Scratch`
+   module: the file `app/Table/Todo.alder` is overlaid with its own text
+   plus the session, appended (a newline is added first when the file lacks
+   one), so the session is simply the end of `Table.Todo`.
+
+   `Build.BaseLines` records how many lines are the module's own, which is
+   how a line of the overlay is told from a line of the session.
+   `InSession` says whether a diagnostic is about the session, and
+   `MapDiag` leaves one in the module's own lines alone, still
+   `app/Table/Todo.alder:L:C`, so that a mistake in the module is not shown
+   as a mistake in your input. `Module.In` must name an app module exactly;
+   anything else is a `NoModuleError`.
+
 3. **Choose a main.** The inferred type of `Scratch.it` picks the Go
    `main`, which `scratchMain` (`cmd/alder/scratchmain.go`) writes in one
-   of three kinds. `mainPure` prints `rt.Show(app.Scratch__it)`, the
-   value written as Alder (a polymorphic `it` is a generic thunk,
-   instantiated at `any`); `alder eval` uses it for every value but a
-   `Query` or a `Task`. `mainQuery` runs `it` as a Query against the
-   database named by `ALDER_EVAL_DB`; eval uses it only with `--run`
-   (`build/<app>/dev.db`), and otherwise prints `<Query>` with its type.
-   `mainTask` runs it as a Task, whose writes commit; eval refuses a
-   `Task`, and the REPL's `:run!` is what uses it. The two effect mains
-   are one template; `scratchMain(mainQuery, true, "app.Scratch__it")`
-   (an app with capabilities and a `.go` file somewhere under `adapters/`,
-   `Checked.WiresAdapters`) imports `"app/caps"`, opens the database,
-   creating it with the app's tables when absent, and then runs (from
-   `build/todos/scratch/eval/cmd/main.go`, after
+   of three kinds:
+
+   - `mainPure` prints `rt.Show(app.Scratch__it)`, the value written as
+     Alder (a polymorphic `it` is a generic thunk, instantiated at `any`);
+     `alder eval` uses it for every value but a `Query` or a `Task`.
+   - `mainQuery` runs `it` as a Query against the database named by
+     `ALDER_EVAL_DB`; eval uses it only with `--run`
+     (`build/<app>/dev.db`), and otherwise prints `<Query>` with its type.
+   - `mainTask` runs it as a Task, whose writes commit; eval refuses a
+     `Task`, and the REPL's `:run!` is what uses it.
+
+   The two effect mains are one template; `scratchMain(mainQuery, true,
+   "app.Scratch__it")` (an app with capabilities and a `.go` file
+   somewhere under `adapters/`, `Checked.WiresAdapters`) imports
+   `"app/caps"`, opens the database, creating it with the app's tables
+   when absent, and then runs (from `build/todos/scratch/eval/cmd/main.go`,
+   after
    `alder eval examples/todos --run 'Db.count (Db.from Todo.Todo)'`)
 
    ```go
@@ -3580,33 +3594,38 @@ Here is `alder eval examples/todos 'Todo.filterLabel Active'`, step by step
    with the app's default session (`TestSession`, the one `alder test`
    uses; only a test build has it, so eval and the REPL build with
    `scratch.Options{Tests: true}`, below) and the adapters' capabilities,
-   wired by the generated `caps` package as in `alder build` (chapter 7);
-   before compiling, the build checks the adapters with
+   wired by the generated `caps` package as in `alder build` (chapter 7).
+
+   Before compiling, the build checks the adapters with
    `buildkit.CheckTestAdapters`: `alder build`'s check, whose refusals are
    the build's error (a `scratch.AdapterError`, exit 1, with the same
    lines), except that a missing adapter is left unwired (out of the
    `caps` package) and listed once, as a warning (`Build.Warning`), so
-   eval goes on. Without adapters the
-   main does not import `app/caps`, `caps/` is left out of the scratch
-   module, and `Caps` is `app.Caps{}.Registry()`, every capability
-   unwired: a call to one fails with "capability … is not wired in eval"
-   (as does a call to one whose constructor returned `nil`). A failed effect
-   prints its message to stderr and exits 1.
-4. **Compile.** `scratch.CompileCheckedWith` builds what step 2
-   checked, without checking again: it takes the lock file
+   eval goes on.
+
+   Without adapters the main does not import `app/caps`, `caps/` is left
+   out of the scratch module, and `Caps` is `app.Caps{}.Registry()`, every
+   capability unwired: a call to one fails with "capability … is not wired
+   in eval" (as does a call to one whose constructor returned `nil`). A
+   failed effect prints its message to stderr and exits 1.
+
+4. **Compile.** `scratch.CompileCheckedWith` builds what step 2 checked,
+   without checking again: it takes the lock file
    `build/todos/scratch/eval.lock`, lowers and emits the whole app plus
    `Scratch` into `build/todos/scratch/eval/` as a test build (its
-   `Options.Tests`: the app's tests, `TestSession` and fakes are
-   compiled in, as for `alder test`; eval is a developer tool, never
-   deployed), and builds it. The
-   returned `Build` keeps the lock until `alder eval` closes it after
-   step 5, so another evaluation cannot replace the executable while
-   this one runs it. Taking the lock first *tries* it
-   (`flock(LOCK_EX|LOCK_NB)`, which fails at once instead of waiting
-   when another process holds it); only then does eval print `alder
-   eval: waiting for another alder eval of this app…` (the
-   `Options.Waiting` function it passes) and try again every 100 ms. A
-   blocking `flock` could not be interrupted, and the retries can: each
+   `Options.Tests`: the app's tests, `TestSession` and fakes are compiled
+   in, as for `alder test`; eval is a developer tool, never deployed), and
+   builds it.
+
+   The returned `Build` keeps the lock until `alder eval` closes it after
+   step 5, so another evaluation cannot replace the executable while this
+   one runs it. Taking the lock first *tries* it (`flock(LOCK_EX|LOCK_NB)`,
+   which fails at once instead of waiting when another process holds it);
+   only then does eval print `alder eval: waiting for another alder eval of
+   this app…` (the `Options.Waiting` function it passes) and try again
+   every 100 ms.
+
+   A blocking `flock` could not be interrupted, and the retries can: each
    checks the context first, which Ctrl-C cancels. The same context goes
    to `go vet` and `go build` (`exec.CommandContext`), so Ctrl-C during
    a build kills it. The scratch module's Go is one line:
@@ -3646,17 +3665,20 @@ Here is `alder eval examples/todos 'Todo.filterLabel Active'`, step by step
    compiling the generated package `app` again, which holds the scratch
    module and so changes with every new expression, and relinking the
    program. The same expression again finds everything in the cache.
+
    `scratch.CompileCheckedWith(ctx, …, scratch.Options{NoVet: true})`
    skips vet, for the REPL, whose app was vetted when it was built; if
    `go build` then fails, it vets after all, so the error says the same
    as with vet (the generated Go is an internal error, the main's or the
    adapters' is theirs). `alder eval` keeps vetting: it is what agents
    and the book verifier run, and there correctness is worth the 0.15 s.
+
 5. **Run.** `scratch.RunTethered` runs the executable in its own process
    group, so the terminal's Ctrl-C reaches `alder eval` alone; eval
    catches it (and SIGTERM), cancels the context, and the whole group is
    killed, as it is after `scratch.Timeout`. (Its standard input is a
    pipe that ties the program to eval; "The REPL" below explains why.)
+
    `classifyRun` turns a failure into one message, shared with the
    REPL: a stack overflow is one line instead of Go's hundreds, a panic
    its first paragraph, a timeout `the evaluation timed out after 1m0s`.
@@ -3679,29 +3701,41 @@ $ alder eval examples/todos --json 'Todo.filterLabel Active'
 {"value":"\"Active\"","type":"Text","diagnostics":[]}
 ```
 
-**The book verifier** (`go test ./book`, chapter 11) runs every block of
-this book through the same pipeline, from the outside: it builds the
-`alder` binary once and drives it. `book/snippets.go` extracts the fenced
-`alder` blocks and classifies each by its first line of code: a module
-(`module …`), declarations (a declaration keyword, `name : T` or
-`name args = …` at column 1), a table of signatures (`List.map : …`
-lines), or expressions. Declarations are wrapped the way
-`scratch.Compile` wraps a scratch module, as `module Snippet<n>` with an
-import of every example module but `App`, and a signature `Name.x : T`
-becomes `sig1 : T` and `sig1 = Name.x`, so the checker compares the
-book's type with the real one. A module shown piece by piece (`part=`
-blocks, chapter 11) is joined first. All of a chapter's modules,
-declarations and signature tables go into one copy of `examples/todos/app` and one
-`alder check --json`; only when that is not clean is each block checked
-alone, to pin every diagnostic on its block and line. Expressions are
-only parsed, with `alder dump` (each starting where `snippets.Starts`
-says), unless the fence gives `eval=` or `error=`: then they are
-evaluated with `alder eval --json -` in a working directory shared by
-all chapters, where the lock above makes the chapters take turns. An
-`error=` block passes only when the diagnostic is in the block itself
-and, when the fence quotes a part of the message, its message has it. Chapters run in
-parallel, each in its own temporary directory; the whole book takes
-about 15 seconds, almost all of it the evaluations.
+#### The book verifier
+
+The book verifier (`go test ./book`, chapter 11) runs every block of this
+book through the same pipeline, from the outside: it builds the `alder`
+binary once and drives it.
+
+`book/snippets.go` extracts the fenced `alder` blocks and classifies each
+by its first line of code:
+
+- a module (`module …`);
+- declarations (a declaration keyword, `name : T` or `name args = …` at
+  column 1);
+- a table of signatures (`List.map : …` lines);
+- or expressions.
+
+Declarations are wrapped the way `scratch.Compile` wraps a scratch module,
+as `module Snippet<n>` with an import of every example module but `App`,
+and a signature `Name.x : T` becomes `sig1 : T` and `sig1 = Name.x`, so the
+checker compares the book's type with the real one. A module shown piece
+by piece (`part=` blocks, chapter 11) is joined first.
+
+All of a chapter's modules, declarations and signature tables go into one
+copy of `examples/todos/app` and one `alder check --json`; only when that
+is not clean is each block checked alone, to pin every diagnostic on its
+block and line.
+
+Expressions are only parsed, with `alder dump` (each starting where
+`snippets.Starts` says), unless the fence gives `eval=` or `error=`: then
+they are evaluated with `alder eval --json -` in a working directory shared
+by all chapters, where the lock above makes the chapters take turns. An
+`error=` block passes only when the diagnostic is in the block itself and,
+when the fence quotes a part of the message, its message has it.
+
+Chapters run in parallel, each in its own temporary directory; the whole
+book takes about 15 seconds, almost all of it the evaluations.
 
 ### Running tests
 
@@ -3709,12 +3743,16 @@ about 15 seconds, almost all of it the evaluations.
 `cmd/alder/test.go` calls `scratch.CompileCheckedWith` with purpose
 `"test"` and `scratch.Options{Tests: true}`, so the app is compiled as
 it is, into `build/<app>/scratch/test/`, under the lock
-`build/<app>/scratch/test.lock`, as a test build. What makes it a test
-program is what the compiler emits for `test` declarations, which only
-a test build has (`gen.Options.Tests`; a production build, `alder
-build`'s, emits none of what this section shows), and the main.
+`build/<app>/scratch/test.lock`, as a test build.
 
-**Each test is a function.** Section 7's emitter turns the N-th `test`
+What makes it a test program is what the compiler emits for `test`
+declarations, which only a test build has (`gen.Options.Tests`; a
+production build, `alder build`'s, emits none of what this section shows),
+and the main.
+
+#### Each test is a function
+
+Section 7's emitter turns the N-th `test`
 of module M into `test__M__N`. `Table.Todo`'s first test,
 `test "countOpen ignores done todos" = countOpen [ … ] == 2` (three todos,
 one done), is emitted into `build/todos/scratch/test/Table__Todo_alder.go` as
@@ -3728,14 +3766,17 @@ func test__Table__Todo__1() bool {
 
 The `==` is not `rt.Eq`, as it would be anywhere else, but
 `rtesting.Eq`: the same comparison, which also records both sides as
-`rt.Show` text, so that the report can print `left:` and `right:`. Only
-one `==` is recorded: the test's body when it is an `==`, or, in an
-effect test, the value of the `Task.succeed` that ends its block
-(`recordEq` in `internal/ir/lower.go`). An effect test's function
-returns an `eff.Task[bool]` instead of a `bool`, built like any other
-task (section 8, "A `Task`: `Toggle`").
+`rt.Show` text, so that the report can print `left:` and `right:`.
 
-**The table of tests.** `app__alder.go` lists them, with the session a
+Only one `==` is recorded: the test's body when it is an `==`, or, in an
+effect test, the value of the `Task.succeed` that ends its block
+(`recordEq` in `internal/ir/lower.go`). An effect test's function returns
+an `eff.Task[bool]` instead of a `bool`, built like any other task
+(section 8, "A `Task`: `Toggle`").
+
+#### The table of tests
+
+`app__alder.go` lists them, with the session a
 test starts from:
 
 ```go
@@ -3779,7 +3820,9 @@ production module has no `Tests`, no `TestSession` and no `test__`
 function, and does not import `alder/rt/testing` (`TestGen_ProdHasNoTests`
 in `internal/gen/gen_test.go` checks it).
 
-**The main.** `testMain` in `cmd/alder/test.go` writes the scratch
+#### The main
+
+`testMain` in `cmd/alder/test.go` writes the scratch
 program's `cmd/main.go`. For the to-do app, which has adapters
 (`build/todos/scratch/test/cmd/main.go`):
 
@@ -3861,7 +3904,9 @@ variables, which `rtesting.Main` reads:
 it kills a program that has not stopped by itself, and then reports the
 running test as timed out.
 
-**One world per test.** `rtesting.Run` (`rt/testing/testing.go`) runs
+#### One world per test
+
+`rtesting.Run` (`rt/testing/testing.go`) runs
 the cases one after another (`Main` does the same, one goroutine per
 case, as above). A pure case is called, with a `recover` so
 a Go panic fails that test and the next one still runs. A task case
@@ -3881,7 +3926,9 @@ by the first database step, committed when the task succeeds. The
 report's trace is `env.Trace`. Then the database is closed, and with
 `:memory:` that is the end of it.
 
-**`Test.run` is a step.** Section 6 lowers `Test.run t` to a node of its
+#### `Test.run` is a step
+
+Section 6 lowers `Test.run t` to a node of its
 own, and the emitter makes it a `Call` named `"Test.run"`, marked as a
 write, whose function hands `t` to `rtesting.Inner` and packs the five
 results into the record Alder sees. From `test__Todos__Index__1`
@@ -3972,7 +4019,9 @@ calls the same `parseItems`, `assemble`, `scratch.Check`,
 `scratch.CompileCheckedWith`, `scratch.RunTethered` and `classifyRun` as
 `alder eval`.
 
-**The session is a list of items.** An *item* (`cmd/alder/evalinput.go`)
+#### The session is a list of items
+
+An *item* (`cmd/alder/evalinput.go`)
 is one `let` or the expression, already rewritten as the lines it
 contributes to a module: `let xs = [3, 1, 2]` becomes the top-level
 definition `xs = [3, 1, 2]`, and the expression `total * 2` becomes
@@ -4008,7 +4057,9 @@ continuation line that begins at column 1 (`+ 10` typed after `let total
 parsing, and records a shift of -2 for it so its columns still match what
 you typed.
 
-**Why every line re-checks everything.** The session could remember what
+#### Why every line re-checks everything
+
+The session could remember what
 each `let` checked to and check only the new line. It does not, because
 checking the whole app plus the session is cheap: on `examples/todos` a
 check takes a millisecond or two, against half a second for a build. A
@@ -4016,7 +4067,9 @@ full check also means the REPL needs no state of its own about types.
 The checker's answer is always about the app as it is on disk and the
 session as it is now, so nothing can go stale.
 
-**Mapping a diagnostic back.** A diagnostic of the scratch module names
+#### Mapping a diagnostic back
+
+A diagnostic of the scratch module names
 a line of the joined source, after `scratch.Check` inserted its import
 lines. `Checked.MapDiag` undoes the inserted lines, which leaves a line
 of the joined items. The REPL walks the items' lengths to find which
@@ -4031,7 +4084,9 @@ line within it). Errors are printed wherever they are, but warnings only
 for the line just typed: an old `let`'s warning would otherwise repeat on
 every line.
 
-**Evaluating.** When the check is clean, the type of `it` decides. A
+#### Evaluating
+
+When the check is clean, the type of `it` decides. A
 `Query`, `Task` or `Select` is shown with a hint unless the command
 asked to run it (`:run` a `Query`, `:run!` a `Task`). Anything else is
 built with the pure main, which prints `rt.Show(it)`.
@@ -4066,7 +4121,9 @@ runner": a `Task` main runs `eff.Run`, which commits the transaction when
 the task succeeds and rolls it back when it fails, so a failed `:run!`
 leaves the database as it was.
 
-**The no-vet build.** `go vet` checks the generated Go before it is
+#### The no-vet build
+
+`go vet` checks the generated Go before it is
 built, so that an emitter bug shows up as an internal error and not as a
 confusing build failure. The first build of a session is vetted, and so
 is the first after a reload, so a bug in the generated Go is still
@@ -4076,7 +4133,9 @@ ones about 0.47 s (the table in "The scratch runner"): each new
 expression changes the generated package, so Go compiles and links it
 again.
 
-**`:reload`.** The app's files may have changed since the `let`s were
+#### `:reload`
+
+The app's files may have changed since the `let`s were
 checked. `:reload` checks the app alone first; if that has errors, they
 are printed and the session is left as it is. The REPL remembers the
 app's errors it last printed and, while they stay the same, says only
@@ -4088,7 +4147,9 @@ error[E0002]: …`). A `let` that used a dropped one is dropped too: it is
 checked after it, without it, and fails with `unknown name`. It also
 marks the next build to be vetted.
 
-**The loop.** Reading a line from the terminal blocks, but the REPL also
+#### The loop
+
+Reading a line from the terminal blocks, but the REPL also
 has to notice an edited file or a Ctrl-C while it waits. So a goroutine
 reads standard input with a `bufio.Reader` and sends each line on a
 channel. A line longer than 1 MB is read to its end and dropped, and the
@@ -4157,7 +4218,9 @@ Chapter 8 shows migrations from the outside. Three pieces of code make
 them: `internal/migrate` writes a migration, `alder build` puts the files
 into the executable, and `db.Migrate` in `rt/db/migrate.go` applies them.
 
-**Writing one.** `alder migrate` (`cmd/alder/migrate.go`) checks the app
+#### Writing one
+
+`alder migrate` (`cmd/alder/migrate.go`) checks the app
 and lowers it to the IR, as a build does. `migrate.FromProgram`
 (`internal/migrate/schema.go`) turns the IR's tables into a `Schema`: one
 `Table` per `table`, named `Post.Post` (module, then table), with its
@@ -4198,7 +4261,9 @@ again. A conversion that loses values sets the step's `DropsData`.
 `migrate.Plan` is `Diff` plus `SQL` plus the hashes; `migrate.Render`
 writes the file, and `migrate.NextName` numbers it.
 
-**Building it in.** `alder build` copies `migrations/*.sql` (not
+#### Building it in
+
+`alder build` copies `migrations/*.sql` (not
 `schema.json`) into `build/<app>/migrations/`
 (`buildkit.CopyMigrations`), and the generated `app__alder.go` embeds
 them with Go's `//go:embed`, which makes files part of the compiled
@@ -4219,7 +4284,9 @@ without migrations gets `var Migrations []db.Migration`, and `Serve` calls
 `FromProgram`'s hash with the snapshot's, so every command that checks
 the app refuses one whose tables are ahead of its migrations.
 
-**Applying them.** `db.ReadMigrations` parses each embedded file with
+#### Applying them
+
+`db.ReadMigrations` parses each embedded file with
 `db.ParseMigration` into a `Migration`: its name, its `from` and `to`
 hashes, and its statements (the header stripped). `Serve` passes them to
 `store.MigrateLog` (`rt/db/migrate.go`), which works on one connection
