@@ -139,32 +139,57 @@ Text.split ", " "a, b, c"
 Text.contains "ell" "hello"
 ```
 
+#### Length and slices
+
 `Text.length` counts code points (`Text.length "é"` is 1), and
 `Text.slice start end` takes the code points from `start` up to, not
-including, `end`. A negative index counts from the end (`Text.slice (-3) (-1)
-"abcdef"` is `"de"`; a negative argument needs its parentheses), indices past either end are clamped, and a `start` at
-or after `end` gives `""`. `Text.matches regex text` is true when the
-regex (RE2 syntax) matches anywhere in the text: write `^…$` to match the
-whole text. An invalid regex matches nothing. `Text.fromFloat` writes the
-shortest decimal that reads back as the same number, never an exponent
-(`2.0` is `"2"`, `3.5` is `"3.5"`); infinity is `"+Inf"` or `"-Inf"` and
-not-a-number is `"NaN"`. `Text.toInt` and `Text.toFloat` give `Nothing`
-for anything else than a plain decimal number (spaces, overflow, `"NaN"`).
+including, `end`.
+
+- A negative index counts from the end (`Text.slice (-3) (-1) "abcdef"` is
+  `"de"`; a negative argument needs its parentheses).
+- Indices past either end are clamped.
+- A `start` at or after `end` gives `""`.
+
+#### Matching
+
+`Text.matches regex text` is true when the regex (RE2 syntax) matches
+anywhere in the text: write `^…$` to match the whole text. An invalid regex
+matches nothing.
+
+#### Numbers
+
+`Text.fromFloat` writes the shortest decimal that reads back as the same
+number, never an exponent (`2.0` is `"2"`, `3.5` is `"3.5"`). Infinity is
+`"+Inf"` or `"-Inf"` and not-a-number is `"NaN"`.
+
+`Text.toInt` and `Text.toFloat` give `Nothing` for anything else than a
+plain decimal number (spaces, overflow, `"NaN"`).
+
+#### Padding, lines and offsets
 
 `Text.padLeft n pad s` makes `s` at least `n` code points long: a pad of
 several characters is repeated and cut at the outer edge, so
 `Text.padLeft 5 "ab" "x"` is `"ababx"`, and `s` itself is never cut.
+
 `Text.lines` splits on `\n`, removes a `\r` before it (so `\r\n` text works)
 and drops the empty line after a final newline: `Text.lines "a\nb\n"` is
-`["a", "b"]`. `Text.indexes needle haystack` lists every code-point offset
-where `needle` starts, overlapping matches included (`Text.indexes "aa" "aaa"`
-is `[0, 1]`). There is no `toChars`: `Text.split "" s` gives the characters.
+`["a", "b"]`.
+
+`Text.indexes needle haystack` lists every code-point offset where `needle`
+starts, overlapping matches included (`Text.indexes "aa" "aaa"` is
+`[0, 1]`).
+
+> **No `toChars`.** `Text.split "" s` gives the characters.
+
+#### Hashing
 
 `Text.hash` is FNV-1a (64-bit) over the text's UTF-8 bytes with the top
 bit cleared, so it is never negative and `Text.hash s % n` is a bucket in
 `0..n-1`. Its values are fixed forever, on every platform: use it for
-seeds (see "Random"), buckets and cache keys. It is not cryptographic:
-never use it for passwords, tokens or anything an attacker may choose.
+seeds (see "Random"), buckets and cache keys.
+
+> **Not cryptographic.** Never use it for passwords, tokens or anything an
+> attacker may choose.
 
 ```alder eval=["de", "2", "3.5"]
 [Text.slice (-3) (-1) "abcdef", Text.fromFloat 2.0, Text.fromFloat 3.5]
@@ -183,14 +208,19 @@ Interpolation and `Text.join` each make a new Text, copying every byte they
 are given. That is cheap for a heading, but a page that renders a large body
 by nesting them (rows joined into options, options into items, items into a
 file) copies each byte once per level: a 100 MB JSON file allocates close to
-a gigabyte. A `Text.Builder` avoids that. `Text.add` puts a piece after
-everything added so far without copying anything, and `Text.build` copies each
-byte once, into the finished Text. A builder is a value like any other:
-adding to it gives a new builder and leaves the old one as it was, so two
-builders can grow from the same start. Make each row with interpolation and
-add whole rows; adding many tiny pieces (a comma, a field) costs more than
-the copy it saves. There is no `addAll`: `List.foldl Text.add b pieces` adds a
-list of pieces in order.
+a gigabyte.
+
+A `Text.Builder` avoids that. `Text.add` puts a piece after everything added
+so far without copying anything, and `Text.build` copies each byte once, into
+the finished Text.
+
+A builder is a value like any other: adding to it gives a new builder and
+leaves the old one as it was, so two builders can grow from the same start.
+
+- Make each row with interpolation and add whole rows; adding many tiny
+  pieces (a comma, a field) costs more than the copy it saves.
+- There is no `addAll`: `List.foldl Text.add b pieces` adds a list of pieces
+  in order.
 
 ```alder eval="name,votes\nKent,3\nDane,5\n"
 [{ name: "Kent", votes: 3 }, { name: "Dane", votes: 5 }]
@@ -306,18 +336,28 @@ Dict.diff     : Dict k v -> Dict k v -> Dict k v
 ```
 
 `Dict.update` calls the function with `Just` the current value, or `Nothing`
-when the key is absent: `Just` keeps the key's position (a new key is
-appended) and `Nothing` removes it. `Dict.union a b` prefers the first dict's
-value and order, then appends the keys only `b` has. `map`, `filter`,
-`partition`, `intersect` and `diff` keep key order; `foldl` walks it.
+when the key is absent:
+
+- `Just` keeps the key's position (a new key is appended).
+- `Nothing` removes the key.
+
+`Dict.union a b` prefers the first dict's value and order, then appends the
+keys only `b` has. `map`, `filter`, `partition`, `intersect` and `diff` keep
+key order; `foldl` walks it.
+
+#### Keys
 
 A key may be of any type `==` works on: a `List`, a record, a `Time`, but
-not a function or a type containing one. Two keys are the
-same key when they are `==`, so a `Time` key is its instant (the same
-moment written in two time zones is one key), and `Html` keys are
-compared by their markup (`<p>ab</p>` and
-`<p>{Html.text "a"}{Html.text "b"}</p>` are one key). A `Dict` keeps its keys in
-the order they were first inserted; `==` on two dicts ignores that order.
+not a function or a type containing one. Two keys are the same key when
+they are `==`:
+
+- A `Time` key is its instant (the same moment written in two time zones is
+  one key).
+- `Html` keys are compared by their markup (`<p>ab</p>` and
+  `<p>{Html.text "a"}{Html.text "b"}</p>` are one key).
+
+A `Dict` keeps its keys in the order they were first inserted; `==` on two
+dicts ignores that order.
 
 ```alder eval=Just 2
 Dict.fromList [{ key: "a", value: 1 }]
@@ -387,40 +427,61 @@ Url.absolute : Route -> Text                    -- the route's URL with the site
 `Html.toText` takes `Html Never`, a view that sends no messages, because the
 markup is rendered without a running page to receive them.
 
-`Url.external` keeps a URL only when it is an absolute `http:` or `https:`
-URL (`https://example.com/a`), a path of this site (`/static/app.css`,
-but not `//host/…` or `/\host`, which browsers read as another site), or a
-fragment (`#top`). Anything else becomes `#`, a link and a redirect that go
-nowhere: `javascript:` and `data:` URLs in any case (`JavaScript:`), other
-schemes (`mailto:`), URLs with leading spaces, relative paths, and any URL
-holding a control character (browsers drop tabs and newlines, so `/\t/evil`
-would be `//evil`). So a link or a
-`Response.redirect` built from user input can never run script. The runtime checks
-again: an `href` that is not such a URL renders as `#`, and a redirect to
-one is answered with a 500 (`refusing to navigate to javascript:`).
+`Url.external` keeps a URL only when it is one of:
+
+- an absolute `http:` or `https:` URL (`https://example.com/a`);
+- a path of this site (`/static/app.css`, but not `//host/…` or `/\host`,
+  which browsers read as another site);
+- a fragment (`#top`).
+
+Anything else becomes `#`, a link and a redirect that go nowhere:
+
+- `javascript:` and `data:` URLs in any case (`JavaScript:`);
+- other schemes (`mailto:`);
+- URLs with leading spaces;
+- relative paths;
+- any URL holding a control character (browsers drop tabs and newlines, so
+  `/\t/evil` would be `//evil`).
+
+So a link or a `Response.redirect` built from user input can never run
+script. The runtime checks again: an `href` that is not such a URL renders
+as `#`, and a redirect to one is answered with a 500 (`refusing to navigate
+to javascript:`).
+
+#### Comparing routes
 
 A `Route` compares by its address: `Todos.Index.Index {} == Todos.Index.Index
 { filter: All }`, since a defaulted parameter is left out of the URL.
+
+#### `Url.absolute`
 
 `Url.absolute r` is the route's full URL, for a program that is not a
 browser: a link in an email, or a URL another service will fetch. It is
 the text `href={r}` renders (`/todos?filter=Active`, a defaulted parameter
 left out, the query encoded) with the site's public address in front:
-`https://todos.example.com/todos?filter=Active`. The address comes from
-`ALDER_PUBLIC_URL` (chapter 11, `alder build`), which `alder deploy` sets
-to the address it serves (chapter 16); without it the server uses its own
-listening address, `http://localhost:8080` by default. A route whose URL is
-not a path of this site is left as it is: `Url.absolute (Url.external
-"https://example.com/a")` is `https://example.com/a`, a fragment `#top`
-stays `#top`, and a sanitised `#` stays `#`, while `Url.external
-"/static/app.css"` gets the address in front. The address is set as
-the server starts, before the app's own values are computed, and does
-not change while it serves, so `Url.absolute` is an ordinary function,
-usable in a `view` and in a top-level value (chapter 11 has the one
-exception, a port 0). There is no way to build a full URL from
-text: the only input is a `Route`, so a link to a route that does not exist
-is still a type error. In a test the address is always
-`http://localhost:8080` (chapter 10).
+`https://todos.example.com/todos?filter=Active`.
+
+The address comes from `ALDER_PUBLIC_URL` (chapter 11, `alder build`), which
+`alder deploy` sets to the address it serves (chapter 16); without it the
+server uses its own listening address, `http://localhost:8080` by default.
+
+A route whose URL is not a path of this site is left as it is:
+
+- `Url.absolute (Url.external "https://example.com/a")` is
+  `https://example.com/a`.
+- A fragment `#top` stays `#top`, and a sanitised `#` stays `#`.
+- `Url.external "/static/app.css"` gets the address in front.
+
+The address is set as the server starts, before the app's own values are
+computed, and does not change while it serves, so `Url.absolute` is an
+ordinary function, usable in a `view` and in a top-level value (chapter 11
+has the one exception, a port 0).
+
+There is no way to build a full URL from text: the only input is a `Route`,
+so a link to a route that does not exist is still a type error. In a test
+the address is always `http://localhost:8080` (chapter 10).
+
+#### Time and milliseconds
 
 `Time.toMillis` counts milliseconds from the epoch, the instant
 `Time.epoch`, and `Time.fromMillis` goes back. `Time.diffMillis a b` is
@@ -552,40 +613,64 @@ A seed prints as the expression that re-creates it. To make one from
 data, hash it: `Random.seed (Text.hash (Text.join "/" [county, key]))`
 gives every county and key its own stream, the same on every run.
 
-Where a value sits in the stream depends only on the program, never on
-the values drawn: `intRange`, `floatRange`, `normal`, `uniform` and
-`weighted` each take exactly one step (even `intRange { min: 5, max: 5 }`);
-`constant` and `map` take none; `list n g` takes `n` steps of `g` (none
-when `n <= 0`, which gives `[]`); `map2 f a b` runs `a`, then `b`;
-`andThen f a` runs `a`, then the generator `f` returns. So adding a draw
-at the end of a program does not change the draws before it.
+#### Steps in the stream
 
-`intRange` and `floatRange` give `min` when `max <= min`; `floatRange`
-never gives `max` itself. `normal` is one uniform draw through Acklam's
-inverse of the normal distribution (accurate to about 1e-9). `uniform x
-xs` picks evenly from `x` and `xs`, so the list is never empty.
-`weighted` picks each item with probability proportional to its weight
-(a negative weight counts as its absolute value; all zero gives the
-first). The algorithms are part of the language and will not change:
-the generator is SplitMix64 (Steele, Lea and Flood, 2014), and the
-floats are computed the same way on every processor. Like `Text.hash`,
-none of this is cryptographic: for ids and secrets use `Random.id`.
+Where a value sits in the stream depends only on the program, never on
+the values drawn:
+
+- `intRange`, `floatRange`, `normal`, `uniform` and `weighted` each take
+  exactly one step (even `intRange { min: 5, max: 5 }`).
+- `constant` and `map` take none.
+- `list n g` takes `n` steps of `g` (none when `n <= 0`, which gives `[]`).
+- `map2 f a b` runs `a`, then `b`.
+- `andThen f a` runs `a`, then the generator `f` returns.
+
+So adding a draw at the end of a program does not change the draws before it.
+
+#### The generators
+
+- **`intRange` and `floatRange`** give `min` when `max <= min`; `floatRange`
+  never gives `max` itself.
+- **`normal`** is one uniform draw through Acklam's inverse of the normal
+  distribution (accurate to about 1e-9).
+- **`uniform x xs`** picks evenly from `x` and `xs`, so the list is never
+  empty.
+- **`weighted`** picks each item with probability proportional to its weight
+  (a negative weight counts as its absolute value; all zero gives the
+  first).
+
+#### Fixed algorithms
+
+The algorithms are part of the language and will not change: the generator
+is SplitMix64 (Steele, Lea and Flood, 2014), and the floats are computed the
+same way on every processor.
+
+> **Not cryptographic.** Like `Text.hash`, none of this is cryptographic: for
+> ids and secrets use `Random.id`.
 
 ## Query, Task, Db, Session, Log, Time, Random, Http
 
-See chapters 7 and 8. The column methods, written on a column in place
-(`Todo.title.contains q`), are not functions of a module; the compiler
-knows them:
+See chapters 7 and 8.
+
+### Column methods
+
+The column methods, written on a column in place (`Todo.title.contains q`),
+are not functions of a module; the compiler knows them:
 
 | Method | Columns | Type (for a column of type `a` in table `t`) |
 |---|---|---|
 | `.eq`, `.ne` | any | `a -> Condition t` |
-| `.lt`, `.le`, `.gt`, `.ge` | ordered: `Int`, `Float`, `Text`, `Date`, `Time`, brands, unions without payloads | `a -> Condition t` |
+| `.lt`, `.le`, `.gt`, `.ge` | ordered types (below) | `a -> Condition t` |
 | `.contains` | `Text` and its brands | `Text -> Condition t` (substring, ignores A–Z case) |
 | `.startsWith` | `Text` and its brands | `Text -> Condition t` (prefix, ignores A–Z case) |
 | `.in` | any | `List a -> Condition t` |
 | `.isNothing`, `.isJust` | `Maybe` | `Condition t` |
 | `.asc`, `.desc` | any | `Order t` |
+
+The ordered column types, for `.lt`, `.le`, `.gt` and `.ge`, are `Int`,
+`Float`, `Text`, `Date`, `Time`, brands, and unions without payloads.
+
+### Scoped operations: `mine`
 
 The scoped operations of `Db`, for a table with an `@owner` column, used
 only in the members of a route that `requires user` (chapter 6, "Rules";
@@ -593,13 +678,27 @@ chapter 8, "Your own rows"). Each acts for the signed-in user of the
 running request or test, and without one fails with "`Db.mine Todo: no
 signed-in user`" (the operation and table as written):
 
-| Function | Type | |
-|---|---|---|
-| `Db.mine` | `Table t -> Select t` | the rows whose owner is the user; a `Select` like `Db.from t` |
-| `Db.getMine` | `Table t -> Id t -> Query t` | the user's row; not found when it is missing or someone else's |
-| `Db.updateMine` | `Table t -> Id t -> (t -> t) -> Task Unit` | changes the user's row; not found otherwise; never changes the owner |
-| `Db.deleteMine` | `Table t -> Id t -> Task Unit` | deletes the user's row; not found otherwise |
-| `Db.insertMine` | `Table t -> Insert t -> Task (Id t)` | inserts a row owned by the user; the row is a record literal in the call, without the owner column |
+| Function | Type |
+|---|---|
+| `Db.mine` | `Table t -> Select t` |
+| `Db.getMine` | `Table t -> Id t -> Query t` |
+| `Db.updateMine` | `Table t -> Id t -> (t -> t) -> Task Unit` |
+| `Db.deleteMine` | `Table t -> Id t -> Task Unit` |
+| `Db.insertMine` | `Table t -> Insert t -> Task (Id t)` |
+
+What each does:
+
+- **`Db.mine`** gives the rows whose owner is the user; a `Select` like
+  `Db.from t`.
+- **`Db.getMine`** gives the user's row; not found when it is missing or
+  someone else's.
+- **`Db.updateMine`** changes the user's row; not found otherwise; never
+  changes the owner.
+- **`Db.deleteMine`** deletes the user's row; not found otherwise.
+- **`Db.insertMine`** inserts a row owned by the user; the row is a record
+  literal in the call, without the owner column.
+
+### Scoped operations: partitions
 
 The same operations for any partition key (M15): a table with a
 `@partition k` column (`@owner` is `@partition user`), used only where
@@ -607,19 +706,36 @@ the session's `k` is narrowed, in the members of a route that `requires k`
 (chapter 6, "Partitions"). The `mine` family above is these with the key
 `user`, written for tables partitioned by `user`:
 
-| Function | Type | |
-|---|---|---|
-| `Db.scoped` | `Table t -> Select t` | the rows of the session's partition; a `Select` like `Db.from t` |
-| `Db.getScoped` | `Table t -> Id t -> Query t` | the row in the session's partition; not found when it is missing or in another |
-| `Db.updateScoped` | `Table t -> Id t -> (t -> t) -> Task Unit` | changes the row in the partition; not found otherwise; never changes the partition column |
-| `Db.deleteScoped` | `Table t -> Id t -> Task Unit` | deletes the row in the partition; not found otherwise |
-| `Db.insertScoped` | `Table t -> Insert t -> Task (Id t)` | inserts a row in the session's partition; the row is a record literal in the call, without the partition column |
+| Function | Type |
+|---|---|
+| `Db.scoped` | `Table t -> Select t` |
+| `Db.getScoped` | `Table t -> Id t -> Query t` |
+| `Db.updateScoped` | `Table t -> Id t -> (t -> t) -> Task Unit` |
+| `Db.deleteScoped` | `Table t -> Id t -> Task Unit` |
+| `Db.insertScoped` | `Table t -> Insert t -> Task (Id t)` |
+
+What each does:
+
+- **`Db.scoped`** gives the rows of the session's partition; a `Select` like
+  `Db.from t`.
+- **`Db.getScoped`** gives the row in the session's partition; not found
+  when it is missing or in another.
+- **`Db.updateScoped`** changes the row in the partition; not found
+  otherwise; never changes the partition column.
+- **`Db.deleteScoped`** deletes the row in the partition; not found
+  otherwise.
+- **`Db.insertScoped`** inserts a row in the session's partition; the row is
+  a record literal in the call, without the partition column.
+
+### Without the key
 
 Run without the key (a test whose session has no `org`), each fails with
 the operation and table as written: "Db.insertScoped Project: the session
 has no org". On a table in a `silo` (chapter 8, "Silos") they read and
 write the org's own database, and so do `Db.from`, `Db.get`,
 `Db.update`, `Db.delete` and `Db.insert` on it, which need the key too.
+
+### Waiting
 
 Waiting (chapter 7, "Waiting: `Query.delay` and `Task.sleep`"):
 
@@ -628,10 +744,14 @@ Query.delay : Int -> Query Unit                 -- milliseconds, clamped to 0..6
 Task.sleep  : Int -> Task Unit                  -- the same, in a Task
 ```
 
+### Not found and redirect
+
 `Query.notFound` and `Task.notFound` (both
 `: Query a` / `: Task a`, no arguments) stop the effect and answer 404 with
-`App.notFound`; a `Task` that ends in `Task.notFound` is rolled back like
-any failed `Task`. `Query.redirect : Route -> Query a` stops the effect and
+`App.notFound`. A `Task` that ends in `Task.notFound` is rolled back like
+any failed `Task`.
+
+`Query.redirect : Route -> Query a` stops the effect and
 answers a 303 to the route value, as `Response.redirect r` does (chapter 7,
 "Failure"): a GET route's `load` uses it to send the browser elsewhere.
 
@@ -655,16 +775,20 @@ Response.error    : Text -> Response -> Response      -- a toast of kind error
 ```
 
 A toast is a one-line notice shown once, in the next page the browser shows
-(chapter 6, "Notices and in-flight state"). `redirect` and `render` take a
-GET route (E0045 for any other). `invalid` is a successful result: its `Task`
-commits. `Response.status`, `header`, `json`, `file`, `remove`, `patch` and
-`stream` do not exist yet. A `Route` and a `Response` compare with `==`; two
-routes are equal when they lead to the same address.
+(chapter 6, "Notices and in-flight state").
 
-`Notice.with`, `Notice.success`, `Notice.warning` and `Notice.error` are the
-old names of `Response.toast`, `success`, `warning` and `error`, from the
-page-and-message form, where they wrap a `Nav`. They are deprecated: write
-the `Response` builders.
+- `redirect` and `render` take a GET route (E0045 for any other).
+- `invalid` is a successful result: its `Task` commits.
+- A `Route` and a `Response` compare with `==`; two routes are equal when
+  they lead to the same address.
+
+> **Not yet:** `Response.status`, `header`, `json`, `file`, `remove`, `patch`
+> and `stream` do not exist yet.
+
+> **Deprecated:** `Notice.with`, `Notice.success`, `Notice.warning` and
+> `Notice.error` are the old names of `Response.toast`, `success`, `warning`
+> and `error`, from the page-and-message form, where they wrap a `Nav`. Write
+> the `Response` builders.
 
 ## Test
 
@@ -677,26 +801,33 @@ reach, such as a route's `view`, each is E0040 "… is only available in a
   runs a task that may fail: `value` is `Ok` with its result or `Err`
   with the failure's message (its writes undone), and `trace` is the
   steps it took (chapter 10, section 4).
+
 - `Test.trace : Task (List Text)` is the steps the test has taken so far
   (chapter 10, section 5).
+
 - `Test.fake Stripe : Task Unit` installs the `fake` of capability
-  `Stripe` for the rest of the test (chapter 10, section 8). It is a
-  special form, not a function: its argument is a capability's name
+  `Stripe` for the rest of the test (chapter 10, section 8).
+
+  It is a special form, not a function: its argument is a capability's name
   (`Stripe` or `Payments.Stripe`), whose module declares a `fake`, and
   never an expression. It has no type of its own to pass around, so
   `Test.fake` cannot be applied to a variable, piped into, or left
   without its argument.
+
 - `Test.member : u -> k -> Task Unit` (M15) inserts a row of the session
   key's `via` table that makes user `u` a member of `k`
   (`Test.member ann acme`): the user and key columns set, a `Maybe`
-  column `Nothing`, a column with a default its default. A `via` table
-  with another required column is E0003 ("`Test.member` fills only the
-  user and the org of a `Membership`: `Membership.since` has no default;
-  insert the row with `Db.insert Membership { … }`"), and so is an app
-  without a `via` field (chapter 10, "Two orgs").
+  column `Nothing`, a column with a default its default.
+
+  A `via` table with another required column is E0003 ("`Test.member` fills
+  only the user and the org of a `Membership`: `Membership.since` has no
+  default; insert the row with `Db.insert Membership { … }`"), and so is an
+  app without a `via` field (chapter 10, "Two orgs").
+
 - `Test.setClock : Time -> Task Unit` sets the test's clock to a time:
   `Time.now`, `Date.today` and `@created` read it, and it stands still
   (no one-second tick) until something moves it (chapter 10, "Setting the clock").
+
 - `Test.advance : Int -> Task Unit` moves the test's clock that many
   milliseconds forward (a negative number is 0), set or ticking.
 
@@ -704,8 +835,10 @@ reach, such as a route's `view`, each is E0040 "… is only available in a
 
 The browser steps (chapter 10, section 9) are special forms too: each is
 applied directly to all its arguments, never passed as a value or piped
-into, and `get`, `open`, `fetch`, `submit`, `submitRaw`, `click` and
-`refresh` need an `App` module. `Session` here is `App`'s session record.
+into.
+
+`get`, `open`, `fetch`, `submit`, `submitRaw`, `click` and `refresh` need an
+`App` module. `Session` here is `App`'s session record.
 
 ```text
 Test.login     : Session -> Task Unit
@@ -721,35 +854,49 @@ Test.fetch     : Route -> Task { status: Int, contentType: Text, body: Bytes, he
 - `Test.login s` sets the browser's session cookie, through the rules a
   served request follows: a `via` key (`org: Just acme`) needs its
   membership row first (`Test.member`), as `Session.put` would.
+
 - `Test.get r` and `Test.open r` take a GET route value written in place
   (`Todos.Index.Index {}`, `Todos.Show.Show { id: id }`); `model` is what
-  the route's `load` gave, which must be a record. `Test.get` fails the
-  test unless the route is shown. Every step but `fetch` also gives the
-  `url` of the page the browser holds afterwards and the `status` of its
-  last response (422 after `Response.invalid`).
+  the route's `load` gave, which must be a record.
+
+  `Test.get` fails the test unless the route is shown. Every step but
+  `fetch` also gives the `url` of the page the browser holds afterwards and
+  the `status` of its last response (422 after `Response.invalid`).
+
 - `Test.submit r f` takes a write route with `form F` and its parameters
   (`Create`, `Edit { id: id }`), and that form's record `f`. `Test.submitRaw`
   takes the same first argument and text fields.
+
 - `Test.click r` takes a route without a `form`, with its parameters:
   `Toggle { id: id }`, `App.Logout`. A write route is sent; a GET route
   is fetched and patched into the page held.
+
 - `Test.refresh` loads the address the browser holds again, with a plain
   `GET`, and fails unless the body of the page it gets is the body the
   browser held (the page's `<al-toasts>` region left out); its answer is
-  `Refreshed`. A toggle's test ends with it: it is the check that what the
-  steps patched in is what a fresh load gives (chapter 10, "`Test.refresh`:
-  is the page the one a fresh load would give?"). It fails with no page
-  held.
+  `Refreshed`. It fails with no page held.
+
+  A toggle's test ends with it: it is the check that what the steps patched
+  in is what a fresh load gives (chapter 10, "`Test.refresh`: is the page
+  the one a fresh load would give?").
+
 - `Test.fetch r` takes a GET route value written in place, like `Test.get`,
   and gives the raw answer: its `status`, `contentType`, `body` as
   `Bytes` and `headers` (sorted by name). It does not follow a redirect,
-  and it is the step for a file page; `Test.get` and `Test.open` on a
-  file page are checker errors (chapter 10, "`Test.fetch`: requesting a
-  file").
+  and it is the step for a file page.
 
-Two types of the Prelude exist only in tests and test helpers (in a
-type declaration, E0003 "`Doc` is a test type"; in a route's `view` and
-the other values that can never be helpers, E0040): `Doc`, a parsed page, which has `==`, and
+  `Test.get` and `Test.open` on a file page are checker errors (chapter 10,
+  "`Test.fetch`: requesting a file").
+
+#### The `Doc` and `Answer` types
+
+Two types of the Prelude exist only in tests and test helpers:
+
+- In a type declaration, using one is E0003 "`Doc` is a test type".
+- In a route's `view` and the other values that can never be helpers, it is
+  E0040.
+
+They are `Doc`, a parsed page, which has `==`, and
 
 ```text
 type Answer = Shown | Rerendered | Rendered Route | Refreshed | Redirected Route | FormRejected (List { field: Text, message: Text }) | PageMissing | RequestFailed Text
@@ -758,8 +905,12 @@ type Answer = Shown | Rerendered | Rendered Route | Refreshed | Redirected Route
 Their names, and `Answer`'s eight constructors, are taken in every module
 (E0012). `Rerendered` is the old name of a re-render, kept until the old
 page-and-message syntax is removed; a route's answers are the other seven
-(chapter 10, "`Answer`: what a request came to"). The queries are ordinary functions on a `Doc`, available only
-in tests like the rest of `Test`:
+(chapter 10, "`Answer`: what a request came to").
+
+#### Queries
+
+The queries are ordinary functions on a `Doc`, available only in tests like
+the rest of `Test`:
 
 ```text
 Test.text  : Text -> Doc -> Maybe Text           -- the first match's text
@@ -772,9 +923,10 @@ Test.doc   : Html a -> Doc                       -- a view rendered and parsed
 
 A selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, or
 several of those together (`li.done`), combined with spaces (inside) or
-`>` (directly inside). Written as a literal it is checked when the test
-compiles (E0023); any other selector that does not parse matches
-nothing.
+`>` (directly inside).
+
+Written as a literal it is checked when the test compiles (E0023); any other
+selector that does not parse matches nothing.
 
 ## Fuzz
 
@@ -812,20 +964,31 @@ Fuzz.filter     : (a -> Bool) -> Fuzz.Fuzzer a -> Fuzz.Fuzzer a
 Fuzz.fromRandom : Random.Generator a -> Fuzz.Fuzzer a
 ```
 
+#### `Fuzz.any` and `forAll`
+
 `Fuzz.any` is a special form, like `Test.fake`: the compiler gives it the
 generator it derives from the type the context asks for (chapter 13), so
-that type must be concrete where it is written (E0038). `Fuzz.forAll` and
-`Fuzz.forAllTask` are legal only as the body of a `test` (E0039). `int` is
-mostly small and sometimes extreme; `float` is finite (no `NaN`, no
-infinity); `text` is mostly short ASCII, sometimes Unicode, sometimes
-empty, and `textOf` and `char` count code points; `list` is biased to
-short lists, and `listOf` bounds the length. `filter` is subject to the
-health check: a predicate that rejects over 90% of the first 50 draws
-fails the test (chapter 10).
+that type must be concrete where it is written (E0038).
+
+`Fuzz.forAll` and `Fuzz.forAllTask` are legal only as the body of a `test`
+(E0039).
+
+#### What the generators draw
+
+- **`int`** is mostly small and sometimes extreme.
+- **`float`** is finite (no `NaN`, no infinity).
+- **`text`** is mostly short ASCII, sometimes Unicode, sometimes empty, and
+  `textOf` and `char` count code points.
+- **`list`** is biased to short lists, and `listOf` bounds the length.
+- **`filter`** is subject to the health check: a predicate that rejects over
+  90% of the first 50 draws fails the test (chapter 10).
+
+#### `Fuzz.fromRandom`
 
 `Fuzz.fromRandom g` turns a seeded generator (see "Random") into a
-fuzzer: it draws a random seed and gives `g`'s value at it. Shrinking
-lowers the seed toward `Random.seed 0`, never the value inside `g`, so a
-failure shrinks to a nearby seed, not to the simplest value: a
-`Fuzz.Fuzzer` written with `Fuzz.*` shrinks better and is the first
-choice; `fromRandom` is for reusing a generator the app already has.
+fuzzer: it draws a random seed and gives `g`'s value at it.
+
+Shrinking lowers the seed toward `Random.seed 0`, never the value inside
+`g`, so a failure shrinks to a nearby seed, not to the simplest value. A
+`Fuzz.Fuzzer` written with `Fuzz.*` shrinks better and is the first choice;
+`fromRandom` is for reusing a generator the app already has.

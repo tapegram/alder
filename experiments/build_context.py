@@ -256,7 +256,9 @@ TRIMS = {
             "`/\\host`) or a fragment (`#top`); anything else (`javascript:`, `data:`, `mailto:`, relative\n"
             "paths, control characters) becomes `#`, and a redirect to one is a 500. A link or\n"
             "`Response.redirect` built from user input can never run script.\n\n"
-            "A `Route` compares by its address: a defaulted parameter is left out of the URL.\n\n"),
+            "#### Comparing routes\n\n"
+            "A `Route` compares by its address: a defaulted parameter is left out of the URL.\n\n"
+            "#### `Url.absolute`\n\n"),
            ("A write route's `update` is `Params -> Session -> Task Response`", "```alder\nResponse.redirect",
             "`Response` and `Route` are Prelude types (chapter 6, \"`Response`\"). An `update` builds its\n"
             "`Response` with:\n\n"),
