@@ -4428,29 +4428,37 @@ Chapter 10, section 12, shows properties from the outside. Inside, a
 property is a test whose generators the compiler wrote, a runner that
 draws values from them, and a shrinker.
 
-**Resolving `Fuzz.any`.** `Fuzz.any : Fuzzer a` is not a function in
-`stdlib/Fuzz.alder` but a special form, like `Test.fake`. While the
-checker (section 5) infers a declaration, each use gets a `Fuzzer a` with
-a fresh `a` (`inferFuzzAny` in `internal/check/fuzz.go`) and remembers the
-reference. At the end of the declaration `resolveFuzzAny` looks at what
-`a` has become. If it is a type with a generator it is recorded in
-`Result.FuzzAny`; if it is still a variable, or a type with no generator
-(a function, a `Task`, `Html`), the reference is E0038. The same pass
-handles a property test's parameters: it records their types in
-`Result.Props`, defaulting a variable still open to `Int` and noting that
-it did (the `Defaulted` flag the report shows as `(xs : List Int)`), and
-E0038 if one has no generator. A `Fuzz.forAll` anywhere but a test body
-is E0039; the checker allows it in exactly one place, the head of the
-application that is the body, or the last stage of a `|>`.
+#### Resolving `Fuzz.any`
 
-**The generators are built in lowering.** Lowering (section 6) is the
-last place that still sees brands, so it is where a type becomes a
-`GenTree` (`internal/ir/fuzz.go`): a tree whose nodes say "an `Int`", "a
-list of", "a record of these fields", "a union with these constructors,
-of which these are recursive", "a brand of the app, with its `where`", or
-"one of the six standard brands". Trees are shared by the type's
-spelling, so a recursive type's tree is a graph that reaches itself. A
-`Fuzz.any` becomes a `FuzzDerive` holding its tree, and a property test a
+`Fuzz.any : Fuzzer a` is not a function in `stdlib/Fuzz.alder` but a special
+form, like `Test.fake`. While the checker (section 5) infers a declaration,
+each use gets a `Fuzzer a` with a fresh `a` (`inferFuzzAny` in
+`internal/check/fuzz.go`) and remembers the reference.
+
+At the end of the declaration `resolveFuzzAny` looks at what `a` has become.
+If it is a type with a generator it is recorded in `Result.FuzzAny`; if it is
+still a variable, or a type with no generator (a function, a `Task`, `Html`),
+the reference is E0038.
+
+The same pass handles a property test's parameters: it records their types in
+`Result.Props`, defaulting a variable still open to `Int` and noting that it
+did (the `Defaulted` flag the report shows as `(xs : List Int)`), and E0038 if
+one has no generator.
+
+A `Fuzz.forAll` anywhere but a test body is E0039; the checker allows it in
+exactly one place, the head of the application that is the body, or the last
+stage of a `|>`.
+
+#### The generators are built in lowering
+
+Lowering (section 6) is the last place that still sees brands, so it is where
+a type becomes a `GenTree` (`internal/ir/fuzz.go`): a tree whose nodes say "an
+`Int`", "a list of", "a record of these fields", "a union with these
+constructors, of which these are recursive", "a brand of the app, with its
+`where`", or "one of the six standard brands". Trees are shared by the type's
+spelling, so a recursive type's tree is a graph that reaches itself.
+
+A `Fuzz.any` becomes a `FuzzDerive` holding its tree, and a property test a
 `TestProp` holding one tree for each parameter.
 
 The emitter (section 7) then writes one Go generator and one literal
@@ -4470,14 +4478,16 @@ func fuzz__Todo_Slug(c *fuzz.Choices, depth int) string {
 }
 ```
 
-It draws the base type, then runs the brand's own `where` check, the
-function that `Slug`'s constructor and a form decoder also use; a value
-that fails is a `Reject` panic, which the runner counts for the health
-check and discards. A record is `Todo__Todo{Title: fuzz.NonEmpty(c), Due:
-fuzz__Maybe_Date(c, depth), …}`, each field drawn in order. A union calls
-`fuzz.Ctor(c, []bool{false, true}, depth)`, which draws the constructor
-(non-recursive ones first, so the simplest value is the first of them)
-and, for the recursive payload, passes `depth-1`; at depth 0 only the
+It draws the base type, then runs the brand's own `where` check, the function
+that `Slug`'s constructor and a form decoder also use; a value that fails is a
+`Reject` panic, which the runner counts for the health check and discards.
+
+A record is `Todo__Todo{Title: fuzz.NonEmpty(c), Due: fuzz__Maybe_Date(c,
+depth), …}`, each field drawn in order.
+
+A union calls `fuzz.Ctor(c, []bool{false, true}, depth)`, which draws the
+constructor (non-recursive ones first, so the simplest value is the first of
+them) and, for the recursive payload, passes `depth-1`; at depth 0 only the
 others can be drawn. `depth` starts at `fuzz.Depth`, 4.
 
 A property is a test that returns a value instead of a `bool`. The
@@ -4507,57 +4517,82 @@ func test__Todo__4() *rtesting.Property {
 }
 ```
 
-`Draw` makes all the arguments from one `Choices`; `Pure` (or `Task` for a
-block body) is the lambda with its parameters unpacked; `Lit` prints the
-values as Alder, in the names the test's own module would write
-(`fuzz.Quals`); and `Case` is the paste-ready test as a template, with a
-marker where each literal goes and whether it needs parentheses there
-(`a` for an argument, `p` for a position that does not). The template is
-cut from the test's syntax tree and printed by the formatter, so it is
-Alder as `alder fmt` would write it, and `internal/names/qualify.go`
-rewrites its names for the module the test is in. A parameter used
-inside `"…{n}…"` or markup has no place for a literal, so the compiler
-leaves `Case` out and the report says to paste the values.
+The fields of a `Property`:
 
-**The run.** `rtesting.Main` calls `runProperty` (`rt/testing/property.go`)
-for a `Case` with a `Prop`. It replays the saved failure of the test if
-there is one, then makes up to `--fuzz` runs: attempt *i* gets
-`fuzz.Fresh(seed')`, a PCG generator seeded from `--seed` and *i* by
-splitmix64, so the attempts are unrelated but the whole run is a function
-of the seed. An attempt draws, runs the body in a fresh `Env` (for a
-`Task`: its own in-memory store, migrated, with the fakes and the session,
-as in "Fakes" below), and is one of four things: a run that passed or
-failed; *rejected* (a `Reject` panic from a brand or `Fuzz.filter`);
-*overrun* (the draw asked for more than `fuzz.MaxChoices`, 8192, which is
-64 KiB of 8-byte choices, or, on a replay, for more than the sequence had).
+- `Draw` makes all the arguments from one `Choices`;
+- `Pure` (or `Task` for a block body) is the lambda with its parameters
+  unpacked;
+- `Lit` prints the values as Alder, in the names the test's own module
+  would write (`fuzz.Quals`);
+- `Case` is the paste-ready test as a template, with a marker where each
+  literal goes and whether it needs parentheses there (`a` for an
+  argument, `p` for a position that does not).
+
+The template is cut from the test's syntax tree and printed by the
+formatter, so it is Alder as `alder fmt` would write it, and
+`internal/names/qualify.go` rewrites its names for the module the test is
+in.
+
+> **No place for a literal.** A parameter used inside `"…{n}…"` or markup
+> has no place for a literal, so the compiler leaves `Case` out and the
+> report says to paste the values.
+
+#### The run
+
+`rtesting.Main` calls `runProperty` (`rt/testing/property.go`) for a `Case`
+with a `Prop`. It replays the saved failure of the test if there is one,
+then makes up to `--fuzz` runs: attempt *i* gets `fuzz.Fresh(seed')`, a PCG
+generator seeded from `--seed` and *i* by splitmix64, so the attempts are
+unrelated but the whole run is a function of the seed.
+
+An attempt draws, runs the body in a fresh `Env` (for a `Task`: its own
+in-memory store, migrated, with the fakes and the session, as in "Fakes"
+below), and is one of four things:
+
+- a run that passed;
+- a run that failed;
+- *rejected* (a `Reject` panic from a brand or `Fuzz.filter`);
+- *overrun* (the draw asked for more than `fuzz.MaxChoices`, 8192, which
+  is 64 KiB of 8-byte choices, or, on a replay, for more than the sequence
+  had).
+
 Rejected attempts do not count as runs but are counted per predicate; at
-the 50th attempt `filterTooTight` fails the property if more than 90%
-were rejected. An overrun on a fresh attempt is the "generator draws too
-much" failure; on a replay it only means the candidate is not a value the
-generator can make, and the shrinker discards it. An attempt that took
-over 5 seconds fails too, which is checked after it finishes, since a Go
-function cannot be interrupted: a body that never returns is caught by
-the test timeout (`-timeout`, chapter 10). The slow case is saved like a
-failing one, and a shrink candidate that is slow ends the shrinking with
-the best case so far.
+the 50th attempt `filterTooTight` fails the property if more than 90% were
+rejected. An overrun on a fresh attempt is the "generator draws too much"
+failure; on a replay it only means the candidate is not a value the
+generator can make, and the shrinker discards it.
 
-**The shrinker.** `fuzz.Shrink` (`rt/fuzz/shrink.go`) gets the recorded
-choices of the failing run and a function that replays a candidate and
-says whether it still fails. It never builds a value: the same generator
-reads the candidate. The passes are those of minithesis: delete blocks of
-8, 4, 3, 2 and 1 choices (3 is one `Int` element of a list: its
-continue bit, magnitude and sign); set blocks of 8, 4, 2 and 1 to zero;
-lower each choice by binary search toward zero; sort adjacent pairs; and
-move a choice's value onto one of the next four (so `a + b >= 100`
-ends at 0 and 100, and not at 40 and 60). A candidate is kept only if it
-is smaller (shorter, then lexicographically) and still fails, and the
-passes repeat until a round changes nothing or the budget of 1000
-replays is spent. The shrunk sequence is replayed once more, so that
-the values, the `left:` and `right:` sides and the trace are those of the
-shrunk case, and written to `build/<app>/fuzz/<Module>/<sha1 of the test
-name, first 16 hex digits>` as bytes (`fuzz.Encode`). The `savedRun` run
-number marks the replay of that file for the crash report, which is why a
-crash can say "the saved case" without knowing any arguments.
+An attempt that took over 5 seconds fails too, which is checked after it
+finishes, since a Go function cannot be interrupted: a body that never
+returns is caught by the test timeout (`-timeout`, chapter 10). The slow
+case is saved like a failing one, and a shrink candidate that is slow ends
+the shrinking with the best case so far.
+
+#### The shrinker
+
+`fuzz.Shrink` (`rt/fuzz/shrink.go`) gets the recorded choices of the
+failing run and a function that replays a candidate and says whether it
+still fails. It never builds a value: the same generator reads the
+candidate. The passes are those of minithesis:
+
+- delete blocks of 8, 4, 3, 2 and 1 choices (3 is one `Int` element of a
+  list: its continue bit, magnitude and sign);
+- set blocks of 8, 4, 2 and 1 to zero;
+- lower each choice by binary search toward zero;
+- sort adjacent pairs;
+- move a choice's value onto one of the next four (so `a + b >= 100` ends
+  at 0 and 100, and not at 40 and 60).
+
+A candidate is kept only if it is smaller (shorter, then
+lexicographically) and still fails, and the passes repeat until a round
+changes nothing or the budget of 1000 replays is spent.
+
+The shrunk sequence is replayed once more, so that the values, the `left:`
+and `right:` sides and the trace are those of the shrunk case, and written
+to `build/<app>/fuzz/<Module>/<sha1 of the test name, first 16 hex digits>`
+as bytes (`fuzz.Encode`). The `savedRun` run number marks the replay of
+that file for the crash report, which is why a crash can say "the saved
+case" without knowing any arguments.
 
 A fatal crash (a stack overflow in the body) cannot be caught by the
 runner, so before each attempt `Main` writes the test's module, name, seed
@@ -4570,7 +4605,9 @@ Chapter 10 shows a `fake` from the outside. Here is what each stage
 does with chapter 10's `Payments` module, built by `alder test` as the
 app `shop`.
 
-**Parsing, names and checking.** `fake` is a declaration keyword, like
+#### Parsing, names and checking
+
+`fake` is a declaration keyword, like
 `capability` (column 1 only). The parser reads `fake Stripe { … }` into
 a `FakeDecl` holding its `TableDecl`s and its entries, each a
 `ValueDecl` with no signature (`internal/syntax`). Names
@@ -4589,7 +4626,9 @@ typed by the checker itself, not by its signature in
 `Capability` is a name only that file may write): the argument must be
 a capability with a fake, and the result is `Task Unit`.
 
-**The IR.** `ir.Program.Fakes` holds one `ir.Fake` per fake: its
+#### The IR
+
+`ir.Program.Fakes` holds one `ir.Fake` per fake: its
 module, a pointer to the `ir.Capability` it implements, its tables, and
 its entries as `ir.Value`s in the capability's entry order. The tables
 are lowered by the same code as the app's, but kept out of
@@ -4598,7 +4637,9 @@ never sees them: the schema, `migrate.FromProgram`, E0019 and the
 production build. `Test.fake Stripe` lowers to an `ir.TestFake` node
 naming the fake.
 
-**A fake becomes a Go struct.** `gen.Emit` takes `Options.Tests`, which
+#### A fake becomes a Go struct
+
+`gen.Emit` takes `Options.Tests`, which
 `alder test` sets (`scratch.Options{Tests: true}`), and so do `alder
 eval` and the REPL, whose mains need `TestSession`. With it, the
 module's Go file gets the fake's table, as a record type and a
@@ -4694,7 +4735,9 @@ Each case's `Env.Caps` is its own copy of the app's capabilities
 again. A `Test.run` savepoint covers the database, not this map, so a
 fake installed inside a failing run stays installed.
 
-**The fakes' tables in a test's database.** `rtesting.Main` passes
+#### The fakes' tables in a test's database
+
+`rtesting.Main` passes
 `FakeTables` on as `Options.TestTables`. For each case, after the app's
 tables exist (by `Migrate` or `Ensure`), `ensure` calls
 `store.CreateTables(ctx, o.TestTables, o.Tables)` (`rt/db/sqlite.go`):
@@ -4705,7 +4748,9 @@ schema hash. The order matters: `Migrate` ends by checking that the
 live tables are exactly the app's, so it runs before the fakes' tables
 exist, never after.
 
-**Production.** Without `Options.Tests` (`alder build` and `alder
+#### Production
+
+Without `Options.Tests` (`alder build` and `alder
 run`) none of this is emitted: no fake struct, no entry functions, no
 fake table, no `FakeTables` or `Fakes`. Nor are the tests (section 8,
 "Running tests"): no `test__` functions, no `Tests`, no `TestSession`,
@@ -4730,7 +4775,9 @@ compiler and the runtime makes that happen, from the to-do app's test
 build (`build/todos/scratch/test/`, what `alder test examples/todos`
 compiles).
 
-**Checking.** The browser steps are special forms, like `Test.fake`: the
+#### Checking
+
+The browser steps are special forms, like `Test.fake`: the
 checker types them itself (`internal/check/browser.go`), and their lines
 in `stdlib/Test.alder` are documentation. `Test.get r` and `Test.open r`
 need `r` written as a route value in place (a route's name applied to its
@@ -4757,7 +4804,9 @@ argument written as a literal is parsed with the runtime's own selector
 parser (`rt/selector`, shared by the checker and `rt/html`), and a text
 that does not parse is E0023, at the literal.
 
-**The IR.** Each step lowers to a node of its own (`internal/ir`):
+#### The IR
+
+Each step lowers to a node of its own (`internal/ir`):
 `TestLogin{Session}`, `TestGet{Route, Params, Open, Fetch}` (`Open` for
 `Test.open`, `Fetch` for `Test.fetch`), `TestSubmit{Form, Route, Params,
 Record}`, `TestSubmitRaw{…, Fields}`, `TestClick{Route, Params}` and
@@ -4766,7 +4815,9 @@ record of its parameters, nil when the test wrote the route bare (an old
 `page` or `msg` is the same node with `Page` and `Msg` set instead). The queries stay
 ordinary calls.
 
-**A step is a `Call`.** Section 8's `Call` is a named step with a
+#### A step is a `Call`
+
+Section 8's `Call` is a named step with a
 function to run; every browser step is one, named as the trace shows it,
 marked as a write, whose function asks the test's browser to do the
 step and packs its result into the record Alder sees. From
@@ -4892,7 +4943,9 @@ it when the query runs and matches nothing when it does not parse.
 constructors) and the payload's fields; a `match` on it switches on the
 tag. `Doc` is `rtesting.Doc`, which holds the parsed tree.
 
-**The test program gets the routes.** The test build's `main` (section
+#### The test program gets the routes
+
+The test build's `main` (section
 8, "Running tests") passes `app.Routes` and `app.Web()` to
 `rtesting.Main`. `Web` is generated in every build, production's
 included, with the router options that do not depend on how the app
@@ -4923,7 +4976,9 @@ test program builds its router from the same two values, so the
 routes, the cookie's codec, the error pages and the login page are
 production's.
 
-**One browser per test.** For each task test, `rtesting.Run` puts a slot
+#### One browser per test
+
+For each task test, `rtesting.Run` puts a slot
 in the test's `context` holding the routes and options.
 `rtesting.BrowserOf(env)` finds the slot and makes the browser the first
 time a step asks (`rt/testing/browser.go`, `NewBrowser`). A context
@@ -4939,7 +4994,9 @@ cut from, and `Answered`, which hands it the `rt.Response` a write route
 gave. The last two let a step check the answer it applied and name it
 (`Rendered r`, `Refreshed`) without parsing the events for it.
 
-**`EnvFor`: a request inside the test's transaction.** In production
+#### `EnvFor`: a request inside the test's transaction
+
+In production
 the router gives each request a fresh `eff.Env` (section 8, "What `Run`
 does"), and `eff.Run` begins a transaction on the store. A test's
 store is an in-memory SQLite with one connection, on which the test
@@ -4973,7 +5030,9 @@ shares the test's store, capabilities (read at each request, so a
 request the browser appends that `Env`'s trace to the test's: the
 step's name first (the `Call`), then the request's effects.
 
-**`Served` and `Request.Model`: the model.** `Test.get` gives the model
+#### `Served` and `Request.Model`: the model
+
+`Test.get` gives the model
 the page rendered, so it must come from the request itself. Each GET
 route's handler sets it on the request before rendering, `rq.Model =
 model` (section 8, "A request"), in every build; production ignores
@@ -4983,7 +5042,9 @@ returns it with its Go type, or fails "GET /: the page gave no model".
 `load` runs once, so a route that reads the clock in `load` shows the
 time its model holds.
 
-**Requests in memory.** A step makes an `http.Request` with
+#### Requests in memory
+
+A step makes an `http.Request` with
 `httptest.NewRequest`: a plain `GET` for `get`, `open` and `refresh`; for
 `submit` and `click` the Datastar request the held page's control makes,
 with the headers its script adds (below). Each request carries the cookie
@@ -5029,7 +5090,9 @@ element fetch and is `Rendered r` too. A redirect is `Redirected`; a 404 or
 a 500 is `PageMissing` or `RequestFailed`. `Rerendered` is what a patch with
 no `Answered` response comes to, the older form's re-render.
 
-**Controls.** Before a `submit` or `click` is sent, the browser looks
+#### Controls
+
+Before a `submit` or `click` is sent, the browser looks
 for the control on the held page. A page's controls are the Datastar
 actions its views render (`rt/html` `RouteClick` and `RouteSubmit`): a
 `<form>`'s `data-on:submit="…@post('/_/Submit?filter=Active', …)"`, or a
@@ -5064,7 +5127,9 @@ else the script's empty payload: `{}` as a JSON body, or, for a `GET` or a
 never writes the body of a `click`: a route with `form F` clicked gets what
 the page sends, and `F` decodes as it can.
 
-**The checks.** After a patch the browser compares what it holds with what
+#### The checks
+
+After a patch the browser compares what it holds with what
 the server would have sent whole. The `Rendered` hook gave it the full
 render the router cut the answer from (`refresh`, `invalid`, a followed
 redirect), and `checkPatched` parses that render the way a browser's parser
@@ -5083,7 +5148,9 @@ address held, as a reload does, and compares the body it gets with the body
 held (`refreshBody`: without the toasts, which a reload may fill from a
 notice), failing with a `RefreshError` that gives the first difference.
 
-**Parsing the page.** `rt/html` already renders a view to text. For the
+#### Parsing the page
+
+`rt/html` already renders a view to text. For the
 browser it gained `Parse` (`rt/html/parse.go`), which reads that text
 back into the same `Node` tree: elements with their attributes in order,
 text with its entities decoded, the contents of `<script>` and
@@ -5106,7 +5173,9 @@ the path of the first element whose content differs and that element on
 each side, cut to 120 characters, which the report prints as `left:`,
 `right:` and `note:`.
 
-**Production.** None of this is in an app's binary. The step nodes, like
+#### Production
+
+None of this is in an app's binary. The step nodes, like
 `Test.run`'s, reach the emitter only from `test` bodies, which a
 production build does not emit (a step that reached it anyway would be
 the emitter's internal error, `testNode`); the `encode__` functions and
@@ -5131,7 +5200,9 @@ Inside, it is three pieces: `internal/mutate` decides the mutants, the
 emitter compiles all of them into one test program, and `rt/testing`
 runs the suite once per mutant.
 
-**Which mutants.** `mutate.Collect(p *ir.Program)` walks the typed IR
+#### Which mutants
+
+`mutate.Collect(p *ir.Program)` walks the typed IR
 (section 6) and returns the mutants and the refused ones. A mutant is a
 `mutate.Mutant`. It has:
 
@@ -5165,7 +5236,9 @@ a value whose result has `Html` in it. A change it refuses is a
 `mutate.Suppressed` with a `Category` (`equivalent` or `skipped`) and a
 `Why`.
 
-**Mutant schemata: every mutant in one build.** Building the app once
+#### Mutant schemata: every mutant in one build
+
+Building the app once
 per mutant would cost a `go build` each, seconds times 32. Instead,
 `gen.Options{Tests: true, Mutate: true}` (which only `alder test
 --mutate` sets) makes the emitter compile each mutated node with its
@@ -5201,7 +5274,9 @@ the filter keeps the done todos instead. This is the mutant that the
 strengthened "countOpen ignores done todos" kills: its three todos then
 give 1, not 2.
 
-**In place, not per subtree.** A replacement can share the node's
+#### In place, not per subtree
+
+A replacement can share the node's
 subtrees: a negated `if` has the same branches, a flipped `&&` the same
 operands. Emitting each replacement in full would emit those subtrees
 once per mutant, and their own mutants' switches inside each copy: an
