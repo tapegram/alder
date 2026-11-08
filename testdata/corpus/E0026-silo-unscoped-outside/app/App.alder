@@ -1,43 +1,52 @@
 module App
 
-import User
 import Org
 import Project
+import User
 import Wiper
 
-session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Reader }
+session {
+  user: Maybe User.UserId,
+  org: Maybe Org.OrgId via Membership,
+  role: User.Role = Reader,
+}
 
-login = Login
+login = Login.Login
 
-choose org = Orgs
+choose org = Orgs.Orgs
+
 silo org { Project }
 
 -- App has no `org` in scope (it is no page), so no arm of its update can write a silo, however
 -- the write is spelled: unbound App Tasks only ever write the shared store
-msg Wipe { id: Project.ProjectId }
-msg Bound { id: Project.ProjectId }
-msg Helped { id: Project.ProjectId }
-msg Scoped { id: Project.ProjectId }
+route Wipe   = POST "/_/Wipe"   { id: Project.ProjectId }
+route Bound  = POST "/_/Bound"  { id: Project.ProjectId }
+route Helped = POST "/_/Helped" { id: Project.ProjectId }
+route Scoped = POST "/_/Scoped" { id: Project.ProjectId }
 
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Wipe p -> {
-    let _ <- Db.delete Project p.id
-    Task.succeed Rerender
-  },
-  Bound p -> {
-    let del = Db.delete
-    let _ <- del Project p.id
-    Task.succeed Rerender
-  },
-  Helped p -> {
-    let _ <- Wiper.wipe p.id
-    Task.succeed Rerender
-  },
-  Scoped p -> {
-    let _ <- Db.deleteScoped Project p.id
-    Task.succeed Rerender
-  },
+Wipe.update : Wipe.Params -> Session -> Task Response
+Wipe.update p session = {
+  let _ <- Db.delete Project p.id
+  Task.succeed Response.refresh
+}
+
+Bound.update : Bound.Params -> Session -> Task Response
+Bound.update p session = {
+  let del = Db.delete
+  let _ <- del Project p.id
+  Task.succeed Response.refresh
+}
+
+Helped.update : Helped.Params -> Session -> Task Response
+Helped.update p session = {
+  let _ <- Wiper.wipe p.id
+  Task.succeed Response.refresh
+}
+
+Scoped.update : Scoped.Params -> Session -> Task Response
+Scoped.update p session = {
+  let _ <- Db.deleteScoped Project p.id
+  Task.succeed Response.refresh
 }
 
 error : Error -> Html Never

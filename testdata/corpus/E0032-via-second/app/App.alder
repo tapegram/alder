@@ -1,7 +1,7 @@
 module App
 
-import User
 import Org
+import User
 
 -- one `via` field per session (for now): `other` is refused
 session {
@@ -10,7 +10,7 @@ session {
   other: Maybe Org.OrgId via Membership,
 }
 
-login = Login
+login = Login.Login
 
 error : Error -> Html Never
 error err = <p>error</p>

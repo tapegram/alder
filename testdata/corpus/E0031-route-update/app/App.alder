@@ -1,13 +1,17 @@
 module App
 
-import User
 import Org
+import User
 
 -- A write route's update is one Task: it writes one store (E0031).
 
-session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Reader }
+session {
+  user: Maybe User.UserId,
+  org: Maybe Org.OrgId via Membership,
+  role: User.Role = Reader,
+}
 
-login = Login
+login = Login.Login
 
 choose org = Orgs.Pick
 

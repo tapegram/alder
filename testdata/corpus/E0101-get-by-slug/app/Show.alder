@@ -2,12 +2,12 @@ module Show
 
 import Post
 
-page "/posts/{slug}" { slug: Post.Slug }
+route Show = GET "/posts/{slug}" { slug: Post.Slug }
 
 type Model = { post: Post }
 
-load : Params -> Session -> Query Model
-load params session = {
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
   let found <- Db.get Post params.slug
   match found {
     Just post -> Query.succeed { post: post },
@@ -15,5 +15,5 @@ load params session = {
   }
 }
 
-view : Model -> Session -> Html Msg
-view model session = <h1>{model.post.title}</h1>
+Show.view : Model -> Session -> Html
+Show.view model session = <h1>{model.post.title}</h1>

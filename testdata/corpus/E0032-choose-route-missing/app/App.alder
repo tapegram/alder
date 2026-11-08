@@ -1,12 +1,16 @@
 module App
 
-import User
 import Org
+import User
 
 -- A route that `requires org`, a `via` key, needs App's `choose org`.
-session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Reader }
+session {
+  user: Maybe User.UserId,
+  org: Maybe Org.OrgId via Membership,
+  role: User.Role = Reader,
+}
 
-login = Login
+login = Login.Login
 
 silo org { Project }
 

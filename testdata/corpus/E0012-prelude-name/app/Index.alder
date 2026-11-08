@@ -1,25 +1,20 @@
 module Index
 
-page "/" { q: Text = "" }
+route Index  = GET  "/"         { q: Text = "" }
+route Search = POST "/_/Search" { } form Query
 
 type Model = { q: Text }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { q: params.q }
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { q: params.q }
 
-form Query = {
-  q: Text,
-}
+form Query = { q: Text }
 
-msg Search form Query
+Search.update : Search.Params -> Session -> Task Response
+Search.update p session = Task.succeed (Response.redirect (Index { q: p.form.q }))
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Search p -> Task.succeed (Redirect (Index { q: p.form.q })),
-}
-
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <form submit={Search}>
     <Input field="q" label="Search" />
     <button>Search</button>

@@ -1,28 +1,22 @@
 module Index
 
-page "/" { }
+route Index = GET  "/"       { }
+route Save  = POST "/_/Save" { } form Prefs
 
 type Theme = Light | Dark
 
 type Model = { n: Int }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { n: 1 }
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { n: 1 }
 
-form Prefs = {
-  theme: Theme,
-  name: Text,
-}
+form Prefs = { theme: Theme, name: Text }
 
-msg Save form Prefs
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Save p -> Task.succeed Rerender,
-}
-
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <form submit={Save}>
     <Errors field="theme" />
     <al-select field="theme" label="Theme" />

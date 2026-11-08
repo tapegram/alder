@@ -1,11 +1,11 @@
 module Start
 
-page "/start" { }
+route Start = GET "/start" { }
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.redirect "/x"
+Start.load : Start.Params -> Session -> Query Model
+Start.load params session = Query.redirect "/x"
 
-view : Model -> Session -> Html Msg
-view model session = <p>start</p>
+Start.view : Model -> Session -> Html
+Start.view model session = <p>start</p>

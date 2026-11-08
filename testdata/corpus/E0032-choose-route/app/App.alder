@@ -1,14 +1,19 @@
 module App
 
-import User
 import Org
+import User
 
 -- `choose` names a GET route that does not require the key itself.
-session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, team: Maybe Text }
+session {
+  user: Maybe User.UserId,
+  org: Maybe Org.OrgId via Membership,
+  team: Maybe Text,
+}
 
-login = Login
+login = Login.Login
 
 choose org = Orgs.Leave
+
 choose team = Orgs.Team
 
 silo org { Project }

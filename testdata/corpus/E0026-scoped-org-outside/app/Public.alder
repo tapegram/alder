@@ -3,16 +3,16 @@ module Public
 import Project
 import Projects.Index
 
-page "/public" { } requires user
+route Public = GET "/public" { } requires user
 
 type Model = { projects: List Project, n: Int }
 
-load : Params -> Session -> Query Model
-load params session = {
+Public.load : Public.Params -> Session -> Query Model
+Public.load params session = {
   let projects <- Index.recent |> Db.all
   let n <- Db.scoped Project |> Db.count
   Query.succeed { projects: projects, n: n }
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>x</p>
+Public.view : Model -> Session -> Html
+Public.view model session = <p>x</p>

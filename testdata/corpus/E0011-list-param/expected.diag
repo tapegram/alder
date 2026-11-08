@@ -1,1 +1,1 @@
-app/Index.alder:5:12 E0011 page parameter `todos` has type `List Todo`, which cannot appear in a URL
+app/Index.alder:5:25 E0011 route parameter `todos` has type `List Todo`, which cannot appear in a URL

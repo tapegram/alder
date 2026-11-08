@@ -1,15 +1,15 @@
 module Orgs
 
-page "/orgs" { } requires user, user
+route Orgs = GET "/orgs" { } requires user, user
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Orgs.load : Orgs.Params -> Session -> Query Model
+Orgs.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <p>orgs</p>
+Orgs.view : Model -> Session -> Html
+Orgs.view model session = <p>orgs</p>
 
 silo org { Project }
 
-choose org = Orgs
+choose org = Orgs.Orgs

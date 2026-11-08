@@ -2,34 +2,43 @@ module Index
 
 import Ui
 
-page "/" { }
+route Index = GET  "/"     { }
+route Go    = POST "/_/Go" { }
 
-type Model = { open: Bool, name: Text, items: List Text }
-
-load : Params -> Session -> Query Model
-load params session = Query.succeed { open: True, name: "x", items: [] }
-
-msg Go
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Go p -> Task.succeed Rerender,
+type Model = {
+  open: Bool,
+  name: Text,
+  items: List Text,
 }
 
-extra : Html Msg
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed {
+  open: True,
+  name: "x",
+  items: [],
+}
+
+Go.update : Go.Params -> Session -> Task Response
+Go.update p session = Task.succeed Response.refresh
+
+extra : Html
 extra = <b>extra</b>
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <div>
     <al-button click={Go}><button>Own</button></al-button>
     <al-button href={Index {}}><a href={Index {}}>Own link</a></al-button>
     <al-button type="submit"><span><input name="q" /></span></al-button>
     <al-button click={Go}>{if model.open then <button>In if</button> else Html.none}</al-button>
-    <al-button click={Go}>{for i in model.items -> <a href={Index {}}>{i}</a>}</al-button>
+    <al-button click={Go}>
+      {for i in model.items -> <a href={Index {}}>{i}</a>}
+    </al-button>
     <al-button click={Go}><span click={Go}>Inner click</span></al-button>
     <al-button click={Go}>{extra}</al-button>
     <al-button click={Go}><Ui.Icon name="star" /> Star</al-button>
-    <al-button click={Go}>Hello {model.name} <b>bold</b> {if model.open then <i>open</i> else Html.none}</al-button>
+    <al-button click={Go}>
+      Hello {model.name} <b>bold</b> {if model.open then <i>open</i> else Html.none}
+    </al-button>
     <al-button><button click={Go}>Presentational around mine</button></al-button>
   </div>

@@ -1,28 +1,22 @@
 module Index
 
-page "/" { }
+route Index  = GET  "/"         { }
+route Submit = POST "/_/Submit" { } form NewPost
 
 type Kind = Note | Task
 
 type Model = { n: Int }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { n: 1 }
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { n: 1 }
 
-form NewPost = {
-  title: Text.NonEmpty,
-  kind: Kind,
-}
+form NewPost = { title: Text.NonEmpty, kind: Kind }
 
-msg Submit form NewPost
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Submit p -> Task.succeed Rerender,
-}
-
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <main>
     <al-input field="title" label="Outside" />
     <form submit={Submit}>

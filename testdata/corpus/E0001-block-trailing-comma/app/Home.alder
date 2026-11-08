@@ -1,21 +1,18 @@
 module Home
 
-page "/" { }
+route Home = GET "/" { }
+route Add  = POST "/_/Add" { }
 
 type Model = { count: Int }
 
-msg Add
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = Query.succeed { count: 0 }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { count: 0 }
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add p -> {
-    let n = model.count + 1
-    if n > 10 then Task.succeed Rerender else Task.succeed Rerender,
-  },
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let n = 1 + 1
+  if n > 10 then Task.succeed Response.refresh else Task.succeed Response.refresh,
 }
 
-view : Model -> Session -> Html Msg
-view model session = <button click={Add}>{Text.fromInt model.count}</button>
+Home.view : Model -> Session -> Html
+Home.view model session = <button click={Add}>{Text.fromInt model.count}</button>

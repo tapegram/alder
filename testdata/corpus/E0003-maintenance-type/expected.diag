@@ -1,2 +1,2 @@
-app/App.alder:11:15 E0003 `maintenance` must have type `Html Never`
-  fix 11:15-11:19 Html Never
+app/App.alder:16:15 E0003 `maintenance` must have type `Html Never`
+  fix 16:15-16:19 Html Never

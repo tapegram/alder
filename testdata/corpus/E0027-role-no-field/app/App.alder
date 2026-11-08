@@ -4,7 +4,7 @@ import User
 
 session { user: Maybe User.UserId }
 
-login = Login
+login = Login.Login
 
 error : Error -> Html Never
 error err = <p>error</p>

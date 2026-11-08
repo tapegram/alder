@@ -1,14 +1,14 @@
 module Other
 
 test "submit another page's form unqualified" = {
-  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.get (Todos.Index.Index {})
   let r <- Test.submit NewTodo { title: "x" }
   Task.succeed True
 }
 
 test "submit it qualified" = {
-  let _ <- Test.get (Todos.Index {})
-  let r <- Test.submit Todos.Index.NewTodo { title: "x" }
+  let _ <- Test.get (Todos.Index.Index {})
+  let r <- Test.submit Todos.Index.Submit { title: "x" }
   let c <- Test.click (Todos.Index.Toggle { id: "a" })
-  Task.succeed (r.answer == Shown && c.answer == Rerendered)
+  Task.succeed (r.answer == Shown && c.answer == Refreshed)
 }

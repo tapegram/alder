@@ -1,26 +1,25 @@
 module Notes.Show
 
-page "/notes" { }
+route Show  = GET  "/notes"         { }
+route Clear = POST "/notes/_/Clear" { }
 
 type Model = { count: Int }
 
-msg Clear
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = Query.succeed { count: 1 }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { count: 1 }
+Clear.update : Clear.Params -> Session -> Task Response
+Clear.update params session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = Task.succeed Rerender
-
-view : Model -> Session -> Html Msg
-view model session = <button click={Clear}>{Text.fromInt model.count}</button>
+Show.view : Model -> Session -> Html
+Show.view model session = <button click={Clear}>{Text.fromInt model.count}</button>
 
 test "clear rerenders" = {
-  let r <- Test.run (Notes.Show.update Notes.Show.Clear { count: 1 } { })
-  Task.succeed (r.value == Ok Rerender)
+  let r <- Test.run (Notes.Show.Clear.update (Notes.Show.Clear {}) {})
+  Task.succeed (r.value == Ok Response.refresh)
 }
 
-test "no such message" = {
-  let r <- Test.run (update Notes.Show.Reset { count: 1 } { })
-  Task.succeed (r.value == Ok Rerender)
+test "no such route" = {
+  let r <- Test.run (Clear.update (Notes.Show.Reset {}) {})
+  Task.succeed (r.value == Ok Response.refresh)
 }

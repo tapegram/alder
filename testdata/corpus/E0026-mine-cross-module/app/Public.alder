@@ -4,16 +4,16 @@ import Todo
 import Todos.Index
 import Todos.Show
 
-page "/public" { }
+route Public = GET "/public" { }
 
 type Model = { todos: List Todo, more: List Todo }
 
-load : Params -> Session -> Query Model
-load params session = {
+Public.load : Public.Params -> Session -> Query Model
+Public.load params session = {
   let todos <- Index.recent |> Db.all
   let more <- Show.shown
   Query.succeed { todos: todos, more: more }
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>public</p>
+Public.view : Model -> Session -> Html
+Public.view model session = <p>public</p>

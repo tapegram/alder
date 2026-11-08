@@ -1,12 +1,11 @@
 module C
 
-
-page "/c/{org}" { org: Text } requires user, role Admin, silo org
+route C = GET "/c/{org}" { org: Text } requires user, role Admin, silo org
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+C.load : C.Params -> Session -> Query Model
+C.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <p>x</p>
+C.view : Model -> Session -> Html
+C.view model session = <p>x</p>

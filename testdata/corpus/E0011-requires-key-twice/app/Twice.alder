@@ -1,11 +1,11 @@
 module Twice
 
-page "/twice" { } requires user, org, org
+route Twice = GET "/twice" { } requires user, org, org
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Twice.load : Twice.Params -> Session -> Query Model
+Twice.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <p>x</p>
+Twice.view : Model -> Session -> Html
+Twice.view model session = <p>x</p>

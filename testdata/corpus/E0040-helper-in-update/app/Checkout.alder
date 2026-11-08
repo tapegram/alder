@@ -2,21 +2,20 @@ module Checkout
 
 import Payments
 
-page "/checkout" { }
+route Checkout = GET  "/checkout"       { }
+route Pay      = POST "/checkout/_/Pay" { }
 
 type Model = { n: Int }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { n: 0 }
-
-msg Pay
+Checkout.load : Checkout.Params -> Session -> Query Model
+Checkout.load params session = Query.succeed { n: 0 }
 
 -- `Payments.install` is a test helper, and `update` runs in production.
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = {
+Pay.update : Pay.Params -> Session -> Task Response
+Pay.update params session = {
   let _ <- Payments.install
-  Task.succeed Rerender
+  Task.succeed Response.refresh
 }
 
-view : Model -> Session -> Html Msg
-view model session = <button click={Pay}>Pay</button>
+Checkout.view : Model -> Session -> Html
+Checkout.view model session = <button click={Pay}>Pay</button>

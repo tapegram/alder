@@ -1,12 +1,11 @@
 module Projects
 
-
-page "/projects" { } requires user, org
+route Projects = GET "/projects" { } requires user, org
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Projects.load : Projects.Params -> Session -> Query Model
+Projects.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <p>x</p>
+Projects.view : Model -> Session -> Html
+Projects.view model session = <p>x</p>

@@ -1,23 +1,22 @@
 module Projects
 
-import Project
 import AuditLog
+import Project
 
-page "/projects" { } requires user, org
+route Projects = GET  "/projects"          { } requires user, org
+route Create   = POST "/projects/_/Create" { } requires user, org
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Projects.load : Projects.Params -> Session -> Query Model
+Projects.load params session = Query.succeed {}
 
-msg Create
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = {
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session = {
   let _ <- Db.insertScoped Project { name: "p" }
   let _ <- Db.insert AuditLog { text: "created" }
-  Task.succeed Rerender
+  Task.succeed Response.refresh
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>x</p>
+Projects.view : Model -> Session -> Html
+Projects.view model session = <p>x</p>

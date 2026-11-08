@@ -1,8 +1,8 @@
 module App
 
-import User
 import Org
 import Seat
+import User
 
 session {
   user: Maybe User.UserId via Membership,
@@ -12,8 +12,7 @@ session {
   role: User.Role = Reader,
 }
 
-login = Login
-
+login = Login.Login
 
 error : Error -> Html Never
 error err = <p>error</p>

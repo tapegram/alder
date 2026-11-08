@@ -1,12 +1,11 @@
 module Picker
 
-
-page "/picker" { } requires user, org
+route Picker = GET "/picker" { } requires user, org
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Picker.load : Picker.Params -> Session -> Query Model
+Picker.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <p>x</p>
+Picker.view : Model -> Session -> Html
+Picker.view model session = <p>x</p>

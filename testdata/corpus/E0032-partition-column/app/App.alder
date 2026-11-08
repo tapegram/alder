@@ -1,13 +1,18 @@
 module App
 
-import User
 import Org
+import User
 
-session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, region: Org.OrgId, role: User.Role = Reader }
+session {
+  user: Maybe User.UserId,
+  org: Maybe Org.OrgId via Membership,
+  region: Org.OrgId,
+  role: User.Role = Reader,
+}
 
-login = Login
+login = Login.Login
 
-choose org = Orgs
+choose org = Orgs.Orgs
 
 error : Error -> Html Never
 error err = <p>error</p>

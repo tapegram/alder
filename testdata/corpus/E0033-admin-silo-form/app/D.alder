@@ -2,12 +2,12 @@ module D
 
 import Org
 
-page "/d/{org}" { org: Org.OrgId } requires user, org, role Admin, silo org
+route D = GET "/d/{org}" { org: Org.OrgId } requires user, org, role Admin, silo org
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+D.load : D.Params -> Session -> Query Model
+D.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <p>x</p>
+D.view : Model -> Session -> Html
+D.view model session = <p>x</p>

@@ -2,15 +2,15 @@ module Profile
 
 import User
 
-page "/users/{id}" { id: User.UserId }
+route Profile = GET "/users/{id}" { id: User.UserId }
 
 type Model = { name: Text }
 
-load : Params -> Session -> Query Model
-load params session = {
+Profile.load : Profile.Params -> Session -> Query Model
+Profile.load params session = {
   let user <- Db.get User params.id
   Query.succeed { name: user.name }
 }
 
-view : Model -> Session -> Html Msg
-view model session = <h1>{model.name}</h1>
+Profile.view : Model -> Session -> Html
+Profile.view model session = <h1>{model.name}</h1>

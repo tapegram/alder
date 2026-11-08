@@ -1,23 +1,26 @@
 module App
 
-import User
 import Org
-import Project
 import Pay
+import Project
+import User
 
-session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Reader }
+session {
+  user: Maybe User.UserId,
+  org: Maybe Org.OrgId via Membership,
+  role: User.Role = Reader,
+}
 
-login = Login
+login = Login.Login
 
-choose org = Orgs
-msg Wipe { id: Project.ProjectId }
+choose org = Orgs.Orgs
 
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Wipe p -> {
-    let _ <- Db.deleteScoped Project p.id
-    Task.succeed Rerender
-  },
+route Wipe = POST "/_/Wipe" { id: Project.ProjectId }
+
+Wipe.update : Wipe.Params -> Session -> Task Response
+Wipe.update p session = {
+  let _ <- Db.deleteScoped Project p.id
+  Task.succeed Response.refresh
 }
 
 error : Error -> Html Never

@@ -1,12 +1,11 @@
 module E
 
-
-page "/e/{nope}" { nope: Text } requires user, role Admin, silo nope
+route E = GET "/e/{nope}" { nope: Text } requires user, role Admin, silo nope
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+E.load : E.Params -> Session -> Query Model
+E.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <p>x</p>
+E.view : Model -> Session -> Html
+E.view model session = <p>x</p>

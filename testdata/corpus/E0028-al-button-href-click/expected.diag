@@ -1,1 +1,1 @@
-app/Index.alder:19:3 E0028 `<al-button>` takes `href` or `click`, not both
+app/Index.alder:15:28 E0028 `<al-button>` takes `href` or `click`, not both

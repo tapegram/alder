@@ -1,19 +1,19 @@
 module Home
 
-import User
 import Member
+import User
 
 -- `Member` is both a constructor of `User.Role` and a table: where nothing says which type is
 -- expected (an unannotated `let`), or the type is neither (`Text.fromInt`), it is E0002 naming both.
-page "/" { }
+route Home = GET "/" { }
 
 type Model = { n: Int, member: Bool }
 
-load : Params -> Session -> Query Model
-load params session = {
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = {
   let who = Member
   Query.succeed { n: Text.length (Text.fromInt Member), member: who == Reader }
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>{Text.fromInt model.n}</p>
+Home.view : Model -> Session -> Html
+Home.view model session = <p>{Text.fromInt model.n}</p>

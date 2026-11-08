@@ -2,18 +2,18 @@ module Home
 
 import Theme
 
-page "/" { } requires user
+route Home = GET "/" { } requires user
 
 type Model = { n: Int }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { n: 0 }
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = Query.succeed { n: 0 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>{session.user}</p>
+Home.view : Model -> Session -> Html
+Home.view model session = <p>{session.user}</p>
 
 -- the page's narrowed Session: the same rule
-test "the view shows the user" = view { n: 0 } { user: "ann" } == <p>ann</p>
+test "the view shows the user" = Home.view { n: 0 } { user: "ann" } == <p>ann</p>
 
 -- every field named: fine
-test "with the theme" = view { n: 0 } { user: "ann", theme: Light } == <p>ann</p>
+test "with the theme" = Home.view { n: 0 } { user: "ann", theme: Light } == <p>ann</p>

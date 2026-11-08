@@ -1,1 +1,1 @@
-app/Index.alder:27:48 E0304 `<Input>` has no attribute `type`
+app/Index.alder:21:48 E0304 `<Input>` has no attribute `type`

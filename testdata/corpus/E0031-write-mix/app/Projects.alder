@@ -1,92 +1,105 @@
 module Projects
 
-import Project
-import AuditLog
 import Audit
+import AuditLog
 import Board
 import Org
+import Project
 
-page "/projects" { } requires user, org, team
+route Projects = GET  "/projects"          { } requires user, org, team
+route Create   = POST "/projects/_/Create" { } requires user, org, team
+route Helped   = POST "/projects/_/Helped" { } requires user, org, team
+route Many     = POST "/projects/_/Many"   { } requires user, org, team
+route Silos    = POST "/projects/_/Silos"  { } requires user, org, team
+route Reads    = POST "/projects/_/Reads"  { } requires user, org, team
+route Bound    = POST "/projects/_/Bound"  { } requires user, org, team
+route Lambda   = POST "/projects/_/Lambda" { } requires user, org, team
+route Mapped   = POST "/projects/_/Mapped" { } requires user, org, team
+route Other    = POST "/projects/_/Other"  { } requires user, org, team
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Projects.load : Projects.Params -> Session -> Query Model
+Projects.load params session = Query.succeed {}
 
 -- a helper of this module: a shared write
 note : Text -> Task Unit
 note text = Audit.log text
 
-msg Create
-msg Helped
-msg Many
-msg Silos
-msg Reads
-msg Bound
-msg Lambda
-msg Mapped
-msg Other
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  -- the spec's case: a silo write and a shared write in one Task
-  Create _ -> {
-    let _ <- Db.insertScoped Project { name: "p" }
-    let _ <- Db.insert AuditLog { text: "created p" }
-    Task.succeed Rerender
-  },
-  -- the shared write hides in a helper (of this module, then of another)
-  Helped _ -> {
-    let _ <- Db.insertScoped Project { name: "p" }
-    let _ <- note "created p"
-    Task.succeed Rerender
-  },
-  -- and in a Task.all over List.map
-  Many _ -> {
-    let _ <- Task.all (List.map (\t -> Audit.log t) ["a", "b"])
-    let _ <- Db.insertScoped Project { name: "p" }
-    Task.succeed Rerender
-  },
-  -- two silos
-  Silos _ -> {
-    let _ <- Db.insertScoped Project { name: "p" }
-    let _ <- Db.insertScoped Board { name: "b" }
-    Task.succeed Rerender
-  },
-  -- reads of the other stores are fine
-  Reads _ -> {
-    let _ <- Db.from AuditLog |> Db.all
-    let _ <- Db.scoped Board |> Db.all
-    let _ <- Db.get Org session.org
-    let _ <- Db.insertScoped Project { name: "p" }
-    Task.succeed Rerender
-  },
-  -- a Db write that is not applied in place is found by its type: bound by a let,
-  Bound _ -> {
-    let ins = Db.insert
-    let _ <- ins AuditLog { text: "created p" }
-    let _ <- Db.insertScoped Project { name: "p" }
-    Task.succeed Rerender
-  },
-  -- passed to a lambda that applies it,
-  Lambda _ -> {
-    let _ <- (\f -> f AuditLog { text: "created p" }) Db.insert
-    let _ <- Db.insertScoped Project { name: "p" }
-    Task.succeed Rerender
-  },
-  -- or partially applied and mapped
-  Mapped _ -> {
-    let logs <- Db.from AuditLog |> Db.all
-    let _ <- Task.all (List.map (Db.delete AuditLog) (List.map (\l -> l.id) logs))
-    let _ <- Db.insertScoped Project { name: "p" }
-    Task.succeed Rerender
-  },
-  _ -> {
-    let _ <- Db.insert AuditLog { text: "other" }
-    let _ <- Db.insertScoped Board { name: "b" }
-    Task.succeed Rerender
-  },
+-- the spec's case: a silo write and a shared write in one Task
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session = {
+  let _ <- Db.insertScoped Project { name: "p" }
+  let _ <- Db.insert AuditLog { text: "created p" }
+  Task.succeed Response.refresh
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>x</p>
+-- the shared write hides in a helper (of this module, then of another)
+Helped.update : Helped.Params -> Session -> Task Response
+Helped.update params session = {
+  let _ <- Db.insertScoped Project { name: "p" }
+  let _ <- note "created p"
+  Task.succeed Response.refresh
+}
+
+-- and in a Task.all over List.map
+Many.update : Many.Params -> Session -> Task Response
+Many.update params session = {
+  let _ <- Task.all (List.map (\t -> Audit.log t) ["a", "b"])
+  let _ <- Db.insertScoped Project { name: "p" }
+  Task.succeed Response.refresh
+}
+
+-- two silos
+Silos.update : Silos.Params -> Session -> Task Response
+Silos.update params session = {
+  let _ <- Db.insertScoped Project { name: "p" }
+  let _ <- Db.insertScoped Board { name: "b" }
+  Task.succeed Response.refresh
+}
+
+-- reads of the other stores are fine
+Reads.update : Reads.Params -> Session -> Task Response
+Reads.update params session = {
+  let _ <- Db.from AuditLog |> Db.all
+  let _ <- Db.scoped Board |> Db.all
+  let _ <- Db.get Org session.org
+  let _ <- Db.insertScoped Project { name: "p" }
+  Task.succeed Response.refresh
+}
+
+-- a Db write that is not applied in place is found by its type: bound by a let,
+Bound.update : Bound.Params -> Session -> Task Response
+Bound.update params session = {
+  let ins = Db.insert
+  let _ <- ins AuditLog { text: "created p" }
+  let _ <- Db.insertScoped Project { name: "p" }
+  Task.succeed Response.refresh
+}
+
+-- passed to a lambda that applies it,
+Lambda.update : Lambda.Params -> Session -> Task Response
+Lambda.update params session = {
+  let _ <- (\f -> f AuditLog { text: "created p" }) Db.insert
+  let _ <- Db.insertScoped Project { name: "p" }
+  Task.succeed Response.refresh
+}
+
+-- or partially applied and mapped
+Mapped.update : Mapped.Params -> Session -> Task Response
+Mapped.update params session = {
+  let logs <- Db.from AuditLog |> Db.all
+  let _ <- Task.all (List.map (Db.delete AuditLog) (List.map (\l -> l.id) logs))
+  let _ <- Db.insertScoped Project { name: "p" }
+  Task.succeed Response.refresh
+}
+
+Other.update : Other.Params -> Session -> Task Response
+Other.update params session = {
+  let _ <- Db.insert AuditLog { text: "other" }
+  let _ <- Db.insertScoped Board { name: "b" }
+  Task.succeed Response.refresh
+}
+
+Projects.view : Model -> Session -> Html
+Projects.view model session = <p>x</p>

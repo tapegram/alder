@@ -1,6 +1,7 @@
 module Index
 
-page "/" { }
+route Index  = GET  "/"         { }
+route Submit = POST "/_/Submit" { } form NewPost
 
 type Kind = Note | Task
 
@@ -8,8 +9,8 @@ type OwnerId = brand Text
 
 type Model = { owners: List { value: OwnerId, label: Text } }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { owners: [] }
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { owners: [] }
 
 form NewPost = {
   title: Text.NonEmpty,
@@ -19,18 +20,14 @@ form NewPost = {
   reviewer: Maybe OwnerId,
 }
 
-msg Submit form NewPost
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Submit p -> Task.succeed Rerender,
-}
-
-Picker : { owners: List { value: OwnerId, label: Text } } -> Html Msg
+Picker : { owners: List { value: OwnerId, label: Text } } -> Html
 Picker props = <form submit={Submit}><al-select field="owner" options={props.owners} /></form>
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <main>
     <form submit={Submit}>
       <al-select field="owner" label="Owner" options={model.owners} />
@@ -41,6 +38,9 @@ view model session =
       <al-select field="count" options={[{ value: 1, label: "one" }]} />
       <al-select field="title" options={[{ value: "a", label: 1 }]} />
       <al-select field="owner" options={[{ value: "a", label: "A" }]} />
-      {for owners in [model.owners] -> <al-select field="owner" options={List.map (\o -> { value: o.value, label: o.label }) owners} />}
+      {for owners in [model.owners] ->
+        <al-select
+          field="owner"
+          options={List.map (\o -> { value: o.value, label: o.label }) owners} />}
     </form>
   </main>

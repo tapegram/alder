@@ -2,7 +2,7 @@ module App
 
 session { user: Maybe Text }
 
-login = Login
+login = Login.Login
 
 error : Error -> Html Never
 error err = <p>error</p>
