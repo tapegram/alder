@@ -61,7 +61,7 @@ const fieldAccessValues = ($, fieldAccess) => [
 // trees. Parentheses, lists, braces and arms go back to the ordinary family, as
 // withBraces(true) does.
 //
-// The '_default' family is a field's default (`a: Int = f x as "A"`). A page parameter's wire
+// The '_default' family is a field's default (`a: Int = f x as "A"`). A route parameter's wire
 // name follows it, so `as` ends an application there (parser_expr.go canStartArg under
 // fieldDefault). Its own rules keep that `as` out of the ordinary family's parse states:
 // sharing them made `as` a keyword inside every application, so `f (g as)` failed where the Go
@@ -218,9 +218,7 @@ module.exports = grammar({
       choice(
         $.value_decl,
         $.type_decl,
-        $.page_decl,
         $.route_decl,
-        $.msg_decl,
         $.form_decl,
         $.table_decl,
         $.capability_decl,
@@ -288,7 +286,7 @@ module.exports = grammar({
     record_type: ($) => seq('{', commaSep($.field_decl), '}'),
 
     // One field shape for records, forms, tables, capabilities and the session: `via` is legal
-    // only in the session, `as "Key"` (a query key, #55) only on page parameters and attributes
+    // only in the session, `as "Key"` (a query key, #55) only on route parameters and attributes
     // only in tables, which the compiler checks.
     field_decl: ($) =>
       seq(
@@ -309,9 +307,6 @@ module.exports = grammar({
 
     // ---- declarations -------------------------------------------------------------------
 
-    page_decl: ($) =>
-      seq('page', field('path', $.string), field('params', $.record_type), optional(field('requires', $.requires_clause))),
-
     requires_clause: ($) =>
       seq('requires', sep1(choice(alias($.identifier, $.session_key), $.role_clause, $.silo_clause), ',')),
     role_clause: ($) => seq('role', sep1(field('role', $.constructor), '|')),
@@ -331,14 +326,6 @@ module.exports = grammar({
         optional(field('requires', $.requires_clause)),
       ),
     route_method: ($) => choice('GET', 'POST', 'PUT', 'PATCH', 'DELETE'),
-
-    msg_decl: ($) =>
-      seq(
-        'msg',
-        field('name', $.constructor),
-        optional(field('params', $.record_type)),
-        optional(seq('form', field('form', $.constructor))),
-      ),
 
     form_decl: ($) => seq('form', field('name', $.constructor), '=', field('fields', $.record_type)),
 

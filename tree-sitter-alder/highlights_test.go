@@ -108,7 +108,7 @@ func orNone(s string) string {
 // (the highest pattern covering a byte wins). Whitespace is skipped, and so are the bytes
 // inside a string's interpolation braces, which tree-sitter does not parse (README). The mask
 // comes from syntax.Interpolations on every string token, so it also skips `{…}` inside strings
-// that are not interpolated (page paths, test names): a few bytes both sides colour as string.
+// that are not interpolated (route paths, test names): a few bytes both sides colour as string.
 func parityDiffs(label string, src []byte, toks []semtok.Token, caps []hlCapture) ([]parityDiff, error) {
 	lines := strings.Split(string(src), "\n")
 	goT := make([][]string, len(lines))

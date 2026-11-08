@@ -124,12 +124,12 @@ table Post @renamed "Article" {
         default: (boolean)))))
 
 ================================================================================
-page parameters with wire names
+route parameters with wire names
 ================================================================================
 
 module Wood
 
-page "/r/{cfg}" { cfg: Text, electionId: Text = "" as "ElectionId", contestId: Maybe Int as "ContestId" }
+route Show = GET "/r/{cfg}" { cfg: Text, electionId: Text = "" as "ElectionId", contestId: Maybe Int as "ContestId" }
 
 --------------------------------------------------------------------------------
 
@@ -137,7 +137,9 @@ page "/r/{cfg}" { cfg: Text, electionId: Text = "" as "ElectionId", contestId: M
   (module_decl
     name: (module_name
       (constructor)))
-  (page_decl
+  (route_decl
+    name: (constructor)
+    method: (route_method)
     path: (string)
     params: (record_type
       (field_decl
@@ -160,12 +162,12 @@ page "/r/{cfg}" { cfg: Text, electionId: Text = "" as "ElectionId", contestId: M
         wire: (string)))))
 
 ================================================================================
-page parameter wire name after a newline, as inside parens
+route parameter wire name after a newline, as inside parens
 ================================================================================
 
 module Wood
 
-page "/r" {
+route Show = GET "/r" {
   a: Int = f (g as) as "A",
   b: Text = ""
     as "B",
@@ -179,7 +181,9 @@ x = f (g as) as
   (module_decl
     name: (module_name
       (constructor)))
-  (page_decl
+  (route_decl
+    name: (constructor)
+    method: (route_method)
     path: (string)
     params: (record_type
       (field_decl
@@ -211,15 +215,13 @@ x = f (g as) as
         argument: (identifier)))))
 
 ================================================================================
-page with requires, msg, form
+route with requires, form
 ================================================================================
 
 module Write.Edit
 
-page "/write/{id}" { id: Post.PostId } requires user, role Author | Admin, silo org
+route Edit = GET "/write/{id}" { id: Post.PostId } requires user, role Author | Admin, silo org
 
-msg Add form NewTodo
-msg Toggle { id: Todo.TodoId }
 form NewTodo = { title: Text.NonEmpty }
 
 --------------------------------------------------------------------------------
@@ -229,7 +231,9 @@ form NewTodo = { title: Text.NonEmpty }
     name: (module_name
       (constructor)
       (constructor)))
-  (page_decl
+  (route_decl
+    name: (constructor)
+    method: (route_method)
     path: (string)
     params: (record_type
       (field_decl
@@ -244,17 +248,6 @@ form NewTodo = { title: Text.NonEmpty }
         role: (constructor))
       (silo_clause
         key: (identifier))))
-  (msg_decl
-    name: (constructor)
-    form: (constructor))
-  (msg_decl
-    name: (constructor)
-    params: (record_type
-      (field_decl
-        name: (identifier)
-        type: (type_name
-          (constructor)
-          (constructor)))))
   (form_decl
     name: (constructor)
     fields: (record_type

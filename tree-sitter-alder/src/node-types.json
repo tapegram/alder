@@ -5156,42 +5156,6 @@
     }
   },
   {
-    "type": "msg_decl",
-    "named": true,
-    "fields": {
-      "form": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "constructor",
-            "named": true
-          }
-        ]
-      },
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "constructor",
-            "named": true
-          }
-        ]
-      },
-      "params": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "record_type",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "multiplicative_expr",
     "named": true,
     "fields": {
@@ -5720,42 +5684,6 @@
           },
           {
             "type": "unit",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "page_decl",
-    "named": true,
-    "fields": {
-      "params": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "record_type",
-            "named": true
-          }
-        ]
-      },
-      "path": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "string",
-            "named": true
-          }
-        ]
-      },
-      "requires": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "requires_clause",
             "named": true
           }
         ]
@@ -6710,14 +6638,6 @@
           "named": true
         },
         {
-          "type": "msg_decl",
-          "named": true
-        },
-        {
-          "type": "page_decl",
-          "named": true
-        },
-        {
           "type": "route_decl",
           "named": true
         },
@@ -6961,14 +6881,6 @@
         },
         {
           "type": "module_decl",
-          "named": true
-        },
-        {
-          "type": "msg_decl",
-          "named": true
-        },
-        {
-          "type": "page_decl",
           "named": true
         },
         {
@@ -7865,14 +7777,6 @@
   },
   {
     "type": "module",
-    "named": false
-  },
-  {
-    "type": "msg",
-    "named": false
-  },
-  {
-    "type": "page",
     "named": false
   },
   {

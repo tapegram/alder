@@ -14,9 +14,9 @@
 
 ; ---- keywords
 ["module" "import" "as"] @keyword.import
-(field_decl "as" @keyword) ; a page parameter's wire name: `id: Text as "Id"`
+(field_decl "as" @keyword) ; a route parameter's wire name: `id: Text as "Id"`
 ["type" "brand" "where"] @keyword.type
-["page" "route" "msg" "form" "table" "capability" "fake" "session" "login" "test" "deploy" "theme" "silo"
+["route" "form" "table" "capability" "fake" "session" "login" "test" "deploy" "theme" "silo"
  "choose" "requires" "role" "via" "let"] @keyword
 ["if" "then" "else" "match"] @keyword.conditional
 ["for" "in"] @keyword.repeat
@@ -73,8 +73,7 @@
 (field_attribute argument: (type_name (constructor) @type))
 (field_attribute argument: (identifier) @property)
 
-; ---- page, route, requires, silos
-(page_decl path: (string) @string.special.url)
+; ---- route, requires, silos
 (route_decl path: (string) @string.special.url)
 (route_decl "form" @keyword) ; `form` is a name, not a keyword, elsewhere
 (route_method) @constructor
