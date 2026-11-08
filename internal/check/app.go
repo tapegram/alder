@@ -26,11 +26,7 @@ func (mc *modCtx) requireSig(name string, want types.Type, sig, msg string) {
 			continue
 		}
 		if err := c.u.Unify(got, want); err != nil {
-			m := msg
-			if name == "view" && mc.page != nil && viewIsNever(c.u.Apply(got)) {
-				m += "; it is `Html Msg` even when the page has no messages"
-			}
-			d := c.errorf(diag.TypeMismatch, vd.Sig.GetSpan(), "%s", m)
+			d := c.errorf(diag.TypeMismatch, vd.Sig.GetSpan(), "%s", msg)
 			d.Fix = diag.ReplaceSpan(vd.Sig.GetSpan(), sig)
 			d.Fix.Title, d.Fix.Preferred = "Change signature to `"+sig+"`", true
 		}
@@ -69,14 +65,6 @@ func (mc *modCtx) checkApp() {
 		mc.requireSig("maintenance", html, "Html", "`maintenance` must have type `Html`")
 	}
 	anyRequires := ""
-	for name, p := range c.pages {
-		if c.prog.Failed[name] {
-			continue
-		}
-		if len(p.Requires) > 0 {
-			anyRequires = "a page"
-		}
-	}
 	for name, rs := range c.routes {
 		for _, r := range rs {
 			if anyRequires == "" && !c.prog.Failed[name] && len(r.Requires) > 0 {
@@ -100,7 +88,7 @@ func (mc *modCtx) checkApp() {
 // visitor to its path as written).
 func (mc *modCtx) checkLoginRoute(d *syntax.LoginDecl) {
 	i := strings.LastIndexByte(d.Page, '.')
-	if i < 0 || mc.c.pages[d.Page] != nil {
+	if i < 0 {
 		return
 	}
 	r := mc.c.route(d.Page[:i], d.Page[i+1:])

@@ -232,22 +232,22 @@ func TestQual_Unqualifiable(t *testing.T) {
 	}
 }
 
-// Page values and App messages keep the full path, imported or not, and are never E0205; a
-// member of an imported page module goes through its qualifier.
-func TestQual_PagesStayFull(t *testing.T) {
+// Route values keep the full path, imported or not, and are never E0205; a member of an
+// imported route module goes through its qualifier.
+func TestQual_RoutesStayFull(t *testing.T) {
 	_, bag, ms := resolveMods(t, std(t),
-		"module App\n\nmsg Logout\n",
-		"module Todos.Index\n\npage \"/todos\" { }\n\nhelper : Int\nhelper = 1\n",
-		"module Admin.User.Index\n\npage \"/admin/users\" { }\n",
-		"module Use\n\nimport Todos.Index\n\na : Int\na = Index.helper\n\nv : Html\nv = <div><a href={Todos.Index {}}>x</a><a href={Admin.User.Index {}}>y</a><button click={App.Logout}>z</button></div>\n")
+		"module App\n\nroute Logout = POST \"/_/Logout\" { }\n",
+		"module Todos.Index\n\nroute Index = GET \"/todos\" { }\n\nhelper : Int\nhelper = 1\n",
+		"module Admin.User.Index\n\nroute Index = GET \"/admin/users\" { }\n",
+		"module Use\n\nimport Todos.Index\n\na : Int\na = Index.helper\n\nv : Html\nv = <div><a href={Todos.Index.Index {}}>x</a><a href={Admin.User.Index.Index {}}>y</a><button click={App.Logout}>z</button></div>\n")
 	if len(bag.Items) != 0 {
 		t.Fatalf("unexpected: %s", codes(bag))
 	}
 	use := ms["Use"]
 	wantRef(t, use, "Index.helper", syntax.Ref{Kind: syntax.RefValue, Module: "Todos.Index", Name: "helper"})
-	wantRef(t, use, "Todos.Index", syntax.Ref{Kind: syntax.RefPage, Module: "Todos.Index"})
-	wantRef(t, use, "Admin.User.Index", syntax.Ref{Kind: syntax.RefPage, Module: "Admin.User.Index"})
-	wantRef(t, use, "App.Logout", syntax.Ref{Kind: syntax.RefCtor, Module: "App", Name: "Logout"})
+	wantRef(t, use, "Todos.Index.Index", syntax.Ref{Kind: syntax.RefRoute, Module: "Todos.Index", Name: "Index"})
+	wantRef(t, use, "Admin.User.Index.Index", syntax.Ref{Kind: syntax.RefRoute, Module: "Admin.User.Index", Name: "Index"})
+	wantRef(t, use, "App.Logout", syntax.Ref{Kind: syntax.RefRoute, Module: "App", Name: "Logout"})
 }
 
 // An imported module's capability is written after its qualifier (`B.Clock.now`, and
@@ -281,49 +281,32 @@ func TestQual_ImportFixIsCanonical(t *testing.T) {
 	}
 }
 
-// A member of an imported page module written with the page's full path is E0205 (only page
-// values keep the full path), and a page's message through its qualifier is still another
-// page's message.
-func TestQual_PageMembers(t *testing.T) {
-	idx := "module Todos.Index\n\npage \"/todos\" { }\n\nmsg Save\n\nhelper : Int\nhelper = 1\n"
+// A member of an imported route module written with the module's full path is E0205 (only
+// route values keep the full path).
+func TestQual_RouteModuleMembers(t *testing.T) {
+	idx := "module Todos.Index\n\nroute Index = GET \"/todos\" { }\n\nhelper : Int\nhelper = 1\n"
 	_, bag, _ := resolveMods(t, std(t), idx, "module Use\n\nimport Todos.Index\n\na : Int\na = Todos.Index.helper\n")
 	if d := onlyFix(t, bag, "E0205"); d.Fix == nil || d.Fix.Replace != "Index.helper" {
 		t.Fatalf("%s, fix %+v", d.Message, d.Fix)
 	}
-	_, bag, _ = resolveMods(t, std(t), idx, "module Use\n\nimport Todos.Index\n\nv : Html\nv = <button click={Index.Save}>x</button>\n")
-	if got := codes(bag); got != "E0002:`Save` belongs to page `Todos.Index`; a page can only send its own messages and `App` messages" {
-		t.Fatalf("got %s", got)
-	}
 }
 
-// A page's forms and messages are global addresses, like page values: a test writes them with
-// the page's full path (`Test.submit Auth.Login.Credentials`, `Test.click Todos.Index.Toggle`),
-// and the short spelling through the import's qualifier is E0002 with a fix to the full path.
-func TestQual_PageFormsAndMsgsFullPath(t *testing.T) {
-	login := "module Auth.Login\n\npage \"/login\" { }\n\nform Credentials = { email: Text }\n\nmsg Toggle\n"
-	full := "module Use\n\nimport Auth.Login\n\nx : Int\nx = Login.n\n\ntest \"t\" = {\n  let _ <- Test.submit Auth.Login.Credentials { email: \"a\" }\n  let _ <- Test.click Auth.Login.Toggle\n  Task.succeed True\n}\n"
-	loginN := login + "\nn : Int\nn = 1\n"
-	_, bag, ms := resolveMods(t, testStd(t), loginN, full)
+// A route module's form is written with its module's full path in a test step
+// (`Test.submit Auth.Login.Credentials`, which the checker refuses: a test names the route that
+// posts it); unqualified it is E0002 with a fix to the full path.
+func TestQual_FormFullPath(t *testing.T) {
+	login := "module Auth.Login\n\nroute Login = GET \"/login\" { }\n\nform Credentials = { email: Text }\n\nn : Int\nn = 1\n"
+	full := "module Use\n\nimport Auth.Login\n\nx : Int\nx = Login.n\n\ntest \"t\" = {\n  let _ <- Test.submit Auth.Login.Credentials { email: \"a\" }\n  Task.succeed True\n}\n"
+	_, bag, ms := resolveMods(t, testStd(t), login, full)
 	if len(bag.Items) != 0 {
 		t.Fatalf("full path: %s", codes(bag))
 	}
 	wantRef(t, ms["Use"], "Auth.Login.Credentials", syntax.Ref{Kind: syntax.RefType, Module: "Auth.Login", Name: "Credentials"})
-	wantRef(t, ms["Use"], "Auth.Login.Toggle", syntax.Ref{Kind: syntax.RefCtor, Module: "Auth.Login", Name: "Toggle"})
-
-	for _, tc := range []struct{ step, written, want string }{
-		{"Test.submit", "Login.Credentials", "Auth.Login.Credentials"},
-		{"Test.click", "Login.Toggle", "Auth.Login.Toggle"},
-		{"Test.submit", "Login.Toggle", "Auth.Login.Toggle"},
-	} {
-		src := "module Use\n\nimport Auth.Login\n\nx : Int\nx = Login.n\n\ntest \"t\" = {\n  let _ <- " + tc.step + " " + tc.written + "\n  Task.succeed True\n}\n"
-		_, bag, _ := resolveMods(t, testStd(t), loginN, src)
-		d := onlyFix(t, bag, diag.UnknownName)
-		if !strings.Contains(d.Message, "write `"+tc.want+"`") || strings.Contains(d.Message, "can only send") {
-			t.Errorf("%s %s: message %q", tc.step, tc.written, d.Message)
-		}
-		if d.Fix == nil || d.Fix.Replace != tc.want {
-			t.Errorf("%s %s: fix %+v", tc.step, tc.written, d.Fix)
-		}
+	short := "module Use\n\nimport Auth.Login\n\nx : Int\nx = Login.n\n\ntest \"t\" = {\n  let _ <- Test.submit Credentials { email: \"a\" }\n  Task.succeed True\n}\n"
+	_, bag, _ = resolveMods(t, testStd(t), login, short)
+	d := onlyFix(t, bag, diag.UnknownName)
+	if d.Fix == nil || d.Fix.Replace != "Auth.Login.Credentials" {
+		t.Fatalf("%s, fix %+v", d.Message, d.Fix)
 	}
 }
 
@@ -339,7 +322,7 @@ func TestQual_OwnSegmentFullLength(t *testing.T) {
 }
 
 // fullPath only fires for the longest real module prefix: beside `import Admin.Users`, a name of
-// the unimported module `Admin.Users.Util` (or page `Admin.Users.Edit`) is not E0205.
+// the unimported module `Admin.Users.Util` (or route `Admin.Users.Edit.Edit`) is not E0205.
 func TestQual_LongestModulePrefix(t *testing.T) {
 	users := "module Admin.Users\n\nn : Int\nn = 1\n"
 	util := "module Admin.Users.Util\n\nhelper : Int\nhelper = 1\n"
@@ -350,14 +333,13 @@ func TestQual_LongestModulePrefix(t *testing.T) {
 		t.Fatalf("%s, fix %+v", d.Message, d.Fix)
 	}
 
-	edit := "module Admin.Users.Edit\n\npage \"/admin/users/edit\" { }\n\ntype Model = { n: Int }\n\nview : Int\nview = 1\n"
+	edit := "module Admin.Users.Edit\n\nroute Edit = GET \"/admin/users/edit\" { }\n\ntype Model = { n: Int }\n\nview : Int\nview = 1\n"
 	_, bag, ms := resolveMods(t, std(t), users, edit,
-		"module Use\n\nimport Admin.Users\n\na : Int\na = Users.n\n\nm : Admin.Users.Edit.Model -> Int\nm x = 1\n\nv : Html\nv = <a href={Admin.Users.Edit {}}>e</a>\n")
+		"module Use\n\nimport Admin.Users\n\na : Int\na = Users.n\n\nv : Html\nv = <a href={Admin.Users.Edit.Edit {}}>e</a>\n")
 	if len(bag.Items) != 0 {
-		t.Fatalf("page type and value: %s", codes(bag))
+		t.Fatalf("route value: %s", codes(bag))
 	}
-	wantRef(t, ms["Use"], "Admin.Users.Edit.Model", syntax.Ref{Kind: syntax.RefPage, Module: "Admin.Users.Edit.Model"}) // as before #23
-	wantRef(t, ms["Use"], "Admin.Users.Edit", syntax.Ref{Kind: syntax.RefPage, Module: "Admin.Users.Edit"})
+	wantRef(t, ms["Use"], "Admin.Users.Edit.Edit", syntax.Ref{Kind: syntax.RefRoute, Module: "Admin.Users.Edit", Name: "Edit"})
 
 	_, bag, _ = resolveMods(t, std(t), users, edit,
 		"module Use\n\nimport Admin.Users\n\na : Int\na = Users.n\n\nx : Int\nx = Admin.Users.Edit.view\n")

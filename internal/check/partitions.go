@@ -1,5 +1,5 @@
 // Partitions and silos (M15, book 06 "Partitions", 08): App's `via`, `silo` and `choose`
-// declarations (E0032, E0033) and the M15 rules of a page's `requires` (a key with `via` after
+// declarations (E0032, E0033) and the M15 rules of a route's `requires` (a key with `via` after
 // `user`, E0027; the admin form `silo k`, E0033). The table side (`@partition k`) is in
 // rules.go; the one-store analysis (E0031) in writeset.go.
 package check
@@ -319,9 +319,8 @@ func (c *Checker) checkVia() {
 	}
 }
 
-// checkChoose validates App's `choose k = Page` (or `choose k = Module.Route`, a GET route)
-// declarations (E0032) once pages and routes are defined, and that every key with `via` that a
-// page or route `requires` has one.
+// checkChoose validates App's `choose k = Module.Route` (a GET route) declarations (E0032) once
+// routes are defined, and that every key with `via` that a route `requires` has one.
 func (c *Checker) checkChoose() {
 	app := c.prog.Modules["App"]
 	if app == nil {
@@ -334,13 +333,10 @@ func (c *Checker) checkChoose() {
 			continue
 		}
 		_, has := c.sessionKey(cd.Key)
-		var requires []string // the page's or route's own `requires`
+		var requires []string // the route's own `requires`
 		known := false
-		if pg := c.pages[cd.Page]; pg != nil {
-			requires, known = pg.Requires, true
-		}
 		var route *RouteInfo // a route written `Module.Route`
-		if i := strings.LastIndexByte(cd.Page, '.'); !known && i >= 0 {
+		if i := strings.LastIndexByte(cd.Page, '.'); i >= 0 {
 			if route = c.route(cd.Page[:i], cd.Page[i+1:]); route != nil {
 				requires, known = route.Requires, true
 			}
@@ -354,7 +350,7 @@ func (c *Checker) checkChoose() {
 			c.errorf(diag.PartitionDecl, cd.KeySpan, "`choose user`: the signed-in user is chosen by `login`; `choose` names the page for another key")
 		case !has:
 			c.errorf(diag.PartitionDecl, cd.KeySpan, "`choose %s`: the session has no field `%s`", cd.Key, cd.Key)
-		case !known: // names reported the unknown page or route
+		case !known: // names reported the unknown route
 		case route != nil && isWrite(route.Method):
 			c.errorf(diag.PartitionDecl, cd.Span, "`choose %s = %s`: `%s` is a %s route; a request without `%s` is sent to a GET route", cd.Key, cd.Page, cd.Page, route.Method, cd.Key)
 		case slices.Contains(requires, cd.Key):
@@ -370,12 +366,7 @@ func (c *Checker) checkChoose() {
 	if sd == nil {
 		return
 	}
-	requires := map[string][]string{} // each page module, and each route ("Todos.Row"), → its requires
-	for name, p := range c.pages {
-		if !c.prog.Failed[name] {
-			requires[name] = p.Requires
-		}
-	}
+	requires := map[string][]string{} // each route ("Todos.Row") → its requires
 	for name, rs := range c.routes {
 		for _, r := range rs {
 			if !c.prog.Failed[name] {
@@ -412,7 +403,7 @@ func (c *Checker) chooseDeclared(k string) bool {
 	return false
 }
 
-// checkRequiresM15 checks the M15 rules of the `requires` of pd, the guard of a page or route
+// checkRequiresM15 checks the M15 rules of the `requires` of pd, the guard of a route
 // (noun) with parameters params, once its fields are checked: a field named twice, a key with
 // `via` before `user` (E0027), and the admin form `silo k` (E0033). It returns the fields the
 // session narrows (the required ones and the silo key) and the silo key when it is valid.

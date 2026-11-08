@@ -202,7 +202,7 @@ func (r *resolver) ctorInScope(name string) string {
 		s := r.p.scopes[x]
 		switch {
 		case s == nil:
-		case s.ctors[name] != "" && s.ctors[name] != "Msg":
+		case s.ctors[name] != "":
 			return fmt.Sprintf("the constructor `%s` (of `%s.%s`)", name, x, s.ctors[name])
 		case s.brands[name]:
 			return fmt.Sprintf("the brand `%s` (of `%s`)", name, x)

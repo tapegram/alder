@@ -67,7 +67,6 @@ func (mc *modCtx) checkBodies() {
 		}
 		c.resolveFuzzAny(mc.ts, false) // after the declaration: its Fuzz.any uses must be concrete
 	}
-	mc.checkPage()   // Task 11; no-op for non-page modules
 	mc.checkRoutes() // no-op for a module without routes
 	c.resolveFuzzAny(mc.ts, false)
 }
@@ -110,9 +109,7 @@ func (mc *modCtx) checkValueDecl(d *syntax.ValueDecl) {
 	if !ok || d.Body == nil {
 		return
 	}
-	mc.inUpdate = (mc.page != nil && d.Name == "update") || (mc.isApp && d.Name == "update")
 	mc.checkValue(d, sig)
-	mc.inUpdate = false
 }
 
 // checkValue checks the body of value d against its signature sig.
@@ -659,23 +656,17 @@ func (mc *modCtx) check(e syntax.Expr, expected types.Type, env *env, eff effect
 	mc.c.record(e, expected)
 }
 
-// narrowedSession reports whether t is the narrowed Session of a `requires` page or route.
+// narrowedSession reports whether t is the narrowed Session of a `requires` route.
 func (c *Checker) narrowedSession(t types.Type) bool {
 	_, ok := c.sessionRequires(t)
 	return ok
 }
 
-// sessionRequires is the `requires` of the page or route whose narrowed Session t is, and whether
-// t is one.
+// sessionRequires is the `requires` of the route whose narrowed Session t is, and whether t is
+// one.
 func (c *Checker) sessionRequires(t types.Type) ([]string, bool) {
 	r, ok := t.(*types.Record)
 	if !ok || r.Anonymous {
-		return nil, false
-	}
-	if r.Name == "Session" {
-		if p := c.pages[r.Module]; p != nil && p.Session != nil {
-			return p.Requires, true
-		}
 		return nil, false
 	}
 	for _, rt := range c.routes[r.Module] {
@@ -933,7 +924,7 @@ func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *en
 }
 
 // boundaryRecord reports whether rec's defaults apply to its literals: a table's `Insert T`, a
-// form, or a page's or message's parameters.
+// form, or a route's parameters.
 func (c *Checker) boundaryRecord(rec *types.Record) bool {
 	if info, _ := c.insertRecordTable(rec); info != nil {
 		return true
@@ -1253,22 +1244,6 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 	return types.Err // unresolved, or a value whose signature is missing: already reported
 }
 
-// isMsgUnion reports whether u is App.Msg or a page's Msg.
-func (mc *modCtx) isMsgUnion(u *types.Union) bool { return mc.c.isMessageUnion(u) }
-
-// isMessageUnion reports whether u is the generated App.Msg or a page's generated Msg, by identity;
-// a user-declared union that happens to be named Msg is not one.
-func (c *Checker) isMessageUnion(u *types.Union) bool {
-	if u == nil {
-		return false
-	}
-	if u == c.appMsg {
-		return true
-	}
-	p, ok := c.pages[u.Module]
-	return ok && p.Msg == u
-}
-
 // ambiguousCtor reports whether e is a bare name the resolver made a constructor that also names
 // a table in scope (CtorRef.Table), not yet resolved by resolveByType.
 func ambiguousCtor(e syntax.Expr) (*syntax.CtorRef, bool) {
@@ -1313,18 +1288,14 @@ func (mc *modCtx) inferCtor(x *syntax.CtorRef, applied bool) types.Type {
 		return types.Err
 	}
 	switch x.Ref.Kind {
-	case syntax.RefPage:
-		info, ok := c.pages[x.Ref.Module]
-		if !ok {
-			return types.Page
+	case syntax.RefPage: // an old page's value: E0046 in its module, a Route here
+		if applied {
+			return &types.Fun{Params: []types.Type{c.u.Fresh()}, Result: types.Route}
 		}
-		if len(info.Params.Fields) == 0 && !applied {
-			return types.Page
-		}
-		return &types.Fun{Params: []types.Type{info.Params}, Result: types.Page}
+		return types.Route
 	case syntax.RefRoute:
 		// a route constructor builds a Route from its parameters; written bare, a route whose
-		// parameters are none (or only its form) is the Route itself, as a page's or message's
+		// parameters are none (or only its form) is the Route itself
 		info := c.route(x.Ref.Module, x.Ref.Name)
 		if info == nil {
 			return types.Err // a route of a module that also declares a page: E0043
@@ -1358,21 +1329,6 @@ func (mc *modCtx) inferCtor(x *syntax.CtorRef, applied bool) types.Type {
 		}
 		if info.Arg == nil {
 			return c.u.Instantiate(un)
-		}
-		if rec, isRec := info.Arg.(*types.Record); isRec && !applied && mc.isMsgUnion(info.Union) {
-			if messageLike(rec) {
-				return un
-			}
-			var parts []string
-			for _, f := range rec.Fields {
-				if f.Name != "form" {
-					parts = append(parts, f.Name+": ?"+f.Name)
-				}
-			}
-			full := fmt.Sprintf("%s { %s }", x.Name, strings.Join(parts, ", "))
-			c.errorf("E0301", x.Span, "message `%s` needs its parameters: `%s`", x.Name, full).Fix =
-				diag.ReplaceSpan(x.Span, full)
-			return un
 		}
 		arg := info.Arg
 		if len(info.Union.Params) > 0 {
@@ -1536,27 +1492,6 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 					mc.checkRecordLit(lit, rec, env, eff)
 					c.record(lit, rec)
 					return fn.Result
-				}
-			}
-		}
-	}
-	// E0301: a message constructor applied to anything but a record literal
-	if ct, ok := x.Fn.(*syntax.CtorRef); ok && pipe == nil && ct.Ref.Kind == syntax.RefCtor && len(x.Args) > 0 {
-		if info, found := c.ctors[c.key(ct.Ref.Module, ct.Ref.Name)]; found && c.isMessageUnion(info.Union) {
-			if _, isLit := x.Args[0].(*syntax.RecordLit); !isLit {
-				if rec, isRec := info.Arg.(*types.Record); isRec {
-					var parts []string
-					for _, f := range rec.Fields {
-						if f.Name != "form" {
-							parts = append(parts, f.Name+": ?"+f.Name)
-						}
-					}
-					full := ct.Name + " { " + strings.Join(parts, ", ") + " }"
-					c.errorf("E0301", x.Span, "message `%s` takes a record: `%s`", ct.Name, full).Fix = diag.ReplaceSpan(x.Span, full)
-					for _, a := range x.Args {
-						mc.infer(a, env, eff)
-					}
-					return info.Union
 				}
 			}
 		}

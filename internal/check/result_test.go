@@ -145,11 +145,7 @@ func (cv *coverage) decl(d syntax.Decl) {
 		cv.fields(d.Fields)
 	case *syntax.CapDecl:
 		cv.fields(d.Entries)
-	case *syntax.MsgDecl:
-		if d.Params != nil {
-			cv.fields(d.Params.Fields)
-		}
-	case *syntax.PageDecl:
+	case *syntax.RouteDecl:
 		if d.Params != nil {
 			cv.fields(d.Params.Fields)
 		}

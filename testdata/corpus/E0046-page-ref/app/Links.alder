@@ -1,0 +1,11 @@
+module Links
+
+-- a route module that still links to a module on pages: only the old page is reported (E0046),
+-- not the link to it
+route Links = GET "/links" { }
+
+Links.load : Links.Params -> Session -> Query Int
+Links.load params session = Query.succeed 1
+
+Links.view : Int -> Session -> Html
+Links.view n session = <a href={Home {}}>home</a>

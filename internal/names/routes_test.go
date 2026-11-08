@@ -119,7 +119,7 @@ func TestResolve_RouteCtorThroughQualifier(t *testing.T) {
 	admin := "module Admin.Users\n\nroute Edit = GET \"/users/{id}\" { id: Int }\n"
 	home := "module Home\n\nimport Admin.Users\n\nlink : Html\nlink = <a href={Users.Edit { id: 1 }}>{Admin.Users.Edit { id: 2 }}</a>\n"
 	_, bag, mods := resolveMods(t, std(t), admin, home)
-	if got, want := codes(bag), "E0002:write `Admin.Users.Edit`: a route is written with its module's full path, like a page"; got != want {
+	if got, want := codes(bag), "E0002:write `Admin.Users.Edit`: a route is written with its module's full path"; got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}
 	if d := bag.Items[0]; d.Fix == nil || d.Fix.Replace != "Admin.Users.Edit" {

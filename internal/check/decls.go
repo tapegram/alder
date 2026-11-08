@@ -70,8 +70,6 @@ func (c *Checker) declareTypeNames(m *syntax.Module) {
 			c.declareFake(m, d, dup, &cur)
 		case *syntax.ValueDecl:
 			dup(d.FullName(), d.Span) // a route's member by its full name: `Index.load` and `Row.load` are two
-		case *syntax.MsgDecl:
-			dup(d.Name, d.Span)
 		case *syntax.TestDecl: // test names are a namespace of their own
 			if prev, ok := tests[d.Name]; ok {
 				c.errorf(diag.Duplicate, d.Span, "test %s is already declared at line %d", strconv.Quote(d.Name), prev.Start.Line)
@@ -127,30 +125,12 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 			args = append(args, mc.typeOf(a, params))
 		}
 		switch t.Ref.Kind {
-		case syntax.RefPage:
-			return types.Page
 		case syntax.RefType:
 			// a route's `Row.Params` and `Row.Session` (Ref.Name "Row.Params") are its module's
 			// declared types (defineRoutes), not these
-			if (t.Ref.Module == mc.m.Name || t.Ref.Module == "App" || c.prog.IsPageModule(t.Ref.Module)) && !strings.Contains(t.Ref.Name, ".") {
+			if (t.Ref.Module == mc.m.Name || t.Ref.Module == "App") && !strings.Contains(t.Ref.Name, ".") {
 				switch t.Name {
-				case "Params":
-					if mc.page != nil && t.Ref.Module == mc.m.Name {
-						return mc.page.Params
-					}
-					if c.prog.IsPageModule(t.Ref.Module) {
-						// a type declaration (resolved before the page's parameters are known),
-						// or another module's page: the record is the page's own, for its load
-						c.errorf(diag.TypeMismatch, t.Span, "`Params` is a page's parameter type and cannot be stored in another type; copy the fields you need (`type Model = { q: Text }`, filled with `params.q` in `load`)")
-						return types.Err
-					}
 				case "Msg":
-					if mc.page != nil { // a page module is E0046 itself (rejectRemoved): quiet
-						if t.Ref.Module == "App" {
-							return c.appMsg
-						}
-						return mc.page.Msg
-					}
 					c.errorf(diag.RemovedSyntax, t.Span, "`Msg` is gone: a click or a form names a route, whose type is `Route`; %s", removedHint)
 					return types.Err
 				case "Session":
@@ -333,7 +313,7 @@ func (mc *modCtx) defineTypes() {
 		}
 	}
 	if mc.m.Name == "Prelude" {
-		// True/False are literals; Bool stays a Con. Register ctors Just/Nothing/Ok/Err/Rerender/Redirect/Reject only.
+		// True/False are literals; Bool stays a Con.
 		delete(c.ctors, "Prelude.True")
 		delete(c.ctors, "Prelude.False")
 	}
@@ -769,10 +749,9 @@ func (mc *modCtx) checkRepresentable() {
 	}
 }
 
-// defineApp reads session/login/msg from App.
+// defineApp reads App's session, deploy and theme.
 func (mc *modCtx) defineApp() {
 	c := mc.c
-	c.appMsg = &types.Union{Module: "App", Name: "Msg"}
 	var deploys []*syntax.DeployDecl
 	var themes []*syntax.ThemeDecl
 	for _, d := range c.live(mc.m) {
@@ -793,81 +772,15 @@ func (mc *modCtx) defineApp() {
 				rec.Fields = append(rec.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
 			}
 			c.session = rec
-		case *syntax.MsgDecl:
-			mc.addMsg(c.appMsg, d, "App")
 		}
 	}
 	mc.session = c.session
 	mc.checkDeploy(deploys)
 	mc.checkTheme(themes)
-	mc.reserveGenerated("the App module", map[string]string{"Msg": "App's messages", "Session": "the session"})
+	mc.reserveGenerated("the App module", map[string]string{"Msg": "the old `msg` declarations (E0046)", "Session": "the session"})
 }
 
-// addMsg appends a constructor for a msg declaration to union u; payload is a record of params (+ form).
-func (mc *modCtx) addMsg(u *types.Union, d *syntax.MsgDecl, owner string) {
-	c := mc.c
-	payload := &types.Record{Module: owner, Name: d.Name + "Params"}
-	c.paramRecs[c.key(owner, payload.Name)] = true
-	if d.Params != nil {
-		for _, f := range d.Params.Fields {
-			ft := mc.typeOf(f.Type, nil)
-			if !urlRepresentable(ft) {
-				c.errorf(diag.InvalidDecl, f.Span, "message parameter `%s` has type `%s`, which cannot appear in a URL", f.Name, mc.ts(ft))
-			}
-			mc.deferDefault(f, ft)
-			payload.Fields = append(payload.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
-		}
-	}
-	if d.Form != "" {
-		if rec, ok := c.forms[c.key(mc.m.Name, d.Form)]; ok {
-			payload.Fields = append(payload.Fields, types.Field{Name: "form", Type: rec})
-		} else {
-			c.errorf(diag.UnknownName, d.Span, "unknown form `%s`", d.Form)
-		}
-	}
-	u.Ctors = append(u.Ctors, types.Ctor{Name: d.Name, Arg: payload})
-	c.ctors[c.key(owner, d.Name)] = &ctorInfo{Union: u, Arg: payload}
-}
-
-// definePage builds Params and Msg for a page module and validates the page declaration.
-func (mc *modCtx) definePage() {
-	c := mc.c
-	pd := c.prog.Pages[mc.m.Name]
-	info := &pageInfo{Decl: pd, Module: mc.m.Name, Msgs: map[string]*syntax.MsgDecl{}, Params: &types.Record{Module: mc.m.Name, Name: "Params"}, Msg: &types.Union{Module: mc.m.Name, Name: "Msg"}}
-	c.paramRecs[c.key(mc.m.Name, "Params")] = true
-	info.File = viewReturnsFile(c.live(mc.m))
-	c.pages[mc.m.Name] = info
-	mc.page = info
-	segs := pathParams(pd.Path)
-	declared := mc.defineParams(pd.Params, info.Params, "page")
-	for _, s := range segs {
-		if !declared[s] {
-			c.errorf(diag.InvalidDecl, pd.Span, "path segment `{%s}` has no matching parameter", s)
-		}
-	}
-	mc.checkWireNames(pd.Params, segs, "page")
-	if len(pd.Requires) > 0 || pd.Silo != "" {
-		info.Requires = pd.Requires
-		mc.checkRequires(&pd.Guard, pd.Span)
-		fields, silo := mc.checkRequiresM15(&pd.Guard, info.Params, "page")
-		info.Silo = silo
-		info.Session = narrow(c.session, fields, mc.m.Name, "Session")
-		mc.session = info.Session
-	}
-	if len(pd.Roles) > 0 {
-		info.Roles = mc.checkRoles(&pd.Guard)
-	}
-	for _, d := range c.live(mc.m) {
-		if md, ok := d.(*syntax.MsgDecl); ok {
-			info.Msgs[md.Name] = md
-			mc.addMsg(info.Msg, md, mc.m.Name)
-		}
-	}
-	mc.reserveGenerated("a page module", map[string]string{
-		"Params": "the page's parameters", "Msg": "the page's messages", "Session": "the page's session"})
-}
-
-// defineParams fills rec with the fields of params, the `{ … }` of a page or route (noun), and
+// defineParams fills rec with the fields of params, the `{ … }` of a route (noun), and
 // returns the names declared.
 func (mc *modCtx) defineParams(params *syntax.RecordType, rec *types.Record, noun string) map[string]bool {
 	c := mc.c
@@ -914,35 +827,15 @@ func (mc *modCtx) checkRequires(g *syntax.Guard, at diag.Span) {
 	}
 }
 
-// viewReturnsFile reports whether a page module's declared `view` returns File. It reads the
-// signature's syntax, so every module knows it before bodies are checked; `File` is a
-// reserved Prelude name (E0012), so the name decides.
-func viewReturnsFile(decls []syntax.Decl) bool {
-	for _, d := range decls {
-		vd, ok := d.(*syntax.ValueDecl)
-		if !ok || vd.Name != "view" || vd.Route != "" || vd.Sig == nil {
-			continue
-		}
-		return sigReturnsFile(vd)
-	}
-	return false
-}
-
 // reserveGenerated reports E0012 for a type, table, form or component that takes the name of a
-// type the compiler generates in this module (a page module or App): Params, Msg, Session, or
-// `<Msg>Params` for a declared `msg`. The generated type and the user's declaration would get
-// the same Go name (internal/gen/names.go). fixed names the fixed reserved names and what each
-// is generated for.
+// type the compiler generates in this module (App): the generated type and the user's
+// declaration would get the same Go name (internal/gen/names.go). fixed names the reserved
+// names and what each is generated for.
 func (mc *modCtx) reserveGenerated(where string, fixed map[string]string) {
 	c := mc.c
 	reserved := map[string]string{}
 	for name, what := range fixed {
 		reserved[name] = what
-	}
-	for _, d := range c.live(mc.m) {
-		if md, ok := d.(*syntax.MsgDecl); ok {
-			reserved[md.Name+"Params"] = "`msg " + md.Name + "`"
-		}
 	}
 	for _, d := range c.live(mc.m) {
 		var name string
@@ -1013,8 +906,7 @@ func (c *Checker) reservePrelude() map[string]bool {
 	return quiet
 }
 
-// namedCtor is a constructor a declaration makes: a union's, or a `msg` (a constructor of its
-// module's Msg).
+// namedCtor is a constructor a declaration makes: a union's.
 type namedCtor struct {
 	name, kind, suffix string // suffix: a word to suggest a different name with
 	span               diag.Span
@@ -1029,8 +921,6 @@ func ctorsOf(d syntax.Decl) []namedCtor {
 			out = append(out, namedCtor{ct.Name, "constructor", d.Name, ct.Span})
 		}
 		return out
-	case *syntax.MsgDecl:
-		return []namedCtor{{d.Name, "message", "Msg", d.Span}}
 	}
 	return nil
 }
@@ -1106,20 +996,18 @@ func lineOf(m *syntax.Module, line int) string {
 	return ""
 }
 
-// checkPagePaths reports E0029 for a route path the router cannot serve and E0043 for a route
+// checkRoutePaths reports E0029 for a route path the router cannot serve and E0043 for a route
 // that answers the same method and requests as an earlier one (in module order): the same
 // segments, with any parameter names, ignoring a trailing slash, as rt/web matches them. Routes
 // that differ in method may share a path.
-func (c *Checker) checkPagePaths() {
+func (c *Checker) checkRoutePaths() {
 	seen := map[string]string{} // method and path shape → its first route
 	for _, name := range c.prog.Order {
 		for _, r := range c.routes[name] {
 			d, full := r.Decl, name+"."+r.Name
 			k := r.Method + " " + pathShape(r.Path)
 			first, dup := seen[k]
-			switch why := RoutePathProblem(r.Path); {
-			case why != "" && PagePathProblem(r.Path) == "": // a well-formed path under `/_m/`
-				c.errorf(diag.PagePath, d.Span, "route path `%s` %s; give the route another path", r.Path, why)
+			switch why := PagePathProblem(r.Path); {
 			case why != "":
 				c.errorf(diag.PagePath, d.Span, "route path `%s` %s; %s", r.Path, why, PagePathRule)
 			case dup:
@@ -1131,11 +1019,11 @@ func (c *Checker) checkPagePaths() {
 	}
 }
 
-// PagePathRule is what a page path is (E0029), as its message and `alder new page` say it.
+// PagePathRule is what a route path is (E0029), as its message and `alder new route` say it.
 const PagePathRule = "a path is `/` followed by segments of letters, digits, `.`, `_`, `~`, `-` or `{param}`"
 
 // PagePathProblem is what keeps path from being a path the router can serve, as words after
-// "page path `…`" ("has an empty segment"), or "" when nothing does: a path is a single
+// "route path `…`" ("has an empty segment"), or "" when nothing does: a path is a single
 // leading `/` and segments of `[A-Za-z0-9._~-]+` or a whole `{param}`, with no empty segment
 // (`//evil.com`), no `.` or `..` (a browser resolves them away), and no query, fragment, space,
 // quote or backslash. A trailing `/` is allowed: the router serves `/x/` as `/x` (E0043).
@@ -1182,19 +1070,7 @@ func PagePathProblem(path string) string {
 	return ""
 }
 
-// RoutePathProblem is PagePathProblem for a route's path, which also may not be under `/_m/`:
-// the prefix of the pages' message URLs (`/_m/<Module>/<Msg>`) while pages remain (#160).
-func RoutePathProblem(path string) string {
-	if why := PagePathProblem(path); why != "" {
-		return why
-	}
-	if strings.HasPrefix(path, "/_m/") {
-		return "is under `/_m/`, which is reserved for the messages of pages"
-	}
-	return ""
-}
-
-// checkWireNames checks the wire names of params, the parameters of a page or route (noun)
+// checkWireNames checks the wire names of params, the parameters of a route (noun)
 // (`e: Text = "" as "ElectionId"`, #55): only a query parameter (not a `{segment}` of path
 // segments segs) takes one, it is a plain query key outside the message URLs' `_p.` keys, and no
 // two query parameters read one key (a parameter without a wire name reads its name).
@@ -1357,21 +1233,7 @@ func (mc *modCtx) declareValues() {
 			c.m15Placement(d)
 		}
 	}
-	if mc.page != nil {
-		for _, need := range []string{"load", "view"} {
-			if !has[need] {
-				c.errorf(diag.MissingDecl, mc.m.Span, "page module `%s` has no `%s`", mc.m.Name, need)
-			}
-		}
-		if _, ok := c.types[c.key(mc.m.Name, "Model")]; !ok {
-			c.errorf(diag.MissingDecl, mc.m.Span, "page module `%s` has no `Model`", mc.m.Name)
-		}
-		if len(mc.page.Msgs) > 0 && !has["update"] && !mc.page.File { // a file page's msg is E0034
-			sp := mc.m.Span
-			sp.Start = diag.Pos{Line: lastDeclLine(mc.m), Col: 1}
-			c.errorf(diag.MissingDecl, sp, "page module `%s` declares messages but has no `update`", mc.m.Name)
-		}
-	} else if !mc.isApp && c.prog.Std[mc.m.Name] == nil {
+	if !mc.isApp && c.prog.Std[mc.m.Name] == nil {
 		for _, d := range mc.m.Decls { // an unqualified load/view/update and a `msg` are E0046 (rejectRemoved)
 			switch d := d.(type) {
 			case *syntax.SessionDecl:
@@ -1383,16 +1245,6 @@ func (mc *modCtx) declareValues() {
 			}
 		}
 	}
-}
-
-func lastDeclLine(m *syntax.Module) int {
-	line := 1
-	for _, d := range m.Decls {
-		if l := d.GetSpan().Start.Line; l > line {
-			line = l
-		}
-	}
-	return line
 }
 
 // hasAttr reports whether field f carries attribute name.

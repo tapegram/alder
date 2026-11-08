@@ -98,8 +98,8 @@ func TestResolve_ImportCycle(t *testing.T) {
 }
 
 func TestResolve_GlobalsAndModulePath(t *testing.T) {
-	app := parse(t, "app/App.alder", "module App\n\nsession { user: Maybe Text }\n\nlogin = Auth.Login\n\nmsg Logout\n\nupdate : Msg -> Session -> Task Nav\nupdate msg session = Task.succeed Rerender\n")
-	login := parse(t, "app/Auth/Login.alder", "module Auth.Login\n\npage \"/login\" { }\n\ntype Model = { }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { }\n\nview : Model -> Session -> Html\nview model session = <a href={Auth.Login {}}><button click={App.Logout}>x</button></a>\n")
+	app := parse(t, "app/App.alder", "module App\n\nsession { user: Maybe Text }\n\nlogin = Auth.Login.Login\n\nroute Logout = POST \"/_/Logout\" { }\n\nLogout.update : Logout.Params -> Session -> Task Response\nLogout.update p session = Task.succeed ()\n")
+	login := parse(t, "app/Auth/Login.alder", "module Auth.Login\n\nroute Login = GET \"/login\" { }\n\ntype Model = { }\n\nLogin.load : Login.Params -> Session -> Query Model\nLogin.load params session = Query.succeed { }\n\nLogin.view : Model -> Session -> Html\nLogin.view model session = <a href={Login {}}><button click={App.Logout}>x</button></a>\n")
 	wrong := parse(t, "app/Misc/Wrong.alder", "module Wrong\n\nx : Int\nx = 1\n")
 	prog, bag := Build([]*syntax.Module{app, login, wrong}, std(t))
 	prog.Resolve(bag)
@@ -112,8 +112,8 @@ func TestResolve_GlobalsAndModulePath(t *testing.T) {
 			t.Fatalf("unexpected error: %s", codes(bag))
 		}
 	}
-	if prog.AppMsgs["Logout"] == nil || prog.Pages["Auth.Login"] == nil {
-		t.Fatal("globals not collected")
+	if prog.Route("App", "Logout") == nil || prog.Route("Auth.Login", "Login") == nil {
+		t.Fatal("routes not collected")
 	}
 }
 
@@ -168,7 +168,7 @@ func TestResolve_ModuleNameRuleBeatsPrelude(t *testing.T) {
 
 // `App` is global and never imported: no App-qualified name is reported as E0201.
 func TestResolve_AppQualifierNeverE0201(t *testing.T) {
-	app := parse(t, "app/App.alder", "module App\n\nmsg Logout\n")
+	app := parse(t, "app/App.alder", "module App\n\nroute Logout = POST \"/_/Logout\" { }\n")
 	lay := parse(t, "app/Layout.alder", "module Layout\n\nPage : { children: List Html } -> Html\nPage props = <main>{props.children}</main>\n\nx : App.Session\nx = ?x\n\ny : App.Theme\ny = ?y\n\nz : Int\nz = App.login\n\nw : Int\nw = App.update\n")
 	prog, bag := Build([]*syntax.Module{app, lay}, std(t))
 	prog.Resolve(bag)
@@ -178,16 +178,16 @@ func TestResolve_AppQualifierNeverE0201(t *testing.T) {
 	}
 	for _, want := range []string{
 		"E0002:`Session` is not qualified; write `Session`",
-		"E0002:`App` has no type `Theme` other modules can use; only `App.Msg` is global",
-		"E0002:`App` has no `login`; `login` is a declaration, not a value — link to the page with `href={Auth.Login {}}`",
-		"E0002:`App` has no `update`; only app-level messages such as `App.Logout` can be used from other modules", // App declares no `update` here
+		"E0002:`App` has no type `Theme` other modules can use",
+		"E0002:`App` has no `login`; `login` is a declaration, not a value — link to the login route with `href={Auth.Login.Login {}}`",
+		"E0002:`App` has no `update` other modules can use; only its routes, such as `App.Logout`, are",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
 	}
 	if n := strings.Count(got, "\n") + 1; n != 4 {
-		t.Errorf("want exactly 4 diagnostics (App.Msg resolves), got %d:\n%s", n, got)
+		t.Errorf("want exactly 4 diagnostics, got %d:\n%s", n, got)
 	}
 }
 

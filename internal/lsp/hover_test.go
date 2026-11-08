@@ -229,18 +229,6 @@ func TestHover_Attr(t *testing.T) {
 	}
 }
 
-func TestHover_PageHooks_NotInAPage(t *testing.T) {
-	c := start(t, blogCopy(t))
-	// Post is a table module, not a page: a value called `view` there is an ordinary value
-	text := c.disk("app/Table/Post.alder") + "\nview : Int\nview = 1\n"
-	c.open("app/Table/Post.alder", text)
-	c.diags("app/Table/Post.alder")
-	got := hover(t, c, "app/Table/Post.alder", c.at("app/Table/Post.alder", "view = 1", 0))
-	if strings.Contains(got, "Page hook") {
-		t.Errorf("view outside a page:\n%s", got)
-	}
-}
-
 // A type inside a route's header does not hover as the route.
 func TestHover_RouteHeaderType(t *testing.T) {
 	c := start(t, blogCopy(t))

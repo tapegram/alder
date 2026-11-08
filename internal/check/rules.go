@@ -1,6 +1,6 @@
 // Declared rules (M11, generalised by M15): a table's partition — `@owner` (E0024) or
 // `@partition k` (E0032) —, the scoped Db operations (E0025, E0026, the row of the scoped
-// insert) and a page's `requires user, role R` (E0027). partitions.go holds M15's App
+// insert) and a route's `requires user, role R` (E0027). partitions.go holds M15's App
 // declarations (via, silo, choose) and requires rules; writeset.go the one-store analysis.
 package check
 
@@ -158,7 +158,7 @@ func (c *Checker) fieldMaybe(k string) (types.Type, bool) {
 	return nil, false
 }
 
-// checkRoles validates the `role R | S` clause of a page's or route's guard pd (E0027) and
+// checkRoles validates the `role R | S` clause of a route's guard pd (E0027) and
 // returns its roles when it is well-formed (nil otherwise): it follows `requires user`, and each
 // role is a constructor of the union that App's session field `role` has.
 func (mc *modCtx) checkRoles(pd *syntax.Guard) []string {
@@ -275,12 +275,12 @@ func (c *Checker) reportScoped(at diag.Span, msg string) {
 }
 
 // narrowed reports whether the session's field key is certainly there where mc is checking: in
-// a page module whose page `requires` key (any of its values), or takes it from its parameter
-// (`silo key`, the admin form), in a member of a route that does, and in a `test` (a test has a
+// a member of a route that `requires` key, or takes it from its parameter (`silo key`, the admin
+// form), and in a `test` (a test has a
 // session, from `Test.login` or `Session.put`; a scoped operation without the field fails when
 // it runs). Never in a fake. A top-level value of a route module that is no route's member (a
 // helper) may use the operation: each route member that uses the helper is checked instead
-// (checkRouteRefs), as another module's use of a page module's value is.
+// (checkRouteRefs), as another module's use of it is.
 func (mc *modCtx) narrowed(key string) bool {
 	switch {
 	case mc.fake != "":
@@ -289,10 +289,8 @@ func (mc *modCtx) narrowed(key string) bool {
 		return true
 	case mc.route != nil:
 		return slices.Contains(mc.route.narrowed, key)
-	case mc.routeHelper():
-		return true
 	}
-	return mc.page != nil && (slices.Contains(mc.page.Requires, key) || mc.page.Decl != nil && mc.page.Decl.Silo == key)
+	return mc.routeHelper()
 }
 
 // routeHelper reports whether mc is checking a top-level value of a route module that belongs to
@@ -303,7 +301,7 @@ func (mc *modCtx) routeHelper() bool {
 
 // scopedRefusal is E0026's message for subject (“`Db.mine`”, “`Db.scoped Project`”, or
 // “`Todos.Index.recent` uses `Db.mine`, which”) used where mc is checking, "" when it may be
-// used there (narrowed): a page module whose page `requires key`, or a test. A fake's entries may
+// used there (narrowed): a member of a route that `requires key`, or a test. A fake's entries may
 // not: a fake has no session.
 func (mc *modCtx) scopedRefusal(subject, key string) string {
 	switch {
@@ -315,10 +313,8 @@ func (mc *modCtx) scopedRefusal(subject, key string) string {
 		return subject + " needs a route that `requires " + key + "`: `" + mc.route.Name + "` does not"
 	case mc.c.routes[mc.m.Name] != nil:
 		return subject + " needs a route that `requires " + key + "`: this is not a member of one"
-	case mc.page != nil:
-		return subject + " needs a page that `requires " + key + "`: `" + mc.m.Name + "` does not"
 	}
-	return subject + " needs a page that `requires " + key + "`: `" + mc.m.Name + "` is not a page"
+	return subject + " needs a route that `requires " + key + "`: `" + mc.m.Name + "` declares no route"
 }
 
 // markScoped notes that the value being checked (outside tests) uses operation op, which needs
@@ -343,7 +339,7 @@ func (mc *modCtx) markScoped(key, op string) {
 // scopedRef handles a reference x to a top-level value: within its module it is an edge for
 // propagateScoped; to another module's value that uses a scoped operation (scopedUsing), it is
 // E0026 where that operation's key is not narrowed, and marks the value being checked
-// otherwise (a `requires user` page module's value using another's).
+// otherwise (a `requires user` route's member using another module's value).
 func (mc *modCtx) scopedRef(x *syntax.Var) {
 	c := mc.c
 	k := c.key(x.Ref.Module, x.Ref.Name)

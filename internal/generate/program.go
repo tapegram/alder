@@ -304,9 +304,6 @@ func newProgram(dir string, prog *names.Program, res *check.Result, diags []diag
 				}
 			}
 		}
-		if pd := prog.Pages[name]; pd != nil {
-			p.Pages = append(p.Pages, p.page(m, pd))
-		}
 		for _, ri := range res.Routes[name] {
 			p.Routes = append(p.Routes, p.route(m, ri))
 		}
@@ -396,16 +393,6 @@ func (p *Program) page(m *Module, d *syntax.PageDecl) *Page {
 		pg.Requires = d.Requires[0]
 	}
 	pg.Keys, pg.Silo = d.Requires, d.Silo
-	if info := p.Res.Pages[m.Name]; info != nil && info.Params != nil {
-		for i, f := range info.Params.Fields {
-			par := &Param{Name: f.Name, Type: f.Type, HasDefault: f.HasDefault}
-			if d.Params != nil && i < len(d.Params.Fields) {
-				par.HasDefault = par.HasDefault || d.Params.Fields[i].Default != nil
-				par.Wire = d.Params.Fields[i].Wire
-			}
-			pg.Params = append(pg.Params, par)
-		}
-	}
 	for _, d := range m.Syntax.Decls {
 		switch d := d.(type) {
 		case *syntax.MsgDecl:

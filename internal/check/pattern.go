@@ -154,12 +154,7 @@ func (mc *modCtx) checkArms(subj types.Type, m *syntax.Match) {
 	if len(ws) == 0 {
 		return
 	}
-	un, _ := subj.(*types.Union)
-	isUpdate := un != nil && mc.inUpdate && un.Name == "Msg"
 	payload := "x"
-	if isUpdate {
-		payload = "p"
-	}
 	missing := make([]string, len(ws))
 	quoted := make([]string, len(ws))
 	for i, w := range ws {
@@ -173,12 +168,7 @@ func (mc *modCtx) checkArms(subj types.Type, m *syntax.Match) {
 	if more {
 		list += ", …"
 	}
-	var d *diag.Diagnostic
-	if isUpdate {
-		d = c.errorf("E0302", m.Span, "`update` does not handle %s", list)
-	} else {
-		d = c.errorf(diag.NonExhaustive, m.Span, "missing cases: %s", list)
-	}
+	d := c.errorf(diag.NonExhaustive, m.Span, "missing cases: %s", list)
 	var arms []string
 	for _, name := range missing {
 		arms = append(arms, fmt.Sprintf("  %s -> ?todo,", name))

@@ -356,8 +356,8 @@ func derive(t types.Type, show func(types.Type) string, seen map[string]bool) (t
 		}
 		return nil, ""
 	case *types.Union:
-		if x.Module == "Prelude" && (x.Name == "Nav" || x.Name == "Answer") {
-			break // results a page or a browser step produces, not data
+		if x.Module == "Prelude" && x.Name == "Answer" {
+			break // what a browser step produces, not data
 		}
 		key := "union " + show(x)
 		if seen[key] { // a recursive union: generated within a depth budget

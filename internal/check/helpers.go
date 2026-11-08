@@ -1,7 +1,7 @@
 // Test helpers (#4): a top-level value that uses something only a test may use (`Test.*`, the
 // Prelude's `Doc` and `Answer`, a fake's table, another test helper) is a test helper. Tests and
 // other test helpers, in any module, may use it; production code may not (E0040), and some
-// values can never be one (a page's wired values, App's, a fake's entries, a brand check, a
+// values can never be one (a route's members, App's, a fake's entries, a brand check, a
 // field default). Mirrors the scoped-operation propagation of rules.go.
 package check
 
@@ -34,8 +34,6 @@ func (mc *modCtx) helperBan() string {
 		return "it is not a helper"
 	case mc.isApp:
 		return "`App." + mc.value + "` is not a helper"
-	case mc.page != nil && (mc.value == "load" || mc.value == "view" || mc.value == "update"):
-		return "`" + mc.value + "` is the page's " + mc.value + ", not a helper"
 	case mc.route != nil:
 		if _, member, _ := strings.Cut(mc.value, "."); member == "load" || member == "view" || member == "update" {
 			return "`" + mc.value + "` is the route's " + member + ", not a helper"

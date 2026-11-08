@@ -131,7 +131,6 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 				pushed = &formCtx{name: "", rec: &types.Record{Anonymous: true}}
 			}
 			pushed.submit = submitText(a.Value, mc.source(a.Value.GetSpan()))
-			pushed.msg = msgCtor(a.Value)
 			if _, r := mc.routeTarget(a.Value); r != nil && isWrite(r.Method) {
 				pushed.route = r
 			}
@@ -152,9 +151,6 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 			}
 		}
 	}
-	if pushed != nil && !pushed.formErrors && pushed.msg != nil && c.mayReject(pushed.msg.Ref.Module, pushed.msg.Ref.Name) {
-		c.bag.Warn(diag.UnshownReject, x.Span, "`%s` can answer `Reject`, but this form has no `<Errors form />`: the user never sees the rejection text", pushed.msg.Ref.Name)
-	}
 	if pushed != nil && !pushed.formErrors && pushed.route != nil && c.mayInvalid(pushed.route) {
 		c.bag.Warn(diag.UnshownReject, x.Span, "`%s` can answer `Response.invalid`, but this form has no `<Errors form />`: the user never sees its text", pushed.route.Name)
 	}
@@ -167,62 +163,12 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 	}
 }
 
-// msgCtor is the constructor of a message expression (`Save`, `Save { id: id }`) when it is a
-// page's message, nil otherwise.
-func msgCtor(e syntax.Expr) *syntax.CtorRef {
-	if app, ok := e.(*syntax.App); ok {
-		e = app.Fn
-	}
-	if ct, ok := e.(*syntax.CtorRef); ok && ct.Ref.Kind == syntax.RefCtor {
-		return ct
-	}
-	return nil
-}
-
-// mayReject reports whether page module's `update` can answer `Reject` for its message msg (W0005):
-// when `update` is a `match` on its message, whether the arms that can match msg mention
-// `Reject`; otherwise whether `update` does anywhere. A `Reject` built by a function `update`
-// calls is not seen.
-func (c *Checker) mayReject(module, msg string) bool {
-	m := c.prog.Modules[module]
-	if m == nil || c.pages[module] == nil {
-		return false
-	}
-	for _, d := range m.Decls {
-		vd, ok := d.(*syntax.ValueDecl)
-		if !ok || vd.Name != "update" || vd.Route != "" || vd.Body == nil {
-			continue
-		}
-		if mt, ok := vd.Body.(*syntax.Match); ok && len(vd.Params) > 0 {
-			if v, ok := mt.Subject.(*syntax.Var); ok && v.Name == vd.Params[0].Name {
-				for _, arm := range mt.Arms {
-					if pc, ok := arm.Pat.(*syntax.PCtor); ok && pc.Name != msg {
-						continue
-					}
-					if mentions(reflect.ValueOf(arm.Body), isReject) {
-						return true
-					}
-				}
-				return false
-			}
-		}
-		return mentions(reflect.ValueOf(vd.Body), isReject)
-	}
-	return false
-}
-
 // mayInvalid reports whether write route r's `update` can answer `Response.invalid` (W0005):
 // whether its body mentions it. A `Response.invalid` built by a function `update` calls is not
 // seen.
 func (c *Checker) mayInvalid(r *RouteInfo) bool {
 	vd := c.routeMembers(c.prog.Modules[r.Module], r.Name)["update"]
 	return vd != nil && vd.Body != nil && mentions(reflect.ValueOf(vd.Body), isInvalid)
-}
-
-// isReject reports whether syntax node n is the Prelude's `Reject`.
-func isReject(n any) bool {
-	ct, ok := n.(*syntax.CtorRef)
-	return ok && ct.Ref.Kind == syntax.RefCtor && ct.Ref.Module == "Prelude" && ct.Ref.Name == "Reject"
 }
 
 // isInvalid reports whether syntax node n is `Response.invalid`.
@@ -273,7 +219,8 @@ func submitText(e syntax.Expr, src string) string {
 
 func isUpperName(s string) bool { return len(s) > 0 && s[0] >= 'A' && s[0] <= 'Z' }
 
-// formOf finds the form record carried by a message expression (bare ctor or ctor applied to a record).
+// formOf finds the form record carried by a submit value: a write route with `form F`, bare or
+// applied to its parameters.
 func (mc *modCtx) formOf(e syntax.Expr) *formCtx {
 	c := mc.c
 	var ct *syntax.CtorRef
@@ -288,24 +235,14 @@ func (mc *modCtx) formOf(e syntax.Expr) *formCtx {
 	if ct == nil {
 		return nil
 	}
-	var arg types.Type
-	switch ct.Ref.Kind {
-	case syntax.RefCtor:
-		info, ok := c.ctors[c.key(ct.Ref.Module, ct.Ref.Name)]
-		if !ok {
-			return nil
-		}
-		arg = info.Arg
-	case syntax.RefRoute: // a write route's `form F` is its parameters' field `form`
-		info := c.route(ct.Ref.Module, ct.Ref.Name)
-		if info == nil {
-			return nil
-		}
-		arg = info.Params
-	default:
+	if ct.Ref.Kind != syntax.RefRoute {
 		return nil
 	}
-	if rec, ok := arg.(*types.Record); ok {
+	info := c.route(ct.Ref.Module, ct.Ref.Name) // a write route's `form F` is its parameters' field `form`
+	if info == nil {
+		return nil
+	}
+	if rec := info.Params; rec != nil {
 		for _, f := range rec.Fields {
 			if f.Name == "form" {
 				if fr, ok := f.Type.(*types.Record); ok {
@@ -320,7 +257,7 @@ func (mc *modCtx) formOf(e syntax.Expr) *formCtx {
 func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effect) {
 	c := mc.c
 	if strings.HasPrefix(a.Name, "on") && len(a.Name) > 2 {
-		c.errorf(diag.ParseError, a.Span, "`%s` is not Alder; use `click={Msg}`", a.Name)
+		c.errorf(diag.ParseError, a.Span, "`%s` is not Alder; use `click={Route}`", a.Name)
 		return
 	}
 	if a.Value == nil {
@@ -351,8 +288,8 @@ func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effe
 			hrefText() // a computed string such as `"/todos/" ++ x`
 			return
 		}
-		if err := c.u.Check(got, types.Page); err != nil {
-			mc.mismatch(a.Value.GetSpan(), got, types.Page)
+		if err := c.u.Check(got, types.Route); err != nil {
+			mc.mismatch(a.Value.GetSpan(), got, types.Route)
 		}
 	case a.Name == "click" || a.Name == "submit":
 		if mc.bareRoute(a.Value, false) {
@@ -363,11 +300,11 @@ func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effe
 			mc.infer(a.Value, env, eff)
 			return
 		}
-		mc.checkMessage(a.Value, m, env, eff)
+		mc.check(a.Value, m, env, eff)
 	case boolAttrs[a.Name]:
 		mc.check(a.Value, types.Bool, env, eff)
-	case a.Name == "src": // Text, or a page value: `Url.external "https://…"` (rendered as its URL)
-		mc.textAttrOr(a, env, eff, types.Page)
+	case a.Name == "src": // Text, or a route value: `Url.external "https://…"` (rendered as its URL)
+		mc.textAttrOr(a, env, eff, types.Route)
 	default:
 		mc.textAttr(a, env, eff)
 	}
@@ -393,39 +330,6 @@ func (mc *modCtx) textAttrOr(a *syntax.HtmlAttr, env *env, eff effect, also type
 	}
 	d := mc.mismatch(a.Value.GetSpan(), got, types.Text)
 	mc.annotateMismatch(d, a.Value, got, types.Text)
-}
-
-// checkMessage checks a click/submit value: a page message (against m) or an app-level message.
-func (mc *modCtx) checkMessage(e syntax.Expr, m types.Type, env *env, eff effect) {
-	c := mc.c
-	var ct *syntax.CtorRef
-	applied := false
-	switch v := e.(type) {
-	case *syntax.CtorRef:
-		ct = v
-	case *syntax.App:
-		if r, ok := v.Fn.(*syntax.CtorRef); ok {
-			ct = r
-			applied = true
-		}
-	}
-	if ct == nil || ct.Ref.Kind != syntax.RefCtor || c.ctors[c.key(ct.Ref.Module, ct.Ref.Name)] == nil {
-		mc.check(e, m, env, eff)
-		return
-	}
-	target := m
-	if ct.Ref.Module == "App" {
-		target = c.appMsg
-	}
-	var got types.Type
-	if applied {
-		got = mc.infer(e, env, eff)
-	} else {
-		got = c.record(ct, mc.inferCtor(ct, false)) // reports E0301 for messages that need parameters
-	}
-	if err := c.u.Unify(got, target); err != nil {
-		c.errorf(diag.TypeMismatch, e.GetSpan(), "`%s` is not a message of this page", ct.Name)
-	}
 }
 
 // component checks <Mod.Name attrs>children</Mod.Name> as a call of Name with a props record.

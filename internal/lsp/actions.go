@@ -369,7 +369,7 @@ func hereCtx(a *analysis, rel string, pos diag.Pos) generate.HereCtx {
 		return c
 	}
 	c.Module = m.Name
-	c.IsPage = a.prog.Pages[m.Name] != nil || a.prog.IsRouteModule(m.Name)
+	c.IsPage = a.prog.IsRouteModule(m.Name)
 	if d := declAt(m, pos); d != nil {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
@@ -378,10 +378,6 @@ func hereCtx(a *analysis, rel string, pos diag.Pos) generate.HereCtx {
 			c.Decl, c.DeclKind = d.Name, "type"
 		case *syntax.TableDecl:
 			c.Decl, c.DeclKind = d.Name, "table"
-		case *syntax.PageDecl:
-			c.DeclKind = "page" // a page has no name of its own
-		case *syntax.MsgDecl:
-			c.Decl, c.DeclKind = d.Name, "msg"
 		case *syntax.FormDecl:
 			c.Decl, c.DeclKind = d.Name, "form"
 		case *syntax.CapDecl:

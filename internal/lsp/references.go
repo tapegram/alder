@@ -75,7 +75,7 @@ func namespace(k syntax.RefKind) int {
 		return 1
 	case syntax.RefCtor:
 		return 2
-	case syntax.RefValue, syntax.RefStd, syntax.RefPage, syntax.RefComponent, syntax.RefCapability:
+	case syntax.RefValue, syntax.RefStd, syntax.RefComponent, syntax.RefCapability:
 		return 3
 	case syntax.RefRoute:
 		return 4

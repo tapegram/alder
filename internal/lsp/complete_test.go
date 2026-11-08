@@ -83,6 +83,17 @@ func TestComplete_RecordFields(t *testing.T) {
 	}
 }
 
+// A route parameter declared `as "Key"` completes with its query key (#55).
+func TestComplete_RecordFieldsWire(t *testing.T) {
+	c := start(t, wireBlog(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	p := typing(t, c, "app/Posts/Index.alder", afterQ, "  let z = params.")
+	got := labels(complete(t, c, "app/Posts/Index.alder", p))
+	if got["q"].Detail != `q : Text as "Q"` || got["page"].Detail != "page : Int" {
+		t.Fatalf("q: %+v, page: %+v", got["q"], got["page"])
+	}
+}
+
 func TestComplete_Imports(t *testing.T) {
 	c := start(t, blogCopy(t))
 	openClean(t, c, "app/Posts/Index.alder")
@@ -370,7 +381,8 @@ func TestComplete_ImportInsertsAlias(t *testing.T) {
 
 // TestComplete_OtherwiseOffersQualifiers: an imported module is offered by its qualifier, the
 // spelling the compiler accepts (`AdminLayout`, not `Admin.Layout`, which is E0205 with a
-// member), an imported module of routes (Posts.Show) as well.
+// member), an imported module of routes (Posts.Show) as well, and by its full path, for its
+// route values.
 func TestComplete_OtherwiseOffersQualifiers(t *testing.T) {
 	root := blogCopy(t)
 	rel := "app/Posts/Index.alder"
@@ -394,7 +406,7 @@ func TestComplete_OtherwiseOffersQualifiers(t *testing.T) {
 	if _, ok := got["Admin.Layout"]; ok {
 		t.Error("Admin.Layout offered by its full path")
 	}
-	for _, want := range []string{"Layout", "Show"} {
+	for _, want := range []string{"Layout", "Show", "Posts.Show"} {
 		if _, ok := got[want]; !ok {
 			t.Errorf("no %s", want)
 		}

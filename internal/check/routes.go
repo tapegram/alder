@@ -25,7 +25,7 @@ type RouteInfo struct {
 	// same fields share one record, named after the first of them, so their members can call
 	// each other with the session they have.
 	Session *types.Record
-	// Requires, Roles and Silo are the route's guard as PageInfo has a page's: the `requires`
+	// Requires, Roles and Silo are the route's guard: the `requires`
 	// fields, the roles of a well-formed `role` clause, the key of a valid `silo k`.
 	Requires []string
 	Roles    []string
@@ -105,13 +105,10 @@ func (c *Checker) routeFile(r *RouteInfo) bool {
 }
 
 // inShownView reports whether the markup being checked is in the view the runtime renders
-// again from the model to check a submitted `<Select options>` value (plan call 11): a page's
-// `view`, or a GET route's `R.view`.
+// again from the model to check a submitted `<Select options>` value (plan call 11): a GET
+// route's `R.view`.
 func (mc *modCtx) inShownView() bool {
-	if mc.route != nil {
-		return !isWrite(mc.route.Method) && mc.value == mc.route.Name+".view"
-	}
-	return mc.page != nil && mc.value == "view"
+	return mc.route != nil && !isWrite(mc.route.Method) && mc.value == mc.route.Name+".view"
 }
 
 // recordOptions notes that the view being checked, a GET route's, writes a `<Select options>`
@@ -181,12 +178,6 @@ func (mc *modCtx) defineRoutes() {
 		if rd, ok := d.(*syntax.RouteDecl); ok && c.prog.Route(mc.m.Name, rd.Name) == rd {
 			decls = append(decls, rd)
 		}
-	}
-	if c.prog.IsPageModule(mc.m.Name) {
-		for _, d := range decls {
-			c.errorf(diag.RouteDecl, d.NameSpan, "module `%s` declares a `page`; a module holds a page and its messages, or routes, not both: move route `%s` to a module of its own", mc.m.Name, d.Name)
-		}
-		return
 	}
 	sessions := map[string]*types.Record{} // narrowed fields → the module's record for them
 	for _, d := range decls {
@@ -449,8 +440,7 @@ func fixSig(d *diag.Diagnostic, span diag.Span, sig string) {
 	d.Fix.Title, d.Fix.Preferred = "Change signature to `"+sig+"`", true
 }
 
-// sigReturnsFile reports whether d's declared signature returns File (as viewReturnsFile reads
-// a page's `view`).
+// sigReturnsFile reports whether d's declared signature returns File.
 func sigReturnsFile(d *syntax.ValueDecl) bool {
 	if d.Sig == nil {
 		return false
