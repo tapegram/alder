@@ -1,6 +1,10 @@
 package html
 
-import "strings"
+import (
+	"strings"
+
+	"alder/rt"
+)
 
 // FormState is what a re-render after a failed form decode or a Response.invalid carries. Form
 // is the Alder form's name ("Todos.Index.NewTodo") and Msg the key of the request that posted
@@ -47,6 +51,10 @@ type Control struct {
 	// written (see Input).
 	Wrap      string
 	WrapAttrs []Attr
+	// Trigger is the GET route the control requests as it changes (`input={…}`), nil for none,
+	// with the control's value as query key TriggerKey (RouteInput).
+	Trigger    *rt.Route
+	TriggerKey string
 }
 
 // Choice is one option of a select with `options={…}`: the value it submits and the label it
@@ -161,6 +169,9 @@ func (c *Control) build(st *FormState, active bool, orphan []string) Node {
 			attrs = append(attrs, Attr{Name: "value", Value: value, Omit: value == ""}, B("required", c.Required))
 		}
 		control = El("input", attrs)
+	}
+	if c.Trigger != nil {
+		control.attrs = append(control.attrs, RouteInput(c.TriggerKey, *c.Trigger))
 	}
 	if c.Wrap == "" {
 		return labelled(c.Label, control)

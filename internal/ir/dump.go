@@ -704,7 +704,7 @@ func (d *dumper) expr(e Expr) *sx {
 }
 
 func (d *dumper) attrs(as []HAttr) []*sx {
-	kinds := []string{"text", "bool", "maybe", "href", "click", "submit"}
+	kinds := []string{"text", "bool", "maybe", "href", "click", "submit", "load", "intersect", "input"}
 	out := make([]*sx, len(as))
 	for i, a := range as {
 		out[i] = list(3, atom("attr"), atom(a.Name), atom(kinds[a.Kind]), d.expr(a.Value))

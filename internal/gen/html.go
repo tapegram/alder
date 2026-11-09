@@ -137,6 +137,16 @@ func (f *fn) attrs(as []ir.HAttr, s *scope) string {
 			}
 		case ir.AttrClick:
 			out = append(out, `html.RouteAttr("data-on:click", `+f.code(a.Value, s)+`)`)
+		case ir.AttrLoad:
+			ref := f.code(a.Value, s)
+			out = append(out, "html.RouteAttr(html.LoadAttr, "+ref+")")
+			if a.Every != "" {
+				out = append(out, "html.RouteAttr(html.IntervalPrefix+"+strconv.Quote(a.Every)+", "+ref+")")
+			}
+		case ir.AttrIntersect:
+			out = append(out, "html.RouteAttr(html.IntersectAttr, "+f.code(a.Value, s)+")")
+		case ir.AttrInput:
+			out = append(out, "html.RouteInput("+strconv.Quote(a.Key)+", "+f.code(a.Value, s)+")")
 		case ir.AttrSubmit: // on an element Lower did not make a FormEl
 			// Lower makes every <form submit> a FormEl (html.FormToRoute, with the _method
 			// override), so this is an element that is not a <form>: it never submits without
@@ -420,6 +430,9 @@ func (f *fn) input(x *ir.Input, s *scope) string {
 	}
 	if secret {
 		out = append(out, "Secret: true")
+	}
+	if x.Trigger != nil {
+		out = append(out, "Trigger: func() *rt.Route { r := "+f.code(x.Trigger, s)+"; return &r }()", "TriggerKey: "+strconv.Quote(x.TriggerKey))
 	}
 	if x.Wrap != "" {
 		out = append(out, "Wrap: "+strconv.Quote(x.Wrap))
