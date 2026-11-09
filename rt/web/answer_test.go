@@ -889,3 +889,20 @@ func TestAnswer_RedirectReportsRendered(t *testing.T) {
 		t.Fatalf("rendered %q", bodies)
 	}
 }
+
+// notify patches every toast with text under Datastar: a first toast without text does not hide
+// the ones after it, and an answer of empty toasts alone patches none.
+func TestNotify_SkipsEmptyFirstToast(t *testing.T) {
+	h := NewRouter(nil, testOpts(nil)).(*router)
+	rec := httptest.NewRecorder()
+	tw := &tracker{ResponseWriter: rec, rt: h, kind: rt.NoticeInfo, more: []rt.Toast{{Kind: rt.NoticeWarning, Text: "Later"}, {Kind: rt.NoticeInfo}}}
+	h.notify(tw)
+	if b := rec.Body.String(); strings.Count(b, "<al-toast ") != 1 || !strings.Contains(b, ">Later</al-toast>") {
+		t.Errorf("toasts patched: %q", b)
+	}
+	rec = httptest.NewRecorder()
+	h.notify(&tracker{ResponseWriter: rec, rt: h, more: []rt.Toast{{Kind: rt.NoticeInfo}}})
+	if rec.Body.Len() != 0 {
+		t.Errorf("empty toasts patched: %q", rec.Body.String())
+	}
+}

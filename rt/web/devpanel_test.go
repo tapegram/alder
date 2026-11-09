@@ -174,9 +174,10 @@ func TestNoticedWithoutScript(t *testing.T) {
 	}
 }
 
-// The kind of a notice rides in the signed cookie with its text (notice:<kind>:<text>), and the
-// alert of the next page shows it; a payload whose second segment is no kind (an older
-// cookie's, or text with a colon) is all text, shown as info.
+// The kind of a notice rides in the signed cookie with its text (new cookies hold `notices:` and
+// a JSON list of kind and text), and the alert of the next page shows it. The older formats
+// (notice:<kind>:<text>, and notice:<text>) are still read: a payload whose second segment is no
+// kind (or text with a colon) is all text, shown as info.
 func TestNoticedWithoutScript_Kinds(t *testing.T) {
 	for _, tc := range []struct {
 		kind       rtpkg.NoticeKind
@@ -295,7 +296,7 @@ func TestStoreNotices_Full(t *testing.T) {
 	}
 	for i, g := range got {
 		if g != toasts[i] {
-			t.Errorf("toast %d: got %q (%s), want %q", i, g.Text[:10], g.Kind, toasts[i].Text[:10])
+			t.Errorf("toast %d: got %q (%s), want %q", i, head(g.Text), g.Kind, head(toasts[i].Text))
 		}
 	}
 	warn := fmt.Sprintf("warn POST /go: dropped %d toasts: the notice cookie is full", len(toasts)-len(got))
@@ -551,4 +552,12 @@ func TestDevPanel_PatchLabels(t *testing.T) {
 			t.Errorf("%s: has %q in %s", c.target, c.not, patches)
 		}
 	}
+}
+
+// head is the first ten bytes of s, for a failure message.
+func head(s string) string {
+	if len(s) > 10 {
+		return s[:10]
+	}
+	return s
 }

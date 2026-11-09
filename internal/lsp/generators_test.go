@@ -381,3 +381,18 @@ func TestPreview_StillStartsFilled(t *testing.T) {
 	}
 	t.Fatalf("no page field in %+v", pv.Fields)
 }
+
+// TestPlan_SingleChoiceOpPlans (#173): the op of `edit route` has one choice, so its start value
+// is no guess; with the page from the cursor and the field set, the plan is made.
+func TestPlan_SingleChoiceOpPlans(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	var plan struct {
+		Files []struct{ Path string }
+		Error string
+	}
+	c.call("alder/plan", req(c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "load params", 0), map[string]any{"id": "edit route", "sets": map[string]string{"field": "sort:Text=\"new\""}}), &plan)
+	if plan.Error != "" || len(plan.Files) == 0 {
+		t.Fatalf("plan %+v", plan)
+	}
+}

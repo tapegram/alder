@@ -556,7 +556,8 @@ A `refresh` or a `redirect` under Datastar morphs the page's `<body>`, and a
 morph never reaches `<html>`, so the runtime sets the attributes of `<html>`
 apart, with a small script sent after the body's patches. It sets every
 attribute the new page renders on `<html>` and removes those the server set
-before but no longer renders, never one a script in the browser added. A class
+before but no longer renders, never one a script in the browser added; an attribute the browser set with the
+same name as one the server renders is overwritten by the server's value. A class
 there, such as `dark` here, changes at once, without a reload. Without
 JavaScript the `303` loads the whole page, so the class is new there too.
 

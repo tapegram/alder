@@ -6253,7 +6253,7 @@ Without Datastar every toast of a 303 rides in the signed cookie
 kind and text (`storeNotices`, `takeNotices`); that page shows each once
 as an `<al-alert>`, in order. A navigation away under Datastar
 (`navigateAway`) keeps its toasts the same way. The signed value stays
-under 3800 bytes, inside the 4096 a browser keeps for a cookie: toasts that
+at most 3800 bytes, inside the 4096 a browser keeps for a cookie: toasts that
 do not fit are dropped from the end, with a warning logged. A cookie signed
 before the list (`notice:<kind>:<text>`) still reads as one toast.
 
