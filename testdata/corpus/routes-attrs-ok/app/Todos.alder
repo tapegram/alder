@@ -1,0 +1,93 @@
+module Todos
+
+-- The route trigger attributes (#160): `load` fetches a GET route as the element appears,
+-- `every` repeats that load, `intersect` fetches as the element scrolls into view, and `input`
+-- fetches as a field changes, with the field's value as one query key. Each route below is
+-- requested by exactly one element of the index page, and its view's root id is an element of
+-- the page: the element the fetch replaces (the trigger itself, or for an input its results).
+route Index   = GET  "/"           { }
+route Stats   = GET  "/stats"      { }
+route Refresh = GET  "/refresh"    { }
+route Badge   = GET  "/badge"      { }
+route Pulse   = GET  "/pulse"      { }
+route Clock   = GET  "/clock"      { }
+route More    = GET  "/todos/more" { after: Int }
+route Results = GET  "/results"    { q: Text = "" }
+route Search  = GET  "/search"     { query: Text = "" as "q" }
+route Go      = POST "/go"         { } form SearchForm
+
+form SearchForm = { q: Text }
+
+Index.load : Index.Params -> Session -> Query Text
+Index.load params session = Query.succeed ""
+
+Index.view : Text -> Session -> Html
+Index.view q session =
+  <main id="index">
+    <div id="stats" load={Stats {}} click={Refresh {}}>Stats</div>
+    <div id="badge" load={Badge {}} every="1m">Badge</div>
+    <div id="pulse" load={Pulse {}} every="5s">Pulse</div>
+    <div id="clock" load={Clock {}} every="500ms">Clock</div>
+    <ul id="todos"><li>one</li></ul>
+    <div id="more-10" intersect={More { after: 10 }}></div>
+    <input name="q" input={Results { q: q }} />
+    <p id="results"></p>
+    <form submit={Go}>
+      <Errors form />
+      <Input field="q" input={Search { query: q }} />
+      <button>Go</button>
+    </form>
+    <p id="search"></p>
+    <p id="refresh"></p>
+  </main>
+
+Stats.load : Stats.Params -> Session -> Query Int
+Stats.load params session = Query.succeed 3
+
+Stats.view : Int -> Session -> Html
+Stats.view n session = <p id="stats">{Text.fromInt n} todos</p>
+
+Refresh.load : Refresh.Params -> Session -> Query Text
+Refresh.load params session = Query.succeed "refreshed"
+
+Refresh.view : Text -> Session -> Html
+Refresh.view t session = <p id="refresh">{t}</p>
+
+Badge.load : Badge.Params -> Session -> Query Int
+Badge.load params session = Query.succeed 1
+
+Badge.view : Int -> Session -> Html
+Badge.view n session = <span id="badge">{Text.fromInt n}</span>
+
+Pulse.load : Pulse.Params -> Session -> Query Text
+Pulse.load params session = Query.succeed "alive"
+
+Pulse.view : Text -> Session -> Html
+Pulse.view t session = <span id="pulse">{t}</span>
+
+Clock.load : Clock.Params -> Session -> Query Text
+Clock.load params session = Query.succeed "tick"
+
+Clock.view : Text -> Session -> Html
+Clock.view t session = <span id="clock">{t}</span>
+
+More.load : More.Params -> Session -> Query Int
+More.load params session = Query.succeed params.after
+
+More.view : Int -> Session -> Html
+More.view after session = <div id={"more-" ++ Text.fromInt after}>after {Text.fromInt after}</div>
+
+Results.load : Results.Params -> Session -> Query Text
+Results.load params session = Query.succeed params.q
+
+Results.view : Text -> Session -> Html
+Results.view q session = <p id="results">results for {q}</p>
+
+Search.load : Search.Params -> Session -> Query Text
+Search.load params session = Query.succeed params.query
+
+Search.view : Text -> Session -> Html
+Search.view q session = <p id="search">search for {q}</p>
+
+Go.update : Go.Params -> Session -> Task Response
+Go.update params session = Task.succeed (Response.redirect (Search { query: params.form.q }))

@@ -404,7 +404,7 @@ func prodPages(t *testing.T) string {
 // bar's token, now alder-ui v0.4's --primary (#21), and the shown hash (#49): the boost's
 // window._alderO and the <al-shown> at the end of every body; and #160: _alderO's Alder-Page and
 // Alder-Build headers and window._alderF, and both helpers' empty payload (and _alderF's
-// Alder-Page).
+// Alder-Page); and window._alderQ, the input trigger's URL helper.
 func TestProductionPageHasNoDevUI(t *testing.T) {
 	if os.Getenv("UPDATE_GOLDEN") != "" {
 		if err := os.WriteFile("testdata/production_page.golden", []byte(prodPages(t)), 0o644); err != nil {

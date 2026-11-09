@@ -1133,7 +1133,7 @@ sent back with every request.
 Before the first step there is no cookie,
 so the session is `App`'s default, `{ user: Nothing }`.
 
-Eight steps act through it. Each is a `Task` (a step of the test's block,
+Eleven steps act through it. Each is a `Task` (a step of the test's block,
 written with `let x <-`), and each works only inside a `test`. `r` is a
 route value written in place, with its parameters (`Todos.Index.Index {}`,
 `Todos.Index.Toggle { id: id }`):
@@ -1147,6 +1147,9 @@ route value written in place, with its parameters (`Todos.Index.Index {}`,
 | `Test.submit r f` | posts the record `f` through the form of the write route `r` | `{ answer: Answer, session: Session, doc: Doc, url: Text, status: Int }` |
 | `Test.submitRaw r fields` | posts text fields through the form of the write route `r` | the same |
 | `Test.click r` | presses the page's button for the route `r`: a write route is sent, a GET route is fetched into the page | the same |
+| `Test.load r` | fetches the GET route `r` into the page, as the page's element with `load={r}` does when it appears or its timer ticks | the same |
+| `Test.intersect r` | fetches the GET route `r` into the page, as the page's element with `intersect={r}` does when it scrolls into view | the same |
+| `Test.input r` | fetches the GET route `r` into the page, as the page's field with `input=` does after typing; `r`'s query value stands for what was typed | the same |
 | `Test.refresh` | loads the page held again, and fails unless it is the page held | the same |
 
 In the results:
@@ -1165,6 +1168,18 @@ In the results:
 
 `Test.fetch` holds no page, so its result has no `session`,
 `doc` or `url`; its `status` is the raw answer's.
+
+`Test.load`, `Test.intersect` and `Test.input` need exactly one element on
+the page held that requests `r`'s path with that attribute. The query is
+not compared, so a test can send a value the page did not render, as a
+user types one. With none, the step fails:
+
+```
+error: the page /feed has no element with `intersect` requesting /feed/more
+```
+
+With several, it fails naming each. Nothing fires by itself: a badge that
+polls is tested by calling `Test.load` again (chapter 6, "Patterns").
 
 ### A first browser test
 

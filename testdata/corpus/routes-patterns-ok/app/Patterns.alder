@@ -1,0 +1,128 @@
+module Patterns
+
+-- The four route-trigger patterns (#160), each requested by one element of the index page:
+-- search as you type (`input`), infinite scroll (`intersect`), a slow widget filled after the
+-- page shows (`load`) and a polling badge (`load` with `every`). Each answering view's root id is
+-- an element of the page, the element its fetch replaces. cmd/alder's TestTest_Patterns runs the
+-- tests below, and TestBrowser_Patterns drives the built app in a real browser.
+
+import Table.Ping
+
+route Index   = GET  "/"           { q: Text = "" }
+route Results = GET  "/results"    { q: Text = "" }
+route More    = GET  "/todos/more" { after: Int }
+route Slow    = GET  "/slow"       { }
+route Badge   = GET  "/badge"      { }
+route Bump    = POST "/bump"       { }
+
+words : List Text
+words = ["milk", "mint", "millet", "bread", "butter", "apples", "lemons"]
+
+total : Int
+total = 25
+
+pageSize : Int
+pageSize = 10
+
+-- The last row of the page after `after`.
+pageEnd : Int -> Int
+pageEnd after = if after + pageSize > total then total else after + pageSize
+
+row : Int -> Html
+row n = <li id={"row-" ++ Text.fromInt n} class="row">Todo {Text.fromInt n}</li>
+
+-- The element that asks for the rows after `next` as it scrolls into view; none after the last.
+sentinel : Int -> Html
+sentinel next =
+  if next < total then <div id={"more-" ++ Text.fromInt next} intersect={More { after: next }}></div>
+  else Html.none
+
+Index.load : Index.Params -> Session -> Query Text
+Index.load params session = Query.succeed params.q
+
+Index.view : Text -> Session -> Html
+Index.view q session =
+  <html>
+    <head><title>Patterns</title></head>
+    <body>
+      <input name="q" value={q} input={Results { q: q }} />
+      {Results.view q session}
+      <div id="slow" load={Slow {}}>Loading…</div>
+      <span id="badge" load={Badge {}} every="1s">…</span>
+      <button id="bump" click={Bump {}}>Bump</button>
+      <ul id="todos">{for n in List.range 1 pageSize -> row n}</ul>
+      {sentinel pageSize}
+    </body>
+  </html>
+
+Results.load : Results.Params -> Session -> Query Text
+Results.load params session = Query.succeed params.q
+
+Results.view : Text -> Session -> Html
+Results.view q session =
+  <ul id="results">
+    <li id="echo">{q}</li>
+    {for w in List.filter (\w -> Text.contains q w) words -> <li class="word">{w}</li>}
+  </ul>
+
+More.load : More.Params -> Session -> Query Int
+More.load params session = Query.succeed params.after
+
+More.view : Int -> Session -> Html
+More.view after session =
+  <div id={"more-" ++ Text.fromInt after}>
+    <ul>{for n in List.range (after + 1) (pageEnd after) -> row n}</ul>
+    {sentinel (pageEnd after)}
+  </div>
+
+Slow.load : Slow.Params -> Session -> Query Text
+Slow.load params session = Query.succeed "Ready"
+
+Slow.view : Text -> Session -> Html
+Slow.view t session = <div id="slow">{t}</div>
+
+Badge.load : Badge.Params -> Session -> Query Int
+Badge.load params session = Db.from Ping |> Db.count
+
+-- The badge renders its own trigger again, with the same URL, so its timer keeps running
+-- after each patch.
+Badge.view : Int -> Session -> Html
+Badge.view n session = <span id="badge" load={Badge {}} every="1s">{Text.fromInt n}</span>
+
+Bump.update : Bump.Params -> Session -> Task Response
+Bump.update params session = {
+  let _ <- Db.insert Ping {}
+  Task.succeed (Response.render (Badge {}))
+}
+
+test "search as you type patches the results" = {
+  let _ <- Test.get (Index { q: "" })
+  let typed <- Test.input (Results { q: "mi" })
+  Task.succeed ({ answer: typed.answer, echo: Test.text "#echo" typed.doc, words: Test.texts "#results .word" typed.doc }
+    == { answer: Rendered (Results { q: "mi" }), echo: Just "mi", words: ["milk", "mint", "millet"] })
+}
+
+test "infinite scroll loads two pages and stops" = {
+  let page <- Test.get (Index { q: "" })
+  let second <- Test.intersect (More { after: 10 })
+  let third <- Test.intersect (More { after: 20 })
+  Task.succeed ({ first: Test.count "li.row" page.doc, second: Test.count "li.row" second.doc, third: Test.count "li.row" third.doc,
+      last: Test.text "#more-20 #row-25" third.doc, sentinel: Test.has "[data-on-intersect__once]" third.doc }
+    == { first: 10, second: 20, third: 25, last: Just "Todo 25", sentinel: False })
+}
+
+test "the slow widget fills in" = {
+  let page <- Test.get (Index { q: "" })
+  let r <- Test.load (Slow {})
+  Task.succeed ({ before: Test.text "#slow" page.doc, answer: r.answer, after: Test.text "#slow" r.doc }
+    == { before: Just "Loading…", answer: Rendered (Slow {}), after: Just "Ready" })
+}
+
+test "the badge polls the count" = {
+  let _ <- Test.get (Index { q: "" })
+  let first <- Test.load (Badge {})
+  let _ <- Test.click (Bump {})
+  let second <- Test.load (Badge {})
+  Task.succeed ({ first: Test.text "#badge" first.doc, second: Test.text "#badge" second.doc, answer: second.answer }
+    == { first: Just "0", second: Just "1", answer: Rendered (Badge {}) })
+}

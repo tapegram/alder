@@ -1,0 +1,24 @@
+module Todos
+
+route Index   = GET "/"        { }
+route Results = GET "/results" { q: Text = "" }
+
+type Model = { target: Route }
+
+-- the compiler checks `input`'s query key against the route written in place; a computed
+-- Route hides it (`load` and `intersect` take one, as `href` does)
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { target: Results { q: "" } }
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <div>
+    <input name="q" input={model.target} />
+    <div load={model.target}></div>
+  </div>
+
+Results.load : Results.Params -> Session -> Query Text
+Results.load params session = Query.succeed params.q
+
+Results.view : Text -> Session -> Html
+Results.view q session = <p id="results">{q}</p>

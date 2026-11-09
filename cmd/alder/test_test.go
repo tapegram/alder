@@ -1385,3 +1385,205 @@ test "route steps answer as the route does" = {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 }
+
+// triggerRun is one `alder test` of the corpus app routes-attrs-ok with triggerTests appended
+// (#160 Task 4), shared by the TestTest_Trigger* tests: each asserts its own tests' lines.
+var triggerRun struct {
+	once                 sync.Once
+	code                 int
+	stdout, stderr, fail string
+}
+
+// triggerTests are the tests and pages the TestTest_Trigger* tests run: the index page's
+// load, intersect and input elements driven explicitly; a page without a sentinel; a page with
+// two elements loading the same route; a load of a route whose view has no root id and of a
+// route that is not found.
+const triggerTests = `
+route Twice = GET "/twice" { }
+route NoId  = GET "/noid"  { }
+route Gone  = GET "/gone"  { }
+route Odd   = GET "/odd"   { }
+
+Twice.load : Twice.Params -> Session -> Query Int
+Twice.load params session = Query.succeed 0
+
+Twice.view : Int -> Session -> Html
+Twice.view n session =
+  <main id="twice">
+    <div id="a" load={Stats {}}></div>
+    <div id="b" load={Stats {}}></div>
+  </main>
+
+NoId.load : NoId.Params -> Session -> Query Int
+NoId.load params session = Query.succeed 0
+
+NoId.view : Int -> Session -> Html
+NoId.view n session = <p>no id</p>
+
+Gone.load : Gone.Params -> Session -> Query Int
+Gone.load params session = Query.notFound
+
+Gone.view : Int -> Session -> Html
+Gone.view n session = <p id="gone">gone</p>
+
+Odd.load : Odd.Params -> Session -> Query Int
+Odd.load params session = Query.succeed 0
+
+Odd.view : Int -> Session -> Html
+Odd.view n session =
+  <main id="odd">
+    <div id="noid-box" load={NoId {}}></div>
+    <div id="gone-box" intersect={Gone {}}></div>
+  </main>
+
+test "trigger steps fetch as the page's elements do" = {
+  let _ <- Test.get (Index {})
+  let loaded <- Test.load (Stats {})
+  let clock <- Test.load (Clock {})
+  let more <- Test.intersect (More { after: 10 })
+  let typed <- Test.input (Results { q: "mil" })
+  Task.succeed ({ loaded: loaded.answer, stats: Test.text "#stats" loaded.doc, clock: clock.answer, more: more.answer, moreText: Test.text "#more-10" more.doc,
+      typed: typed.answer, results: Test.text "#results" typed.doc, url: typed.url, status: typed.status }
+    == { loaded: Rendered (Stats {}), stats: Just "3 todos", clock: Rendered (Clock {}), more: Rendered (More { after: 10 }), moreText: Just "after 10",
+      typed: Rendered (Results { q: "mil" }), results: Just "results for mil", url: "/", status: 200 })
+}
+
+test "intersect on a page without a sentinel" = {
+  let _ <- Test.get (Twice {})
+  let _ <- Test.intersect (More { after: 10 })
+  Task.succeed True
+}
+
+test "input on a page without the field" = {
+  let _ <- Test.get (Twice {})
+  let _ <- Test.input (Results { q: "mil" })
+  Task.succeed True
+}
+
+test "load requested by two elements" = {
+  let _ <- Test.get (Twice {})
+  let _ <- Test.load (Stats {})
+  Task.succeed True
+}
+
+test "trigger steps answer as a click of a GET route" = {
+  let _ <- Test.get (Odd {})
+  let noId <- Test.load (NoId {})
+  let gone <- Test.intersect (Gone {})
+  let failed = match noId.answer {
+    RequestFailed _ -> True,
+    _ -> False,
+  }
+  Task.succeed (failed && gone.answer == PageMissing)
+}
+`
+
+func runTriggerTests(t *testing.T) {
+	t.Helper()
+	needGoTool(t)
+	triggerRun.once.Do(func() {
+		dir := tempAppAbs(t, "../../testdata/corpus/routes-attrs-ok", "todos")
+		path := filepath.Join(dir, "app", "Todos.alder")
+		b, err := os.ReadFile(path)
+		if err != nil {
+			triggerRun.fail = err.Error()
+			return
+		}
+		if err := os.WriteFile(path, append(b, []byte(triggerTests)...), 0o644); err != nil {
+			triggerRun.fail = err.Error()
+			return
+		}
+		triggerRun.code, triggerRun.stdout, triggerRun.stderr = runTest(t, dir)
+	})
+	if triggerRun.fail != "" {
+		t.Fatal(triggerRun.fail)
+	}
+	if strings.Contains(triggerRun.stderr, "internal error") || strings.Contains(triggerRun.stderr, "goroutine ") {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", triggerRun.code, triggerRun.stdout, triggerRun.stderr)
+	}
+}
+
+// wantTriggerOutput fails unless the shared run's stdout has each of want.
+func wantTriggerOutput(t *testing.T, want ...string) {
+	t.Helper()
+	runTriggerTests(t)
+	for _, w := range want {
+		if !strings.Contains(triggerRun.stdout, w) {
+			t.Fatalf("stdout lacks %q\nexit %d\nstdout: %s\nstderr: %s", w, triggerRun.code, triggerRun.stdout, triggerRun.stderr)
+		}
+	}
+}
+
+// TestTest_TriggerSteps (#160): Test.load, Test.intersect and Test.input fetch the route of the
+// held page's element as its script does (an element fetch, Rendered, the element check passed);
+// Test.input sends the test's query value (the view echoes it); Test.load finds an element
+// whose load repeats (`every`) once.
+func TestTest_TriggerSteps(t *testing.T) {
+	t.Parallel()
+	wantTriggerOutput(t, `ok   Todos "trigger steps fetch as the page's elements do"`)
+}
+
+// TestTest_TriggerMissing (#160): a trigger step on a page with no element for the route fails
+// naming the attribute and the route's path (the query dropped: matching ignores it).
+func TestTest_TriggerMissing(t *testing.T) {
+	t.Parallel()
+	wantTriggerOutput(t, "FAIL Todos \"intersect on a page without a sentinel\"\n  error: the page /twice has no element with `intersect` requesting /todos/more\n",
+		"FAIL Todos \"input on a page without the field\"\n  error: the page /twice has no element with `input` requesting /results\n")
+}
+
+// TestTest_TriggerSeveral (#160): a trigger step whose route two elements request fails naming
+// each element.
+func TestTest_TriggerSeveral(t *testing.T) {
+	t.Parallel()
+	wantTriggerOutput(t, "FAIL Todos \"load requested by two elements\"\n  error: Test.load found 2 elements requesting /stats: <div id=\"a\">, <div id=\"b\">\n")
+}
+
+// TestTest_TriggerAnswers (#160): a trigger step answers as Test.click of a GET route does: a
+// view without a root id is RequestFailed, a route not found PageMissing.
+func TestTest_TriggerAnswers(t *testing.T) {
+	t.Parallel()
+	wantTriggerOutput(t, `ok   Todos "trigger steps answer as a click of a GET route"`)
+}
+
+// TestTest_Patterns (#160): the corpus app routes-patterns-ok's own tests pass: search as you
+// type patches #results with the typed query; infinite scroll loads two pages and the last has
+// no sentinel, so a third Test.intersect fails as missing; the slow widget's load fills #slow;
+// the polling badge's load, repeated around a write, shows the new count. A test appended here
+// (not in the app, whose tests all pass) intersects a third time and fails as missing.
+func TestTest_Patterns(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := tempAppAbs(t, "../../testdata/corpus/routes-patterns-ok", "patterns")
+	path := filepath.Join(dir, "app", "Patterns.alder")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	extra := `
+test "the last page has no sentinel" = {
+  let _ <- Test.get (Index { q: "" })
+  let _ <- Test.intersect (More { after: 10 })
+  let _ <- Test.intersect (More { after: 20 })
+  let _ <- Test.intersect (More { after: 30 })
+  Task.succeed True
+}
+`
+	if err := os.WriteFile(path, append(b, []byte(extra)...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runTest(t, dir)
+	for _, w := range []string{
+		`ok   Patterns "search as you type patches the results"`,
+		`ok   Patterns "infinite scroll loads two pages and stops"`,
+		"FAIL Patterns \"the last page has no sentinel\"\n  error: the page / has no element with `intersect` requesting /todos/more\n",
+		`ok   Patterns "the slow widget fills in"`,
+		`ok   Patterns "the badge polls the count"`,
+	} {
+		if !strings.Contains(stdout, w) {
+			t.Errorf("stdout lacks %q", w)
+		}
+	}
+	if code != 1 || strings.Contains(stderr, "internal error") || strings.Contains(stderr, "goroutine ") || t.Failed() {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+}

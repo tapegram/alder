@@ -636,6 +636,268 @@ A literal that leaves `theme` out is refused, for App's `Session` and a
 error[E0003]: record literal for `Session` is missing `theme` (a default applies only to an insert, the session cookie, a page or message parameter, or a form, not to a literal)
 ```
 
+## Patterns
+
+`href`, `click` and `submit` request a route when the user follows a link,
+presses a button or sends a form. Four common interactions request a route
+without any of those:
+
+- search as you type;
+- loading more rows as the list scrolls;
+- a slow part of the page filled in after the page shows;
+- a badge that polls.
+
+Each one asks for a GET route and patches its view into the page by `id`,
+as a `click` on a GET route does. Only the moment differs, so each moment
+has an attribute:
+
+| attribute | on | fires |
+|---|---|---|
+| `load={R}` | any element | once, when the element appears: on page load, or when a patch brings it in |
+| `load={R} every="5s"` | any element | when it appears, then every 5 s while it is on the page |
+| `intersect={R}` | any element | once, when the element first scrolls into view |
+| `input={R}` | `<input>`, `<textarea>`, `<select>`, or `<Input>`, `<Textarea>`, `<Select>` in a form | 300 ms after the user stops typing |
+
+The rules are the same for all four:
+
+- `R` is a GET route, as for `href`. A write route is E0045: a timer, a
+  scroll or a keystroke must not write. `load` and `intersect` accept a
+  computed route, as `href` does; only `input` needs its route written in
+  place, so the checker can read its query key.
+- Custom elements (`<al-*>`) take none of the four attributes. Wrap one in
+  a `<div>` and put the attribute on the `div`.
+- The answer is `R`'s view, and it replaces the element whose `id` is the
+  view's root `id`. So the page must have an element with that `id`: the
+  trigger itself (the slow widget, the badge, the scroll sentinel), or
+  another element (the search results).
+- An element has at most one of `load`, `intersect` and `input`, and
+  `every` goes only beside `load`. `click` and `href` may sit beside any
+  of them. Breaking either rule is E0047.
+- These need JavaScript. Without it nothing is requested, and the element
+  shows what the server rendered, so render something useful there.
+
+None of the four makes the page look busy. A button pressed with `click` is
+made `inert` until its answer arrives, so it cannot be sent twice. These
+requests are background work: a search field would freeze under the user's
+fingers after every keystroke.
+
+### Search as you type
+
+The field asks for `Results` as the user types. `Results`'s view is a
+`<ul id="results">`, and the page has an empty one for it to replace:
+
+```alder
+module Search
+
+import Table.Todo
+import Table.User
+
+route Find    = GET "/find"         { q: Text = "" } requires user
+route Results = GET "/find/results" { q: Text = "" } requires user
+
+Find.load : Find.Params -> Session -> Query Text
+Find.load params session = Query.succeed params.q
+
+Find.view : Text -> Session -> Html
+Find.view q session =
+  <main>
+    <input name="q" value={q} input={Results { q: q }} />
+    <ul id="results"></ul>
+  </main>
+
+Results.load : Results.Params -> Session -> Query (List Todo)
+Results.load params session = Db.mine Todo |> Db.where (Todo.title.contains params.q) |> Db.all
+
+Results.view : List Todo -> Session -> Html
+Results.view todos session =
+  <ul id="results">{for t in todos -> <li>{t.title}</li>}</ul>
+
+test "typing asks for the matching todos" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Bread", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Find { q: "" })
+  let r <- Test.input (Results { q: "mil" })
+  Task.succeed (Test.texts "#results li" r.doc == ["Milk"])
+}
+```
+
+The server renders a complete URL for the field (`/find/results`, or
+`/find/results?q=mil` when the page was opened with a query). In the
+browser, the request sets one query key to what the field holds and leaves
+the rest of the URL alone. That key is the field's `name`, here `q`, or its
+`field` on `<Input>`, `<Textarea>` and `<Select>`. This is what the field
+renders:
+
+```html
+<input name="q" value="" data-on:input__debounce.300ms="@get(window._alderQ(&#39;/find/results&#39;, &#39;q&#39;, el.value), window._alderF?.())" />
+```
+
+`window._alderQ` sets that one key with the browser's own URL encoding, so
+`&`, `#`, `+`, spaces and accented letters reach the route as typed.
+
+Because the browser chooses the value, the checker makes sure the route can
+take it. Each of these is E0047:
+
+- `input` on an element that is not a field;
+- a plain `<input>`, `<textarea>` or `<select>` with no literal `name`
+  (an `<Input>`, `<Textarea>` or `<Select>` with no literal `field` is
+  E0304 instead);
+- a route with no query parameter of that name (after `as "Key"`);
+- a parameter that is not `Text`.
+
+A path parameter does not count: the browser can set a query key, but it
+never rewrites a path.
+
+The request waits until the user has stopped typing for 300 ms. If an
+answer is slow and the user types again, the new request cancels the old
+one, so an old answer never replaces a newer one.
+
+### Infinite scroll
+
+The page shows its first rows and, after them, an empty element: the
+sentinel. When the sentinel scrolls into view it asks for `More`, whose view
+is the next rows and the next sentinel, under the old sentinel's `id`:
+
+```alder
+module Feed
+
+route Feed = GET "/feed"      { }
+route More = GET "/feed/more" { after: Int }
+
+total : Int
+total = 25
+
+-- The last row of the page that starts after `after`: ten rows a page.
+pageEnd : Int -> Int
+pageEnd after = if after + 10 > total then total else after + 10
+
+row : Int -> Html
+row n = <li>Item {Text.fromInt n}</li>
+
+-- The element that asks for the rows after `next`; none after the last row.
+sentinel : Int -> Html
+sentinel next =
+  if next < total then <div id={"more-" ++ Text.fromInt next} intersect={More { after: next }}></div>
+  else Html.none
+
+Feed.load : Feed.Params -> Session -> Query Int
+Feed.load params session = Query.succeed 0
+
+Feed.view : Int -> Session -> Html
+Feed.view start session =
+  <main>
+    <ul>{for n in List.range 1 (pageEnd start) -> row n}</ul>
+    {sentinel (pageEnd start)}
+  </main>
+
+More.load : More.Params -> Session -> Query Int
+More.load params session = Query.succeed params.after
+
+More.view : Int -> Session -> Html
+More.view after session =
+  <div id={"more-" ++ Text.fromInt after}>
+    <ul>{for n in List.range (after + 1) (pageEnd after) -> row n}</ul>
+    {sentinel (pageEnd after)}
+  </div>
+
+test "scrolling loads two pages, then stops" = {
+  let _ <- Test.get (Feed {})
+  let _ <- Test.intersect (More { after: 10 })
+  let r <- Test.intersect (More { after: 20 })
+  Task.succeed ({ rows: Test.count "li" r.doc, sentinel: Test.has "[data-on-intersect__once]" r.doc } == { rows: 25, sentinel: False })
+}
+```
+
+The first page ends with `<div id="more-10" intersect={More { after: 10 }}>`.
+`More { after: 10 }` answers a `<div id="more-10">` holding rows 11 to 20
+and the sentinel `more-20`, so the empty sentinel becomes rows plus a new
+sentinel. Every `id` carries its cursor, so none repeats. Each page nests
+one level deeper, which does no harm.
+
+The last page renders no sentinel, so scrolling stops asking. A sentinel
+fires only once, even when it stays in view.
+
+### A slow widget and a polling badge
+
+`load` fills an element in once the page has shown, so a slow query does
+not hold the page up. With `every` beside it, the element is loaded again
+on a timer:
+
+```alder
+module Dashboard
+
+import Table.Todo
+import Table.User
+
+route Dashboard = GET "/dashboard"        { } requires user
+route Recent    = GET "/dashboard/recent" { } requires user
+route Open      = GET "/dashboard/open"   { } requires user
+
+Dashboard.load : Dashboard.Params -> Session -> Query Int
+Dashboard.load params session = Query.succeed 0
+
+Dashboard.view : Int -> Session -> Html
+Dashboard.view n session =
+  <main>
+    <h1>Today</h1>
+    <section id="recent" load={Recent {}}>Loading…</section>
+    <p>Open: <span id="open" load={Open {}} every="30s">…</span></p>
+  </main>
+
+Recent.load : Recent.Params -> Session -> Query (List Todo)
+Recent.load params session = Db.mine Todo |> Db.orderBy Todo.created.desc |> Db.limit 5 |> Db.all
+
+Recent.view : List Todo -> Session -> Html
+Recent.view todos session =
+  <section id="recent">{for t in todos -> <p>{t.title}</p>}</section>
+
+Open.load : Open.Params -> Session -> Query Int
+Open.load params session = Db.mine Todo |> Db.where (Todo.done.eq False) |> Db.count
+
+-- The badge renders its own `load` and `every` again: the timer keeps running.
+Open.view : Int -> Session -> Html
+Open.view n session = <span id="open" load={Open {}} every="30s">{Text.fromInt n}</span>
+
+test "the open count follows the todos" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Dashboard {})
+  let before <- Test.load (Open {})
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let after <- Test.load (Open {})
+  Task.succeed ({ before: Test.text "#open" before.doc, after: Test.text "#open" after.doc } == { before: Just "0", after: Just "1" })
+}
+```
+
+The section first shows "Loading…", then the five newest todos. The badge
+asks for `Open` when the page shows, then every 30 seconds.
+
+`every` is literal text: a whole number above zero and a unit, `ms`, `s` or
+`m` (`every="500ms"`, `every="5s"`, `every="2m"`). Anything else, a
+computed value, `"0s"` or a missing unit, is E0047. Minutes render as
+seconds (`every="2m"` polls every 120 s), because the browser's timer reads
+only `ms` and `s`. This is what the badge renders:
+
+```html
+<span id="open" data-init="@get(&#39;/dashboard/open&#39;, window._alderF?.())" data-on-interval__duration.30s="@get(&#39;/dashboard/open&#39;, window._alderF?.())">…</span>
+```
+
+`Open.view` writes the same `load` and `every` on its root. The patch keeps
+the element and its attributes, so the timer keeps running and the badge
+costs one request per tick. A view that left them out would remove them
+with the patch, and the badge would stop after its first answer.
+
+### Testing them
+
+`alder test` fires nothing by itself: a `Test.get` holds the page as the
+server sent it. A test says what the user did. `Test.load r`,
+`Test.intersect r` and `Test.input r` find the element that requests `r` on
+the page held, and fetch `r` as the browser would. Polling is `Test.load`
+called again, as `Dashboard`'s test does (chapter 10, "The browser a test
+holds").
+
 ## File pages
 
 Every route so far answers with a web page, or a piece of one. Some
@@ -1683,7 +1945,7 @@ method="post">` with a hidden `_method` field, and the router honours it on
 `POST` only. A `click` on a GET route is a `<form method="get">`. A `click`
 on an element other than a button needs JavaScript.
 
-## Patterns
+## What the patterns cost
 
 What each of these costs and how it is delivered follows from the routes it
 uses. Each is a few lines of routes and uses nothing else:
@@ -1703,17 +1965,18 @@ uses. Each is a few lines of routes and uses nothing else:
 | wizard | `Step2 = GET { name }`; `Next1 = POST` answering `redirect (Step2 { name: … })` | one URL per step; Back works | 1 |
 | login, logout, theme | a `POST` that runs `Session.put` and answers `redirect` or `refresh` | as above | 1 or 2 |
 | CSV export | `Export = GET "/export.csv"` whose view returns a `File` | the file ("File pages", above) | 1 |
+| search as you type | `Results = GET { q }`, asked for by `input=` | `#results`, by its `id` | 1 per pause in typing |
+| infinite scroll | `More = GET { after }`, asked for by `intersect=` | the sentinel becomes rows and the next sentinel | 1 per page |
+| a slow widget | `Recent = GET`, asked for by `load=` | its element, after the page shows | 1 |
+| a polling badge | `Open = GET`, asked for by `load=` with `every=` | its element | 1 per tick |
 
-"Loads" counts the `load`s of GET routes a click costs; `refresh` loads the
+The last four request a route without a click, and need JavaScript
+("Patterns", above). "Loads" counts the `load`s of GET routes a click (or
+one of those triggers) costs; `refresh` loads the
 page twice, once for the before-view.
 
 > **Theme switch.** A class on `<html>` changes only on a full load
 > ([#189](https://github.com/tapegram/alder/issues/189)).
-
-> **Not yet:** search as you type, "load more" on scroll, a widget that fills
-> in when it appears and a badge that polls. They need elements that request
-> a route on `input`, `intersect`, `load` or a timer, and `click` is the only
-> element attribute that requests a route today.
 
 ## The request lifecycle
 

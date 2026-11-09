@@ -30,6 +30,8 @@ import (
 //	TestSubmitRaw  "Test.submitRaw F": rtesting.RawFields("F", <F's fields>, fields), then
 //	               SubmitRoute
 //	TestClick      "Test.click M.R": _b.ClickRoute(route, rtesting.MsgName("M.R", params))
+//	TestTrigger    "Test.load M.R" (intersect, input): _b.TriggerRoute(rtesting.TriggerLoad, route,
+//	               rtesting.MsgName("M.R", params))
 //	TestRefresh    "Test.refresh": _r, _err := rtesting.BrowserOf(_e).Refresh() (#160); R{Answer:
 //	               _r.Answer, …}
 //
@@ -146,6 +148,15 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 			w.WriteString(result(c, "Answer", res+".Answer", res))
 			return w.String()
 		})
+	case *ir.TestTrigger:
+		return f.callStmts("Test."+x.Kind+" "+x.Route.Module+"."+x.Route.Name, true, t, s, func(env string, c *scope) string {
+			var w strings.Builder
+			r, label := f.routeTarget(&w, c, x.Route, x.Params)
+			res, err := f.temp(c, "_r"), f.temp(c, "_err")
+			fmt.Fprintf(&w, "%s, %s := rtesting.BrowserOf(%s).TriggerRoute(%s, %s, %s)\n%s", res, err, env, triggerKinds[x.Kind], r, label, fail(c, err))
+			w.WriteString(result(c, "Answer", res+".Answer", res))
+			return w.String()
+		})
 	case *ir.TestRefresh:
 		return f.callStmts("Test.refresh", true, t, s, func(env string, c *scope) string {
 			res, err := f.temp(c, "_r"), f.temp(c, "_err")
@@ -154,6 +165,9 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 	}
 	panic(fmt.Sprintf("gen: %T is not a browser step", x))
 }
+
+// triggerKinds are the rtesting.Trigger constants of TestTrigger's kinds.
+var triggerKinds = map[string]string{"load": "rtesting.TriggerLoad", "intersect": "rtesting.TriggerIntersect", "input": "rtesting.TriggerInput"}
 
 // routeGet is Test.get, open or fetch (name, "Test.get ") of a GET route: the URL the route
 // value builds (rt.RouteURL), its first `requires` named in a redirect to the login page, and

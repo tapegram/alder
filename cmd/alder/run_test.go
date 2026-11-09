@@ -96,6 +96,7 @@ func startRunAppOpts(t *testing.T, app string, files map[string]string, opts run
 		t.Fatal(err)
 	}
 	tmp := t.TempDir()
+	app = filepath.Base(app)
 	copyDir(t, src, filepath.Join(tmp, app))
 	for rel, content := range files {
 		if err := os.WriteFile(filepath.Join(tmp, app, filepath.FromSlash(rel)), []byte(content), 0o644); err != nil {

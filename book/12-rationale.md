@@ -77,9 +77,9 @@ became the `Response` builders (W0012), and the type `Page` became `Route`.
 
 3. Search-as-you-type, infinite scroll, lazy regions, inline edit, modals,
    wizards, login, toasts, CSV export and polling badges each fall out of
-   routes plus existing attributes, with no new runtime concept. (The ones
-   that need `input=`, `load=` and `every=` wait for a later change: chapter 6
-   names what is built.)
+   routes plus existing attributes, with no new runtime concept. (Search,
+   scroll, a slow widget and polling use `input=`, `intersect=`, `load=` and
+   `every=`: chapter 6, "Patterns".)
 
 4. Without JavaScript every write still works: a plain `POST`, the response's
    own status code, a `GET`.
@@ -134,9 +134,8 @@ LiveView all have the same three outcomes of a write: redirect, re-render in
 place, a partial. Alder spells them `Response.redirect`, `Response.render` and
 `Response.refresh`, and adds `Response.invalid` for a refused form.
 
-`Response.status`, `header`, `json`, `file`, `remove`, `patch` and `stream`,
-and the attributes `input=`, `load=`, `intersect=` and `every=`, are not built
-yet; the `Response` type is shaped for them (chapter 6).
+`Response.status`, `header`, `json`, `file`, `remove`, `patch` and `stream`
+are not built yet; the `Response` type is shaped for them (chapter 6).
 
 ### Derived model, not stored model **(still holds; the Model slot is superseded)**
 

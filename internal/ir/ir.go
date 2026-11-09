@@ -568,12 +568,15 @@ type Str struct {
 type AttrKind int
 
 const (
-	AttrText   AttrKind = iota // Value is Text
-	AttrBool                   // Value is Bool: present when True (a bare attribute is Lit True)
-	AttrMaybe                  // Value is Maybe Text: present when Just
-	AttrHref                   // Value is a Route (RouteRef or Url.external): an href, or a src given a route
-	AttrClick                  // Value is a Route (RouteRef or any Route value)
-	AttrSubmit                 // as AttrClick, on a <form>
+	AttrText      AttrKind = iota // Value is Text
+	AttrBool                      // Value is Bool: present when True (a bare attribute is Lit True)
+	AttrMaybe                     // Value is Maybe Text: present when Just
+	AttrHref                      // Value is a Route (RouteRef or Url.external): an href, or a src given a route
+	AttrClick                     // Value is a Route (RouteRef or any Route value)
+	AttrSubmit                    // as AttrClick, on a <form>
+	AttrLoad                      // as AttrClick: a GET route fetched as the element appears; Every may repeat it
+	AttrIntersect                 // as AttrClick: a GET route fetched as the element scrolls into view
+	AttrInput                     // as AttrClick: a GET route fetched as the control changes, its value as query Key
 )
 
 // HAttr is an attribute of an Elem or FormEl.
@@ -581,6 +584,11 @@ type HAttr struct {
 	Name  string
 	Kind  AttrKind
 	Value Expr
+	// Every is an AttrLoad's repeat interval as Datastar's interval modifier takes it ("60s",
+	// "500ms"), "" for none; the `every` attribute itself is not kept.
+	Every string
+	// Key is an AttrInput's query key: the control's literal `name`.
+	Key string
 }
 
 // Elem is a plain HTML element.
@@ -672,6 +680,10 @@ type Input struct {
 	// attributes, as written (not `field`, `label`, `value`).
 	Wrap      string
 	WrapAttrs []HAttr
+	// Trigger is the route the control requests as it changes (`input={…}`), nil for none;
+	// TriggerKey is the query key its value is sent as (Field).
+	Trigger    Expr
+	TriggerKey string
 }
 
 // FormEl is `<form submit={…}>`. Attrs include the AttrSubmit attribute holding the route value.
@@ -1031,6 +1043,16 @@ type TestSubmitRaw struct {
 // without a form sent) with its Params (nil when written bare).
 type TestClick struct {
 	Typed
+	Route  *Route
+	Params Expr
+}
+
+// TestTrigger is `Test.load r`, `Test.intersect r` or `Test.input r` (Kind "load", "intersect",
+// "input"): the GET route value Route with its Params (nil when written bare), fetched as the
+// held page's element requesting it with that attribute does.
+type TestTrigger struct {
+	Typed
+	Kind   string
 	Route  *Route
 	Params Expr
 }

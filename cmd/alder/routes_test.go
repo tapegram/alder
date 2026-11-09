@@ -95,3 +95,27 @@ func TestRoutes_RouteApp(t *testing.T) {
 		t.Errorf("table:\n%s", tab)
 	}
 }
+
+// A built app renders the route trigger attributes (#160): load, every, intersect and input,
+// on a plain control and on <Input>; the `every` attribute itself is not rendered.
+func TestRoutes_TriggerAttrsRender(t *testing.T) {
+	r := startRunApp(t, "../testdata/corpus/routes-attrs-ok")
+	body := get(t, r.base+"/")
+	for _, want := range []string{
+		`data-init="@get(&#39;/stats`,
+		`data-on-interval__duration.60s=`,
+		`data-on-interval__duration.5s=`,
+		`data-on-interval__duration.500ms=`,
+		`data-on-intersect__once=`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page lacks %s:\n%s", want, body)
+		}
+	}
+	if n := strings.Count(body, `data-on:input__debounce.300ms=`); n != 2 {
+		t.Errorf("%d input triggers, want 2 (plain and <Input>):\n%s", n, body)
+	}
+	if strings.Contains(body, "every=") {
+		t.Errorf("page renders an every attribute:\n%s", body)
+	}
+}

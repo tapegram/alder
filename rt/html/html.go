@@ -44,6 +44,7 @@ type Attr struct {
 	Bool        bool
 	Omit        bool
 	route       *rt.Route
+	key         string // the query key an InputAttr sets to the control's value
 }
 
 // RouteAttr is an attribute requesting route r (#160). Its value is, by name: "data-on:click"
@@ -53,6 +54,19 @@ type Attr struct {
 // button (RenderWith).
 func RouteAttr(name string, r rt.Route) Attr { return Attr{Name: name, route: &r} }
 
+// The Datastar attributes of the route triggers (#160): load (LoadAttr, with IntervalPrefix+d for
+// `every`), intersect and input. Each fetches a GET route as an element fetch.
+const (
+	LoadAttr       = "data-init"
+	IntersectAttr  = "data-on-intersect__once"
+	InputAttr      = "data-on:input__debounce.300ms"
+	IntervalPrefix = "data-on-interval__duration."
+)
+
+// RouteInput is the InputAttr requesting r on each input, with the control's value set as query
+// key key (window._alderQ).
+func RouteInput(key string, r rt.Route) Attr { return Attr{Name: InputAttr, route: &r, key: key} }
+
 // value is a's value as rendered.
 func (a Attr) value() string {
 	if r := a.route; r != nil {
@@ -61,6 +75,14 @@ func (a Attr) value() string {
 			return RouteClick(*r)
 		case "data-on:submit":
 			return RouteSubmit(*r)
+		case LoadAttr, IntersectAttr, InputAttr:
+			if a.Name == InputAttr {
+				return RouteInputValue(*r, a.key)
+			}
+			return RouteLoad(*r)
+		}
+		if strings.HasPrefix(a.Name, IntervalPrefix) {
+			return RouteLoad(*r)
 		}
 		return rt.RouteURL(*r)
 	}
@@ -616,6 +638,19 @@ func attrValue(attrs []Attr, name string) (string, bool) {
 // 'form'; before the helper exists, the content type alone).
 func RouteSubmit(r rt.Route) string {
 	return busy("el", routeRequest(r, PostOptions+"?.('form')||{contentType: 'form'}", true))
+}
+
+// RouteLoad is the Datastar action of a load, intersect or interval trigger requesting GET route
+// r: an element fetch without the busy wrapper, so a background load does not mark the page
+// pending.
+func RouteLoad(r rt.Route) string { return routeRequest(r, FetchOptions+"?.()", false) }
+
+// RouteInputValue is the Datastar action of an input trigger: r's request with query key key set
+// to the control's value (window._alderQ, datastar.BoostInit), key escaped for a JS string.
+func RouteInputValue(r rt.Route, key string) string {
+	u := strings.ReplaceAll(rt.RouteURL(r), "'", "%27")
+	k := strings.NewReplacer(`\`, `\\`, "'", `\'`).Replace(key)
+	return "@get(window._alderQ('" + u + "', '" + k + "', el.value), " + FetchOptions + "?.())"
 }
 
 // RouteClick is the Datastar action of a click requesting route r: a write route's request

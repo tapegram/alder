@@ -297,6 +297,116 @@ func (b *Browser) ClickRoute(r rt.Route, label string) (Result, error) {
 	return b.result(ans), nil
 }
 
+// Trigger is the attribute through which a trigger step finds the held page's element: the
+// route trigger attributes of rt/html (#160).
+type Trigger int
+
+const (
+	TriggerLoad      Trigger = iota // Test.load: data-init, or data-on-interval__duration.<d> (every=)
+	TriggerIntersect                // Test.intersect: data-on-intersect__once
+	TriggerInput                    // Test.input: data-on:input__debounce.300ms
+)
+
+// step is the trigger's step as a test writes it, "Test.load".
+func (k Trigger) step() string {
+	switch k {
+	case TriggerIntersect:
+		return "Test.intersect"
+	case TriggerInput:
+		return "Test.input"
+	}
+	return "Test.load"
+}
+
+// TriggerRoute is Test.load, Test.intersect or Test.input of GET route r (#160): the held
+// page's one element requesting r through kind's attribute (triggerElements; matched by
+// method and URL path, the query ignored) fetches rt.RouteURL(r) — the test's parameters, as
+// if typed for an input — as the page's script fetches an element (sendRoute with fetch), and
+// the answer is ClickRoute's of a GET route: Rendered with the element check passed,
+// PageMissing, RequestFailed. The browser fires nothing on its own; these steps are how a test
+// says the element appeared, scrolled into view or changed. No element is a *NoControlError
+// naming kind's attribute and r's path; several, a *SeveralControlsError naming each. Either way nothing is sent.
+func (b *Browser) TriggerRoute(kind Trigger, r rt.Route, label string) (Result, error) {
+	defer b.track()()
+	u := rt.RouteURL(r)
+	els := b.triggerElements(kind, r)
+	switch {
+	case len(els) == 0:
+		return Result{}, &NoControlError{Trigger: strings.TrimPrefix(kind.step(), "Test."), Msg: label, URL: u, Page: b.url}
+	case len(els) > 1:
+		e := &SeveralControlsError{Step: kind.step(), Path: urlPath(u)}
+		for _, n := range els {
+			e.Elements = append(e.Elements, elementTag(n))
+		}
+		return Result{}, e
+	}
+	ans, err := b.sendRoute(routeCtl{method: http.MethodGet, route: http.MethodGet, url: u, fetch: true}, r, nil)
+	if err != nil {
+		return Result{}, err
+	}
+	return b.result(ans), nil
+}
+
+// triggerRequest is the URL of a route trigger attribute's request (rt/html): `@get('<url>', …)`,
+// or for an input `@get(window._alderQ('<url>', '<key>', el.value), …)`.
+var triggerRequest = regexp.MustCompile(`@get\((?:window\._alderQ\()?'([^']*)'`)
+
+// triggerElements are the held page's elements, in document order, whose kind attribute
+// requests GET route r: the URL's path is r's (the query ignored: an input's value, a
+// sentinel's cursor). For TriggerLoad an element counts once whether it has data-init, an
+// interval or both.
+func (b *Browser) triggerElements(kind Trigger, r rt.Route) []html.Node {
+	if !b.hasDoc || routeMethod(r) != http.MethodGet {
+		return nil
+	}
+	want := urlPath(rt.RouteURL(r))
+	attr := func(n html.Node) (string, bool) {
+		switch kind {
+		case TriggerIntersect:
+			return html.AttrOf(n, html.IntersectAttr)
+		case TriggerInput:
+			return html.AttrOf(n, html.InputAttr)
+		}
+		if v, ok := html.AttrOf(n, html.LoadAttr); ok {
+			return v, true
+		}
+		_, v, ok := html.AttrPrefixed(n, html.IntervalPrefix)
+		return v, ok
+	}
+	var out []html.Node
+	var walk func(n html.Node)
+	walk = func(n html.Node) {
+		if v, ok := attr(n); ok {
+			if m := triggerRequest.FindStringSubmatch(v); m != nil && urlPath(m[1]) == want {
+				out = append(out, n)
+			}
+		}
+		for _, ch := range n.Children() {
+			walk(ch)
+		}
+	}
+	walk(b.doc)
+	return out
+}
+
+// urlPath is URL u's path ("" when u does not parse).
+func urlPath(u string) string {
+	p, err := url.Parse(u)
+	if err != nil {
+		return ""
+	}
+	return p.Path
+}
+
+// elementTag is element n's start tag as a SeveralControlsError names it: `<div id="a">`, or
+// `<div>` without an id.
+func elementTag(n html.Node) string {
+	if id, ok := html.AttrOf(n, "id"); ok {
+		return "<" + n.Tag() + " id=" + strconv.Quote(id) + ">"
+	}
+	return "<" + n.Tag() + ">"
+}
+
 // SubmitRoute is Test.submit of write route r's form (named form, for the errors): fields
 // posted to the held page's form for r (not a click button's own; only the fields the form has
 // inputs for: Fields.For), with the form's `_method` (its hidden field, or its submit button's

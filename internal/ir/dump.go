@@ -625,6 +625,12 @@ func (d *dumper) expr(e Expr) *sx {
 			items = append(items, d.expr(x.Params))
 		}
 		return list(2, items...)
+	case *TestTrigger:
+		items := []*sx{atom("test-" + x.Kind), atom(stepTarget(x.Route))}
+		if x.Params != nil {
+			items = append(items, d.expr(x.Params))
+		}
+		return list(2, items...)
 	case *CapCall:
 		items := []*sx{atom("cap"), atom(x.Cap.Module + "." + x.Cap.Name), atom(x.Entry)}
 		return list(3, append(items, d.exprs(x.Args)...)...)
@@ -704,7 +710,7 @@ func (d *dumper) expr(e Expr) *sx {
 }
 
 func (d *dumper) attrs(as []HAttr) []*sx {
-	kinds := []string{"text", "bool", "maybe", "href", "click", "submit"}
+	kinds := []string{"text", "bool", "maybe", "href", "click", "submit", "load", "intersect", "input"}
 	out := make([]*sx, len(as))
 	for i, a := range as {
 		out[i] = list(3, atom("attr"), atom(a.Name), atom(kinds[a.Kind]), d.expr(a.Value))

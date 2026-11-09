@@ -101,8 +101,7 @@ are written that way.
 > `alder fix --routes` rewrites an app from it.
 
 > **Not yet:** `Response.status`, `header`, `json`, `file`, `remove`,
-> `patch` and `stream` and the `input=`, `load=`, `intersect=` and `every=`
-> attributes are not built yet.
+> `patch` and `stream` are not built yet.
 
 ### Building an app from the command line
 

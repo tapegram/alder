@@ -1,0 +1,14 @@
+module Todos
+
+route Index  = GET   "/"                  { }
+route Toggle = PATCH "/todos/{id}/toggle" { id: Text }
+
+-- `load` fetches as the element appears: a write route is sent by a button (`click`)
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <div load={Toggle { id: "1" }}>Toggle</div>
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update params session = Task.succeed Response.refresh

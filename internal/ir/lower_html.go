@@ -55,11 +55,15 @@ func (l *lowerer) element(x *syntax.Element) Expr {
 	var submit *syntax.HtmlAttr
 	var attrs []HAttr
 	for _, a := range x.Attrs {
+		if a.Name == "every" {
+			continue // read with `load`, below
+		}
 		attrs = append(attrs, l.attr(a))
 		if x.Tag == "form" && a.Name == "submit" && a.Value != nil {
 			submit = a
 		}
 	}
+	triggerAttrs(x, attrs)
 	if submit == nil {
 		el := &Elem{Typed: Typed{t}, Tag: x.Tag, Attrs: attrs, Children: l.children(x.Children)}
 		if r, ok := l.res.Rendered[x]; ok {
@@ -284,6 +288,30 @@ func (l *lowerer) submittedRoute(e syntax.Expr) *Route {
 	return nil
 }
 
+// triggerAttrs completes the route trigger attributes of x (#160), whose lowered attributes are
+// attrs: `load` takes the repeat interval from a literal `every`, `input` the query key from a
+// literal `name`. The checker guarantees both are literals where they are needed.
+func triggerAttrs(x *syntax.Element, attrs []HAttr) {
+	lit := func(name string) (string, bool) {
+		for _, a := range x.Attrs {
+			if a.Name == name && a.Value != nil {
+				return literalText(a.Value)
+			}
+		}
+		return "", false
+	}
+	for i := range attrs {
+		switch attrs[i].Kind {
+		case AttrLoad:
+			if every, ok := lit("every"); ok {
+				attrs[i].Every, _ = syntax.EveryDuration(every)
+			}
+		case AttrInput:
+			attrs[i].Key, _ = lit("name")
+		}
+	}
+}
+
 func (l *lowerer) attr(a *syntax.HtmlAttr) HAttr {
 	if a.Value == nil {
 		return HAttr{Name: a.Name, Kind: AttrBool, Value: &Lit{Typed: Typed{types.Bool}, Kind: LitBool, Bool: true}}
@@ -297,6 +325,12 @@ func (l *lowerer) attr(a *syntax.HtmlAttr) HAttr {
 		kind = AttrClick
 	case a.Name == "submit":
 		kind = AttrSubmit
+	case a.Name == "load":
+		kind = AttrLoad
+	case a.Name == "intersect":
+		kind = AttrIntersect
+	case a.Name == "input":
+		kind = AttrInput
 	default:
 		switch t := v.Type().(type) {
 		case *types.Con:
@@ -376,6 +410,8 @@ func (l *lowerer) input(x *syntax.Element, kind string, t types.Type) Expr {
 			out.Value = l.expr(a.Value)
 		case "options":
 			out.Options = l.expr(a.Value)
+		case "input":
+			out.Trigger = l.expr(a.Value)
 		case "form":
 			if out.Wrap == "" {
 				out.BareForm = true
@@ -385,6 +421,9 @@ func (l *lowerer) input(x *syntax.Element, kind string, t types.Type) Expr {
 				out.WrapAttrs = append(out.WrapAttrs, l.attr(a))
 			}
 		}
+	}
+	if out.Trigger != nil {
+		out.TriggerKey = out.Field
 	}
 	return out
 }

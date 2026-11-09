@@ -1,0 +1,17 @@
+module Todos
+
+route Index   = GET "/"        { }
+route Results = GET "/results" { q: Text = "" }
+
+-- `input` fires as a field changes: a `<div>` has no value
+Index.load : Index.Params -> Session -> Query Text
+Index.load params session = Query.succeed ""
+
+Index.view : Text -> Session -> Html
+Index.view q session = <div input={Results { q: q }}>{q}</div>
+
+Results.load : Results.Params -> Session -> Query Text
+Results.load params session = Query.succeed params.q
+
+Results.view : Text -> Session -> Html
+Results.view q session = <p id="results">{q}</p>

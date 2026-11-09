@@ -1,0 +1,14 @@
+module Todos
+
+route Index = GET  "/"     { }
+route Tick  = POST "/tick" { }
+
+-- a timer must not write: `load … every` fetches a GET route
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <div load={Tick {}} every="5s">{Text.fromInt n}</div>
+
+Tick.update : Tick.Params -> Session -> Task Response
+Tick.update params session = Task.succeed Response.refresh

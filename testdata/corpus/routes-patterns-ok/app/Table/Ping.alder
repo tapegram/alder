@@ -1,0 +1,9 @@
+module Table.Ping
+
+type PingId = brand Text
+
+-- One row per bump: the polling badge shows how many there are.
+table Ping {
+  id: PingId @id,
+  note: Text = "",
+}

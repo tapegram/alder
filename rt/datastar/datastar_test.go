@@ -246,3 +246,16 @@ func TestBoostInit_SendsPageAndBuild(t *testing.T) {
 		t.Fatalf("_alderF: %s", f)
 	}
 }
+
+// window._alderQ sets one query key to the typed value and keeps the others (#160).
+func TestBoostInit_AlderQ(t *testing.T) {
+	want := `window._alderQ = (u, k, v) => { const x = new URL(u, location.href); x.searchParams.set(k, v); return x.pathname + x.search; };`
+	if !strings.Contains(BoostInit, want) {
+		t.Fatalf("BoostInit lacks %s:\n%s", want, BoostInit)
+	}
+	f := BoostInit[strings.Index(BoostInit, "window._alderF"):]
+	f = f[:strings.Index(f, ";")]
+	if strings.Contains(f, "requestCancellation") {
+		t.Errorf("_alderF sets requestCancellation: %s", f)
+	}
+}

@@ -1,0 +1,21 @@
+module Todos
+
+route Index   = GET "/"        { }
+route Results = GET "/results" { q: Text = "" }
+
+-- the browser sets the query key named by the control's `name`: it must be literal
+Index.load : Index.Params -> Session -> Query Text
+Index.load params session = Query.succeed "q"
+
+Index.view : Text -> Session -> Html
+Index.view key session =
+  <div>
+    <input input={Results { q: key }} />
+    <textarea name={key} input={Results { q: key }}></textarea>
+  </div>
+
+Results.load : Results.Params -> Session -> Query Text
+Results.load params session = Query.succeed params.q
+
+Results.view : Text -> Session -> Html
+Results.view q session = <p id="results">{q}</p>

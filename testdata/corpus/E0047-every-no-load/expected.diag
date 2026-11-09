@@ -1,0 +1,2 @@
+app/Todos.alder:13:40 E0047 `every` repeats a `load`; add `load={Route}` beside it
+app/Todos.alder:14:8 E0047 `every` repeats a `load`; add `load={Route}` beside it

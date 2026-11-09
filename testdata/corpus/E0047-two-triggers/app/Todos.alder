@@ -1,0 +1,24 @@
+module Todos
+
+route Index = GET "/"      { }
+route Stats = GET "/stats" { }
+route More  = GET "/more"  { after: Int }
+
+-- one trigger per element: `load`, `intersect` or `input`
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <div load={Stats {}} intersect={More { after: n }}></div>
+
+Stats.load : Stats.Params -> Session -> Query Int
+Stats.load params session = Query.succeed 1
+
+Stats.view : Int -> Session -> Html
+Stats.view n session = <p id="stats">{Text.fromInt n}</p>
+
+More.load : More.Params -> Session -> Query Int
+More.load params session = Query.succeed params.after
+
+More.view : Int -> Session -> Html
+More.view n session = <p id="more">{Text.fromInt n}</p>

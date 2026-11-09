@@ -2,7 +2,9 @@
 package check
 
 import (
+	"cmp"
 	"reflect"
+	"slices"
 	"strings"
 
 	"alder/internal/diag"
@@ -121,9 +123,10 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 	if x.Tag == "form" {
 		mc.formWireNames(x)
 	}
+	mc.triggerAttrs(x)
 	var pushed *formCtx
 	for _, a := range x.Attrs {
-		mc.attribute(a, m, env, eff)
+		mc.attribute(x, a, m, env, eff)
 		if x.Tag == "form" && a.Name == "submit" && a.Value != nil {
 			if f := mc.formOf(a.Value); f != nil {
 				pushed = f
@@ -254,7 +257,8 @@ func (mc *modCtx) formOf(e syntax.Expr) *formCtx {
 	return &formCtx{name: "", rec: &types.Record{Anonymous: true}}
 }
 
-func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effect) {
+// attribute checks attribute a of element x.
+func (mc *modCtx) attribute(x *syntax.Element, a *syntax.HtmlAttr, m types.Type, env *env, eff effect) {
 	c := mc.c
 	if strings.HasPrefix(a.Name, "on") && len(a.Name) > 2 {
 		c.errorf(diag.ParseError, a.Span, "`%s` is not Alder; use `click={Route}`", a.Name)
@@ -301,6 +305,16 @@ func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effe
 			return
 		}
 		mc.check(a.Value, m, env, eff)
+	case a.Name == "load" || a.Name == "intersect":
+		mc.triggerRoute(x, a, env, eff)
+	case a.Name == "input":
+		mc.inputAttr(x, a, env, eff)
+	case a.Name == "every":
+		if attrNamed(x, "load") != nil { // without one, triggerAttrs reported it
+			mc.everyAttr(a, env, eff)
+		} else {
+			mc.infer(a.Value, env, eff)
+		}
 	case boolAttrs[a.Name]:
 		mc.check(a.Value, types.Bool, env, eff)
 	case a.Name == "src": // Text, or a route value: `Url.external "https://…"` (rendered as its URL)
@@ -308,6 +322,162 @@ func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effe
 	default:
 		mc.textAttr(a, env, eff)
 	}
+}
+
+// triggerNames are the route trigger attributes an element takes one of (#160).
+var triggerNames = []string{"load", "intersect", "input"}
+
+// triggerAttrs reports (E0047) the route trigger attributes of plain element x that cannot go
+// together: two of `load`, `intersect` and `input`, or an `every` without a `load`. It runs once
+// per element, before its attributes are checked.
+func (mc *modCtx) triggerAttrs(x *syntax.Element) {
+	c := mc.c
+	var first *syntax.HtmlAttr
+	for _, a := range x.Attrs {
+		if !slices.Contains(triggerNames, a.Name) {
+			continue
+		}
+		if first == nil {
+			first = a
+			continue
+		}
+		c.errorf(diag.RouteTrigger, a.Span, "an element takes one of `load`, `intersect`, `input`; this one has `%s` and `%s`", first.Name, a.Name)
+	}
+	if every := attrNamed(x, "every"); every != nil && attrNamed(x, "load") == nil {
+		c.errorf(diag.RouteTrigger, every.Span, "`every` repeats a `load`; add `load={Route}` beside it")
+	}
+}
+
+// attrNamed is x's first attribute called name, nil when it has none.
+func attrNamed(x *syntax.Element, name string) *syntax.HtmlAttr {
+	for _, a := range x.Attrs {
+		if a.Name == name {
+			return a
+		}
+	}
+	return nil
+}
+
+// triggerRoute checks the value of route trigger attribute a of element x (`load`, `intersect`,
+// `input`): a GET route, written applied to its parameters. A write route is E0045. It returns
+// the route's constructor and route when the value is written as one and is a GET route, else
+// nil, nil (also for a computed Route value, whose route is not known).
+func (mc *modCtx) triggerRoute(x *syntax.Element, a *syntax.HtmlAttr, env *env, eff effect) (*syntax.CtorRef, *RouteInfo) {
+	c := mc.c
+	if mc.bareRoute(a.Value, false) {
+		return nil, nil
+	}
+	ct, r := mc.routeTarget(a.Value)
+	if r != nil && isWrite(r.Method) {
+		switch {
+		case a.Name == "load" && attrNamed(x, "every") != nil:
+			c.errorf(diag.RouteTarget, a.Value.GetSpan(), "`load … every` fetches a GET route; `%s` is %s: a timer must not write", ct.Name, r.Method)
+		case a.Name == "input":
+			c.errorf(diag.RouteTarget, a.Value.GetSpan(), "`input` fetches a GET route; `%s` is %s: use `submit`", ct.Name, r.Method)
+		default:
+			c.errorf(diag.RouteTarget, a.Value.GetSpan(), "`%s` fetches a GET route; `%s` is %s: use `click`", a.Name, ct.Name, r.Method)
+		}
+		mc.infer(a.Value, env, eff)
+		return nil, nil
+	}
+	got := c.u.Apply(mc.infer(a.Value, env, eff))
+	if err := c.u.Check(got, types.Route); err != nil {
+		mc.mismatch(a.Value.GetSpan(), got, types.Route)
+		return nil, nil
+	}
+	return ct, r
+}
+
+// inputAttr checks `input={R}` on plain element x: a control (`<input>`, `<textarea>`,
+// `<select>`) with a literal `name`, the query key it sets on R.
+func (mc *modCtx) inputAttr(x *syntax.Element, a *syntax.HtmlAttr, env *env, eff effect) {
+	c := mc.c
+	if x.Tag != "input" && x.Tag != "textarea" && x.Tag != "select" {
+		c.errorf(diag.RouteTrigger, a.Span, "`input` fires as a field changes; put it on `<input>`, `<textarea>`, `<select>` or `<Input field=…>`")
+		mc.triggerRoute(x, a, env, eff)
+		return
+	}
+	var key string
+	ok := false
+	if n := attrNamed(x, "name"); n != nil && n.Value != nil {
+		key, ok = literalText(n.Value)
+	}
+	if !ok || key == "" {
+		c.errorf(diag.RouteTrigger, a.Span, "`input` sends the field's value under its name; give `<%s>` a literal `name`", x.Tag)
+		mc.triggerRoute(x, a, env, eff)
+		return
+	}
+	mc.inputKey(x, a, key, env, eff)
+}
+
+// inputKey checks the route of `input` attribute a of control x, which sends its value as query
+// key key: a GET route with a `Text` query parameter of that key (E0047).
+func (mc *modCtx) inputKey(x *syntax.Element, a *syntax.HtmlAttr, key string, env *env, eff effect) {
+	c := mc.c
+	ct, r := mc.triggerRoute(x, a, env, eff)
+	if r == nil {
+		if mc.computedRoute(a.Value) {
+			c.errorf(diag.RouteTrigger, a.Value.GetSpan(), "`input` needs a route written in place, like `input={Results { q: model.q }}`, so the compiler can check its query key")
+		}
+		return
+	}
+	f, ok := queryKey(r, key)
+	switch {
+	case !ok && slices.Contains(pathParams(r.Path), key):
+		c.errorf(diag.RouteTrigger, a.Value.GetSpan(), "`input` sends field `%s`; `%s` has `%s` in its path, and the browser can only set a query parameter", key, ct.Name, key)
+	case !ok:
+		c.errorf(diag.RouteTrigger, a.Value.GetSpan(), "`input` sends field `%s`; `%s` has no query parameter `%s`", key, ct.Name, key)
+	default:
+		for _, p := range r.Params.Fields {
+			if p.Name == f.Name && !isCon(c.u.Apply(p.Type), "Text") {
+				c.errorf(diag.RouteTrigger, a.Value.GetSpan(), "`input` sends field `%s` as text; `%s.%s` is %s, so make it `Text`", key, ct.Name, f.Name, mc.ts(p.Type))
+			}
+		}
+	}
+}
+
+// computedRoute reports whether e, already checked, is a Route value not written as a route
+// constructor (`model.r`, `Url.external "…"`), whose route the checker does not know.
+func (mc *modCtx) computedRoute(e syntax.Expr) bool {
+	head := e
+	if app, ok := e.(*syntax.App); ok {
+		head = app.Fn
+	}
+	if ct, ok := head.(*syntax.CtorRef); ok && ct.Ref.Kind == syntax.RefRoute {
+		return false
+	}
+	t, ok := mc.c.res.Types[e]
+	return ok && mc.c.u.Check(mc.c.u.Apply(t), types.Route) == nil
+}
+
+// queryKey is route r's query parameter read from query key key: its `as "Key"` wire name, or
+// its name when it has none. Path parameters and the form are not query parameters.
+func queryKey(r *RouteInfo, key string) (*syntax.Field, bool) {
+	if r.Decl == nil || r.Decl.Params == nil {
+		return nil, false
+	}
+	inPath := pathParams(r.Path)
+	for _, f := range r.Decl.Params.Fields {
+		if f.Name == "form" || slices.Contains(inPath, f.Name) {
+			continue
+		}
+		if k := cmp.Or(f.Wire, f.Name); k == key {
+			return f, true
+		}
+	}
+	return nil, false
+}
+
+// everyAttr checks the value of `every`: a literal duration (syntax.EveryDuration), E0047
+// otherwise.
+func (mc *modCtx) everyAttr(a *syntax.HtmlAttr, env *env, eff effect) {
+	lit, ok := literalText(a.Value)
+	if _, valid := syntax.EveryDuration(lit); ok && valid {
+		mc.c.record(a.Value, types.Text)
+		return
+	}
+	mc.c.errorf(diag.RouteTrigger, a.Value.GetSpan(), "`every` takes a literal like \"5s\": a whole number above 0 then `ms`, `s` or `m`")
+	mc.infer(a.Value, env, eff)
 }
 
 // textAttr checks the value of an ordinary attribute: Text, or Maybe Text (omitted for Nothing).
@@ -398,6 +568,7 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 	}
 	var fieldName string
 	var value, options syntax.Expr
+	var trigger *syntax.HtmlAttr
 	bareForm := false
 	for _, a := range attrs {
 		if a.Value == nil && a.Name != "form" {
@@ -425,8 +596,21 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 			options = a.Value
 		case "form":
 			bareForm = true
+		case "input":
+			trigger = a
 		default:
 			c.errorf("E0304", a.Span, "`<%s>` has no attribute `%s`", x.Tag, a.Name)
+		}
+	}
+	if trigger != nil {
+		switch {
+		case kind != "Input" && kind != "Textarea" && kind != "Select":
+			c.errorf(diag.RouteTrigger, trigger.Span, "`input` fires as a field changes; put it on `<input>`, `<textarea>`, `<select>` or `<Input field=…>`")
+			mc.infer(trigger.Value, env, eff)
+		case fieldName == "": // E0304 above or below: `field` missing or not literal
+			mc.triggerRoute(x, trigger, env, eff)
+		default:
+			mc.inputKey(x, trigger, fieldName, env, eff)
 		}
 	}
 	if mc.form.name == "" {

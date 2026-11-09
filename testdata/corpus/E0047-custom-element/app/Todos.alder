@@ -1,0 +1,17 @@
+module Todos
+
+route Index = GET "/"      { }
+route Stats = GET "/stats" { }
+
+-- a custom element does not take the route triggers: wrap it in a `<div>`
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <al-card load={Stats {}}>{Text.fromInt n}</al-card>
+
+Stats.load : Stats.Params -> Session -> Query Int
+Stats.load params session = Query.succeed 1
+
+Stats.view : Int -> Session -> Html
+Stats.view n session = <p id="stats">{Text.fromInt n}</p>

@@ -383,7 +383,9 @@ class BuildContextTests(unittest.TestCase):
         self.assertEqual(code, 0)
         # #187 raised it to 69.1k (the six route operators in chapter 10's table and the mutation report); the docs
         # formatting pass (docs/markdown-style.md: blank lines, short paragraphs, `###` headings, callouts) to 70k.
-        self.assertLessEqual(len(out) // 4, 70000, "the reference is at most 70k tokens (len/4)")
+        # #160 PR 10 raised it to 73k: chapter 6's "Patterns" section (`load=`, `every=`, `intersect=`, `input=`, the
+        # `More` shape, E0047) and the attribute and `Test.load/intersect/input` rows in chapters 5 and 10.
+        self.assertLessEqual(len(out) // 4, 73000, "the reference is at most 73k tokens (len/4)")
         # M17 (file pages) raised from 48000; see the M17 plan
         # M15: the partition rules, `via`, `silo`, the one-store rule and the commands are in; the
         # silo files, the open-time check and moving a table into a silo (the inside) are not
