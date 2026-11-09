@@ -1,1 +1,1 @@
-app/Todos.alder:11:49 E0047 `input` sends field `id`; `Row` has `{id}` in its path, and the browser can only set a query parameter
+app/Todos.alder:11:49 E0047 `input` sends field `id`; `Row` has `id` in its path, and the browser can only set a query parameter

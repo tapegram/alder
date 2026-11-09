@@ -416,12 +416,15 @@ func (mc *modCtx) inputKey(x *syntax.Element, a *syntax.HtmlAttr, key string, en
 	c := mc.c
 	ct, r := mc.triggerRoute(x, a, env, eff)
 	if r == nil {
+		if mc.computedRoute(a.Value) {
+			c.errorf(diag.RouteTrigger, a.Value.GetSpan(), "`input` needs a route written in place, like `input={Results { q: model.q }}`, so the compiler can check its query key")
+		}
 		return
 	}
 	f, ok := queryKey(r, key)
 	switch {
 	case !ok && slices.Contains(pathParams(r.Path), key):
-		c.errorf(diag.RouteTrigger, a.Value.GetSpan(), "`input` sends field `%s`; `%s` has `{%s}` in its path, and the browser can only set a query parameter", key, ct.Name, key)
+		c.errorf(diag.RouteTrigger, a.Value.GetSpan(), "`input` sends field `%s`; `%s` has `%s` in its path, and the browser can only set a query parameter", key, ct.Name, key)
 	case !ok:
 		c.errorf(diag.RouteTrigger, a.Value.GetSpan(), "`input` sends field `%s`; `%s` has no query parameter `%s`", key, ct.Name, key)
 	default:
@@ -431,6 +434,20 @@ func (mc *modCtx) inputKey(x *syntax.Element, a *syntax.HtmlAttr, key string, en
 			}
 		}
 	}
+}
+
+// computedRoute reports whether e, already checked, is a Route value not written as a route
+// constructor (`model.r`, `Url.external "…"`), whose route the checker does not know.
+func (mc *modCtx) computedRoute(e syntax.Expr) bool {
+	head := e
+	if app, ok := e.(*syntax.App); ok {
+		head = app.Fn
+	}
+	if ct, ok := head.(*syntax.CtorRef); ok && ct.Ref.Kind == syntax.RefRoute {
+		return false
+	}
+	t, ok := mc.c.res.Types[e]
+	return ok && mc.c.u.Check(mc.c.u.Apply(t), types.Route) == nil
 }
 
 // queryKey is route r's query parameter read from query key key: its `as "Key"` wire name, or

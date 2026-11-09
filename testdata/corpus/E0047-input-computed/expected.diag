@@ -1,0 +1,1 @@
+app/Todos.alder:16:28 E0047 `input` needs a route written in place, like `input={Results { q: model.q }}`, so the compiler can check its query key
