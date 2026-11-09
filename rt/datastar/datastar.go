@@ -217,6 +217,7 @@ const BoostPopstate = `if (location.pathname + location.search !== window._alder
 const BoostInit = `window._alderAt = location.pathname + location.search;` +
 	` window._alderO = (f) => { window._alderAC?.abort(); const o = {payload: {}, headers: {'` + html.ShownHeader + `': document.getElementById('` + ShownID + `')?.dataset.h || '', '` + html.PageHeader + `': location.pathname + location.search, '` + BuildHeader + `': window._alderBuild}, ` + html.Navigation + `}; if (f) o.contentType = f; return o };` +
 	` window._alderF = () => ({payload: {}, headers: {'` + FetchHeader + `': '1', '` + html.PageHeader + `': location.pathname + location.search, '` + BuildHeader + `': window._alderBuild}});` +
+	` window._alderQ = (u, k, v) => { const x = new URL(u, location.href); x.searchParams.set(k, v); return x.pathname + x.search; };` +
 	` window._alderBuild = document.querySelector('meta[name=alder-build]')?.content || '';` +
 	` window._alderN = 0;` +
 	` window._alderBusy = (el, p) => { const f = el && el.closest ? el.closest('form') || el : null, h = document.documentElement, a = document.activeElement;` +

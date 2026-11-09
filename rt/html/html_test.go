@@ -469,3 +469,64 @@ func TestRender_RouteRawQuoteInPath(t *testing.T) {
 		}
 	}
 }
+
+// load, intersect, every and input on a GET route (#160): a Datastar trigger fetching the route
+// as an element fetch, with no busy wrapper and no attribute besides the requested ones.
+func TestRender_RouteLoad(t *testing.T) {
+	got := Render(El("div", []Attr{RouteAttr(LoadAttr, listRoute)}))
+	want := `<div data-init="@get(&#39;/todos?filter=Active&#39;, window._alderF?.())"></div>`
+	if got != want {
+		t.Fatalf("got %s\nwant %s", got, want)
+	}
+}
+
+func TestRender_RouteLoadEvery(t *testing.T) {
+	got := Render(El("div", []Attr{RouteAttr(LoadAttr, listRoute), RouteAttr(IntervalPrefix+"5s", listRoute)}))
+	v := `@get(&#39;/todos?filter=Active&#39;, window._alderF?.())`
+	want := `<div data-init="` + v + `" data-on-interval__duration.5s="` + v + `"></div>`
+	if got != want {
+		t.Fatalf("got %s\nwant %s", got, want)
+	}
+}
+
+func TestRender_RouteIntersect(t *testing.T) {
+	got := Render(El("div", []Attr{RouteAttr(IntersectAttr, listRoute)}))
+	want := `<div data-on-intersect__once="@get(&#39;/todos?filter=Active&#39;, window._alderF?.())"></div>`
+	if got != want {
+		t.Fatalf("got %s\nwant %s", got, want)
+	}
+}
+
+func TestRender_RouteInput(t *testing.T) {
+	got := Render(El("input", []Attr{RouteInput("filter", listRoute)}))
+	want := `<input data-on:input__debounce.300ms="@get(window._alderQ(&#39;/todos?filter=Active&#39;, &#39;filter&#39;, el.value), window._alderF?.())" />`
+	if got != want {
+		t.Fatalf("got %s\nwant %s", got, want)
+	}
+}
+
+func TestRender_RouteInputQuote(t *testing.T) {
+	r := rt.Route{Name: "Todos.Index", Method: "GET", Path: "/todos", Query: []rt.KV{{Key: "q", Value: "o'neil"}}}
+	got := Render(El("input", []Attr{RouteInput("a'b", r)}))
+	if !strings.Contains(got, "q=o%27neil") || strings.Contains(got, "o'neil") {
+		t.Errorf("the URL's quote: %s", got)
+	}
+	if !strings.Contains(got, `a\&#39;b`) {
+		t.Errorf("the key's quote: %s", got)
+	}
+	if v := RouteInputValue(r, `a\b`); !strings.Contains(v, `'a\\b'`) {
+		t.Errorf("the key's backslash: %s", v)
+	}
+}
+
+func TestRender_RouteTriggersNoBusy(t *testing.T) {
+	for _, a := range []Attr{RouteAttr(LoadAttr, listRoute), RouteAttr(IntersectAttr, listRoute), RouteAttr(IntervalPrefix+"2s", listRoute), RouteInput("filter", listRoute)} {
+		if v := a.value(); strings.Contains(v, "_alderBusy") {
+			t.Errorf("%s: busy wrapper in %s", a.Name, v)
+		}
+		got := Render(El("div", []Attr{a}))
+		if n := strings.Count(got, `="`); n != 1 {
+			t.Errorf("%s: %d attributes in %s", a.Name, n, got)
+		}
+	}
+}
