@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -389,6 +390,28 @@ func TestAnswer_ShownPageUnmatched(t *testing.T) {
 	w = ansPost(h, "/w/refresh?toast=Saved", "/gone", nil)
 	if evs := events(w.Body.String()); len(evs) != 1 || noticeOf(w) == nil {
 		t.Fatalf("toast: notice %v %q", noticeOf(w), evs)
+	}
+}
+
+// A Datastar write answering two toasts and a redirect to another site navigates away and keeps
+// both toasts in the notice cookie for the page loaded (#179).
+func TestNavigateAway_KeepsAllToasts(t *testing.T) {
+	routes := []Route{{Method: "POST", Pattern: "/w", Handle: func(rq *Request) Response {
+		to := rt.Redirect(rt.Route{Method: "GET", Path: "https://example.com/"})
+		return AnswerResponse(rt.WithToast(rt.NoticeWarning, "Second", rt.WithToast(rt.NoticeSuccess, "First", to)), nil, nil)
+	}}}
+	h := NewRouter(routes, testOpts(nil))
+	w := ansPost(h, "/w", "/", nil)
+	c := noticeOf(w)
+	if evs := events(w.Body.String()); len(evs) != 1 || !strings.Contains(evs[0], `window.location.assign("https://example.com/")`) || c == nil {
+		t.Fatalf("cookie %v %q", c, evs)
+	}
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(c)
+	got := h.(*router).takeNotices(httptest.NewRecorder(), req)
+	want := []rt.Toast{{Kind: rt.NoticeSuccess, Text: "First"}, {Kind: rt.NoticeWarning, Text: "Second"}}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
 

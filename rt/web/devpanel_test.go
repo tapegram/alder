@@ -1,9 +1,11 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 
 	"alder/internal/csscheck"
 	rtpkg "alder/rt"
@@ -222,6 +224,83 @@ func TestNoticedWithoutScript_Kinds(t *testing.T) {
 		if want == "" && strings.Contains(b, "al-alert") || want != "" && !strings.Contains(b, "<body>"+want) {
 			t.Errorf("%q: want %q in %s", payload, want, b)
 		}
+	}
+}
+
+// Every toast of a redirect answered to a form posted without Datastar rides in the notice
+// cookie, and the next page shows one <al-alert> for each, in order (#179).
+func TestNoticedWithoutScript_All(t *testing.T) {
+	routes := []Route{
+		{Method: "POST", Pattern: "/go", Handle: func(rq *Request) Response {
+			to := rtpkg.Redirect(rtpkg.Route{Name: "A.List", Method: "GET", Path: "/list"})
+			return AnswerResponse(rtpkg.WithToast(rtpkg.NoticeError, "Three", rtpkg.WithToast(rtpkg.NoticeSuccess, "Two", rtpkg.WithToast(rtpkg.NoticeInfo, "One", to))), nil, nil)
+		}},
+		{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response { return PageResponse(doc("list"), nil, nil) }},
+	}
+	h := NewRouter(routes, testOpts(nil))
+	w := serve(h, httptest.NewRequest("POST", "/go", nil))
+	c := noticeOf(w)
+	if w.Code != 303 || c == nil {
+		t.Fatalf("%d, cookie %v", w.Code, c)
+	}
+	get := httptest.NewRequest("GET", "/list", nil)
+	get.AddCookie(c)
+	b := serve(h, get).Body.String()
+	want := `<body><al-alert variant="info" role="status">One</al-alert>` +
+		`<al-alert variant="success" role="status">Two</al-alert>` +
+		`<al-alert variant="destructive" role="alert">Three</al-alert>`
+	if !strings.Contains(b, want) || strings.Count(b, "<al-alert") != 3 {
+		t.Errorf("want %q in %s", want, b)
+	}
+}
+
+// takeNotices still reads a cookie signed before the toasts went in a list: one toast, its kind
+// from the segment after "notice:" when that is a kind, else info.
+func TestTakeNotices_Legacy(t *testing.T) {
+	rt := NewRouter(nil, testOpts(nil)).(*router)
+	for payload, want := range map[string]rtpkg.Toast{
+		"notice:error:Boom": {Kind: rtpkg.NoticeError, Text: "Boom"},
+		"notice:hi":         {Kind: rtpkg.NoticeInfo, Text: "hi"},
+	} {
+		req := httptest.NewRequest("GET", "/list", nil)
+		req.AddCookie(&http.Cookie{Name: NoticeCookie, Value: Sign(testOpts(nil).Secret, []byte(payload))})
+		if got := rt.takeNotices(httptest.NewRecorder(), req); len(got) != 1 || got[0] != want {
+			t.Errorf("%q: got %+v, want %+v", payload, got, want)
+		}
+	}
+}
+
+// Toasts that do not all fit in the notice cookie keep the first ones whole and drop the rest,
+// with a warning logged.
+func TestStoreNotices_Full(t *testing.T) {
+	var logs []string
+	rt := NewRouter(nil, testOpts(func(o *Options) {
+		o.Log = func(level, msg string) { logs = append(logs, level+" "+msg) }
+	})).(*router)
+	var toasts []rtpkg.Toast
+	for i := range 10 {
+		toasts = append(toasts, rtpkg.Toast{Kind: rtpkg.NoticeSuccess, Text: strconv.Itoa(i) + strings.Repeat("x", 999)})
+	}
+	w := httptest.NewRecorder()
+	rt.storeNotices(w, httptest.NewRequest("POST", "/go", nil), toasts)
+	c := noticeOf(w)
+	if c == nil || len(c.Value) > 3800 {
+		t.Fatalf("cookie %v", c)
+	}
+	req := httptest.NewRequest("GET", "/list", nil)
+	req.AddCookie(c)
+	got := rt.takeNotices(httptest.NewRecorder(), req)
+	if len(got) < 1 || len(got) >= len(toasts) {
+		t.Fatalf("kept %d of %d toasts", len(got), len(toasts))
+	}
+	for i, g := range got {
+		if g != toasts[i] {
+			t.Errorf("toast %d: got %q (%s), want %q", i, g.Text[:10], g.Kind, toasts[i].Text[:10])
+		}
+	}
+	warn := fmt.Sprintf("warn POST /go: dropped %d toasts: the notice cookie is full", len(toasts)-len(got))
+	if len(logs) != 1 || logs[0] != warn {
+		t.Errorf("logs %q, want %q", logs, warn)
 	}
 }
 

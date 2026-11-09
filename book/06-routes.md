@@ -2088,10 +2088,10 @@ per kind of toast:
 ### Notices without JavaScript
 
 Without JavaScript there is no toast (the region is hidden), so a request
-made without the script (a form posted with JavaScript off) gets its notice
-as an `<al-alert>` of the same kind at the top of the page that answers it.
-The alert has `role="alert"` for a warning or an error, so a screen reader
-reads it out at once, else `role="status"`.
+made without the script (a form posted with JavaScript off) gets its notices
+as `<al-alert>`s of the same kinds at the top of the page that answers it,
+one for each toast, in order. An alert has `role="alert"` for a warning or
+an error, so a screen reader reads it out at once, else `role="status"`.
 
 The page that answers it is:
 
@@ -2099,8 +2099,10 @@ The page that answers it is:
 - the next page, after a `303` (a `redirect`, or a `refresh` or `render` that
   went back to the referring page).
 
-The kind and text ride a cookie signed with the app's key, `alder_notice`, for
-that one page. Appendix C lists the exact markup of each kind.
+The kinds and texts ride a cookie signed with the app's key, `alder_notice`,
+for that one page. A cookie holds about 4 KB, so when the toasts do not all
+fit, the first ones are kept whole and the rest dropped, with a warning in
+the log. Appendix C lists the exact markup of each kind.
 
 A browser test reads the toasts of a step as `r.notices`, their texts, and
 `r.toasts`, their kinds and texts (chapter 10).

@@ -164,14 +164,14 @@ func kindName(k rtpkg.ResponseKind) string {
 }
 
 // setToasts makes toasts the answer's: patched in after its patches (notify) under Datastar, or,
-// without it, the first one kept for the page a redirect goes to (the notice cookie).
+// without it, kept for the page a redirect goes to (the notice cookie).
 func (rt *router) setToasts(w http.ResponseWriter, rq *Request, toasts []rtpkg.Toast) {
 	tw, ok := w.(*tracker)
 	if !ok || len(toasts) == 0 {
 		return
 	}
 	if !rq.Datastar {
-		tw.alert, tw.kind = toasts[0].Text, toasts[0].Kind
+		tw.alerts = toasts
 		return
 	}
 	tw.notice, tw.kind, tw.more = toasts[0].Text, toasts[0].Kind, toasts[1:]
@@ -377,8 +377,8 @@ func (rt *router) answerPlain(w http.ResponseWriter, r *http.Request, st hop, rq
 // (its decoders guard it), and its answer resp is a reload, never a patch — the tab's <head> is
 // that build's and a morph would keep it. A redirect (`redirect r`, a handler's 303) navigates
 // to its target; anything else that succeeded reloads the page the browser is on
-// (Request.ShownURL: Alder-Page through rt.BackURL). The session is stored and the first toast
-// kept in the notice cookie, so the page loaded shows it. A failure (404, 500, a file) is
+// (Request.ShownURL: Alder-Page through rt.BackURL). The session is stored and the toasts kept
+// in the notice cookie, so the page loaded shows them. A failure (404, 500, a file) is
 // answered as usual.
 func (rt *router) staleReload(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) bool {
 	loc := rq.ShownURL()
@@ -402,13 +402,13 @@ func (rt *router) staleReload(w http.ResponseWriter, r *http.Request, st hop, rq
 }
 
 // navigateAway answers a Datastar request with a real navigation to loc (datastar.Assign), the
-// answer's first toast kept in the notice cookie for the page loaded (a toast patched into the
-// page being left would be lost with it). what names the answer in the access line.
+// answer's toasts kept in the notice cookie for the page loaded (a toast patched into the page
+// being left would be lost with it). what names the answer in the access line.
 func (rt *router) navigateAway(w http.ResponseWriter, r *http.Request, what, loc string) {
 	if tw, isT := w.(*tracker); isT {
 		tw.setAnswer(what + " " + rt.maskRef(loc))
 		if tw.notice != "" {
-			rt.storeNotice(w, r, tw.kind, tw.notice)
+			rt.storeNotices(w, r, append([]rtpkg.Toast{{Kind: tw.kind, Text: tw.notice}}, tw.more...))
 			tw.notice, tw.more = "", nil
 		}
 	}
