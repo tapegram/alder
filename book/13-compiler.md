@@ -7382,7 +7382,11 @@ it, id 3, asked `alder/generators` which generators apply at the cursor, and
 
 `"source":"here"` says that `page` came from the cursor, not from the user;
 `"source":"default"` that `name` is the server's starting value, which the
-editor never sends back. The user types `Delete`:
+editor does not send back in a preview, so the server goes on deciding it as
+other fields change. `alder/plan` gets every value the form shows: a page the
+form guessed is planned only when the editor sends it, as a value the user saw
+and accepted, and a request that leaves a required choice to the guess is
+refused (`page: required`). The user types `Delete`:
 
 ```text
 -> {"jsonrpc":"2.0","id":5,"method":"alder/preview","params":{"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"id":"new msg","sets":{"name":"Delete"},"position":{"character":0,"line":25}}}

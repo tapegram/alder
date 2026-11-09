@@ -3140,6 +3140,13 @@ touches; the editor puts that text into **buffers**. Nothing is on disk
 until you save: `:w` for one file, `:wall` for all of them. Each buffer can be undone with `u`, and the preview you see before `<CR>` is
 the diff of that copy.
 
+The form opens filled: a page, table or declaration the cursor does not name
+starts at the first one the app has, so the preview shows something at once.
+When you apply or review, the editor sends every value the form shows, so a
+guess you saw and left counts as your choice. A client that calls the server
+without them, an agent say, is refused for a field it left to the guess:
+`page: required`.
+
 A file the generator creates, `app/Posts/Delete.alder` say, arrives as an
 unsaved buffer, and its directory is made on the first `:w`. The one thing
 the editor asks before doing is deleting a file (`remove page`, `remove
