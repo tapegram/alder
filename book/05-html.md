@@ -139,6 +139,10 @@ expression's type depends on the attribute:
 | `src` | `Text`, or a route value: `src={Url.external "https://…"}` |
 | `click` | the value of any route |
 | `submit` (on a `<form>`) | the value of a write route |
+| `load` | the value of a `GET` route, fetched as the element appears (chapter 6, "Patterns") |
+| `every` (beside `load`) | literal `Text`: a number and `ms`, `s` or `m` (`every="5s"`), repeating the `load` |
+| `intersect` | the value of a `GET` route, fetched as the element scrolls into view |
+| `input` (on a field) | the value of a `GET` route with a `Text` query key named as the field, fetched as the user types |
 | any attribute | `Maybe Text`: omitted when `Nothing` |
 
 A boolean attribute (HTML's: `controls`, `muted`, `async`, `defer`, …) is
@@ -148,11 +152,13 @@ absent.
 `href` never takes a `Text`. Links to external sites use
 `<a href={Url.external "https://..."}>`.
 
-Event attributes are not HTML event names (`onclick`); they are `click` and
-`submit`, and they take a route, not a function.
+Event attributes are not HTML event names (`onclick`); they are `click`,
+`submit`, `load`, `intersect` and `input`, and they take a route, not a
+function. The last three need JavaScript (chapter 6, "Patterns").
 
-> **A route of the wrong kind** is E0045: `href` to a write route (a link
-> only reads), or `submit` to a `GET` route (a form posts).
+> **A route of the wrong kind** is E0045: `href`, `load`, `intersect` or
+> `input` to a write route (a link, a timer or a keystroke only reads), or
+> `submit` to a `GET` route (a form posts).
 
 #### Buttons with `click`
 
