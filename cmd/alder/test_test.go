@@ -1454,6 +1454,12 @@ test "intersect on a page without a sentinel" = {
   Task.succeed True
 }
 
+test "input on a page without the field" = {
+  let _ <- Test.get (Twice {})
+  let _ <- Test.input (Results { q: "mil" })
+  Task.succeed True
+}
+
 test "load requested by two elements" = {
   let _ <- Test.get (Twice {})
   let _ <- Test.load (Stats {})
@@ -1518,10 +1524,11 @@ func TestTest_TriggerSteps(t *testing.T) {
 }
 
 // TestTest_TriggerMissing (#160): a trigger step on a page with no element for the route fails
-// with the NoControlError text, as Test.click does.
+// naming the attribute and the route's path (the query dropped: matching ignores it).
 func TestTest_TriggerMissing(t *testing.T) {
 	t.Parallel()
-	wantTriggerOutput(t, "FAIL Todos \"intersect on a page without a sentinel\"\n  error: the page /twice has no button or form for Todos.More { after: 10 }\n")
+	wantTriggerOutput(t, "FAIL Todos \"intersect on a page without a sentinel\"\n  error: the page /twice has no element with `intersect` requesting /todos/more\n",
+		"FAIL Todos \"input on a page without the field\"\n  error: the page /twice has no element with `input` requesting /results\n")
 }
 
 // TestTest_TriggerSeveral (#160): a trigger step whose route two elements request fails naming

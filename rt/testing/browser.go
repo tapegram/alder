@@ -341,24 +341,31 @@ func (e *NotShownError) Error() string {
 // NoControlError is the error of a Submit or Click the held page offers no control for. Msg is
 // the route as the test wrote it (`Todos.Index.Toggle { id: "…" }`) and Form the form's name for
 // a Submit ("" when not known). Page is the held page's URL; Offers, when the page requests the
-// same route with other parameters, says which (offered).
+// same route with other parameters, says which (offered). Trigger names the attribute of a
+// trigger step's missing element (`load`, `intersect`, `input`), "" for a Submit or Click.
 type NoControlError struct {
-	Submit bool
-	Form   string
-	Msg    string
-	URL    string
-	Page   string
-	Offers string
+	Submit  bool
+	Trigger string
+	Form    string
+	Msg     string
+	URL     string
+	Page    string
+	Offers  string
 }
 
 // Error is "no page is open: `Test.get` one first" before the browser holds a page (Page ""),
 // else "the page / has no form NewTodo (Todos.Index.Submit)" for a Submit ("the page / has no
 // form for Todos.Index.Submit" without Form) and "the page / has no button or form for
 // Todos.Index.Toggle { id: "…" }" for a Click, each followed by " (the page has Toggle for id:
-// a, b)" when the page requests the route with other parameters.
+// a, b)" when the page requests the route with other parameters. A trigger step's is "the page
+// / has no element with `load` requesting /stats": the URL's path, as its matching ignores the
+// query.
 func (e *NoControlError) Error() string {
 	if e.Page == "" {
 		return "no page is open: `Test.get` one first"
+	}
+	if e.Trigger != "" {
+		return "the page " + e.Page + " has no element with `" + e.Trigger + "` requesting " + urlPath(e.URL)
 	}
 	s := "the page " + e.Page + " has no button or form for " + e.Msg
 	if e.Submit {

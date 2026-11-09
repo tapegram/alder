@@ -325,14 +325,14 @@ func (k Trigger) step() string {
 // the answer is ClickRoute's of a GET route: Rendered with the element check passed,
 // PageMissing, RequestFailed. The browser fires nothing on its own; these steps are how a test
 // says the element appeared, scrolled into view or changed. No element is a *NoControlError
-// naming label; several, a *SeveralControlsError naming each. Either way nothing is sent.
+// naming kind's attribute and r's path; several, a *SeveralControlsError naming each. Either way nothing is sent.
 func (b *Browser) TriggerRoute(kind Trigger, r rt.Route, label string) (Result, error) {
 	defer b.track()()
 	u := rt.RouteURL(r)
 	els := b.triggerElements(kind, r)
 	switch {
 	case len(els) == 0:
-		return Result{}, &NoControlError{Msg: label, URL: u, Page: b.url}
+		return Result{}, &NoControlError{Trigger: strings.TrimPrefix(kind.step(), "Test."), Msg: label, URL: u, Page: b.url}
 	case len(els) > 1:
 		e := &SeveralControlsError{Step: kind.step(), Path: urlPath(u)}
 		for _, n := range els {
