@@ -465,7 +465,7 @@ func TestWithScript(t *testing.T) {
 	for page, want := range map[string]string{
 		`<html><head><title>t</title></head><body></body></html>`: `<html><head>` + first + `<title>t</title>` + boost + `</head><body></body></html>`,
 		`<html><head><title>t</title><body></body></html>`:        `<html><head>` + tag + `<title>t</title><body></body></html>`,
-		`<html lang="en"><body><p>x</p></body></html>`:            `<html lang="en">` + tag + `<body><p>x</p></body></html>`,
+		`<html lang="en"><body><p>x</p></body></html>`:            `<html lang="en">` + tag + `<script>window._alderHtml=["lang"]</script><body><p>x</p></body></html>`,
 		`<body class="x"><p>x</p></body>`:                         tag + `<body class="x"><p>x</p></body>`,
 		`<p>bare</p>`:                                             tag + `<p>bare</p>`,
 		`<header>h</header><p>x</p>`:                              tag + `<header>h</header><p>x</p>`,
@@ -473,6 +473,23 @@ func TestWithScript(t *testing.T) {
 		if got := withScript(page); got != want {
 			t.Errorf("withScript(%s)\n got %s\nwant %s", page, got, want)
 		}
+	}
+}
+
+// A page whose <html> start tag has attributes names them for the first attrs event (#189): the
+// seed follows the boost, and StripHeadTags removes it with the head tags. A bare <html> gets none.
+func TestWithScript_HtmlSeed(t *testing.T) {
+	_, boost := HeadTags()
+	page := `<html class="dark" LANG='en'><head><title>t</title></head><body></body></html>`
+	got := withScript(page)
+	if !strings.Contains(got, boost+`<script>window._alderHtml=["class","lang"]</script></head>`) {
+		t.Fatalf("%s", got)
+	}
+	if StripHeadTags(got) != page {
+		t.Fatalf("stripped %s", StripHeadTags(got))
+	}
+	if got := withScript(`<html><head></head><body></body></html>`); strings.Contains(got, "_alderHtml") {
+		t.Fatalf("bare %s", got)
 	}
 }
 
@@ -752,5 +769,28 @@ func TestRouter_BadQueryIs400(t *testing.T) {
 	// an unknown path is a 404 first, whatever its query
 	if w := serve(h, httptest.NewRequest("GET", "/nowhere?a=1;2", nil)); w.Code != 404 {
 		t.Fatalf("unknown path: %d", w.Code)
+	}
+}
+
+// htmlAttrs reads the attributes of the page's <html> start tag, in order, decoded; a boolean
+// attribute has the value "". A page without the tag (<htmlx> is another tag) has none.
+func TestHtmlAttrs(t *testing.T) {
+	got, ok := htmlAttrs(`<!DOCTYPE html><html lang="en" class="a &amp; b" hidden data-x='q"t>' v=bare><head></head><body></body></html>`)
+	want := [][2]string{{"lang", "en"}, {"class", "a & b"}, {"hidden", ""}, {"data-x", `q"t>`}, {"v", "bare"}}
+	if !ok || len(got) != len(want) {
+		t.Fatalf("%q %v", got, ok)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("%q, want %q", got, want)
+		}
+	}
+	if got, ok := htmlAttrs(`<html><body></body></html>`); !ok || len(got) != 0 {
+		t.Fatalf("bare: %q %v", got, ok)
+	}
+	for _, page := range []string{`<body><p>x</p></body>`, `<htmlx class="a"><body></body></htmlx>`} {
+		if got, ok := htmlAttrs(page); ok || got != nil {
+			t.Fatalf("%s: %q %v", page, got, ok)
+		}
 	}
 }

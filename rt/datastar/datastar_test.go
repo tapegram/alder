@@ -259,3 +259,68 @@ func TestBoostInit_AlderQ(t *testing.T) {
 		t.Errorf("_alderF sets requestCancellation: %s", f)
 	}
 }
+
+func TestPatchHtmlAttrs(t *testing.T) {
+	rec := httptest.NewRecorder()
+	if err := PatchHtmlAttrs(rec, [][2]string{{"class", "dark"}, {"lang", "en"}}); err != nil {
+		t.Fatal(err)
+	}
+	got := rec.Body.String()
+	prefix := "event: datastar-patch-elements\ndata: selector body\ndata: mode append\ndata: elements " +
+		`<script data-effect="el.remove()">`
+	if !strings.HasPrefix(got, prefix) || !strings.HasSuffix(got, "</script>\n\n") || strings.Count(got, "event:") != 1 ||
+		!strings.Contains(got, `"class","dark"`) || !strings.Contains(got, `"lang","en"`) ||
+		// only the names the server set before are removed, never an attribute set in the browser
+		!strings.Contains(got, `o=window._alderHtml||[]`) || !strings.Contains(got, `o.forEach(function(n){if(!k[n])e.removeAttribute(n)})`) ||
+		!strings.Contains(got, `window._alderHtml=Object.keys(k)`) || strings.Contains(got, "e.attributes") ||
+		rec.Header().Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("%q", got)
+	}
+}
+
+// HtmlAttrsOf reads back the list PatchHtmlAttrs wrote, and refuses another script.
+func TestHtmlAttrsOf(t *testing.T) {
+	rec := httptest.NewRecorder()
+	in := [][2]string{{"class", `a "b" </script>`}, {"hidden", ""}}
+	if err := PatchHtmlAttrs(rec, in); err != nil {
+		t.Fatal(err)
+	}
+	_, els, _ := strings.Cut(rec.Body.String(), "data: elements ")
+	got, ok := HtmlAttrsOf(strings.TrimSuffix(els, "\n\n"))
+	if !ok || len(got) != 2 || got[0] != in[0] || got[1] != in[1] {
+		t.Fatalf("%q %v", got, ok)
+	}
+	rec = httptest.NewRecorder()
+	_ = Navigate(rec, "/x", Push)
+	_, els, _ = strings.Cut(rec.Body.String(), "data: elements ")
+	if _, ok := HtmlAttrsOf(els); ok {
+		t.Fatalf("a history step read as attrs: %q", els)
+	}
+}
+
+// A value cannot end the script: "<", ">" and "&" reach it as JSON escapes.
+func TestPatchHtmlAttrs_Escapes(t *testing.T) {
+	rec := httptest.NewRecorder()
+	if err := PatchHtmlAttrs(rec, [][2]string{{"class", `</script><b>"x`}}); err != nil {
+		t.Fatal(err)
+	}
+	got := rec.Body.String()
+	if strings.Contains(got, "</script><b>") || strings.Count(got, "</script") != 1 || !strings.Contains(got, `\u003c/script\u003e\u003cb\u003e\"x`) {
+		t.Fatalf("%q", got)
+	}
+}
+
+// HtmlSeed names the server's <html> attributes as JSON, which no name can break out of, and
+// CutHtmlSeed removes it.
+func TestHtmlSeed(t *testing.T) {
+	got := HtmlSeed([]string{"class", "x</script>"})
+	if got != `<script>window._alderHtml=["class","x\u003c/script\u003e"]</script>` {
+		t.Fatalf("%q", got)
+	}
+	if rest, ok := CutHtmlSeed(got + "</head>"); !ok || rest != "</head>" {
+		t.Fatalf("%q %v", rest, ok)
+	}
+	if rest, ok := CutHtmlSeed("</head>"); ok || rest != "</head>" {
+		t.Fatalf("no seed: %q %v", rest, ok)
+	}
+}

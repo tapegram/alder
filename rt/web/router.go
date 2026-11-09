@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	stdhtml "html"
 	"io"
 	"io/fs"
 	"mime"
@@ -200,11 +201,11 @@ type tracker struct {
 	// sent (whose rq and recorder the panel keeps): each one's URL, where its steps and
 	// statements start in the recorder, and how it was answered
 	hops []hopMark
-	// alert is a toast's text for a request without Datastar (no toast without the script):
-	// rendered as an <al-alert> at the top of the page (document)
-	alert string
-	kind  rtpkg.NoticeKind // the variant of notice or alert (only one is set)
-	more  []rtpkg.Toast    // a write's answer's toasts after the first (notice), patched in after it
+	// alerts are the toasts of a request without Datastar (no toast without the script):
+	// each rendered as an <al-alert> at the top of the page, in order (document)
+	alerts []rtpkg.Toast
+	kind   rtpkg.NoticeKind // the variant of notice
+	more   []rtpkg.Toast    // a write's answer's toasts after the first (notice), patched in after it
 }
 
 // logLine is one line the request logged: when, at which level (as Env.Log names it) and what.
@@ -922,7 +923,7 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 	rq.Env = rt.newEnv(r.Context(), rq.Session, tw)
 	if tw, ok := w.(*tracker); ok {
 		if !rq.Datastar && r.Method == http.MethodGet && !hit.file { // an HTML page GET only: not a HEAD, which shows nothing, nor a file, which shows no notice
-			tw.alert, tw.kind = rt.takeNotice(w, r)
+			tw.alerts = rt.takeNotices(w, r)
 		}
 		if rt.panelOn() {
 			if tw.rq == nil {
@@ -1202,8 +1203,8 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 				}
 				return
 			}
-			if tw, ok := w.(*tracker); ok && tw.alert != "" {
-				rt.storeNotice(w, r, tw.kind, tw.alert) // the next page shows it (takeNotice)
+			if tw, ok := w.(*tracker); ok && len(tw.alerts) > 0 {
+				rt.storeNotices(w, r, tw.alerts) // the next page shows them (takeNotices)
 			}
 			w.Header().Set("Location", resp.Location)
 			w.WriteHeader(http.StatusSeeOther)
@@ -1368,9 +1369,9 @@ func dropSignals(u *url.URL) {
 
 // morph answers a boosted navigation (st.url set) with page: Alder-Status when status is not
 // 200, then the events — the patch of the page's <body> (the morph), of its <title> (empty when
-// it has none, so the old page's title does not stay), and the history step to st.url
-// (datastar.Navigate in st.mode). Without st.url (a POST) it is the body patch alone, as a
-// 404/500 answered to a write is.
+// it has none, so the old page's title does not stay), of its <html> attributes (when it has the
+// tag) and the history step to st.url (datastar.Navigate in st.mode). Without st.url (a POST) it
+// is the body patch alone, as a 404/500 answered to a write is.
 func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status int, page string) {
 	if status != http.StatusOK {
 		w.Header().Set(StatusHeader, strconv.Itoa(status))
@@ -1386,11 +1387,18 @@ func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status i
 	if err == nil && st.url != "" {
 		t, _ := titleOf(page) // a page without a <title> empties the old one
 		err = datastar.PatchTitle(w, t)
+		names := []string{"title"}
+		// the page being left is unknown, so its <html> attributes are set whenever the page
+		// has the tag: setting them again changes nothing
+		if attrs, ok := htmlAttrs(page); ok && err == nil {
+			err = datastar.PatchHtmlAttrs(w, attrs)
+			names = append(names, "html")
+		}
 		if err == nil {
 			err = datastar.Navigate(w, st.url, st.mode)
 		}
 		if tw, ok := w.(*tracker); ok {
-			tw.patches = append(tw.patches, "title", "history "+st.url)
+			tw.patches = append(tw.patches, append(names, "history "+st.url)...)
 		}
 	}
 	if err != nil {
@@ -1427,9 +1435,16 @@ func titleOf(page string) (string, bool) {
 // its <body> ending with the <al-shown> of its hash (an alert the router adds is part of it: the
 // next write's before-view has none, so its answer morphs the body).
 func (rt *router) document(w http.ResponseWriter, status int, page string) {
-	if tw, ok := w.(*tracker); ok && tw.alert != "" {
-		variant, _, role := noticeLook(tw.kind)
-		page = startOfBody(page, `<al-alert variant="`+variant+`" role="`+role+`">`+esc(tw.alert)+`</al-alert>`)
+	if tw, ok := w.(*tracker); ok && len(tw.alerts) > 0 {
+		var b strings.Builder
+		for _, a := range tw.alerts {
+			if a.Text == "" {
+				continue
+			}
+			variant, _, role := noticeLook(a.Kind)
+			b.WriteString(`<al-alert variant="` + variant + `" role="` + role + `">` + esc(a.Text) + `</al-alert>`)
+		}
+		page = startOfBody(page, b.String())
 	}
 	page = endOfBody(page, datastar.ShownTag(html.Hash(bodyOf(page))))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1603,38 +1618,96 @@ func startOfBody(page, s string) string {
 	return s + page
 }
 
-// NoticeCookie carries a toast's text across the redirect of a request without
-// Datastar (a form posted with the script off), signed with the session key, for one page.
+// NoticeCookie carries a request's toasts across a redirect the browser follows itself (a form
+// posted with the script off, or a navigation away under Datastar), signed with the session key,
+// for one page.
 const NoticeCookie = "alder_notice"
 
-// storeNotice sets NoticeCookie to the kind and text (notice:<kind>:<text>) for the page the
-// redirect goes to.
-func (rt *router) storeNotice(w http.ResponseWriter, r *http.Request, kind rtpkg.NoticeKind, text string) {
-	kind = knownKind(kind)
+// maxNotice is the most bytes the signed value of NoticeCookie may take: under the 4096 a browser
+// keeps for a whole cookie, with room for its name and attributes.
+const maxNotice = 3800
+
+// noticeEntry is one toast in the payload of NoticeCookie.
+type noticeEntry struct {
+	K rtpkg.NoticeKind `json:"k"`
+	T string           `json:"t"`
+}
+
+// storeNotices sets NoticeCookie to toasts (notices: and a JSON list of kind and text) for the
+// page the redirect goes to. The toasts are kept in order while the signed value fits in
+// maxNotice; the rest are dropped, with a warning. A toast without text is skipped, and no
+// toast left sets no cookie.
+func (rt *router) storeNotices(w http.ResponseWriter, r *http.Request, toasts []rtpkg.Toast) {
+	var entries []noticeEntry
+	value, dropped := "", 0
+	for i, t := range toasts {
+		if t.Text == "" {
+			continue
+		}
+		next := append(entries, noticeEntry{knownKind(t.Kind), t.Text})
+		p, _ := json.Marshal(next) // strings only: it cannot fail
+		v := Sign(rt.key, append([]byte("notices:"), p...))
+		if len(v) > maxNotice {
+			for _, rest := range toasts[i:] {
+				if rest.Text != "" {
+					dropped++
+				}
+			}
+			break
+		}
+		entries, value = next, v
+	}
+	if dropped > 0 {
+		rt.logReq(w, "warn", line(w, r, fmt.Sprintf("dropped %d toasts: the notice cookie is full", dropped)))
+	}
+	if value == "" {
+		return
+	}
 	http.SetCookie(w, &http.Cookie{
-		Name: NoticeCookie, Value: Sign(rt.key, []byte("notice:"+string(kind)+":"+text)), Path: "/", MaxAge: 60,
+		Name: NoticeCookie, Value: value, Path: "/", MaxAge: 60,
 		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
 	})
 }
 
-// takeNotice is the text and kind NoticeCookie carries ("" for none, or one not signed by this
-// app), clearing the cookie: the notice is shown once. A payload whose segment after "notice:"
-// is no kind (a cookie set before kinds) is all text, of kind info.
-func (rt *router) takeNotice(w http.ResponseWriter, r *http.Request) (string, rtpkg.NoticeKind) {
+// takeNotices is the toasts NoticeCookie carries (nil for none, or for a cookie not signed by
+// this app or malformed), clearing the cookie: they are shown once. It still reads the one toast
+// of a cookie set before the list (notice:<kind>:<text>, or notice:<text> before kinds): a
+// segment after "notice:" that is no kind is part of the text, of kind info.
+func (rt *router) takeNotices(w http.ResponseWriter, r *http.Request) []rtpkg.Toast {
 	c, err := r.Cookie(NoticeCookie)
 	if err != nil {
-		return "", rtpkg.NoticeInfo
+		return nil
 	}
 	http.SetCookie(w, &http.Cookie{Name: NoticeCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 	p, ok := Verify(rt.key, c.Value)
+	if !ok {
+		return nil
+	}
+	if list, isList := strings.CutPrefix(string(p), "notices:"); isList {
+		var entries []noticeEntry
+		if json.Unmarshal([]byte(list), &entries) != nil {
+			return nil
+		}
+		var toasts []rtpkg.Toast
+		for _, e := range entries {
+			if e.T != "" {
+				toasts = append(toasts, rtpkg.Toast{Kind: knownKind(e.K), Text: e.T})
+			}
+		}
+		return toasts
+	}
 	text, isNotice := strings.CutPrefix(string(p), "notice:")
-	if !ok || !isNotice {
-		return "", rtpkg.NoticeInfo
+	if !isNotice {
+		return nil
 	}
+	kind := rtpkg.NoticeInfo
 	if k, rest, found := strings.Cut(text, ":"); found && knownKind(rtpkg.NoticeKind(k)) == rtpkg.NoticeKind(k) {
-		return rest, rtpkg.NoticeKind(k)
+		text, kind = rest, rtpkg.NoticeKind(k)
 	}
-	return text, rtpkg.NoticeInfo
+	if text == "" {
+		return nil
+	}
+	return []rtpkg.Toast{{Kind: kind, Text: text}}
 }
 
 // knownKind is k when it is a kind of notice, else info (the kind of Notice.with).
@@ -1715,20 +1788,41 @@ var BuildID = sync.OnceValue(func() string {
 // as the view renders it.
 func StripHeadTags(page string) string {
 	first, boost := HeadTags()
-	return strings.Replace(strings.Replace(page, first, "", 1), boost, "", 1)
+	page = strings.Replace(page, first, "", 1)
+	if i := strings.Index(page, boost); i >= 0 {
+		rest, _ := datastar.CutHtmlSeed(page[i+len(boost):])
+		page = page[:i] + rest
+	}
+	return page
+}
+
+// htmlSeed is the datastar.HtmlSeed of the names on the page's <html> start tag, "" when it has
+// none (or no such tag): withScript puts it after the boost, so the first boosted navigation
+// knows which attributes the server set.
+func htmlSeed(page string) string {
+	attrs, _ := htmlAttrs(page)
+	if len(attrs) == 0 {
+		return ""
+	}
+	names := make([]string, len(attrs))
+	for i, a := range attrs {
+		names[i] = a[0]
+	}
+	return datastar.HtmlSeed(names)
 }
 
 // colorScheme is the color-scheme meta HeadTags begins with.
 var colorScheme = html.Render(html.El("meta", []html.Attr{html.A("name", "color-scheme"), html.A("content", "light dark")}))
 
 // withScript inserts HeadTags: the first part right after the first <head> start tag and the
-// boost just before the </head> that follows it (right after the first part when there is
+// boost (followed by htmlSeed) just before the </head> that follows it (right after the first part when there is
 // none). A page without <head> gets both together where the browser's parser still puts them
 // in the (implied) head, so the boost is never inside the <body> a patch replaces: right after
 // the <html> start tag; without that, just before the <body> start tag; else at the start of
 // the page.
 func withScript(page string) string {
 	first, boost := HeadTags()
+	boost += htmlSeed(page)
 	if i := startTag(page, "head"); i >= 0 {
 		if j := strings.IndexByte(page[i:], '>'); j >= 0 {
 			k := i + j + 1
@@ -1814,6 +1908,60 @@ func bodyOf(page string) string {
 		return "<body>" + page + "</body>"
 	}
 	return page[i : j+len("</body>")]
+}
+
+// htmlAttrs is the attributes of the page's <html> start tag, in source order, with their
+// entities decoded; a boolean attribute has the value "". ok is false for a page without one.
+func htmlAttrs(page string) (attrs [][2]string, ok bool) {
+	i := startTag(page, "html")
+	if i < 0 {
+		return nil, false
+	}
+	s := page[i+len("<html"):]
+	space := func(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' }
+	attrs = [][2]string{}
+	for p := 0; ; {
+		for p < len(s) && (space(s[p]) || s[p] == '/') {
+			p++
+		}
+		if p >= len(s) || s[p] == '>' {
+			return attrs, true
+		}
+		n := p
+		for p < len(s) && !space(s[p]) && s[p] != '=' && s[p] != '>' && s[p] != '/' {
+			p++
+		}
+		name := strings.ToLower(s[n:p])
+		for p < len(s) && space(s[p]) {
+			p++
+		}
+		value := ""
+		if p < len(s) && s[p] == '=' {
+			p++
+			for p < len(s) && space(s[p]) {
+				p++
+			}
+			if p < len(s) && (s[p] == '"' || s[p] == '\'') {
+				q := s[p]
+				end := strings.IndexByte(s[p+1:], q)
+				if end < 0 {
+					end = len(s) - p - 1
+				}
+				value = s[p+1 : p+1+end]
+				p = min(p+end+2, len(s))
+			} else {
+				v := p
+				for p < len(s) && !space(s[p]) && s[p] != '>' {
+					p++
+				}
+				value = s[v:p]
+			}
+		}
+		// a repeated name keeps its first value, as the browser's parser does
+		if name != "" && !slices.ContainsFunc(attrs, func(a [2]string) bool { return a[0] == name }) {
+			attrs = append(attrs, [2]string{name, stdhtml.UnescapeString(value)})
+		}
+	}
 }
 
 func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {

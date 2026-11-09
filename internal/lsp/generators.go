@@ -3,6 +3,7 @@ package lsp
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 
 	"alder/internal/diag"
@@ -244,7 +245,10 @@ func previewReq(s *server, params json.RawMessage) (any, error) {
 // after, for the client to apply to its buffers. Nothing is written. The diagnostics are the
 // copy's, published nowhere; imports is always empty (only `fill` reports imports, and it has
 // no Spec). A form that is not ready is refused with its first invalid field ("name: required"):
-// the client plans only what its preview showed ready.
+// the client plans only what its preview showed ready. A required field still at the first
+// choice the form guessed to open filled (source "default") counts as unset, so a plan never
+// picks a page, table or declaration nobody chose: it is refused as "page: required". A field
+// with a single choice (the op of `edit route`) has nothing to guess, so it plans as it starts.
 func planReq(s *server, params json.RawMessage) (any, error) {
 	p, err := decodeGeneratorParams(params)
 	if err != nil {
@@ -269,7 +273,16 @@ func planReq(s *server, params json.RawMessage) (any, error) {
 			}
 		}
 	}
-	if o.res != nil {
+	guessed := false
+	if ready {
+		for _, f := range fields {
+			if f.Required && f.Source == "default" && len(f.Choices) > 1 && slices.Contains(f.Choices, f.Value) {
+				out.Error, guessed = f.Name+": required", true
+				break
+			}
+		}
+	}
+	if o.res != nil && !guessed {
 		for _, f := range o.res.Files {
 			out.Files = append(out.Files, planFile{Path: f.Path, Action: f.Action, Before: f.Before, After: f.After})
 		}

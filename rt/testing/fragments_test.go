@@ -1,6 +1,7 @@
 package rtesting
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,6 +20,8 @@ import (
 type rowsApp struct {
 	done  []bool
 	shown []string // the Alder-Shown header of each Toggle
+	// dark puts the class dark on <html> while row 1 is done (#189)
+	dark bool
 }
 
 func rowsToggle(i int) rt.Route {
@@ -36,7 +39,11 @@ func (a *rowsApp) view(done []bool) html.Node {
 			html.El("span", nil, html.Text("Row "+strconv.Itoa(i+1))),
 			html.El("button", []html.Attr{html.RouteAttr("data-on:click", rowsToggle(i+1))}, html.Text("Toggle"))))
 	}
-	return html.El("html", nil, html.El("head", nil, html.El("title", nil, html.Text("Rows"))),
+	var root []html.Attr
+	if a.dark && len(done) > 0 && done[0] {
+		root = []html.Attr{html.A("class", "dark")}
+	}
+	return html.El("html", root, html.El("head", nil, html.El("title", nil, html.Text("Rows"))),
 		html.El("body", nil, html.El("h1", nil, html.Text("Rows")), html.El("ul", []html.Attr{html.A("id", "rows")}, items...)))
 }
 
@@ -120,6 +127,57 @@ func TestBrowser_PatchedPageEqualsFullRender(t *testing.T) {
 	}
 	if strings.Contains(clicked, "al-shown") {
 		t.Error("the held page shows the router's al-shown")
+	}
+}
+
+// TestBrowser_SetsHtmlAttrs (#189): a refresh that changes the <html> attributes sets them on
+// the held page, and the event's script is not appended to its <body>.
+func TestBrowser_SetsHtmlAttrs(t *testing.T) {
+	app := &rowsApp{done: make([]bool, 3), dark: true}
+	rootClass := func(b *Browser) string {
+		c, _ := html.AttrOf(html.Select(b.Doc(), selHTML)[0], "class")
+		return c
+	}
+	res := browseRows(app,
+		func(b *Browser, e *eff.Env) error { _, err := b.Open("/"); return err },
+		func(b *Browser, e *eff.Env) error {
+			r, err := b.ClickRoute(rowsToggle(1), "Rows.Toggle")
+			if err != nil {
+				return err
+			}
+			if r.Answer.Tag != Refreshed || rootClass(b) != "dark" || strings.Contains(heldBody(t, b.Doc()), "<script") {
+				t.Errorf("answer %+v, class %q, body %s", r.Answer, rootClass(b), heldBody(t, b.Doc()))
+			}
+			return nil
+		},
+		func(b *Browser, e *eff.Env) error {
+			if _, err := b.ClickRoute(rowsToggle(1), "Rows.Toggle"); err != nil {
+				return err
+			}
+			if rootClass(b) != "" {
+				t.Errorf("class %q after the second toggle", rootClass(b))
+			}
+			return nil
+		})
+	if !res.OK {
+		t.Fatalf("the test failed: %s", res.Error)
+	}
+}
+
+// An attrs event removes only the names the server set before: an attribute the server never
+// set (one a head script adds in a browser) stays, as in the event's script.
+func TestBrowser_SetHtmlAttrsKeepsOthers(t *testing.T) {
+	b := &Browser{doc: html.El("html", []html.Attr{html.A("class", "dark"), html.A("data-client", "1"), html.A("lang", "en")},
+		html.El("body", nil)), htmlNames: []string{"class", "lang"}}
+	b.setHtmlAttrs([][2]string{{"lang", "fr"}, {"dir", "ltr"}})
+	got := html.AttrsOf(html.Select(b.doc, selHTML)[0])
+	want := [][2]string{{"data-client", "1"}, {"lang", "fr"}, {"dir", "ltr"}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("%q, want %q", got, want)
+	}
+	slices.Sort(b.htmlNames)
+	if !slices.Equal(b.htmlNames, []string{"dir", "lang"}) {
+		t.Fatalf("names %q", b.htmlNames)
 	}
 }
 

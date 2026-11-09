@@ -28,6 +28,8 @@ Logout.update params session = {
   Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
 
+-- Press Ping from a page that has its button to test it: `Test.get` that page, then
+-- `Test.click App.Ping`, and `r.answer` is Refreshed until `update` says otherwise.
 Ping.update : Ping.Params -> Session -> Task Response
 Ping.update params session = Task.succeed Response.refresh
 
@@ -46,12 +48,4 @@ test "Logout clears the user and goes to log in" = {
     { answer: r.answer, user: r.session.user }
       == { answer: Redirected (Auth.Login.Login {}), user: Nothing }
   )
-}
-
--- Ping is sent from any page (`click={App.Ping}`): put an `al-button` with it in the view of
--- the page this test opens, or open the page that has it. Until a page does, the click finds no control.
-test "pressing Ping" = {
-  let _ <- Test.get (Auth.Login.Login {})
-  let r <- Test.click Ping
-  Task.succeed (r.answer == Refreshed)
 }

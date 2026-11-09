@@ -1369,10 +1369,12 @@ this for "Signed".
 
 Without JavaScript the region stays hidden, so a toast is never seen.
 Alder covers the toast itself: a request made without the
-script (a form posted with JavaScript off) gets its notice as an
-`<al-alert>` at the top of the page that answers it, the page itself on a
-`refresh`, the next page on a `redirect` (the kind and text ride a signed
-cookie, `alder_notice`, for that one page).
+script (a form posted with JavaScript off) gets its notices as
+`<al-alert>`s at the top of the page that answers it, one for each toast,
+in order: the page itself on a `refresh`, the next page on a `redirect`
+(the kinds and texts ride a signed cookie, `alder_notice`, for that one
+page; when they do not all fit in it, the first ones are kept whole and the
+rest dropped).
 
 Each `Response` toast function gives its own toast and alert:
 

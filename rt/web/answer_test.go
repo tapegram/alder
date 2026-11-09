@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -201,7 +202,7 @@ func TestAnswer_Redirect(t *testing.T) {
 	h := NewRouter(a.routes(), testOpts(nil))
 	w := ansPost(h, "/w/redirect?to=/other&id=1", "/", nil)
 	evs := events(w.Body.String())
-	if len(evs) != 3 || !isBodyMorph(t, w) || !strings.Contains(evs[0], "<h1>Other</h1>") || !strings.Contains(evs[1], "<title>Other</title>") || !pushTo(evs[2], "/other") {
+	if len(evs) != 4 || !isBodyMorph(t, w) || !strings.Contains(evs[0], "<h1>Other</h1>") || !strings.Contains(evs[1], "<title>Other</title>") || !pushTo(evs[3], "/other") {
 		t.Fatalf("%q", evs)
 	}
 	if a.loads != 0 {
@@ -210,7 +211,7 @@ func TestAnswer_Redirect(t *testing.T) {
 	// to the page the browser is on: still a morph of the whole body, the page loaded once
 	w = ansPost(h, "/w/redirect?to=/&id=2", "/", nil)
 	evs = events(w.Body.String())
-	if len(evs) != 3 || !isBodyMorph(t, w) || !strings.Contains(evs[0], `<li id="row-2" class="done">`) || !pushTo(evs[2], "/") {
+	if len(evs) != 4 || !isBodyMorph(t, w) || !strings.Contains(evs[0], `<li id="row-2" class="done">`) || !pushTo(evs[3], "/") {
 		t.Fatalf("%q", evs)
 	}
 	if a.loads != 1 {
@@ -339,7 +340,7 @@ func TestAnswer_RenderLoadFails(t *testing.T) {
 	a.rowAnswer = "303"
 	w = ansPost(h, "/w/render?id=2", "/", nil)
 	evs = events(w.Body.String())
-	if len(evs) != 3 || !isBodyMorph(t, w) || !strings.Contains(evs[0], "<h1>Login</h1>") || !pushTo(evs[2], "/login") {
+	if len(evs) != 4 || !isBodyMorph(t, w) || !strings.Contains(evs[0], "<h1>Login</h1>") || !pushTo(evs[3], "/login") {
 		t.Fatalf("303: %q", evs)
 	}
 
@@ -389,6 +390,35 @@ func TestAnswer_ShownPageUnmatched(t *testing.T) {
 	w = ansPost(h, "/w/refresh?toast=Saved", "/gone", nil)
 	if evs := events(w.Body.String()); len(evs) != 1 || noticeOf(w) == nil {
 		t.Fatalf("toast: notice %v %q", noticeOf(w), evs)
+	}
+}
+
+// A Datastar write answering two toasts and a redirect to another site navigates away and keeps
+// both toasts in the notice cookie for the page loaded (#179); a first toast without text is
+// skipped, and the ones after it are still kept.
+func TestNavigateAway_KeepsAllToasts(t *testing.T) {
+	for _, first := range []string{"", "Zeroth"} {
+		routes := []Route{{Method: "POST", Pattern: "/w", Handle: func(rq *Request) Response {
+			to := rt.Redirect(rt.Route{Method: "GET", Path: "https://example.com/"})
+			resp := rt.WithToast(rt.NoticeSuccess, "First", rt.WithToast(rt.NoticeInfo, first, to))
+			return AnswerResponse(rt.WithToast(rt.NoticeWarning, "Second", resp), nil, nil)
+		}}}
+		h := NewRouter(routes, testOpts(nil))
+		w := ansPost(h, "/w", "/", nil)
+		c := noticeOf(w)
+		if evs := events(w.Body.String()); len(evs) != 1 || !strings.Contains(evs[0], `window.location.assign("https://example.com/")`) || c == nil {
+			t.Fatalf("first %q: cookie %v %q", first, c, evs)
+		}
+		req := httptest.NewRequest("GET", "/", nil)
+		req.AddCookie(c)
+		got := h.(*router).takeNotices(httptest.NewRecorder(), req)
+		want := []rt.Toast{{Kind: rt.NoticeSuccess, Text: "First"}, {Kind: rt.NoticeWarning, Text: "Second"}}
+		if first != "" {
+			want = append([]rt.Toast{{Kind: rt.NoticeInfo, Text: first}}, want...)
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("first %q: got %+v, want %+v", first, got, want)
+		}
 	}
 }
 
@@ -703,7 +733,7 @@ func TestAnswer_TargetNotGET(t *testing.T) {
 	a := newAnsApp(3)
 	h := NewRouter(a.routes(), testOpts(nil))
 	w := ansPost(h, "/w/redirect?bare=1&to=/other", "/", nil)
-	if evs := events(w.Body.String()); len(evs) != 3 || !strings.Contains(evs[0], "<h1>Other</h1>") || !pushTo(evs[2], "/other") {
+	if evs := events(w.Body.String()); len(evs) != 4 || !strings.Contains(evs[0], "<h1>Other</h1>") || !pushTo(evs[3], "/other") {
 		t.Fatalf("bare: %q", evs)
 	}
 }
@@ -857,5 +887,22 @@ func TestAnswer_RedirectReportsRendered(t *testing.T) {
 	ansPost(h, "/w/redirect?to=/other&id=1", "/", nil)
 	if len(bodies) != 1 || !strings.Contains(bodies[0], "<h1>Other</h1>") || !strings.HasPrefix(bodies[0], "<body") {
 		t.Fatalf("rendered %q", bodies)
+	}
+}
+
+// notify patches every toast with text under Datastar: a first toast without text does not hide
+// the ones after it, and an answer of empty toasts alone patches none.
+func TestNotify_SkipsEmptyFirstToast(t *testing.T) {
+	h := NewRouter(nil, testOpts(nil)).(*router)
+	rec := httptest.NewRecorder()
+	tw := &tracker{ResponseWriter: rec, rt: h, kind: rt.NoticeInfo, more: []rt.Toast{{Kind: rt.NoticeWarning, Text: "Later"}, {Kind: rt.NoticeInfo}}}
+	h.notify(tw)
+	if b := rec.Body.String(); strings.Count(b, "<al-toast ") != 1 || !strings.Contains(b, ">Later</al-toast>") {
+		t.Errorf("toasts patched: %q", b)
+	}
+	rec = httptest.NewRecorder()
+	h.notify(&tracker{ResponseWriter: rec, rt: h, more: []rt.Toast{{Kind: rt.NoticeInfo}}})
+	if rec.Body.Len() != 0 {
+		t.Errorf("empty toasts patched: %q", rec.Body.String())
 	}
 }

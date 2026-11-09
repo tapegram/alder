@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	rtpkg "alder/rt"
@@ -157,8 +158,9 @@ func (rt *router) sessionLeft(rq *Request, resp Response) (any, []byte) {
 
 // patchRegions answers a Datastar request with a re-rendered page, after (rendered with its
 // regions when before is set): the regions that differ from before (regions), or the whole body
-// morphed in when that is not safe. Options.Rendered gets after's body either way. status is the
-// panel's; the caller sets StatusHeader.
+// morphed in when that is not safe, then after's <html> attributes when they differ from
+// before's (#189). Options.Rendered gets after's body either way. status is the panel's; the
+// caller sets StatusHeader.
 func (rt *router) patchRegions(w http.ResponseWriter, r *http.Request, rq *Request, before *html.Rendered, after html.Rendered, status int) {
 	body := bodyOf(after.Page)
 	if rt.opts.Rendered != nil {
@@ -171,17 +173,27 @@ func (rt *router) patchRegions(w http.ResponseWriter, r *http.Request, rq *Reque
 		}
 	}
 	patches, ok := rt.regions(w, r, before, after, body)
+	// a morph of the body never reaches <html>: its attributes are set when they changed (or
+	// when the page before is unknown), after the body's or the regions' events
+	attrs, sendAttrs := htmlAttrs(after.Page)
+	if sendAttrs && before != nil {
+		if was, _ := htmlAttrs(before.Page); slices.Equal(was, attrs) {
+			sendAttrs = false
+		}
+	}
 	var err error
 	switch {
 	case !ok:
 		err = datastar.PatchBody(w, rt.shellBody(w, rt.dev(withShown(body))))
 		note("body")
 	case len(patches) == 0:
-		// nothing changed: no element event, and the shown hash stays what it was
+		// nothing in the body changed: no element event, and the shown hash stays what it was
 		h := w.Header()
 		h.Set("Content-Type", "text/event-stream")
 		h.Set("Cache-Control", "no-cache")
-		note("none")
+		if !sendAttrs {
+			note("none")
+		}
 	default:
 		for _, p := range patches {
 			if err == nil {
@@ -195,6 +207,10 @@ func (rt *router) patchRegions(w http.ResponseWriter, r *http.Request, rq *Reque
 			err = datastar.PatchShown(w, html.Hash(body))
 		}
 		note("shown")
+	}
+	if err == nil && sendAttrs {
+		err = datastar.PatchHtmlAttrs(w, attrs)
+		note("html")
 	}
 	if err != nil {
 		rt.logReq(w, "error", line(w, r, fmt.Sprintf("writing the patch: %v", err)))

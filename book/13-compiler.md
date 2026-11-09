@@ -2232,8 +2232,8 @@ same walk with another delivery:
   data-ignore-morph>` added (`shellBody`).
 
   A toast on a `redirect` that ends in a real navigation (another site, or
-  a stale tab's reload) rides in the notice cookie instead, and the page it
-  loads shows it.
+  a stale tab's reload) rides in the notice cookie instead, with the rest of
+  the answer's toasts, and the page it loads shows them.
 
 - Without JavaScript (`answerPlain`) each is plain HTTP, as chapter 6
   lists:
@@ -2485,8 +2485,8 @@ A target that is not followable (another site's, which `Url.external`
 makes, or `#`) is answered with `datastar.Navigate` in mode `Assign`: one
 event whose script calls `window.location.assign` with the URL, a real
 navigation. A `redirect` to `Url.external` is a real navigation even when
-its URL is a path of this app, never a morph, and the toast it carries
-rides in the notice cookie to the page that loads.
+its URL is a path of this app, never a morph, and the toasts it carries
+ride in the notice cookie to the page that loads.
 
 The scenarios of this part run in the tests of the two packages involved.
 
@@ -6248,9 +6248,14 @@ and `notify` patches each after the answer's own patches, as
 (`datastar.PatchToast`; `shellBody` adds an empty `<al-toasts>` to a body
 patch when the page has none).
 
-Without Datastar the first toast of a 303 rides in the signed cookie
-`alder_notice` as `notice:<kind>:<text>` to the page it goes to
-(`storeNotice`, `takeNotice`), which shows it once as an `<al-alert>`.
+Without Datastar every toast of a 303 rides in the signed cookie
+`alder_notice` to the page it goes to, as `notices:` and a JSON list of
+kind and text (`storeNotices`, `takeNotices`); that page shows each once
+as an `<al-alert>`, in order. A navigation away under Datastar
+(`navigateAway`) keeps its toasts the same way. The signed value stays
+at most 3800 bytes, inside the 4096 a browser keeps for a cookie: toasts that
+do not fit are dropped from the end, with a warning logged. A cookie signed
+before the list (`notice:<kind>:<text>`) still reads as one toast.
 
 
 ## 9. Reading generated code

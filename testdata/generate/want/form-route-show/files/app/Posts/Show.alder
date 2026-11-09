@@ -54,7 +54,7 @@ Show.view model session =
         <dt>Updated</dt>
         <dd>{Time.format "Jan 2, 2006" model.row.updated}</dd>
       </dl>
-      <form submit={SendReply { id: ?sendReplyId }}>
+      <form submit={SendReply { id: model.row.id }}>
         <al-textarea field="body" label="Body" />
         <al-alert variant="destructive"><Errors form /></al-alert>
         <al-button type="submit">Reply</al-button>

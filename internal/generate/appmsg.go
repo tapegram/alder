@@ -2,7 +2,6 @@ package generate
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"alder/internal/syntax"
@@ -10,10 +9,10 @@ import (
 
 // newAppRouteMsg is `alder new msg App <Name> [fields]` on an App written with routes (plan call
 // 13): `route <Name> = POST "/_/<Name>" { fields }` after App's last route (else after its
-// `login`, else after its `session`), `<Name>.update` answering `Response.refresh`, and a test
-// that opens the app's first plain GET page and presses the route's button. A route of App is
-// sent by a button on any page (`click={App.<Name>}`), so no page's view is touched: the test
-// fails, saying so, until a page has the button.
+// `login`, else after its `session`), and `<Name>.update` answering `Response.refresh`, with a
+// comment saying how to test it. It writes no test: a route of App is sent by a button on any
+// page (`click={App.<Name>}`), so no page's view is touched, and which page has the button is the
+// author's to say.
 func newAppRouteMsg(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
 	app := p.Modules["App"]
 	if !IsUpperIdent(name) {
@@ -23,7 +22,7 @@ func newAppRouteMsg(p *Program, name string, fields []FieldSpec) ([]Edit, error)
 		return nil, Refusef("`App` already declares `%s`: choose another route name", name)
 	}
 	imports := newImports("App", p.Std)
-	var decl, args []string
+	var decl []string
 	seen := map[string]bool{}
 	for _, f := range fields {
 		if seen[f.Name] {
@@ -35,7 +34,6 @@ func newAppRouteMsg(p *Program, name string, fields []FieldSpec) ([]Edit, error)
 			return nil, err
 		}
 		typeImports(imports, f.Type, p)
-		args = append(args, f.Name+": ?"+LowerFirst(name)+UpperFirst(f.Name))
 	}
 	line := fmt.Sprintf("route %s = POST \"/_/%s\" { }", name, name)
 	if len(decl) > 0 {
@@ -62,7 +60,13 @@ func newAppRouteMsg(p *Program, name string, fields []FieldSpec) ([]Edit, error)
 			}
 		}
 	}
-	update := fmt.Sprintf("%s.update : %s.Params -> Session -> Task Response\n%s.update params session = Task.succeed Response.refresh", name, name, name)
+	// no test: the route is pressed from a page that has its button, which the app may not have yet
+	press := "Test.click App." + name
+	if len(fields) > 0 {
+		press = "Test.click (App." + name + " { … })"
+	}
+	comment := fmt.Sprintf("-- Press %s from a page that has its button to test it: `Test.get` that page, then\n-- `%s`, and `r.answer` is Refreshed until `update` says otherwise.\n", name, press)
+	update := comment + fmt.Sprintf("%s.update : %s.Params -> Session -> Task Response\n%s.update params session = Task.succeed Response.refresh", name, name, name)
 	if after != nil {
 		e.insertBefore(after.GetSpan().End.Line+1, line+"\n")
 	} else {
@@ -74,30 +78,6 @@ func newAppRouteMsg(p *Program, name string, fields []FieldSpec) ([]Edit, error)
 		e.appendText("\n" + update + "\n")
 	}
 
-	// the test opens a page and presses the route's button; which page has it is the author's to say
-	tb := newTestBuilder(p, "App", imports)
-	open := "?" + LowerFirst(name) + "Page"
-	for _, r := range p.Routes {
-		if r.Write() || r.IsFile || r.Module == "App" || len(r.Keys) > 0 || len(r.Roles) > 0 || r.Silo != "" {
-			continue
-		}
-		if slices.ContainsFunc(r.Params, func(par *Param) bool { return !par.HasDefault }) {
-			continue
-		}
-		open = pageLit(r.Ref("App"), nil)
-		break
-	}
-	press := name
-	if len(args) > 0 {
-		press = "(" + name + " { " + strings.Join(args, ", ") + " })"
-	}
-	lines := append(tb.lines, "let _ <- Test.get ("+open+")", "let r <- Test.click "+press)
-	test := TestData{Name: quote("pressing " + name), Lines: lines, Result: "r.answer == Refreshed",
-		Comment: []string{name + " is sent from any page (`click={App." + name + "}`): put an `al-button` with it in the view of",
-			"the page this test opens, or open the page that has it. Until a page does, the click finds no control."}}
-	if err := addTests(e, app, []TestData{test}); err != nil {
-		return nil, err
-	}
 	addImports(e, p, app.Syntax, imports.list())
 	return []Edit{{Path: app.File, Body: e.result()}}, nil
 }

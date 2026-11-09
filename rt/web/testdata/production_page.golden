@@ -15,6 +15,11 @@ data: elements <title>hi</title>
 event: datastar-patch-elements
 data: selector body
 data: mode append
+data: elements <script data-effect="el.remove()">(function(){var a=[];var e=document.documentElement,o=window._alderHtml||[],k={};a.forEach(function(p){try{e.setAttribute(p[0],p[1]);k[p[0].toLowerCase()]=1}catch(x){}});o.forEach(function(n){if(!k[n])e.removeAttribute(n)});window._alderHtml=Object.keys(k)})()</script>
+
+event: datastar-patch-elements
+data: selector body
+data: mode append
 data: elements <script data-effect="el.remove()">(function(){var u="/x";if(u.indexOf("#")<0&&window._alderHash)u+=window._alderHash;window._alderHash="";history.pushState(null,"",u);window._alderAt=location.pathname+location.search;document.body.tabIndex=-1;document.body.focus({preventScroll:true});var h=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));h?h.scrollIntoView():scrollTo(0,0)})()</script>
 
 

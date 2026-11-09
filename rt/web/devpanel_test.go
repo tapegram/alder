@@ -1,9 +1,11 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 
 	"alder/internal/csscheck"
 	rtpkg "alder/rt"
@@ -112,7 +114,7 @@ func TestDevPanel_Redirect(t *testing.T) {
 		`<section id="_alder_tab_trace" hidden>`, "Db.delete", "<li data-hop>then GET /list</li>", "Db.query",
 		"DELETE FROM x", "<li data-hop>then GET /list</li>", "SELECT y", ", 3 rows",
 		"<p>redirect /list</p><p>then GET /list: 200 page</p>",
-		"<li>body</li><li>title</li><li>history /list</li><li>panel</li>",
+		"<li>body</li><li>title</li><li>html</li><li>history /list</li><li>panel</li>",
 	}
 	at := 0
 	for _, s := range order {
@@ -172,9 +174,10 @@ func TestNoticedWithoutScript(t *testing.T) {
 	}
 }
 
-// The kind of a notice rides in the signed cookie with its text (notice:<kind>:<text>), and the
-// alert of the next page shows it; a payload whose second segment is no kind (an older
-// cookie's, or text with a colon) is all text, shown as info.
+// The kind of a notice rides in the signed cookie with its text (new cookies hold `notices:` and
+// a JSON list of kind and text), and the alert of the next page shows it. The older formats
+// (notice:<kind>:<text>, and notice:<text>) are still read: a payload whose second segment is no
+// kind (or text with a colon) is all text, shown as info.
 func TestNoticedWithoutScript_Kinds(t *testing.T) {
 	for _, tc := range []struct {
 		kind       rtpkg.NoticeKind
@@ -222,6 +225,83 @@ func TestNoticedWithoutScript_Kinds(t *testing.T) {
 		if want == "" && strings.Contains(b, "al-alert") || want != "" && !strings.Contains(b, "<body>"+want) {
 			t.Errorf("%q: want %q in %s", payload, want, b)
 		}
+	}
+}
+
+// Every toast of a redirect answered to a form posted without Datastar rides in the notice
+// cookie, and the next page shows one <al-alert> for each, in order (#179).
+func TestNoticedWithoutScript_All(t *testing.T) {
+	routes := []Route{
+		{Method: "POST", Pattern: "/go", Handle: func(rq *Request) Response {
+			to := rtpkg.Redirect(rtpkg.Route{Name: "A.List", Method: "GET", Path: "/list"})
+			return AnswerResponse(rtpkg.WithToast(rtpkg.NoticeError, "Three", rtpkg.WithToast(rtpkg.NoticeSuccess, "Two", rtpkg.WithToast(rtpkg.NoticeInfo, "One", to))), nil, nil)
+		}},
+		{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response { return PageResponse(doc("list"), nil, nil) }},
+	}
+	h := NewRouter(routes, testOpts(nil))
+	w := serve(h, httptest.NewRequest("POST", "/go", nil))
+	c := noticeOf(w)
+	if w.Code != 303 || c == nil {
+		t.Fatalf("%d, cookie %v", w.Code, c)
+	}
+	get := httptest.NewRequest("GET", "/list", nil)
+	get.AddCookie(c)
+	b := serve(h, get).Body.String()
+	want := `<body><al-alert variant="info" role="status">One</al-alert>` +
+		`<al-alert variant="success" role="status">Two</al-alert>` +
+		`<al-alert variant="destructive" role="alert">Three</al-alert>`
+	if !strings.Contains(b, want) || strings.Count(b, "<al-alert") != 3 {
+		t.Errorf("want %q in %s", want, b)
+	}
+}
+
+// takeNotices still reads a cookie signed before the toasts went in a list: one toast, its kind
+// from the segment after "notice:" when that is a kind, else info.
+func TestTakeNotices_Legacy(t *testing.T) {
+	rt := NewRouter(nil, testOpts(nil)).(*router)
+	for payload, want := range map[string]rtpkg.Toast{
+		"notice:error:Boom": {Kind: rtpkg.NoticeError, Text: "Boom"},
+		"notice:hi":         {Kind: rtpkg.NoticeInfo, Text: "hi"},
+	} {
+		req := httptest.NewRequest("GET", "/list", nil)
+		req.AddCookie(&http.Cookie{Name: NoticeCookie, Value: Sign(testOpts(nil).Secret, []byte(payload))})
+		if got := rt.takeNotices(httptest.NewRecorder(), req); len(got) != 1 || got[0] != want {
+			t.Errorf("%q: got %+v, want %+v", payload, got, want)
+		}
+	}
+}
+
+// Toasts that do not all fit in the notice cookie keep the first ones whole and drop the rest,
+// with a warning logged.
+func TestStoreNotices_Full(t *testing.T) {
+	var logs []string
+	rt := NewRouter(nil, testOpts(func(o *Options) {
+		o.Log = func(level, msg string) { logs = append(logs, level+" "+msg) }
+	})).(*router)
+	var toasts []rtpkg.Toast
+	for i := range 10 {
+		toasts = append(toasts, rtpkg.Toast{Kind: rtpkg.NoticeSuccess, Text: strconv.Itoa(i) + strings.Repeat("x", 999)})
+	}
+	w := httptest.NewRecorder()
+	rt.storeNotices(w, httptest.NewRequest("POST", "/go", nil), toasts)
+	c := noticeOf(w)
+	if c == nil || len(c.Value) > 3800 {
+		t.Fatalf("cookie %v", c)
+	}
+	req := httptest.NewRequest("GET", "/list", nil)
+	req.AddCookie(c)
+	got := rt.takeNotices(httptest.NewRecorder(), req)
+	if len(got) < 1 || len(got) >= len(toasts) {
+		t.Fatalf("kept %d of %d toasts", len(got), len(toasts))
+	}
+	for i, g := range got {
+		if g != toasts[i] {
+			t.Errorf("toast %d: got %q (%s), want %q", i, head(g.Text), g.Kind, head(toasts[i].Text))
+		}
+	}
+	warn := fmt.Sprintf("warn POST /go: dropped %d toasts: the notice cookie is full", len(toasts)-len(got))
+	if len(logs) != 1 || logs[0] != warn {
+		t.Errorf("logs %q, want %q", logs, warn)
 	}
 }
 
@@ -404,7 +484,8 @@ func prodPages(t *testing.T) string {
 // bar's token, now alder-ui v0.4's --primary (#21), and the shown hash (#49): the boost's
 // window._alderO and the <al-shown> at the end of every body; and #160: _alderO's Alder-Page and
 // Alder-Build headers and window._alderF, and both helpers' empty payload (and _alderF's
-// Alder-Page); and window._alderQ, the input trigger's URL helper.
+// Alder-Page); and window._alderQ, the input trigger's URL helper; and #189: the event that sets
+// the <html> attributes after a boosted navigation's title.
 func TestProductionPageHasNoDevUI(t *testing.T) {
 	if os.Getenv("UPDATE_GOLDEN") != "" {
 		if err := os.WriteFile("testdata/production_page.golden", []byte(prodPages(t)), 0o644); err != nil {
@@ -453,7 +534,7 @@ func TestDevPanel_PatchLabels(t *testing.T) {
 		not    string
 	}{
 		{"/w/render?id=7", "<li>#row-7 (render Row)</li>", ""},
-		{"/w/redirect?to=/other", "<li>body (redirect Page)</li><li>title</li><li>history /other</li>", ""},
+		{"/w/redirect?to=/other", "<li>body (redirect Page)</li><li>title</li><li>html</li><li>history /other</li>", ""},
 		{"/w/refresh?id=7", "<li>#row-7</li>", "(refresh"},
 	} {
 		a := newAnsApp(10)
@@ -471,4 +552,12 @@ func TestDevPanel_PatchLabels(t *testing.T) {
 			t.Errorf("%s: has %q in %s", c.target, c.not, patches)
 		}
 	}
+}
+
+// head is the first ten bytes of s, for a failure message.
+func head(s string) string {
+	if len(s) > 10 {
+		return s[:10]
+	}
+	return s
 }

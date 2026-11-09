@@ -459,6 +459,26 @@ func AttrOf(n Node, name string) (string, bool) {
 	return "", false
 }
 
+// AttrsOf is n's attributes as they render, in order ([name, value]; a boolean attribute has
+// the value ""), nil for anything but an element.
+func AttrsOf(n Node) [][2]string {
+	if n.kind != kElem {
+		return nil
+	}
+	var out [][2]string
+	for _, a := range n.attrs {
+		if a.Omit {
+			continue
+		}
+		v := ""
+		if !a.Bool {
+			v = a.value()
+		}
+		out = append(out, [2]string{a.Name, v})
+	}
+	return out
+}
+
 // AttrPrefixed is the name and value of n's first attribute whose name starts with prefix
 // (`data-on-interval__duration.` of every=), and whether n is an element that has one.
 func AttrPrefixed(n Node, prefix string) (name, value string, ok bool) {

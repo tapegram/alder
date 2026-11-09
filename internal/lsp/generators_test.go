@@ -333,3 +333,66 @@ func TestPlan_MigrationOnlyInTheCopy(t *testing.T) {
 		t.Fatalf("the app changed: %d files before, %d after", len(before), len(after))
 	}
 }
+
+// TestPlan_NoPageStaleBuild (#173): with no page set and no cursor on one, new msg's page starts
+// at the first page the form guesses (source "default"); a plan refuses it as unset.
+func TestPlan_NoPageStaleBuild(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Layout.alder")
+	var plan struct {
+		Files []struct{ Path string }
+		Error string
+	}
+	c.call("alder/plan", req(c, "app/Layout.alder", Position{}, map[string]any{"id": "new msg", "sets": map[string]string{"name": "Delete"}}), &plan)
+	if plan.Error != "page: required" || len(plan.Files) != 0 {
+		t.Fatalf("plan %+v", plan)
+	}
+}
+
+// TestPlan_PageFromHere: the same request with the cursor in a page plans, the page coming from
+// the cursor (source "here").
+func TestPlan_PageFromHere(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	var plan struct {
+		Files []struct{ Path string }
+		Error string
+	}
+	c.call("alder/plan", req(c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "load params", 0), map[string]any{"id": "new msg", "sets": map[string]string{"name": "Delete"}}), &plan)
+	if plan.Error != "" || len(plan.Files) != 1 {
+		t.Fatalf("plan %+v", plan)
+	}
+}
+
+// TestPreview_StillStartsFilled (issue 45): the preview of the same request as
+// TestPlan_NoPageStaleBuild still opens with the page filled in, marked as a guess.
+func TestPreview_StillStartsFilled(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Layout.alder")
+	var pv preview
+	c.call("alder/preview", req(c, "app/Layout.alder", Position{}, map[string]any{"id": "new msg", "sets": map[string]string{"name": "Delete"}}), &pv)
+	for _, f := range pv.Fields {
+		if f.Name == "page" {
+			if f.Value == "" || f.Source != "default" || !pv.Ready {
+				t.Fatalf("page %+v ready %v", f, pv.Ready)
+			}
+			return
+		}
+	}
+	t.Fatalf("no page field in %+v", pv.Fields)
+}
+
+// TestPlan_SingleChoiceOpPlans (#173): the op of `edit route` has one choice, so its start value
+// is no guess; with the page from the cursor and the field set, the plan is made.
+func TestPlan_SingleChoiceOpPlans(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	var plan struct {
+		Files []struct{ Path string }
+		Error string
+	}
+	c.call("alder/plan", req(c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "load params", 0), map[string]any{"id": "edit route", "sets": map[string]string{"field": "sort:Text=\"new\""}}), &plan)
+	if plan.Error != "" || len(plan.Files) == 0 {
+		t.Fatalf("plan %+v", plan)
+	}
+}

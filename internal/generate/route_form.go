@@ -142,7 +142,11 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 			params = append(params, par.Name+": "+typeText(p, par.Type, o.Page))
 			importTypes(imports, par.Type)
 			pageArgs = append(pageArgs, par.Name+": params."+par.Name)
-			holes = append(holes, par.Name+": ?"+LowerFirst(route)+UpperFirst(par.Name))
+			if v, ok := rowKeyExpr(p, m, par); ok {
+				holes = append(holes, par.Name+": "+v)
+			} else {
+				holes = append(holes, par.Name+": ?"+LowerFirst(route)+UpperFirst(par.Name))
+			}
 		case !par.HasDefault:
 			redirectable = false
 		}
@@ -344,4 +348,28 @@ func routeFormGate(p *Program, r *Route, o FormOptions, setup *testBuilder, page
 		}
 	}
 	return tests
+}
+
+// rowKeyExpr is the value of a path parameter the page already holds: on a page whose `Model` is
+// `{ row: T }` (the shape `new route --show T` writes) for a table T, a parameter of the type of
+// T's key is `model.row.<key>`, so the button sent from its `view` needs no hole. Otherwise it
+// returns false and the parameter stays a hole.
+func rowKeyExpr(p *Program, page *Module, par *Param) (string, bool) {
+	for _, d := range page.Syntax.Decls {
+		td, ok := d.(*syntax.TypeDecl)
+		if !ok || td.Name != "Model" || td.Record == nil || len(td.Record.Fields) != 1 {
+			continue
+		}
+		f := td.Record.Fields[0]
+		tn, ok := f.Type.(*syntax.TypeName)
+		if f.Name != "row" || !ok || tn.Module != "" || len(tn.Args) > 0 {
+			return "", false
+		}
+		t := p.TableNamed(tn.Name)
+		if t == nil || typeText(p, t.IDType, page.Name) != typeText(p, par.Type, page.Name) {
+			return "", false
+		}
+		return "model.row." + t.IDField, true
+	}
+	return "", false
 }

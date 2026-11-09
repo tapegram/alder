@@ -202,6 +202,7 @@ var genCases = []genCase{
 		fills: [][2]string{{"Posts.Index.SubmitNewComment.update --hole ?answer", "Task.succeed (Response.refresh |> Response.success \"Saved\")"}, {`Posts.Index."submitting NewComment"`, "Refreshed"}}},
 	// #160: a form on a route with `role`: its tests refuse a visitor and a user of another role
 	{name: "form-route-role", base: "fixture", pre: [][]string{{"new", "route", "Tags.Index", "/tags", "--list", "Tag", "--role", "Admin"}}, args: []string{"new", "form", "Tags.Index", "Quick", "name:Text.NonEmpty", "post:Post.PostId"}, test: true},
+	{name: "form-route-show-test", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "form", "Posts.Show", "Reply", "name:Text.NonEmpty", "post:Post.PostId", "--msg", "SendReply"}, test: true},
 	{name: "form-route-show", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "form", "Posts.Show", "Reply", "body:Text", "--hole", "--msg", "SendReply"}},
 	{name: "msg", base: "scaffold", args: []string{"new", "msg", "Home", "Clear"}, test: true,
 		fills: [][2]string{{"--decl Home.Clear.update", "{\n  let _ <- Log.info \"cleared\"\n  Task.succeed Response.refresh\n}"}}},
@@ -268,7 +269,7 @@ var genCases = []genCase{
 	{name: "form-msg", base: "scaffold", args: []string{"new", "form", "Home", "Quick", "name:Text.NonEmpty", "message:Text.NonEmpty", "--msg", "Sign2"}, test: true},
 	// E11 fixes: the four commands
 	{name: "app-msg", base: "scaffold", args: []string{"new", "msg", "App", "ToggleTheme", "dark:Bool"}, test: true,
-		fills: [][2]string{{"--decl Home.Home.view", "<Layout.Page title=\"Guestbook\">\n  <al-card>\n    <form submit={Submit}>\n      <al-input field=\"name\" label=\"Your name\" />\n      <al-input field=\"message\" label=\"Message\" />\n      <al-button type=\"submit\">Sign</al-button>\n    </form>\n  </al-card>\n  <al-button click={App.ToggleTheme { dark: True }}>Dark</al-button>\n  <ul id=\"entries\">{for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}</ul>\n</Layout.Page>"}, {`App."pressing ToggleTheme" --hole ?toggleThemeDark`, "True"}}},
+		fills: [][2]string{{"--decl Home.Home.view", "<Layout.Page title=\"Guestbook\">\n  <al-card>\n    <form submit={Submit}>\n      <al-input field=\"name\" label=\"Your name\" />\n      <al-input field=\"message\" label=\"Message\" />\n      <al-button type=\"submit\">Sign</al-button>\n    </form>\n  </al-card>\n  <al-button click={App.ToggleTheme { dark: True }}>Dark</al-button>\n  <ul id=\"entries\">{for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}</ul>\n</Layout.Page>"}}},
 	// #160: an App that holds `route Logout` takes a route too
 	{name: "app-msg-auth", base: "scaffold", pre: [][]string{{"new", "auth"}}, args: []string{"new", "msg", "App", "Ping"}},
 	{name: "fixture-app-msg-hole", base: "fixture", args: []string{"new", "msg", "App", "Ping"}},

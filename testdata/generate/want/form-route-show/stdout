@@ -15,7 +15,7 @@ edited app/Posts/Show.alder
          <dt>Updated</dt>
          <dd>{Time.format "Jan 2, 2006" model.row.updated}</dd>
        </dl>
-+      <form submit={SendReply { id: ?sendReplyId }}>
++      <form submit={SendReply { id: model.row.id }}>
 +        <al-textarea field="body" label="Body" />
 +        <al-alert variant="destructive"><Errors form /></al-alert>
 +        <al-button type="submit">Reply</al-button>
@@ -47,9 +47,6 @@ edited app/Posts/Show.alder
 +  let r <- Test.submit (SendReply { id: post1 }) { body: "body-1" }
 +  Task.succeed (r.answer == ?expected)
 +}
-app/Posts/Show.alder:57:37: warning[W0002]: hole ?sendReplyId has type Post.PostId
-        <form submit={SendReply { id: ?sendReplyId }}>
-                                      ^^^^^^^^^^^^
 app/Posts/Show.alder:68:35: warning[W0002]: hole ?answer has type Task Response
   SendReply.update params session = ?answer
                                     ^^^^^^^

@@ -409,12 +409,15 @@ func (rt *router) patchPanel(w http.ResponseWriter, status int) {
 // own event after the body's, so a later morph does not show it again.
 func (rt *router) notify(w http.ResponseWriter) {
 	tw, ok := w.(*tracker)
-	if !ok || tw.notice == "" {
+	if !ok || (tw.notice == "" && len(tw.more) == 0) {
 		return
 	}
 	toasts := append([]rtpkg.Toast{{Kind: tw.kind, Text: tw.notice}}, tw.more...)
 	tw.notice, tw.more = "", nil
 	for _, t := range toasts {
+		if t.Text == "" { // a toast without text shows nothing
+			continue
+		}
 		variant, timeout, _ := noticeLook(t.Kind)
 		toast := `<al-toast variant="` + variant + `" timeout="` + timeout + `">` + esc(t.Text) + `</al-toast>`
 		tw.patches = append(tw.patches, "toast")
