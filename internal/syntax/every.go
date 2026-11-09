@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"math"
 	"strconv"
 	"strings"
 )
@@ -30,7 +31,7 @@ func EveryDuration(lit string) (string, bool) {
 		return lit, true
 	}
 	n, err := strconv.Atoi(num)
-	if err != nil || n > (1<<62)/60 {
+	if err != nil || n > math.MaxInt/60 {
 		return "", false
 	}
 	return strconv.Itoa(n*60) + "s", true
