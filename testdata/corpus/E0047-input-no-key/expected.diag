@@ -1,0 +1,3 @@
+app/Todos.alder:16:32 E0047 `input` sends field `query`; `Results` has no query parameter `query`
+app/Todos.alder:17:32 E0047 `input` sends field `other`; `Results` has no query parameter `other`
+app/Todos.alder:20:35 E0047 `input` sends field `title`; `Results` has no query parameter `title`

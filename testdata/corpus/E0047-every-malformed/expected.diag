@@ -1,0 +1,3 @@
+app/Todos.alder:15:32 E0047 `every` takes a literal like "5s": a whole number above 0 then `ms`, `s` or `m`
+app/Todos.alder:16:32 E0047 `every` takes a literal like "5s": a whole number above 0 then `ms`, `s` or `m`
+app/Todos.alder:17:33 E0047 `every` takes a literal like "5s": a whole number above 0 then `ms`, `s` or `m`

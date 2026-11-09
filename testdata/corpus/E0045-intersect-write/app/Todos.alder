@@ -1,0 +1,14 @@
+module Todos
+
+route Index = GET  "/"     { }
+route Seen  = POST "/seen" { after: Int }
+
+-- `intersect` fetches as the element scrolls into view: it must not write
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <div id="more" intersect={Seen { after: n }}></div>
+
+Seen.update : Seen.Params -> Session -> Task Response
+Seen.update params session = Task.succeed Response.refresh

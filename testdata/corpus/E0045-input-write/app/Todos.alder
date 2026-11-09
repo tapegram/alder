@@ -1,0 +1,14 @@
+module Todos
+
+route Index = GET  "/"      { }
+route Save  = POST "/save"  { q: Text = "" }
+
+-- `input` fetches as the user types: a write goes through a form (`submit`)
+Index.load : Index.Params -> Session -> Query Text
+Index.load params session = Query.succeed ""
+
+Index.view : Text -> Session -> Html
+Index.view q session = <input name="q" input={Save { q: q }} />
+
+Save.update : Save.Params -> Session -> Task Response
+Save.update params session = Task.succeed Response.refresh

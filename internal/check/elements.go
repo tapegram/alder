@@ -236,6 +236,13 @@ func (mc *modCtx) customAttr(x *syntax.Element, el *elements.Element, a *syntax.
 		}
 		return
 	}
+	if slices.Contains(triggerNames, a.Name) || a.Name == "every" { // plan call 3: not in this slice
+		c.errorf(diag.RouteTrigger, a.Span, "`<%s>` does not take `%s`; wrap it in a `<div %s=…>`", x.Tag, a.Name, a.Name)
+		if a.Value != nil {
+			mc.infer(a.Value, env, eff)
+		}
+		return
+	}
 	if d := el.Attr(a.Name); d != nil {
 		switch {
 		case d.Boolean() && a.Value == nil:
@@ -258,7 +265,7 @@ func (mc *modCtx) customAttr(x *syntax.Element, el *elements.Element, a *syntax.
 		return
 	}
 	if elements.Escaped(a.Name) || (x.Tag == "al-button" && AnchorAttrs[a.Name]) || (strings.HasPrefix(a.Name, "on") && len(a.Name) > 2) {
-		mc.attribute(a, m, env, eff) // `onclick` gets its own message there
+		mc.attribute(x, a, m, env, eff) // `onclick` gets its own message there
 		return
 	}
 	has := "it declares none"

@@ -1,0 +1,2 @@
+app/Todos.alder:13:12 E0047 `input` sends the field's value under its name; give `<input>` a literal `name`
+app/Todos.alder:14:26 E0047 `input` sends the field's value under its name; give `<textarea>` a literal `name`

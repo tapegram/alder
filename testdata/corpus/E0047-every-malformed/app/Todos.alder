@@ -1,0 +1,24 @@
+module Todos
+
+route Index = GET "/"      { }
+route Stats = GET "/stats" { }
+
+type Model = { d: Text }
+
+-- `every` is a literal: a whole number above 0, then `ms`, `s` or `m`
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { d: "5s" }
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <div>
+    <div load={Stats {}} every="5"></div>
+    <div load={Stats {}} every="0s"></div>
+    <div load={Stats {}} every={model.d}></div>
+  </div>
+
+Stats.load : Stats.Params -> Session -> Query Int
+Stats.load params session = Query.succeed 1
+
+Stats.view : Int -> Session -> Html
+Stats.view n session = <p id="stats">{Text.fromInt n}</p>

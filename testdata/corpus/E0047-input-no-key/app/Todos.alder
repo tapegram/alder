@@ -1,0 +1,31 @@
+module Todos
+
+route Index   = GET "/"        { }
+route Results = GET "/results" { query: Text = "" as "search" }
+route Go      = POST "/go"     { } form Ask
+
+form Ask = { title: Text }
+
+-- `name="query"` is the parameter's name, but its query key is `search`
+Index.load : Index.Params -> Session -> Query Text
+Index.load params session = Query.succeed ""
+
+Index.view : Text -> Session -> Html
+Index.view q session =
+  <div>
+    <input name="query" input={Results { query: q }} />
+    <input name="other" input={Results { query: q }} />
+    <form submit={Go}>
+      <Errors form />
+      <Input field="title" input={Results { query: q }} />
+    </form>
+  </div>
+
+Results.load : Results.Params -> Session -> Query Text
+Results.load params session = Query.succeed params.query
+
+Results.view : Text -> Session -> Html
+Results.view q session = <p id="results">{q}</p>
+
+Go.update : Go.Params -> Session -> Task Response
+Go.update params session = Task.succeed Response.refresh

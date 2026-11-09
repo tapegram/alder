@@ -1,0 +1,17 @@
+module Todos
+
+route Index = GET "/"           { }
+route Row   = GET "/todos/{id}" { id: Text }
+
+-- the browser can set a query key, never rewrite a path segment
+Index.load : Index.Params -> Session -> Query Text
+Index.load params session = Query.succeed "1"
+
+Index.view : Text -> Session -> Html
+Index.view id session = <input name="id" input={Row { id: id }} />
+
+Row.load : Row.Params -> Session -> Query Text
+Row.load params session = Query.succeed params.id
+
+Row.view : Text -> Session -> Html
+Row.view id session = <p id="row">{id}</p>
