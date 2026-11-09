@@ -314,6 +314,7 @@ var Effectful = map[string]bool{
 	"Query": true, "Task": true, "Db": true,
 	"Test.run": true, "Test.trace": true, "Test.fake": true, "Test.login": true, "Test.get": true,
 	"Test.open": true, "Test.fetch": true, "Test.submit": true, "Test.submitRaw": true, "Test.click": true,
+	"Test.load": true, "Test.intersect": true, "Test.input": true,
 	"Test.refresh": true,
 	"Test.member":  true, // a call gen writes itself (member, browser.go): its table is the `via` field's
 }

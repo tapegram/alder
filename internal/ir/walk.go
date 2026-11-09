@@ -110,6 +110,8 @@ func Children(e Expr) []Expr {
 		return []Expr{x.Params, x.Fields}
 	case *TestClick:
 		return []Expr{x.Params}
+	case *TestTrigger:
+		return []Expr{x.Params}
 	}
 	return nil // Lit, Var, Hole, HText, EffNotFound, ColumnRef, TableRef, Ord, TestTrace, TestRefresh, TestFake, DbScoped, FuzzDerive
 }

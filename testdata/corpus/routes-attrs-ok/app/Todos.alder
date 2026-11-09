@@ -3,7 +3,8 @@ module Todos
 -- The route trigger attributes (#160): `load` fetches a GET route as the element appears,
 -- `every` repeats that load, `intersect` fetches as the element scrolls into view, and `input`
 -- fetches as a field changes, with the field's value as one query key. Each route below is
--- requested by exactly one element of the index page.
+-- requested by exactly one element of the index page, and its view's root id is an element of
+-- the page: the element the fetch replaces (the trigger itself, or for an input its results).
 route Index   = GET  "/"           { }
 route Stats   = GET  "/stats"      { }
 route Refresh = GET  "/refresh"    { }
@@ -23,18 +24,21 @@ Index.load params session = Query.succeed ""
 Index.view : Text -> Session -> Html
 Index.view q session =
   <main id="index">
-    <div id="stats-box" load={Stats {}} click={Refresh {}}>Stats</div>
-    <div id="badge-box" load={Badge {}} every="1m">Badge</div>
-    <div id="pulse-box" load={Pulse {}} every="5s">Pulse</div>
-    <div id="clock-box" load={Clock {}} every="500ms">Clock</div>
+    <div id="stats" load={Stats {}} click={Refresh {}}>Stats</div>
+    <div id="badge" load={Badge {}} every="1m">Badge</div>
+    <div id="pulse" load={Pulse {}} every="5s">Pulse</div>
+    <div id="clock" load={Clock {}} every="500ms">Clock</div>
     <ul id="todos"><li>one</li></ul>
     <div id="more-10" intersect={More { after: 10 }}></div>
     <input name="q" input={Results { q: q }} />
+    <p id="results"></p>
     <form submit={Go}>
       <Errors form />
       <Input field="q" input={Search { query: q }} />
       <button>Go</button>
     </form>
+    <p id="search"></p>
+    <p id="refresh"></p>
   </main>
 
 Stats.load : Stats.Params -> Session -> Query Int

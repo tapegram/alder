@@ -121,7 +121,7 @@ func isEffNode(e ir.Expr) bool {
 	switch x := e.(type) {
 	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.EffRedirect, *ir.CapCall,
 		*ir.DbGet, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete, *ir.TestRun, *ir.TestTrace, *ir.TestRefresh, *ir.TestFake,
-		*ir.DbGetScoped, *ir.DbUpdateScoped, *ir.DbDeleteScoped, *ir.DbInsertScoped, *ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
+		*ir.DbGetScoped, *ir.DbUpdateScoped, *ir.DbDeleteScoped, *ir.DbInsertScoped, *ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick, *ir.TestTrigger:
 		return true
 	case *ir.DbSelect:
 		return x.Terminal != ir.SelNone
@@ -291,7 +291,7 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 			return "if " + env + ".Caps == nil {\n" + env + ".Caps = map[string]any{}\n}\n" +
 				env + ".Caps[" + key + "] = Fakes[" + key + "]()\nreturn struct{}{}, nil\n"
 		}), true
-	case *ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick, *ir.TestRefresh:
+	case *ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick, *ir.TestTrigger, *ir.TestRefresh:
 		f.g.testNode(x)
 		return f.browserStep(x, s), true // browser.go
 	}

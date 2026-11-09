@@ -34,6 +34,14 @@ submitRaw : target -> List { name: Text, value: Text } -> Task { answer: Answer,
 -- special form: the argument is a route without `form` (`Row { id: id }`, a GET route, fetches it
 -- and patches the held page; `Toggle { id: id }`, a write route, sends it; `App.Logout`, App's)
 click : target -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
+-- special form: the argument is a GET route (`Stats {}`) the held page's one element requests
+-- with `load` (or `every`); fetches it as that element does and patches the held page
+load : target -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
+-- special form: as load, for the element that requests the route with `intersect`
+intersect : target -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
+-- special form: as load, for the field that requests the route with `input`; the route's
+-- parameters are what the test wrote (`Results { q: "mil" }`), as if typed
+input : target -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
 -- GETs the URL the browser holds and fails unless the body is the one it holds: the check that
 -- what the steps patched in is what the page renders
 refresh : Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }

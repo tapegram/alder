@@ -374,6 +374,21 @@ func (e *NoControlError) Error() string {
 	return s
 }
 
+// SeveralControlsError is the error of a trigger step (Step "Test.load", "Test.intersect",
+// "Test.input") whose route the held page requests from more than one element: which one
+// appeared, scrolled into view or changed is not known. Path is the route's URL path; Elements
+// name each element, in document order (`<div id="a">`, `<div>` without an id).
+type SeveralControlsError struct {
+	Step     string
+	Path     string
+	Elements []string
+}
+
+// Error is "Test.load found 2 elements requesting /stats: <div id="a">, <div id="b">".
+func (e *SeveralControlsError) Error() string {
+	return fmt.Sprintf("%s found %d elements requesting %s: %s", e.Step, len(e.Elements), e.Path, strings.Join(e.Elements, ", "))
+}
+
 // NoInputError is the error of a Submit whose fields name one the matched form renders no
 // input for (an <input>, <select> or <textarea> with that name): a browser sends only the
 // form's inputs, so the page would never receive it. Form is the form's name ("" when not

@@ -306,7 +306,7 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 		*ir.DbGet, *ir.DbSelect, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete,
 		*ir.DbScoped, *ir.DbGetScoped, *ir.DbUpdateScoped, *ir.DbDeleteScoped, *ir.DbInsertScoped,
 		*ir.ColumnRef, *ir.TableRef, *ir.Cond, *ir.Ord, *ir.TestRun, *ir.TestTrace, *ir.TestRefresh, *ir.TestFake,
-		*ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
+		*ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick, *ir.TestTrigger:
 		return f.effect(e, s), precAtom // effects.go
 	case *ir.FuzzDerive:
 		return f.g.fuzzDerive(x), precAtom

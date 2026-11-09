@@ -87,7 +87,8 @@ func (l *lowerer) testFake(fn syntax.Expr, args []syntax.Expr, t types.Type) Exp
 }
 
 // testStep lowers a browser step of module Test (`Test.login s`, `Test.get r`, `Test.open r`,
-// `Test.submit r f`, `Test.submitRaw r fields`, `Test.click r`) of type t, or returns nil when
+// `Test.submit r f`, `Test.submitRaw r fields`, `Test.click r`, `Test.load r`, `Test.intersect r`,
+// `Test.input r`) of type t, or returns nil when
 // fn is not one. The checker accepted each applied to all its arguments, in the shapes below.
 func (l *lowerer) testStep(fn syntax.Expr, args []syntax.Expr, t types.Type) Expr {
 	v, ok := fn.(*syntax.Var)
@@ -124,6 +125,12 @@ func (l *lowerer) testStep(fn syntax.Expr, args []syntax.Expr, t types.Type) Exp
 			return bug("not a route value")
 		}
 		return &TestClick{Typed: Typed{t}, Route: ref.Route, Params: ref.Params}
+	case "load", "intersect", "input":
+		ref, ok := l.expr(args[0]).(*RouteRef)
+		if !ok {
+			return bug("not a route value")
+		}
+		return &TestTrigger{Typed: Typed{t}, Kind: v.Ref.Name, Route: ref.Route, Params: ref.Params}
 	}
 	return nil
 }

@@ -459,6 +459,23 @@ func AttrOf(n Node, name string) (string, bool) {
 	return "", false
 }
 
+// AttrPrefixed is the name and value of n's first attribute whose name starts with prefix
+// (`data-on-interval__duration.` of every=), and whether n is an element that has one.
+func AttrPrefixed(n Node, prefix string) (name, value string, ok bool) {
+	if n.kind != kElem {
+		return "", "", false
+	}
+	for _, a := range n.attrs {
+		if strings.HasPrefix(a.Name, prefix) && !a.Omit {
+			if a.Bool {
+				return a.Name, "", true
+			}
+			return a.Name, a.value(), true
+		}
+	}
+	return "", "", false
+}
+
 // Tag is n's element name, "" for anything but an element.
 func (n Node) Tag() string {
 	if n.kind != kElem {

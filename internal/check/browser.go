@@ -1,5 +1,5 @@
 // The browser steps of module Test (`Test.login`, `get`, `open`, `fetch`, `submit`, `submitRaw`,
-// `click`) and `Test.refresh`, typed as special forms, the selector literals of its queries
+// `click`, `load`, `intersect`, `input`) and `Test.refresh`, typed as special forms, the selector literals of its queries
 // (E0023), and the test-only Prelude types `Doc` and `Answer`.
 package check
 
@@ -16,7 +16,8 @@ import (
 const BadSelector = diag.BadSelector
 
 // testSteps are the browser steps and how many arguments each takes.
-var testSteps = map[string]int{"login": 1, "get": 1, "open": 1, "fetch": 1, "submit": 2, "submitRaw": 2, "click": 1}
+var testSteps = map[string]int{"login": 1, "get": 1, "open": 1, "fetch": 1, "submit": 2, "submitRaw": 2, "click": 1,
+	"load": 1, "intersect": 1, "input": 1}
 
 // IsTestStep reports whether `Test.name` is a browser step (a special form).
 func IsTestStep(name string) bool { _, ok := testSteps[name]; return ok }
@@ -27,6 +28,7 @@ var stepExample = map[string]string{
 	"fetch":  "Test.fetch (Report.Csv.Csv { id: id })",
 	"submit": "Test.submit Create { title: \"Milk\" }", "submitRaw": "Test.submitRaw Create [{ name: \"title\", value: \"\" }]",
 	"click": "Test.click (Toggle { id: id })",
+	"load":  "Test.load (Stats {})", "intersect": "Test.intersect (More { after: 10 })", "input": "Test.input (Results { q: \"mil\" })",
 }
 
 // selectorArg is, for each query, the index of its selector argument.
@@ -132,6 +134,8 @@ func (mc *modCtx) inferTestStep(x *syntax.App, v *syntax.Var, env *env, eff effe
 		res = mc.testSubmit(name, x.Args[0], x.Args[1], env, eff)
 	case "click":
 		res = mc.testClick(x.Args[0], env, eff)
+	case "load", "intersect", "input":
+		res = mc.testTrigger(name, x.Args[0], env, eff)
 	}
 	if !types.IsErr(res) {
 		c.record(v, &types.Fun{Params: mc.stepParams(name, x.Args), Result: res})
@@ -390,6 +394,36 @@ func (mc *modCtx) testClick(arg syntax.Expr, env *env, eff effect) types.Type {
 		got += " of type `" + mc.ts(t) + "`"
 	}
 	c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.click` wants a route, got %s", got)
+	return types.Err
+}
+
+// testTrigger types `Test.<name> r` for the trigger steps (`load`, `intersect`, `input`): r is a
+// GET route written in place, which the held page's element requests with that attribute. A
+// write route is E0045 (it is clicked, not fetched).
+func (mc *modCtx) testTrigger(name string, arg syntax.Expr, env *env, eff effect) types.Type {
+	c := mc.c
+	if unresolvedHead(arg) {
+		mc.infer(arg, env, eff)
+		return types.Err
+	}
+	if mc.bareRoute(arg, true) {
+		return types.Err
+	}
+	if ct, r := mc.routeTarget(arg); r != nil {
+		if isWrite(r.Method) {
+			c.errorf(diag.RouteTarget, arg.GetSpan(), "`Test.%s` fetches a GET route; `%s` is %s: use `Test.click`", name, ct.Name, r.Method)
+			mc.infer(arg, env, eff)
+			return types.Err
+		}
+		mc.check(arg, types.Route, env, eff)
+		return mc.stepResult("answer", c.answerType())
+	}
+	t := c.u.Apply(mc.infer(arg, env, eff))
+	got := "`" + mc.source(arg.GetSpan()) + "`"
+	if !types.IsErr(t) {
+		got += " of type `" + mc.ts(t) + "`"
+	}
+	c.errorf(diag.TypeMismatch, arg.GetSpan(), "`Test.%s` wants a route, got %s", name, got)
 	return types.Err
 }
 

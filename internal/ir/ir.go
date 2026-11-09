@@ -1047,6 +1047,16 @@ type TestClick struct {
 	Params Expr
 }
 
+// TestTrigger is `Test.load r`, `Test.intersect r` or `Test.input r` (Kind "load", "intersect",
+// "input"): the GET route value Route with its Params (nil when written bare), fetched as the
+// held page's element requesting it with that attribute does.
+type TestTrigger struct {
+	Typed
+	Kind   string
+	Route  *Route
+	Params Expr
+}
+
 // GenKind is the shape of a derived generator (GenTree).
 type GenKind int
 
