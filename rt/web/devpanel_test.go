@@ -112,7 +112,7 @@ func TestDevPanel_Redirect(t *testing.T) {
 		`<section id="_alder_tab_trace" hidden>`, "Db.delete", "<li data-hop>then GET /list</li>", "Db.query",
 		"DELETE FROM x", "<li data-hop>then GET /list</li>", "SELECT y", ", 3 rows",
 		"<p>redirect /list</p><p>then GET /list: 200 page</p>",
-		"<li>body</li><li>title</li><li>history /list</li><li>panel</li>",
+		"<li>body</li><li>title</li><li>html</li><li>history /list</li><li>panel</li>",
 	}
 	at := 0
 	for _, s := range order {
@@ -404,7 +404,8 @@ func prodPages(t *testing.T) string {
 // bar's token, now alder-ui v0.4's --primary (#21), and the shown hash (#49): the boost's
 // window._alderO and the <al-shown> at the end of every body; and #160: _alderO's Alder-Page and
 // Alder-Build headers and window._alderF, and both helpers' empty payload (and _alderF's
-// Alder-Page); and window._alderQ, the input trigger's URL helper.
+// Alder-Page); and window._alderQ, the input trigger's URL helper; and #189: the event that sets
+// the <html> attributes after a boosted navigation's title.
 func TestProductionPageHasNoDevUI(t *testing.T) {
 	if os.Getenv("UPDATE_GOLDEN") != "" {
 		if err := os.WriteFile("testdata/production_page.golden", []byte(prodPages(t)), 0o644); err != nil {
@@ -453,7 +454,7 @@ func TestDevPanel_PatchLabels(t *testing.T) {
 		not    string
 	}{
 		{"/w/render?id=7", "<li>#row-7 (render Row)</li>", ""},
-		{"/w/redirect?to=/other", "<li>body (redirect Page)</li><li>title</li><li>history /other</li>", ""},
+		{"/w/redirect?to=/other", "<li>body (redirect Page)</li><li>title</li><li>html</li><li>history /other</li>", ""},
 		{"/w/refresh?id=7", "<li>#row-7</li>", "(refresh"},
 	} {
 		a := newAnsApp(10)

@@ -1,0 +1,23 @@
+module App
+
+-- The theme switch of book chapter 6 ("Example: a theme switch", #189): the theme is kept in
+-- the session, and the layout puts it on <html> as a class. TestBrowser_ThemeSwitch presses the
+-- switch in a real browser and checks the class changes without a reload.
+
+import Theme
+
+session { theme: Theme = Light }
+
+route SwitchTheme = POST "/_/SwitchTheme" { }
+
+SwitchTheme.update : SwitchTheme.Params -> Session -> Task Response
+SwitchTheme.update p session = {
+  let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
+  Task.succeed Response.refresh
+}
+
+error : Error -> Html
+error err = <html><body><h1>Something went wrong</h1></body></html>
+
+notFound : Html
+notFound = <html><body><h1>Not found</h1></body></html>

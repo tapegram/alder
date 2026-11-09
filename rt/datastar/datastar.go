@@ -128,6 +128,71 @@ func Navigate(w http.ResponseWriter, url string, mode History) error {
 	return patch(w, "body", "append", `<script data-effect="el.remove()">`+js+`</script>`)
 }
 
+// PatchHtmlAttrs answers (after the body or region patches) with one `datastar-patch-elements`
+// event appending (selector body, mode append) a script that removes itself and gives the
+// document's <html> element the attributes the server rendered on it: each [name, value] pair is
+// set, and each name the server set before (window._alderHtml, which the script keeps and
+// HtmlSeed starts on a full load) that attrs no longer names is removed. An attribute set in the
+// browser (a theme script's class dark, the pending bar's data-alder-pending) is left alone. A
+// morph of <body> never reaches <html>, so this is how a class or lang the view puts there (a
+// theme switch) changes without a reload. attrs goes into the script as JSON, so "<", ">" and
+// "&" are escaped and no value can end the script; a name the browser refuses is skipped. It
+// sets Content-Type text/event-stream, writes the event and flushes if w can.
+func PatchHtmlAttrs(w http.ResponseWriter, attrs [][2]string) error {
+	if attrs == nil {
+		attrs = [][2]string{}
+	}
+	b, err := json.Marshal(attrs)
+	if err != nil {
+		return err
+	}
+	js := string(b) + `;var e=document.documentElement,o=window._alderHtml||[],k={};` +
+		`a.forEach(function(p){try{e.setAttribute(p[0],p[1]);k[p[0].toLowerCase()]=1}catch(x){}});` +
+		`o.forEach(function(n){if(!k[n])e.removeAttribute(n)});window._alderHtml=Object.keys(k)})()`
+	return patch(w, "body", "append", htmlAttrsOpen+js+`</script>`)
+}
+
+// HtmlSeed is the script a full page puts in its <head> when its <html> start tag has
+// attributes: it sets window._alderHtml to their names (lowercase), the ones the first
+// PatchHtmlAttrs may remove. names goes in as JSON, as in PatchHtmlAttrs.
+func HtmlSeed(names []string) string {
+	b, _ := json.Marshal(names)
+	return htmlSeedOpen + string(b) + `</script>`
+}
+
+// htmlSeedOpen is how HtmlSeed's script begins, up to the JSON list.
+const htmlSeedOpen = `<script>window._alderHtml=`
+
+// CutHtmlSeed is s without the HtmlSeed script it begins with, and whether it began with one.
+func CutHtmlSeed(s string) (string, bool) {
+	rest, ok := strings.CutPrefix(s, htmlSeedOpen)
+	if !ok {
+		return s, false
+	}
+	_, after, ok := strings.Cut(rest, "</script>")
+	if !ok {
+		return s, false
+	}
+	return after, true
+}
+
+// htmlAttrsOpen is how the elements of a PatchHtmlAttrs event begin, up to the JSON list.
+const htmlAttrsOpen = `<script data-effect="el.remove()">(function(){var a=`
+
+// HtmlAttrsOf is the list a PatchHtmlAttrs event's elements carry, and whether elements is such
+// a script: rt/testing's browser reads it to set the <html> attributes of the page it holds.
+func HtmlAttrsOf(elements string) ([][2]string, bool) {
+	rest, ok := strings.CutPrefix(elements, htmlAttrsOpen)
+	if !ok {
+		return nil, false
+	}
+	var attrs [][2]string
+	if json.NewDecoder(strings.NewReader(rest)).Decode(&attrs) != nil {
+		return nil, false
+	}
+	return attrs, true
+}
+
 // afterMorph is the part of a Push or Replace script common to both: the page's path and query
 // for the popstate handler, and the focus moved to the new <body>.
 const afterMorph = `window._alderAt=location.pathname+location.search;` +

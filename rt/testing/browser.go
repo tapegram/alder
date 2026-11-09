@@ -125,8 +125,11 @@ type Browser struct {
 	url    string    // the URL of the page held, "" before the first
 	doc    html.Node // the page held (without the router's doctype and script tag)
 	hasDoc bool
-	toasts []Toast // the toasts of the step's requests (Result.Toasts and Notices)
-	status int64   // the code of the last response (Result.Status)
+	// htmlNames is the names of the <html> attributes the server set last (on the page held whole,
+	// or by the last datastar.PatchHtmlAttrs event): the ones the next such event may remove
+	htmlNames []string
+	toasts    []Toast // the toasts of the step's requests (Result.Toasts and Notices)
+	status    int64   // the code of the last response (Result.Status)
 	// build is the build the held page names (its <meta name="alder-build">, which the router's
 	// head tags carry: web.BuildMeta), "" for none: the page's script sends it with every
 	// request it makes for a route (datastar.BuildHeader)
@@ -514,6 +517,7 @@ func (fs Fields) For(f html.Node, form string) (url.Values, error) {
 
 var (
 	selBody     = html.MustParseSelector("body")
+	selHTML     = html.MustParseSelector("html")
 	selShown    = html.MustParseSelector("al-shown")
 	selErrors   = html.MustParseSelector("ul[data-errors]")
 	selLi       = html.MustParseSelector("li")
@@ -716,6 +720,7 @@ func (b *Browser) hold(u, page string) error {
 	}
 	b.url, b.hasDoc, b.build = u, true, build
 	b.doc, b.shown = takeShown(doc)
+	b.htmlNames = heldHTMLNames(b.doc)
 	b.dom = html.Repair(b.doc)
 	return nil
 }
@@ -890,6 +895,10 @@ func (b *Browser) apply(w *httptest.ResponseRecorder) (Answer, error) {
 		}
 		if loc, ok := pushOf(ev); ok {
 			pushed = loc
+			continue
+		}
+		if attrs, ok := htmlAttrsOf(ev); ok {
+			b.setHtmlAttrs(attrs)
 			continue
 		}
 		if err := b.patch(ev); err != nil {
@@ -1255,6 +1264,69 @@ func pushOf(ev sseEvent) (string, bool) {
 		return "", false
 	}
 	return u, true
+}
+
+// htmlAttrsOf is the attributes a datastar.PatchHtmlAttrs event gives the page's <html>.
+func htmlAttrsOf(ev sseEvent) ([][2]string, bool) {
+	if ev.typ != "datastar-patch-elements" || ev.field("selector") != "body" || ev.field("mode") != "append" {
+		return nil, false
+	}
+	return datastar.HtmlAttrsOf(ev.field("elements"))
+}
+
+// setHtmlAttrs applies a datastar.PatchHtmlAttrs event to the held page's <html> element as its
+// script does in a browser: each of attrs is set, and each name the server set before
+// (htmlNames) that attrs no longer names is removed; any other attribute stays. A page without
+// <html> is left as it is.
+func (b *Browser) setHtmlAttrs(attrs [][2]string) {
+	els := html.Select(b.doc, selHTML)
+	if len(els) == 0 {
+		return
+	}
+	named := map[string]bool{}
+	for _, a := range attrs {
+		named[strings.ToLower(a[0])] = true
+	}
+	var as []html.Attr
+	set := map[string]bool{}
+	for _, a := range html.AttrsOf(els[0]) {
+		switch {
+		case named[a[0]]:
+			for _, n := range attrs {
+				if strings.ToLower(n[0]) == a[0] {
+					a[1] = n[1]
+				}
+			}
+			set[a[0]] = true
+		case slices.Contains(b.htmlNames, a[0]):
+			continue // the server set it before and no longer does
+		}
+		as = append(as, html.A(a[0], a[1]))
+	}
+	for _, a := range attrs {
+		if n := strings.ToLower(a[0]); !set[n] {
+			as, set[n] = append(as, html.A(n, a[1])), true
+		}
+	}
+	b.htmlNames = slices.Collect(maps.Keys(named))
+	if doc, ok := html.ReplaceElement(b.doc, "html", html.El("html", as, els[0].Children()...)); ok {
+		b.doc = doc
+		b.dom = html.Repair(b.doc)
+	}
+}
+
+// heldHTMLNames is the names on the <html> element of a page just held whole: the server set
+// them all, so the first attrs event may remove them (datastar.HtmlSeed's list in a browser).
+func heldHTMLNames(doc html.Node) []string {
+	els := html.Select(doc, selHTML)
+	if len(els) == 0 {
+		return nil
+	}
+	var names []string
+	for _, a := range html.AttrsOf(els[0]) {
+		names = append(names, a[0])
+	}
+	return names
 }
 
 // Toast is one toast a step's answer showed: a test's `{ kind : Text, text : Text }` (an alias,

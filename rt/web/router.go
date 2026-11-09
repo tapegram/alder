@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	stdhtml "html"
 	"io"
 	"io/fs"
 	"mime"
@@ -1368,9 +1369,9 @@ func dropSignals(u *url.URL) {
 
 // morph answers a boosted navigation (st.url set) with page: Alder-Status when status is not
 // 200, then the events — the patch of the page's <body> (the morph), of its <title> (empty when
-// it has none, so the old page's title does not stay), and the history step to st.url
-// (datastar.Navigate in st.mode). Without st.url (a POST) it is the body patch alone, as a
-// 404/500 answered to a write is.
+// it has none, so the old page's title does not stay), of its <html> attributes (when it has the
+// tag) and the history step to st.url (datastar.Navigate in st.mode). Without st.url (a POST) it
+// is the body patch alone, as a 404/500 answered to a write is.
 func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status int, page string) {
 	if status != http.StatusOK {
 		w.Header().Set(StatusHeader, strconv.Itoa(status))
@@ -1386,11 +1387,18 @@ func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status i
 	if err == nil && st.url != "" {
 		t, _ := titleOf(page) // a page without a <title> empties the old one
 		err = datastar.PatchTitle(w, t)
+		names := []string{"title"}
+		// the page being left is unknown, so its <html> attributes are set whenever the page
+		// has the tag: setting them again changes nothing
+		if attrs, ok := htmlAttrs(page); ok && err == nil {
+			err = datastar.PatchHtmlAttrs(w, attrs)
+			names = append(names, "html")
+		}
 		if err == nil {
 			err = datastar.Navigate(w, st.url, st.mode)
 		}
 		if tw, ok := w.(*tracker); ok {
-			tw.patches = append(tw.patches, "title", "history "+st.url)
+			tw.patches = append(tw.patches, append(names, "history "+st.url)...)
 		}
 	}
 	if err != nil {
@@ -1715,20 +1723,41 @@ var BuildID = sync.OnceValue(func() string {
 // as the view renders it.
 func StripHeadTags(page string) string {
 	first, boost := HeadTags()
-	return strings.Replace(strings.Replace(page, first, "", 1), boost, "", 1)
+	page = strings.Replace(page, first, "", 1)
+	if i := strings.Index(page, boost); i >= 0 {
+		rest, _ := datastar.CutHtmlSeed(page[i+len(boost):])
+		page = page[:i] + rest
+	}
+	return page
+}
+
+// htmlSeed is the datastar.HtmlSeed of the names on the page's <html> start tag, "" when it has
+// none (or no such tag): withScript puts it after the boost, so the first boosted navigation
+// knows which attributes the server set.
+func htmlSeed(page string) string {
+	attrs, _ := htmlAttrs(page)
+	if len(attrs) == 0 {
+		return ""
+	}
+	names := make([]string, len(attrs))
+	for i, a := range attrs {
+		names[i] = a[0]
+	}
+	return datastar.HtmlSeed(names)
 }
 
 // colorScheme is the color-scheme meta HeadTags begins with.
 var colorScheme = html.Render(html.El("meta", []html.Attr{html.A("name", "color-scheme"), html.A("content", "light dark")}))
 
 // withScript inserts HeadTags: the first part right after the first <head> start tag and the
-// boost just before the </head> that follows it (right after the first part when there is
+// boost (followed by htmlSeed) just before the </head> that follows it (right after the first part when there is
 // none). A page without <head> gets both together where the browser's parser still puts them
 // in the (implied) head, so the boost is never inside the <body> a patch replaces: right after
 // the <html> start tag; without that, just before the <body> start tag; else at the start of
 // the page.
 func withScript(page string) string {
 	first, boost := HeadTags()
+	boost += htmlSeed(page)
 	if i := startTag(page, "head"); i >= 0 {
 		if j := strings.IndexByte(page[i:], '>'); j >= 0 {
 			k := i + j + 1
@@ -1814,6 +1843,60 @@ func bodyOf(page string) string {
 		return "<body>" + page + "</body>"
 	}
 	return page[i : j+len("</body>")]
+}
+
+// htmlAttrs is the attributes of the page's <html> start tag, in source order, with their
+// entities decoded; a boolean attribute has the value "". ok is false for a page without one.
+func htmlAttrs(page string) (attrs [][2]string, ok bool) {
+	i := startTag(page, "html")
+	if i < 0 {
+		return nil, false
+	}
+	s := page[i+len("<html"):]
+	space := func(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' }
+	attrs = [][2]string{}
+	for p := 0; ; {
+		for p < len(s) && (space(s[p]) || s[p] == '/') {
+			p++
+		}
+		if p >= len(s) || s[p] == '>' {
+			return attrs, true
+		}
+		n := p
+		for p < len(s) && !space(s[p]) && s[p] != '=' && s[p] != '>' && s[p] != '/' {
+			p++
+		}
+		name := strings.ToLower(s[n:p])
+		for p < len(s) && space(s[p]) {
+			p++
+		}
+		value := ""
+		if p < len(s) && s[p] == '=' {
+			p++
+			for p < len(s) && space(s[p]) {
+				p++
+			}
+			if p < len(s) && (s[p] == '"' || s[p] == '\'') {
+				q := s[p]
+				end := strings.IndexByte(s[p+1:], q)
+				if end < 0 {
+					end = len(s) - p - 1
+				}
+				value = s[p+1 : p+1+end]
+				p = min(p+end+2, len(s))
+			} else {
+				v := p
+				for p < len(s) && !space(s[p]) && s[p] != '>' {
+					p++
+				}
+				value = s[v:p]
+			}
+		}
+		// a repeated name keeps its first value, as the browser's parser does
+		if name != "" && !slices.ContainsFunc(attrs, func(a [2]string) bool { return a[0] == name }) {
+			attrs = append(attrs, [2]string{name, stdhtml.UnescapeString(value)})
+		}
+	}
 }
 
 func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {

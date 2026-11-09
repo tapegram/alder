@@ -1,0 +1,14 @@
+module Home
+
+import Layout
+
+route Index = GET "/" { }
+
+Index.load : Index.Params -> Session -> Query Index.Params
+Index.load p session = Query.succeed p
+
+Index.view : Index.Params -> Session -> Html
+Index.view p session =
+  <Layout.Page title="Home" theme={session.theme}>
+    <h1>Home</h1>
+  </Layout.Page>

@@ -86,10 +86,10 @@ func TestBoost_GetMorphsTitlePush(t *testing.T) {
 		t.Fatalf("%d %q %q", w.Code, w.Header().Get("Content-Type"), w.Header().Get(StatusHeader))
 	}
 	evs := events(w.Body.String())
-	if len(evs) != 3 || evs[0] != bodyEvent("<p>Posts &amp;amp; more</p>") || evs[1] != titleEvent("Posts &amp;amp; more") {
+	if len(evs) != 4 || evs[0] != bodyEvent("<p>Posts &amp;amp; more</p>") || evs[1] != titleEvent("Posts &amp;amp; more") {
 		t.Fatalf("events %q", evs)
 	}
-	historyEvent(t, evs[2], pushOpen, "\"/posts?b=2\\u0026a=1\"")
+	historyEvent(t, evs[3], pushOpen, "\"/posts?b=2\\u0026a=1\"")
 	if got.Has("datastar") || got.Get("a") != "1" || got.Get("b") != "2" {
 		t.Fatalf("query %v", got)
 	}
@@ -111,10 +111,10 @@ func TestBoost_PopstateReplaces(t *testing.T) {
 	req := dsGet("/a?datastar=%7B%7D")
 	req.Header.Set(datastar.HistoryHeader, "replace")
 	evs := events(serve(h, req).Body.String())
-	if len(evs) != 3 || evs[0] != bodyEvent("A") || evs[1] != titleEvent("") {
+	if len(evs) != 4 || evs[0] != bodyEvent("A") || evs[1] != titleEvent("") {
 		t.Fatalf("events %q", evs)
 	}
-	historyEvent(t, evs[2], replaceOpen, `"/a"`)
+	historyEvent(t, evs[3], replaceOpen, `"/a"`)
 	// two boosted navigations push twice; going back replaces (the entry exists already)
 	for range 2 {
 		if evs := events(serve(h, dsGet("/a")).Body.String()); !strings.Contains(evs[len(evs)-1], `history.pushState(null,"",u)`) {
@@ -137,10 +137,10 @@ func TestBoost_GetFailures(t *testing.T) {
 	} {
 		w := serve(h, dsGet(c.path))
 		evs := events(w.Body.String())
-		if w.Code != 200 || w.Header().Get(StatusHeader) != c.status || len(evs) != 3 || evs[0] != bodyEvent("<p>"+c.text+"</p>") || evs[1] != titleEvent(c.text) {
+		if w.Code != 200 || w.Header().Get(StatusHeader) != c.status || len(evs) != 4 || evs[0] != bodyEvent("<p>"+c.text+"</p>") || evs[1] != titleEvent(c.text) {
 			t.Fatalf("%s: %d %q %q", c.path, w.Code, w.Header().Get(StatusHeader), evs)
 		}
-		historyEvent(t, evs[2], pushOpen, `"`+c.path+`"`)
+		historyEvent(t, evs[3], pushOpen, `"`+c.path+`"`)
 	}
 	// a message's failure under Datastar is the body patch alone, as before
 	h = NewRouter(one("POST", "/a/b", func(rq *Request) Response { return NotFoundResponse(doc("Gone")) }), testOpts(nil))
@@ -177,11 +177,11 @@ func TestBoost_RedirectMorphsTarget(t *testing.T) {
 	req.Header.Set("Datastar-Request", "true")
 	w := serve(h, req)
 	evs := events(w.Body.String())
-	if w.Code != 200 || w.Header().Get("Location") != "" || w.Header().Get(StatusHeader) != "" || len(evs) != 3 ||
+	if w.Code != 200 || w.Header().Get("Location") != "" || w.Header().Get(StatusHeader) != "" || len(evs) != 4 ||
 		evs[0] != bodyEvent("<p>Hello ada</p>") || evs[1] != titleEvent("Hello ada") {
 		t.Fatalf("%d %q %q", w.Code, w.Header().Get("Location"), evs)
 	}
-	historyEvent(t, evs[2], pushOpen, `"/home?tab=1#top"`)
+	historyEvent(t, evs[3], pushOpen, `"/home?tab=1#top"`)
 	if c := sessionCookie(t, w); c == nil || len(w.Result().Cookies()) != 1 {
 		t.Fatalf("cookies %v", w.Result().Cookies())
 	}
@@ -209,10 +209,10 @@ func TestBoost_GetRedirectMorphsTarget(t *testing.T) {
 	}, testOpts(nil))
 	w := serve(h, dsGet("/start?go=builder"))
 	evs := events(w.Body.String())
-	if w.Code != 200 || len(evs) != 3 || evs[0] != bodyEvent("<p>Builder 7</p>") || sessionCookie(t, w) != nil {
+	if w.Code != 200 || len(evs) != 4 || evs[0] != bodyEvent("<p>Builder 7</p>") || sessionCookie(t, w) != nil {
 		t.Fatalf("%d %q", w.Code, evs)
 	}
-	historyEvent(t, evs[2], pushOpen, "\"/builder?seed=7\"")
+	historyEvent(t, evs[3], pushOpen, "\"/builder?seed=7\"")
 }
 
 // A redirect chain is followed (a boosted link to a page whose `requires` sends to the login
@@ -229,14 +229,14 @@ func TestBoost_RedirectChains(t *testing.T) {
 		{Method: "POST", Pattern: "/a/loop", Handle: func(rq *Request) Response { return RedirectResponse("/loop/x", nil) }},
 	}, testOpts(func(o *Options) { o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) } }))
 	evs := events(serve(h, dsGet("/secret")).Body.String())
-	if len(evs) != 3 || evs[0] != bodyEvent("<p>Sign in</p>") {
+	if len(evs) != 4 || evs[0] != bodyEvent("<p>Sign in</p>") {
 		t.Fatalf("requires %q", evs)
 	}
-	historyEvent(t, evs[2], pushOpen, `"/login"`)
+	historyEvent(t, evs[3], pushOpen, `"/login"`)
 	req := dsGet("/secret")
 	req.Header.Set(datastar.HistoryHeader, "replace")
 	evs = events(serve(h, req).Body.String())
-	historyEvent(t, evs[2], replaceOpen, `"/login"`)
+	historyEvent(t, evs[3], replaceOpen, `"/login"`)
 
 	req = httptest.NewRequest("POST", "/a/gone", nil)
 	req.Header.Set("Datastar-Request", "true")
@@ -244,7 +244,7 @@ func TestBoost_RedirectChains(t *testing.T) {
 	if evs := events(w.Body.String()); w.Header().Get(StatusHeader) != "404" || evs[0] != bodyEvent("<p>Not found</p>") {
 		t.Fatalf("gone %q %q", w.Header().Get(StatusHeader), evs)
 	} else {
-		historyEvent(t, evs[2], pushOpen, `"/nowhere"`)
+		historyEvent(t, evs[3], pushOpen, `"/nowhere"`)
 	}
 
 	req = httptest.NewRequest("POST", "/a/loop", nil)
@@ -438,4 +438,36 @@ func TestBoost_BuildMismatchReloads(t *testing.T) {
 	if !strings.Contains(BuildMeta(), `<meta name="alder-build" content="`+BuildID()+`" />`) {
 		t.Errorf("BuildMeta %q", BuildMeta())
 	}
+}
+
+// A boosted redirect sets the <html> attributes of the page it lands on (#189), after the title
+// and before the history step: the page being left is unknown, and setting them is idempotent.
+func TestRedirect_HtmlAttrs(t *testing.T) {
+	h := NewRouter([]Route{
+		{Method: "POST", Pattern: "/theme", Handle: func(rq *Request) Response {
+			return RedirectResponse("/home", nil)
+		}},
+		{Method: "GET", Pattern: "/home", Handle: func(rq *Request) Response {
+			return PageResponse(html.El("html", []html.Attr{html.A("lang", "en"), html.A("class", "dark")},
+				html.El("head", nil, html.El("title", nil, html.Text("Home"))),
+				html.El("body", nil, html.El("p", nil, html.Text("Home")))), nil, nil)
+		}},
+		{Method: "GET", Pattern: "/bare", Handle: func(rq *Request) Response {
+			return PageResponse(html.El("body", nil, html.Text("Bare")), nil, nil)
+		}},
+	}, testOpts(nil))
+	req := httptest.NewRequest("POST", "/theme", nil)
+	req.Header.Set("Datastar-Request", "true")
+	evs := events(serve(h, req).Body.String())
+	if len(evs) != 4 || evs[1] != titleEvent("Home") {
+		t.Fatalf("%q", evs)
+	}
+	htmlAttrsEvent(t, evs[2], `[["lang","en"],["class","dark"]]`)
+	historyEvent(t, evs[3], pushOpen, `"/home"`)
+	// a page without an <html> start tag has no attributes to set: no event
+	evs = events(serve(h, dsGet("/bare")).Body.String())
+	if len(evs) != 3 || strings.Contains(strings.Join(evs, ""), "var a=") {
+		t.Fatalf("bare %q", evs)
+	}
+	historyEvent(t, evs[2], pushOpen, `"/bare"`)
 }

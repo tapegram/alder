@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"alder/rt"
+	"alder/rt/datastar"
 	"alder/rt/html"
 )
 
@@ -19,7 +20,8 @@ import (
 type frApp struct {
 	done    []bool
 	heading string
-	toasts  bool // the page has an <al-toasts> region of its own
+	toasts  bool   // the page has an <al-toasts> region of its own
+	class   string // the <html> element's class, none when empty
 
 	noBefore    bool // the write renders no before-view
 	panicBefore bool // the next GET / (the before-view) panics
@@ -51,7 +53,11 @@ func (a *frApp) view(done []bool, heading string) html.Node {
 	if a.toasts {
 		body = append(body, html.El("al-toasts", []html.Attr{html.A("popover", "manual"), html.B("data-ignore-morph", true)}))
 	}
-	return html.El("html", nil, html.El("head", nil, html.El("title", nil, html.Text("R"))), html.El("body", nil, body...))
+	var root []html.Attr
+	if a.class != "" {
+		root = []html.Attr{html.A("class", a.class)}
+	}
+	return html.El("html", root, html.El("head", nil, html.El("title", nil, html.Text("R"))), html.El("body", nil, body...))
 }
 
 // before is the page the browser is on, rendered before the write's update (nil with noBefore).
@@ -93,6 +99,11 @@ func (a *frApp) routes() []Route {
 		{Method: "POST", Pattern: "/r/heading", Handle: func(rq *Request) Response {
 			before := a.before(rq)
 			a.heading = rq.Query.Get("to")
+			return refresh(rq, before)
+		}},
+		{Method: "POST", Pattern: "/r/theme", Handle: func(rq *Request) Response {
+			before := a.before(rq)
+			a.class = rq.Query.Get("to")
 			return refresh(rq, before)
 		}},
 		{Method: "POST", Pattern: "/r/add", Handle: func(rq *Request) Response {
@@ -381,5 +392,59 @@ func TestRerender_BeforePanicLineIsMasked(t *testing.T) {
 	serveRaw(NewRouter(routes, opts), req)
 	if len(logged) < 1 || strings.Contains(strings.Join(logged, "\n"), "hunter2secret") || !strings.Contains(logged[0], "/reset/••••: rendering the page before the write: panic: before") || !strings.Contains(logged[0], " rid=") {
 		t.Fatalf("logged %q", logged)
+	}
+}
+
+// htmlAttrsEvent is the event that sets the <html> element's attributes to the JSON attrs.
+func htmlAttrsEvent(t *testing.T, ev, attrs string) {
+	t.Helper()
+	prefix := "event: datastar-patch-elements\ndata: selector body\ndata: mode append\ndata: elements <script data-effect=\"el.remove()\">"
+	if !strings.HasPrefix(ev, prefix) || !strings.Contains(ev, "var a="+attrs+";") {
+		t.Fatalf("attrs event %q, want attrs %s", ev, attrs)
+	}
+}
+
+// Only the <html> element's class changed (#189): the body is the same, so no region is
+// patched, but its attributes are set; the Patches tab names the patch html, not none.
+func TestRerender_HtmlAttrsOnly(t *testing.T) {
+	t.Setenv("ALDER_DEV", "1")
+	a := newFrApp(3)
+	opts := testOpts(func(o *Options) { o.Dev = true })
+	w := post(t, a, opts, "/r/theme?to=dark", nil, shownNow(t, a, opts))
+	body := w.Body.String()
+	var evs []string
+	for _, ev := range events(body) {
+		if !strings.Contains(ev, "data: selector #"+datastar.PanelID+"\n") {
+			evs = append(evs, ev)
+		}
+	}
+	if len(evs) != 1 || w.Header().Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("%q", evs)
+	}
+	htmlAttrsEvent(t, evs[0], `[["class","dark"]]`)
+	tab := body[strings.Index(body, "_alder_tab_patches"):]
+	if !strings.Contains(tab, "<li>html</li>") || strings.Contains(tab, "<li>none</li>") {
+		t.Fatalf("patches tab %s", tab)
+	}
+	// back to no class: the attribute is removed
+	w = post(t, a, testOpts(nil), "/r/theme?to=", nil, shownNow(t, a, testOpts(nil)))
+	if evs := events(w.Body.String()); len(evs) != 1 {
+		t.Fatalf("%q", evs)
+	} else {
+		htmlAttrsEvent(t, evs[0], `[]`)
+	}
+}
+
+// The <html> element's attributes are the same: no attrs event.
+func TestRerender_HtmlAttrsUnchanged(t *testing.T) {
+	a := newFrApp(3)
+	a.class = "dark"
+	w := post(t, a, testOpts(nil), "/r/theme?to=dark", nil, shownNow(t, a, testOpts(nil)))
+	if w.Body.String() != "" {
+		t.Fatalf("same class %q", w.Body.String())
+	}
+	w = post(t, a, testOpts(nil), "/r/toggle?id=1", nil, shownNow(t, a, testOpts(nil)))
+	if evs := events(w.Body.String()); len(evs) != 2 || strings.Contains(w.Body.String(), "var a=") {
+		t.Fatalf("toggle %q", evs)
 	}
 }

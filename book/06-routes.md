@@ -552,11 +552,13 @@ cookie from before the field existed, get `Light` ("The session cookie",
 below). `Response.refresh` loads the page the button was on again, with the new
 session.
 
-A `refresh` or a `redirect` under Datastar updates only the page's `<body>`: a
-class on `<html>`, such as `dark` here, shows after the next full page load, and
-at once only without JavaScript (the `303` loads the whole page). That is a
-known gap ([#189](https://github.com/tapegram/alder/issues/189)); the example
-is still the way to keep the choice in the session.
+A `refresh` or a `redirect` under Datastar morphs the page's `<body>`, and a
+morph never reaches `<html>`, so the runtime sets the attributes of `<html>`
+apart, with a small script sent after the body's patches. It sets every
+attribute the new page renders on `<html>` and removes those the server set
+before but no longer renders, never one a script in the browser added. A class
+there, such as `dark` here, changes at once, without a reload. Without
+JavaScript the `303` loads the whole page, so the class is new there too.
 
 The layout cannot read the session; it takes the theme as a prop, sets a
 class on `<html>` for the stylesheet, and shows the button. Also an
@@ -1975,9 +1977,6 @@ The last four request a route without a click, and need JavaScript
 one of those triggers) costs; `refresh` loads the
 page twice, once for the before-view.
 
-> **Theme switch.** A class on `<html>` changes only on a full load
-> ([#189](https://github.com/tapegram/alder/issues/189)).
-
 ## The request lifecycle
 
 ```
@@ -2592,12 +2591,9 @@ Clicking "Log out" on `/?filter=Active` answers a cookie whose `User` is
 
 With the theme switch of "App-level routes" (its `update` answers `refresh`),
 clicking "Dark mode" there answers a cookie whose `Theme` is `"Dark"` and,
-under Datastar, the `<body>` changes that the theme causes. Without
+under Datastar, the `<body>` changes that the theme causes, then the script
+that sets the attributes of `<html>`, its class `dark` among them. Without
 JavaScript it answers `303 /?filter=Active`, which loads the whole page.
-
-> **Not yet:** under Datastar the class on `<html>` does not change; it
-> arrives with the next full load
-> ([#189](https://github.com/tapegram/alder/issues/189)).
 
 ### Links and navigation
 

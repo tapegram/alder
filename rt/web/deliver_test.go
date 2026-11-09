@@ -54,13 +54,13 @@ func TestDeliver_BoostMorph(t *testing.T) {
 		}
 		w := serve(h, req)
 		ev := events(w.Body.String())
-		if w.Code != http.StatusOK || len(ev) != 3 {
+		if w.Code != http.StatusOK || len(ev) != 4 {
 			t.Fatalf("fetch %q: got %d %q", fetch, w.Code, w.Body.String())
 		}
 		if ev[0] != bodyEvent("<p>Todo 7</p>") || ev[1] != titleEvent("Todo 7") {
 			t.Fatalf("fetch %q: events %q", fetch, ev)
 		}
-		historyEvent(t, ev[2], pushOpen, `"/todos/7"`)
+		historyEvent(t, ev[3], pushOpen, `"/todos/7"`)
 	}
 }
 
@@ -187,10 +187,10 @@ func TestDeliver_ElementRedirectNavigates(t *testing.T) {
 	h := NewRouter(routes, testOpts(nil))
 	w := serve(h, elementGet("/todos/7"))
 	ev := events(w.Body.String())
-	if w.Code != http.StatusOK || len(ev) != 3 || ev[0] != bodyEvent("<p>Log in</p>") || ev[1] != titleEvent("Log in") {
+	if w.Code != http.StatusOK || len(ev) != 4 || ev[0] != bodyEvent("<p>Log in</p>") || ev[1] != titleEvent("Log in") {
 		t.Fatalf("got %d %q", w.Code, w.Body.String())
 	}
-	historyEvent(t, ev[2], pushOpen, `"/login"`)
+	historyEvent(t, ev[3], pushOpen, `"/login"`)
 }
 
 // Ruling R-P3: an element fetch of a URL no route matches patches nothing, as a route's 404

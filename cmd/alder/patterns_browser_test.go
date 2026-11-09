@@ -97,3 +97,24 @@ func TestBrowser_Patterns(t *testing.T) {
 	}
 	t.Logf("patterns.cjs ran in %v", time.Since(start).Round(time.Millisecond))
 }
+
+// TestBrowser_ThemeSwitch presses the theme switch of book chapter 6 (the corpus app
+// routes-theme-ok, #189) in a real browser (testdata/browser/themeswitch.cjs): the `dark` class
+// on <html> turns on and off in place, with no reload, and an attribute set in the browser stays.
+func TestBrowser_ThemeSwitch(t *testing.T) {
+	t.Parallel()
+	playwrightEnv(t) // skip before the build when there is no browser
+	script := browserScript(t, "themeswitch.cjs")
+	runBrowserScript(t, script, startRunApp(t, "../testdata/corpus/routes-theme-ok"))
+}
+
+// TestBrowser_ClientHtmlClassKept: the scaffold's head script sets the class dark on <html> in
+// the browser (the blog's Layout, with a dark system preference); a boosted link and a Back keep
+// it, since the attrs event removes only what the server set (#189;
+// testdata/browser/htmlclient.cjs).
+func TestBrowser_ClientHtmlClassKept(t *testing.T) {
+	t.Parallel()
+	playwrightEnv(t) // skip before the build when there is no browser
+	script := browserScript(t, "htmlclient.cjs")
+	runBrowserScript(t, script, startRunApp(t, "blog"))
+}

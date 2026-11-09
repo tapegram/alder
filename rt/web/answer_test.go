@@ -201,7 +201,7 @@ func TestAnswer_Redirect(t *testing.T) {
 	h := NewRouter(a.routes(), testOpts(nil))
 	w := ansPost(h, "/w/redirect?to=/other&id=1", "/", nil)
 	evs := events(w.Body.String())
-	if len(evs) != 3 || !isBodyMorph(t, w) || !strings.Contains(evs[0], "<h1>Other</h1>") || !strings.Contains(evs[1], "<title>Other</title>") || !pushTo(evs[2], "/other") {
+	if len(evs) != 4 || !isBodyMorph(t, w) || !strings.Contains(evs[0], "<h1>Other</h1>") || !strings.Contains(evs[1], "<title>Other</title>") || !pushTo(evs[3], "/other") {
 		t.Fatalf("%q", evs)
 	}
 	if a.loads != 0 {
@@ -210,7 +210,7 @@ func TestAnswer_Redirect(t *testing.T) {
 	// to the page the browser is on: still a morph of the whole body, the page loaded once
 	w = ansPost(h, "/w/redirect?to=/&id=2", "/", nil)
 	evs = events(w.Body.String())
-	if len(evs) != 3 || !isBodyMorph(t, w) || !strings.Contains(evs[0], `<li id="row-2" class="done">`) || !pushTo(evs[2], "/") {
+	if len(evs) != 4 || !isBodyMorph(t, w) || !strings.Contains(evs[0], `<li id="row-2" class="done">`) || !pushTo(evs[3], "/") {
 		t.Fatalf("%q", evs)
 	}
 	if a.loads != 1 {
@@ -339,7 +339,7 @@ func TestAnswer_RenderLoadFails(t *testing.T) {
 	a.rowAnswer = "303"
 	w = ansPost(h, "/w/render?id=2", "/", nil)
 	evs = events(w.Body.String())
-	if len(evs) != 3 || !isBodyMorph(t, w) || !strings.Contains(evs[0], "<h1>Login</h1>") || !pushTo(evs[2], "/login") {
+	if len(evs) != 4 || !isBodyMorph(t, w) || !strings.Contains(evs[0], "<h1>Login</h1>") || !pushTo(evs[3], "/login") {
 		t.Fatalf("303: %q", evs)
 	}
 
@@ -703,7 +703,7 @@ func TestAnswer_TargetNotGET(t *testing.T) {
 	a := newAnsApp(3)
 	h := NewRouter(a.routes(), testOpts(nil))
 	w := ansPost(h, "/w/redirect?bare=1&to=/other", "/", nil)
-	if evs := events(w.Body.String()); len(evs) != 3 || !strings.Contains(evs[0], "<h1>Other</h1>") || !pushTo(evs[2], "/other") {
+	if evs := events(w.Body.String()); len(evs) != 4 || !strings.Contains(evs[0], "<h1>Other</h1>") || !pushTo(evs[3], "/other") {
 		t.Fatalf("bare: %q", evs)
 	}
 }
