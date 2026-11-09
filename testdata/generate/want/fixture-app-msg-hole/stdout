@@ -9,7 +9,7 @@ edited app/App.alder
  
  Logout.update : Logout.Params -> Session -> Task Response
  Logout.update p session = {
-@@ -25,14 +26,22 @@
+@@ -25,11 +26,13 @@
    </Layout.Page>
  
  notFound : Html
@@ -19,20 +19,11 @@ edited app/App.alder
 -  </Layout.Page>
 +notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
  
++-- Press Ping from a page that has its button to test it: `Test.get` that page, then
++-- `Test.click App.Ping`, and `r.answer` is Refreshed until `update` says otherwise.
 +Ping.update : Ping.Params -> Session -> Task Response
 +Ping.update params session = Task.succeed Response.refresh
 +
  -- From a page that `requires user` a refresh ends at the login page too; only a test of
  -- `Logout.update` itself tells a redirect from a refresh.
  test "Logout goes to log in" = {
-   let r <- Test.run (Logout.update {} { user: Just (User.UserId "me"), role: Admin })
-   Task.succeed (r.value == Ok (Response.redirect (Auth.Login.Login {})))
- }
-+
-+-- Ping is sent from any page (`click={App.Ping}`): put an `al-button` with it in the view of
-+-- the page this test opens, or open the page that has it. Until a page does, the click finds no control.
-+test "pressing Ping" = {
-+  let _ <- Test.get (Auth.Login.Login {})
-+  let r <- Test.click Ping
-+  Task.succeed (r.answer == Refreshed)
-+}

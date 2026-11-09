@@ -906,15 +906,10 @@ alder new route: module `About` exists (`app/About.alder`): a generator never ov
 ### A result that does not check
 
 `--into Reply` asks for a form that inserts a `Reply`, but the form has no
-`entry`, and an insert must have one (the warning above the error is the new
-form's own hole, the id its route needs, which is not what stops the
-command):
+`entry`, and an insert must have one:
 
 ```text command=guestbook
 $ alder new form Replies.Show Note message:Text.NonEmpty --into Reply
-app/Replies/Show.alder:47:38: warning[W0002]: hole ?submitNoteId has type Reply.ReplyId
-        <form submit={SubmitNote { id: ?submitNoteId }}>
-                                       ^^^^^^^^^^^^^
 app/Replies/Show.alder:67:28: error[E0003]: record `Reply.Insert Reply` is missing field(s): entry
     let _ <- Db.insert Reply { message: params.form.message }
                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -5075,7 +5070,7 @@ any module: `route Logout = POST
 So `alder new msg App <Name>` writes a route there too, `route <Name> =
 POST "/_/<Name>"` with the fields as its payload, after the last route of
 `App`, together with its `update` (answering `Response.refresh`, which the
-author then replaces) and a test:
+author then replaces) and a comment saying how to test it:
 
 ```text command=guestbook
 $ alder new msg App ToggleTheme dark:Bool
@@ -5092,39 +5087,26 @@ edited app/App.alder
  
  error : Error -> Html
  error err =
-@@ -27,6 +28,9 @@
+@@ -27,6 +28,11 @@
    Task.succeed (Response.redirect (Auth.Login.Login {}))
  }
  
++-- Press ToggleTheme from a page that has its button to test it: `Test.get` that page, then
++-- `Test.click (App.ToggleTheme { … })`, and `r.answer` is Refreshed until `update` says otherwise.
 +ToggleTheme.update : ToggleTheme.Params -> Session -> Task Response
 +ToggleTheme.update params session = Task.succeed Response.refresh
 +
  -- Logging out from the login page, which a visitor may open: the answer is the redirect,
  -- not the page shown again.
  test "Logout clears the user and goes to log in" = {
-@@ -43,3 +47,11 @@
-       == { answer: Redirected (Auth.Login.Login {}), user: Nothing }
-   )
- }
-+
-+-- ToggleTheme is sent from any page (`click={App.ToggleTheme}`): put an `al-button` with it in the view of
-+-- the page this test opens, or open the page that has it. Until a page does, the click finds no control.
-+test "pressing ToggleTheme" = {
-+  let _ <- Test.get (About.About {})
-+  let r <- Test.click (ToggleTheme { dark: ?toggleThemeDark })
-+  Task.succeed (r.answer == Refreshed)
-+}
-app/App.alder:55:44: warning[W0002]: hole ?toggleThemeDark has type Bool
-    let r <- Test.click (ToggleTheme { dark: ?toggleThemeDark })
-                                             ^^^^^^^^^^^^^^^^
 `alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`
 ```
 
 No page's view is touched: a route of `App` is sent by a button on any
 page (`click={App.ToggleTheme { dark: True }}`), and which page has the
-button is for you to say. The test opens the first plain page of the app
-and presses the route, so it fails ("the click finds no control") until
-that page has the button, as the comment above it says.
+button is for you to say. So it writes no test, which would fail until a
+page has the button; the comment above `update` says how to press the
+route from the page that has it.
 
 ### A prop
 

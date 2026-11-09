@@ -438,7 +438,7 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 #### `alder new msg App <Name> [<field>:<Type> …]`
 
-**Writes:** in `App`: `route <Name> = POST "/_/<Name>"` with the fields as its parameters, after `App`'s last route, its `<Name>.update` (answering `Response.refresh`) and a test that opens the first plain page and presses it; no button, as a route of `App` is sent from any page
+**Writes:** in `App`: `route <Name> = POST "/_/<Name>"` with the fields as its parameters, after `App`'s last route, its `<Name>.update` (answering `Response.refresh`) and a comment saying how to test it; no button and no test, as a route of `App` is sent from any page
 
 #### `alder edit decl <Module>.<Name> add-prop <name>:<Type>=<default>`
 

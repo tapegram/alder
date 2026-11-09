@@ -16,13 +16,7 @@ error err =
 notFound : Html
 notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 
+-- Press ToggleTheme from a page that has its button to test it: `Test.get` that page, then
+-- `Test.click (App.ToggleTheme { … })`, and `r.answer` is Refreshed until `update` says otherwise.
 ToggleTheme.update : ToggleTheme.Params -> Session -> Task Response
 ToggleTheme.update params session = Task.succeed Response.refresh
-
--- ToggleTheme is sent from any page (`click={App.ToggleTheme}`): put an `al-button` with it in the view of
--- the page this test opens, or open the page that has it. Until a page does, the click finds no control.
-test "pressing ToggleTheme" = {
-  let _ <- Test.get (Home.Home {})
-  let r <- Test.click (ToggleTheme { dark: ?toggleThemeDark })
-  Task.succeed (r.answer == Refreshed)
-}
