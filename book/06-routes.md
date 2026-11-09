@@ -660,8 +660,12 @@ has an attribute:
 
 The rules are the same for all four:
 
-- `R` is a GET route written in place, as for `href`. A write route is
-  E0045: a timer, a scroll or a keystroke must not write.
+- `R` is a GET route, as for `href`. A write route is E0045: a timer, a
+  scroll or a keystroke must not write. `load` and `intersect` accept a
+  computed route, as `href` does; only `input` needs its route written in
+  place, so the checker can read its query key.
+- Custom elements (`<al-*>`) take none of the four attributes. Wrap one in
+  a `<div>` and put the attribute on the `div`.
 - The answer is `R`'s view, and it replaces the element whose `id` is the
   view's root `id`. So the page must have an element with that `id`: the
   trigger itself (the slow widget, the badge, the scroll sentinel), or
@@ -737,7 +741,9 @@ Because the browser chooses the value, the checker makes sure the route can
 take it. Each of these is E0047:
 
 - `input` on an element that is not a field;
-- a field with no literal `name` (or `field`);
+- a plain `<input>`, `<textarea>` or `<select>` with no literal `name`
+  (an `<Input>`, `<Textarea>` or `<Select>` with no literal `field` is
+  E0304 instead);
 - a route with no query parameter of that name (after `as "Key"`);
 - a parameter that is not `Text`.
 
