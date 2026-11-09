@@ -1544,3 +1544,46 @@ func TestTest_TriggerAnswers(t *testing.T) {
 	t.Parallel()
 	wantTriggerOutput(t, `ok   Todos "trigger steps answer as a click of a GET route"`)
 }
+
+// TestTest_Patterns (#160): the corpus app routes-patterns-ok's own tests pass: search as you
+// type patches #results with the typed query; infinite scroll loads two pages and the last has
+// no sentinel, so a third Test.intersect fails as missing; the slow widget's load fills #slow;
+// the polling badge's load, repeated around a write, shows the new count. A test appended here
+// (not in the app, whose tests all pass) intersects a third time and fails as missing.
+func TestTest_Patterns(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := tempAppAbs(t, "../../testdata/corpus/routes-patterns-ok", "patterns")
+	path := filepath.Join(dir, "app", "Patterns.alder")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	extra := `
+test "the last page has no sentinel" = {
+  let _ <- Test.get (Index { q: "" })
+  let _ <- Test.intersect (More { after: 10 })
+  let _ <- Test.intersect (More { after: 20 })
+  let _ <- Test.intersect (More { after: 30 })
+  Task.succeed True
+}
+`
+	if err := os.WriteFile(path, append(b, []byte(extra)...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runTest(t, dir)
+	for _, w := range []string{
+		`ok   Patterns "search as you type patches the results"`,
+		`ok   Patterns "infinite scroll loads two pages and stops"`,
+		"FAIL Patterns \"the last page has no sentinel\"\n  error: the page / has no element with `intersect` requesting /todos/more\n",
+		`ok   Patterns "the slow widget fills in"`,
+		`ok   Patterns "the badge polls the count"`,
+	} {
+		if !strings.Contains(stdout, w) {
+			t.Errorf("stdout lacks %q", w)
+		}
+	}
+	if code != 1 || strings.Contains(stderr, "internal error") || strings.Contains(stderr, "goroutine ") || t.Failed() {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+}
