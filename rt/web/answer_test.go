@@ -394,24 +394,31 @@ func TestAnswer_ShownPageUnmatched(t *testing.T) {
 }
 
 // A Datastar write answering two toasts and a redirect to another site navigates away and keeps
-// both toasts in the notice cookie for the page loaded (#179).
+// both toasts in the notice cookie for the page loaded (#179); a first toast without text is
+// skipped, and the ones after it are still kept.
 func TestNavigateAway_KeepsAllToasts(t *testing.T) {
-	routes := []Route{{Method: "POST", Pattern: "/w", Handle: func(rq *Request) Response {
-		to := rt.Redirect(rt.Route{Method: "GET", Path: "https://example.com/"})
-		return AnswerResponse(rt.WithToast(rt.NoticeWarning, "Second", rt.WithToast(rt.NoticeSuccess, "First", to)), nil, nil)
-	}}}
-	h := NewRouter(routes, testOpts(nil))
-	w := ansPost(h, "/w", "/", nil)
-	c := noticeOf(w)
-	if evs := events(w.Body.String()); len(evs) != 1 || !strings.Contains(evs[0], `window.location.assign("https://example.com/")`) || c == nil {
-		t.Fatalf("cookie %v %q", c, evs)
-	}
-	req := httptest.NewRequest("GET", "/", nil)
-	req.AddCookie(c)
-	got := h.(*router).takeNotices(httptest.NewRecorder(), req)
-	want := []rt.Toast{{Kind: rt.NoticeSuccess, Text: "First"}, {Kind: rt.NoticeWarning, Text: "Second"}}
-	if !slices.Equal(got, want) {
-		t.Errorf("got %+v, want %+v", got, want)
+	for _, first := range []string{"", "Zeroth"} {
+		routes := []Route{{Method: "POST", Pattern: "/w", Handle: func(rq *Request) Response {
+			to := rt.Redirect(rt.Route{Method: "GET", Path: "https://example.com/"})
+			resp := rt.WithToast(rt.NoticeSuccess, "First", rt.WithToast(rt.NoticeInfo, first, to))
+			return AnswerResponse(rt.WithToast(rt.NoticeWarning, "Second", resp), nil, nil)
+		}}}
+		h := NewRouter(routes, testOpts(nil))
+		w := ansPost(h, "/w", "/", nil)
+		c := noticeOf(w)
+		if evs := events(w.Body.String()); len(evs) != 1 || !strings.Contains(evs[0], `window.location.assign("https://example.com/")`) || c == nil {
+			t.Fatalf("first %q: cookie %v %q", first, c, evs)
+		}
+		req := httptest.NewRequest("GET", "/", nil)
+		req.AddCookie(c)
+		got := h.(*router).takeNotices(httptest.NewRecorder(), req)
+		want := []rt.Toast{{Kind: rt.NoticeSuccess, Text: "First"}, {Kind: rt.NoticeWarning, Text: "Second"}}
+		if first != "" {
+			want = append([]rt.Toast{{Kind: rt.NoticeInfo, Text: first}}, want...)
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("first %q: got %+v, want %+v", first, got, want)
+		}
 	}
 }
 

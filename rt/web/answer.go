@@ -407,7 +407,7 @@ func (rt *router) staleReload(w http.ResponseWriter, r *http.Request, st hop, rq
 func (rt *router) navigateAway(w http.ResponseWriter, r *http.Request, what, loc string) {
 	if tw, isT := w.(*tracker); isT {
 		tw.setAnswer(what + " " + rt.maskRef(loc))
-		if tw.notice != "" {
+		if tw.notice != "" || len(tw.more) > 0 { // storeNotices skips a toast without text
 			rt.storeNotices(w, r, append([]rtpkg.Toast{{Kind: tw.kind, Text: tw.notice}}, tw.more...))
 			tw.notice, tw.more = "", nil
 		}
