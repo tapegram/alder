@@ -41,6 +41,9 @@ func (c *Checker) rejectRemoved(quiet map[string]bool) []removedDecl {
 			}
 		}
 		if len(found) == 0 {
+			if c.hasError(ReservedName, m.File) { // the leftover is a cascade of that module's E0012
+				continue
+			}
 			for _, d := range m.Decls {
 				if vd, ok := d.(*syntax.ValueDecl); ok && vd.Route == "" && pageMembers[vd.Name] {
 					c.errorf(diag.RemovedSyntax, vd.Span, "an unqualified `%s` is a page's; a route's is written `Name.%s` for its `route Name`; %s", vd.Name, vd.Name, removedHint)
@@ -73,4 +76,14 @@ func (c *Checker) reportRemoved(ds []removedDecl) {
 	for _, d := range ds {
 		c.errorf(diag.RemovedSyntax, d.span, "%s", d.msg)
 	}
+}
+
+// hasError reports whether the bag already holds an error of code in file.
+func (c *Checker) hasError(code, file string) bool {
+	for _, d := range c.bag.Items {
+		if d.Severity == "error" && d.Code == code && d.Span.File == file {
+			return true
+		}
+	}
+	return false
 }

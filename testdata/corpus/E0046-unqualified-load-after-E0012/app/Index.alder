@@ -1,0 +1,25 @@
+module Index
+
+route Index  = GET  "/"         { q: Text = "" }
+route Search = POST "/" { } form Query
+
+type Model = { q: Text }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { q: params.q }
+
+form Query = { q: Text }
+
+-- a leftover page-style `load`: its E0046 is a cascade of the E0012 above, so it stays quiet
+load : Int -> Query Model
+load n = Query.succeed { q: "" }
+
+Search.update : Search.Params -> Session -> Task Response
+Search.update p session = Task.succeed (Response.redirect (Index { q: p.form.q }))
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <form submit={Search}>
+    <Input field="q" label="Search" />
+    <button>Search</button>
+  </form>
