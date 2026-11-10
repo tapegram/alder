@@ -7136,6 +7136,10 @@ with what follows a route's name: the members the route fixes, a GET route's
 `load` and `view`, a write route's `update`, and its `Params` and `Session`
 types.
 
+A module that imports a route module is offered that module by its full path
+(`Posts.Index`) as well as by its short qualifier (`Index`), because a route
+value keeps its full path.
+
 A member the module declares shows its signature as written; one it lacks
 shows the signature it needs (`Query m` for a `load`, whose model only the
 author knows).

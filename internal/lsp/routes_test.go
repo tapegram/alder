@@ -232,3 +232,21 @@ func TestSemtok_RouteLine(t *testing.T) {
 	wantTok(t, c, toks, rel, "Toggle.update :", 0, "namespace")
 	wantTok(t, c, toks, rel, "Toggle.update :", len("Toggle."), "function", "declaration")
 }
+
+// A module that imports a route module is offered its full name (`Posts.Index`) as well as the
+// short qualifier: a route value keeps its full path (rule 6 in complete.go). This pins the
+// behaviour kept on purpose (#205).
+func TestComplete_RouteModuleFullPath(t *testing.T) {
+	c := start(t, blogCopy(t))
+	const rel = "app/Write/Edit.alder"
+	openClean(t, c, rel)
+	p := typing(t, c, rel, "Edit.load params session = {\n", "  let z = Pos")
+	got := labels(complete(t, c, rel, p))
+	it, ok := got["Posts.Index"]
+	if !ok {
+		t.Fatalf("no Posts.Index in %v", got)
+	}
+	if it.Kind != kindModule {
+		t.Errorf("Posts.Index kind %d, want a module", it.Kind)
+	}
+}
