@@ -11,8 +11,8 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route Delete  = GET    "/admin/orgs/{org}/todo/{id}/delete"           { org: Org.OrgId, id: Todo.TodoId }              requires user, role Admin, silo org
-route Destroy = DELETE "/admin/orgs/{org}/todo/{id}/delete/_/Destroy" { org: Org.OrgId, id: Todo.TodoId } form Confirm requires user, role Admin, silo org
+route Delete  = GET    "/admin/orgs/{org}/todo/{id}/delete" { org: Org.OrgId, id: Todo.TodoId }              requires user, role Admin, silo org
+route Destroy = DELETE "/admin/orgs/{org}/todo/{id}"        { org: Org.OrgId, id: Todo.TodoId } form Confirm requires user, role Admin, silo org
 -- @admin end
 
 -- The row, and how many rows of each table refer to it.

@@ -590,10 +590,6 @@ func routeLine(name, method, path string, params []string, form, req string) str
 	return "route " + name + " = " + method + " " + pathLit(path) + " " + ps + req
 }
 
-// writePath is the path of the write route named name of a module whose GET route is at path
-// (Plan call 13).
-func writePath(path, name string) string { return path + "/_/" + name }
-
 // wire is the query key the GET route of module page reads parameter name from: its wire name
 // when the route, as the app has it now, declares one (`q: Text = "" as "Q"`, #55), else the
 // name. A GET form to the route names its inputs by it.
@@ -1709,33 +1705,17 @@ func (g *adminGen) findParams(at *adminTable) []string {
 	return out
 }
 
-// finders are the search routes of at's New or Edit page (module mod, its GET route at path,
-// edit for Edit): their `route` lines, their forms and updates (region `search`), and the forms
-// above the page's form that show while a list is long. A search answers with the page again at
-// the text (the narrowed list is the page's parameter, so it is in the URL).
-func (g *adminGen) finders(at *adminTable, mod, path string, imports *importSet, edit bool) (routes, decls, view []string) {
-	get := strings.TrimPrefix(mod, at.mod+".")
+// finders are the searches of at's New or Edit page (module mod): forms above the page's form,
+// shown while a list is long, each a GET form to the page itself. The narrowed list is the
+// page's parameter, so the browser sends the text to the page's own URL (its path keeps the row's
+// id on Edit) and the page loads again at it.
+func (g *adminGen) finders(at *adminTable, mod string) (view []string) {
 	for _, c := range at.refs {
 		if !g.finds(c) {
 			continue
 		}
-		name := "Search" + UpperFirst(c.Name)
-		form := "Find" + UpperFirst(c.Name)
-		g.names[mod] = append(g.names[mod], name)
-		var params []string
-		target, args := at.own(name, false), findParam(c)+": Text.slice 0 200 params.form.q"
-		if edit {
-			params = []string{"id: " + types.StringIn(at.t.IDType, mod)}
-			target = name + " { id: model.row." + at.t.IDField + " }"
-			args = "id: params.id, " + args
-		}
-		routes = append(routes, routeLine(name, "POST", writePath(path, name), at.params(mod, imports, params), form, at.requires()))
-		decls = append(decls, "form "+form+" = { q: Text }", "",
-			"-- "+name+" answers the page again at the text.",
-			name+".update : "+name+".Params -> Session -> Task Response",
-			name+".update params session = Task.succeed (Response.redirect ("+get+" { "+args+" }))", "")
-		view = append(view, fmt.Sprintf(`{if model.%s > 200 then <form submit={%s}><al-input field="q" label=%s /><al-button type="submit" variant="secondary">Find</al-button></form> else Html.none}`,
-			totalField(c), target, quote("Find "+strings.ToLower(Humanize(c.Name)))))
+		view = append(view, fmt.Sprintf(`{if model.%s > 200 then <form method="get"><al-input><label>%s <input type="search" name=%s value={model.%s} /></label></al-input><al-button type="submit" variant="secondary">Find</al-button></form> else Html.none}`,
+			totalField(c), "Find "+strings.ToLower(Humanize(c.Name)), quote(g.wire(mod, findParam(c))), findParam(c)))
 	}
 	return
 }
@@ -1759,7 +1739,7 @@ func (g *adminGen) formParts(at *adminTable, mod string, imports *importSet, edi
 		// contains the search; on Edit the row's own value comes first, read by itself (it may sort
 		// past the 50, and a select without it would save another), and the search leaves it out;
 		// the rows a submitted value is checked against are the ones rendered
-		model = append(model, totalField(c)+": Int,")
+		model = append(model, totalField(c)+": Int,", findParam(c)+": Text,")
 		q, n := findParam(c), optionsField(c)
 		where := rt.Name + "." + rt.Label().Name + ".contains " + q
 		if !edit {
@@ -1831,7 +1811,7 @@ func (g *adminGen) newPage(at *adminTable) {
 	for _, c := range at.refs {
 		fields = append(fields, optionsField(c)+": "+optionsField(c))
 		if g.finds(c) {
-			fields = append(fields, totalField(c)+": "+totalField(c))
+			fields = append(fields, totalField(c)+": "+totalField(c), findParam(c)+": "+findParam(c))
 		}
 	}
 	loads = append(loads, "Query.succeed { "+strings.Join(fields, ", ")+" }")
@@ -1870,16 +1850,18 @@ func (g *adminGen) newPage(at *adminTable) {
 
 	var b strings.Builder
 	path := at.path + "/new"
-	routes, decls, finder := g.finders(at, mod, path, imports, false)
-	routes = append([]string{
+	finder := g.finders(at, mod)
+	routes := []string{
 		routeLine("New", "GET", path, g.keepWires(mod, at.params(mod, imports, g.findParams(at))), "", at.requires()),
-		routeLine("Create", "POST", writePath(path, "Create"), at.params(mod, imports, nil), at.formName(), at.requires()),
-	}, routes...)
+		routeLine("Create", "POST", at.path, at.params(mod, imports, nil), at.formName(), at.requires()),
+	}
 	b.WriteString(regionAt("", "routes", routes) + "\n\n")
 	b.WriteString("type Model = {\n" + regionAt("  ", "model", model) + "\n}\n\n")
 	b.WriteString(g.load("New", regionAt("  ", "load", wrapAll(loads))))
 	b.WriteString(regionAt("", "form", form) + "\n\n")
-	b.WriteString(regionAt("", "search", decls) + "\n\n")
+	// the searches are GET forms with nothing to declare; the region stays empty so that regen
+	// clears an older admin's search routes' forms and updates
+	b.WriteString(regionAt("", "search", nil) + "\n\n")
 	b.WriteString("-- Create adds the row and goes to its page.\n")
 	b.WriteString(g.update("Create", regionAt("  ", "insert", wrapAll(insert))))
 	b.WriteString(viewHead("New"))
@@ -2183,7 +2165,7 @@ func (g *adminGen) edit(at *adminTable) {
 	for _, c := range at.refs {
 		fields = append(fields, optionsField(c)+": "+optionsField(c))
 		if g.finds(c) {
-			fields = append(fields, totalField(c)+": "+totalField(c))
+			fields = append(fields, totalField(c)+": "+totalField(c), findParam(c)+": "+findParam(c))
 		}
 	}
 	// the options are read with the row in hand: the select of a long table keeps its value
@@ -2201,16 +2183,18 @@ func (g *adminGen) edit(at *adminTable) {
 	var b strings.Builder
 	path := at.path + "/{id}/edit"
 	idParam := "id: " + types.StringIn(t.IDType, mod)
-	routes, decls, finder := g.finders(at, mod, path, imports, true)
-	routes = append([]string{
+	finder := g.finders(at, mod)
+	routes := []string{
 		routeLine("Edit", "GET", path, g.keepWires(mod, at.params(mod, imports, append([]string{idParam}, g.findParams(at)...))), "", at.requires()),
-		routeLine("Save", "PUT", writePath(path, "Save"), at.params(mod, imports, []string{idParam}), at.formName(), at.requires()),
-	}, routes...)
+		routeLine("Save", "PUT", at.path+"/{id}", at.params(mod, imports, []string{idParam}), at.formName(), at.requires()),
+	}
 	b.WriteString(regionAt("", "routes", routes) + "\n\n")
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + regionAt("  ", "model", model) + "\n}\n\n")
 	b.WriteString(g.load("Edit", regionAt("  ", "load", wrapAll(loads))))
 	b.WriteString(regionAt("", "form", form) + "\n\n")
-	b.WriteString(regionAt("", "search", decls) + "\n\n")
+	// the searches are GET forms with nothing to declare; the region stays empty so that regen
+	// clears an older admin's search routes' forms and updates
+	b.WriteString(regionAt("", "search", nil) + "\n\n")
 	save := g.unique(at, "row."+t.IDField, []string{upd, fmt.Sprintf("Task.succeed (Response.redirect (%s { id: row.%s }))", at.route("Show"), t.IDField)})
 	role := g.ownRole(at)
 	if role != nil { // the signed-in user's own role is not changed: an Admin would lock themselves out
@@ -2543,7 +2527,7 @@ func (g *adminGen) delete(at *adminTable) {
 	params := at.params(mod, imports, []string{"id: " + idT})
 	b.WriteString(regionAt("", "routes", []string{
 		routeLine("Delete", "GET", path, g.keepWires(mod, params), "", at.requires()),
-		routeLine("Destroy", "DELETE", writePath(path, "Destroy"), params, "Confirm", at.requires()),
+		routeLine("Destroy", "DELETE", at.path+"/{id}", params, "Confirm", at.requires()),
 	}) + "\n\n")
 	b.WriteString("-- The row, and how many rows of each table refer to it.\n")
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + regionAt("  ", "model", pl.model) + "\n}\n\n")

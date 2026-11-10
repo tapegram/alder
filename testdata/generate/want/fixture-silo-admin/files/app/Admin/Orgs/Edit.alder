@@ -9,8 +9,8 @@ import User
 -- @admin end
 
 -- @admin begin routes
-route Edit = GET "/admin/org/{id}/edit"        { id: Org.OrgId }              requires user, role Admin
-route Save = PUT "/admin/org/{id}/edit/_/Save" { id: Org.OrgId } form OrgForm requires user, role Admin
+route Edit = GET "/admin/org/{id}/edit" { id: Org.OrgId }              requires user, role Admin
+route Save = PUT "/admin/org/{id}"      { id: Org.OrgId } form OrgForm requires user, role Admin
 -- @admin end
 
 type Model = {

@@ -537,9 +537,9 @@ with its method. Nested modules make a route's file easy to lose
 $ alder routes examples/blog
 METHOD  PATH                                   MODULE.decl                        FILE:LINE
 GET     /admin/comment/bulk                    Admin.Comments.Bulk.Bulk           app/Admin/Comments/Bulk.alder:13
-POST    /admin/comment/bulk/_/BulkDelete       Admin.Comments.Bulk.BulkDelete     app/Admin/Comments/Bulk.alder:14
+DELETE  /admin/comment/bulk                    Admin.Comments.Bulk.BulkDelete     app/Admin/Comments/Bulk.alder:14
 …
-DELETE  /admin/comment/{id}/delete/_/Destroy   Admin.Comments.Delete.Destroy      app/Admin/Comments/Delete.alder:14
+DELETE  /admin/comment/{id}                    Admin.Comments.Delete.Destroy      app/Admin/Comments/Delete.alder:14
 …
 DELETE  /session                              App.Logout                         app/App.alder:13
 GET     /login                                 Auth.Login.Login                   app/Auth/Login.alder:23

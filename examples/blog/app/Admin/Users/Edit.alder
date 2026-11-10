@@ -8,8 +8,8 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route Edit = GET "/admin/user/{id}/edit"        { id: User.UserId }               requires user, role Admin
-route Save = PUT "/admin/user/{id}/edit/_/Save" { id: User.UserId } form UserForm requires user, role Admin
+route Edit = GET "/admin/user/{id}/edit" { id: User.UserId }               requires user, role Admin
+route Save = PUT "/admin/user/{id}"      { id: User.UserId } form UserForm requires user, role Admin
 -- @admin end
 
 type Model = {

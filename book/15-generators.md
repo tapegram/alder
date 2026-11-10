@@ -1064,18 +1064,22 @@ Each module declares its **routes**, and the writes are routes too. In the
 generated admin:
 
 - **`Index`, `Show`, `New` and `Edit`** are `GET` routes, and the forms on
-  them are write routes: `Create` (`POST`, on `New`), `Save` (`PUT`, on
-  `Edit`), and `SearchAuthor`, which narrows a long list of choices.
+  them are write routes: `Create` (`POST`, on `New`) and `Save` (`PUT`, on
+  `Edit`).
 
 - **`Delete`** is a `GET` route, the confirm page that says what goes with
   the row, and a `DELETE` route, `Destroy`, that the button sends.
 
-- **`Bulk`** is a `GET` route that shows the chosen rows and a `POST` route
-  for each action (`BulkDelete`, `BulkSetStatus` …).
+- **`Bulk`** is a `GET` route that shows the chosen rows, a `DELETE` route,
+  `BulkDelete`, and a `PUT` route for each column it sets (`BulkSetStatus`
+  …).
 
-A write route has the form it decodes, `route Save = PUT
-"/admin/post/{id}/edit/_/Save" { id: Post.PostId } form PostForm requires
-user, role Admin`, and a path that ends in `/_/` and its name.
+A write route has the form it decodes, `route Save = PUT "/admin/post/{id}"
+{ id: Post.PostId } form PostForm requires user, role Admin`, and the path of
+the resource it changes: `Create` posts to the table's path
+(`/admin/post`), `Save` and `Destroy` go to the row's (`/admin/post/{id}`,
+the path `Show` reads with `GET`), `BulkDelete` to `/admin/post/bulk` and
+`BulkSetStatus` to `/admin/post/bulk/status`.
 
 Every route has `requires user, role Admin`, and an `update` answers with a
 `Response`: `Response.redirect` to the row after a save and to the list
@@ -2096,15 +2100,15 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route New          = GET  "/admin/post/new"                { findAuthor: Text = "" } requires user, role Admin
-route Create       = POST "/admin/post/new/_/Create"       { } form PostForm         requires user, role Admin
-route SearchAuthor = POST "/admin/post/new/_/SearchAuthor" { } form FindAuthor       requires user, role Admin
+route New    = GET  "/admin/post/new" { findAuthor: Text = "" } requires user, role Admin
+route Create = POST "/admin/post"     { } form PostForm         requires user, role Admin
 -- @admin end
 
 type Model = {
   -- @admin begin model
   authors: List User,
   authorsTotal: Int,
+  findAuthor: Text,
   -- @admin end
 }
 
@@ -2120,7 +2124,11 @@ New.load params session = {
       |> Db.where (if authorsTotal > 200 then User.email.contains findAuthor else Db.and [])
       |> Db.limit (if authorsTotal > 200 then 50 else 200)
       |> Db.all
-  Query.succeed { authors: authors, authorsTotal: authorsTotal }
+  Query.succeed {
+    authors: authors,
+    authorsTotal: authorsTotal,
+    findAuthor: findAuthor,
+  }
   -- @admin end
 }
 
@@ -2135,13 +2143,6 @@ form PostForm = {
 -- @admin end
 
 -- @admin begin search
-form FindAuthor = { q: Text }
-
--- SearchAuthor answers the page again at the text.
-SearchAuthor.update : SearchAuthor.Params -> Session -> Task Response
-SearchAuthor.update params session =
-  Task.succeed (Response.redirect (New { findAuthor: Text.slice 0 200 params.form.q }))
-
 -- @admin end
 
 -- Create adds the row and goes to its page.
@@ -2188,8 +2189,12 @@ New.view model session =
     <al-card>
       -- @admin begin finder
       {if model.authorsTotal > 200 then
-        <form submit={SearchAuthor}>
-          <al-input field="q" label="Find author" />
+        <form method="get">
+          <al-input>
+            <label>
+              Find author <input type="search" name="findAuthor" value={model.findAuthor} />
+            </label>
+          </al-input>
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
@@ -2417,22 +2422,17 @@ test "a long list of users offers 50, and the search narrows it" = {
     )
   let all <- Test.get (New {})
   let found <- Test.get (New { findAuthor: "email-203@example.com" })
-  let r <- Test.submit SearchAuthor { q: "zz" }
-  let _ <- Test.login { user: Nothing }
-  let visitor <- Test.submit SearchAuthor { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.authors,
       total: all.model.authorsTotal,
       found: Test.texts "select[name=author] option" found.doc == ["email-203@example.com"],
-      answer: r.answer,
-      visitor: visitor.answer,
+      input: Test.attr "value" "input[name=findAuthor]" found.doc,
     } == {
       shown: 50,
       total: 203,
       found: True,
-      answer: Redirected (New { findAuthor: "zz" }),
-      visitor: Redirected (Auth.Login.Login {}),
+      input: Just "email-203@example.com",
     }
   )
 }
@@ -2460,7 +2460,6 @@ test "an author outside the narrowed list is refused" = {
     )
   let all <- Test.get (New {})
   let found <- Test.get (New { findAuthor: "email-203@example.com" })
-  let r <- Test.submit SearchAuthor { q: "zz" }
   let pick = Maybe.withDefault "" (Test.attr "value" "select[name=author] option" found.doc)
   let page <- Test.get (New {})
   let sent <- Test.submitRaw Create [
@@ -2643,18 +2642,17 @@ or be tricked into posting, a user the select did not offer.
 
 #### The search form
 
-A small form of its own, `FindAuthor { q: Text }`, with a write route,
-`SearchAuthor`, sends the text. Its `update` answers
-`Response.redirect (New { findAuthor: Text.slice 0 200 params.form.q })`,
-not `Response.refresh`.
+A search is a read, so it is a plain `<form method="get">` with one input,
+named by the parameter (`name="findAuthor"`), and no `action`: the browser
+sends it to the page's own address with the text in the query
+(`/admin/post/new?findAuthor=…`). `load` runs again, cuts the text to 200
+characters and narrows by it, and the input shows it again
+(`value={model.findAuthor}`). There is no route for the search and no
+`update`.
 
-A refresh draws the page at the address it is on, with the *old* text, so
-the select would still be narrowed by the old text. The redirect loads the
-page again with the new text in the address (cut to 200 characters, as
-`load` cuts it), and `load` narrows by it.
-
-The regions are `search` (the form type and the route's `update`) and
-`finder` (where the form is drawn).
+The form is drawn in the region `finder`. The region `search` is empty: it
+held the search's form type and `update` when the search was a write route,
+and an admin generated then loses them at its next `regen`.
 
 #### The row's own value on the Edit page
 
@@ -2678,9 +2676,9 @@ works with no JavaScript.
 The generated tests check the edge:
 
 - with exactly 200 rows the select holds them all;
-- with 201 it holds 50 (51 on the Edit page, the row's own first) and the
-  search narrows them, while a visitor's search, sent from the same page after
-  logging out, goes to log in (the search route's own `requires user`);
+- with 201 it holds 50 (51 on the Edit page, the row's own first), and the
+  page at a search text narrows them and shows the text in the search's
+  input;
 - on the Edit page, a row whose own user sorts after every other is offered
   first and once, and saving the form unchanged keeps it;
 - a crafted post of an id outside the rendered options is refused with
@@ -2753,8 +2751,8 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route Delete  = GET    "/admin/user/{id}/delete"           { id: User.UserId }              requires user, role Admin
-route Destroy = DELETE "/admin/user/{id}/delete/_/Destroy" { id: User.UserId } form Confirm requires user, role Admin
+route Delete  = GET    "/admin/user/{id}/delete" { id: User.UserId }              requires user, role Admin
+route Destroy = DELETE "/admin/user/{id}"        { id: User.UserId } form Confirm requires user, role Admin
 -- @admin end
 
 -- The row, and how many rows of each table refer to it.
@@ -5338,11 +5336,11 @@ edited app/Admin/Users/Show.alder
  -- @admin end
  
  -- @admin begin routes
--route Bulk       = GET  "/admin/user/bulk"              { ids: List User.UserId }              requires user, role Admin
--route BulkDelete = POST "/admin/user/bulk/_/BulkDelete" { ids: List User.UserId } form Confirm requires user, role Admin
-+route Bulk          = GET  "/admin/user/bulk"                 { ids: List User.UserId }                requires user, role Admin
-+route BulkDelete    = POST "/admin/user/bulk/_/BulkDelete"    { ids: List User.UserId } form Confirm   requires user, role Admin
-+route BulkSetActive = POST "/admin/user/bulk/_/BulkSetActive" { ids: List User.UserId } form SetActive requires user, role Admin
+-route Bulk       = GET    "/admin/user/bulk" { ids: List User.UserId }              requires user, role Admin
+-route BulkDelete = DELETE "/admin/user/bulk" { ids: List User.UserId } form Confirm requires user, role Admin
++route Bulk          = GET    "/admin/user/bulk"        { ids: List User.UserId }                requires user, role Admin
++route BulkDelete    = DELETE "/admin/user/bulk"        { ids: List User.UserId } form Confirm   requires user, role Admin
++route BulkSetActive = PUT    "/admin/user/bulk/active" { ids: List User.UserId } form SetActive requires user, role Admin
  -- @admin end
  
  -- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep

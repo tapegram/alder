@@ -10,8 +10,8 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route Bulk       = GET  "/admin/comment/bulk"              { ids: List Comment.CommentId }              requires user, role Admin
-route BulkDelete = POST "/admin/comment/bulk/_/BulkDelete" { ids: List Comment.CommentId } form Confirm requires user, role Admin
+route Bulk       = GET    "/admin/comment/bulk" { ids: List Comment.CommentId }              requires user, role Admin
+route BulkDelete = DELETE "/admin/comment/bulk" { ids: List Comment.CommentId } form Confirm requires user, role Admin
 -- @admin end
 
 -- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep

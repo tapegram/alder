@@ -10,10 +10,10 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route Bulk            = GET  "/admin/post/bulk"                   { ids: List Post.PostId }                  requires user, role Admin
-route BulkDelete      = POST "/admin/post/bulk/_/BulkDelete"      { ids: List Post.PostId } form Confirm     requires user, role Admin
-route BulkSetStatus   = POST "/admin/post/bulk/_/BulkSetStatus"   { ids: List Post.PostId } form SetStatus   requires user, role Admin
-route BulkSetFeatured = POST "/admin/post/bulk/_/BulkSetFeatured" { ids: List Post.PostId } form SetFeatured requires user, role Admin
+route Bulk            = GET    "/admin/post/bulk"          { ids: List Post.PostId }                  requires user, role Admin
+route BulkDelete      = DELETE "/admin/post/bulk"          { ids: List Post.PostId } form Confirm     requires user, role Admin
+route BulkSetStatus   = PUT    "/admin/post/bulk/status"   { ids: List Post.PostId } form SetStatus   requires user, role Admin
+route BulkSetFeatured = PUT    "/admin/post/bulk/featured" { ids: List Post.PostId } form SetFeatured requires user, role Admin
 -- @admin end
 
 -- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep

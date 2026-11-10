@@ -41,11 +41,11 @@ The example's login is the development stub, which refuses every password outsid
 
 ## Mutation score
 
-`alder test --mutate examples/blog` (book 10, "Mutation testing"): 376 mutants, 227 tests, 362
-killed, 14 survived (score 0.96). `TestExample_Blog` fails if the score drops below 0.96, the
-exact 0.963 rounded down, or the number of mutants is not 376.
+`alder test --mutate examples/blog` (book 10, "Mutation testing"): 364 mutants, 227 tests, 354
+killed, 10 survived (score 0.97). `TestExample_Blog` fails if the score drops below 0.97, the
+exact 0.972 rounded down, or the number of mutants is not 364.
 
-- **The generated admin** (`app/Admin/`, "Replaying the admin" below): 290 mutants, 279 killed
+- **The generated admin** (`app/Admin/`, "Replaying the admin" below): 278 mutants, 271 killed
   by its 181 generated tests, kept as `alder new admin` wrote them.
 
   Three survivors are equivalent:
@@ -58,21 +58,17 @@ exact 0.963 rounded down, or the number of mutants is not 376.
   The Edit routes' lists have no such survivor: the row's own value is read by itself and comes
   first, the search leaves it out, and the generated test of exactly 200 rows tells `>` from `>=`.
 
-  The eight others are the `step dropped` of the `adminOnly` that begins the Comment and Post
-  `Create` and `Save`, and the `role dropped` of the four `Search…` routes (`SearchPost`,
-  `SearchAuthor`).
+  The four others are the `step dropped` of the `adminOnly` that begins the Comment and Post
+  `Create` and `Save`.
 
 - **The rest of the blog:** 86 mutants, 83 killed, 3 survived, as before the admin (below).
 
 The `step dropped` of the `adminOnly` that begins `Create` and `Save` on a form with a select of
 another table's rows is not a gap: a demoted Admin's post of that form is refused (400) by the
 options check before the update runs, since the page it was posted from is rendered again to
-check the options, and that page's `load` begins with `adminOnly` too. Nor is the `role dropped`
-of a `Search…` route, which only redirects to the page it was posted from: another role's search
-is redirected there, or, when it does not decode, that page is rendered again with the errors,
-and either way that page's own role check answers the 404 the search's would. (The search's
-`requires dropped` is killed: the generated test of a long list sends a visitor's search, which
-must go to log in, where the mutant's role check answers 404.)
+check the options, and that page's `load` begins with `adminOnly` too. (A search of a long list
+is a GET of the page itself, with the text in the query, so it has no route of its own and no
+mutant.)
 
 The history of the rest:
 

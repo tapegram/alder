@@ -10,9 +10,8 @@ import User
 -- @admin end
 
 -- @admin begin routes
-route Edit      = GET  "/admin/activity/{id}/edit"             { id: Activity.ActivityId, findOrg: Text = "" } requires user, role Admin
-route Save      = PUT  "/admin/activity/{id}/edit/_/Save"      { id: Activity.ActivityId } form ActivityForm   requires user, role Admin
-route SearchOrg = POST "/admin/activity/{id}/edit/_/SearchOrg" { id: Activity.ActivityId } form FindOrg        requires user, role Admin
+route Edit = GET "/admin/activity/{id}/edit" { id: Activity.ActivityId, findOrg: Text = "" } requires user, role Admin
+route Save = PUT "/admin/activity/{id}"      { id: Activity.ActivityId } form ActivityForm   requires user, role Admin
 -- @admin end
 
 type Model = {
@@ -20,6 +19,7 @@ type Model = {
   -- @admin begin model
   orgs: List Org,
   orgsTotal: Int,
+  findOrg: Text,
   -- @admin end
 }
 
@@ -55,6 +55,7 @@ Edit.load params session = {
         row: row,
         orgs: orgs,
         orgsTotal: orgsTotal,
+        findOrg: findOrg,
       }
     },
     Nothing -> Query.notFound,
@@ -67,13 +68,6 @@ form ActivityForm = { text: Text.NonEmpty, org: Org.OrgId }
 -- @admin end
 
 -- @admin begin search
-form FindOrg = { q: Text }
-
--- SearchOrg answers the page again at the text.
-SearchOrg.update : SearchOrg.Params -> Session -> Task Response
-SearchOrg.update params session =
-  Task.succeed (Response.redirect (Edit { id: params.id, findOrg: Text.slice 0 200 params.form.q }))
-
 -- @admin end
 
 -- Save writes the form over the row (a row deleted since is not found) and goes to its page.
@@ -103,8 +97,10 @@ Edit.view model session =
     <al-card>
       -- @admin begin finder
       {if model.orgsTotal > 200 then
-        <form submit={SearchOrg { id: model.row.id }}>
-          <al-input field="q" label="Find org" />
+        <form method="get">
+          <al-input>
+            <label>Find org <input type="search" name="findOrg" value={model.findOrg} /></label>
+          </al-input>
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
@@ -232,22 +228,17 @@ test "a long list of orgs offers 50, and the search narrows it" = {
     )
   let all <- Test.get (Edit { id: activity1 })
   let found <- Test.get (Edit { id: activity1, findOrg: "name-203" })
-  let r <- Test.submit (SearchOrg { id: activity1 }) { q: "zz" }
-  let _ <- Test.login { user: Nothing, org: Nothing }
-  let visitor <- Test.submit (SearchOrg { id: activity1 }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.orgs,
       total: all.model.orgsTotal,
       found: Test.count "select[name=org] option" found.doc <= 3,
-      answer: r.answer,
-      visitor: visitor.answer,
+      input: Test.attr "value" "input[name=findOrg]" found.doc,
     } == {
       shown: 51,
       total: 203,
       found: True,
-      answer: Redirected (Edit { id: activity1, findOrg: "zz" }),
-      visitor: Redirected (Auth.Login.Login {}),
+      input: Just "name-203",
     }
   )
 }

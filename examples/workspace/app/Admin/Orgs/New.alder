@@ -9,8 +9,8 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route New    = GET  "/admin/org/new"          { }              requires user, role Admin
-route Create = POST "/admin/org/new/_/Create" { } form OrgForm requires user, role Admin
+route New    = GET  "/admin/org/new" { }              requires user, role Admin
+route Create = POST "/admin/org"     { } form OrgForm requires user, role Admin
 -- @admin end
 
 type Model = {

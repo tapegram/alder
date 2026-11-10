@@ -250,7 +250,7 @@ func TestAdmin_Silo(t *testing.T) {
 		"app/Admin/Orgs/Pick.alder":        {`route Pick = GET "/admin/orgs" { } requires user, role Admin`, "<a href={Admin.Orgs.Dashboard.Dashboard { org: row.id }}>{row.name}</a>"},
 		"app/Admin/Orgs/Dashboard.alder":   {`route Dashboard = GET "/admin/orgs/{org}" { org: Org.OrgId } requires user, role Admin, silo org`, "href: Admin.Projects.Index.Index { org: params.org },"},
 		"app/Admin/Projects/Index.alder":   {`route Index = GET "/admin/orgs/{org}/project" { org: Org.OrgId, q: Text = "",`, "} requires user, role Admin, silo org\n", `action={"/admin/orgs/" ++ session.org ++ "/project"}`, "listAt model sort dir n = Index {\n  org: model.org,", "<a href={Admin.Projects.Show.Show { org: session.org, id: row.id }}>"},
-		"app/Admin/Projects/New.alder":     {`route New    = GET  "/admin/orgs/{org}/project/new"          { org: Org.OrgId }                  requires user, role Admin, silo org`, "route Create = POST \"/admin/orgs/{org}/project/new/_/Create\" { org: Org.OrgId } form ProjectForm requires user, role Admin, silo org", "    org: session.org,\n", "Task.succeed (Response.redirect (Admin.Projects.Show.Show { org: session.org, id: id }))", "<form submit={Create { org: session.org }}>"},
+		"app/Admin/Projects/New.alder":     {`route New    = GET  "/admin/orgs/{org}/project/new" { org: Org.OrgId }                  requires user, role Admin, silo org`, "route Create = POST \"/admin/orgs/{org}/project\"     { org: Org.OrgId } form ProjectForm requires user, role Admin, silo org", "    org: session.org,\n", "Task.succeed (Response.redirect (Admin.Projects.Show.Show { org: session.org, id: id }))", "<form submit={Create { org: session.org }}>"},
 		"app/Admin/Projects/Show.alder":    {"submit={Admin.Projects.Delete.Destroy { org: session.org, id: model.row.id }}"},
 		"app/Admin/Projects/Bulk.alder":    {"<form id=\"bulk-delete\" submit={BulkDelete { org: session.org, ids: model.ids }}>"},
 		"app/Admin/Issues/Show.alder":      {"<a href={Admin.Projects.Show.Show { org: session.org, id: model.row.project }}>", "<a href={Admin.Users.Show.Show { id: v }}>"},
@@ -880,7 +880,7 @@ func TestAdmin_RegenWireNames(t *testing.T) {
 	}
 	index, bulk := "app/Admin/Posts/Index.alder", "app/Admin/Posts/Bulk.alder"
 	replace(index, " status: Text = \"\", ", " status: Text = \"\" as \"Status\", ")
-	replace(bulk, "route Bulk            = GET  \"/admin/post/bulk\"                   { ids: List Post.PostId }", "route Bulk            = GET  \"/admin/post/bulk\"                   { ids: List Post.PostId as \"Ids\" }")
+	replace(bulk, "route Bulk            = GET    \"/admin/post/bulk\"          { ids: List Post.PostId }", "route Bulk            = GET    \"/admin/post/bulk\"          { ids: List Post.PostId as \"Ids\" }")
 	code, out, errs := alderIn(t, dir, "", "regen", "admin")
 	if code != 0 || !strings.Contains(out, "edited "+index+"\n") {
 		t.Fatalf("alder regen admin: exit %d\n%s%s", code, out, errs)

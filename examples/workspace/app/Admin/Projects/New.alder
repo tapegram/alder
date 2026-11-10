@@ -10,8 +10,8 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route New    = GET  "/admin/orgs/{org}/project/new"          { org: Org.OrgId }                  requires user, role Admin, silo org
-route Create = POST "/admin/orgs/{org}/project/new/_/Create" { org: Org.OrgId } form ProjectForm requires user, role Admin, silo org
+route New    = GET  "/admin/orgs/{org}/project/new" { org: Org.OrgId }                  requires user, role Admin, silo org
+route Create = POST "/admin/orgs/{org}/project"     { org: Org.OrgId } form ProjectForm requires user, role Admin, silo org
 -- @admin end
 
 type Model = {

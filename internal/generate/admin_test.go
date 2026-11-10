@@ -225,7 +225,7 @@ func TestAdminRoutes(t *testing.T) {
 				"Edit":   {"Save"},
 				"Delete": {"Destroy"},
 			}[kind]
-			writes := slices.DeleteFunc(slices.Clone(names), func(n string) bool { return strings.HasPrefix(got[n], "GET") || strings.HasPrefix(n, "Search") })
+			writes := slices.DeleteFunc(slices.Clone(names), func(n string) bool { return strings.HasPrefix(got[n], "GET") })
 			if kind != "Bulk" && !slices.Equal(writes, wantWrites) {
 				t.Errorf("%s/%s: write routes %v, want %v", app, path, writes, wantWrites)
 			}
@@ -247,11 +247,53 @@ func TestAdminRoutes(t *testing.T) {
 					t.Errorf("%s/%s: no bulk write route answering refresh: %v", app, path, got)
 				}
 				for _, w := range writes {
-					if !strings.HasPrefix(got[w], "POST") || (strings.HasPrefix(w, "BulkSet") && !strings.Contains(got[w], " form Set")) {
-						t.Errorf("%s/%s: %s is not a POST (with its form, for a set): %q", app, path, w, got[w])
+					want := "DELETE"
+					if strings.HasPrefix(w, "BulkSet") {
+						want = "PUT"
+					}
+					if !strings.HasPrefix(got[w], want) || (want == "PUT" && !strings.Contains(got[w], " form Set")) {
+						t.Errorf("%s/%s: %s is not a %s (with its form, for a set): %q", app, path, w, want, got[w])
 					}
 				}
 			}
+		}
+	}
+}
+
+// TestAdmin_RestPaths: the admin's write routes are on the table's resource paths (#184): create
+// on the list's path, save and destroy on the row's, the bulk actions under `bulk`; no path has
+// `/_/`, and the searches are GET forms to the page itself, with no route of their own.
+func TestAdmin_RestPaths(t *testing.T) {
+	p, err := Load("../../testdata/generate/fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, order := AdminFiles(p, AdminOptions{Module: "Admin", Path: "/admin"})
+	var all strings.Builder
+	for _, path := range order {
+		all.WriteString(files[path] + "\n")
+	}
+	src := regexp.MustCompile(` +`).ReplaceAllString(all.String(), " ")
+	// the view's markup without the formatter's line breaks and indentation
+	flat := regexp.MustCompile(`\s+`).ReplaceAllString(all.String(), " ")
+	for _, re := range []string{`>\s+<`, `<label>\s+|\s+</label>`} {
+		flat = regexp.MustCompile(re).ReplaceAllStringFunc(flat, func(m string) string { return strings.Join(strings.Fields(m), "") })
+	}
+	for _, w := range []string{
+		`route Create = POST "/admin/post" { }`,
+		`route Save = PUT "/admin/post/{id}" { id: Post.PostId }`,
+		`route Destroy = DELETE "/admin/post/{id}" { id: Post.PostId }`,
+		`route BulkDelete = DELETE "/admin/post/bulk" { ids: List Post.PostId }`,
+		`route BulkSetStatus = PUT "/admin/post/bulk/status" { ids: List Post.PostId }`,
+		`<form method="get"><al-input><label>Find author <input type="search" name="findAuthor" value={model.findAuthor} /></label></al-input>`,
+	} {
+		if !strings.Contains(src, w) && !strings.Contains(flat, w) {
+			t.Errorf("no %q in the admin", w)
+		}
+	}
+	for _, l := range strings.Split(src, "\n") {
+		if strings.Contains(l, "/_/") || strings.Contains(l, "Search") && !strings.Contains(l, ">Search<") && !strings.Contains(l, "\"Search\"") && !strings.Contains(l, "(chapter 8, \"Search\")") {
+			t.Errorf("a line has /_/ or a search route: %q", l)
 		}
 	}
 }

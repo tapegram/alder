@@ -10,15 +10,15 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route New       = GET  "/admin/activity/new"             { findOrg: Text = "" } requires user, role Admin
-route Create    = POST "/admin/activity/new/_/Create"    { } form ActivityForm  requires user, role Admin
-route SearchOrg = POST "/admin/activity/new/_/SearchOrg" { } form FindOrg       requires user, role Admin
+route New    = GET  "/admin/activity/new" { findOrg: Text = "" } requires user, role Admin
+route Create = POST "/admin/activity"     { } form ActivityForm  requires user, role Admin
 -- @admin end
 
 type Model = {
   -- @admin begin model
   orgs: List Org,
   orgsTotal: Int,
+  findOrg: Text,
   -- @admin end
 }
 
@@ -34,7 +34,11 @@ New.load params session = {
       |> Db.where (if orgsTotal > 200 then Org.name.contains findOrg else Db.and [])
       |> Db.limit (if orgsTotal > 200 then 50 else 200)
       |> Db.all
-  Query.succeed { orgs: orgs, orgsTotal: orgsTotal }
+  Query.succeed {
+    orgs: orgs,
+    orgsTotal: orgsTotal,
+    findOrg: findOrg,
+  }
   -- @admin end
 }
 
@@ -43,13 +47,6 @@ form ActivityForm = { text: Text, org: Org.OrgId }
 -- @admin end
 
 -- @admin begin search
-form FindOrg = { q: Text }
-
--- SearchOrg answers the page again at the text.
-SearchOrg.update : SearchOrg.Params -> Session -> Task Response
-SearchOrg.update params session =
-  Task.succeed (Response.redirect (New { findOrg: Text.slice 0 200 params.form.q }))
-
 -- @admin end
 
 -- Create adds the row and goes to its page.
@@ -70,8 +67,10 @@ New.view model session =
     <al-card>
       -- @admin begin finder
       {if model.orgsTotal > 200 then
-        <form submit={SearchOrg}>
-          <al-input field="q" label="Find org" />
+        <form method="get">
+          <al-input>
+            <label>Find org <input type="search" name="findOrg" value={model.findOrg} /></label>
+          </al-input>
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
@@ -191,22 +190,17 @@ test "a long list of orgs offers 50, and the search narrows it" = {
     )
   let all <- Test.get (New {})
   let found <- Test.get (New { findOrg: "name-203" })
-  let r <- Test.submit SearchOrg { q: "zz" }
-  let _ <- Test.login { user: Nothing, org: Nothing }
-  let visitor <- Test.submit SearchOrg { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.orgs,
       total: all.model.orgsTotal,
       found: Test.texts "select[name=org] option" found.doc == ["name-203"],
-      answer: r.answer,
-      visitor: visitor.answer,
+      input: Test.attr "value" "input[name=findOrg]" found.doc,
     } == {
       shown: 50,
       total: 203,
       found: True,
-      answer: Redirected (New { findOrg: "zz" }),
-      visitor: Redirected (Auth.Login.Login {}),
+      input: Just "name-203",
     }
   )
 }
@@ -233,7 +227,6 @@ test "an org outside the narrowed list is refused" = {
     )
   let all <- Test.get (New {})
   let found <- Test.get (New { findOrg: "name-203" })
-  let r <- Test.submit SearchOrg { q: "zz" }
   let pick = Maybe.withDefault "" (Test.attr "value" "select[name=org] option" found.doc)
   let page <- Test.get (New {})
   let sent <- Test.submitRaw Create [{ name: "text", value: "x" }, { name: "org", value: pick }]

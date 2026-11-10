@@ -11,15 +11,15 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route New           = GET  "/admin/orgs/{org}/todo/new"                 { org: Org.OrgId, findProject: Text = "" } requires user, role Admin, silo org
-route Create        = POST "/admin/orgs/{org}/todo/new/_/Create"        { org: Org.OrgId } form TodoForm           requires user, role Admin, silo org
-route SearchProject = POST "/admin/orgs/{org}/todo/new/_/SearchProject" { org: Org.OrgId } form FindProject        requires user, role Admin, silo org
+route New    = GET  "/admin/orgs/{org}/todo/new" { org: Org.OrgId, findProject: Text = "" } requires user, role Admin, silo org
+route Create = POST "/admin/orgs/{org}/todo"     { org: Org.OrgId } form TodoForm           requires user, role Admin, silo org
 -- @admin end
 
 type Model = {
   -- @admin begin model
   projects: List Project,
   projectsTotal: Int,
+  findProject: Text,
   -- @admin end
 }
 
@@ -35,7 +35,11 @@ New.load params session = {
       |> Db.where (if projectsTotal > 200 then Project.name.contains findProject else Db.and [])
       |> Db.limit (if projectsTotal > 200 then 50 else 200)
       |> Db.all
-  Query.succeed { projects: projects, projectsTotal: projectsTotal }
+  Query.succeed {
+    projects: projects,
+    projectsTotal: projectsTotal,
+    findProject: findProject,
+  }
   -- @admin end
 }
 
@@ -48,15 +52,6 @@ form TodoForm = {
 -- @admin end
 
 -- @admin begin search
-form FindProject = { q: Text }
-
--- SearchProject answers the page again at the text.
-SearchProject.update : SearchProject.Params -> Session -> Task Response
-SearchProject.update params session =
-  Task.succeed (
-    Response.redirect (New { org: session.org, findProject: Text.slice 0 200 params.form.q })
-  )
-
 -- @admin end
 
 -- Create adds the row and goes to its page.
@@ -82,8 +77,12 @@ New.view model session =
     <al-card>
       -- @admin begin finder
       {if model.projectsTotal > 200 then
-        <form submit={SearchProject { org: session.org }}>
-          <al-input field="q" label="Find project" />
+        <form method="get">
+          <al-input>
+            <label>
+              Find project <input type="search" name="findProject" value={model.findProject} />
+            </label>
+          </al-input>
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
@@ -235,22 +234,17 @@ test "a long list of projects offers 50, and the search narrows it" = {
     )
   let all <- Test.get (New { org: org })
   let found <- Test.get (New { org: org, findProject: "name-203" })
-  let r <- Test.submit (SearchProject { org: org }) { q: "zz" }
-  let _ <- Test.login { user: Nothing, org: Nothing }
-  let visitor <- Test.submit (SearchProject { org: org }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.projects,
       total: all.model.projectsTotal,
       found: Test.texts "select[name=project] option" found.doc == ["name-203"],
-      answer: r.answer,
-      visitor: visitor.answer,
+      input: Test.attr "value" "input[name=findProject]" found.doc,
     } == {
       shown: 50,
       total: 203,
       found: True,
-      answer: Redirected (New { org: org, findProject: "zz" }),
-      visitor: Redirected (Auth.Login.Login {}),
+      input: Just "name-203",
     }
   )
 }
@@ -280,7 +274,6 @@ test "a project outside the narrowed list is refused" = {
     )
   let all <- Test.get (New { org: org })
   let found <- Test.get (New { org: org, findProject: "name-203" })
-  let r <- Test.submit (SearchProject { org: org }) { q: "zz" }
   let pick = Maybe.withDefault "" (Test.attr "value" "select[name=project] option" found.doc)
   let page <- Test.get (New { org: org })
   let sent <- Test.submitRaw (Create { org: org }) [

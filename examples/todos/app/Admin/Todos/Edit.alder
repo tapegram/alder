@@ -9,9 +9,8 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route Edit        = GET  "/admin/todo/{id}/edit"               { id: Todo.TodoId, findOwner: Text = "" } requires user, role Admin
-route Save        = PUT  "/admin/todo/{id}/edit/_/Save"        { id: Todo.TodoId } form TodoForm         requires user, role Admin
-route SearchOwner = POST "/admin/todo/{id}/edit/_/SearchOwner" { id: Todo.TodoId } form FindOwner        requires user, role Admin
+route Edit = GET "/admin/todo/{id}/edit" { id: Todo.TodoId, findOwner: Text = "" } requires user, role Admin
+route Save = PUT "/admin/todo/{id}"      { id: Todo.TodoId } form TodoForm         requires user, role Admin
 -- @admin end
 
 type Model = {
@@ -19,6 +18,7 @@ type Model = {
   -- @admin begin model
   owners: List User,
   ownersTotal: Int,
+  findOwner: Text,
   -- @admin end
 }
 
@@ -54,6 +54,7 @@ Edit.load params session = {
         row: row,
         owners: owners,
         ownersTotal: ownersTotal,
+        findOwner: findOwner,
       }
     },
     Nothing -> Query.notFound,
@@ -71,15 +72,6 @@ form TodoForm = {
 -- @admin end
 
 -- @admin begin search
-form FindOwner = { q: Text }
-
--- SearchOwner answers the page again at the text.
-SearchOwner.update : SearchOwner.Params -> Session -> Task Response
-SearchOwner.update params session =
-  Task.succeed (
-    Response.redirect (Edit { id: params.id, findOwner: Text.slice 0 200 params.form.q })
-  )
-
 -- @admin end
 
 -- Save writes the form over the row (a row deleted since is not found) and goes to its page.
@@ -111,8 +103,12 @@ Edit.view model session =
     <al-card>
       -- @admin begin finder
       {if model.ownersTotal > 200 then
-        <form submit={SearchOwner { id: model.row.id }}>
-          <al-input field="q" label="Find owner" />
+        <form method="get">
+          <al-input>
+            <label>
+              Find owner <input type="search" name="findOwner" value={model.findOwner} />
+            </label>
+          </al-input>
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
@@ -280,22 +276,17 @@ test "a long list of users offers 50, and the search narrows it" = {
     )
   let all <- Test.get (Edit { id: todo1 })
   let found <- Test.get (Edit { id: todo1, findOwner: "email-203@example.com" })
-  let r <- Test.submit (SearchOwner { id: todo1 }) { q: "zz" }
-  let _ <- Test.login { user: Nothing }
-  let visitor <- Test.submit (SearchOwner { id: todo1 }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.owners,
       total: all.model.ownersTotal,
       found: Test.count "select[name=owner] option" found.doc <= 3,
-      answer: r.answer,
-      visitor: visitor.answer,
+      input: Test.attr "value" "input[name=findOwner]" found.doc,
     } == {
       shown: 51,
       total: 203,
       found: True,
-      answer: Redirected (Edit { id: todo1, findOwner: "zz" }),
-      visitor: Redirected (Auth.Login.Login {}),
+      input: Just "email-203@example.com",
     }
   )
 }

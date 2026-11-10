@@ -9,15 +9,15 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route New          = GET  "/admin/post/new"                { findAuthor: Text = "" } requires user, role Admin
-route Create       = POST "/admin/post/new/_/Create"       { } form PostForm         requires user, role Admin
-route SearchAuthor = POST "/admin/post/new/_/SearchAuthor" { } form FindAuthor       requires user, role Admin
+route New    = GET  "/admin/post/new" { findAuthor: Text = "" } requires user, role Admin
+route Create = POST "/admin/post"     { } form PostForm         requires user, role Admin
 -- @admin end
 
 type Model = {
   -- @admin begin model
   authors: List User,
   authorsTotal: Int,
+  findAuthor: Text,
   -- @admin end
 }
 
@@ -33,7 +33,11 @@ New.load params session = {
       |> Db.where (if authorsTotal > 200 then User.email.contains findAuthor else Db.and [])
       |> Db.limit (if authorsTotal > 200 then 50 else 200)
       |> Db.all
-  Query.succeed { authors: authors, authorsTotal: authorsTotal }
+  Query.succeed {
+    authors: authors,
+    authorsTotal: authorsTotal,
+    findAuthor: findAuthor,
+  }
   -- @admin end
 }
 
@@ -48,13 +52,6 @@ form PostForm = {
 -- @admin end
 
 -- @admin begin search
-form FindAuthor = { q: Text }
-
--- SearchAuthor answers the page again at the text.
-SearchAuthor.update : SearchAuthor.Params -> Session -> Task Response
-SearchAuthor.update params session =
-  Task.succeed (Response.redirect (New { findAuthor: Text.slice 0 200 params.form.q }))
-
 -- @admin end
 
 -- Create adds the row and goes to its page.
@@ -81,8 +78,12 @@ New.view model session =
     <al-card>
       -- @admin begin finder
       {if model.authorsTotal > 200 then
-        <form submit={SearchAuthor}>
-          <al-input field="q" label="Find author" />
+        <form method="get">
+          <al-input>
+            <label>
+              Find author <input type="search" name="findAuthor" value={model.findAuthor} />
+            </label>
+          </al-input>
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
@@ -224,22 +225,17 @@ test "a long list of users offers 50, and the search narrows it" = {
     )
   let all <- Test.get (New {})
   let found <- Test.get (New { findAuthor: "email-203@example.com" })
-  let r <- Test.submit SearchAuthor { q: "zz" }
-  let _ <- Test.login { user: Nothing }
-  let visitor <- Test.submit SearchAuthor { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.authors,
       total: all.model.authorsTotal,
       found: Test.texts "select[name=author] option" found.doc == ["email-203@example.com"],
-      answer: r.answer,
-      visitor: visitor.answer,
+      input: Test.attr "value" "input[name=findAuthor]" found.doc,
     } == {
       shown: 50,
       total: 203,
       found: True,
-      answer: Redirected (New { findAuthor: "zz" }),
-      visitor: Redirected (Auth.Login.Login {}),
+      input: Just "email-203@example.com",
     }
   )
 }
@@ -264,7 +260,6 @@ test "an author outside the narrowed list is refused" = {
     )
   let all <- Test.get (New {})
   let found <- Test.get (New { findAuthor: "email-203@example.com" })
-  let r <- Test.submit SearchAuthor { q: "zz" }
   let pick = Maybe.withDefault "" (Test.attr "value" "select[name=author] option" found.doc)
   let page <- Test.get (New {})
   let sent <- Test.submitRaw Create [

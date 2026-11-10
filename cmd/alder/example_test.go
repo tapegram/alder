@@ -193,17 +193,17 @@ func TestExample_Blog(t *testing.T) {
 }
 
 // The mutation scores examples/todos/README.md and examples/blog/README.md record (`alder test
-// --mutate`, rounded down to two decimals: the blog's is 362 / 376 = 0.963) and their numbers of
+// --mutate`, rounded down to two decimals: the blog's is 354 / 364 = 0.972) and their numbers of
 // mutants: a change to an example that lets a mutant survive which its tests used to kill, or
 // that changes the mutants made of it, fails TestExample_*, when the mutation quality gates run
 // (nightly in CI, or with ALDER_MUTATION_GATES=1: see gates_test.go).
 const (
-	todosMutationScore     = 0.97
-	blogMutationScore      = 0.96
-	workspaceMutationScore = 0.95
-	todosMutants           = 236
-	blogMutants            = 376
-	workspaceMutants       = 596
+	todosMutationScore     = 0.98
+	blogMutationScore      = 0.97
+	workspaceMutationScore = 0.96
+	todosMutants           = 230
+	blogMutants            = 364
+	workspaceMutants       = 572
 )
 
 // mutationAtLeast runs `alder test --mutate --json dir` and fails t when the score is below min

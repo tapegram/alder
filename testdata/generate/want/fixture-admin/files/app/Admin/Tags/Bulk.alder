@@ -10,8 +10,8 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route Bulk       = GET  "/admin/tag/bulk"              { ids: List Tag.TagId }              requires user, role Admin
-route BulkDelete = POST "/admin/tag/bulk/_/BulkDelete" { ids: List Tag.TagId } form Confirm requires user, role Admin
+route Bulk       = GET    "/admin/tag/bulk" { ids: List Tag.TagId }              requires user, role Admin
+route BulkDelete = DELETE "/admin/tag/bulk" { ids: List Tag.TagId } form Confirm requires user, role Admin
 -- @admin end
 
 -- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep

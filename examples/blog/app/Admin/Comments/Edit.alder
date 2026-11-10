@@ -10,9 +10,8 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route Edit       = GET  "/admin/comment/{id}/edit"              { id: Comment.CommentId, findPost: Text = "" } requires user, role Admin
-route Save       = PUT  "/admin/comment/{id}/edit/_/Save"       { id: Comment.CommentId } form CommentForm     requires user, role Admin
-route SearchPost = POST "/admin/comment/{id}/edit/_/SearchPost" { id: Comment.CommentId } form FindPost        requires user, role Admin
+route Edit = GET "/admin/comment/{id}/edit" { id: Comment.CommentId, findPost: Text = "" } requires user, role Admin
+route Save = PUT "/admin/comment/{id}"      { id: Comment.CommentId } form CommentForm     requires user, role Admin
 -- @admin end
 
 type Model = {
@@ -20,6 +19,7 @@ type Model = {
   -- @admin begin model
   posts: List Post,
   postsTotal: Int,
+  findPost: Text,
   -- @admin end
 }
 
@@ -55,6 +55,7 @@ Edit.load params session = {
         row: row,
         posts: posts,
         postsTotal: postsTotal,
+        findPost: findPost,
       }
     },
     Nothing -> Query.notFound,
@@ -71,15 +72,6 @@ form CommentForm = {
 -- @admin end
 
 -- @admin begin search
-form FindPost = { q: Text }
-
--- SearchPost answers the page again at the text.
-SearchPost.update : SearchPost.Params -> Session -> Task Response
-SearchPost.update params session =
-  Task.succeed (
-    Response.redirect (Edit { id: params.id, findPost: Text.slice 0 200 params.form.q })
-  )
-
 -- @admin end
 
 -- Save writes the form over the row (a row deleted since is not found) and goes to its page.
@@ -110,8 +102,10 @@ Edit.view model session =
     <al-card>
       -- @admin begin finder
       {if model.postsTotal > 200 then
-        <form submit={SearchPost { id: model.row.id }}>
-          <al-input field="q" label="Find post" />
+        <form method="get">
+          <al-input>
+            <label>Find post <input type="search" name="findPost" value={model.findPost} /></label>
+          </al-input>
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
@@ -303,22 +297,17 @@ test "a long list of posts offers 50, and the search narrows it" = {
     )
   let all <- Test.get (Edit { id: comment1 })
   let found <- Test.get (Edit { id: comment1, findPost: "slug-203" })
-  let r <- Test.submit (SearchPost { id: comment1 }) { q: "zz" }
-  let _ <- Test.login { user: Nothing }
-  let visitor <- Test.submit (SearchPost { id: comment1 }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.posts,
       total: all.model.postsTotal,
       found: Test.count "select[name=post] option" found.doc <= 3,
-      answer: r.answer,
-      visitor: visitor.answer,
+      input: Test.attr "value" "input[name=findPost]" found.doc,
     } == {
       shown: 51,
       total: 203,
       found: True,
-      answer: Redirected (Edit { id: comment1, findPost: "zz" }),
-      visitor: Redirected (Auth.Login.Login {}),
+      input: Just "slug-203",
     }
   )
 }

@@ -9,8 +9,8 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route Delete  = GET    "/admin/todo/{id}/delete"           { id: Todo.TodoId }              requires user, role Admin
-route Destroy = DELETE "/admin/todo/{id}/delete/_/Destroy" { id: Todo.TodoId } form Confirm requires user, role Admin
+route Delete  = GET    "/admin/todo/{id}/delete" { id: Todo.TodoId }              requires user, role Admin
+route Destroy = DELETE "/admin/todo/{id}"        { id: Todo.TodoId } form Confirm requires user, role Admin
 -- @admin end
 
 -- The row, and how many rows of each table refer to it.

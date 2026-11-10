@@ -10,9 +10,9 @@ import User
 -- @admin end
 
 -- @admin begin routes
-route Bulk            = GET  "/admin/orgs/{org}/project/bulk"                   { org: Org.OrgId, ids: List Project.ProjectId }                  requires user, role Admin, silo org
-route BulkDelete      = POST "/admin/orgs/{org}/project/bulk/_/BulkDelete"      { org: Org.OrgId, ids: List Project.ProjectId } form Confirm     requires user, role Admin, silo org
-route BulkSetArchived = POST "/admin/orgs/{org}/project/bulk/_/BulkSetArchived" { org: Org.OrgId, ids: List Project.ProjectId } form SetArchived requires user, role Admin, silo org
+route Bulk            = GET    "/admin/orgs/{org}/project/bulk"          { org: Org.OrgId, ids: List Project.ProjectId }                  requires user, role Admin, silo org
+route BulkDelete      = DELETE "/admin/orgs/{org}/project/bulk"          { org: Org.OrgId, ids: List Project.ProjectId } form Confirm     requires user, role Admin, silo org
+route BulkSetArchived = PUT    "/admin/orgs/{org}/project/bulk/archived" { org: Org.OrgId, ids: List Project.ProjectId } form SetArchived requires user, role Admin, silo org
 -- @admin end
 
 -- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep

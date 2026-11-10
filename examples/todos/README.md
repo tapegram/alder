@@ -40,13 +40,13 @@ The example's login is the development stub, which refuses every password outsid
 
 ## Mutation score
 
-`alder test --mutate examples/todos` (book 10, "Mutation testing"): 236 mutants, 147 tests, 230
-killed, 6 survived (score 0.97). `TestExample_TodosMutation` fails if the score drops below
-0.97, the exact 0.974 rounded down, or the number of mutants is not 236.
+`alder test --mutate examples/todos` (book 10, "Mutation testing"): 230 mutants, 147 tests, 226
+killed, 4 survived (score 0.98). `TestExample_TodosMutation` fails if the score drops below
+0.98, the exact 0.982 rounded down, or the number of mutants is not 230.
 
 - **The app's own code:** 45 mutants, all killed by its 25 tests (score 1.00).
 
-- **The generated admin** (`app/Admin/`, "Replaying the admin" below): 191 mutants, 185 killed by
+- **The generated admin** (`app/Admin/`, "Replaying the admin" below): 185 mutants, 181 killed by
   its 122 generated tests, kept as `alder new admin` wrote them.
 
   Two survivors are equivalent:
@@ -60,18 +60,14 @@ killed, 6 survived (score 0.97). `TestExample_TodosMutation` fails if the score 
   > read by itself and comes first, and the search leaves it out, so the generated test of
   > exactly 200 users tells `>` from `>=`.
 
-  The four others are the `step dropped` of the `adminOnly` that begins `Create` and `Save`, and
-  the `role dropped` of the New and Edit pages' `SearchOwner` routes:
+  The two others are the `step dropped` of the `adminOnly` that begins `Create` and `Save`:
 
 The `step dropped` of the `adminOnly` that begins `Create` and `Save` on a form with a select of
 another table's rows is not a gap: a demoted Admin's post of that form is refused (400) by the
 options check before the update runs, since the page it was posted from is rendered again to
-check the options, and that page's `load` begins with `adminOnly` too. Nor is the `role dropped`
-of a `Search…` route, which only redirects to the page it was posted from: another role's search
-is redirected there, or, when it does not decode, that page is rendered again with the errors,
-and either way that page's own role check answers the 404 the search's would. (The search's
-`requires dropped` is killed: the generated test of a long list sends a visitor's search, which
-must go to log in, where the mutant's role check answers 404.)
+check the options, and that page's `load` begins with `adminOnly` too. (A search of a long list
+is a GET of the page itself, with the text in the query, so it has no route of its own and no
+mutant.)
 
 The history of the app's own code:
 

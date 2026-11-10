@@ -10,8 +10,8 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route Edit = GET "/admin/orgs/{org}/project/{id}/edit"        { org: Org.OrgId, id: Project.ProjectId }                  requires user, role Admin, silo org
-route Save = PUT "/admin/orgs/{org}/project/{id}/edit/_/Save" { org: Org.OrgId, id: Project.ProjectId } form ProjectForm requires user, role Admin, silo org
+route Edit = GET "/admin/orgs/{org}/project/{id}/edit" { org: Org.OrgId, id: Project.ProjectId }                  requires user, role Admin, silo org
+route Save = PUT "/admin/orgs/{org}/project/{id}"      { org: Org.OrgId, id: Project.ProjectId } form ProjectForm requires user, role Admin, silo org
 -- @admin end
 
 type Model = {

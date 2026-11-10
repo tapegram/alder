@@ -9,8 +9,8 @@ import User
 -- @admin end
 
 -- @admin begin routes
-route Bulk       = GET  "/admin/org/bulk"              { ids: List Org.OrgId }              requires user, role Admin
-route BulkDelete = POST "/admin/org/bulk/_/BulkDelete" { ids: List Org.OrgId } form Confirm requires user, role Admin
+route Bulk       = GET    "/admin/org/bulk" { ids: List Org.OrgId }              requires user, role Admin
+route BulkDelete = DELETE "/admin/org/bulk" { ids: List Org.OrgId } form Confirm requires user, role Admin
 -- @admin end
 
 -- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep

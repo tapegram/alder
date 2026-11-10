@@ -9,15 +9,15 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route New         = GET  "/admin/todo/new"               { findOwner: Text = "" } requires user, role Admin
-route Create      = POST "/admin/todo/new/_/Create"      { } form TodoForm        requires user, role Admin
-route SearchOwner = POST "/admin/todo/new/_/SearchOwner" { } form FindOwner       requires user, role Admin
+route New    = GET  "/admin/todo/new" { findOwner: Text = "" } requires user, role Admin
+route Create = POST "/admin/todo"     { } form TodoForm        requires user, role Admin
 -- @admin end
 
 type Model = {
   -- @admin begin model
   owners: List User,
   ownersTotal: Int,
+  findOwner: Text,
   -- @admin end
 }
 
@@ -33,7 +33,11 @@ New.load params session = {
       |> Db.where (if ownersTotal > 200 then User.email.contains findOwner else Db.and [])
       |> Db.limit (if ownersTotal > 200 then 50 else 200)
       |> Db.all
-  Query.succeed { owners: owners, ownersTotal: ownersTotal }
+  Query.succeed {
+    owners: owners,
+    ownersTotal: ownersTotal,
+    findOwner: findOwner,
+  }
   -- @admin end
 }
 
@@ -47,13 +51,6 @@ form TodoForm = {
 -- @admin end
 
 -- @admin begin search
-form FindOwner = { q: Text }
-
--- SearchOwner answers the page again at the text.
-SearchOwner.update : SearchOwner.Params -> Session -> Task Response
-SearchOwner.update params session =
-  Task.succeed (Response.redirect (New { findOwner: Text.slice 0 200 params.form.q }))
-
 -- @admin end
 
 -- Create adds the row and goes to its page.
@@ -79,8 +76,12 @@ New.view model session =
     <al-card>
       -- @admin begin finder
       {if model.ownersTotal > 200 then
-        <form submit={SearchOwner}>
-          <al-input field="q" label="Find owner" />
+        <form method="get">
+          <al-input>
+            <label>
+              Find owner <input type="search" name="findOwner" value={model.findOwner} />
+            </label>
+          </al-input>
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
@@ -228,22 +229,17 @@ test "a long list of users offers 50, and the search narrows it" = {
     )
   let all <- Test.get (New {})
   let found <- Test.get (New { findOwner: "email-203@example.com" })
-  let r <- Test.submit SearchOwner { q: "zz" }
-  let _ <- Test.login { user: Nothing }
-  let visitor <- Test.submit SearchOwner { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.owners,
       total: all.model.ownersTotal,
       found: Test.texts "select[name=owner] option" found.doc == ["email-203@example.com"],
-      answer: r.answer,
-      visitor: visitor.answer,
+      input: Test.attr "value" "input[name=findOwner]" found.doc,
     } == {
       shown: 50,
       total: 203,
       found: True,
-      answer: Redirected (New { findOwner: "zz" }),
-      visitor: Redirected (Auth.Login.Login {}),
+      input: Just "email-203@example.com",
     }
   )
 }
@@ -271,7 +267,6 @@ test "an owner outside the narrowed list is refused" = {
     )
   let all <- Test.get (New {})
   let found <- Test.get (New { findOwner: "email-203@example.com" })
-  let r <- Test.submit SearchOwner { q: "zz" }
   let pick = Maybe.withDefault "" (Test.attr "value" "select[name=owner] option" found.doc)
   let page <- Test.get (New {})
   let sent <- Test.submitRaw Create [

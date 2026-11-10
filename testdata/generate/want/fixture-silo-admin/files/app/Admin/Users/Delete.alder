@@ -10,8 +10,8 @@ import User
 -- @admin end
 
 -- @admin begin routes
-route Delete  = GET    "/admin/user/{id}/delete"           { id: User.UserId }              requires user, role Admin
-route Destroy = DELETE "/admin/user/{id}/delete/_/Destroy" { id: User.UserId } form Confirm requires user, role Admin
+route Delete  = GET    "/admin/user/{id}/delete" { id: User.UserId }              requires user, role Admin
+route Destroy = DELETE "/admin/user/{id}"        { id: User.UserId } form Confirm requires user, role Admin
 -- @admin end
 
 -- The row, and how many rows of each table refer to it.

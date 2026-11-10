@@ -2718,13 +2718,11 @@ example, admin included, reads:
 $ alder test --mutate examples/todos
 …
 147 passed, 0 failed
-236 mutants: 230 killed, 6 survived  (score 0.97)
+230 mutants: 226 killed, 4 survived  (score 0.98)
 survived:
-  Admin.Todos.Edit   SearchOwner:14     role dropped       requires user, role Admin → requires user
-  Admin.Todos.Edit   Save.update:88     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
-  Admin.Todos.New    SearchOwner:14     role dropped       requires user, role Admin → requires user
+  Admin.Todos.Edit   Save.update:80     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Todos.New    New.load:33        operator flipped   ownersTotal > 200 → ownersTotal >= 200
-  Admin.Todos.New    Create.update:62   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Todos.New    Create.update:59   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Users.Bulk   selected:44        where dropped      Db.where (Todo.owner.in taken) → the condition dropped
 ```
 
@@ -2740,14 +2738,10 @@ the role Member"` and `Auth.Login "logging in copies the role from the
 user's row"` kill the `update field dropped` of `role` in logout's and
 login's `Session.put`.
 
-The generated admin brings 191 mutants and 122 tests
-of its own, which kill all but six. The README of the example says why
+The generated admin brings 185 mutants and 122 tests
+of its own, which kill all but four. The README of the example says why
 each survives:
 
-- the `role dropped` of its `Search` routes (another role's search is
-  redirected to the page it was posted from, or, not decoding, renders that
-  page again, and that page's own role check answers the 404 the search's
-  would);
 - the two `adminOnly` steps that the
   options check answers first (a demoted Admin's form is refused before the
   step runs);
@@ -2853,35 +2847,30 @@ open, so there a browser test tells the two apart.)
 ### Mutants that are the same program
 
 With all its tests (those of its rules, and those of its generated admin),
-the blog keeps fourteen survivors (here and below, `…` stands for the 227
+the blog keeps ten survivors (here and below, `…` stands for the 227
 `ok` lines):
 
 ```text
 $ alder test --mutate examples/blog
 …
 227 passed, 0 failed
-376 mutants: 362 killed, 14 survived  (score 0.96)
+364 mutants: 354 killed, 10 survived  (score 0.97)
 survived:
-  Admin.Comments.Edit   SearchPost:15      role dropped       requires user, role Admin → requires user
-  Admin.Comments.Edit   Save.update:88     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
-  Admin.Comments.New    SearchPost:15      role dropped       requires user, role Admin → requires user
+  Admin.Comments.Edit   Save.update:80     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Comments.New    New.load:34        operator flipped   postsTotal > 200 → postsTotal >= 200
-  Admin.Comments.New    Create.update:62   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
-  Admin.Posts.Edit      SearchAuthor:14    role dropped       requires user, role Admin → requires user
-  Admin.Posts.Edit      Save.update:89     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
-  Admin.Posts.New       SearchAuthor:14    role dropped       requires user, role Admin → requires user
+  Admin.Comments.New    Create.update:59   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Posts.Edit      Save.update:81     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Posts.New       New.load:33        operator flipped   authorsTotal > 200 → authorsTotal >= 200
-  Admin.Posts.New       Create.update:63   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Posts.New       Create.update:60   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Users.Bulk      selected:44        where dropped      Db.where (Post.author.in taken) → the condition dropped
   Posts.Index           Index.load:33:17   operator flipped   params.page < 1 → params.page <= 1
   Posts.Index           Index.load:33:48   operator flipped   params.page > lastPage → params.page >= lastPage
   Posts.Index           Index.load:42      limit dropped      Db.limit (perPage + 1) → no limit
 ```
 
-The first eleven are the generated admin's, as the to-do admin's six
-are (the blog's README says why each survives: the `role dropped` of its
-four `Search` routes, the four `adminOnly` steps that the options check
-answers first, and three equivalent mutants).
+The first seven are the generated admin's, as the to-do admin's four
+are (the blog's README says why each survives: the four `adminOnly` steps
+that the options check answers first, and three equivalent mutants).
 
 The
 other three are in the blog's own code. The first line of `Posts.Index`'s `load` clamps the
@@ -2933,40 +2922,34 @@ app's behaviour and gets no mutants.
 ### The exact score
 
 With no survivor the report ends at the score line. The comparison
-uses the exact score, not the two decimals printed: the blog's is 362 /
-376 = 0.9627…, printed as 0.96, so
+uses the exact score, not the two decimals printed: the blog's is 354 /
+364 = 0.9725…, printed as 0.97, so
 
 ```text
-$ alder test --mutate --min 0.963 examples/blog
+$ alder test --mutate --min 0.973 examples/blog
 …
 227 passed, 0 failed
-376 mutants: 362 killed, 14 survived  (score 0.96)
+364 mutants: 354 killed, 10 survived  (score 0.97)
 survived:
-  Admin.Comments.Edit   SearchPost:15      role dropped       requires user, role Admin → requires user
-  Admin.Comments.Edit   Save.update:88     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
-  Admin.Comments.New    SearchPost:15      role dropped       requires user, role Admin → requires user
+  Admin.Comments.Edit   Save.update:80     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Comments.New    New.load:34        operator flipped   postsTotal > 200 → postsTotal >= 200
-  Admin.Comments.New    Create.update:62   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
-  Admin.Posts.Edit      SearchAuthor:14    role dropped       requires user, role Admin → requires user
-  Admin.Posts.Edit      Save.update:89     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
-  Admin.Posts.New       SearchAuthor:14    role dropped       requires user, role Admin → requires user
+  Admin.Comments.New    Create.update:59   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Posts.Edit      Save.update:81     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Posts.New       New.load:33        operator flipped   authorsTotal > 200 → authorsTotal >= 200
-  Admin.Posts.New       Create.update:63   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Posts.New       Create.update:60   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Users.Bulk      selected:44        where dropped      Db.where (Post.author.in taken) → the condition dropped
   Posts.Index           Index.load:33:17   operator flipped   params.page < 1 → params.page <= 1
   Posts.Index           Index.load:33:48   operator flipped   params.page > lastPage → params.page >= lastPage
   Posts.Index           Index.load:42      limit dropped      Db.limit (perPage + 1) → no limit
-$ echo $?
-1
 ```
 
-while `--min 0.96` passes. A CI job runs `alder test --mutate --min R`
+while `--min 0.97` passes. A CI job runs `alder test --mutate --min R`
 with `R` at the score the app has reached, so a change that lets a
 mutant survive fails the build.
 
 The examples do this in the Go test
 suite: `TestExample_TodosMutation` and `TestExample_Blog` require at
-least 0.97 and 0.96, and the number of mutants their READMEs record.
+least 0.98 and 0.97, and the number of mutants their READMEs record.
 Without `--min`, the exit code is the tests'.
 
 ### `-run`, `-timeout` and `--json`
@@ -2982,13 +2965,13 @@ ok   Table.Todo "Active keeps only open todos"
 ok   Table.Todo "each filter has its label"
 ok   Table.Todo "a user with todos cannot be deleted"
 4 passed, 0 failed
-236 mutants: 7 killed, 229 survived  (score 0.03)
+230 mutants: 7 killed, 223 survived  (score 0.03)
 survived:
 …
 ```
 
-(229 survivor lines follow: the six `scope dropped` of "The rules' mutants
-in a report" among them, and all 191 of the generated admin's, which only
+(223 survivor lines follow: the six `scope dropped` of "The rules' mutants
+in a report" among them, and all 185 of the generated admin's, which only
 its own tests kill.) This is useful while writing the tests of
 one module, but the score that counts is the whole suite's.
 
@@ -3016,7 +2999,7 @@ selects no test ends with `no test matches -run: nothing can kill a
 mutant`.
 
 Mutants run one after another, each with a fresh database
-per test; the to-do app's 236 take a few seconds once the build is made,
+per test; the to-do app's 230 take a few seconds once the build is made,
 because each mutant stops at the first test that fails, and the tests of
 the mutant's own module run first, where the killing test almost always is.
 
@@ -3025,20 +3008,20 @@ every mutant, then one with the totals. A mutant's object has its `id`,
 `module`, `file`, `decl`, `line`, `col` (the column), `kind`, `before`,
 `after`, whether it was `killed`, `by` which test (the first that
 failed), and a `note` (`"crashed"`, `"timed out"`, or empty). From the
-to-do app's run, two of the 236:
+to-do app's run, two of the 230:
 
 ```text
-{"id":214,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"Index.load","line":18,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
+{"id":208,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"Index.load","line":18,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
 {"id":5,"module":"Table.Todo","file":"app/Table/Todo.alder","decl":"Todo","line":16,"col":3,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Table.Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
 ```
 
 and the last line:
 
 ```text
-{"score":0.9745762711864406,"killed":230,"survived":6,"suppressed":1,"skipped":38}
+{"score":0.9826086956521739,"killed":226,"survived":4,"suppressed":1,"skipped":38}
 ```
 
-`score` is exact here (230 / 236).
+`score` is exact here (226 / 230).
 
 `"tables": "ensure"` marks a **schema mutant** (`default changed`, `cascade ↔
 restrict`): its tests run on tables made from the mutated table

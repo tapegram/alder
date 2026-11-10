@@ -90,16 +90,16 @@ func (g *adminGen) bulk(at *adminTable) {
 	routes := []string{routeLine("Bulk", "GET", path, g.keepWires(mod, params), "", at.requires())}
 	var forms []string // the actions' forms and updates
 	var views []string
-	action := func(name, form, verb, ok string, body []string) {
+	action := func(name, method, where, form, verb, ok string, body []string) {
 		g.names[mod] = append(g.names[mod], name)
-		routes = append(routes, routeLine(name, "POST", writePath(path, name), params, form, at.requires()))
+		routes = append(routes, routeLine(name, method, where, params, form, at.requires()))
 		upd := append([]string{"let model <- selected params.ids", "if tooMany model then", "  Task.succeed (Response.invalid (" + bulkTooMany + "))", "else {"}, indentAll(body, "  ")...)
 		upd = append(upd, "  Task.succeed (Response.refresh |> Response.success ("+quote(verb+" ")+" ++ "+ok+"))", "}")
 		forms = append(forms, strings.Split(strings.TrimSuffix(g.update(name, strings.Join(indentAll(upd, "  "), "\n")), "\n"), "\n")...)
 	}
 	if at.bulkDel {
 		forms = append(forms, "-- BulkDelete takes no input: the form is the button, and the place a refusal is shown.", "form Confirm = { }", "")
-		action("BulkDelete", "Confirm", "Deleted", "Text.fromInt (List.length allowed) ++ \" of \" ++ Text.fromInt (List.length model.rows)", []string{
+		action("BulkDelete", "DELETE", path, "Confirm", "Deleted", "Text.fromInt (List.length allowed) ++ \" of \" ++ Text.fromInt (List.length model.rows)", []string{
 			"let allowed = List.filter (\\row -> " + refused + " == False) model.rows",
 			"let _ <- Task.all (List.map (\\row -> Db.delete " + t.Name + " row." + id + ") allowed)",
 		})
@@ -112,7 +112,7 @@ func (g *adminGen) bulk(at *adminTable) {
 		importTypes(imports, c.Type)
 		name := UpperFirst(c.Name)
 		forms = append(forms, "form Set"+name+" = { value: "+c.TypeIn(mod)+" }", "")
-		action("BulkSet"+name, "Set"+name, "Updated", "Text.fromInt (List.length model.rows)", []string{
+		action("BulkSet"+name, "PUT", path+"/"+kebab(c.Name), "Set"+name, "Updated", "Text.fromInt (List.length model.rows)", []string{
 			"let _ <- Task.all (List.map (\\row -> Db.update " + t.Name + " row." + id + " (\\r -> { r | " + c.Name + ": params.form.value })) model.rows)",
 		})
 		tag := "al-select"
@@ -354,33 +354,11 @@ func (g *adminGen) findTests(at *adminTable, mod string, imports *importSet, edi
 		tests = append(tests, TestData{Name: quote("a list of 200 " + pluralOf(rt) + " is offered whole"), Lines: tb.lines,
 			Result: fmt.Sprintf("List.length page.model.%s == 200", optionsField(c))})
 
-		tb, pageAt, target := start()
+		tb, pageAt, _ := start()
 		tb.bulkInsert(rt, 201, "")
 		last := rawText(rt.Label(), tb.counts[rt.Module])
 		tb.let("let all <- Test.get (%s)", pageAt())
 		tb.let("let found <- Test.get (%s)", pageAt(findParam(c)+": "+quote(last)))
-		search := at.own("Search"+UpperFirst(c.Name), true)
-		redirect := pageLit(get, []string{findParam(c) + ": \"zz\""})
-		if edit {
-			search = "(Search" + UpperFirst(c.Name) + " { id: " + target + " })"
-			redirect = pageLit(get, []string{"id: " + target, findParam(c) + ": \"zz\""})
-		}
-		tb.let("let r <- Test.submit %s { q: \"zz\" }", search)
-		// the search route's own `requires user` (#187): a visitor's search, from the page still
-		// held, goes to log in. (Its `role Admin` has no such test: another role's search is
-		// redirected to the page, whose own role check answers 404, as the search's would; and a
-		// search that does not decode re-renders that page, which answers 404 too.) This test's
-		// steps only: the next test goes on from tb's.
-		lines := tb.lines
-		var visitorL, visitorR string // the result's fields for it
-		if g.p.Login != "" {
-			n := len(tb.lines)
-			tb.logout()
-			tb.let("let visitor <- Test.submit %s { q: \"zz\" }", search)
-			lines = slices.Clone(tb.lines)
-			tb.lines = tb.lines[:n]
-			visitorL, visitorR = ", visitor: visitor.answer", ", visitor: Redirected ("+pageLit(g.p.Login, nil)+")"
-		}
 		found := fmt.Sprintf("Test.count %s found.doc <= 3", quote(sel))
 		if !edit {
 			want := "[" + quote(last) + "]"
@@ -393,9 +371,11 @@ func (g *adminGen) findTests(at *adminTable, mod string, imports *importSet, edi
 		if edit { // the row's own value, then 50
 			shown = 51
 		}
-		tests = append(tests, TestData{Name: quote("a long list of " + pluralOf(rt) + " offers 50, and the search narrows it"), Lines: lines,
-			Result: fmt.Sprintf("{ shown: List.length all.model.%s, total: all.model.%s, found: %s, answer: r.answer%s } == { shown: %d, total: %d, found: True, answer: Redirected (%s)%s }",
-				optionsField(c), totalField(c), found, visitorL, shown, tb.counts[rt.Module], redirect, visitorR)})
+		// the search is a GET form to the page: its input, named by the parameter, holds the text
+		input := fmt.Sprintf("Test.attr \"value\" %s found.doc", quote("input[name="+g.wireSel(mod, findParam(c))+"]"))
+		tests = append(tests, TestData{Name: quote("a long list of " + pluralOf(rt) + " offers 50, and the search narrows it"), Lines: slices.Clone(tb.lines),
+			Result: fmt.Sprintf("{ shown: List.length all.model.%s, total: all.model.%s, found: %s, input: %s } == { shown: %d, total: %d, found: True, input: Just %s }",
+				optionsField(c), totalField(c), found, input, shown, tb.counts[rt.Module], quote(last))})
 		if edit {
 			tests = append(tests, g.ownFirstTest(at, mod, imports, c))
 		}

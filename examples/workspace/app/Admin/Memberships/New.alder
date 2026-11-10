@@ -10,18 +10,18 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route New        = GET  "/admin/membership/new"              { findUser: Text = "", findOrg: Text = "" } requires user, role Admin
-route Create     = POST "/admin/membership/new/_/Create"     { } form MembershipForm                     requires user, role Admin
-route SearchUser = POST "/admin/membership/new/_/SearchUser" { } form FindUser                           requires user, role Admin
-route SearchOrg  = POST "/admin/membership/new/_/SearchOrg"  { } form FindOrg                            requires user, role Admin
+route New    = GET  "/admin/membership/new" { findUser: Text = "", findOrg: Text = "" } requires user, role Admin
+route Create = POST "/admin/membership"     { } form MembershipForm                     requires user, role Admin
 -- @admin end
 
 type Model = {
   -- @admin begin model
   users: List User,
   usersTotal: Int,
+  findUser: Text,
   orgs: List Org,
   orgsTotal: Int,
+  findOrg: Text,
   -- @admin end
 }
 
@@ -48,8 +48,10 @@ New.load params session = {
   Query.succeed {
     users: users,
     usersTotal: usersTotal,
+    findUser: findUser,
     orgs: orgs,
     orgsTotal: orgsTotal,
+    findOrg: findOrg,
   }
   -- @admin end
 }
@@ -59,20 +61,6 @@ form MembershipForm = { user: User.UserId, org: Org.OrgId }
 -- @admin end
 
 -- @admin begin search
-form FindUser = { q: Text }
-
--- SearchUser answers the page again at the text.
-SearchUser.update : SearchUser.Params -> Session -> Task Response
-SearchUser.update params session =
-  Task.succeed (Response.redirect (New { findUser: Text.slice 0 200 params.form.q }))
-
-form FindOrg = { q: Text }
-
--- SearchOrg answers the page again at the text.
-SearchOrg.update : SearchOrg.Params -> Session -> Task Response
-SearchOrg.update params session =
-  Task.succeed (Response.redirect (New { findOrg: Text.slice 0 200 params.form.q }))
-
 -- @admin end
 
 -- Create adds the row and goes to its page.
@@ -93,15 +81,19 @@ New.view model session =
     <al-card>
       -- @admin begin finder
       {if model.usersTotal > 200 then
-        <form submit={SearchUser}>
-          <al-input field="q" label="Find user" />
+        <form method="get">
+          <al-input>
+            <label>Find user <input type="search" name="findUser" value={model.findUser} /></label>
+          </al-input>
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
         Html.none}
       {if model.orgsTotal > 200 then
-        <form submit={SearchOrg}>
-          <al-input field="q" label="Find org" />
+        <form method="get">
+          <al-input>
+            <label>Find org <input type="search" name="findOrg" value={model.findOrg} /></label>
+          </al-input>
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
@@ -286,22 +278,17 @@ test "a long list of users offers 50, and the search narrows it" = {
     )
   let all <- Test.get (New {})
   let found <- Test.get (New { findUser: "email-203@example.com" })
-  let r <- Test.submit SearchUser { q: "zz" }
-  let _ <- Test.login { user: Nothing, org: Nothing }
-  let visitor <- Test.submit SearchUser { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.users,
       total: all.model.usersTotal,
       found: Test.texts "select[name=user] option" found.doc == ["email-203@example.com"],
-      answer: r.answer,
-      visitor: visitor.answer,
+      input: Test.attr "value" "input[name=findUser]" found.doc,
     } == {
       shown: 50,
       total: 203,
       found: True,
-      answer: Redirected (New { findUser: "zz" }),
-      visitor: Redirected (Auth.Login.Login {}),
+      input: Just "email-203@example.com",
     }
   )
 }
@@ -335,7 +322,6 @@ test "a user outside the narrowed list is refused" = {
     )
   let all <- Test.get (New {})
   let found <- Test.get (New { findUser: "email-203@example.com" })
-  let r <- Test.submit SearchUser { q: "zz" }
   let pick = Maybe.withDefault "" (Test.attr "value" "select[name=user] option" found.doc)
   let page <- Test.get (New {})
   let orgId = Maybe.withDefault "" (Test.attr "value" "select[name=org] option" page.doc)
@@ -406,22 +392,17 @@ test "a long list of orgs offers 50, and the search narrows it" = {
     )
   let all <- Test.get (New {})
   let found <- Test.get (New { findOrg: "name-203" })
-  let r <- Test.submit SearchOrg { q: "zz" }
-  let _ <- Test.login { user: Nothing, org: Nothing }
-  let visitor <- Test.submit SearchOrg { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.orgs,
       total: all.model.orgsTotal,
       found: Test.texts "select[name=org] option" found.doc == ["name-203"],
-      answer: r.answer,
-      visitor: visitor.answer,
+      input: Test.attr "value" "input[name=findOrg]" found.doc,
     } == {
       shown: 50,
       total: 203,
       found: True,
-      answer: Redirected (New { findOrg: "zz" }),
-      visitor: Redirected (Auth.Login.Login {}),
+      input: Just "name-203",
     }
   )
 }
@@ -453,7 +434,6 @@ test "an org outside the narrowed list is refused" = {
     )
   let all <- Test.get (New {})
   let found <- Test.get (New { findOrg: "name-203" })
-  let r <- Test.submit SearchOrg { q: "zz" }
   let pick = Maybe.withDefault "" (Test.attr "value" "select[name=org] option" found.doc)
   let page <- Test.get (New {})
   let userId = Maybe.withDefault "" (Test.attr "value" "select[name=user] option" page.doc)

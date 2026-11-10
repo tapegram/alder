@@ -245,11 +245,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await sleep(300);
     // 205 more users (a long reference table: more than 200 rows), one post
     for (let i = 0; i < 205; i++) {
-      await p2.request.post(BASE + '/admin/user/new/_/Create', { form: { email: `u${i}@example.com`, name: `user ${i}`, role: 'Reader' } });
+      await p2.request.post(BASE + '/admin/user', { form: { email: `u${i}@example.com`, name: `user ${i}`, role: 'Reader' } });
     }
     const newPage = await (await p2.request.get(BASE + '/admin/post/new')).text();
     const me = /<option value="([^"]+)">admin@example\.com/.exec(newPage)[1];
-    await p2.request.post(BASE + '/admin/post/new/_/Create', { headers: { 'Alder-Page': '/admin/post/new' }, form: { slug: 'hello', title: 'Hello', body: 'b', published: 'True', author: me } });
+    await p2.request.post(BASE + '/admin/post', { headers: { 'Alder-Page': '/admin/post/new' }, form: { slug: 'hello', title: 'Hello', body: 'b', published: 'True', author: me } });
     await p2.goto(BASE + '/admin/post');
     const showHref = await p2.evaluate(() => [...document.querySelectorAll('a')].map((a) => a.getAttribute('href')).find((h) => /^\/admin\/post\/[^/]+$/.test(h) && !/new|bulk/.test(h)));
     await p2.goto(BASE + showHref);
@@ -349,33 +349,31 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         shown: [...p.querySelectorAll(':scope > section')].filter((x) => !x.hidden).map((x) => x.id),
       };
     });
-    check('panel after a refresh: the write route\'s request (BulkDelete), its DELETEs, answered `refresh`', /POST \/admin\/user\/bulk\/_\/BulkDelete/.test(hop.request) && /refresh/.test(hop.bar) && hop.del >= 0, hop);
+    check('panel after a refresh: the write route\'s request (BulkDelete), its DELETEs, answered `refresh`', /(POST|DELETE) \/admin\/user\/bulk[?\s]/.test(hop.request) && /refresh/.test(hop.bar) && hop.del >= 0, hop);
     check('panel after an answer: one section shown, the tab chosen before', hop.shown.length === 1 && hop.shown[0] === '_alder_tab_sql', hop.shown);
     await p2.waitForFunction(() => !document.querySelector('al-toast'), null, { timeout: 8000 }).catch(() => {});
     check('toast: it times out', await p2.evaluate(() => !document.querySelector('al-toast')));
 
     // search: a long reference table (more than 200 rows) shows a search and 50 options
     await p2.goto(BASE + '/admin/post/new');
-    const long = await p2.evaluate(() => ({ options: document.querySelectorAll('select[name=author] option').length, form: !!document.querySelector('form[action$="/SearchAuthor"]') }));
+    const long = await p2.evaluate(() => ({ options: document.querySelectorAll('select[name=author] option').length, form: !!document.querySelector('form[method=get] input[name=findAuthor]') }));
     check('search: more than 200 rows give 50 options and a search form', long.options === 50 && long.form, long);
-    await p2.fill('form[action$="/SearchAuthor"] input[name=q]', 'u99@example.com');
-    await p2.click('form[action$="/SearchAuthor"] button');
+    await p2.fill('form[method=get] input[name=findAuthor]', 'u99@example.com');
+    await p2.click('form[method=get]:has(input[name=findAuthor]) al-button[type=submit]');
     await p2.waitForFunction(() => document.querySelectorAll('select[name=author] option').length === 1, null, { timeout: 5000 }).catch(() => {});
     const found = await p2.evaluate(() => ({ options: [...document.querySelectorAll('select[name=author] option')].map((o) => o.textContent), url: location.search }));
-    check('search: it narrows the select (a Redirect, so the narrowing survives)', found.options.length === 1 && found.options[0] === 'u99@example.com' && /findAuthor/.test(found.url), found);
+    check('search: it narrows the select (a GET of the page, so the text is in the address)', found.options.length === 1 && found.options[0] === 'u99@example.com' && /findAuthor/.test(found.url), found);
     // a crafted post of that user, with no search text: not among the 50 offered, so refused
     const u99 = await p2.evaluate(() => document.querySelector('select[name=author] option').value);
-    const crafted = await p2.request.post(BASE + '/admin/post/new/_/Create', { headers: { 'Alder-Page': '/admin/post/new' }, form: { slug: 'x', title: 'x', body: 'x', published: 'True', author: u99 } });
+    const crafted = await p2.request.post(BASE + '/admin/post', { headers: { 'Alder-Page': '/admin/post/new' }, form: { slug: 'x', title: 'x', body: 'x', published: 'True', author: u99 } });
     check('search: an id outside the rendered options is refused', /must be one of the options/.test(await crafted.text()), crafted.status());
 
     // the Edit page of a post whose author sorts after the 50 offered: offered first, kept on save
-    await p2.request.post(BASE + '/admin/user/new/_/Create', { form: { email: 'zz-last@example.com', name: 'last', role: 'Reader' } });
+    await p2.request.post(BASE + '/admin/user', { form: { email: 'zz-last@example.com', name: 'last', role: 'Reader' } });
     await p2.goto(BASE + '/admin/user?q=zz-last');
     const zz = await p2.evaluate(() => { const c = document.querySelector('input[name=ids]'); return c && c.value; });
-    // the New page offers that user only once the search finds it: post to the form's own action
-    const newLate = await (await p2.request.get(BASE + '/admin/post/new?findAuthor=zz-last')).text();
-    const createAt = /<form[^>]*action="([^"]*\/Create[^"]*)"/.exec(newLate)[1].replace(/&amp;/g, '&');
-    await p2.request.post(BASE + createAt, { headers: { 'Alder-Page': '/admin/post/new?findAuthor=zz-last' }, form: { slug: 'late', title: 'Late', body: 'b', published: 'True', author: zz } });
+    // the New page offers that user only once the search finds it
+    await p2.request.post(BASE + '/admin/post', { headers: { 'Alder-Page': '/admin/post/new?findAuthor=zz-last' }, form: { slug: 'late', title: 'Late', body: 'b', published: 'True', author: zz } });
     await p2.goto(BASE + '/admin/post?q=late');
     const lateHref = await p2.evaluate(() => [...document.querySelectorAll('a')].map((a) => a.getAttribute('href')).find((h) => /^\/admin\/post\/[^/]+$/.test(h) && !/new|bulk/.test(h)));
     await p2.goto(BASE + lateHref + '/edit');
@@ -384,7 +382,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       return { value: s.value, first: s.options[0].textContent, count: s.options.length };
     });
     check('edit past the 50 options: the row\'s own author is offered first and chosen', sel.value === zz && sel.first === 'zz-last@example.com' && sel.count === 51, sel);
-    await p2.click('form[action*="/Save"] button[type=submit]');
+    await p2.click('form:has(select[name=author]) al-button[type=submit]');
     await at2(lateHref);
     await sleep(300);
     const kept = await p2.evaluate(() => [...document.querySelectorAll('#fields dd')].map((d) => d.textContent));
@@ -395,7 +393,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await p2.goto(BASE + '/admin/user?q=zz-last');
     const zzEdit = (await p2.evaluate(() => [...document.querySelectorAll('a')].map((a) => a.getAttribute('href')).find((h) => /^\/admin\/user\/[^/]+$/.test(h) && !/new|bulk/.test(h)))) + '/edit';
     await p2.goto(BASE + zzEdit);
-    await p2.route('**/_/**', async (route) => { const resp = await route.fetch(); await sleep(400); await route.fulfill({ response: resp }).catch(() => {}); });
+    await p2.route('**/admin/user/*', async (route) => { if (route.request().method() === 'GET') return route.continue(); const resp = await route.fetch(); await sleep(400); await route.fulfill({ response: resp }).catch(() => {}); });
     await p2.fill('input[name=email]', 'admin@example.com');
     await p2.focus('input[name=email]');
     await p2.keyboard.press('Enter');
@@ -404,7 +402,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await p2.waitForFunction(() => !document.querySelector('form[inert]') && /with this email exists/.test(document.body.textContent), null, { timeout: 5000 }).catch(() => {});
     await sleep(200);
     const foc = await p2.evaluate(() => ({ name: document.activeElement && document.activeElement.getAttribute('name'), refused: /with this email exists/.test(document.body.textContent) }));
-    await p2.unroute('**/_/**');
+    await p2.unroute('**/admin/user/*');
     check('in flight: after a refused message the focus is back on the field', during.inert && foc.refused && foc.name === 'email', { during, foc });
 
     // the dialog's own Remove: it deletes the row from the Show page

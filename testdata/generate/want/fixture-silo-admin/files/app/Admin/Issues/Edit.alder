@@ -11,10 +11,8 @@ import User
 -- @admin end
 
 -- @admin begin routes
-route Edit           = GET  "/admin/orgs/{org}/issue/{id}/edit"                  { org: Org.OrgId, id: Issue.IssueId, findProject: Text = "", findAssignee: Text = "" } requires user, role Admin, silo org
-route Save           = PUT  "/admin/orgs/{org}/issue/{id}/edit/_/Save"           { org: Org.OrgId, id: Issue.IssueId } form IssueForm                                   requires user, role Admin, silo org
-route SearchProject  = POST "/admin/orgs/{org}/issue/{id}/edit/_/SearchProject"  { org: Org.OrgId, id: Issue.IssueId } form FindProject                                 requires user, role Admin, silo org
-route SearchAssignee = POST "/admin/orgs/{org}/issue/{id}/edit/_/SearchAssignee" { org: Org.OrgId, id: Issue.IssueId } form FindAssignee                                requires user, role Admin, silo org
+route Edit = GET "/admin/orgs/{org}/issue/{id}/edit" { org: Org.OrgId, id: Issue.IssueId, findProject: Text = "", findAssignee: Text = "" } requires user, role Admin, silo org
+route Save = PUT "/admin/orgs/{org}/issue/{id}"      { org: Org.OrgId, id: Issue.IssueId } form IssueForm                                   requires user, role Admin, silo org
 -- @admin end
 
 type Model = {
@@ -22,8 +20,10 @@ type Model = {
   -- @admin begin model
   projects: List Project,
   projectsTotal: Int,
+  findProject: Text,
   assignees: List User,
   assigneesTotal: Int,
+  findAssignee: Text,
   -- @admin end
 }
 
@@ -83,8 +83,10 @@ Edit.load params session = {
         row: row,
         projects: projects,
         projectsTotal: projectsTotal,
+        findProject: findProject,
         assignees: assignees,
         assigneesTotal: assigneesTotal,
+        findAssignee: findAssignee,
       }
     },
     Nothing -> Query.notFound,
@@ -102,32 +104,6 @@ form IssueForm = {
 -- @admin end
 
 -- @admin begin search
-form FindProject = { q: Text }
-
--- SearchProject answers the page again at the text.
-SearchProject.update : SearchProject.Params -> Session -> Task Response
-SearchProject.update params session =
-  Task.succeed (
-    Response.redirect (Edit {
-      org: session.org,
-      id: params.id,
-      findProject: Text.slice 0 200 params.form.q,
-    })
-  )
-
-form FindAssignee = { q: Text }
-
--- SearchAssignee answers the page again at the text.
-SearchAssignee.update : SearchAssignee.Params -> Session -> Task Response
-SearchAssignee.update params session =
-  Task.succeed (
-    Response.redirect (Edit {
-      org: session.org,
-      id: params.id,
-      findAssignee: Text.slice 0 200 params.form.q,
-    })
-  )
-
 -- @admin end
 
 -- Save writes the form over the row (a row deleted since is not found) and goes to its page.
@@ -159,15 +135,23 @@ Edit.view model session =
     <al-card>
       -- @admin begin finder
       {if model.projectsTotal > 200 then
-        <form submit={SearchProject { org: session.org, id: model.row.id }}>
-          <al-input field="q" label="Find project" />
+        <form method="get">
+          <al-input>
+            <label>
+              Find project <input type="search" name="findProject" value={model.findProject} />
+            </label>
+          </al-input>
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
         Html.none}
       {if model.assigneesTotal > 200 then
-        <form submit={SearchAssignee { org: session.org, id: model.row.id }}>
-          <al-input field="q" label="Find assignee" />
+        <form method="get">
+          <al-input>
+            <label>
+              Find assignee <input type="search" name="findAssignee" value={model.findAssignee} />
+            </label>
+          </al-input>
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
@@ -414,26 +398,17 @@ test "a long list of projects offers 50, and the search narrows it" = {
       id: issue1,
       findProject: "name-203",
     })
-  let r <- Test.submit (SearchProject { org: org, id: issue1 }) { q: "zz" }
-  let _ <- Test.login { user: Nothing, org: Nothing }
-  let visitor <- Test.submit (SearchProject { org: org, id: issue1 }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.projects,
       total: all.model.projectsTotal,
       found: Test.count "select[name=project] option" found.doc <= 3,
-      answer: r.answer,
-      visitor: visitor.answer,
+      input: Test.attr "value" "input[name=findProject]" found.doc,
     } == {
       shown: 51,
       total: 203,
       found: True,
-      answer: Redirected (Edit {
-        org: org,
-        id: issue1,
-        findProject: "zz",
-      }),
-      visitor: Redirected (Auth.Login.Login {}),
+      input: Just "name-203",
     }
   )
 }
@@ -565,26 +540,17 @@ test "a long list of users offers 50, and the search narrows it" = {
       id: issue1,
       findAssignee: "email-203@example.com",
     })
-  let r <- Test.submit (SearchAssignee { org: org, id: issue1 }) { q: "zz" }
-  let _ <- Test.login { user: Nothing, org: Nothing }
-  let visitor <- Test.submit (SearchAssignee { org: org, id: issue1 }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.assignees,
       total: all.model.assigneesTotal,
       found: Test.count "select[name=assignee] option" found.doc <= 3,
-      answer: r.answer,
-      visitor: visitor.answer,
+      input: Test.attr "value" "input[name=findAssignee]" found.doc,
     } == {
       shown: 51,
       total: 203,
       found: True,
-      answer: Redirected (Edit {
-        org: org,
-        id: issue1,
-        findAssignee: "zz",
-      }),
-      visitor: Redirected (Auth.Login.Login {}),
+      input: Just "email-203@example.com",
     }
   )
 }

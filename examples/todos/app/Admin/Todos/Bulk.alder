@@ -9,9 +9,9 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route Bulk        = GET  "/admin/todo/bulk"               { ids: List Todo.TodoId }              requires user, role Admin
-route BulkDelete  = POST "/admin/todo/bulk/_/BulkDelete"  { ids: List Todo.TodoId } form Confirm requires user, role Admin
-route BulkSetDone = POST "/admin/todo/bulk/_/BulkSetDone" { ids: List Todo.TodoId } form SetDone requires user, role Admin
+route Bulk        = GET    "/admin/todo/bulk"      { ids: List Todo.TodoId }              requires user, role Admin
+route BulkDelete  = DELETE "/admin/todo/bulk"      { ids: List Todo.TodoId } form Confirm requires user, role Admin
+route BulkSetDone = PUT    "/admin/todo/bulk/done" { ids: List Todo.TodoId } form SetDone requires user, role Admin
 -- @admin end
 
 -- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep

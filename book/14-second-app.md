@@ -1468,11 +1468,11 @@ a brand with a `where` rule, and a value its rule refuses is "is not valid" (a
 Ten tests were written after `alder test --mutate` (chapter 10, "Mutation
 testing") ran on the blog: before them, 17 of its 58 mutants survived; after, 3
 do, and those three cannot be killed (chapter 10 explains why). The generated
-admin, which came later, adds 290 mutants, and its own tests kill 279 of them
-(`examples/blog/README.md` says why each of the eleven others survives).
+admin, which came later, adds 278 mutants, and its own tests kill 271 of them
+(`examples/blog/README.md` says why each of the seven others survives).
 
 The route operators (alder#187: a route's `requires` and role, its `Response`
-answers, a `let _ <-` step) bring the whole blog to 376 mutants; the four tests
+answers, a `let _ <-` step) bring the whole blog to 364 mutants; the four tests
 above that send a write after the session changed, and the answer checked in
 "publishing and unpublishing through the page", were written for them.
 `Post`'s two and `Write.Edit`'s two are above. `Write`'s "the write page lists
@@ -1862,8 +1862,8 @@ route from a page opened before the membership was deleted (no `load` runs
 before a write, so its `Membership.memberOnly` step is the check).
 
 The generated admin brings 349 more (388 in all).
-`alder test --mutate examples/workspace` scores 0.956 (570 of 596 mutants
-killed); 25 of the 26 survivors are in the generated admin, the last is the
+`alder test --mutate examples/workspace` scores 0.969 (554 of 572 mutants
+killed); 17 of the 18 survivors are in the generated admin, the last is the
 `requires dropped` of `Orgs.Index`'s Open, an equivalent mutant, and
 `examples/workspace/README.md` says why each is not a gap.
 

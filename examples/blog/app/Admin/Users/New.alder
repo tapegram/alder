@@ -8,8 +8,8 @@ import Table.User
 -- @admin end
 
 -- @admin begin routes
-route New    = GET  "/admin/user/new"          { }               requires user, role Admin
-route Create = POST "/admin/user/new/_/Create" { } form UserForm requires user, role Admin
+route New    = GET  "/admin/user/new" { }               requires user, role Admin
+route Create = POST "/admin/user"     { } form UserForm requires user, role Admin
 -- @admin end
 
 type Model = {
