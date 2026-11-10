@@ -546,15 +546,14 @@ POST    /session                    Auth.Login.Submit                  app/Auth/
 GET     /                           Posts.Index.Index                  app/Posts/Index.alder:7
 POST    /search                     Posts.Index.Search                 app/Posts/Index.alder:10
 GET     /posts/{slug}               Posts.Show.Show                    app/Posts/Show.alder:9
-POST    /posts/{slug}               Posts.Show.AddComment              app/Posts/Show.alder:12
+POST    /posts/{slug}/comments      Posts.Show.AddComment              app/Posts/Show.alder:12
 …
 ```
 
 The first column is the route's method and the second its path, as the `route`
 line declares it: a write route's own path, not the path of the page that sends
-it. The comment form on `GET /posts/{slug}` posts to `POST /posts/{slug}`: the
-same path with another method, because a URL names the post and the method says
-what happens to it (chapter 6, "Paths name resources"). The third is the module and the route's name, the way the
+it. The comment form on `GET /posts/{slug}` posts to `POST /posts/{slug}/comments`: the
+post's comments are a resource of their own, and the method says what happens to it (chapter 6, "Paths name resources"). The third is the module and the route's name, the way the
 source writes them (`Posts.Show.AddComment` is the route `AddComment` of
 `Posts.Show`). The last column is the file (relative to the app directory) and
 line of the `route` line.

@@ -9,9 +9,9 @@ import Table.User
 -- The org's projects. `requires user, org`: a visitor is sent to log in, a user without an org
 -- to `choose org`'s page; here `session.org` is an Org.OrgId, and `Db.scoped Project` reads the
 -- org's own database.
-route Index  = GET    "/projects" { }                       requires user, org
-route Create = POST   "/projects" { } form NewProject       requires user, org
-route Remove = DELETE "/projects" { id: Project.ProjectId } requires user, org
+route Index  = GET    "/projects"      { }                       requires user, org
+route Create = POST   "/projects"      { } form NewProject       requires user, org
+route Remove = DELETE "/projects/{id}" { id: Project.ProjectId } requires user, org
 
 type Model = { org: Text, projects: List Project }
 

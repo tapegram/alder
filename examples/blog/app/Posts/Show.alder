@@ -6,10 +6,10 @@ import Table.Comment
 import Table.Post
 import Table.User
 
-route Show       = GET  "/posts/{slug}" { slug: Post.Slug }
+route Show       = GET  "/posts/{slug}"          { slug: Post.Slug }
 -- AddComment takes the page's slug from its path. No `load` runs before a write route, so its
 -- `update` finds the post again: a comment on a draft, or on a slug never used, is a 404.
-route AddComment = POST "/posts/{slug}" { slug: Post.Slug } form NewComment
+route AddComment = POST "/posts/{slug}/comments" { slug: Post.Slug } form NewComment
 
 type Model = {
   post: Post,

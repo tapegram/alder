@@ -25,7 +25,7 @@ the twenty of a site admin that `alder new admin` generated in
   (`POST /search`)
 
 - **`Posts.Show`**: `/posts/{slug}`: one post, its comments, a comment form
-  (`POST /posts/{slug}`)
+  (`POST /posts/{slug}/comments`)
 
 - **`Write`**: `/write`: an author's own posts, and a form for a new one
   (`POST /write`)
@@ -915,7 +915,7 @@ constructor `func Markdown()` (chapter 7 quotes its top, and the generated
 uses in the adapter's place (chapter 10, "Faking a capability").
 
 The comment form's route, `AddComment`, takes the post's slug from its
-path (`POST /posts/{slug}`) and decodes the form
+path (`POST /posts/{slug}/comments`) and decodes the form
 `NewComment`. No `load` runs before a write route, so its `update` finds
 the post again with `Post.bySlug` and refuses a comment on a draft, or on
 a slug never used, with `Task.notFound`; otherwise it inserts the comment
@@ -1597,7 +1597,7 @@ wrote (chapter 15, "The admin of a silo"):
 - **`Auth.Login`, `Layout`**: As in the blog; the login also puts the user's
   first org in the session
 
-- **`Orgs.Index`**: `/orgs`: the user's orgs, to open one (`POST /orgs/current`, since the org a
+- **`Orgs.Index`**: `/orgs`: the user's orgs, to open one (`PUT /orgs/current`, since the org a
   user has open is one thing, the current one), and a form for a new one
   (`POST /orgs`); `choose org`'s page
 
@@ -1755,7 +1755,7 @@ one is sent. Its two write routes are the two ways an org gets into a
 session:
 
 ```alder fragment
-route Open   = POST "/orgs/current" { org: Org.OrgId } requires user
+route Open   = PUT "/orgs/current" { org: Org.OrgId } requires user
 route Create = POST "/orgs"         { } form NewOrg    requires user
 
 Open.update : Open.Params -> Session -> Task Response

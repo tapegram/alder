@@ -1645,9 +1645,9 @@ that `requires org`: `Index` does not"). The workspace's projects page and
 the write routes beside it (`examples/workspace/app/Projects/Index.alder`):
 
 ```alder fragment
-route Index  = GET    "/projects" { }                       requires user, org
-route Create = POST   "/projects" { } form NewProject       requires user, org
-route Remove = DELETE "/projects" { id: Project.ProjectId } requires user, org
+route Index  = GET    "/projects"      { }                       requires user, org
+route Create = POST   "/projects"      { } form NewProject       requires user, org
+route Remove = DELETE "/projects/{id}" { id: Project.ProjectId } requires user, org
 ```
 
 A request is answered in this order:

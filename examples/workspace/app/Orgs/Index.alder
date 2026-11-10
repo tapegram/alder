@@ -10,7 +10,7 @@ import Table.User
 -- send a session without one back here). It lists the user's orgs, each a button that puts it in
 -- the session, and makes a new one.
 route Index  = GET  "/orgs"         { }                requires user
-route Open   = POST "/orgs/current" { org: Org.OrgId } requires user
+route Open   = PUT  "/orgs/current" { org: Org.OrgId } requires user
 route Create = POST "/orgs"         { } form NewOrg    requires user
 
 type Model = { orgs: List Org }

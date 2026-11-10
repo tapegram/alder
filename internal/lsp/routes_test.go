@@ -20,7 +20,7 @@ func TestRoutes_List(t *testing.T) {
 			r.URI == c.uri("app/Posts/Show.alder") && r.Range.Start == (Position{Line: 8, Character: 0}) {
 			get = true
 		}
-		if r.Method == "POST" && r.Path == "/posts/{slug}" && r.Module == "Posts.Show" && r.Name == "AddComment" &&
+		if r.Method == "POST" && r.Path == "/posts/{slug}/comments" && r.Module == "Posts.Show" && r.Name == "AddComment" &&
 			strings.HasSuffix(r.URI, "app/Posts/Show.alder") && r.Range.Start == (Position{Line: 11, Character: 0}) {
 			post = true
 		}
