@@ -604,7 +604,8 @@ and its tests check both: the page shows the row's fields, and a missing
 id is `PageMissing`.
 
 Now a button that deletes the reply. `alder new action` adds a **write
-route** to a route module, and a button that sends it:
+route** to a route module, and a button that sends it (`alder new msg`, its old
+name, still works as an alias until the next release):
 
 ```text command=guestbook
 $ alder new action Replies.Show Delete --method DELETE
