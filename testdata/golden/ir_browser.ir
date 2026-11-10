@@ -684,7 +684,7 @@
   (model Model)
   (load Auth.Login.Login.load)
   (view Auth.Login.Login.view))
-(route Auth.Login.Submit POST "/login"
+(route Auth.Login.Submit POST "/session"
   (params Submit.Params)
   (form Credentials)
   (update Auth.Login.Submit.update)

@@ -21,7 +21,7 @@ fake Password {
 }
 
 route Login  = GET  "/login"          { }
-route Submit = POST "/login" { } form Credentials
+route Submit = POST "/session" { } form Credentials
 
 type Model = { }
 

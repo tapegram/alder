@@ -67,7 +67,7 @@ func Auth__Login__Submit__update(p Auth__Login__Submit__Params, session App__Ses
 func Auth__Login__Login__view(model Auth__Login__Model, session App__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("h1", nil, html.Text("Log in")),
-		html.FormToRoute(rt.Route{Name: "Auth.Login.Submit", Method: "POST", Path: "/login"}, nil,
+		html.FormToRoute(rt.Route{Name: "Auth.Login.Submit", Method: "POST", Path: "/session"}, nil,
 			html.Input(html.Control{Kind: "errors", Form: "Auth.Login.Credentials"}),
 			html.Input(html.Control{Kind: "input", Form: "Auth.Login.Credentials", Name: "email", Type: "email", Label: "Email", Required: true}),
 			html.Input(html.Control{Kind: "errors", Form: "Auth.Login.Credentials", Name: "email"}),

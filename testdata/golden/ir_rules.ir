@@ -936,7 +936,7 @@
   (session Index.Session)
   (update Todos.Index.Remove.update)
   (needs-shown))
-(route Todos.Index.Duplicate POST "/todos/copy"
+(route Todos.Index.Duplicate POST "/todos"
   (params Duplicate.Params)
   (requires user)
   (session Index.Session)

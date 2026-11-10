@@ -79,7 +79,7 @@ func TestFill_ShortQualifier(t *testing.T) {
 const twoRoutes = `module Notes
 
 route Notes = GET  "/notes"         { }
-route Clear = POST "/notes" { }
+route Clear = DELETE "/notes" { }
 route Pin   = POST "/notes/pin" { }
 
 Notes.load : Notes.Params -> Session -> Query Int

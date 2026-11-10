@@ -176,20 +176,20 @@ func decode__Auth__Login__Credentials(v url.Values) (r Auth__Login__Credentials,
 	return r, errs
 }
 
-// Route__Auth__Login__Submit serves route Auth.Login.Submit, POST /login: decode the parameters
+// Route__Auth__Login__Submit serves route Auth.Login.Submit, POST /session: decode the parameters
 // (404 when they do not); decode form Credentials from the body (when it does not: 422, the page
 // the browser is on rendered again with the submitted values, no Text.Secret field, and the errors,
 // without calling update); render the page the browser is on before the update (refresh and invalid
 // are diffed against it); run the update and answer its Response (a failed Task: 500, 404 for
 // Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Auth__Login__Submit() web.Route {
-	return web.Route{Method: "POST", Pattern: "/login", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/session", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Auth__Login__Submit__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
 		session := rq.Env.Session.(App__Session)
-		key := rt.RouteKey(rt.Route{Name: "Auth.Login.Submit", Method: "POST", Path: "/login"})
+		key := rt.RouteKey(rt.Route{Name: "Auth.Login.Submit", Method: "POST", Path: "/session"})
 		values := route__values(rq.Form, "password")
 		form, errs := decode__Auth__Login__Credentials(rq.Form)
 		if errs != nil {

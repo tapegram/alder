@@ -8,7 +8,7 @@ route Add       = POST "/"       { } form NewTodo    requires user
 route Toggle    = PUT "/todos/{id}/done"    { id: Todo.TodoId } requires user
 route Rename    = PATCH "/todos/{id}"    { id: Todo.TodoId } requires user
 route Remove    = DELETE "/todos/{id}"    { id: Todo.TodoId } requires user
-route Duplicate = POST "/todos/copy" { id: Todo.TodoId } requires user
+route Duplicate = POST "/todos" { id: Todo.TodoId } requires user
 
 type Model = { todos: List Todo, open: Int }
 

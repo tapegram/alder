@@ -4,7 +4,7 @@ import Todo
 import User
 
 route New = GET  "/new/{id}"       { id: Todo.TodoId }
-route Add = POST "/new/{id}" { id: Todo.TodoId } form NewTodo
+route Add = POST "/todos" { id: Todo.TodoId } form NewTodo
 
 type Model = { id: Todo.TodoId }
 

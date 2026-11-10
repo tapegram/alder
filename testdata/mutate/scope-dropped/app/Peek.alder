@@ -3,7 +3,7 @@ module Peek
 import Item
 
 route Peek   = GET  "/peek/{id}"          { id: Item.ItemId } requires user
-route Rename = POST "/peek/{id}" { id: Item.ItemId } requires user
+route Rename = PATCH "/peek/{id}" { id: Item.ItemId } requires user
 
 type Model = { item: Item }
 

@@ -69,9 +69,9 @@ imports, and the standard library signatures the request includes. Nothing else 
   [requires …]`, methods `GET`, `POST`, `PUT`, `PATCH`, `DELETE`:
 
   ```
-  route Index  = GET   "/todos"             { filter: Todo.Filter = All } requires user
-  route Toggle = PATCH "/todos/{id}/toggle" { id: Todo.TodoId }           requires user
-  route Create = POST  "/todos"              { } form NewTodo              requires user
+  route Index  = GET   "/todos"      { filter: Todo.Filter = All } requires user
+  route Toggle = PATCH "/todos/{id}" { id: Todo.TodoId }           requires user
+  route Create = POST  "/todos"      { } form NewTodo              requires user
   ```
 
 - Every declaration of a route is qualified by its name. A GET route has
