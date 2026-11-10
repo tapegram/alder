@@ -41,7 +41,7 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 			return runSpec(s, args[1:], specUsage[s.ID], stdout, stderr)
 		}
 	}
-	if len(args) > 0 && args[0] == "page" { // removed in #160: a route is what a page was
+	if len(args) > 1 && args[0] == "page" { // removed in #160: a route is what a page was (one word is an app name)
 		fmt.Fprintln(stderr, "alder new: `alder new page` is gone: a page is a route now; use `alder new route [<Module>] <path>`")
 		return 2
 	}

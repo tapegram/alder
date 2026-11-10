@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"io"
+	"strings"
 
 	"alder/internal/generate"
 )
@@ -16,6 +18,15 @@ const removeUsage = "usage: alder remove route <Route module> | alder remove tab
 func runGroup(group, usage string, args []string, stdout, stderr io.Writer) int {
 	s, rest := generate.Select(group, args, generate.Specs())
 	if s == nil {
+		for _, a := range args {
+			if strings.HasPrefix(a, "-") {
+				continue
+			}
+			if a == "page" { // removed in #160: a route is what a page was
+				fmt.Fprintf(stderr, "alder %s: `alder %s page` is gone: a page is a route now; use `alder %s route …`\n", group, group, group)
+			}
+			break
+		}
 		return genUsage(stderr, usage, nil)
 	}
 	return runSpec(s, rest, usage, stdout, stderr)

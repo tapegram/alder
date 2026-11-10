@@ -565,10 +565,7 @@ func TestGenerate_Refusals(t *testing.T) {
 	if code, _, errs := runNew(t, filepath.Join(base, "route")); code != 1 || errs != "alder new: `route` names a generator (`alder new route …`), so it cannot name an app: choose another name\n" {
 		t.Errorf("an app named route: exit %d, %q", code, errs)
 	}
-	// `new page` was removed (#160): it points at `new route`, and creates no app
-	if code, _, errs := runNew(t, "page"); code != 2 || errs != "alder new: `alder new page` is gone: a page is a route now; use `alder new route [<Module>] <path>`\n" {
-		t.Errorf("alder new page: exit %d, %q", code, errs)
-	}
+	// `new page About /about` was removed (#160): it points at `new route`, and creates no app
 	if code, _, errs := runNew(t, "page", "About", "/about"); code != 2 || !strings.Contains(errs, "use `alder new route") {
 		t.Errorf("alder new page About /about: exit %d, %q", code, errs)
 	}
@@ -1309,8 +1306,8 @@ func TestGenerate_PageCommandsRemoved(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"edit", "page", "About", "add-param", `q:Text=""`}, editUsage + "\n"},
-		{[]string{"remove", "page", "About"}, removeUsage + "\n"},
+		{[]string{"edit", "page", "About", "add-param", `q:Text=""`}, "alder edit: `alder edit page` is gone: a page is a route now; use `alder edit route …`\n" + editUsage + "\n"},
+		{[]string{"remove", "page", "About"}, "alder remove: `alder remove page` is gone: a page is a route now; use `alder remove route …`\n" + removeUsage + "\n"},
 	} {
 		if code, out, errs := alderIn(t, dir, "", c.args...); code != 2 || errs != c.want || out != "" {
 			t.Errorf("alder %s: exit %d, stderr %q, want %q (stdout %q)", strings.Join(c.args, " "), code, errs, c.want, out)
@@ -1484,5 +1481,18 @@ func TestAuth_LogoutIsDelete(t *testing.T) {
 	}
 	if after := appFiles(t, clash); len(after) != len(before) {
 		t.Errorf("a refused `new auth` wrote files")
+	}
+}
+
+// TestGenerate_NewPageNamesAnApp: `alder new page` with no more words is an app named page; only
+// `new page <more>` is the removed generator (#198).
+func TestGenerate_NewPageNamesAnApp(t *testing.T) {
+	dir := outsideModule(t)
+	t.Chdir(dir)
+	if code, _, errs := runNew(t, "page"); code != 0 {
+		t.Fatalf("alder new page: exit %d, %q", code, errs)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "page", "app", "App.alder")); err != nil {
+		t.Errorf("alder new page wrote no app: %v", err)
 	}
 }
