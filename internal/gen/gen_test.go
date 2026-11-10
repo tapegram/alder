@@ -2686,6 +2686,73 @@ func TestRows(t *testing.T) {
 `)
 }
 
+// A write route's path parameter, its query parameter and its form's field never mix, even
+// under one name: the path parameter decodes from the path, the others from the query, the form
+// from the body — so a path id, a query ref and a form field id are three values. A List query
+// parameter is one key per element and round-trips. (Restores TestDecode_ParamsAndFormDontMix
+// on routes, #202.)
+func TestGen_RouteParamsQueryFormDontMix(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"App.alder": appModule,
+		"M.alder": `module M
+
+route Save = PATCH "/m/{id}" { id: Text, ref: Text, ids: List Int } form F
+route Done = GET   "/done"   { a: Text, b: Text }
+
+form F = { id: Text, title: Text }
+
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session = Task.succeed (Response.redirect (Done {
+  a: p.id ++ "/" ++ p.ref ++ "/" ++ p.form.id ++ "/" ++ p.form.title,
+  b: Text.join "," (List.map Text.fromInt p.ids),
+}))
+
+Done.load : Done.Params -> Session -> Query Text
+Done.load p session = Query.succeed p.a
+
+Done.view : Text -> Session -> Html
+Done.view a session = <p>{a}</p>
+`,
+	})
+	runGo(t, files, `package app
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestMix(t *testing.T) {
+	h, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	do := func(method, target, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, target, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	// path id, query ref and form id are three values; the List query parameter round-trips
+	for _, c := range []struct{ method, body string }{
+		{"PATCH", "id=f1&title=x"},
+		{"POST", "_method=PATCH&id=f1&title=x"}, // a <form>'s override
+	} {
+		w := do(c.method, "/m/p0?ref=m1&ids=1&ids=2", c.body)
+		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/done?a=p0%2Fm1%2Ff1%2Fx&b=1%2C2" {
+			t.Fatalf("%s: %d %q %s", c.method, w.Code, w.Header().Get("Location"), w.Body.String())
+		}
+	}
+	// a form field of the path parameter's name does not stand in for the path's
+	if w := do("PATCH", "/m/p%2F0?ref=m1", "id=f1&title=x"); w.Header().Get("Location") != "/done?a=p%2F0%2Fm1%2Ff1%2Fx&b=" {
+		t.Fatalf("escaped path id: %d %q", w.Code, w.Header().Get("Location"))
+	}
+}
+`)
+}
+
 // The re-review's fresh1 probe: a redirect to `Url.external` of user input cannot run script
 // under Datastar, and an `href={Url.external …}` of it is "#".
 func TestGen_UrlExternalIsSanitized(t *testing.T) {
