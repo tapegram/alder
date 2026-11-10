@@ -1,2 +1,0 @@
-13: access: `Ping` no longer runs `Start.load` first (the page's message did): repeat in `Ping.update` any access check it makes (#160)
-17: access: `Pong` no longer runs `Start.load` first (the page's message did): repeat in `Pong.update` any access check it makes (#160)

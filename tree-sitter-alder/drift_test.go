@@ -150,8 +150,8 @@ func goDecls(m *syntax.Module) (imports, decls []decl) {
 }
 
 // legacy reports whether decls hold a page or msg declaration. The Go parser still parses them
-// (alder fix --routes and E0046 need that), the grammar no longer does, so a source that has one
-// (testdata/fix, internal/routefix/testdata, the E0046 corpus cases) is left out of the sources.
+// (E0046 needs that), the grammar no longer does, so a source that has one
+// (the E0046 corpus cases) is left out of the sources.
 func legacy(decls []decl) bool {
 	for _, d := range decls {
 		if d.Kind == "page" || d.Kind == "msg" {

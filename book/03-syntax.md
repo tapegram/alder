@@ -696,8 +696,8 @@ module import type brand where route page msg form table capability fake
 session login test let match if then else for in requires
 ```
 
-(`page` and `msg` are the old form of a route, E0046; `alder fix --routes`
-rewrites it, chapter 6.)
+(`page` and `msg` are the old form of a route, E0046; rewrite it as
+routes, chapter 6.)
 
 The declaration-head words (`module import type route page msg form table
 capability fake session login test`) are reserved only at the start of a line

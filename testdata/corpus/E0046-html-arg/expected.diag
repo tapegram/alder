@@ -1,3 +1,3 @@
-app/Layout.alder:4:16 E0046 `Html` takes no type argument now; run `alder fix --routes` to rewrite this module
-app/Layout.alder:4:26 E0046 `Html` takes no type argument now; run `alder fix --routes` to rewrite this module
-app/Layout.alder:7:9 E0046 `Html` takes no type argument now; run `alder fix --routes` to rewrite this module
+app/Layout.alder:4:16 E0046 `Html` takes no type argument now; see the book's chapter 6, Routes, for the route syntax that replaced it
+app/Layout.alder:4:26 E0046 `Html` takes no type argument now; see the book's chapter 6, Routes, for the route syntax that replaced it
+app/Layout.alder:7:9 E0046 `Html` takes no type argument now; see the book's chapter 6, Routes, for the route syntax that replaced it

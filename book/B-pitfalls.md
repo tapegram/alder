@@ -122,5 +122,5 @@ unless the item says what happens instead.
     "Rules", shows, rather than checking in `load` and trusting the id.
 
 22. The old `page` and `msg` declarations, `Nav`, and an unqualified `load`,
-    `view` or `update` are E0046. `alder fix --routes` rewrites such a module
-    into routes.
+    `view` or `update` are E0046. Rewrite such a module as routes by hand
+    (chapter 6).

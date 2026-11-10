@@ -24,7 +24,7 @@ type Program struct {
 	routes map[string]map[string]*syntax.RouteDecl
 	// oldPages are the modules that still declare a `page` (E0046, the checker): a reference to
 	// one from another module resolves (RefPage) instead of adding an error of its own, so an app
-	// part-way through `alder fix --routes` reports only its old syntax.
+	// part-way through a rewrite by hand reports only its old syntax.
 	oldPages map[string]bool
 	// oldAppMsgs are App's old `msg` declarations (E0046), quiet in the same way: `App.Logout`
 	// resolves (RefPage) while App is still on messages.

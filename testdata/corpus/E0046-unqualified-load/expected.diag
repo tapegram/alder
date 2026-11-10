@@ -1,2 +1,2 @@
-app/Home.alder:6:1 E0046 an unqualified `load` is a page's; a route's is written `Name.load` for its `route Name`; run `alder fix --routes` to rewrite this module
-app/Home.alder:9:1 E0046 an unqualified `view` is a page's; a route's is written `Name.view` for its `route Name`; run `alder fix --routes` to rewrite this module
+app/Home.alder:6:1 E0046 an unqualified `load` is a page's; a route's is written `Name.load` for its `route Name`; see the book's chapter 6, Routes, for the route syntax that replaced it
+app/Home.alder:9:1 E0046 an unqualified `view` is a page's; a route's is written `Name.view` for its `route Name`; see the book's chapter 6, Routes, for the route syntax that replaced it

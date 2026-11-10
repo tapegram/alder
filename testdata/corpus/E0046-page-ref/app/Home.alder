@@ -1,6 +1,6 @@
 module Home
 
--- the old syntax: a page module, which `alder fix --routes` turns into `route Home = GET "/" { }`
+-- the old syntax: a page module
 page "/" { }
 
 type Model = { n: Int }

@@ -97,8 +97,8 @@ Every URL of an app is a `route` with an HTTP method. A `GET` route has a
 URL, the HTML, the session or the database (chapter 6). The three examples
 are written that way.
 
-> **Old form.** The old `page` and `msg` form is E0046, and
-> `alder fix --routes` rewrites an app from it.
+> **Old form.** The old `page` and `msg` form is E0046; rewrite it by hand as
+> routes (chapter 6).
 
 > **Not yet:** `Response.status`, `header`, `json`, `file`, `remove`,
 > `patch` and `stream` are not built yet.

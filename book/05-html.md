@@ -6,7 +6,7 @@ the markup as a value, so the type of the markup does not have to say it.
 
 `Html` is the whole type, in a route module and in any other (`Layout`, `App`,
 a shared component). It takes no type argument: `Html Msg`, `Html a` and
-`Html Never` are E0046, and `alder fix --routes` rewrites them to `Html`.
+`Html Never` are E0046; write `Html`.
 
 ## Elements
 

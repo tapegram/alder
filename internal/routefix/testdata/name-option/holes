@@ -1,1 +1,0 @@
-12: access: `Index` no longer runs `Feed.load` first (the page's message did): repeat in `Index.update` any access check it makes (#160)

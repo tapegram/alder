@@ -1,1 +1,0 @@
-11: access: `Clear` no longer runs `Index.load` first (the page's message did): repeat in `Clear.update` any access check it makes (#160)

@@ -1299,7 +1299,7 @@ func TestTest_MutateCrashAndHang(t *testing.T) {
 }
 
 // TestTest_StepURLAndStatus (#160, plan call 15): every step's result of a test (here in
-// examples/todos, migrated from a page by alder fix --routes) carries the URL the browser holds after it and the code of its last response. Test.refresh
+// examples/todos, migrated from a page) carries the URL the browser holds after it and the code of its last response. Test.refresh
 // (Task 4.3) loads the held page again and passes when its body is the one held (Refreshed, the
 // URL kept); before any page it fails the step.
 func TestTest_StepURLAndStatus(t *testing.T) {

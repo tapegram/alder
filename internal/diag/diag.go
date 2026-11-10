@@ -95,7 +95,7 @@ type Diagnostic struct {
 }
 
 // RemovedHint ends every E0046 (RemovedSyntax) message.
-const RemovedHint = "run `alder fix --routes` to rewrite this module"
+const RemovedHint = "see the book's chapter 6, Routes, for the route syntax that replaced it"
 
 // Retired codes (never reuse): E0016 (two pages on one path), E0034 (a message in a file page),
 // E0041 and W0011 (a constructor hiding a page), E0302 (an `update` missing a message's arm),

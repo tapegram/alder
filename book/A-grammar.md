@@ -112,7 +112,7 @@ then a route of that module, then a member: `Todos.Index.Index {}` is the module
 ## The old form
 
 `page "…" { … }` and `msg M { … }` are the old form of a route and its writes.
-The checker refuses them (E0046) and `alder fix --routes` rewrites them. They
+The checker refuses them (E0046); rewrite them as routes (chapter 6). They
 are not part of the grammar above.
 
 ## Lexical rules

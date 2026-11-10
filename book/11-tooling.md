@@ -29,8 +29,7 @@
   them, so that an app can be built from the command line alone (chapter 15).
 
 - With routes (chapter 6) the generators write `route` lines (`alder new
-  route`), and `alder fix --routes` rewrites an app written with `page` and
-  `msg` (below, "`alder fix`").
+  route`).
 
 - `alder fmt` formats the app's files (below, "Formatting").
 
@@ -124,7 +123,6 @@ usage: alder <command> [arguments]
   test      run the app's tests
   bench     measure each browser step of the app's tests
   migrate   write the migration for a schema change
-  fix       rewrite an app written with page and msg into routes
   repl      an interactive session in the app (deprecated: use alder scratch)
   new       create an app, or generate code in one
   edit      change a table, route, declaration, auth or the session
@@ -579,109 +577,6 @@ are 1-based. `kind` is always `"route"`; an editor plugin written for the
 the request `alder/routes` (below, "Editor support"), with a file URI and a
 0-based range in place of `file`, `line` and `col`; alder.nvim uses it for
 its route picker.
-
-### `alder fix`
-
-`alder fix --routes [--name N] [--dry-run] [--dir <project dir>] [file…]`
-rewrites an app written with `page` and `msg` into routes (chapter 6).
-Without files it rewrites every module of the app in `--dir` (the current
-directory by default); with files it rewrites only those, though it still
-reads the rest of the app so that references resolve. Only the app's
-`.alder` files change, and the rewrite keeps comments and layout outside
-the code it rewrites. It runs on an app that checks; one that does not is
-refused first (see exit 2, below).
-
-What it writes, for a module with `page "/x" { … }` and its `msg`s:
-
-- The page becomes the GET route named after the module's last segment
-  (`Todos.Index` gets `route Index = GET "/" { … }`); `--name N` names the
-  GET route `N` in every module the run rewrites, which is the way out
-  when a module already uses its last segment for something else (exit 2,
-  below). `load` and `view` become `Index.load` and `Index.view` (chapter 6,
-  "Qualified declarations"), and `Html Msg` becomes `Html`.
-- Each `msg M` becomes a write route `M`, `POST "<the page's path>/_/M"`
-  (`/_/M` for the page `/`), with the page's path parameters first and
-  then the message's own, and `form F` when the message had one. Its arm
-  of `update` becomes `M.update`. `Rerender` becomes `Response.refresh`,
-  `Redirect p` `Response.redirect p`, `Reject t` `Response.invalid t`,
-  and `Notice.with t n` becomes `n |> Response.toast t` (likewise
-  `success`, `warning` and `error`). The messages of `App` become routes
-  `POST "/_/M"` in `App`.
-- A reference to another page, `Todos.Show {…}`, becomes
-  `Todos.Show.Show {…}`: a route value keeps its full path, and the
-  module's route takes the module's last segment (chapter 6, "Names").
-  Tests are rewritten with the code: `update (Toggle p) model session`
-  becomes `Toggle.update p session`, `Test.submit F` names the route that
-  posts the form, `Rerendered` becomes `Refreshed`.
-
-Three things the rewrite cannot settle, and says so:
-
-- **A typed hole.** An arm of `update` that read the page's `model` has no
-  model now (a write route is not given one). Each such read becomes a hole
-  `?model`, the arm gets the comment `-- the page's model is gone: render,
-  refresh or query (#160)`, and a message route that gained a path parameter
-  gets a hole for it where the module names it. Fill them (`render` for a
-  one-row change, `refresh` otherwise), then run `alder check`.
-- **An access note.** A write route from a page with a `load` gets a
-  comment above its `update`: the route does not run the page's `load`
-  first, which may have checked access (a 404 for another user's row, a
-  role re-read), so repeat the check in the `update` and delete the
-  comment.
-- **A page that `alder new admin` wrote** (it has `@admin` regions) is
-  left on pages: only its `load` gates its writes, which a route would not
-  run, and its route lines would fall outside its regions. Regenerate the
-  admin instead: move `app/Admin` aside, run `alder new admin`, which
-  writes routes, and carry your own changes over.
-
-A run on the to-do app as it was before routes (its `app/Admin` left
-out), with the notes and holes it prints:
-
-```text
-$ alder fix --routes
-rewrote app/App.alder
-rewrote app/Auth/Login.alder
-rewrote app/Todos/Index.alder
-rewrote app/Todos/Show.alder
-app/Auth/Login.alder:33: access: `Submit` no longer runs `Login.load` first (the page's message did): repeat in `Submit.update` any access check it makes (#160)
-app/Todos/Index.alder:26: access: `Submit` no longer runs `Index.load` first (the page's message did): repeat in `Submit.update` any access check it makes (#160)
-app/Todos/Index.alder:30: hole: `model.filter`: the page's model is gone: render, refresh or query, checking access as load did (#160)
-app/Todos/Index.alder:36: access: `Toggle` no longer runs `Index.load` first (the page's message did): repeat in `Toggle.update` any access check it makes (#160)
-…
-alder fix: 7 typed holes left: fill them (render for a one-row change, refresh otherwise), then run alder check
-alder fix: 6 write routes no longer run their page's load first: repeat in each update any access check its load made (a 404 for another user's row, a role re-read), then delete the comment above it
-$ echo $?
-1
-```
-
-(`…` stands for the lines for `Todos.Show`.) One line is printed per file
-rewritten (`would rewrite app/App.alder` and its unified diff with
-`--dry-run`, which writes nothing), one per hole (`file:line: hole: …`) and
-one per access note (`file:line: access: …`); the summaries go to
-standard error. The exit status says whether anything is left to do:
-
-- **0**: the app is on routes and nothing is left: no hole, no note, no admin page, no error in the rewritten app
-
-- **1**: something is left to do:
-  - typed holes (from this run or an earlier one),
-  - access notes (printed by the run that wrote the route; a later run does not repeat them),
-  - errors in the rewritten app,
-  - or an admin page left on pages.
-
-  A second run says `nothing to rewrite: no page or msg left`, lists the holes still unfilled and exits 1 until none is
-
-- **2**: refused, with nothing written:
-  - a usage error;
-  - the app does not check (`alder check` fails; fix its errors first, then run `alder fix --routes` again);
-  - the route's name is taken in a module (choose another with `--name`);
-  - a message has a field named like one of its page's path parameters, which its route would put in the path parameter's place (rename the field);
-  - or a file could not be read or written
-
-Old code that uses the words `page`, `msg` and `Nav` is E0046 wherever it
-is, but the rewrite can be done one module at a time: name the files.
-Naming files rewrites them only when the app still checks with just them
-rewritten; a reference from another module to a page that became a route is
-a reference to a route now, and the run that names too few files says so and
-writes nothing.
 
 ### `alder build`
 
@@ -2701,9 +2596,10 @@ type, a type argument on `Html`, and an unqualified `load`, `view` or
   `Task Response`.
 - `Rerender` is `Response.refresh`, `Redirect r` is `Response.redirect r`,
   `Reject t` is `Response.invalid t`, and `Html Msg` is `Html`.
-- Every message ends with "run `alder fix --routes` to rewrite this module".
+- Every message ends with "see the book's chapter 6, Routes, for the route syntax
+  that replaced it".
 
-**Fix offered:** `alder fix --routes`
+There is no automatic fix: rewrite the module by hand, using chapter 6.
 
 #### E0019 — `migrations/` is behind the app or disagrees with itself
 

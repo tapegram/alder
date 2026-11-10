@@ -2,7 +2,7 @@ module App
 
 session { user: Maybe Text }
 
--- the old syntax: an app-level message, which `alder fix --routes` turns into a route
+-- the old syntax: an app-level message
 msg Logout
 
 error : Error -> Html

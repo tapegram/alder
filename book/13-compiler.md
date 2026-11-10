@@ -118,7 +118,7 @@ lower-case name.)
 
 The **column-1 rule** settles this. Words that start a declaration (`module`,
 `import`, `type`, `route`, `form`, `table`, `capability`, `fake`, `session`,
-`login`, `test`; `page` and `msg` too, which only `alder fix --routes` still
+`login`, `test`; `page` and `msg` too, which only the E0046 check still
 reads) are
 keywords only when they are the first thing on a line. Anywhere else they are
 ordinary names.

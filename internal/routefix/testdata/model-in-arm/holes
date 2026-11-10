@@ -1,8 +1,0 @@
-26: access: `Save` no longer runs `Show.load` first (the page's message did): repeat in `Save.update` any access check it makes (#160)
-29: `model.todo.id`: the page's model is gone: render, refresh or query, checking access as load did (#160)
-34: access: `Delete` no longer runs `Show.load` first (the page's message did): repeat in `Delete.update` any access check it makes (#160)
-37: `model.todo.id`: the page's model is gone: render, refresh or query, checking access as load did (#160)
-46: `Save` takes the page's path parameter `id`: pass it from the model (#160)
-53: `Delete` takes the page's path parameter `id`: pass it from the model (#160)
-88: `Save` takes the page's path parameter `id`: pass the one the test means (#160)
-119: `Delete` takes the page's path parameter `id`: pass the one the test means (#160)

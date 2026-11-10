@@ -80,8 +80,6 @@ func main() {
 		os.Exit(runBenchTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "migrate":
 		os.Exit(runMigrateTo(os.Args[2:], os.Stdout, os.Stderr))
-	case "fix":
-		os.Exit(runFixTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "repl":
 		// Ctrl-C does not stop the REPL: each one is a value on interrupt (it stops a running
 		// evaluation, whose program runs out of the terminal's reach in a process group of its

@@ -246,8 +246,8 @@ helper that takes it), it is `R.Session`.
 
 A module with one GET route is a page file without a `Model` slot, which is
 most files. A module with a `route` line is a route module. The old form, a
-module with a `page` line and its messages, is E0046, and `alder fix --routes`
-rewrites it as a route module.
+module with a `page` line and its messages, is E0046: write the module as a route
+module by hand, as this chapter shows.
 
 ## Names
 
@@ -2084,7 +2084,7 @@ per kind of toast:
 > **Old names.** `Notice.*` is deprecated (W0012). `Notice.with`,
 > `Notice.success`, `Notice.warning` and `Notice.error` are the old names of
 > `Response.toast`, `Response.success`, `Response.warning` and
-> `Response.error`; `alder fix --routes` rewrites them.
+> `Response.error`; write the new names by hand.
 
 ### Notices without JavaScript
 

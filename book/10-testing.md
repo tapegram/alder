@@ -1334,8 +1334,7 @@ type Answer = Shown
 element, the second the regions that changed (section 10).
 
 `Rerendered`, the answer of the old page-and-message form's re-render,
-is gone with that form. A test that names it is E0002; `alder fix
---routes` rewrites it to `Refreshed` in a module written the old way.
+is gone with that form. A test that names it is E0002; write `Refreshed`.
 
 A redirect to another site (`Url.external`, chapter 6) is reported,
 `Redirected` with that address, but not followed: the browser keeps the

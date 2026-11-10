@@ -87,8 +87,8 @@ became the `Response` builders (W0012), and the type `Page` became `Route`.
 5. `alder test` checks that every region the server patched equals a fresh
    render of that region, on every click and submit.
 
-6. Existing apps move mechanically: `alder fix --routes` rewrites a page
-   module as a route module.
+6. Existing apps move by hand: the old `page` and `msg` forms are E0046, and
+   the error points at chapter 6 for the route that replaces each.
 
 7. `Response` is where later work lands (status codes, headers, several
    patches, JSON, files, streams) without a language change.

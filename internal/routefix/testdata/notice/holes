@@ -1,6 +1,0 @@
-15: access: `Save` no longer runs `Edit.load` first (the page's message did): repeat in `Save.update` any access check it makes (#160)
-23: access: `Archive` no longer runs `Edit.load` first (the page's message did): repeat in `Archive.update` any access check it makes (#160)
-27: access: `Ping` no longer runs `Edit.load` first (the page's message did): repeat in `Ping.update` any access check it makes (#160)
-34: `Save` takes the page's path parameter `id`: pass it from the model (#160)
-38: `Archive` takes the page's path parameter `id`: pass it from the model (#160)
-39: `Ping` takes the page's path parameter `id`: pass it from the model (#160)
