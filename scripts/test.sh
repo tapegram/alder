@@ -31,9 +31,16 @@ res() { # res NAME: sets code and secs from NAME's .res; a part that never finis
 
 names=()
 for k in $(seq 0 $((n - 1))); do
-  part "cmd-alder-$k" .github/shard.sh "$n" "$k" ./cmd/alder "$@" &
+  part "cmd-alder-$k" .github/shard.sh "$n" "$k" ./cmd/alder -skip '^TestRepl_' "$@" &
   names+=("cmd-alder-$k")
 done
+# The REPL tests run on their own, once the cmd/alder shards are done, so they do not compete with
+# them for CPU (they are timing-sensitive: signals, interrupts, orphans).
+{
+  for name in "${names[@]}"; do until [ -f "$logs/$name.res" ]; do sleep 1; done; done
+  part repl go test ./cmd/alder -count=1 -timeout 10m -run '^TestRepl_' "$@"
+} &
+names+=(repl)
 part rest go test $(go list ./... | grep -v '^alder/cmd/alder$') -count=1 -timeout 30m "$@" &
 names+=(rest)
 wait
