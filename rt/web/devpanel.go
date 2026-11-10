@@ -523,7 +523,8 @@ type devMapView struct {
 }
 
 // devMapView collects the running app's map: the generator's (Options.DevMap), the capabilities
-// (adapter or fake wired), the migrations applied, the routes and the build id.
+// (adapter or fake wired), the migrations applied and the build id. The routes are the generator's
+// (in the map), not the router's.
 func (rt *router) devMapView() devMapView {
 	data := devMapView{Build: BuildID(), Migrations: rt.opts.Migrations, Caps: []devCap{}}
 	if data.Migrations == nil {

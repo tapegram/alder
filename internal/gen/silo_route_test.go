@@ -8,12 +8,12 @@ import (
 	"testing"
 )
 
-// An App write route in an app with silos (the `new msg App` shape, 3665907b): App is no
-// route module with an `org` in scope, so its update can only write the shared store (E0026 refuses
-// a silo table there, see the E0026-silo-unscoped-outside corpus). The generated route still
-// enters a store, the shared one (`db.Enter(rq.Env, "")`, routes.go), and the write lands in the
-// shared database, not in a silo's. The app is silo-routes-ok with `route Note` added to App.
-func TestGen_AppWriteRouteEntersSilo(t *testing.T) {
+// An App write route in an app with silos (the shape `alder new action App <Name>` writes).
+// App has no `org` in scope, so E0026 refuses any silo table in its update (corpus
+// E0026-silo-unscoped-outside): it can only write the shared store. The generated route still
+// enters a store, the shared one (`db.Enter(rq.Env, "")`, routes.go), and the write lands in
+// the shared database, not in a silo's. The app is silo-routes-ok with `route Note` added to App.
+func TestGen_AppWriteRouteEntersSharedStore(t *testing.T) {
 	src := "../../testdata/corpus/silo-routes-ok/app"
 	dir := t.TempDir()
 	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
@@ -75,7 +75,7 @@ import (
 	"alder/rt/web"
 )
 
-func TestAppWriteRouteSilo(t *testing.T) {
+func TestAppWriteRouteSharedStore(t *testing.T) {
 	secret := []byte("0123456789abcdef0123456789abcdef")
 	path := filepath.Join(t.TempDir(), "app.db")
 	h, err := Serve(Caps{}, Options{DB: path, Secret: secret})

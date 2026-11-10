@@ -6231,11 +6231,13 @@ is one `html/template` over two things:
 
 - `Options.DevMap`, a compact JSON the generator wrote into `Web()`
   (`internal/gen/devmap.go`: the tables with columns and attributes, the
-  capability names, the session's fields and, for each GET route, its path,
-  `requires`, roles and parameters);
+  capability names, the session's fields and, for each route, GET or write,
+  its method, path, `requires`, roles and parameters);
 - what only the running server knows (the build id, the migrations the
-  database has, how each capability is wired, and the routes: the method
-  and pattern of every route the router holds).
+  database has and how each capability is wired).
+
+The page lists the routes the generator mapped (GET and write), once, from
+`DevMap`; it does not list the router's own.
 
 Neither is served without `ALDER_DEV=1`: `/_dev` is a 404 and no page
 carries the panel or its script (a test builds an example, runs it without

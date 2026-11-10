@@ -14,8 +14,8 @@ import (
 )
 
 // devMap is the app's map for the dev server's /_dev page, as compact JSON: the routes (each GET
-// and write route: its method, path, requires, roles, parameters), the tables (columns and attributes), the capability
-// names and the session's shape. Each table also carries its SQL name, its columns' SQL names
+// and write route: its method, path, requires, roles, parameters), the tables (columns and
+// attributes), the capability names and the session's shape. Each table also carries its SQL name, its columns' SQL names
 // and storage types, and its silo; the map lists the app's silos. The runtime adds what only it
 // knows: the build id, the migrations applied and, per capability, whether an adapter or a fake
 // is wired. Serve hands it to web.Options.DevMap; only the dev server (ALDER_DEV=1) ever serves

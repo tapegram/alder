@@ -8,8 +8,8 @@ import (
 )
 
 // /_dev/map.json is the dev map as JSON: the generator's map with the new SQL names and silos
-// passing through, the runtime's build id, capabilities, migrations and routes beside it; only
-// under ALDER_DEV=1.
+// passing through, the runtime's build id, capabilities and migrations beside it; the routes are the generator's,
+// listed once on the /_dev page; only under ALDER_DEV=1.
 func TestRouter_MapJSON(t *testing.T) {
 	route := one("GET", "/x/{id}", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil) })
 	opts := func(o *Options) {

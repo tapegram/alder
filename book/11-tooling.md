@@ -1180,16 +1180,16 @@ requests to `/_dev/requests` and `/_dev/map.json` are never recorded, so
 looking does not change what you see.
 
 **The map of the app: `/_dev/map.json`.** `GET /_dev/map.json` is the page at
-`/_dev`, as data. The compiler knows the app's tables and silos (and the
-GET routes, as `pages`: each with its path, `requires`, roles and parameters), and writes them into the program as one JSON text;
+`/_dev`, as data. The compiler knows the app's tables and silos (and every
+route, GET and write, as `routes`: each with its `method`, module, path, `requires`, roles and parameters), and writes them into the program as one JSON text;
 the running app adds what only it knows: the build id, the migrations
-applied, which capabilities have a real adapter and which a fake, and the
-routes, each with its `method` and `pat` (its path pattern). A tool that wants to show your
+applied, and which capabilities have a real adapter and which a fake. The
+routes `/_dev` lists are the ones the generator mapped, not the router's own. A tool that wants to show your
 tables, such as the TUI's Data screen, reads this and never your source.
 
 ```text
 $ curl localhost:8080/_dev/map.json
-{"build":"afcb2a7d","map":{"pages":[…],"tables":[{"name":"Todo.Todo","sql":"Todo__Todo","columns":["id: Text","title: Text","done: Bool"],"cols":[{"name":"id","type":"Text","sql":"id","sqlType":"TEXT"},{"name":"done","type":"Bool","sql":"done","sqlType":"INTEGER"}],"id":"id"}],"session":[]},"caps":[{"name":"Auth.Login.Password","kind":"adapter"}],"migrations":["0001_init"],"routes":[{"method":"GET","pat":"/"}]}
+{"build":"afcb2a7d","map":{"routes":[{"method":"GET","module":"Todos.Index","path":"/"},…],"tables":[{"name":"Todo.Todo","sql":"Todo__Todo","columns":["id: Text","title: Text","done: Bool"],"cols":[{"name":"id","type":"Text","sql":"id","sqlType":"TEXT"},{"name":"done","type":"Bool","sql":"done","sqlType":"INTEGER"}],"id":"id"}],"session":[]},"caps":[{"name":"Auth.Login.Password","kind":"adapter"}],"migrations":["0001_init"]}
 ```
 
 (Trimmed; a real map has every route, table and column.)
