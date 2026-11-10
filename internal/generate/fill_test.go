@@ -80,7 +80,7 @@ const twoRoutes = `module Notes
 
 route Notes = GET  "/notes"         { }
 route Clear = POST "/notes" { }
-route Pin   = POST "/notes/pins" { }
+route Pin   = POST "/notes/pin" { }
 
 Notes.load : Notes.Params -> Session -> Query Int
 Notes.load params session = Query.succeed 1

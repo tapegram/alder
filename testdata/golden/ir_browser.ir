@@ -696,32 +696,32 @@
   (model Model)
   (load Notes.Index.Index.load)
   (view Notes.Index.Index.view))
-(route Notes.Index.Submit POST "/submits"
+(route Notes.Index.Submit POST "/notes"
   (params Submit.Params)
   (form NewNote)
   (requires user)
   (session Index.Session)
   (update Notes.Index.Submit.update))
-(route Notes.Index.Toggle POST "/toggles"
+(route Notes.Index.Toggle PUT "/notes/{id}/done"
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
   (update Notes.Index.Toggle.update)
   (needs-shown))
-(route Notes.Index.Boom POST "/booms"
+(route Notes.Index.Boom POST "/notes/failure"
   (params Boom.Params)
   (requires user)
   (session Index.Session)
   (update Notes.Index.Boom.update)
   (needs-shown))
-(route Notes.Index.Rename POST "/renames"
+(route Notes.Index.Rename PATCH "/notes/{id}"
   (params Rename.Params)
   (form Title)
   (requires user)
   (session Index.Session)
   (update Notes.Index.Rename.update)
   (needs-shown))
-(route Notes.Index.SavePrefs POST "/save-prefses"
+(route Notes.Index.SavePrefs PUT "/prefs"
   (params SavePrefs.Params)
   (form Prefs)
   (requires user)

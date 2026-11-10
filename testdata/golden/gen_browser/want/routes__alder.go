@@ -341,13 +341,13 @@ func decode__Notes__Index__NewNote(v url.Values) (r Notes__Index__NewNote, errs 
 	return r, errs
 }
 
-// Route__Notes__Index__Submit serves route Notes.Index.Submit, POST /submits: decode the parameters
+// Route__Notes__Index__Submit serves route Notes.Index.Submit, POST /notes: decode the parameters
 // (404 when they do not); `requires` (303 to App.login); decode form NewNote from the body (when it
 // does not: 422, the page the browser is on rendered again with the submitted values, no
 // Text.Secret field, and the errors, without calling update); run the update and answer its
 // Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Index__Submit() web.Route {
-	return web.Route{Method: "POST", Pattern: "/submits", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/notes", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Index__Submit__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -356,7 +356,7 @@ func Route__Notes__Index__Submit() web.Route {
 		if stop != nil {
 			return *stop
 		}
-		key := rt.RouteKey(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/submits"})
+		key := rt.RouteKey(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/notes"})
 		values := route__values(rq.Form)
 		form, errs := decode__Notes__Index__NewNote(rq.Form)
 		if errs != nil {
@@ -382,8 +382,12 @@ func Route__Notes__Index__Submit() web.Route {
 // decode__Notes__Index__Toggle__Params decodes route Notes.Index.Toggle's parameters: the path's
 // from params, the others from q. A parameter that does not decode is an error (the route answers
 // 404).
-func decode__Notes__Index__Toggle__Params(_ map[string]string, q url.Values) (r Notes__Index__Toggle__Params, errs []web.FieldError) {
-	if s, ok := web.Text(q, "id", false); !ok {
+func decode__Notes__Index__Toggle__Params(params map[string]string, _ url.Values) (r Notes__Index__Toggle__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, ok := web.Text(pv, "id", false); !ok {
 		errs = append(errs, web.Missing("id"))
 	} else {
 		r.Id = s
@@ -403,12 +407,12 @@ func guard__Notes__Index__Toggle(rq *web.Request, params Notes__Index__Toggle__P
 	return Notes__Index__Index__Session{User: app.User.Val, Visits: app.Visits}, nil
 }
 
-// Route__Notes__Index__Toggle serves route Notes.Index.Toggle, POST /toggles: decode the parameters
-// (404 when they do not); `requires` (303 to App.login); render the page the browser is on before
-// the update (refresh and invalid are diffed against it); run the update and answer its Response (a
-// failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+// Route__Notes__Index__Toggle serves route Notes.Index.Toggle, PUT /notes/{id}/done: decode the
+// parameters (404 when they do not); `requires` (303 to App.login); render the page the browser is
+// on before the update (refresh and invalid are diffed against it); run the update and answer its
+// Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Index__Toggle() web.Route {
-	return web.Route{Method: "POST", Pattern: "/toggles", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "PUT", Pattern: "/notes/{id}/done", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Index__Toggle__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -447,12 +451,12 @@ func guard__Notes__Index__Boom(rq *web.Request, params Notes__Index__Boom__Param
 	return Notes__Index__Index__Session{User: app.User.Val, Visits: app.Visits}, nil
 }
 
-// Route__Notes__Index__Boom serves route Notes.Index.Boom, POST /booms: decode the parameters (404
-// when they do not); `requires` (303 to App.login); render the page the browser is on before the
-// update (refresh and invalid are diffed against it); run the update and answer its Response (a
-// failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+// Route__Notes__Index__Boom serves route Notes.Index.Boom, POST /notes/failure: decode the
+// parameters (404 when they do not); `requires` (303 to App.login); render the page the browser is
+// on before the update (refresh and invalid are diffed against it); run the update and answer its
+// Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Index__Boom() web.Route {
-	return web.Route{Method: "POST", Pattern: "/booms", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/notes/failure", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Index__Boom__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -476,8 +480,12 @@ func Route__Notes__Index__Boom() web.Route {
 // decode__Notes__Index__Rename__Params decodes route Notes.Index.Rename's parameters: the path's
 // from params, the others from q. A parameter that does not decode is an error (the route answers
 // 404).
-func decode__Notes__Index__Rename__Params(_ map[string]string, q url.Values) (r Notes__Index__Rename__Params, errs []web.FieldError) {
-	if s, ok := web.Text(q, "id", false); !ok {
+func decode__Notes__Index__Rename__Params(params map[string]string, _ url.Values) (r Notes__Index__Rename__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, ok := web.Text(pv, "id", false); !ok {
 		errs = append(errs, web.Missing("id"))
 	} else {
 		r.Id = s
@@ -510,14 +518,14 @@ func decode__Notes__Index__Title(v url.Values) (r Notes__Index__Title, errs []we
 	return r, errs
 }
 
-// Route__Notes__Index__Rename serves route Notes.Index.Rename, POST /renames: decode the parameters
-// (404 when they do not); `requires` (303 to App.login); decode form Title from the body (when it
-// does not: 422, the page the browser is on rendered again with the submitted values, no
+// Route__Notes__Index__Rename serves route Notes.Index.Rename, PATCH /notes/{id}: decode the
+// parameters (404 when they do not); `requires` (303 to App.login); decode form Title from the body
+// (when it does not: 422, the page the browser is on rendered again with the submitted values, no
 // Text.Secret field, and the errors, without calling update); render the page the browser is on
 // before the update (refresh and invalid are diffed against it); run the update and answer its
 // Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Index__Rename() web.Route {
-	return web.Route{Method: "POST", Pattern: "/renames", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "PATCH", Pattern: "/notes/{id}", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Index__Rename__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -526,7 +534,7 @@ func Route__Notes__Index__Rename() web.Route {
 		if stop != nil {
 			return *stop
 		}
-		key := rt.RouteKey(rt.Route{Name: "Notes.Index.Rename", Method: "POST", Path: "/renames", Query: []rt.KV{{Key: "id", Value: params.Id}}})
+		key := rt.RouteKey(rt.Route{Name: "Notes.Index.Rename", Method: "PATCH", Path: rt.Concat("/notes/", rt.PathSegment(params.Id))})
 		values := route__values(rq.Form)
 		form, errs := decode__Notes__Index__Title(rq.Form)
 		if errs != nil {
@@ -613,14 +621,14 @@ func decode__Notes__Index__Prefs(v url.Values) (r Notes__Index__Prefs, errs []we
 	return r, errs
 }
 
-// Route__Notes__Index__SavePrefs serves route Notes.Index.SavePrefs, POST /save-prefses: decode the
+// Route__Notes__Index__SavePrefs serves route Notes.Index.SavePrefs, PUT /prefs: decode the
 // parameters (404 when they do not); `requires` (303 to App.login); decode form Prefs from the body
 // (when it does not: 422, the page the browser is on rendered again with the submitted values, no
 // Text.Secret field, and the errors, without calling update); render the page the browser is on
 // before the update (refresh and invalid are diffed against it); run the update and answer its
 // Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Index__SavePrefs() web.Route {
-	return web.Route{Method: "POST", Pattern: "/save-prefses", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "PUT", Pattern: "/prefs", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Index__SavePrefs__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -629,7 +637,7 @@ func Route__Notes__Index__SavePrefs() web.Route {
 		if stop != nil {
 			return *stop
 		}
-		key := rt.RouteKey(rt.Route{Name: "Notes.Index.SavePrefs", Method: "POST", Path: "/save-prefses"})
+		key := rt.RouteKey(rt.Route{Name: "Notes.Index.SavePrefs", Method: "PUT", Path: "/prefs"})
 		values := route__values(rq.Form, "pin")
 		form, errs := decode__Notes__Index__Prefs(rq.Form)
 		if errs != nil {

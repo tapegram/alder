@@ -183,19 +183,19 @@
   (requires user)
   (session Index.Session)
   (update Index.Add.update))
-(route Index.Toggle POST "/pair/{a}/{b}/toggles"
+(route Index.Toggle PUT "/pair/{a}/{b}/done"
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
   (update Index.Toggle.update)
   (needs-shown))
-(route Index.Remove POST "/pair/{a}/{b}/removes"
+(route Index.Remove DELETE "/pair/{a}/{b}"
   (params Remove.Params)
   (requires user)
   (session Index.Session)
   (update Index.Remove.update)
   (needs-shown))
-(route Index.Notify POST "/pair/{a}/{b}/notifies"
+(route Index.Notify POST "/pair/{a}/{b}/notification"
   (params Notify.Params)
   (requires user)
   (session Index.Session)

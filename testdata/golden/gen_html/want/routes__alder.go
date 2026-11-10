@@ -249,12 +249,12 @@ func decode__M__Pick__Params(params map[string]string, q url.Values) (r M__Pick_
 	return r, errs
 }
 
-// Route__M__Pick serves route M.Pick, POST /m/{id}/picks: decode the parameters (404 when they do
+// Route__M__Pick serves route M.Pick, POST /m/{id}/choice: decode the parameters (404 when they do
 // not); render the page the browser is on before the update (refresh and invalid are diffed against
 // it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
 // Task.notFound, 303 for Query.redirect).
 func Route__M__Pick() web.Route {
-	return web.Route{Method: "POST", Pattern: "/m/{id}/picks", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/m/{id}/choice", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__M__Pick__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -289,12 +289,12 @@ func decode__M__Ping__Params(params map[string]string, _ url.Values) (r M__Ping_
 	return r, errs
 }
 
-// Route__M__Ping serves route M.Ping, POST /m/{id}/pings: decode the parameters (404 when they do
+// Route__M__Ping serves route M.Ping, POST /m/{id}/ping: decode the parameters (404 when they do
 // not); render the page the browser is on before the update (refresh and invalid are diffed against
 // it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
 // Task.notFound, 303 for Query.redirect).
 func Route__M__Ping() web.Route {
-	return web.Route{Method: "POST", Pattern: "/m/{id}/pings", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/m/{id}/ping", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__M__Ping__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())

@@ -918,25 +918,25 @@
   (session Index.Session)
   (update Todos.Index.Add.update)
   (needs-shown))
-(route Todos.Index.Toggle POST "/toggles"
+(route Todos.Index.Toggle PUT "/todos/{id}/done"
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
   (update Todos.Index.Toggle.update)
   (needs-shown))
-(route Todos.Index.Rename POST "/renames"
+(route Todos.Index.Rename PATCH "/todos/{id}"
   (params Rename.Params)
   (requires user)
   (session Index.Session)
   (update Todos.Index.Rename.update)
   (needs-shown))
-(route Todos.Index.Remove POST "/removes"
+(route Todos.Index.Remove DELETE "/todos/{id}"
   (params Remove.Params)
   (requires user)
   (session Index.Session)
   (update Todos.Index.Remove.update)
   (needs-shown))
-(route Todos.Index.Duplicate POST "/duplicates"
+(route Todos.Index.Duplicate POST "/todos/copy"
   (params Duplicate.Params)
   (requires user)
   (session Index.Session)

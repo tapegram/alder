@@ -2,8 +2,8 @@ module Todos.Index
 
 route Index  = GET  "/"         { }
 route Submit = POST "/" { } form NewTodo
-route Rename = POST "/renames" { } form NewTodo
-route Toggle = POST "/toggles" { id: Text }
+route Rename = PATCH "/todos" { } form NewTodo
+route Toggle = PUT "/todos/{id}/done" { id: Text }
 
 type Model = { n: Int }
 

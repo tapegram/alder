@@ -155,7 +155,7 @@ func TestSilos_Binary(t *testing.T) {
 			t.Fatal(err)
 		}
 		req, _ := http.NewRequest(method, "http://"+app.addr+path, strings.NewReader(form.Encode()))
-		if method == http.MethodPost {
+		if method != http.MethodGet {
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			// the page a form is posted from, without JavaScript: a write's `invalid` re-renders it
 			req.Header.Set("Referer", "http://"+app.addr+"/orgs")
@@ -207,7 +207,7 @@ func TestSilos_Binary(t *testing.T) {
 	if res, _ := do("POST", "/orgs?org=B", me, nil); res.StatusCode != http.StatusNotFound || res.Header.Get("Set-Cookie") != "" {
 		t.Fatalf("crafted switch: %d %q", res.StatusCode, res.Header.Get("Set-Cookie"))
 	}
-	if res, body := do("POST", "/orgs/switches", me, url.Values{"org": {"B"}}); res.StatusCode != http.StatusUnprocessableEntity || res.Header.Get("Set-Cookie") != "" || !strings.Contains(body, "You are not a member of that workspace.") {
+	if res, body := do("PUT", "/orgs/current", me, url.Values{"org": {"B"}}); res.StatusCode != http.StatusUnprocessableEntity || res.Header.Get("Set-Cookie") != "" || !strings.Contains(body, "You are not a member of that workspace.") {
 		t.Fatalf("switch from the form: %d %q\n%s", res.StatusCode, res.Header.Get("Set-Cookie"), body)
 	}
 	// the stragglers: maintenance for those two orgs only; the one behind was migrated on open

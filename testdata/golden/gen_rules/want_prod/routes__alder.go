@@ -232,8 +232,12 @@ func Route__Notes__Add() web.Route {
 
 // decode__Notes__Pin__Params decodes route Notes.Pin's parameters: the path's from params, the
 // others from q. A parameter that does not decode is an error (the route answers 404).
-func decode__Notes__Pin__Params(_ map[string]string, q url.Values) (r Notes__Pin__Params, errs []web.FieldError) {
-	if s, ok := web.Text(q, "id", false); !ok {
+func decode__Notes__Pin__Params(params map[string]string, _ url.Values) (r Notes__Pin__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, ok := web.Text(pv, "id", false); !ok {
 		errs = append(errs, web.Missing("id"))
 	} else {
 		r.Id = s
@@ -253,12 +257,12 @@ func guard__Notes__Pin(rq *web.Request, params Notes__Pin__Params) (Notes__Notes
 	return Notes__Notes__Session{User: app.User.Val, Role: app.Role}, nil
 }
 
-// Route__Notes__Pin serves route Notes.Pin, POST /notes/pins: decode the parameters (404 when they
-// do not); `requires` (303 to App.login); render the page the browser is on before the update
+// Route__Notes__Pin serves route Notes.Pin, PUT /notes/{id}/pin: decode the parameters (404 when
+// they do not); `requires` (303 to App.login); render the page the browser is on before the update
 // (refresh and invalid are diffed against it); run the update and answer its Response (a failed
 // Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Pin() web.Route {
-	return web.Route{Method: "POST", Pattern: "/notes/pins", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "PUT", Pattern: "/notes/{id}/pin", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Pin__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -281,8 +285,12 @@ func Route__Notes__Pin() web.Route {
 
 // decode__Notes__Remove__Params decodes route Notes.Remove's parameters: the path's from params,
 // the others from q. A parameter that does not decode is an error (the route answers 404).
-func decode__Notes__Remove__Params(_ map[string]string, q url.Values) (r Notes__Remove__Params, errs []web.FieldError) {
-	if s, ok := web.Text(q, "id", false); !ok {
+func decode__Notes__Remove__Params(params map[string]string, _ url.Values) (r Notes__Remove__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, ok := web.Text(pv, "id", false); !ok {
 		errs = append(errs, web.Missing("id"))
 	} else {
 		r.Id = s
@@ -302,12 +310,12 @@ func guard__Notes__Remove(rq *web.Request, params Notes__Remove__Params) (Notes_
 	return Notes__Notes__Session{User: app.User.Val, Role: app.Role}, nil
 }
 
-// Route__Notes__Remove serves route Notes.Remove, POST /notes/removes: decode the parameters (404
+// Route__Notes__Remove serves route Notes.Remove, DELETE /notes/{id}: decode the parameters (404
 // when they do not); `requires` (303 to App.login); render the page the browser is on before the
 // update (refresh and invalid are diffed against it); run the update and answer its Response (a
 // failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Remove() web.Route {
-	return web.Route{Method: "POST", Pattern: "/notes/removes", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "DELETE", Pattern: "/notes/{id}", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Remove__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())

@@ -7,11 +7,11 @@ module Routes
 route Show = GET  "/routes"        { } requires user, role Admin
 route Home = GET  "/routes/home"   { } requires user
 route Save = POST "/routes" { } requires user, role Author | Admin
-route Open = POST "/routes/opens" { } requires user
-route Find = POST "/routes/finds" { } requires user, role Author | Admin
-route Back = POST "/routes/backs" { } requires user, role Admin
+route Open = POST "/routes/panel" { } requires user
+route Find = POST "/routes/search" { } requires user, role Author | Admin
+route Back = POST "/routes/page" { } requires user, role Admin
 route Teams = GET "/routes/teams"  { } requires user, team, role Admin
-route Pick = POST "/routes/picks" { } requires user, role Admin
+route Pick = POST "/routes/choice" { } requires user, role Admin
 
 type Model = { }
 

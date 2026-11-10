@@ -3,7 +3,7 @@ module Names
 import Name
 
 route Names = GET  "/"      { }
-route Add   = POST "/adds" { } form NewName
+route Add   = POST "/names" { } form NewName
 
 type Model = { names: List Name.Name }
 

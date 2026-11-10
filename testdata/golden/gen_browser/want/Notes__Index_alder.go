@@ -163,7 +163,7 @@ func Notes__Index__Visit__update(p Notes__Index__Visit__Params, session Notes__I
 func Notes__Index__Index__view(model Notes__Index__Model, session Notes__Index__Index__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("h1", nil, html.Text("Notes")),
-		html.FormToRoute(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/submits"}, nil,
+		html.FormToRoute(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/notes"}, nil,
 			html.Input(html.Control{Kind: "errors", Form: "Notes.Index.NewNote"}),
 			html.Input(html.Control{Kind: "input", Form: "Notes.Index.NewNote", Name: "title", Type: "text", Label: "Title", Required: true}),
 			html.Input(html.Control{Kind: "errors", Form: "Notes.Index.NewNote", Name: "title"}),
@@ -191,8 +191,8 @@ func Notes__Index__Index__view(model Notes__Index__Model, session Notes__Index__
 				}
 				return "open"
 			}())},
-				html.El("button", []html.Attr{html.A("class", "toggle"), html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Toggle", Method: "POST", Path: "/toggles", Query: []rt.KV{{Key: "id", Value: n.Id}}})}, html.Text(n.Title)),
-				html.FormToRoute(rt.Route{Name: "Notes.Index.Rename", Method: "POST", Path: "/renames", Query: []rt.KV{{Key: "id", Value: n.Id}}}, nil,
+				html.El("button", []html.Attr{html.A("class", "toggle"), html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Toggle", Method: "PUT", Path: rt.Concat("/notes/", rt.PathSegment(n.Id), "/done")})}, html.Text(n.Title)),
+				html.FormToRoute(rt.Route{Name: "Notes.Index.Rename", Method: "PATCH", Path: rt.Concat("/notes/", rt.PathSegment(n.Id))}, nil,
 					html.Input(html.Control{Kind: "input", Form: "Notes.Index.Title", Name: "title", Type: "text", Label: "New title", Required: true}),
 					html.Input(html.Control{Kind: "errors", Form: "Notes.Index.Title", Name: "title"}),
 					html.El("button", nil, html.Text("Rename")),
@@ -210,7 +210,7 @@ func Notes__Index__Index__view(model Notes__Index__Model, session Notes__Index__
 			html.Input(html.Control{Kind: "errors", Form: "App.Feedback", Name: "text"}),
 			html.El("button", nil, html.Text("Send")),
 		),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Boom", Method: "POST", Path: "/booms"})}, html.Text("Boom")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Boom", Method: "POST", Path: "/notes/failure"})}, html.Text("Boom")),
 		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Visit", Method: "POST", Path: "/visits"})}, html.Text("Visit")),
 		html.El("p", []html.Attr{html.A("id", "visits")}, html.Text(std.TextFromInt(session.Visits))),
 		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Logout", Method: "DELETE", Path: "/session"})}, html.Text("Log out")),
@@ -312,7 +312,7 @@ func test__Notes__Index__1() eff.Task[bool] {
 					Url    string
 					Status int64
 				}, error) {
-					_r14, _err15 := rtesting.BrowserOf(_e13).SubmitRoute(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/submits"}, "NewNote", encode__Notes__Index__NewNote(Notes__Index__NewNote{Title: "Milk", Due: rt.Nothing[rt.Date](), Urgent: false, Priority: 1, Weight: 1.5, Kind: Note__Kind__Plain__, Remark: "", Contact: rt.Nothing[string]()}))
+					_r14, _err15 := rtesting.BrowserOf(_e13).SubmitRoute(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/notes"}, "NewNote", encode__Notes__Index__NewNote(Notes__Index__NewNote{Title: "Milk", Due: rt.Nothing[rt.Date](), Urgent: false, Priority: 1, Weight: 1.5, Kind: Note__Kind__Plain__, Remark: "", Contact: rt.Nothing[string]()}))
 					if _err15 != nil {
 						var _z16 struct {
 							Answer  rtesting.Answer
@@ -486,7 +486,7 @@ func test__Notes__Index__2() eff.Task[bool] {
 						Status int64
 					}, error) {
 						_m15 := Notes__Index__Toggle__Params{Id: id}
-						_r16, _err17 := rtesting.BrowserOf(_e14).ClickRoute(rt.Route{Name: "Notes.Index.Toggle", Method: "POST", Path: "/toggles", Query: []rt.KV{{Key: "id", Value: _m15.Id}}}, rtesting.MsgName("Notes.Index.Toggle", _m15))
+						_r16, _err17 := rtesting.BrowserOf(_e14).ClickRoute(rt.Route{Name: "Notes.Index.Toggle", Method: "PUT", Path: rt.Concat("/notes/", rt.PathSegment(_m15.Id), "/done")}, rtesting.MsgName("Notes.Index.Toggle", _m15))
 						if _err17 != nil {
 							var _z18 struct {
 								Answer  rtesting.Answer
@@ -666,7 +666,7 @@ func test__Notes__Index__3() eff.Task[bool] {
 						}
 						return _z16, _err15
 					}
-					_r17, _err18 := rtesting.BrowserOf(_e13).SubmitRoute(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/submits"}, "NewNote", _f14)
+					_r17, _err18 := rtesting.BrowserOf(_e13).SubmitRoute(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/notes"}, "NewNote", _f14)
 					if _err18 != nil {
 						var _z19 struct {
 							Answer  rtesting.Answer
@@ -948,7 +948,7 @@ func test__Notes__Index__5() eff.Task[bool] {
 						Url    string
 						Status int64
 					}, error) {
-						_r15, _err16 := rtesting.BrowserOf(_e14).ClickRoute(rt.Route{Name: "Notes.Index.Boom", Method: "POST", Path: "/booms"}, rtesting.MsgName("Notes.Index.Boom", nil))
+						_r15, _err16 := rtesting.BrowserOf(_e14).ClickRoute(rt.Route{Name: "Notes.Index.Boom", Method: "POST", Path: "/notes/failure"}, rtesting.MsgName("Notes.Index.Boom", nil))
 						if _err16 != nil {
 							var _z17 struct {
 								Answer  rtesting.Answer
@@ -1403,7 +1403,7 @@ func test__Notes__Index__9() eff.Task[bool] {
 							Status int64
 						}, error) {
 							_m16 := Notes__Index__Rename__Params{Id: b}
-							_r17, _err18 := rtesting.BrowserOf(_e15).SubmitRoute(rt.Route{Name: "Notes.Index.Rename", Method: "POST", Path: "/renames", Query: []rt.KV{{Key: "id", Value: _m16.Id}}}, "Title", encode__Notes__Index__Title(Notes__Index__Title{Title: "B2"}))
+							_r17, _err18 := rtesting.BrowserOf(_e15).SubmitRoute(rt.Route{Name: "Notes.Index.Rename", Method: "PATCH", Path: rt.Concat("/notes/", rt.PathSegment(_m16.Id))}, "Title", encode__Notes__Index__Title(Notes__Index__Title{Title: "B2"}))
 							if _err18 != nil {
 								var _z19 struct {
 									Answer  rtesting.Answer
@@ -1918,7 +1918,7 @@ func test__Notes__Index__12() eff.Task[bool] {
 						Url    string
 						Status int64
 					}, error) {
-						_r15, _err16 := rtesting.BrowserOf(_e14).SubmitRoute(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/submits"}, "NewNote", encode__Notes__Index__NewNote(Notes__Index__NewNote{Title: "Milk", Due: rt.Nothing[rt.Date](), Urgent: false, Priority: 1, Weight: 1.5, Kind: Note__Kind__Plain__, Remark: "", Contact: rt.Nothing[string]()}))
+						_r15, _err16 := rtesting.BrowserOf(_e14).SubmitRoute(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/notes"}, "NewNote", encode__Notes__Index__NewNote(Notes__Index__NewNote{Title: "Milk", Due: rt.Nothing[rt.Date](), Urgent: false, Priority: 1, Weight: 1.5, Kind: Note__Kind__Plain__, Remark: "", Contact: rt.Nothing[string]()}))
 						if _err16 != nil {
 							var _z17 struct {
 								Answer  rtesting.Answer

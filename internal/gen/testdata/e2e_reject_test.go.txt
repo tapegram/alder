@@ -105,7 +105,7 @@ func TestE2E_RejectKeepsWrites(t *testing.T) {
 		t.Fatalf("no form action:\n%s", body)
 	}
 	add := html.UnescapeString(m[1])
-	if !strings.HasPrefix(add, "/adds") {
+	if !strings.HasPrefix(add, "/names") {
 		t.Fatalf("form action %q", add)
 	}
 	res, body = do("POST", add, url.Values{"name": {"ann"}})

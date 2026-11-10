@@ -8,7 +8,7 @@ route Show   = GET  "/todos/{id}"          { id: Todo.TodoId }               req
 -- so each checks again that the session's user owns the todo (owned; book 06, "Authorize in
 -- update").
 route Save   = POST "/todos/{id}"   { id: Todo.TodoId } form EditTodo requires user
-route Delete = POST "/todos/{id}/deletes" { id: Todo.TodoId }               requires user
+route Delete = DELETE "/todos/{id}" { id: Todo.TodoId }               requires user
 
 type Model = { todo: Todo }
 

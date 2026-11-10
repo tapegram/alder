@@ -2,7 +2,7 @@ module Index
 
 route Index  = GET  "/"         { }
 route Submit = POST "/" { } form NewPost
-route Clear  = POST "/clears"  { }
+route Clear  = DELETE "/"  { }
 
 type Kind = Note | Task
 

@@ -359,14 +359,14 @@
   (update Projects.Index.Add.update)
   (store silo org)
   (needs-shown))
-(route Projects.Index.Rename POST "/projects/renames"
+(route Projects.Index.Rename PATCH "/projects/{id}"
   (params Rename.Params)
   (requires user org)
   (session Index.Session)
   (update Projects.Index.Rename.update)
   (store silo org)
   (needs-shown))
-(route Projects.Index.Remove POST "/projects/removes"
+(route Projects.Index.Remove DELETE "/projects/{id}"
   (params Remove.Params)
   (requires user org)
   (session Index.Session)
@@ -380,7 +380,7 @@
   (update Projects.Index.Seed.update)
   (store silo org)
   (needs-shown))
-(route Projects.Index.Both POST "/projects/boths"
+(route Projects.Index.Both POST "/projects/pair"
   (params Both.Params)
   (requires user org)
   (session Index.Session)

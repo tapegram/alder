@@ -149,12 +149,12 @@ func decode__Index__Clear__Params(_ map[string]string, _ url.Values) (r Index__C
 	return r, errs
 }
 
-// Route__Index__Clear serves route Index.Clear, POST /clears: decode the parameters (404 when they
-// do not); render the page the browser is on before the update (refresh and invalid are diffed
-// against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
-// or Task.notFound, 303 for Query.redirect).
+// Route__Index__Clear serves route Index.Clear, DELETE /: decode the parameters (404 when they do
+// not); render the page the browser is on before the update (refresh and invalid are diffed against
+// it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
+// Task.notFound, 303 for Query.redirect).
 func Route__Index__Clear() web.Route {
-	return web.Route{Method: "POST", Pattern: "/clears", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "DELETE", Pattern: "/", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Index__Clear__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())

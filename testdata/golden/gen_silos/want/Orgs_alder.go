@@ -100,7 +100,7 @@ func Orgs__Orgs__view(model Orgs__Model, session Orgs__Orgs__Session) html.Node 
 		html.El("ul", nil, html.Nodes(std.ListMap(func(m Membership__Membership) html.Node {
 			return html.El("li", nil, html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Orgs.Pick", Method: "POST", Path: "/orgs", Query: []rt.KV{{Key: "org", Value: m.Org}}})}, html.Text("pick")))
 		}, model.Mine)...)),
-		html.FormToRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/switches"}, nil,
+		html.FormToRoute(rt.Route{Name: "Orgs.Switch", Method: "PUT", Path: "/orgs/current"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Orgs.SwitchOrg", Name: "org", Type: "text", Label: "Org"}),
 			html.Input(html.Control{Kind: "errors", Form: "Orgs.SwitchOrg"}),
 			html.El("button", nil, html.Text("switch")),
@@ -471,7 +471,7 @@ func test__Orgs__3() eff.Task[bool] {
 								Url    string
 								Status int64
 							}, error) {
-								_r17, _err18 := rtesting.BrowserOf(_e16).SubmitRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/switches"}, "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: b}))
+								_r17, _err18 := rtesting.BrowserOf(_e16).SubmitRoute(rt.Route{Name: "Orgs.Switch", Method: "PUT", Path: "/orgs/current"}, "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: b}))
 								if _err18 != nil {
 									var _z19 struct {
 										Answer  rtesting.Answer
@@ -523,7 +523,7 @@ func test__Orgs__3() eff.Task[bool] {
 									Url    string
 									Status int64
 								}, error) {
-									_r21, _err22 := rtesting.BrowserOf(_e20).SubmitRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/switches"}, "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: a}))
+									_r21, _err22 := rtesting.BrowserOf(_e20).SubmitRoute(rt.Route{Name: "Orgs.Switch", Method: "PUT", Path: "/orgs/current"}, "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: a}))
 									if _err22 != nil {
 										var _z23 struct {
 											Answer  rtesting.Answer

@@ -67,7 +67,7 @@ func Orgs__Orgs__view(model Orgs__Model, session Orgs__Orgs__Session) html.Node 
 		html.El("ul", nil, html.Nodes(std.ListMap(func(m Membership__Membership) html.Node {
 			return html.El("li", nil, html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Orgs.Pick", Method: "POST", Path: "/orgs", Query: []rt.KV{{Key: "org", Value: m.Org}}})}, html.Text("pick")))
 		}, model.Mine)...)),
-		html.FormToRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/switches"}, nil,
+		html.FormToRoute(rt.Route{Name: "Orgs.Switch", Method: "PUT", Path: "/orgs/current"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Orgs.SwitchOrg", Name: "org", Type: "text", Label: "Org"}),
 			html.Input(html.Control{Kind: "errors", Form: "Orgs.SwitchOrg"}),
 			html.El("button", nil, html.Text("switch")),

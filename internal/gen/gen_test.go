@@ -3064,8 +3064,8 @@ func TestGen_Fakes(t *testing.T) {
 func TestGen_Browser(t *testing.T) {
 	files := emitWith(t, "../../testdata/golden/gen_browser", true)
 	contains(t, files["Notes__Index_alder.go"], `eff.Call("Test.get Notes.Index.Index", true,`, `.GetPage(_u`, `, "user")`, `rtesting.ModelOf[Notes__Index__Model](_u`,
-		`eff.Call("Test.click Notes.Index.Toggle", true,`, `.ClickRoute(rt.Route{Name: "Notes.Index.Toggle", Method: "POST", Path: "/toggles", Query: []rt.KV{{Key: "id", Value: _m`,
-		`rtesting.MsgName("Notes.Index.Toggle", _m`, `.SubmitRoute(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/submits"}, "NewNote", encode__Notes__Index__NewNote(`,
+		`eff.Call("Test.click Notes.Index.Toggle", true,`, `.ClickRoute(rt.Route{Name: "Notes.Index.Toggle", Method: "PUT", Path: rt.Concat("/notes/", rt.PathSegment(_m`,
+		`rtesting.MsgName("Notes.Index.Toggle", _m`, `.SubmitRoute(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/notes"}, "NewNote", encode__Notes__Index__NewNote(`,
 		`rtesting.RawFields("NewNote", []string{"title", "due", "urgent", "priority", "weight", "kind", "remark", "contact"},`,
 		`rtesting.DocCountSel(selector__`, `rtesting.DocTexts(sel, `, `rtesting.DocCount(bad, `, `rtesting.ViewDoc(Notes__Index__Index__view(`, `case rtesting.RequestFailed:`)
 	contains(t, files["Auth__Login_alder.go"], `eff.Call("Test.login", true,`, `eff.Call("Test.open Notes.Index.Index", true,`, `.Open(_u`,

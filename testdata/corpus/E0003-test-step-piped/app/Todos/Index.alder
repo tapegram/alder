@@ -2,7 +2,7 @@ module Todos.Index
 
 route Index  = GET  "/"         { }
 route Submit = POST "/" { } form NewTodo
-route Toggle = POST "/toggles" { id: Text }
+route Toggle = PUT "/todos/{id}/done" { id: Text }
 
 type Model = { n: Int }
 

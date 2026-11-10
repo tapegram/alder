@@ -99,8 +99,8 @@ func Notes__Notes__view(model Notes__Model, session Notes__Notes__Session) html.
 		),
 		html.El("ul", nil, html.Nodes(std.ListMap(func(n Note__Note) html.Node {
 			return html.El("li", nil,
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Pin", Method: "POST", Path: "/notes/pins", Query: []rt.KV{{Key: "id", Value: n.Id}}})}, html.Text(n.Title)),
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Remove", Method: "POST", Path: "/notes/removes", Query: []rt.KV{{Key: "id", Value: n.Id}}})}, html.Text("x")),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Pin", Method: "PUT", Path: rt.Concat("/notes/", rt.PathSegment(n.Id), "/pin")})}, html.Text(n.Title)),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Remove", Method: "DELETE", Path: rt.Concat("/notes/", rt.PathSegment(n.Id))})}, html.Text("x")),
 			)
 		}, model.Notes)...)),
 	))

@@ -4,7 +4,7 @@ import T
 
 route P   = GET  "/p/{id}"       { id: T.TId } requires user
 route Inc = POST "/p/{id}" { id: T.TId } requires user
-route Dec = POST "/p/{id}/decs" { id: T.TId } requires user
+route Dec = PUT "/p/{id}/count" { id: T.TId } requires user
 
 type Model = { t: T }
 

@@ -9,10 +9,10 @@ import User
 
 route Index  = GET  "/projects"          { }                       requires user, org
 route Add    = POST "/projects"    { } form NewProject       requires user, org
-route Rename = POST "/projects/renames" { id: Project.ProjectId } requires user, org
-route Remove = POST "/projects/removes" { id: Project.ProjectId } requires user, org
+route Rename = PATCH "/projects/{id}" { id: Project.ProjectId } requires user, org
+route Remove = DELETE "/projects/{id}" { id: Project.ProjectId } requires user, org
 route Seed   = POST "/projects/seeds"   { }                       requires user, org
-route Both   = POST "/projects/boths"   { id: Project.ProjectId } requires user, org
+route Both   = POST "/projects/pair"   { id: Project.ProjectId } requires user, org
 route Tag    = POST "/projects/tags"    { }                       requires user, org
 
 type Model = {

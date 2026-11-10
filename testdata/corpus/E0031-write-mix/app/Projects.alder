@@ -8,14 +8,14 @@ import Project
 
 route Projects = GET  "/projects"          { } requires user, org, team
 route Create   = POST "/projects" { } requires user, org, team
-route Helped   = POST "/projects/helpeds" { } requires user, org, team
-route Many     = POST "/projects/manies"   { } requires user, org, team
-route Silos    = POST "/projects/siloses"  { } requires user, org, team
-route Reads    = POST "/projects/readses"  { } requires user, org, team
-route Bound    = POST "/projects/bounds"  { } requires user, org, team
-route Lambda   = POST "/projects/lambdas" { } requires user, org, team
-route Mapped   = POST "/projects/mappeds" { } requires user, org, team
-route Other    = POST "/projects/others"  { } requires user, org, team
+route Helped   = POST "/projects/helper" { } requires user, org, team
+route Many     = POST "/projects/batch"   { } requires user, org, team
+route Silos    = POST "/projects/silo"  { } requires user, org, team
+route Reads    = POST "/projects/reader"  { } requires user, org, team
+route Bound    = POST "/projects/bound"  { } requires user, org, team
+route Lambda   = POST "/projects/lambda" { } requires user, org, team
+route Mapped   = POST "/projects/map" { } requires user, org, team
+route Other    = POST "/projects/other"  { } requires user, org, team
 
 type Model = { }
 

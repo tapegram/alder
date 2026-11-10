@@ -132,8 +132,8 @@ func Projects__Index__Index__view(model Projects__Index__Model, session Projects
 		html.El("ul", nil, html.Nodes(std.ListMap(func(p Project__Project) html.Node {
 			return html.El("li", nil,
 				html.El("span", nil, html.Text(p.Name)),
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Rename", Method: "POST", Path: "/projects/renames", Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("rename")),
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Remove", Method: "POST", Path: "/projects/removes", Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("remove")),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Rename", Method: "PATCH", Path: rt.Concat("/projects/", rt.PathSegment(p.Id))})}, html.Text("rename")),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Remove", Method: "DELETE", Path: rt.Concat("/projects/", rt.PathSegment(p.Id))})}, html.Text("remove")),
 			)
 		}, model.Projects)...)),
 		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Seed", Method: "POST", Path: "/projects/seeds"})}, html.Text("seed")),

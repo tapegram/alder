@@ -20,9 +20,9 @@ silo org { Project }
 -- App has no `org` in scope (it is no page), so no arm of its update can write a silo, however
 -- the write is spelled: unbound App Tasks only ever write the shared store
 route Wipe   = POST "/"   { id: Project.ProjectId }
-route Bound  = POST "/bounds"  { id: Project.ProjectId }
-route Helped = POST "/helpeds" { id: Project.ProjectId }
-route Scoped = POST "/scopeds" { id: Project.ProjectId }
+route Bound  = POST "/bound"  { id: Project.ProjectId }
+route Helped = POST "/helper" { id: Project.ProjectId }
+route Scoped = POST "/scope" { id: Project.ProjectId }
 
 Wipe.update : Wipe.Params -> Session -> Task Response
 Wipe.update p session = {

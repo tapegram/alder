@@ -4,7 +4,7 @@ type Filter = All | Active
 
 route Index  = GET  "/"         { filter: Filter = All }
 route Submit = POST "/" { } form NewTodo
-route Toggle = POST "/toggles" { id: Text }
+route Toggle = PUT "/todos/{id}/done" { id: Text }
 
 type Model = Empty | Some Int
 

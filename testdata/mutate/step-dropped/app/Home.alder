@@ -4,7 +4,7 @@ import User
 
 route Home   = GET  "/"         { }
 route Save   = POST "/"   { }
-route Login  = POST "/logins"  { id: User.UserId }
+route Login  = POST "/session"  { id: User.UserId }
 
 type Model = { }
 

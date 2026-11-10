@@ -215,8 +215,8 @@ func Projects__Index__Index__view(model Projects__Index__Model, session Projects
 		html.El("ul", nil, html.Nodes(std.ListMap(func(p Project__Project) html.Node {
 			return html.El("li", nil,
 				html.El("span", nil, html.Text(p.Name)),
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Rename", Method: "POST", Path: "/projects/renames", Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("rename")),
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Remove", Method: "POST", Path: "/projects/removes", Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("remove")),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Rename", Method: "PATCH", Path: rt.Concat("/projects/", rt.PathSegment(p.Id))})}, html.Text("rename")),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Remove", Method: "DELETE", Path: rt.Concat("/projects/", rt.PathSegment(p.Id))})}, html.Text("remove")),
 			)
 		}, model.Projects)...)),
 		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Seed", Method: "POST", Path: "/projects/seeds"})}, html.Text("seed")),
@@ -815,7 +815,7 @@ func test__Projects__Index__2() eff.Task[bool] {
 									Status int64
 								}, error) {
 									_m26 := Projects__Index__Rename__Params{Id: id}
-									_r27, _err28 := rtesting.BrowserOf(_e25).ClickRoute(rt.Route{Name: "Projects.Index.Rename", Method: "POST", Path: "/projects/renames", Query: []rt.KV{{Key: "id", Value: _m26.Id}}}, rtesting.MsgName("Projects.Index.Rename", _m26))
+									_r27, _err28 := rtesting.BrowserOf(_e25).ClickRoute(rt.Route{Name: "Projects.Index.Rename", Method: "PATCH", Path: rt.Concat("/projects/", rt.PathSegment(_m26.Id))}, rtesting.MsgName("Projects.Index.Rename", _m26))
 									if _err28 != nil {
 										var _z29 struct {
 											Answer  rtesting.Answer
@@ -951,7 +951,7 @@ func test__Projects__Index__2() eff.Task[bool] {
 											Status int64
 										}, error) {
 											_m39 := Projects__Index__Remove__Params{Id: id}
-											_r40, _err41 := rtesting.BrowserOf(_e38).ClickRoute(rt.Route{Name: "Projects.Index.Remove", Method: "POST", Path: "/projects/removes", Query: []rt.KV{{Key: "id", Value: _m39.Id}}}, rtesting.MsgName("Projects.Index.Remove", _m39))
+											_r40, _err41 := rtesting.BrowserOf(_e38).ClickRoute(rt.Route{Name: "Projects.Index.Remove", Method: "DELETE", Path: rt.Concat("/projects/", rt.PathSegment(_m39.Id))}, rtesting.MsgName("Projects.Index.Remove", _m39))
 											if _err41 != nil {
 												var _z42 struct {
 													Answer  rtesting.Answer

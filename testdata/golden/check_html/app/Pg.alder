@@ -4,7 +4,7 @@ import Layout
 
 route Pg     = GET  "/"         { }
 route Submit = POST "/" { } form F
-route Toggle = POST "/toggles" { id: Int }
+route Toggle = PUT "/pg/{id}/done" { id: Int }
 
 type Model = {
   n: Int,

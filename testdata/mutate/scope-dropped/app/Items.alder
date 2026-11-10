@@ -4,8 +4,8 @@ import Item
 
 route Items  = GET  "/items"          { }                 requires user
 route Add    = POST "/items"    { }                 requires user
-route Rename = POST "/items/renames" { id: Item.ItemId } requires user
-route Remove = POST "/items/removes" { id: Item.ItemId } requires user
+route Rename = PATCH "/items/{id}" { id: Item.ItemId } requires user
+route Remove = DELETE "/items" { id: Item.ItemId } requires user
 
 type Model = { items: List Item, n: Int }
 

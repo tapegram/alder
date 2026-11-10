@@ -7,8 +7,8 @@ app/Todos/Index.alder:5:52 E0011 route parameter `todos` has type `List Todo`, w
 app/Todos/Index.alder:5:71 E0011 `requires missing`: the session has no field `missing`
 app/Todos/Index.alder:6:1 E0043 route `Submit` is a POST route: it needs `Submit.update : Submit.Params -> Session -> Task Response`
 app/Todos/Index.alder:6:63 E0011 `requires missing`: the session has no field `missing`
-app/Todos/Index.alder:7:1 E0043 route `Toggle` is a POST route: it needs `Toggle.update : Toggle.Params -> Session -> Task Response`
-app/Todos/Index.alder:7:70 E0011 `requires missing`: the session has no field `missing`
+app/Todos/Index.alder:7:1 E0043 route `Toggle` is a PUT route: it needs `Toggle.update : Toggle.Params -> Session -> Task Response`
+app/Todos/Index.alder:7:77 E0011 `requires missing`: the session has no field `missing`
 app/Todos/Index.alder:14:40 E0011 form field `items` has type `List Int`, which cannot come from a form
 app/Todos/Index.alder:19:1 E0007 `noSig` has no type signature; write `noSig : Int` on the line before it
   fix 19:1-19:1 noSig : Int⏎
