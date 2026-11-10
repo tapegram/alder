@@ -102,6 +102,25 @@ func TestPreview_NewMsgWalkThrough(t *testing.T) {
 	}
 }
 
+// TestPreview_OldIDResolves (#204): the alias id `new msg` previews exactly what `new action` does.
+func TestPreview_OldIDResolves(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	p := c.at("app/Posts/Index.alder", "load params", 0)
+	run := func(id string) preview {
+		var pv preview
+		c.call("alder/preview", req(c, "app/Posts/Index.alder", p, map[string]any{"id": id, "sets": map[string]string{"name": "Delete"}}), &pv)
+		return pv
+	}
+	want, got := run("new action"), run("new msg")
+	if !want.Ready || want.Error != "" || !strings.Contains(want.Diff, "Delete") {
+		t.Fatalf("new action preview %+v", want)
+	}
+	if !got.Ready || got.Error != "" || got.Diff != want.Diff || len(got.Files) != len(want.Files) {
+		t.Fatalf("new msg preview %+v, want %+v", got, want)
+	}
+}
+
 func TestPlan_UsesUnsavedBuffer(t *testing.T) {
 	c := start(t, blogCopy(t))
 	text := c.disk("app/Posts/Index.alder") + "\n-- unsaved note\n"
