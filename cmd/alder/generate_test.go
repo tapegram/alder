@@ -913,6 +913,9 @@ func TestHelp(t *testing.T) {
 		{[]string{"remove", "--help"}, removeUsage},
 		{[]string{"help", "test"}, testUsage + "\n" + testHelpNote},
 		{[]string{"new", "--help"}, newUsage},
+		{[]string{"new", "msg", "--help"}, newActionUsage}, // #204: the old word resolves like the CLI does
+		{[]string{"help", "new", "msg"}, newActionUsage},
+		{[]string{"new", "action", "--help"}, newActionUsage},
 	} {
 		var b bytes.Buffer
 		if !helpTo(c.args, &b) || b.String() != c.want+"\n" {

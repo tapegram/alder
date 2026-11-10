@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"strings"
 )
 
 // commandUsages are the usage lines `alder <command> --help` prints, by command; `alder new
@@ -93,6 +94,9 @@ func helpTo(args []string, w io.Writer) bool {
 	}
 	if cmd == "new" && len(args) > 1 {
 		kind := args[1]
+		if s := newGenerator(kind); s != nil { // #204: an alias (new msg) prints its generator's usage
+			kind = strings.TrimPrefix(s.ID, "new ")
+		}
 		if u, ok := newGeneratorUsages[kind]; ok {
 			fmt.Fprintln(w, u)
 			if kind == "route" {
