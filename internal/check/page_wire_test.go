@@ -25,11 +25,11 @@ func TestRouteWireNames(t *testing.T) {
 	wantClean(t, checkApp(t, wirePage("/r/{cfg}", `cfg: Text, electionId: Text = "" as "ElectionId", contestId: Maybe Int as "ContestId"`)))
 	wantClean(t, checkApp(t, wirePage("/r", `id: Text = "" as "id"`))) // the key may be the name itself
 	wantClean(t, checkApp(t, wirePage("/r", `a: Text = "" as "a-b.c_d~e9"`)))
+	wantClean(t, checkApp(t, wirePage("/r", `e: Text = "" as "_p.x"`))) // `_p.` is a plain query key (#199)
 	for _, c := range []struct{ path, params, want string }{
 		{"/r", `e: Text = "" as ""`, "the wire name of route parameter `e` is empty"},
 		{"/r", `e: Text = "" as "Election Id"`, "the wire name `Election Id` of route parameter `e` is not a plain query key: use letters, digits, `-`, `_`, `.` and `~`"},
 		{"/r", `e: Text = "" as "a&b"`, "the wire name `a&b` of route parameter `e` is not a plain query key"},
-		{"/r", `e: Text = "" as "_p.x"`, "the wire name `_p.x` of route parameter `e` starts with `_p.`, which Alder keeps for its own query keys"},
 		{"/r", `a: Text = "" as "K", b: Text = "" as "K"`, "route parameters `a` and `b` both read the query key `K`"},
 		{"/r", `a: Text = "", b: Text = "" as "a"`, "route parameters `a` and `b` both read the query key `a`"},
 		{"/r", `b: Text = "" as "a", a: Text = ""`, "route parameters `b` and `a` both read the query key `a`"},

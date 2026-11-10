@@ -3,8 +3,8 @@ package app
 // TestE2E_WireNames (#55): the gen_wire golden's page declares `electionId: Text = "" as
 // "ElectionId"` and `contestId: Maybe Int as "ContestId"`. Served through Serve, a request
 // with ?ElectionId=17&ContestId=5 reaches the page as electionId "17"; the lowercase key is not
-// read; the page's link renders ElectionId=18; its message URL carries _p.ElectionId, and the
-// message's redirect renders the wire keys. TestAlderWire runs the app's own Alder test (a
+// read; the page's link renders ElectionId=18; the message's
+// redirect renders the wire keys. TestAlderWire runs the app's own Alder test (a
 // Test.get and a Test.click) as `alder test` does. internal/gen's TestGen_Wire writes this file
 // into the module the app is emitted to and runs it.
 

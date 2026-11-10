@@ -1075,7 +1075,7 @@ func PagePathProblem(path string) string {
 
 // checkWireNames checks the wire names of params, the parameters of a route (noun)
 // (`e: Text = "" as "ElectionId"`, #55): only a query parameter (not a `{segment}` of path
-// segments segs) takes one, it is a plain query key outside the `_p.` keys Alder keeps, and no
+// segments segs) takes one, it is a plain query key, and no
 // two query parameters read one key (a parameter without a wire name reads its name).
 func (mc *modCtx) checkWireNames(params *syntax.RecordType, segs []string, noun string) {
 	c := mc.c
@@ -1099,9 +1099,6 @@ func (mc *modCtx) checkWireNames(params *syntax.RecordType, segs []string, noun 
 				continue
 			case !plainQueryKey(f.Wire):
 				c.errorf(diag.InvalidDecl, sp, "the wire name `%s` of %s parameter `%s` is not a plain query key: use letters, digits, `-`, `_`, `.` and `~`", f.Wire, noun, f.Name)
-				continue
-			case strings.HasPrefix(f.Wire, "_p."):
-				c.errorf(diag.InvalidDecl, sp, "the wire name `%s` of %s parameter `%s` starts with `_p.`, which Alder keeps for its own query keys", f.Wire, noun, f.Name)
 				continue
 			case inPath[f.Wire]:
 				// a wire name equal to a path segment would share its key
