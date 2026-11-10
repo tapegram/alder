@@ -184,10 +184,10 @@ var genCases = []genCase{
 	{name: "route-post", base: "fixture", args: []string{"new", "route", "Like", "/like", "--method", "POST", "--param", "postId:Post.PostId"}, test: true},
 	{name: "route-post-form", base: "scaffold", args: []string{"new", "route", "Contact", "/contact", "--method", "POST", "--form", "Message"}, test: true},
 	{name: "fixture-route-patch-path", base: "fixture", args: []string{"new", "route", "Posts.Feature", "/posts/{id}/feature", "--method", "PATCH", "--param", "id:Post.PostId", "--requires", "user"}, test: true},
-	{name: "msg-route", base: "scaffold", pre: [][]string{{"new", "route", "About", "/about"}}, args: []string{"new", "msg", "About", "Clear"}, test: true},
-	{name: "msg-route-id", base: "scaffold", pre: [][]string{{"new", "route", "About", "/about"}}, args: []string{"new", "msg", "About", "Clear", "--id", "clear"}, test: true},
-	{name: "fixture-msg-route-params", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "msg", "Posts.Show", "Feature", "note:Text"}},
-	{name: "fixture-msg-route-loop", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post"}}, args: []string{"new", "msg", "Posts.Index", "Pin", "id:Post.PostId", "--in-for", "row"}, test: true,
+	{name: "msg-route", base: "scaffold", pre: [][]string{{"new", "route", "About", "/about"}}, args: []string{"new", "action", "About", "Clear"}, test: true},
+	{name: "msg-route-id", base: "scaffold", pre: [][]string{{"new", "route", "About", "/about"}}, args: []string{"new", "action", "About", "Clear", "--id", "clear"}, test: true},
+	{name: "fixture-msg-route-params", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "action", "Posts.Show", "Feature", "note:Text"}},
+	{name: "fixture-msg-route-loop", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post"}}, args: []string{"new", "action", "Posts.Index", "Pin", "id:Post.PostId", "--in-for", "row"}, test: true,
 		fills: [][2]string{{`Posts.Index."pressing Pin" --hole ?pinId`, "post1"}}},
 	{name: "edit-route-param-route", base: "scaffold", pre: [][]string{{"new", "route", "About", "/about"}}, args: []string{"edit", "route", "About", "add-param", `q:Text=""`}, test: true},
 	{name: "remove-route-route", base: "scaffold", pre: [][]string{{"new", "route", "About", "/about"}}, args: []string{"remove", "route", "About"}, test: true},
@@ -204,7 +204,7 @@ var genCases = []genCase{
 	{name: "form-route-role", base: "fixture", pre: [][]string{{"new", "route", "Tags.Index", "/tags", "--list", "Tag", "--role", "Admin"}}, args: []string{"new", "form", "Tags.Index", "Quick", "name:Text.NonEmpty", "post:Post.PostId"}, test: true},
 	{name: "form-route-show-test", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "form", "Posts.Show", "Reply", "name:Text.NonEmpty", "post:Post.PostId", "--msg", "SendReply"}, test: true},
 	{name: "form-route-show", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "form", "Posts.Show", "Reply", "body:Text", "--hole", "--msg", "SendReply"}},
-	{name: "msg", base: "scaffold", args: []string{"new", "msg", "Home", "Clear", "--method", "DELETE"}, test: true,
+	{name: "msg", base: "scaffold", args: []string{"new", "action", "Home", "Clear", "--method", "DELETE"}, test: true,
 		fills: [][2]string{{"--decl Home.Clear.update", "{\n  let _ <- Log.info \"cleared\"\n  Task.succeed Response.refresh\n}"}}},
 	{name: "capability", base: "scaffold", args: []string{"new", "capability", "Weather", "current", "{ city: Text } -> Query (Maybe Float)"}, test: true,
 		fills: [][2]string{{"Weather.Weather.current", "Query.succeed (Just 21.5)"}}},
@@ -216,7 +216,7 @@ var genCases = []genCase{
 	{name: "fixture-table", base: "fixture", args: []string{"new", "table", "Like", "post:Post.PostId@ref=Post@cascade", "owner:User.UserId@ref=User@owner"}, test: true},
 	{name: "fixture-form-mine", base: "fixture", args: []string{"new", "form", "Home", "Quick", "title:Text.NonEmpty", "body:Text"}, test: true},
 	{name: "fixture-form-ref", base: "fixture", args: []string{"new", "form", "Home", "Tagging", "name:Text.NonEmpty", "post:Post.PostId"}, test: true},
-	{name: "fixture-msg-params", base: "fixture", args: []string{"new", "msg", "Home", "Feature", "id:Post.PostId", "--method", "PATCH"}},
+	{name: "fixture-msg-params", base: "fixture", args: []string{"new", "action", "Home", "Feature", "id:Post.PostId", "--method", "PATCH"}},
 	{name: "fixture-capability", base: "fixture", args: []string{"new", "capability", "Mail", "send", "{ to: Text.Email, subject: Text } -> Task Unit"}, test: true,
 		fills: [][2]string{{"Mail.Mail.send", "Task.succeed ()"}}},
 	{name: "fixture-edit-add", base: "fixture", args: []string{"edit", "table", "Post", "add-field", "summary:Maybe Text"}, breaks: true},
@@ -251,7 +251,7 @@ var genCases = []genCase{
 		fills: [][2]string{{"Notes.load", "Query.succeed { }"}, {"Notes.view", "<al-page><h1>Notes</h1></al-page>"}}},
 	{name: "fixture-route-blank-show", base: "fixture", args: []string{"new", "route", "Posts.Edit", "/posts/edit", "--show", "Post", "--blank", "--requires", "user"}, test: true,
 		fills: [][2]string{{"Posts.Edit.load", "Query.succeed { }"}, {"Posts.Edit.view", "<al-page><h1>Edit</h1></al-page>"}}},
-	{name: "msg-in-for", base: "scaffold", args: []string{"new", "msg", "Home", "Hide", "id:Entry.EntryId", "--in-for", "e", "--when", "List.length model.entries > 0", "--method", "PATCH"}, test: true,
+	{name: "msg-in-for", base: "scaffold", args: []string{"new", "action", "Home", "Hide", "id:Entry.EntryId", "--in-for", "e", "--when", "List.length model.entries > 0", "--method", "PATCH"}, test: true,
 		fills: [][2]string{{`Home."pressing Hide" --hole ?hideId`, "entry1"}}},
 	{name: "edit-route-param", base: "scaffold", args: []string{"edit", "route", "Home", "add-param", `q:Text=""`}, test: true},
 
@@ -268,13 +268,13 @@ var genCases = []genCase{
 		fills: [][2]string{{"Tags.Txt.load", "Query.succeed { }"}, {"Tags.Txt.view --hole ?body", `"hi"`}}},
 	{name: "form-msg", base: "scaffold", args: []string{"new", "form", "Home", "Quick", "name:Text.NonEmpty", "message:Text.NonEmpty", "--msg", "Sign2"}, test: true},
 	// E11 fixes: the four commands
-	{name: "app-msg", base: "scaffold", args: []string{"new", "msg", "App", "ToggleTheme", "dark:Bool", "--path", "/theme", "--method", "PUT"}, test: true,
+	{name: "app-msg", base: "scaffold", args: []string{"new", "action", "App", "ToggleTheme", "dark:Bool", "--path", "/theme", "--method", "PUT"}, test: true,
 		fills: [][2]string{{"--decl Home.Home.view", "<Layout.Page title=\"Guestbook\">\n  <al-card>\n    <form submit={Submit}>\n      <al-input field=\"name\" label=\"Your name\" />\n      <al-input field=\"message\" label=\"Message\" />\n      <al-button type=\"submit\">Sign</al-button>\n    </form>\n  </al-card>\n  <al-button click={App.ToggleTheme { dark: True }}>Dark</al-button>\n  <ul id=\"entries\">{for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}</ul>\n</Layout.Page>"}}},
 	// #160: an App that holds `route Logout` takes a route too
-	{name: "app-msg-auth", base: "scaffold", pre: [][]string{{"new", "auth"}}, args: []string{"new", "msg", "App", "Ping", "--path", "/ping"}},
-	{name: "fixture-app-msg-hole", base: "fixture", args: []string{"new", "msg", "App", "Ping", "--path", "/ping"}},
+	{name: "app-msg-auth", base: "scaffold", pre: [][]string{{"new", "auth"}}, args: []string{"new", "action", "App", "Ping", "--path", "/ping"}},
+	{name: "fixture-app-msg-hole", base: "fixture", args: []string{"new", "action", "App", "Ping", "--path", "/ping"}},
 	{name: "edit-decl-add-prop", base: "scaffold", args: []string{"edit", "decl", "Layout.Page", "add-prop", "dark:Bool=False"}, test: true},
-	{name: "msg-id", base: "scaffold", args: []string{"new", "msg", "Home", "Clear", "--id", "clear", "--method", "DELETE"}, test: true},
+	{name: "msg-id", base: "scaffold", args: []string{"new", "action", "Home", "Clear", "--id", "clear", "--method", "DELETE"}, test: true},
 	{name: "fixture-edit-session", base: "fixture", args: []string{"edit", "session", "add-field", `theme:Text="light"`}, test: true},
 	{name: "remove-route", base: "scaffold", args: []string{"remove", "route", "Home"}},
 	// #159: an `update` on one line is laid out over several for the new arm
@@ -433,8 +433,8 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "table", "Tag", "n:Int=1 -- evil"}, "", "alder new table: field `n`: the default `1 -- evil` holds `--`, which begins a comment in Alder source: write the value without it"},
 		{"scaffold", []string{"new", "form", "Table.Entry", "Sign", "name:Text"}, "", "alder new form: `Table.Entry` is not a route module (it declares no route): `alder new route Table.Entry /path` makes one"},
 		{"scaffold", []string{"new", "form", "Home", "Contact", "name:Text", "--into", "Post"}, "", "alder new form: `--into Post`: `Post` is not a table of this app (its tables: Entry)"},
-		{"scaffold", []string{"new", "msg", "Home", "Submit"}, "", "alder new msg: `Home` already declares `Submit`: choose another route name"},
-		{"scaffold", []string{"new", "msg", "Nowhere", "Go"}, "", "alder new msg: there is no route module `Nowhere`: `alder new route Nowhere /path` makes one"},
+		{"scaffold", []string{"new", "action", "Home", "Submit"}, "", "alder new action: `Home` already declares `Submit`: choose another route name"},
+		{"scaffold", []string{"new", "action", "Nowhere", "Go"}, "", "alder new action: there is no route module `Nowhere`: `alder new route Nowhere /path` makes one"},
 		{"scaffold", []string{"new", "capability", "Weather", "now", "Query Float ->"}, "", "alder new capability: `Query Float ->` is not a type: "},
 		{"scaffold", []string{"edit", "table", "Entry", "drop-field", "id"}, "", "alder edit table: `id` is the id of `Entry`: a table keeps its id"},
 		{"scaffold", []string{"edit", "table", "Entry", "drop-field", "nope"}, "", "alder edit table: `Entry` has no field `nope` (its fields: id, name, message, created)"},
@@ -470,8 +470,8 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "decl", "Home", "x", "Int ->"}, "", "alder new decl: `Int ->` is not a type: "},
 		{"scaffold", []string{"new", "test", "Home", "signing adds an entry"}, "", "alder new test: `Home` already has a test \"signing adds an entry\": choose another name"},
 		{"scaffold", []string{"new", "route", "Notes", "/notes", "--blank", "--list", "Entry"}, "", "alder new route: --blank takes no --list or --from"},
-		{"scaffold", []string{"new", "msg", "Home", "Hide", "--in-for", "x", "--method", "PATCH"}, "", "alder new msg: `Home`'s `view` has no `{for x in …}`: name the loop variable of one of its loops"},
-		{"scaffold", []string{"new", "msg", "Home", "Hide", "--when", "a b c,", "--method", "PATCH"}, "", "alder new msg: `--when a b c,` is not one expression"},
+		{"scaffold", []string{"new", "action", "Home", "Hide", "--in-for", "x", "--method", "PATCH"}, "", "alder new action: `Home`'s `view` has no `{for x in …}`: name the loop variable of one of its loops"},
+		{"scaffold", []string{"new", "action", "Home", "Hide", "--when", "a b c,", "--method", "PATCH"}, "", "alder new action: `--when a b c,` is not one expression"},
 		{"scaffold", []string{"edit", "route", "Table.Entry", "add-param", "q:Text"}, "", "alder edit route: `Table.Entry` is not a route module (it declares no route): `alder new route Table.Entry /path` makes one"},
 		{"scaffold", []string{"edit", "route", "Home", "add-param", "q:Text"}, "", "alder edit route: the result does not check (the errors above): nothing was written"},
 		{"scaffold", []string{"fill", "--decl", "Home.update.Submit", "-"}, "Task.succeed Rerender", "alder fill: `Home.update.Submit` names an arm: --decl replaces a whole declaration, `Home.update`"},
@@ -488,7 +488,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "route", "Entries.Show", "/entries", "--show", "Entry", "--by", "name"}, "", "alder new route: `--by name`: `name` is not a `@unique` column of `Entry`"},
 		{"scaffold", []string{"new", "route", "Entries.Show", "/entries", "--by", "name"}, "", "alder new route: --by names the column --show T reads its row by: give --show T too"},
 		{"scaffold", []string{"new", "form", "Home", "Quick", "name:Text", "--msg", "Submit"}, "", "alder new form: `Submit` is posted with the form `Sign` already: a route has one form; choose another route name"},
-		{"scaffold", []string{"new", "msg", "Home", "Clear", "--id", "1x"}, "", "alder new msg: `--id 1x` is not an id"},
+		{"scaffold", []string{"new", "action", "Home", "Clear", "--id", "1x"}, "", "alder new action: `--id 1x` is not an id"},
 		{"scaffold", []string{"new", "table", "Tag", "created:Time@created"}, "", "alder new table: field `created`: the generator writes `created: Time @created` and `updated: Time @updated`; leave them out, or give --no-timestamps"},
 		{"scaffold", []string{"edit", "session", "add-field", "theme:Text"}, "", "alder edit session: session field `theme` needs a default"},
 		{"fixture", []string{"edit", "session", "add-field", "role:Text=\"x\""}, "", "alder edit session: the session already has a field `role`"},
@@ -530,12 +530,12 @@ func TestGenerate_Refusals(t *testing.T) {
 		}
 	}
 
-	// a file page has no messages: new msg refuses it (new form follows with Task 6.2)
+	// a file page has no messages: new action refuses it (new form follows with Task 6.2)
 	dir := genApp(t, "scaffold")
 	if code, _, errs := alderIn(t, dir, "", "new", "route", "Reports.Csv", "/reports.csv", "--file"); code != 0 {
 		t.Fatalf("new route --file: %s", errs)
 	}
-	for _, args := range [][]string{{"new", "msg", "Reports.Csv", "Refresh"}} {
+	for _, args := range [][]string{{"new", "action", "Reports.Csv", "Refresh"}} {
 		before := appFiles(t, dir)
 		code, _, errs := alderIn(t, dir, "", args...)
 		if want := "alder " + args[0] + " " + args[1] + ": a file page has no messages: `view` returns `File`, so nothing can be posted from it; move the message to an HTML page\n"; code != 1 || errs != want {
@@ -700,7 +700,7 @@ var genSequence = []struct {
 	{args: []string{"new", "table", "Like", "post:Post.PostId@ref=Post@cascade", "owner:User.UserId@ref=User@owner"}},
 	{args: []string{"new", "form", "Home", "Quick", "title:Text.NonEmpty", "body:Text"}},
 	{args: []string{"new", "form", "Home", "Tagging", "name:Text.NonEmpty", "post:Post.PostId"}},
-	{args: []string{"new", "msg", "Posts.Show", "Feature", "id:Post.PostId"}},
+	{args: []string{"new", "action", "Posts.Show", "Feature", "id:Post.PostId"}},
 	{args: []string{"fill", "Posts.Show.view", "-"}, stdin: "model.row.id"},
 	{args: []string{"fill", "--decl", "Posts.Show.update", "-"}, stdin: "{\n  let _ <- Db.updateMine Post params.id (\\t -> { t | featured: True })\n  Task.succeed Response.refresh\n}"},
 	{args: []string{"fill", "--decl", `Posts.Show."pressing Feature"`, "-"}, stdin: `{
@@ -752,8 +752,8 @@ func TestGenerate_Mutate(t *testing.T) {
 func TestGenerate_FillImports(t *testing.T) {
 	t.Parallel()
 	dir := genApp(t, "fixture")
-	if code, _, errs := alderIn(t, dir, "", "new", "msg", "Home", "Purge", "--method", "DELETE"); code != 0 {
-		t.Fatalf("alder new msg: %s", errs)
+	if code, _, errs := alderIn(t, dir, "", "new", "action", "Home", "Purge", "--method", "DELETE"); code != 0 {
+		t.Fatalf("alder new action: %s", errs)
 	}
 	fill := "{\n  let n <- Db.from Comment |> Db.where (Comment.body.contains (Text.trim \"x\")) |> Db.count\n  Task.succeed (if n > 0 then Response.refresh else Response.refresh)\n}"
 	code, out, errs := alderIn(t, dir, fill, "fill", "--decl", "Home.Purge.update", "-", "--dry-run", "--json")
@@ -882,7 +882,7 @@ func TestGenerate_TableInTypeModule(t *testing.T) {
 }
 
 // TestGenerate_ViewHole (I7): a button needs a view to go in: on a route whose `view` is still
-// the hole ?view, `alder new msg` refuses, saying to fill it first.
+// the hole ?view, `alder new action` refuses, saying to fill it first.
 func TestGenerate_ViewHole(t *testing.T) {
 	t.Parallel()
 	dir := genApp(t, "scaffold")
@@ -890,7 +890,7 @@ func TestGenerate_ViewHole(t *testing.T) {
 		t.Fatalf("new route: exit %d\n%s%s", code, out, errs)
 	}
 	for _, args := range [][]string{
-		{"new", "msg", "Other", "Clear"},
+		{"new", "action", "Other", "Clear"},
 	} {
 		code, _, errs := alderIn(t, dir, "", args...)
 		if code != 1 || !strings.Contains(errs, "`"+args[2]+"`'s `view` is a hole: fill `view` first (`alder fill "+args[2]+".view -`)") {
@@ -943,8 +943,8 @@ func TestGenerate_E11Commands(t *testing.T) {
 	needGoTool(t)
 	t.Run("form-on-msg", func(t *testing.T) {
 		dir := genApp(t, "fixture")
-		if code, _, errs := alderIn(t, dir, "", "new", "msg", "Home", "Feature", "id:Post.PostId", "--method", "PATCH"); code != 0 {
-			t.Fatalf("new msg: %s", errs)
+		if code, _, errs := alderIn(t, dir, "", "new", "action", "Home", "Feature", "id:Post.PostId", "--method", "PATCH"); code != 0 {
+			t.Fatalf("new action: %s", errs)
 		}
 		before := appFiles(t, dir)
 		code, out, errs := alderIn(t, dir, "", "new", "form", "Home", "Reason", "why:Text.NonEmpty", "--msg", "Feature")
@@ -962,8 +962,8 @@ func TestGenerate_E11Commands(t *testing.T) {
 		pre        [][]string
 		args       []string
 	}{
-		{"form-on-route", "scaffold", [][]string{{"new", "msg", "Home", "Clear", "--method", "DELETE"}}, []string{"new", "form", "Home", "Reason", "why:Text.NonEmpty", "--msg", "Clear"}},
-		{"form-on-route-show", "fixture", [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}, {"new", "msg", "Posts.Show", "Feature", "note:Text"}},
+		{"form-on-route", "scaffold", [][]string{{"new", "action", "Home", "Clear", "--method", "DELETE"}}, []string{"new", "form", "Home", "Reason", "why:Text.NonEmpty", "--msg", "Clear"}},
+		{"form-on-route-show", "fixture", [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}, {"new", "action", "Posts.Show", "Feature", "note:Text"}},
 			[]string{"new", "form", "Posts.Show", "Reason", "why:Text.NonEmpty", "--msg", "Feature"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -1020,7 +1020,7 @@ func TestGenerate_E11Commands(t *testing.T) {
 	}{
 		{[]string{"edit", "decl", "Layout.Page", "add-prop", "dark:Bool"}, "needs a default"},
 		{[]string{"edit", "decl", "Layout.Page", "add-prop", "title:Text=\"x\""}, "already has a property `title`"},
-		{[]string{"new", "msg", "App", "Logout", "--path", "/logout"}, "`App` already declares `Logout`"},
+		{[]string{"new", "action", "App", "Logout", "--path", "/logout"}, "`App` already declares `Logout`"},
 	} {
 		dir := genApp(t, "fixture")
 		code, _, errs := alderIn(t, dir, "", c.args...)
@@ -1068,7 +1068,7 @@ func TestGenerate_E11Messages(t *testing.T) {
 	if code, o := run("{\n  Task.succeed True\n}", "fill", `Home."submitting Feedback"`, "-"); code != 1 || !strings.Contains(o, "to replace the whole test, use `alder fill --decl") {
 		t.Errorf("a block in ?expected: exit %d: %s", code, o)
 	}
-	if code, o := run("", "new", "msg", "Home", "Pick", "role:Role", "--path", "/pick"); code != 1 || !strings.Contains(o, "write `User.Role`") {
+	if code, o := run("", "new", "action", "Home", "Pick", "role:Role", "--path", "/pick"); code != 1 || !strings.Contains(o, "write `User.Role`") {
 		t.Errorf("a bare app type: exit %d: %s", code, o)
 	}
 	if code, o := run("", "check"); code != 0 || !strings.Contains(o, "alder check: 3 typed holes left\n") {
@@ -1223,7 +1223,7 @@ func TestNewForm_OneLineView(t *testing.T) {
 		{"", []string{"new", "route", "Other", "/other", "--blank"}},
 		{"Query.succeed { }", []string{"fill", "Other.load", "-"}},
 		{"<Layout.Page title=\"Other\"><h1>Other</h1></Layout.Page>", []string{"fill", "Other.view", "-"}},
-		{"", []string{"new", "msg", "Other", "Ping"}},
+		{"", []string{"new", "action", "Other", "Ping"}},
 	} {
 		if code, out, errs := alderIn(t, dir, c.stdin, c.args...); code != 0 {
 			t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(c.args, " "), code, out, errs)
@@ -1294,7 +1294,7 @@ func TestGenerate_TableNameAddress(t *testing.T) {
 }
 
 // TestGenerate_PageCommandsRemoved (#160): `edit page` and `remove page` are not commands any
-// more (the group's usage, which names `route`), and `new msg` still says it adds a write route.
+// more (the group's usage, which names `route`), and `new action` still says it adds a write route.
 func TestGenerate_PageCommandsRemoved(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
@@ -1321,7 +1321,7 @@ func TestGenerate_PageCommandsRemoved(t *testing.T) {
 		want string
 	}{
 		{[]string{"edit", "route", "About", "add-param", `r:Text=""`}, ""},
-		{[]string{"new", "msg", "About", "Clear"}, "`alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`\n"},
+		{[]string{"new", "action", "About", "Clear"}, "`alder new action` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`\n"},
 		{[]string{"remove", "route", "About"}, ""},
 	} {
 		if code, out, errs := alderIn(t, dir, "", c.args...); code != 0 || errs != c.want {
@@ -1333,7 +1333,7 @@ func TestGenerate_PageCommandsRemoved(t *testing.T) {
 	}
 }
 
-// TestGenerate_RouteMsgRefusals: `new msg` on a route module refuses what would not check or
+// TestGenerate_RouteMsgRefusals: `new action` on a route module refuses what would not check or
 // belongs elsewhere, writing nothing.
 func TestGenerate_RouteMsgRefusals(t *testing.T) {
 	t.Parallel()
@@ -1352,15 +1352,15 @@ func TestGenerate_RouteMsgRefusals(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"new", "msg", "Posts.Show", "Show"}, "alder new msg: `Posts.Show` already declares `Show`: choose another route name\n"},
-		{[]string{"new", "msg", "Posts.Show", "feature"}, "alder new msg: `feature` is not a route name: a route is named by a capitalised identifier, such as `Archive`\n"},
-		{[]string{"new", "msg", "Posts.Show", "Feature", "id:Text"}, "alder new msg: field `id` is a parameter of the page's path already, with another type (`Post.PostId`): the route takes it from there\n"},
-		{[]string{"new", "msg", "Posts.Edit", "Feature"}, "alder new msg: `Posts.Edit`'s `view` is a hole: fill `view` first (`alder fill Posts.Edit.view -`), then add the route's button\n"},
+		{[]string{"new", "action", "Posts.Show", "Show"}, "alder new action: `Posts.Show` already declares `Show`: choose another route name\n"},
+		{[]string{"new", "action", "Posts.Show", "feature"}, "alder new action: `feature` is not a route name: a route is named by a capitalised identifier, such as `Archive`\n"},
+		{[]string{"new", "action", "Posts.Show", "Feature", "id:Text"}, "alder new action: field `id` is a parameter of the page's path already, with another type (`Post.PostId`): the route takes it from there\n"},
+		{[]string{"new", "action", "Posts.Edit", "Feature"}, "alder new action: `Posts.Edit`'s `view` is a hole: fill `view` first (`alder fill Posts.Edit.view -`), then add the route's button\n"},
 		{[]string{"new", "form", "Posts.Show", "Reply", "body:Text", "--msg", "Reply"}, "alder new form: `--msg Reply` names the form itself: the form and its route need two names\n"},
 		{[]string{"new", "form", "Posts.Show", "Reply", "body:Text", "--hole", "--into", "Comment"}, "alder new form: --hole leaves the `update` body a hole and --into Comment fills it with an insert: give one of them\n"},
 		{[]string{"new", "form", "Posts.Show", "Show", "body:Text"}, "alder new form: `Posts.Show` already declares `Show`: choose another name\n"},
 		{[]string{"new", "form", "Like", "Reply", "body:Text"}, "alder new form: `Like` has no GET route: a form is posted from a route's `view`; `alder new route Like /path` makes one\n"},
-		{[]string{"new", "msg", "Like", "Again"}, "alder new msg: `Like` has no GET route: a message is a button on a route's `view`; `alder new route Like /path --method POST` makes a write route without one\n"},
+		{[]string{"new", "action", "Like", "Again"}, "alder new action: `Like` has no GET route: a message is a button on a route's `view`; `alder new route Like /path --method POST` makes a write route without one\n"},
 	} {
 		before := appFiles(t, dir)
 		if code, _, errs := alderIn(t, dir, "", c.args...); code != 1 || errs != c.want {

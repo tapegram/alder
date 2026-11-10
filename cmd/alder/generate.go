@@ -18,7 +18,7 @@ import (
 	"alder/internal/theme"
 )
 
-// The generators: `alder new route|table|form|msg|capability`, `alder edit table` and `alder
+// The generators: `alder new route|table|form|action|capability`, `alder edit table` and `alder
 // fill` (book chapter 15). Each reads the app in --dir (default "."), computes its edits
 // (internal/generate), applies them to a copy of the app, checks the copy as `alder check`
 // does, and writes the files only when the copy checks (generate.Apply). It prints the files
@@ -275,7 +275,7 @@ const newAdminUsage = "usage: alder new admin [--module Admin] [--path /admin] [
 
 const newFormUsage = "usage: alder new form <Route module> <Name> <field>:<Type>[=default] … [--into T] [--hole] [--msg <Route>] [--method POST|PUT|PATCH|DELETE] [--path /path] [--dir app] [--json] [--dry-run]"
 
-const newMsgUsage = "usage: alder new msg <Route module> <Name> [<field>:<Type> …] [--in-for <binder>] [--when <Bool expression>] [--id <id>] [--method POST|PUT|PATCH|DELETE] [--path /path] [--dir app] [--json] [--dry-run]"
+const newActionUsage = "usage: alder new action <Route module> <Name> [<field>:<Type> …] [--in-for <binder>] [--when <Bool expression>] [--id <id>] [--method POST|PUT|PATCH|DELETE] [--path /path] [--dir app] [--json] [--dry-run]"
 
 const newCapabilityUsage = "usage: alder new capability <Module> <entry> \"<Type>\" [--dir app] [--json] [--dry-run]"
 
@@ -291,7 +291,7 @@ const newSiloUsage = "usage: alder new silo <key> <Table> … [--empty] [--dir a
 
 // specUsage is each generator's usage line (the text `--help` prints and an argument error shows).
 var specUsage = map[string]string{
-	"new route": newRouteUsage, "new table": newTableUsage, "new form": newFormUsage, "new msg": newMsgUsage,
+	"new route": newRouteUsage, "new table": newTableUsage, "new form": newFormUsage, "new action": newActionUsage,
 	"new capability": newCapabilityUsage, "new admin": newAdminUsage, "new auth": newAuthUsage,
 	"new type": newTypeUsage, "new decl": newDeclUsage, "new test": newTestUsage, "new silo": newSiloUsage,
 }

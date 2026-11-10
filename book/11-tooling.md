@@ -266,7 +266,7 @@ prints them (`wrote app/About.alder`, `edited app/Home.alder`), the
 unified diff of every edited one, and the copy's diagnostics, its typed
 holes (W0002) with their types among them.
 
-`alder new msg` adds a write route to a route module; a write route in a
+`alder new action` adds a write route to a route module; a write route in a
 module of its own is `alder new route <Module> <path> --method POST`.
 
 #### `alder new route [<Module>] <path>`
@@ -298,7 +298,7 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 **Writes:** in the route module: `form <Name>`, a write route `Submit<Name>` (`POST "<path>"`, with the parameters of the module's GET route and `form <Name>`; `<path>` is the collection of the table it inserts into, such as `/replies`, or the page's own path when it has no table; `--path` and `--method` name another, and a path and method a route already has are refused, chapter 15), its `Submit<Name>.update` (an insert into the table whose columns the fields are, by name and type, or `--into T`'s, answering `Response.redirect` to the route with a `Response.success` toast; else the hole `?answer : Task Response`), the form in `view` (wrapped inputs, `<Errors form />` in an `al-alert`), and two browser tests
 
-#### `alder new msg <Route module> <Name> [<field>:<Type> …]`
+#### `alder new action <Route module> <Name> [<field>:<Type> …]`
 
 **Writes:** in the route module: a write route `<Name>` (`POST "<path>"`, `<path>` the page's own path unless `--path` says another, `--method` another method; with the GET route's parameters and the fields), its `<Name>.update` (answering `Response.refresh`), an `al-button` that sends it at the end of the view (the parameters it cannot know are holes, `?<name>Id`), and a test that clicks it and expects `Refreshed`
 
@@ -376,7 +376,7 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 **Writes:** the route with `Model = { }` and the holes `?load` and `?view` (with `--show T`, its `/{id}` and `id` parameter), and its rules' tests; fill `Model` with `--decl`, then `load`, then `view`
 
-#### `alder new msg … --in-for <binder> [--when <expr>]`
+#### `alder new action … --in-for <binder> [--when <expr>]`
 
 **Writes:** the button at the end of the body element of the view's `{for <binder> in …}`, its class the route's name (`class="remove"`), its fields from the binder (`user: m.user`; a table's id from a row of that table, `u.id`) or holes; `--when` shows it only when the expression holds
 
@@ -396,7 +396,7 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 **Writes:** a route with path parameters, one `--param` for each `{x}`, its `load` the hole `?load`; `--show T --by <column>`: the row read by a `@unique` column, at `<path>/{<column>}`
 
-#### `alder new form … --msg <Name>`, `alder new msg … --id <id>`
+#### `alder new form … --msg <Name>`, `alder new action … --id <id>`
 
 **Writes:** the form's write route named `<Name>` (not `Submit<Name>`); the button's `id`.
 
@@ -434,7 +434,7 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 - `alder new form` on such a route inserts with `Db.insertScoped`
 
-#### `alder new msg App <Name> [<field>:<Type> …]`
+#### `alder new action App <Name> [<field>:<Type> …]`
 
 **Writes:** in `App`: `route <Name> = POST "<path>"` with the fields as its parameters (`--path` is required, since a route of `App` has no page to take a path from; `--method` names another method), after `App`'s last route, its `<Name>.update` (answering `Response.refresh`) and a comment saying how to test it; no button and no test, as a route of `App` is sent from any page
 
@@ -483,7 +483,7 @@ module of its own is `alder new route <Module> <path> --method POST`.
 - An admin written before the folders were plural (`Admin/Todo/`) is refused too: "admin is in the old layout (Admin/Todo/): folders are plural now (Admin/Todos/). Delete app/Admin and run `alder new admin` again; move any code you added outside `-- @admin` regions first"
 
 A hole stops `alder test` (`alder test: no tests ran (fill the
-hole)`), so after `new msg`, `new capability`, and a `new form` whose
+hole)`), so after `new action`, `new capability`, and a `new form` whose
 fields fit no table, the order is new, fill, test: `alder fill` each hole
 (`alder fill --list` lists them), then run the tests.
 
@@ -2995,9 +2995,9 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   Row.load, Row.view for route Row``.
 
   The generators are refactor actions, after every fix. On `Posts.Index`, a
-  route module, those are `new form`, `new msg`, `new decl`, `new test`, `edit
+  route module, those are `new form`, `new action`, `new decl`, `new test`, `edit
   route` and `remove route`, each with the route module already filled in:
-  `new msg (page = Posts.Index)`.
+  `new action (page = Posts.Index)`.
 
   Choosing one asks for the rest of its fields (a name, say), shows the diff
   it would make, and applies it when you press `<CR>`. Choosing a generator
@@ -3223,7 +3223,7 @@ table, for one that must exist), so the preview shows a change as soon as it
 opens.
 
 The field under the cursor says what it means and gives an example. Flags that
-matter to agents rather than people (where `new msg` puts its button,
+matter to agents rather than people (where `new action` puts its button,
 `--strict`) are left out of the form; the command line still takes them.
 
 `<CR>` applies when every field is valid, and `<C-o>` opens the full review,

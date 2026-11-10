@@ -536,7 +536,7 @@ func onlyExpectedLeft(in []Hole, h *Hole) bool {
 	return true
 }
 
-// dropGuidance removes the comments `alder new msg` writes above a test it generates, once
+// dropGuidance removes the comments `alder new action` writes above a test it generates, once
 // they are done with: the paragraph saying what to fill ?expected with (expected: that hole
 // was filled), and the note on the rows of a loop (all: the test has no hole left but
 // ?expected, so the clicked row's holes the note names are filled). decl is

@@ -7,7 +7,7 @@ import (
 )
 
 func TestSpecs_IDsAndShape(t *testing.T) {
-	want := []string{"new route", "new table", "new form", "new msg", "new capability", "new admin", "new auth", "new type", "new decl", "new test", "new silo"}
+	want := []string{"new route", "new table", "new form", "new action", "new capability", "new admin", "new auth", "new type", "new decl", "new test", "new silo"}
 	var got []string
 	for _, s := range Specs() {
 		if strings.HasPrefix(s.ID, "new ") {
@@ -53,7 +53,7 @@ func TestSpecs_FieldParseErrorIsRefusal(t *testing.T) {
 }
 
 func TestSpecs_AllIDs(t *testing.T) {
-	want := "new route,new table,new form,new msg,new capability,new admin,new auth,new type,new decl,new test,new silo," +
+	want := "new route,new table,new form,new action,new capability,new admin,new auth,new type,new decl,new test,new silo," +
 		"edit table,edit route,edit decl,edit auth,edit session,remove route,remove table,regen admin,theme import,theme use"
 	var ids []string
 	for _, s := range Specs() {

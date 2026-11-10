@@ -61,7 +61,7 @@ type Field struct {
 	// Existing marks an ArgModule that must name a module the app has (new decl, new test):
 	// Form starts it, when required and unset, at the first module rather than the example.
 	Existing bool
-	// AppOK marks an ArgRouteModule that may name App (`new msg App`: its routes are buttons on any
+	// AppOK marks an ArgRouteModule that may name App (`new action App`: its routes are buttons on any
 	// page); every other command leaves App out of the pages it offers, App being no route module.
 	AppOK bool
 	// Agent marks a flag the editor's form leaves out: a precision an agent needs on the
@@ -108,6 +108,9 @@ type App struct {
 // how to run it.
 type Spec struct {
 	ID, Summary string
+	// Alias is an old ID that still resolves (SpecByID, Select) but is never listed in help or
+	// `help --json`: the command it was renamed from, for one release.
+	Alias       string
 	Args, Flags []Field
 	Here        func(HereCtx) *Match // nil: never "here"
 	Run         func(sets Sets, app App, dryRun bool) (*Result, error)
@@ -249,7 +252,7 @@ func Select(group string, argv []string, specs []*Spec) (*Spec, []string) {
 			continue
 		}
 		for _, s := range specs {
-			if s.ID == group+" "+a {
+			if s.ID == group+" "+a || (s.Alias != "" && s.Alias == group+" "+a) {
 				return s, append(append([]string{}, argv[:i]...), argv[i+1:]...)
 			}
 		}

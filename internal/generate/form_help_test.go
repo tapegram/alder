@@ -33,7 +33,7 @@ func TestSpecs_EveryFieldHasHelpAndExample(t *testing.T) {
 
 // Issue 45: the editor's form hides the agent-oriented flags; the CLI still takes them.
 func TestSpecs_AgentFlags(t *testing.T) {
-	want := []string{"new route --blank", "new form --msg", "new msg --in-for", "new msg --when", "new msg --id", "edit table --strict", "edit session --strict", "theme import --print", "theme use --print"}
+	want := []string{"new route --blank", "new form --msg", "new action --in-for", "new action --when", "new action --id", "edit table --strict", "edit session --strict", "theme import --print", "theme use --print"}
 	var got []string
 	for _, s := range Specs() {
 		for _, f := range s.Args {
@@ -53,7 +53,7 @@ func TestSpecs_AgentFlags(t *testing.T) {
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("agent flags = %v", got)
 	}
-	sets, _, err := ParseArgs(SpecByID("new msg"), []string{"Home", "Hide", "--when", "True", "--id", "hide"})
+	sets, _, err := ParseArgs(SpecByID("new action"), []string{"Home", "Hide", "--when", "True", "--id", "hide"})
 	if err != nil || sets.One("when") != "True" || sets.One("id") != "hide" {
 		t.Fatalf("the CLI must still take agent flags: %v %v", sets, err)
 	}
@@ -101,7 +101,7 @@ func TestForm_RequiredFieldsStartFilled(t *testing.T) {
 
 // Issue 45: a hidden flag is marked in the form, so the editor can leave it out.
 func TestForm_AgentFlagMarked(t *testing.T) {
-	fields, _, _ := Form(SpecByID("new msg"), nil, nil, nil)
+	fields, _, _ := Form(SpecByID("new action"), nil, nil, nil)
 	agent := map[string]bool{}
 	for _, f := range fields {
 		agent[f.Name] = f.Agent

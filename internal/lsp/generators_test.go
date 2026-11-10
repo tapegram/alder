@@ -43,7 +43,7 @@ func TestPreview_CarriesWarnings(t *testing.T) {
 	c.open("app/Posts/Index.alder", text)
 	c.diags("app/Posts/Index.alder")
 	var pv preview
-	c.call("alder/preview", req(c, "app/Posts/Index.alder", Position{}, map[string]any{"id": "new msg", "sets": map[string]string{"module": "Posts.Index", "name": "Delete"}}), &pv)
+	c.call("alder/preview", req(c, "app/Posts/Index.alder", Position{}, map[string]any{"id": "new action", "sets": map[string]string{"module": "Posts.Index", "name": "Delete"}}), &pv)
 	if len(pv.Warnings) != 1 || !strings.Contains(pv.Warnings[0], "output not formatted") {
 		t.Fatalf("warnings %v (error %q)", pv.Warnings, pv.Error)
 	}
@@ -92,11 +92,11 @@ func TestPreview_NewMsgWalkThrough(t *testing.T) {
 	openClean(t, c, "app/Posts/Index.alder")
 	p := c.at("app/Posts/Index.alder", "load params", 0)
 	var pv preview
-	c.call("alder/preview", req(c, "app/Posts/Index.alder", p, map[string]any{"id": "new msg", "sets": map[string]string{"name": ""}}), &pv)
+	c.call("alder/preview", req(c, "app/Posts/Index.alder", p, map[string]any{"id": "new action", "sets": map[string]string{"name": ""}}), &pv)
 	if pv.Ready || pv.Fields[0].Value != "Posts.Index" || pv.Fields[0].Source != "here" || pv.Fields[1].Why != "required" {
 		t.Fatalf("empty form %+v", pv)
 	}
-	c.call("alder/preview", req(c, "app/Posts/Index.alder", p, map[string]any{"id": "new msg", "sets": map[string]string{"name": "Delete"}}), &pv)
+	c.call("alder/preview", req(c, "app/Posts/Index.alder", p, map[string]any{"id": "new action", "sets": map[string]string{"name": "Delete"}}), &pv)
 	if !pv.Ready || pv.Error != "" || len(pv.Files) != 1 || pv.Files[0].Path != "app/Posts/Index.alder" || pv.Files[0].Added == 0 || !strings.Contains(pv.Diff, "Delete") {
 		t.Fatalf("ready preview %+v", pv)
 	}
@@ -114,7 +114,7 @@ func TestPlan_UsesUnsavedBuffer(t *testing.T) {
 		}
 		Error string
 	}
-	c.call("alder/plan", req(c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "load params", 0), map[string]any{"id": "new msg", "sets": map[string]string{"name": "Delete"}}), &plan)
+	c.call("alder/plan", req(c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "load params", 0), map[string]any{"id": "new action", "sets": map[string]string{"name": "Delete"}}), &plan)
 	if plan.Error != "" || len(plan.Files) != 1 || plan.Files[0].Before == nil || *plan.Files[0].Before != text || !strings.Contains(*plan.Files[0].After, "-- unsaved note") {
 		t.Fatalf("plan %+v", plan)
 	}
@@ -164,7 +164,7 @@ func TestPlan_DiagnosticsCLIShape(t *testing.T) {
 		Error       string
 	}
 	// a msg whose field names a type that does not exist: the copy does not check
-	c.call("alder/plan", req(c, "app/Posts/Index.alder", Position{}, map[string]any{"id": "new msg", "sets": map[string]string{"page": "Posts.Index", "name": "Zap", "fields": "x:NoSuchType"}}), &plan)
+	c.call("alder/plan", req(c, "app/Posts/Index.alder", Position{}, map[string]any{"id": "new action", "sets": map[string]string{"page": "Posts.Index", "name": "Zap", "fields": "x:NoSuchType"}}), &plan)
 	if plan.Error == "" || strings.Contains(plan.Error, "(the errors above)") || len(plan.Diagnostics) == 0 {
 		t.Fatalf("plan %+v", plan)
 	}
@@ -190,13 +190,13 @@ func TestPreview_OpensReadyWithHelp(t *testing.T) {
 			t.Errorf("field %+v", f)
 		}
 	}
-	c.call("alder/preview", req(c, "app/Posts/Index.alder", Position{}, map[string]any{"id": "new msg", "sets": map[string]string{}}), &pv)
+	c.call("alder/preview", req(c, "app/Posts/Index.alder", Position{}, map[string]any{"id": "new action", "sets": map[string]string{}}), &pv)
 	agent := map[string]bool{}
 	for _, f := range pv.Fields {
 		agent[f.Name] = f.Agent
 	}
 	if !pv.Ready || !agent["when"] || agent["name"] {
-		t.Fatalf("new msg on open: ready %v agent %v", pv.Ready, agent)
+		t.Fatalf("new action on open: ready %v agent %v", pv.Ready, agent)
 	}
 }
 
@@ -213,7 +213,7 @@ func TestPreview_LatestWins(t *testing.T) {
 	p := c.at("app/Posts/Index.alder", "load params", 0)
 	var chans []<-chan *message
 	for _, name := range []string{"A", "Ab", "Abc"} {
-		chans = append(chans, c.callAsync("alder/preview", req(c, "app/Posts/Index.alder", p, map[string]any{"id": "new msg", "sets": map[string]string{"name": name}})))
+		chans = append(chans, c.callAsync("alder/preview", req(c, "app/Posts/Index.alder", p, map[string]any{"id": "new action", "sets": map[string]string{"name": name}})))
 	}
 	last := recv(t, chans[2])
 	if last.Error != nil || !strings.Contains(string(last.Result), "Abc") {
@@ -334,7 +334,7 @@ func TestPlan_MigrationOnlyInTheCopy(t *testing.T) {
 	}
 }
 
-// TestPlan_NoPageStaleBuild (#173): with no page set and no cursor on one, new msg's page starts
+// TestPlan_NoPageStaleBuild (#173): with no page set and no cursor on one, new action's page starts
 // at the first page the form guesses (source "default"); a plan refuses it as unset.
 func TestPlan_NoPageStaleBuild(t *testing.T) {
 	c := start(t, blogCopy(t))
@@ -343,7 +343,7 @@ func TestPlan_NoPageStaleBuild(t *testing.T) {
 		Files []struct{ Path string }
 		Error string
 	}
-	c.call("alder/plan", req(c, "app/Layout.alder", Position{}, map[string]any{"id": "new msg", "sets": map[string]string{"name": "Delete"}}), &plan)
+	c.call("alder/plan", req(c, "app/Layout.alder", Position{}, map[string]any{"id": "new action", "sets": map[string]string{"name": "Delete"}}), &plan)
 	if plan.Error != "page: required" || len(plan.Files) != 0 {
 		t.Fatalf("plan %+v", plan)
 	}
@@ -358,7 +358,7 @@ func TestPlan_PageFromHere(t *testing.T) {
 		Files []struct{ Path string }
 		Error string
 	}
-	c.call("alder/plan", req(c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "load params", 0), map[string]any{"id": "new msg", "sets": map[string]string{"name": "Delete"}}), &plan)
+	c.call("alder/plan", req(c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "load params", 0), map[string]any{"id": "new action", "sets": map[string]string{"name": "Delete"}}), &plan)
 	if plan.Error != "" || len(plan.Files) != 1 {
 		t.Fatalf("plan %+v", plan)
 	}
@@ -370,7 +370,7 @@ func TestPreview_StillStartsFilled(t *testing.T) {
 	c := start(t, blogCopy(t))
 	openClean(t, c, "app/Layout.alder")
 	var pv preview
-	c.call("alder/preview", req(c, "app/Layout.alder", Position{}, map[string]any{"id": "new msg", "sets": map[string]string{"name": "Delete"}}), &pv)
+	c.call("alder/preview", req(c, "app/Layout.alder", Position{}, map[string]any{"id": "new action", "sets": map[string]string{"name": "Delete"}}), &pv)
 	for _, f := range pv.Fields {
 		if f.Name == "page" {
 			if f.Value == "" || f.Source != "default" || !pv.Ready {

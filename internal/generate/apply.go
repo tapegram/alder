@@ -74,7 +74,7 @@ type Result struct {
 	// (Formatted's warning).
 	Warnings []string
 	// Notices are for standard error too, as they are: a note about how the command was read
-	// (`alder new msg` on a route module adds a write route).
+	// (`alder new action` on a route module adds a write route).
 	Notices []string
 	// Next is the command to run next (`alder new table`'s page that lists the table), printed
 	// last as `next: …`; "" for none.

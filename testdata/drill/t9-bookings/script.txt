@@ -257,7 +257,7 @@ alder fill Bookings.Show.Show.view - <<'EOF'
   <a href={Bookings.Index.Index {}}>My bookings</a>
 </Layout.Page>
 EOF
-alder new msg Bookings.Show Cancel --id cancel --when "model.today < model.booking.from"
+alder new action Bookings.Show Cancel --id cancel --when "model.today < model.booking.from"
 alder fill Bookings.Show.Show.view - --hole ?cancelId <<'EOF'
 model.booking.id
 EOF

@@ -25,14 +25,14 @@ func guardText(r *Route) string {
 	return " requires " + strings.Join(parts, ", ")
 }
 
-// newRouteMsg is `alder new msg` on a route module (plan call 13, aliased as `new route
+// newRouteMsg is `alder new action` on a route module (plan call 13, aliased as `new route
 // --method POST` from the page's side): a write route `M = <METHOD> "<path>" { <page path
 // parameters>, <fields> }`, the method POST unless --method says otherwise and the path the
 // page's own unless --path says otherwise (the method tells the router which one is meant), with the page's guard, its `M.update` answering `Response.refresh`,
 // a button sending it at the end of the page's view (--in-for, --when and --id place it as for a
 // page), and a test that presses it from the page. The fields' values in the button and the
 // test are holes, as a page's are, except a table's id: the row the page shows.
-func newRouteMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]Edit, error) {
+func newRouteMsg(p *Program, page, name string, fields []FieldSpec, o ActionOptions) ([]Edit, error) {
 	r := p.RouteModule(page)
 	if r == nil {
 		return nil, Refusef("`%s` has no GET route: a message is a button on a route's `view`; `alder new route %s /path --method POST` makes a write route without one", page, page)

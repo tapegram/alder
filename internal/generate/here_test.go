@@ -13,7 +13,7 @@ func TestHere_PerSpec(t *testing.T) {
 		id   string
 		want map[string]string // nil: not here
 	}{
-		{page, "new msg", map[string]string{"page": "Posts.Index"}},
+		{page, "new action", map[string]string{"page": "Posts.Index"}},
 		{page, "new form", map[string]string{"page": "Posts.Index"}},
 		{page, "edit route", map[string]string{"page": "Posts.Index"}},
 		{page, "remove route", map[string]string{"page": "Posts.Index"}},
@@ -21,7 +21,7 @@ func TestHere_PerSpec(t *testing.T) {
 		{page, "edit decl", map[string]string{"address": "Posts.Index.view"}},
 		{table, "edit table", map[string]string{"table": "Post"}},
 		{table, "remove table", map[string]string{"table": "Post"}},
-		{table, "new msg", nil},
+		{table, "new action", nil},
 		{plain, "new decl", map[string]string{"module": "Markdown"}},
 		{plain, "edit decl", nil},
 		{plain, "new route", nil},
@@ -56,7 +56,7 @@ func TestForm_Validation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := SpecByID("new msg")
+	s := SpecByID("new action")
 	// a required field starts at its example (issue 45); one you cleared is required again
 	fields, _, ready := Form(s, &Match{Sets: map[string]string{"page": "Home"}, Why: "x"}, map[string]string{"name": ""}, p)
 	if ready {

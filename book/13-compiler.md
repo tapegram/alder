@@ -7284,14 +7284,14 @@ type Spec struct {
 }
 ```
 
-`ID` is `"new msg"`, `Args` and `Flags` are the typed fields (`page` is a
+`ID` is `"new action"`, `Args` and `Flags` are the typed fields (`page` is a
 `page`, the module of a route, and `name` is text), `Run` is the generator,
 and `Here` says whether the generator applies at the cursor and prefills a
 form if it does.
 
 `HereCtx` is where the cursor is (module, whether it holds routes, the
 declaration around it, a hole under it; the language server sets it,
-`hereCtx` in `actions.go`); `inRoute`, for example, is the `Here` of `new msg`:
+`hereCtx` in `actions.go`); `inRoute`, for example, is the `Here` of `new action`:
 
 ```go
 func inRoute(c HereCtx) *Match {
@@ -7367,19 +7367,19 @@ page, a table, a declaration, one of its fixed choices), else at its example.
 So the form is usually ready as it opens and the preview shows a change at
 once; the user edits from there.
 
-A flag marked `Agent` (where `new msg` puts its button, `--strict` on a table
+A flag marked `Agent` (where `new action` puts its button, `--strict` on a table
 edit) comes back with `"agent":true`, and the editor's form leaves it out: an
 agent needs that precision on the command line, a person sees the preview and
 edits by hand.
 
-Here is the walk-through of the spec: `new msg` on `Posts.Index`, with the
+Here is the walk-through of the spec: `new action` on `Posts.Index`, with the
 cursor on line 26. The first request has no values; the form comes back with
 `page` prefilled from the cursor and `name` at its example (the request before
 it, id 3, asked `alder/generators` which generators apply at the cursor, and
-`new msg` was among those with `"here":true`):
+`new action` was among those with `"here":true`):
 
 ```text
--> {"jsonrpc":"2.0","id":4,"method":"alder/preview","params":{"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"id":"new msg","sets":{},"position":{"character":0,"line":25}}}
+-> {"jsonrpc":"2.0","id":4,"method":"alder/preview","params":{"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"id":"new action","sets":{},"position":{"character":0,"line":25}}}
 <- {"id":4,"jsonrpc":"2.0","result":{"fields":[{"name":"page","kind":"page","flag":false,"required":true,"value":"Posts.Index","source":"here","valid":true,"choices":["Admin.Comments.Bulk",…,"Posts.Index","Posts.Show","Write","Write.Edit"],"help":"the route module the write route goes with, or App for a button on any page","example":"Posts.Index"},{"name":"name","kind":"text","flag":false,"required":true,"value":"Archive","source":"default","valid":true,"help":"the write route's name, a capitalised word","example":"Archive"},…],"files":[{"path":"app/Posts/Index.alder","action":"edited","added":14,"removed":2}],"diff":"--- a/app/Posts/Index.alder\n+++ b/app/Posts/Index.alder\n@@ -4,10 +4,11 @@\n …","warnings":[],"diagnostics":[],"holes":[],"ready":true,"error":""}}
 ```
 
@@ -7392,7 +7392,7 @@ and accepted, and a request that leaves a required choice to the guess is
 refused (`page: required`). The user types `Delete`:
 
 ```text
--> {"jsonrpc":"2.0","id":5,"method":"alder/preview","params":{"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"id":"new msg","sets":{"name":"Delete"},"position":{"character":0,"line":25}}}
+-> {"jsonrpc":"2.0","id":5,"method":"alder/preview","params":{"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"id":"new action","sets":{"name":"Delete"},"position":{"character":0,"line":25}}}
 <- {"id":5,"jsonrpc":"2.0","result":{"fields":[…,{"name":"name","kind":"text","flag":false,"required":true,"value":"Delete","source":"you","valid":true},…],"files":[{"path":"app/Posts/Index.alder","action":"edited","added":12,"removed":0}],"diff":"--- a/app/Posts/Index.alder\n+++ b/app/Posts/Index.alder\n@@ -8,6 +8,7 @@\n …","warnings":[],"diagnostics":[],"holes":[],"ready":true,"error":""}}
 ```
 
@@ -7438,7 +7438,7 @@ the editor shows (here with its `\n` turned into line breaks):
 
 That is a write route, `Delete`, with its `update` answering
 `Response.refresh`, a button that sends it, and a test that presses it, which
-is chapter 15's `alder new msg` on a route module. The route line goes after
+is chapter 15's `alder new action` on a route module. The route line goes after
 the module's last `route` line, the `update` before the first `test`, the
 button at the end of the view and the new test at the end of the file.
 

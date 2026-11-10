@@ -17,7 +17,7 @@ import (
 )
 
 // newUsage is the usage line of `alder new`.
-const newUsage = "usage: alder new <name> [--bare] [--theme <name>]  (or a path ending in the name: alder new apps/<name>), or alder new route|table|form|msg|capability|admin|auth|type|decl|test|silo … (a generator)"
+const newUsage = "usage: alder new <name> [--bare] [--theme <name>]  (or a path ending in the name: alder new apps/<name>), or alder new route|table|form|action|capability|admin|auth|type|decl|test|silo … (a generator)"
 
 // runNewTo is `alder new <dir>`: it writes the scaffold (internal/scaffold, the book's
 // guestbook) into dir, whose last element is the app's name, then runs the migration generator
@@ -38,6 +38,9 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 	}()
 	if len(args) > 0 {
 		if s := newGenerator(args[0]); s != nil {
+			if "new "+args[0] == s.Alias { // #204: the old word, for one release; stdout and the exit status are the same
+				fmt.Fprintln(stderr, "alder new msg is now alder new action; new msg goes away in the next release")
+			}
 			return runSpec(s, args[1:], specUsage[s.ID], stdout, stderr)
 		}
 	}

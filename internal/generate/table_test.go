@@ -161,7 +161,7 @@ func TestNewMsgIdOfAliasedTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	edits, err := NewMsg(p, "Notes", "Feature", []FieldSpec{f}, MsgOptions{})
+	edits, err := NewAction(p, "Notes", "Feature", []FieldSpec{f}, ActionOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

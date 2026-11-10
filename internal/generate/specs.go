@@ -64,7 +64,7 @@ func Specs() []*Spec { return specs }
 // SpecByID is the Spec with the given ID ("new route"); nil when there is none.
 func SpecByID(id string) *Spec {
 	for _, s := range specs {
-		if s.ID == id {
+		if s.ID == id || (s.Alias != "" && s.Alias == id) {
 			return s
 		}
 	}
@@ -78,7 +78,7 @@ func init() {
 	specs = append(specs, regenSpecs()...)
 	specs = append(specs, themeSpecs()...)
 	for id, h := range map[string]func(HereCtx) *Match{
-		"new msg": inRoute, "new form": inRoute, "edit route": inRoute, "remove route": inRoute,
+		"new action": inRoute, "new form": inRoute, "edit route": inRoute, "remove route": inRoute,
 		"edit table": onTable, "remove table": onTable,
 		"edit decl": onDecl,
 		"new decl":  inModule, "new test": inModule,
@@ -166,7 +166,7 @@ func newSpecs() []*Spec {
 			},
 		},
 		{
-			ID: "new msg", Summary: "a write route with its button and test",
+			ID: "new action", Alias: "new msg", Summary: "a write route with its button and test",
 			Args: []Field{
 				{Name: "page", Kind: ArgRouteModule, Required: true, AppOK: true, Value: "<Route module>", Help: "the route module the write route goes with, or App for a button on any page", Example: "Posts.Index"},
 				{Name: "name", Kind: ArgText, Required: true, Value: "<Name>", Help: "the write route's name, a capitalised word", Example: "Archive"},
@@ -187,10 +187,10 @@ func newSpecs() []*Spec {
 				onRoute := false
 				res, err := runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) {
 					onRoute = len(p.RoutesOf(s.One("page"))) > 0
-					return NewMsg(p, s.One("page"), s.One("name"), fields, MsgOptions{InFor: s.One("in-for"), When: s.One("when"), ID: s.One("id"), Method: s.One("method"), Path: s.One("path")})
+					return NewAction(p, s.One("page"), s.One("name"), fields, ActionOptions{InFor: s.One("in-for"), When: s.One("when"), ID: s.One("id"), Method: s.One("method"), Path: s.One("path")})
 				})
 				if res != nil && onRoute {
-					res.Notices = append(res.Notices, "`alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`")
+					res.Notices = append(res.Notices, "`alder new action` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`")
 				}
 				return res, err
 			},

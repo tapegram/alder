@@ -59,7 +59,7 @@ func wantRefusalIs(t *testing.T, err error, want string) {
 
 func TestRouteMsg_PagePath(t *testing.T) {
 	p := repliesProgram(t, "")
-	edits, err := NewMsg(p, "Replies.Show", "Delete", nil, MsgOptions{Method: "DELETE"})
+	edits, err := NewAction(p, "Replies.Show", "Delete", nil, ActionOptions{Method: "DELETE"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestRouteMsg_PagePath(t *testing.T) {
 }
 
 func TestRouteMsg_DefaultPost(t *testing.T) {
-	edits, err := NewMsg(repliesProgram(t, ""), "Replies.Show", "Like", nil, MsgOptions{})
+	edits, err := NewAction(repliesProgram(t, ""), "Replies.Show", "Like", nil, ActionOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestRouteMsg_DefaultPost(t *testing.T) {
 }
 
 func TestRouteMsg_RootPagePath(t *testing.T) {
-	edits, err := NewMsg(repliesProgram(t, ""), "Home", "Like", nil, MsgOptions{Method: "DELETE"})
+	edits, err := NewAction(repliesProgram(t, ""), "Home", "Like", nil, ActionOptions{Method: "DELETE"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestRouteMsg_RootPagePath(t *testing.T) {
 
 func TestRouteMsg_ExplicitPath(t *testing.T) {
 	p, dir := repliesApp(t, "")
-	edits, err := NewMsg(p, "Replies.Show", "Pin", nil, MsgOptions{Method: "DELETE", Path: "/replies/{id}/pin"})
+	edits, err := NewAction(p, "Replies.Show", "Pin", nil, ActionOptions{Method: "DELETE", Path: "/replies/{id}/pin"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestRouteMsg_ExplicitPath(t *testing.T) {
 		t.Errorf("got:\n%s", b)
 	}
 	// a {param} that is neither a page path parameter nor a field is the checker's to refuse
-	edits, err = NewMsg(p, "Replies.Show", "Pin", nil, MsgOptions{Path: "/replies/{rid}/pin"})
+	edits, err = NewAction(p, "Replies.Show", "Pin", nil, ActionOptions{Path: "/replies/{rid}/pin"})
 	if err == nil {
 		_, err = Apply(dir, edits, Options{DryRun: true})
 	}
@@ -110,25 +110,25 @@ func TestRouteMsg_ExplicitPath(t *testing.T) {
 }
 
 func TestRouteMsg_BadPath(t *testing.T) {
-	_, err := NewMsg(repliesProgram(t, ""), "Replies.Show", "Pin", nil, MsgOptions{Path: "pin"})
+	_, err := NewAction(repliesProgram(t, ""), "Replies.Show", "Pin", nil, ActionOptions{Path: "pin"})
 	wantRefusal(t, err, check.PagePathRule)
 }
 
 func TestRouteMsg_SecondOnPageClashes(t *testing.T) {
 	like := "\nroute Like = POST \"/replies/{id}\" { id: Int }\n\nLike.update : Like.Params -> Session -> Task Response\nLike.update p session = Task.succeed Response.refresh\n"
 	p := repliesProgram(t, like)
-	_, err := NewMsg(p, "Replies.Show", "Archive", nil, MsgOptions{})
-	// new msg has no --msg: only --path and --method are offered
+	_, err := NewAction(p, "Replies.Show", "Archive", nil, ActionOptions{})
+	// new action has no --msg: only --path and --method are offered
 	wantRefusalIs(t, err, "routes `Replies.Show.Like` and `Archive` both answer POST /replies/{id}; give the new route its own resource with `--path` (and `--method` for what happens to it)")
 }
 
 func TestAppMsg_PathRequired(t *testing.T) {
-	_, err := NewMsg(repliesProgram(t, ""), "App", "Ping", nil, MsgOptions{})
-	wantRefusal(t, err, "`alder new msg App` needs `--path`: a route of App has no page to take a path from, such as `--path /theme`")
+	_, err := NewAction(repliesProgram(t, ""), "App", "Ping", nil, ActionOptions{})
+	wantRefusal(t, err, "`alder new action App` needs `--path`: a route of App has no page to take a path from, such as `--path /theme`")
 }
 
 func TestAppMsg_Path(t *testing.T) {
-	edits, err := NewMsg(repliesProgram(t, ""), "App", "ToggleTheme", nil, MsgOptions{Path: "/theme", Method: "PUT"})
+	edits, err := NewAction(repliesProgram(t, ""), "App", "ToggleTheme", nil, ActionOptions{Path: "/theme", Method: "PUT"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +138,6 @@ func TestAppMsg_Path(t *testing.T) {
 }
 
 func TestAppMsg_BadPath(t *testing.T) {
-	_, err := NewMsg(repliesProgram(t, ""), "App", "ToggleTheme", nil, MsgOptions{Path: "theme"})
+	_, err := NewAction(repliesProgram(t, ""), "App", "ToggleTheme", nil, ActionOptions{Path: "theme"})
 	wantRefusal(t, err, check.PagePathRule)
 }

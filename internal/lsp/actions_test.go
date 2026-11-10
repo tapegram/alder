@@ -125,14 +125,14 @@ func TestCodeAction_HereGenerators(t *testing.T) {
 		}
 	}
 	joined := strings.Join(ids, ",")
-	for _, want := range []string{"new msg", "new form", "edit route", "remove route", "edit decl", "new decl", "new test"} {
+	for _, want := range []string{"new action", "new form", "edit route", "remove route", "edit decl", "new decl", "new test"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("no %s in %v", want, ids)
 		}
 	}
 	for _, a := range acts {
-		if a.Data != nil && a.Data.ID == "new msg" && (a.Data.Sets["page"] != "Posts.Index" || a.Title != "new msg (page = Posts.Index)") {
-			t.Fatalf("new msg action %+v", a)
+		if a.Data != nil && a.Data.ID == "new action" && (a.Data.Sets["page"] != "Posts.Index" || a.Title != "new action (page = Posts.Index)") {
+			t.Fatalf("new action action %+v", a)
 		}
 		if a.Data != nil && a.Data.ID == "edit decl" && a.Data.Sets["address"] != "Posts.Index.load" {
 			t.Fatalf("edit decl action %+v", a)
@@ -156,7 +156,7 @@ func TestCodeAction_OnTable(t *testing.T) {
 				t.Fatalf("%s action %+v", a.Data.ID, a)
 			}
 			found[a.Data.ID] = true
-		case "new msg", "edit decl":
+		case "new action", "edit decl":
 			t.Fatalf("%s offered on a table: %+v", a.Data.ID, a)
 		}
 	}

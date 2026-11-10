@@ -1,4 +1,4 @@
-// Package generate holds the code generators behind `alder new route|table|form|msg|capability`,
+// Package generate holds the code generators behind `alder new route|table|form|action|capability`,
 // `alder edit table` and `alder fill` (book chapter 15): the facts a generator reads from the
 // checked app (Program), the field syntax of their command lines (ParseField), the templates
 // they write from (templates/), and the copy-check-write pipeline every command ends in (Apply):

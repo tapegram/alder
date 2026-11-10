@@ -21,7 +21,7 @@ Every route has its tests (chapter 10).
 This chapter is about writing those pieces with commands instead of by
 hand.
 
-- `alder new route`, `alder new table`, `alder new form`, `alder new msg`,
+- `alder new route`, `alder new table`, `alder new form`, `alder new action`,
   `alder new capability`, `alder new type`, `alder new decl` and
   `alder new test` each write one piece, and `alder new auth` the login.
 
@@ -589,7 +589,7 @@ insert must have. That is the rule:
 - When they fit none, the `update`'s body is a **hole**, `?answer`, of type
   `Task Response`.
 
-## A page for a row, and a write route: `--show` and `alder new msg`
+## A page for a row, and a write route: `--show` and `alder new action`
 
 A route for one reply:
 
@@ -603,11 +603,11 @@ the row with `Db.get` and answers `Query.notFound` when there is none,
 and its tests check both: the page shows the row's fields, and a missing
 id is `PageMissing`.
 
-Now a button that deletes the reply. `alder new msg` adds a **write
+Now a button that deletes the reply. `alder new action` adds a **write
 route** to a route module, and a button that sends it:
 
 ```text command=guestbook
-$ alder new msg Replies.Show Delete --method DELETE
+$ alder new action Replies.Show Delete --method DELETE
 edited app/Replies/Show.alder
 --- a/app/Replies/Show.alder
 +++ b/app/Replies/Show.alder
@@ -650,10 +650,10 @@ edited app/Replies/Show.alder
 app/Replies/Show.alder:48:36: warning[W0002]: hole ?deleteId has type Reply.ReplyId
       <al-button click={Delete { id: ?deleteId }}>Delete</al-button>
                                      ^^^^^^^^^
-`alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`
+`alder new action` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`
 ```
 
-The last line of the output is a notice: on a route module, `alder new msg`
+The last line of the output is a notice: on a route module, `alder new action`
 adds a write route, and a write route in a module of its own (one with no
 page and no button) is made with `alder new route … --method POST` instead.
 
@@ -668,7 +668,7 @@ page and no button) is made with `alder new route … --method POST` instead.
   `DELETE`), and `--path` names another path when the action is not the page's
   resource (`--path /replies/{id}/pin`). The route takes the parameters of the
   route it was added to. Two routes of the app cannot answer the same method
-  and path, so a second `alder new msg` on a page that already has a `POST`
+  and path, so a second `alder new action` on a page that already has a `POST`
   route at its path is refused, with the advice to give it its own `--path`.
 
 - **Its `Delete.update`** answers with a `Response` (chapter 6), and starts as
@@ -706,7 +706,7 @@ alder test: no tests ran (fill the hole): ?deleteId : Reply.ReplyId
 ```
 
 A test program with a hole in it would have nothing to run where the
-hole is, so `alder test` refuses to start. After `alder new msg`, and
+hole is, so `alder test` refuses to start. After `alder new action`, and
 after `alder new form` when the fields fit no table, the order is
 therefore **new, fill, test**: generate, fill each hole, then run the
 tests.
@@ -3900,7 +3900,7 @@ Use `--decl` for what has no hole:
 
 ## Buttons in a list, and route parameters
 
-`alder new msg` puts its button at the end of the view. A button that acts
+`alder new action` puts its button at the end of the view. A button that acts
 on one row of a list belongs in the list, inside the `for` that shows the
 row: `--in-for <binder>` puts it at the end of the loop body's element, and
 fills the route's parameters from the binder where it can:
@@ -3913,7 +3913,7 @@ fills the route's parameters from the binder where it can:
 `--when <expression>` shows it only when the expression holds:
 
 ```text command=guestbook
-$ alder new msg Home Hide id:Entry.EntryId --in-for e --when "List.length model.entries > 1" --path /entries/{id}/hidden --method PUT
+$ alder new action Home Hide id:Entry.EntryId --in-for e --when "List.length model.entries > 1" --path /entries/{id}/hidden --method PUT
 edited app/Home.alder
 --- a/app/Home.alder
 +++ b/app/Home.alder
@@ -3973,7 +3973,7 @@ edited app/Home.alder
 app/Home.alder:98:35: warning[W0002]: hole ?hideId has type Entry.EntryId
     let r <- Test.click (Hide { id: ?hideId })
                                     ^^^^^^^
-`alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`
+`alder new action` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`
 ```
 
 A button in a loop has its route's name as its class (`hide`), so a
@@ -4232,7 +4232,7 @@ app/Notes/Index.alder:48:29: warning[W0002]: hole ?expected has type Answer
                               ^^^^^^^^^
 ```
 
-`--msg` works the same on any form. `alder new msg … --id <id>` gives
+`--msg` works the same on any form. `alder new action … --id <id>` gives
 the route's button an `id` (`<al-button id="cancel" …>`), as a task's
 selectors may need.
 
@@ -4658,7 +4658,7 @@ alder fill --decl Teams.Show.Show.view - <<'EOF'
   <a href={Teams.Index.Index {}}>All teams</a>
 </Layout.Page>
 EOF
-alder new msg Teams.Show Remove user:User.UserId --in-for u --when model.isOwner --method DELETE --path /teams/{id}/members
+alder new action Teams.Show Remove user:User.UserId --in-for u --when model.isOwner --method DELETE --path /teams/{id}/members
 alder new form Teams.Show NewInvite email:Text.Email --msg SendInvite
 alder fill Teams.Show.Show.view - --hole '?removeId' <<'EOF'
 model.team.id
@@ -4810,8 +4810,8 @@ alder fill --decl Invites.Index.Index.view - <<'EOF'
   <a href={Teams.Index.Index {}}>Teams</a>
 </Layout.Page>
 EOF
-alder new msg Invites.Index Accept id:Invite.InviteId --in-for r --path /invites/accepted
-alder new msg Invites.Index Decline id:Invite.InviteId --in-for r --path /invites/declined
+alder new action Invites.Index Accept id:Invite.InviteId --in-for r --path /invites/accepted
+alder new action Invites.Index Decline id:Invite.InviteId --in-for r --path /invites/declined
 alder fill Invites.Index.Index.view - --hole '?acceptId' <<'EOF'
 r.invite.id
 EOF
@@ -5072,7 +5072,7 @@ Its tests sign in a member of an org:
 
 A form whose fields fit such a table inserts with `Db.insertScoped` (the
 partition column is the route's), and the tests of `alder new form` and
-`alder new msg` on the route sign in with the key the same way.
+`alder new action` on the route sign in with the key the same way.
 
 ## Four gaps: a button in `App`, a prop, a form with parameters, a login's route
 
@@ -5081,11 +5081,11 @@ E11 (below) found four things the commands could not do.
 ### A button in `App`
 
 The first was a button that is on every page (`click={App.Logout}` is one):
-`alder new msg App <Name> --path /path [fields]` makes one. `App` holds write
+`alder new action App <Name> --path /path [fields]` makes one. `App` holds write
 routes like any module: `route Logout = DELETE
 "/session"` is one, written by `alder new auth`.
 
-So `alder new msg App <Name> --path /path` writes a route there too, `route
+So `alder new action App <Name> --path /path` writes a route there too, `route
 <Name> = POST "/path"` with the fields as its payload (`--method` names
 another method). `App` has no page to take a path from, so `--path` is
 required. The route goes after the last route of
@@ -5093,7 +5093,7 @@ required. The route goes after the last route of
 author then replaces) and a comment saying how to test it:
 
 ```text command=guestbook
-$ alder new msg App ToggleTheme dark:Bool --path /theme --method PUT
+$ alder new action App ToggleTheme dark:Bool --path /theme --method PUT
 edited app/App.alder
 --- a/app/App.alder
 +++ b/app/App.alder
@@ -5119,7 +5119,7 @@ edited app/App.alder
  -- Logging out from the login page, which a visitor may open: the answer is the redirect,
  -- not the page shown again.
  test "Logout clears the user and goes to log in" = {
-`alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`
+`alder new action` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`
 ```
 
 No page's view is touched: a route of `App` is sent by a button on any
@@ -5553,7 +5553,7 @@ the missing commands working and most rounds still ending in a refusal:
 
 - **The commands now exist.** The two commands the models had already tried
   by name were used the first time a script reached them and never refused:
-  `alder new msg App` in all three T4 cells, `alder new form … --msg` on a
+  `alder new action App` in all three T4 cells, `alder new form … --msg` on a
   message with parameters in all three T6 cells, so the refusals for
   "command missing" went from 6 of 55 to 0 of 66 (T2 aside).
 

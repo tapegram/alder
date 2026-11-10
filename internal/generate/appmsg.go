@@ -8,7 +8,7 @@ import (
 	"alder/internal/syntax"
 )
 
-// newAppRouteMsg is `alder new msg App <Name> [fields]` on an App written with routes (plan call
+// newAppRouteMsg is `alder new action App <Name> [fields]` on an App written with routes (plan call
 // 13): `route <Name> = <METHOD> "<path>" { fields }` (POST unless method says otherwise; the path
 // is --path, which App needs, as it has no page to take one from) after App's last route (else after its
 // `login`, else after its `session`), and `<Name>.update` answering `Response.refresh`, with a
