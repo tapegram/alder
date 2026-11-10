@@ -174,7 +174,8 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 		return nil, nil, Refusef("admin is in the old layout (%s): folders are plural now (%s). Delete %s and run `alder new admin` again; move any code you added outside `-- @admin` regions first",
 			strings.Join(oldDirs, ", "), strings.Join(newDirs, ", "), dir)
 	}
-	// an admin still in the old `page` syntax (#160): its files have `page` lines, which no region holds
+	// an admin still in the old `page` syntax (#160): its files have `page` lines, which no
+	// region holds
 	for _, path := range order {
 		if b, err := os.ReadFile(filepath.Join(p.Dir, filepath.FromSlash(path))); err == nil && pageLine.Match(b) {
 			return nil, nil, Refusef("admin is written with pages (`%s` has a `page` line): it is written with routes now. Delete %s and run `alder new admin` again; move any code you added outside `-- @admin` regions first", path, dir)
