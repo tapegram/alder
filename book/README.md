@@ -156,7 +156,7 @@ shows how).
 
 All three examples run under it:
 
-- the to-do app's 230 mutants, 226 killed (the four survivors are in its
+- the to-do app's 226 mutants, 222 killed (the four survivors are in its
   generated admin);
 - the blog's 364, 354 killed;
 - the workspace's 572, 554 killed.

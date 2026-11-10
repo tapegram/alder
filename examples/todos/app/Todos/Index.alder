@@ -4,10 +4,9 @@ import Layout
 import Table.Todo
 import Table.User
 
-route Index  = GET    "/"           { filter: Todo.Filter = All }              requires user
-route Submit = POST   "/todos"      { filter: Todo.Filter = All } form NewTodo requires user
-route Toggle = PATCH  "/todos/{id}" { id: Todo.TodoId }                        requires user
-route Delete = DELETE "/todos"      { id: Todo.TodoId }                        requires user
+route Index  = GET   "/"           { filter: Todo.Filter = All }              requires user
+route Submit = POST  "/todos"      { filter: Todo.Filter = All } form NewTodo requires user
+route Toggle = PATCH "/todos/{id}" { id: Todo.TodoId }                        requires user
 
 type Model = { filter: Todo.Filter, todos: List Todo }
 
@@ -35,12 +34,6 @@ Submit.update p session = {
 Toggle.update : Toggle.Params -> Session -> Task Response
 Toggle.update p session = {
   let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
-  Task.succeed Response.refresh
-}
-
-Delete.update : Delete.Params -> Session -> Task Response
-Delete.update p session = {
-  let _ <- Db.deleteMine Todo p.id
   Task.succeed Response.refresh
 }
 
@@ -86,7 +79,9 @@ Item props =
       Just d -> <al-badge variant="outline" class="due">{Date.format "Jan 2" d}</al-badge>,
       Nothing -> Html.none,
     }}
-    <al-button variant="ghost" size="sm" click={Delete { id: props.todo.id }}>Delete</al-button>
+    <al-button variant="ghost" size="sm" click={Todos.Show.Delete { id: props.todo.id }}>
+      Delete
+    </al-button>
   </li>
 
 test "Toggle flips done" = {
@@ -149,7 +144,7 @@ test "Delete by another user is not found" = {
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Index {})
   let _ <- Test.login { user: Just (User.UserId "someone-else") }
-  let r <- Test.click (Delete { id: id })
+  let r <- Test.click (Todos.Show.Delete { id: id })
   let after <- Db.get Todo id
   Task.succeed (
     { answer: r.answer, todo: Maybe.map (\t -> t.title) after }
@@ -233,7 +228,7 @@ test "a write after logging out is sent to log in" = {
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Index {})
   let _ <- Test.login { user: Nothing }
-  let deleted <- Test.click (Delete { id: id })
+  let deleted <- Test.click (Todos.Show.Delete { id: id })
   let todos <- Db.from Todo |> Db.all
   Task.succeed (
     {
@@ -271,7 +266,9 @@ test "a stranger cannot see my todo" = {
   )
 }
 
-test "Delete removes the todo" = {
+-- The list deletes through the todo's own route, `DELETE /todos/{id}`: one todo, one URL. Its
+-- update redirects to the list, so the page comes back without the todo.
+test "deleting from the list" = {
   let me <- Db.insert User {
     email: Text.Email "me@example.com",
     name: Text.NonEmpty "Me",
@@ -283,11 +280,20 @@ test "Delete removes the todo" = {
     owner: me,
   }
   let _ <- Test.login { user: Just me }
-  let r <- Test.run (Delete.update { id: id } { user: me, role: Member })
+  let _ <- Test.get (Index {})
+  let r <- Test.click (Todos.Show.Delete { id: id })
+  let page <- Test.get (Index {})
   let after <- Db.get Todo id
   Task.succeed (
-    { value: r.value, todo: Maybe.map (\t -> t.title) after }
-      == { value: Ok Response.refresh, todo: Nothing }
+    {
+      answer: r.answer,
+      todo: Maybe.map (\t -> t.title) after,
+      items: Test.count "li" page.doc,
+    } == {
+      answer: Redirected (Index {}),
+      todo: Nothing,
+      items: 0,
+    }
   )
 }
 

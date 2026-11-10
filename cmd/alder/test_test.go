@@ -63,7 +63,7 @@ func TestTest_Todos(t *testing.T) {
 		`ok   Table.Todo "Active keeps only open todos"`,
 		`ok   Table.Todo "each filter has its label"`,
 		`ok   Table.Todo "a user with todos cannot be deleted"`,
-		`ok   Todos.Index "Delete removes the todo"`,
+		`ok   Todos.Index "deleting from the list"`,
 		`ok   Todos.Index "the newest todo is listed first"`,
 		`ok   Todos.Index "Db.mine is what Me sees"`,
 		`ok   Todos.Show "a visitor is sent to log in from a todo"`,

@@ -477,7 +477,6 @@ func TestE2E_Todos(t *testing.T) {
 	toggle := msgURL(t, r.body, "/todos/"+url.PathEscape(id), "")
 	// a click button works without JavaScript: a form of its own posting the write route, which
 	// Datastar posts on submit
-	q := url.QueryEscape(id)
 	r.want(t, 200, `<li class=""><form method="post" action="/todos/`+url.PathEscape(id)+`" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @patch(&#39;/todos/`+url.PathEscape(id)+`&#39;, window._alderO?.(&#39;form&#39;)))"><input type="hidden" name="_method" value="PATCH" /><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>`)
 
 	// 7. Toggle under Datastar: an SSE patch of <body> with the toggled row; without: a 303 to the
@@ -523,11 +522,12 @@ func TestE2E_Todos(t *testing.T) {
 	r.want(t, 404, `<title>Not found</title>`, `<h1>Not found</h1>`)
 	r.html(t)
 
-	// 9. Delete (from the list, under Datastar): the patched list is empty, and stays empty
+	// 9. Delete (from the list, under Datastar): the list's button sends Show's DELETE
+	// /todos/{id}, whose redirect to the list patches it empty, and it stays empty
 	r = e.do("GET", "/", nil)
-	del := msgURL(t, r.body, "/todos", id)
+	del := msgURL(t, r.body, "/todos/"+url.PathEscape(id), "")
 	r = e.do("DELETE", del, nil, datastarHdr)
-	r.sse(t)
+	r.navigate(t, "/")
 	r.want(t, 200, `<ul id="todos"></ul>`, `<p id="summary">0 open</p>`)
 	r.lacks(t, "Milk")
 	r = e.do("GET", "/", nil)
@@ -556,14 +556,12 @@ func TestE2E_Todos(t *testing.T) {
 	}
 	b.do("GET", "/", nil).want(t, 200, `<ul id="todos"></ul>`)
 	b.do("GET", "/todos/"+url.PathEscape(breadID), nil).want(t, 404, `<h1>Not found</h1>`)
-	q = url.QueryEscape(breadID)
 	for _, attack := range []struct {
 		method string
 		path   string
 		form   url.Values
 	}{
 		{"PATCH", "/todos/" + url.PathEscape(breadID), nil},
-		{"DELETE", "/todos?id=" + q, nil},
 		{"PUT", "/todos/" + url.PathEscape(breadID), url.Values{"title": {"pwned"}}},
 		{"DELETE", "/todos/" + url.PathEscape(breadID), nil},
 	} {

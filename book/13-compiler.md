@@ -3793,7 +3793,7 @@ var Tests = []rtesting.Case{
 	{Module: "Todos.Index", Name: "adding a todo through the page", File: "app/Todos/Index.alder", Line: 162, Col: 1, Task: test__Todos__Index__4},
 	{Module: "Todos.Index", Name: "toggling a todo through the page", File: "app/Todos/Index.alder", Line: 185, Col: 1, Task: test__Todos__Index__5},
 	{Module: "Todos.Index", Name: "a stranger cannot see my todo", File: "app/Todos/Index.alder", Line: 214, Col: 1, Task: test__Todos__Index__6},
-	{Module: "Todos.Index", Name: "Delete removes the todo", File: "app/Todos/Index.alder", Line: 233, Col: 1, Task: test__Todos__Index__7},
+	{Module: "Todos.Index", Name: "deleting from the list", File: "app/Todos/Index.alder", Line: 233, Col: 1, Task: test__Todos__Index__7},
 	{Module: "Todos.Index", Name: "the newest todo is listed first", File: "app/Todos/Index.alder", Line: 253, Col: 1, Task: test__Todos__Index__8},
 	{Module: "Todos.Index", Name: "Db.mine is what Me sees", File: "app/Todos/Index.alder", Line: 276, Col: 1, Task: test__Todos__Index__9},
 	{Module: "Todos.Show", Name: "a visitor is sent to log in from a todo", File: "app/Todos/Show.alder", Line: 56, Col: 1, Task: test__Todos__Show__1},

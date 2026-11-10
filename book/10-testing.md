@@ -96,7 +96,7 @@ ok   Todos.Index "Delete by another user is not found"
 ok   Todos.Index "adding a todo through the page"
 ok   Todos.Index "toggling a todo through the page"
 ok   Todos.Index "a stranger cannot see my todo"
-ok   Todos.Index "Delete removes the todo"
+ok   Todos.Index "deleting from the list"
 ok   Todos.Index "the newest todo is listed first"
 ok   Todos.Index "Db.mine is what Me sees"
 ok   Todos.Show "a visitor is sent to log in from a todo"
@@ -161,7 +161,7 @@ ok   Todos.Index "Delete by another user is not found"
 ok   Todos.Index "adding a todo through the page"
 ok   Todos.Index "toggling a todo through the page"
 ok   Todos.Index "a stranger cannot see my todo"
-ok   Todos.Index "Delete removes the todo"
+ok   Todos.Index "deleting from the list"
 ok   Todos.Index "the newest todo is listed first"
 ok   Todos.Index "Db.mine is what Me sees"
 FAIL Todos.Index "Toggle reads, then writes"
@@ -2458,12 +2458,12 @@ alder test --mutate [--min R] [--json] [-run re] [-timeout d] [dir]
 It runs the tests as `alder test` does; if one fails, it stops with
 `tests fail: fix them before measuring mutants`. Otherwise it runs them
 again once per mutant. Here is the to-do app's own code (the generated
-admin of chapter 15 adds 191 mutants of its own) with the eleven tests it
+admin of chapter 15 adds 185 mutants of its own) with the eleven tests it
 had before this section's work, the others left out with `-run`:
 
 ```text
 11 passed, 0 failed
-45 mutants: 21 killed, 24 survived  (score 0.47)
+41 mutants: 21 killed, 20 survived  (score 0.51)
 survived:
   App           Logout.update:16   update field dropped   { s | user: Nothing, role: Member } → { s | user: Nothing }
   App           Logout.update:17   redirect → refresh     Response.redirect (Auth.Login.Login {}) → Response.refresh
@@ -2475,9 +2475,7 @@ survived:
   Table.Todo    filterLabel:28     arm swapped            match filter { All -> "All", Active -> "Active", Completed ->…
   Todos.Index   Submit:8           requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
   Todos.Index   Toggle:9           requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
-  Todos.Index   Delete:10          requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
-  Todos.Index   Index.load:18      orderBy reversed       Db.orderBy Todo.created.desc → Db.orderBy Todo.created.asc
-  Todos.Index   Delete.update:44   refresh → invalid      Response.refresh → Response.invalid "mutant"
+  Todos.Index   Index.load:17      orderBy reversed       Db.orderBy Todo.created.desc → Db.orderBy Todo.created.asc
   Todos.Show    Show:7             requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
   Todos.Show    Save:12            requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
   Todos.Show    Delete:13          requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
@@ -2486,17 +2484,15 @@ survived:
   Todos.Show    Save.update:27     update field dropped   { t | title: p.form.title, due: p.form.due } → { t | due: p.form.due }
   Todos.Show    Save.update:27     update field dropped   { t | title: p.form.title, due: p.form.due } → { t | title: p.form.title }
   Todos.Show    Save.update:28     redirect → refresh     Response.redirect (Todos.Index.Index {}) → Response.refresh
-  Todos.Show    Delete.update:33   write replaced         let _ <- Db.deleteMine Todo p.id → let _ <- Task.succeed ()
-  Todos.Show    Delete.update:33   scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
   Todos.Show    Delete.update:34   redirect → refresh     Response.redirect (Todos.Index.Index {}) → Response.refresh
 ```
 
-A test failed for 21 of the 45 mutants: the score is 21 / 45. A
+A test failed for 21 of the 41 mutants: the score is 21 / 41. A
 survivor's line gives:
 
 - its module;
-- `declaration:line` (`Index.load:18` is
-  line 18 of `app/Todos/Index.alder`; a route's members are named as in the
+- `declaration:line` (`Index.load:17` is
+  line 17 of `app/Todos/Index.alder`; a route's members are named as in the
   source, `Save.update:27`; a column is added, `load:33:17`, when the line
   has two mutants of that kind);
 - the operator;
@@ -2569,12 +2565,11 @@ whose tests never try is told so by its score.
 Of the operators for the declared rules of chapter 6 ("Rules"), `scope
 dropped` reads like this in a report. From `alder test --mutate -run
 '^Table\.Todo ' examples/todos`, whose four tests open no page, the to-do
-app's six:
+app's five:
 
 ```text
-  Todos.Index   Index.load:17      scope dropped          Db.mine Todo → Db.from Todo
-  Todos.Index   Toggle.update:37   scope dropped          Db.updateMine Todo p.id (\t -> { t | done: not t.done }) → Db.update Todo p.id (\t -> { t | done: not t.done }), not found when missing
-  Todos.Index   Delete.update:43   scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
+  Todos.Index   Index.load:16      scope dropped          Db.mine Todo → Db.from Todo
+  Todos.Index   Toggle.update:36   scope dropped          Db.updateMine Todo p.id (\t -> { t | done: not t.done }) → Db.update Todo p.id (\t -> { t | done: not t.done }), not found when missing
   Todos.Show    Show.load:19       scope dropped          Db.getMine Todo params.id → Db.get Todo params.id, not found when missing
   Todos.Show    Save.update:27     scope dropped          Db.updateMine Todo p.id (\t -> { t | title: p.form.title, due: p.form.due }) → Db.update Todo p.id …, not found when missing
   Todos.Show    Delete.update:33   scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
@@ -2586,14 +2581,15 @@ with someone else's row tells it from the app. `Db.insertMine` gets no
 `scope dropped` mutant (it is skipped, "the owner comes from the session
 either way"), but its write can be replaced.
 
-Each of the six is killed by
+Each of the five is killed by
 a test that acts as a stranger:
 
 - "a stranger cannot see my todo" (the
   list's `Db.mine` and `Todos.Show`'s `Db.getMine`);
 - "Toggle by another
   user is not found" and "Delete by another user is not found" (a stranger
-  presses my todo's button on a page still open in the browser);
+  presses my todo's button on a page still open in the browser; the list's
+  Delete button sends `Todos.Show`'s `Delete`);
 - "saving or deleting another user's todo is not found" (the same for the
   todo's own page).
 
@@ -2620,9 +2616,9 @@ test "saving changes the title and the due date" = {
 }
 ```
 
-Nine tests of this kind kill those fourteen, and the tests of the route
-operators kill the ten others (below): the app's own code then ends
-`45 mutants: 45 killed, 0 survived  (score 1.00)`.
+Nine tests of this kind kill those twelve, and the tests of the route
+operators kill the eight others (below): the app's own code then ends
+`41 mutants: 41 killed, 0 survived  (score 1.00)`.
 
 ### The mutant that needs a stranger
 
@@ -2667,11 +2663,12 @@ is `PageMissing` and the todo is as it was.
 Against the mutant, `Db.update`
 finds my todo, writes it, and the answer is a redirect: the test fails, and
 the mutant is killed. The same test kills `Delete`'s `scope dropped` and
-its `write replaced`.
+its `write replaced`, which the list's "Delete by another user is not
+found" kills first: the list's Delete button sends the same route.
 
-### All fourteen, and one killed by luck
+### All twelve, and one killed by luck
 
-Nine tests kill the fourteen:
+Nine tests kill the twelve:
 
 - "Logout makes the role Member" and
   "logging in copies the role from the user's row" kill the two `update
@@ -2683,15 +2680,15 @@ Nine tests kill the fourteen:
   `filterLabel`;
 - "the newest todo is listed first" the reversed
   `orderBy`;
-- and the three of `Todos.Show` above.
+- and the two of `Todos.Show` above, the four of `Save`.
 
 `examples/todos/README.md`
 lists the example's tests with what each kills.
 
-The report's ten other
-lines are the route operators'. Six are `requires dropped`, one per
+The report's eight other
+lines are the route operators'. Five are `requires dropped`, one per
 route: "a visitor is sent to log in from a todo" kills `Todos.Show`'s
-GET route's, and two tests kill the five write routes': "a write after
+GET route's, and two tests kill the four write routes': "a write after
 logging out is sent to log in" and "saving or deleting after logging out
 is sent to log in" open the page, log out (`Test.login { user: Nothing
 }`) and send each write from the page still held, which must answer
@@ -2699,12 +2696,12 @@ is sent to log in" open the page, log out (`Test.login { user: Nothing
 mutant the write runs as the placeholder user, and its answer is a 404 or
 a failure, never the login page.
 
-The four answers (`redirect → refresh`
-of Logout and of `Todos.Show`'s Save and Delete, `refresh → invalid` of
-`Todos.Index`'s Delete) are killed by the tests that
-check what a write answers: "Logout clears the user and goes to log in"
-(see "The logout redirect" below), "saving changes the title and the due
-date", "deleting from the todo's page" and "Delete removes the todo".
+The three answers (`redirect → refresh`
+of Logout and of `Todos.Show`'s Save and Delete) are killed by the tests
+that check what a write answers: "Logout clears the user and goes to log
+in" (see "The logout redirect" below), "saving changes the title and the
+due date", and "deleting from the todo's page" and "deleting from the
+list".
 
 One kill is worth a word. `Table.Todo countOpen:37 not dropped` (`not
 t.done → t.done`) counts the done todos instead of the open ones. A test
@@ -2717,7 +2714,7 @@ example, admin included, reads:
 $ alder test --mutate examples/todos
 …
 147 passed, 0 failed
-230 mutants: 226 killed, 4 survived  (score 0.98)
+226 mutants: 222 killed, 4 survived  (score 0.98)
 survived:
   Admin.Todos.Edit   Save.update:80     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Todos.New    New.load:33        operator flipped   ownersTotal > 200 → ownersTotal >= 200
@@ -2725,7 +2722,7 @@ survived:
   Admin.Users.Bulk   selected:44        where dropped      Db.where (Todo.owner.in taken) → the condition dropped
 ```
 
-(`…` stands for the 147 `ok` lines.) The app's own code has 45 mutants
+(`…` stands for the 147 `ok` lines.) The app's own code has 41 mutants
 and all are killed by its 25 tests: the nine above; the four of the route
 operators ("Logout clears the user…", "a visitor is sent to log in from a
 todo" and the two that send a write after logging out); and twelve older
@@ -2964,12 +2961,12 @@ ok   Table.Todo "Active keeps only open todos"
 ok   Table.Todo "each filter has its label"
 ok   Table.Todo "a user with todos cannot be deleted"
 4 passed, 0 failed
-230 mutants: 7 killed, 223 survived  (score 0.03)
+226 mutants: 7 killed, 219 survived  (score 0.03)
 survived:
 …
 ```
 
-(223 survivor lines follow: the six `scope dropped` of "The rules' mutants
+(219 survivor lines follow: the five `scope dropped` of "The rules' mutants
 in a report" among them, and all 185 of the generated admin's, which only
 its own tests kill.) This is useful while writing the tests of
 one module, but the score that counts is the whole suite's.
@@ -2998,7 +2995,7 @@ selects no test ends with `no test matches -run: nothing can kill a
 mutant`.
 
 Mutants run one after another, each with a fresh database
-per test; the to-do app's 230 take a few seconds once the build is made,
+per test; the to-do app's 226 take a few seconds once the build is made,
 because each mutant stops at the first test that fails, and the tests of
 the mutant's own module run first, where the killing test almost always is.
 

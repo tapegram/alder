@@ -2048,7 +2048,7 @@ func TestTodos(t *testing.T) {
 	if _, err := eff.RunQuery(env, Todos__Show__Show__load(Todos__Show__Show__Params{Id: td.Id}, Todos__Show__Show__Session{User: uid})); err != eff.ErrNotFound {
 		t.Fatalf("show other's: err = %v, want ErrNotFound", err)
 	}
-	if _, err := run(Todos__Index__Delete__update(Todos__Index__Delete__Params{Id: td.Id}, session)); err != eff.ErrNotFound {
+	if _, err := run(Todos__Show__Delete__update(Todos__Show__Delete__Params{Id: td.Id}, Todos__Show__Show__Session{User: uid})); err != eff.ErrNotFound {
 		t.Fatalf("delete other's: err = %v, want ErrNotFound", err)
 	}
 	env.Session = app
@@ -2063,10 +2063,10 @@ func TestTodos(t *testing.T) {
 		t.Fatalf("after rolled-back add: %d todos, want 1", n)
 	}
 
-	// delete
+	// delete (the list's button sends the todo's own route, which redirects to the list)
 	mark = len(env.Trace)
-	r, err = run(Todos__Index__Delete__update(Todos__Index__Delete__Params{Id: td.Id}, session))
-	if err != nil || r.Kind != rt.RespRefresh {
+	r, err = run(Todos__Show__Delete__update(Todos__Show__Delete__Params{Id: td.Id}, Todos__Show__Show__Session{User: uid}))
+	if err != nil || r.Kind != rt.RespRedirect {
 		t.Fatalf("delete: %+v, %v", r, err)
 	}
 	calls("delete", "Db.deleteMine Todo")

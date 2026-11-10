@@ -201,7 +201,7 @@ const (
 	todosMutationScore     = 0.98
 	blogMutationScore      = 0.97
 	workspaceMutationScore = 0.96
-	todosMutants           = 230
+	todosMutants           = 226
 	blogMutants            = 364
 	workspaceMutants       = 572
 )

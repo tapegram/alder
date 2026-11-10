@@ -149,8 +149,8 @@ func TestIR_Todos(t *testing.T) {
 			t.Errorf("write route %s.%s: update is not a Task effect", r.Module, r.Name)
 		}
 	}
-	if gets != 3 || writes != 7 {
-		t.Errorf("routes: %d GET, %d writes; want 3, 7", gets, writes)
+	if gets != 3 || writes != 6 {
+		t.Errorf("routes: %d GET, %d writes; want 3, 6", gets, writes)
 	}
 }
 
@@ -656,32 +656,32 @@ func TestPositions(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"Index.load", "Submit.update", "Toggle.update", "Delete.update"} {
+	for _, name := range []string{"Index.load", "Submit.update", "Toggle.update"} {
 		visit(value(index, name).Body)
 	}
 	for _, name := range []string{"Show.load", "Save.update", "Delete.update"} {
 		visit(value(show, name).Body)
 	}
 	want := map[string][]Pos{
-		"bind":              {{16, 3}, {28, 3}, {37, 3}, {43, 3}, {19, 3}, {27, 3}, {33, 3}},
-		"select":            {{18, 10}}, // the step that extends the Base
-		"mine":              {{17, 5}},
+		"bind":              {{15, 3}, {27, 3}, {36, 3}, {19, 3}, {27, 3}, {33, 3}},
+		"select":            {{17, 10}}, // the step that extends the Base
+		"mine":              {{16, 5}},
 		"where-step":        nil,
-		"ord":               {{18, 21}},
-		"order-step":        {{18, 10}},
-		"insert-mine":       {{28, 12}},
-		"update-mine":       {{37, 12}, {27, 12}},
-		"record-update":     {{37, 43}, {27, 43}},
-		"delete-mine":       {{43, 12}, {33, 12}},
+		"ord":               {{17, 21}},
+		"order-step":        {{17, 10}},
+		"insert-mine":       {{27, 12}},
+		"update-mine":       {{36, 12}, {27, 12}},
+		"record-update":     {{36, 43}, {27, 43}},
+		"delete-mine":       {{33, 12}},
 		"get-mine":          {{19, 15}},
-		"Response.redirect": {{29, 17}, {28, 17}, {34, 17}},
-		"Response.refresh":  {{38, 16}, {44, 16}},
+		"Response.redirect": {{28, 17}, {28, 17}, {34, 17}},
+		"Response.refresh":  {{37, 16}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("positions:\n got %v\nwant %v", got, want)
 	}
 	for _, r := range p.Routes {
-		if r.Module == "Todos.Index" && r.Name == "Index" && r.RequiresPos != (Pos{7, 80}) {
+		if r.Module == "Todos.Index" && r.Name == "Index" && r.RequiresPos != (Pos{7, 79}) {
 			t.Fatalf("RequiresPos = %v", r.RequiresPos)
 		}
 	}

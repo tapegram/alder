@@ -40,11 +40,11 @@ The example's login is the development stub, which refuses every password outsid
 
 ## Mutation score
 
-`alder test --mutate examples/todos` (book 10, "Mutation testing"): 230 mutants, 147 tests, 226
+`alder test --mutate examples/todos` (book 10, "Mutation testing"): 226 mutants, 147 tests, 222
 killed, 4 survived (score 0.98). `TestExample_TodosMutation` fails if the score drops below
-0.98, the exact 0.982 rounded down, or the number of mutants is not 230.
+0.98, the exact 0.982 rounded down, or the number of mutants is not 226.
 
-- **The app's own code:** 45 mutants, all killed by its 25 tests (score 1.00).
+- **The app's own code:** 41 mutants, all killed by its 25 tests (score 1.00).
 
 - **The generated admin** (`app/Admin/`, "Replaying the admin" below): 185 mutants, 181 killed by
   its 122 generated tests, kept as `alder new admin` wrote them.
@@ -87,6 +87,10 @@ The history of the app's own code:
   The other ten were killed by tests that were there: the GET routes' `requires dropped` by the
   visitor tests, and the answers (`redirect → refresh`, `refresh → invalid`, `invalid → refresh`)
   by the tests that check what a write answers.
+- With one route per resource (alder#184): the list's own `Delete` (`DELETE /todos?id=…`) is
+  gone, and its button sends `Todos.Show`'s `DELETE /todos/{id}`. Its four mutants went with it
+  (41 left); `Todos.Index "Delete by another user is not found"` now kills the `scope dropped`
+  and the `write replaced` of `Todos.Show`'s `Delete`.
 
 The ownership rules are declared (book 06, "Rules"): `Todo.owner` is the table's `@owner`, and
 the routes use `Db.mine`, `Db.getMine`, `Db.updateMine`, `Db.deleteMine` and `Db.insertMine`.
@@ -95,7 +99,7 @@ Their four `scope dropped` mutants (each scoped operation made unscoped) are kil
 ownership tests among the eleven: `Todos.Index "a stranger cannot see my todo"` (the list's
 `Db.mine` and `Todos.Show`'s `Db.getMine`), `Todos.Index "Toggle by another user is not found"`
 and `Todos.Index "Delete by another user is not found"` (a stranger presses my todo's button on
-a page still open in the browser).
+a page still open in the browser; the list's Delete button sends `Todos.Show`'s `Delete`).
 
 > **`Db.insertMine`.** It has no `scope dropped` mutant: the owner comes from the session either way.
 
@@ -113,8 +117,8 @@ The nine tests that closed the gaps, each named for what it kills:
   1, not 2), `Todo "Active keeps only open todos"` and `Todo "each filter has its label"`: the
   swapped `match` arms and the dropped `not` of `matches` and `filterLabel`.
 - `Todo "a user with todos cannot be deleted"`: `owner @ref User` changed to `@cascade`.
-- `Todos.Index "Delete removes the todo"`: the delete replaced by `Task.succeed ()` (now also
-  killed by `"Delete by another user is not found"`, which expects a 404).
+- `Todos.Index "deleting from the list"`: the list's Delete button sends `Todos.Show`'s
+  `Delete` (`DELETE /todos/{id}`), whose redirect brings the list back without the todo.
 - `Todos.Index "the newest todo is listed first"`: `Db.orderBy` reversed.
 - `Todos.Show "a visitor is sent to log in from a todo"`: the `requires dropped` of the `Show`
   route.

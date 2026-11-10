@@ -616,27 +616,30 @@ import Layout
 import Table.Todo
 import Table.User
 
-route Index  = GET    "/"           { filter: Todo.Filter = All }              requires user
-route Submit = POST   "/todos"      { filter: Todo.Filter = All } form NewTodo requires user
-route Toggle = PATCH  "/todos/{id}" { id: Todo.TodoId }                        requires user
-route Delete = DELETE "/todos"      { id: Todo.TodoId }                        requires user
+route Index  = GET   "/"           { filter: Todo.Filter = All }              requires user
+route Submit = POST  "/todos"      { filter: Todo.Filter = All } form NewTodo requires user
+route Toggle = PATCH "/todos/{id}" { id: Todo.TodoId }                        requires user
 ```
 
 `User` is imported for the tests at the end of the module. The module has
-four **routes**:
+three **routes**:
 
 - `Index` is a `GET`: the page. `filter` is a query parameter with a
   default, so both `/` and `/?filter=Active` work and `filter` is never
   missing.
-- The other three are writes that the page sends: `Submit` is a `POST` that
-  carries a form, `NewTodo`; `Toggle` is a `PATCH` that carries an id; and
-  `Delete` is a `DELETE` that carries an id.
+- The other two are writes that the page sends: `Submit` is a `POST` that
+  carries a form, `NewTodo`, and `Toggle` is a `PATCH` that carries an id.
 
 A route's parameters that are not in its path travel in the query string,
-so `Delete { id: … }` is sent to `/todos?id=…`. The paths name the thing
-being changed (`/todos` is the todos, `/todos/{id}` is one todo) and the
-method says what happens to it. The route's name, `Toggle`, is for your
-code and never appears in the URL (chapter 6).
+so `Submit { filter: Active }` is sent to `/todos?filter=Active`. The paths
+name the thing being changed (`/todos` is the todos, `/todos/{id}` is one
+todo) and the method says what happens to it. The route's name, `Toggle`,
+is for your code and never appears in the URL (chapter 6).
+
+The list's Delete button deletes one todo, `DELETE /todos/{id}`, and the
+todo's own page (`Todos.Show`, below) declares that route already. A
+method and a path name one route, so the list sends `Todos.Show.Delete`
+rather than declaring a second route for the same todo.
 
 `requires user` means the `user` field of the session must be `Just`;
 otherwise the runtime sends the visitor to the login page, and inside this
@@ -700,17 +703,11 @@ Toggle.update p session = {
   let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
   Task.succeed Response.refresh
 }
-
-Delete.update : Delete.Params -> Session -> Task Response
-Delete.update p session = {
-  let _ <- Db.deleteMine Todo p.id
-  Task.succeed Response.refresh
-}
 ```
 
-`Toggle` and `Delete` answer `Response.refresh`: load the page the browser is
-on again, and send only the parts of it that changed (the row that flipped
-and the count of open todos; the `<ul>` after a delete). The page's address
+`Toggle` answers `Response.refresh`: load the page the browser is on again,
+and send only the parts of it that changed (the row that flipped and the
+count of open todos). The page's address
 travels with every write, so a write route does not need to know which page
 sent it.
 
@@ -787,7 +784,9 @@ Item props =
       Just d -> <al-badge variant="outline" class="due">{Date.format "Jan 2" d}</al-badge>,
       Nothing -> Html.none,
     }}
-    <al-button variant="ghost" size="sm" click={Delete { id: props.todo.id }}>Delete</al-button>
+    <al-button variant="ghost" size="sm" click={Todos.Show.Delete { id: props.todo.id }}>
+      Delete
+    </al-button>
   </li>
 ```
 
@@ -871,7 +870,7 @@ test "Delete by another user is not found" = {
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Index {})
   let _ <- Test.login { user: Just (User.UserId "someone-else") }
-  let r <- Test.click (Delete { id: id })
+  let r <- Test.click (Todos.Show.Delete { id: id })
   let after <- Db.get Todo id
   Task.succeed (
     { answer: r.answer, todo: Maybe.map (\t -> t.title) after }
@@ -974,7 +973,7 @@ test "a write after logging out is sent to log in" = {
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Index {})
   let _ <- Test.login { user: Nothing }
-  let deleted <- Test.click (Delete { id: id })
+  let deleted <- Test.click (Todos.Show.Delete { id: id })
   let todos <- Db.from Todo |> Db.all
   Task.succeed (
     {
@@ -1013,17 +1012,21 @@ test "a stranger cannot see my todo" = {
 }
 ```
 
-The next two were written after `alder test --mutate` (chapter 10,
-"Mutation testing") showed that nothing checked them: that `Delete`
-really deletes, and that the newest todo comes first. `Test.texts "li a"`
-is the text of every link inside a list item, in page order: the titles.
+The next deletes from the list through the page: the button sends
+`Todos.Show.Delete`, whose `update` redirects to the list, and the list
+comes back without the todo. The one after was written after `alder test
+--mutate` (chapter 10, "Mutation testing") showed that nothing checked that
+the newest todo comes first. `Test.texts "li a"` is the text of every link
+inside a list item, in page order: the titles.
 
 The last shows the scoped read on its own: a test may use `Db.mine` too,
 and it acts for the user `Test.login` signed in, so it counts Me's two
 todos and not the other user's one.
 
 ```alder part=Todos.Index
-test "Delete removes the todo" = {
+-- The list deletes through the todo's own route, `DELETE /todos/{id}`: one todo, one URL. Its
+-- update redirects to the list, so the page comes back without the todo.
+test "deleting from the list" = {
   let me <- Db.insert User {
     email: Text.Email "me@example.com",
     name: Text.NonEmpty "Me",
@@ -1035,11 +1038,20 @@ test "Delete removes the todo" = {
     owner: me,
   }
   let _ <- Test.login { user: Just me }
-  let r <- Test.run (Delete.update { id: id } { user: me, role: Member })
+  let _ <- Test.get (Index {})
+  let r <- Test.click (Todos.Show.Delete { id: id })
+  let page <- Test.get (Index {})
   let after <- Db.get Todo id
   Task.succeed (
-    { value: r.value, todo: Maybe.map (\t -> t.title) after }
-      == { value: Ok Response.refresh, todo: Nothing }
+    {
+      answer: r.answer,
+      todo: Maybe.map (\t -> t.title) after,
+      items: Test.count "li" page.doc,
+    } == {
+      answer: Redirected (Index {}),
+      todo: Nothing,
+      items: 0,
+    }
   )
 }
 
@@ -1126,7 +1138,8 @@ None of that needed a test.
 
 - `app/Todos/Show.alder`: a detail page with an edit form: the `GET`
   route `Show` and the write routes `Save` and `Delete`, whose paths hold
-  the todo's id (`PUT /todos/{id}` and `DELETE /todos/{id}`). `Show.load` reads the todo with
+  the todo's id (`PUT /todos/{id}` and `DELETE /todos/{id}`); the list's
+  Delete button sends the same `Delete`. `Show.load` reads the todo with
   `Db.getMine`, which answers 404 when the todo doesn't exist or belongs
   to someone else. Its tests send a visitor to log in, save the form and
   delete the todo through the page.

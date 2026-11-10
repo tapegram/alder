@@ -2316,7 +2316,7 @@ JavaScript too; "With and without JavaScript", below, explains it.)
 with a hidden `_method` field because a browser form sends only `GET` and
 `POST`; with JavaScript the request is a real `PATCH`, as `@patch` shows.) A
 parameter that is not in the path rides in the query string instead, as the
-`id` of `Delete` does (`DELETE /todos?id=…`). The page's parameters are not in the URL at
+`filter` of `Submit` does (`POST /todos?filter=Active`). The page's parameters are not in the URL at
 all: the filter is in `Alder-Page: /?filter=Active`, which the post carries as a
 header.
 
