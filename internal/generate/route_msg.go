@@ -35,11 +35,11 @@ func guardText(r *Route) string {
 func newRouteMsg(p *Program, page, name string, fields []FieldSpec, o ActionOptions) ([]Edit, error) {
 	r := p.RouteModule(page)
 	if r == nil {
-		return nil, Refusef("`%s` has no GET route: a message is a button on a route's `view`; `alder new route %s /path --method POST` makes a write route without one", page, page)
+		return nil, Refusef("`%s` has no GET route: a write route's button sits on a route's `view`; `alder new route %s /path --method POST` makes a write route without one", page, page)
 	}
 	m := p.Modules[page]
 	if r.IsFile {
-		return nil, Refusef("a file page has no messages: `view` returns `File`, so nothing can be posted from it; move the message to an HTML page")
+		return nil, Refusef("a file route has no button: `view` returns `File`, so nothing can be posted from it; put the write route on an HTML route")
 	}
 	if !IsUpperIdent(name) {
 		return nil, Refusef("`%s` is not a route name: a route is named by a capitalised identifier, such as `Archive`", name)

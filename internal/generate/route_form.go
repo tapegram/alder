@@ -29,7 +29,7 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 	}
 	m := p.Modules[o.Page]
 	if r.IsFile {
-		return nil, Refusef("a file page has no messages: `view` returns `File`, so nothing can be posted from it; move the message to an HTML page")
+		return nil, Refusef("a file route has no button: `view` returns `File`, so nothing can be posted from it; put the write route on an HTML route")
 	}
 	if r.Silo != "" {
 		return nil, Refusef("`%s` is an admin page of a silo: its routes are written by `alder regen admin`", o.Page)

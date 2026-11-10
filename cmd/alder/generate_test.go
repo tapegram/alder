@@ -530,7 +530,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		}
 	}
 
-	// a file page has no messages: new action refuses it (new form follows with Task 6.2)
+	// a file route has no button: new action refuses it (new form follows with Task 6.2)
 	dir := genApp(t, "scaffold")
 	if code, _, errs := alderIn(t, dir, "", "new", "route", "Reports.Csv", "/reports.csv", "--file"); code != 0 {
 		t.Fatalf("new route --file: %s", errs)
@@ -538,7 +538,7 @@ func TestGenerate_Refusals(t *testing.T) {
 	for _, args := range [][]string{{"new", "action", "Reports.Csv", "Refresh"}} {
 		before := appFiles(t, dir)
 		code, _, errs := alderIn(t, dir, "", args...)
-		if want := "alder " + args[0] + " " + args[1] + ": a file page has no messages: `view` returns `File`, so nothing can be posted from it; move the message to an HTML page\n"; code != 1 || errs != want {
+		if want := "alder " + args[0] + " " + args[1] + ": a file route has no button: `view` returns `File`, so nothing can be posted from it; put the write route on an HTML route\n"; code != 1 || errs != want {
 			t.Errorf("alder %s: exit %d, stderr %q", strings.Join(args, " "), code, errs)
 		}
 		if ch := changedFiles(before, appFiles(t, dir)); len(ch) != 0 {
@@ -1363,7 +1363,7 @@ func TestGenerate_RouteMsgRefusals(t *testing.T) {
 		{[]string{"new", "form", "Posts.Show", "Reply", "body:Text", "--hole", "--into", "Comment"}, "alder new form: --hole leaves the `update` body a hole and --into Comment fills it with an insert: give one of them\n"},
 		{[]string{"new", "form", "Posts.Show", "Show", "body:Text"}, "alder new form: `Posts.Show` already declares `Show`: choose another name\n"},
 		{[]string{"new", "form", "Like", "Reply", "body:Text"}, "alder new form: `Like` has no GET route: a form is posted from a route's `view`; `alder new route Like /path` makes one\n"},
-		{[]string{"new", "action", "Like", "Again"}, "alder new action: `Like` has no GET route: a message is a button on a route's `view`; `alder new route Like /path --method POST` makes a write route without one\n"},
+		{[]string{"new", "action", "Like", "Again"}, "alder new action: `Like` has no GET route: a write route's button sits on a route's `view`; `alder new route Like /path --method POST` makes a write route without one\n"},
 	} {
 		before := appFiles(t, dir)
 		if code, _, errs := alderIn(t, dir, "", c.args...); code != 1 || errs != c.want {
