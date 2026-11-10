@@ -5,7 +5,7 @@ import Layout
 
 route Index  = GET    "/"                  { filter: Todo.Filter = All } requires user
 route Row    = GET    "/todos/{id}"        { id: Todo.TodoId }           requires user
-route Toggle = PATCH  "/todos/{id}/toggle" { id: Todo.TodoId }           requires user
+route Toggle = PUT    "/todos/{id}/done"   { id: Todo.TodoId }           requires user
 route Create = POST   "/todos"             { } form NewTodo              requires user
 route Delete = DELETE "/todos/{id}"        { id: Todo.TodoId }           requires user
 route Move   = POST   "/todos/{id}/move"   { id: Todo.TodoId } form MoveTo requires user

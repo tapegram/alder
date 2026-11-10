@@ -100,7 +100,7 @@ func Todos__Row__load(params Todos__Row__Params, session Todos__Index__Session) 
 
 func Todos__Row__view(t Table__Todo__Todo, session Todos__Index__Session) html.Node {
 	return html.El("li", []html.Attr{html.A("id", "todo-"+t.Id)},
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Todos.Toggle", Method: "PATCH", Path: rt.Concat("/todos/", rt.PathSegment(t.Id), "/toggle")})}, html.Text(t.Title)),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Todos.Toggle", Method: "PUT", Path: rt.Concat("/todos/", rt.PathSegment(t.Id), "/done")})}, html.Text(t.Title)),
 		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Todos.Delete", Method: "DELETE", Path: rt.Concat("/todos/", rt.PathSegment(t.Id))})}, html.Text("Delete")),
 		html.FormToRoute(rt.Route{Name: "Todos.Move", Method: "POST", Path: rt.Concat("/todos/", rt.PathSegment(t.Id), "/move")}, nil,
 			html.Input(html.Control{Kind: "errors", Form: "Todos.MoveTo"}),

@@ -2075,7 +2075,7 @@ hand-made one) is not checked.
 
 Not every write needs the page. In the route
 handlers golden (`testdata/golden/gen_route_handlers`, the app whose Go
-`TestGenRoute_ToggleRender` runs), `Toggle` is a `PATCH` that answers
+`TestGenRoute_ToggleRender` runs), `Toggle` is a `PUT` that answers
 `render` of the todo's own route, and the checker finds no `refresh` or
 `invalid` in it, so `NeedsShown` stays false. Its handler, from
 `testdata/golden/gen_route_handlers/want/routes__alder.go`, has no
@@ -2083,7 +2083,7 @@ before-view:
 
 ```go
 func Route__Todos__Toggle() web.Route {
-	return web.Route{Method: "PATCH", Pattern: "/todos/{id}/toggle", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "PUT", Pattern: "/todos/{id}/done", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Todos__Toggle__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -2127,7 +2127,7 @@ data: elements <li id="todo-t1">…</li>
 
 ```
 
-(The request was `PATCH /todos/t1/toggle`, from the page `/`.)
+(The request was `PUT /todos/t1/done`, from the page `/`.)
 `deliverElement` finds the id with `html.RootID`: the first root element of
 the view must have one.
 
@@ -7918,7 +7918,7 @@ the server ever sends) after each phase, and asks again.
    `alder build` and run it with `ALDER_DEV=1` and `ALDER_DEV_PANEL=0`. It
    has no login, so sign a session cookie with the development key
    (`web.DevKey`, `web.SessionCookie`) or read how
-   `TestGenRoute_ToggleRender` makes one. Send `PATCH /todos/<id>/toggle`
+   `TestGenRoute_ToggleRender` makes one. Send `PUT /todos/<id>/done`
    three ways: plain, with `Datastar-Request: true`, and with that header
    and `Alder-Page: /`. Say, from `rt/web/answer.go` and `rt/web/router.go`,
    which function wrote each answer, and why the second and the third are

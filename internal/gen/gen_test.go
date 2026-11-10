@@ -3993,7 +3993,7 @@ func copyRouteApp(t *testing.T, edit func(string) string) string {
 func TestGenRoute_WriteRequires(t *testing.T) {
 	t.Parallel()
 	dir := copyRouteApp(t, func(s string) string {
-		old := `route Toggle = PATCH  "/todos/{id}/toggle" { id: Todo.TodoId }           requires user`
+		old := `route Toggle = PUT    "/todos/{id}/done"   { id: Todo.TodoId }           requires user`
 		if !strings.Contains(s, old) {
 			t.Fatal("Toggle route not found in the fixture")
 		}
@@ -4005,8 +4005,8 @@ func TestGenRoute_WriteRequires(t *testing.T) {
 		return strings.Replace(s, old, old+", role Admin", 1)
 	})
 	runRouteAppIn(t, dir, `
-	toggle, del := "/todos/"+todo+"/toggle", "/todos/"+todo
-	for _, c := range []struct{ method, target string }{{"PATCH", toggle}, {"DELETE", del}} {
+	toggle, del := "/todos/"+todo+"/done", "/todos/"+todo
+	for _, c := range []struct{ method, target string }{{"PUT", toggle}, {"DELETE", del}} {
 		if w := send(c.method, c.target, "", nil); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/login" {
 			t.Errorf("%s %s without a user: %d %q", c.method, c.target, w.Code, w.Header().Get("Location"))
 		}
@@ -4021,7 +4021,7 @@ func TestGenRoute_WriteRequires(t *testing.T) {
 			t.Errorf("%s %s as a reader under Datastar: %d %q", c.method, c.target, w.Code, w.Body.String())
 		}
 	}
-	if w := send("POST", toggle, as(Table__User__Role__Reader__), url.Values{"_method": {"PATCH"}}); w.Code != http.StatusNotFound {
+	if w := send("POST", toggle, as(Table__User__Role__Reader__), url.Values{"_method": {"PUT"}}); w.Code != http.StatusNotFound {
 		t.Errorf("no-JS toggle as a reader: %d", w.Code)
 	}
 	if n := ran("Db.getMine Todo"); n != 0 {
@@ -4033,7 +4033,7 @@ func TestGenRoute_WriteRequires(t *testing.T) {
 	if w := get("/todos/"+todo, as(Table__User__Role__Admin__)); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Milk") {
 		t.Errorf("the row was deleted: %d %q", w.Code, w.Body.String())
 	}
-	if w := send("PATCH", toggle, as(Table__User__Role__Admin__), nil, ds...); w.Code != http.StatusOK || ran("Db.getMine Todo") == 0 {
+	if w := send("PUT", toggle, as(Table__User__Role__Admin__), nil, ds...); w.Code != http.StatusOK || ran("Db.getMine Todo") == 0 {
 		t.Errorf("toggle as an admin: %d, row loads %d", w.Code, ran("Db.getMine Todo"))
 	}
 	`)
@@ -4076,16 +4076,16 @@ func TestGenRoute_Silos(t *testing.T) {
 
 // A write route answering `render r` under Datastar: one patch of r's view by its root id, mode
 // outer, then its toasts; the page the browser is on is neither loaded nor rendered (Index.load's
-// Db.all never runs). Without JavaScript a POST with _method=PATCH is the route too, answered
+// Db.all never runs). Without JavaScript a POST with _method=PUT is the route too, answered
 // with a 303 back to the referring page.
 func TestGenRoute_ToggleRender(t *testing.T) {
 	t.Parallel()
 	runRouteApp(t, `
 	me := as(Table__User__Role__Reader__)
-	w := send("PATCH", "/todos/"+todo+"/toggle", me, nil, ds...)
+	w := send("PUT", "/todos/"+todo+"/done", me, nil, ds...)
 	body := w.Body.String()
 	if w.Code != http.StatusOK || strings.Count(body, "event: datastar-patch-elements") != 1 || !strings.Contains(body, "data: selector #todo-"+todo+"\n") || !strings.Contains(body, "data: mode outer\n") || strings.Contains(body, "selector body") {
-		t.Fatalf("PATCH toggle: %d %q", w.Code, body)
+		t.Fatalf("PUT done: %d %q", w.Code, body)
 	}
 	if n := ran("Db.all Todo"); n != 0 {
 		t.Fatalf("the page's load ran %d times", n)
@@ -4093,7 +4093,7 @@ func TestGenRoute_ToggleRender(t *testing.T) {
 	if w := get("/?filter=Done", me); !strings.Contains(w.Body.String(), "Milk") {
 		t.Fatalf("not toggled: %q", w.Body.String())
 	}
-	w = send("POST", "/todos/"+todo+"/toggle", me, url.Values{"_method": {"PATCH"}}, "Referer", "http://example.com/?filter=Done")
+	w = send("POST", "/todos/"+todo+"/done", me, url.Values{"_method": {"PUT"}}, "Referer", "http://example.com/?filter=Done")
 	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/?filter=Done" {
 		t.Fatalf("no-JS toggle: %d %q", w.Code, w.Header().Get("Location"))
 	}
@@ -4131,7 +4131,7 @@ func TestGenRoute_NoBeforeWhenUnreachable(t *testing.T) {
 		t.Fatalf("Toggle:\n%s\nDelete:\n%s", toggle, del)
 	}
 	runRouteApp(t, `
-	w := send("PATCH", "/todos/"+todo+"/toggle", as(Table__User__Role__Reader__), nil, ds...)
+	w := send("PUT", "/todos/"+todo+"/done", as(Table__User__Role__Reader__), nil, ds...)
 	if w.Code != http.StatusOK || ran("Db.all Todo") != 0 || ran("Db.getMine Todo") != 1 {
 		t.Fatalf("%d, page loads %d, row loads %d", w.Code, ran("Db.all Todo"), ran("Db.getMine Todo"))
 	}

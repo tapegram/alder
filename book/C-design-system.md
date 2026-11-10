@@ -1099,7 +1099,8 @@ dialog's exit motion plays on (alder#21, item 2).
 <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
 <al-dialog id="delete-dialog" heading="Delete this comment?" dismissible>
   <p>Nothing else refers to it.</p>
-  <form method="post" action="/comments/3/delete">
+  <form method="post" action="/comments/3">
+    <input type="hidden" name="_method" value="DELETE" />
     <al-button variant="destructive"><button type="submit">Delete</button></al-button>
   </form>
   <div slot="actions"><a href="/comments/3/delete">See the details</a></div>

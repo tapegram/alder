@@ -294,11 +294,11 @@ func guard__Todos__Toggle(rq *web.Request, params Todos__Toggle__Params) (Todos_
 	return Todos__Index__Session{User: app.User.Val, Theme: app.Theme, Role: app.Role}, nil
 }
 
-// Route__Todos__Toggle serves route Todos.Toggle, PATCH /todos/{id}/toggle: decode the parameters
-// (404 when they do not); `requires` (303 to App.login); run the update and answer its Response (a
+// Route__Todos__Toggle serves route Todos.Toggle, PUT /todos/{id}/done: decode the parameters (404
+// when they do not); `requires` (303 to App.login); run the update and answer its Response (a
 // failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Todos__Toggle() web.Route {
-	return web.Route{Method: "PATCH", Pattern: "/todos/{id}/toggle", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "PUT", Pattern: "/todos/{id}/done", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Todos__Toggle__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
