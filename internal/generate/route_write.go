@@ -79,3 +79,26 @@ func newWriteRoute(p *Program, o RouteOptions, route, method string) ([]Edit, er
 	}
 	return []Edit{{Path: FileOf(o.Module), Create: true, Body: body}}, nil
 }
+
+// routeClash is the first route of the program, in any module, that answers method and path as
+// the router matches them (the checker's E0043: parameter names and a trailing slash do not
+// count), nil for none. except is the `Module.Name` of a route to skip, "" for none.
+func routeClash(p *Program, method, path, except string) *Route {
+	shape := check.PathShape(path)
+	for _, r := range p.Routes {
+		if except != "" && r.Module+"."+r.Name == except {
+			continue
+		}
+		if r.Method == method && check.PathShape(r.Path) == shape {
+			return r
+		}
+	}
+	return nil
+}
+
+// clashRefusal is the refusal for a new route newName answering method and path, which route
+// have already answers.
+func clashRefusal(have *Route, newName, method, path string) error {
+	full := have.Module + "." + have.Name
+	return Refusef("routes `%s` and `%s` both answer %s %s; give the new route its own resource with `--path`, or attach the form to `%s` with `--msg %s`", full, newName, method, path, full, have.Name)
+}

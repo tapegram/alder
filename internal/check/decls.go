@@ -1008,7 +1008,7 @@ func (c *Checker) checkRoutePaths() {
 	for _, name := range c.prog.Order {
 		for _, r := range c.routes[name] {
 			d, full := r.Decl, name+"."+r.Name
-			k := r.Method + " " + pathShape(r.Path)
+			k := r.Method + " " + PathShape(r.Path)
 			first, dup := seen[k]
 			switch why := PagePathProblem(r.Path); {
 			case why != "":
@@ -1156,9 +1156,9 @@ func segmentRune(r rune) bool {
 	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '~' || r == '-'
 }
 
-// pathShape is path as the router matches it: every `{param}` segment as `{}`, no trailing
+// PathShape is path as the router matches it: every `{param}` segment as `{}`, no trailing
 // slash.
-func pathShape(path string) string {
+func PathShape(path string) string {
 	segs := strings.Split(strings.TrimSuffix(path, "/"), "/")
 	for i, s := range segs {
 		if strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}") {
