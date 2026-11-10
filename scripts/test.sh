@@ -33,7 +33,13 @@ res() { # res NAME: sets code and secs from NAME's .res; a part that never finis
 
 names=()
 pids=()
-trap 'kill $(jobs -p) 2>/dev/null; exit 130' INT TERM
+killtree() { # killtree PID: signals PID's descendants first (go test, shard.sh, the test binaries), then PID
+  local c
+  for c in $(pgrep -P "$1" 2>/dev/null); do killtree "$c"; done
+  kill "$1" 2>/dev/null
+}
+# An interrupt or SIGTERM takes down every part and what it started, so nothing is left running.
+trap 'trap - INT TERM; for p in $(jobs -p); do killtree "$p"; done; exit 130' INT TERM
 for k in $(seq 0 $((n - 1))); do
   part "cmd-alder-$k" .github/shard.sh "$n" "$k" ./cmd/alder -skip '^TestRepl_' "$@" &
   pids+=($!)
@@ -44,7 +50,7 @@ names+=(rest)
 # The REPL tests (timing-sensitive: signals, interrupts, orphans) run on their own once the cmd/alder
 # shards are done, so they do not compete with them for CPU; rest still runs alongside the shards.
 wait "${pids[@]}"
-part repl go test ./cmd/alder -count=1 -timeout 10m -run '^TestRepl_' "$@"
+part repl go test ./cmd/alder -count=1 -timeout 10m -run '^TestRepl_' "$@" &
 names+=(repl)
 wait
 
