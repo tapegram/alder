@@ -8,10 +8,10 @@ import (
 
 // Route is one endpoint of a checked app, for `alder routes` and the language server's
 // alder/routes: a `route` declaration. Kind is always "route" (older editor plugins read the
-// "page" and "msg" kinds of earlier versions; Method tells a GET from a write). Method is the HTTP method it answers, Path its path
-// as declared, Module and Name the declaring module and the route's name. File is the declaring
-// module's file as the loader names it (relative to the project root, e.g.
-// app/Posts/Show.alder), and Line, Col are the declaration's place, 1-based.
+// "page" and "msg" kinds of earlier versions; Method tells a GET from a write). Method is the HTTP
+// method it answers, Path its path as declared, Module and Name the declaring module and the
+// route's name. File is the declaring module's file as the loader names it (relative to the project
+// root, e.g. app/Posts/Show.alder), and Line, Col are the declaration's place, 1-based.
 type Route struct {
 	Kind, Method, Path, Module, Name, File string
 	Line, Col                              int

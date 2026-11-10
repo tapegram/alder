@@ -26,8 +26,8 @@ func EditSession(p *Program, op string, args []string) ([]Edit, error) {
 // starts without one: no default), its membership table checked (one `@ref` to the user table,
 // one to the key's: the checker's E0032), and with choose App gains `choose org = <Route>`, the
 // GET route a request without the key is sent to (book 6, "Partitions"): choose names a route
-// module (its GET route, `Orgs.Index` gives `Orgs.Index.Index`, Plan call 14), a GET route
-// `Module.Route`, or a route module written before routes.
+// module (its GET route, `Orgs.Index` gives `Orgs.Index.Index`, Plan call 14) or a
+// GET route `Module.Route`.
 func EditSessionChoose(p *Program, op string, args []string, choose string) ([]Edit, error) {
 	arg := strings.Join(args, " ")
 	via := ""

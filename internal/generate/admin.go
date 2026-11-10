@@ -174,7 +174,7 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 		return nil, nil, Refusef("admin is in the old layout (%s): folders are plural now (%s). Delete %s and run `alder new admin` again; move any code you added outside `-- @admin` regions first",
 			strings.Join(oldDirs, ", "), strings.Join(newDirs, ", "), dir)
 	}
-	// an admin written before routes (#160): its files have `page` lines, which no region holds
+	// an admin still in the old `page` syntax (#160): its files have `page` lines, which no region holds
 	for _, path := range order {
 		if b, err := os.ReadFile(filepath.Join(p.Dir, filepath.FromSlash(path))); err == nil && pageLine.Match(b) {
 			return nil, nil, Refusef("admin is written with pages (`%s` has a `page` line): it is written with routes now. Delete %s and run `alder new admin` again; move any code you added outside `-- @admin` regions first", path, dir)
@@ -570,7 +570,7 @@ func viewHead(r string) string {
 // requires is the `route` line's clause of every admin route.
 const adminRequires = " requires user, role Admin"
 
-// pageLine is a `page` line: a module written before routes (#160).
+// pageLine is a `page` line: a module still in the old syntax (#160).
 var pageLine = regexp.MustCompile(`(?m)^page "`)
 
 // routeOf is the GET route of route module mod as another module writes it: the module and the

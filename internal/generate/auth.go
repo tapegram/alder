@@ -89,7 +89,7 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 		return nil, false, Refusef("`--users %s`: a table is named by one capitalised identifier, such as `User`", o.Users)
 	}
 
-	// the page a login goes to: a GET route (or a route module written before routes)
+	// the page a login goes to: a GET route
 	home, homeParams := "", false
 	if o.To != "" {
 		var ok bool
@@ -368,9 +368,8 @@ func editApp(p *Program, app *Module, users *Table, idType, roleField, roleColum
 const loginRoute = "Auth.Login.Login"
 
 // loginTarget is the route value a login goes to, written in module home, for name: a route
-// module (its GET route, Plan call 14), a GET route `Module.Route`, or a route module written
-// before routes; hasParams when it has a parameter without a default; ok false when name is
-// none of these.
+// module (its GET route, Plan call 14) or a GET route `Module.Route`; hasParams when it has a
+// parameter without a default; ok false when name is neither.
 func loginTarget(p *Program, name, home string) (lit string, hasParams, ok bool) {
 	r := p.RouteModule(name)
 	if r == nil {

@@ -12,14 +12,14 @@ import (
 type ArgKind int
 
 const (
-	ArgText      ArgKind = iota
-	ArgModule            // a module name, new or existing
-	ArgPage              // an existing route module
-	ArgTable             // an existing table
-	ArgDecl              // Module.name of an existing declaration
-	ArgFieldList         // name:Type[=default][@attr…] words
-	ArgType              // a type expression
-	ArgRoute             // a URL path starting with /
+	ArgText        ArgKind = iota
+	ArgModule              // a module name, new or existing
+	ArgRouteModule         // an existing route module
+	ArgTable               // an existing table
+	ArgDecl                // Module.name of an existing declaration
+	ArgFieldList           // name:Type[=default][@attr…] words
+	ArgType                // a type expression
+	ArgRoute               // a URL path starting with /
 	ArgPath
 	ArgBool
 	ArgChoice // one of Field.Choices
@@ -61,7 +61,7 @@ type Field struct {
 	// Existing marks an ArgModule that must name a module the app has (new decl, new test):
 	// Form starts it, when required and unset, at the first module rather than the example.
 	Existing bool
-	// AppOK marks an ArgPage that may name App (`new msg App`: its routes are buttons on any
+	// AppOK marks an ArgRouteModule that may name App (`new msg App`: its routes are buttons on any
 	// page); every other command leaves App out of the pages it offers, App being no route module.
 	AppOK bool
 	// Agent marks a flag the editor's form leaves out: a precision an agent needs on the

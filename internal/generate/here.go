@@ -122,7 +122,7 @@ func Form(s *Spec, here *Match, you map[string]string, p *Program) ([]FieldState
 // exist (a page, a table, a declaration, one of its choices, an Existing module), "" when there
 // is none; else the field's example.
 func startValue(f Field, p *Program) string {
-	if f.Kind == ArgPage || f.Kind == ArgTable || f.Kind == ArgDecl || f.Kind == ArgChoice || f.Kind == ArgModule && f.Existing {
+	if f.Kind == ArgRouteModule || f.Kind == ArgTable || f.Kind == ArgDecl || f.Kind == ArgChoice || f.Kind == ArgModule && f.Existing {
 		if cs := choices(f, p); len(cs) > 0 {
 			return cs[0]
 		}
@@ -182,7 +182,7 @@ func choices(f Field, p *Program) []string {
 	}
 	var out []string
 	switch f.Kind {
-	case ArgPage:
+	case ArgRouteModule:
 		for _, r := range p.Routes {
 			if r.Module == "App" && !f.AppOK {
 				continue
@@ -229,7 +229,7 @@ func validate(f Field, v string, choices []string, p *Program) (bool, string) {
 		if !slices.Contains(choices, v) {
 			return false, "one of " + strings.Join(choices, ", ")
 		}
-	case ArgPage:
+	case ArgRouteModule:
 		if p != nil && !slices.Contains(choices, v) {
 			return false, "no route or page module `" + v + "`"
 		}

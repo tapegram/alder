@@ -101,7 +101,7 @@ imports, and the standard library signatures the request includes. Nothing else 
 
   > If you would want it back after a refresh, it goes in the URL. If it is secret, it goes in the session. Everything else rides in the HTML or is a row.
 
-# Pages, messages and `update` (modules written before routes)
+# Pages, messages and `update` (the old page syntax: E0046 now)
 
 - A page module declares `page "/path" { params }`, a `Model`, `load`, `msg`s, `update` and
   `view`. `update msg model session` matches each message to an arm.
@@ -133,8 +133,8 @@ imports, and the standard library signatures the request includes. Nothing else 
 - Steps: `Test.get (Index {})` (the page must be shown; gives `{ model, session, doc }`),
   `Test.open (Index {})` (gives `{ answer, session, doc }`, whatever the route answers),
   `Test.click (Toggle { id: id })` (send a write route, as its button does),
-  `Test.submit Create { title: Text.NonEmpty "Hi" }` (post a route's form; on a page written
-  before routes, the form's name: `Test.submit Write { … }`; `Test.click Clear` sends a message),
+  `Test.submit Create { title: Text.NonEmpty "Hi" }` (post a route's form; in the old page syntax, the form's name:
+  `Test.submit Write { … }`; `Test.click Clear` sends a message),
   `Test.login { user: Just me }`.
 - An `answer` is `Shown`, `Redirected (Index { … })` (a `Response.redirect`), `Refreshed` (a
   `Response.refresh`), `Rendered (Row { … })` (a `Response.render`), `FormRejected […]` (a

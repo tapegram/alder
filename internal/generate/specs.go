@@ -145,7 +145,7 @@ func newSpecs() []*Spec {
 		{
 			ID: "new form", Summary: "a form with its write route, `update` and view",
 			Args: []Field{
-				{Name: "page", Kind: ArgPage, Required: true, Value: "<Route module>", Help: "the route module the form goes on", Example: "Posts.Index"},
+				{Name: "page", Kind: ArgRouteModule, Required: true, Value: "<Route module>", Help: "the route module the form goes on", Example: "Posts.Index"},
 				{Name: "name", Kind: ArgText, Required: true, Value: "<Name>", Help: "the form's name, a capitalised word", Example: "NewComment"},
 				{Name: "fields", Kind: ArgFieldList, Variadic: true, Value: "<field>:<Type>…", Default: "body:Text", Help: "the form's inputs, as name:Type words (at least one)", Example: "body:Text"},
 			},
@@ -168,7 +168,7 @@ func newSpecs() []*Spec {
 		{
 			ID: "new msg", Summary: "a write route with its button and test",
 			Args: []Field{
-				{Name: "page", Kind: ArgPage, Required: true, AppOK: true, Value: "<Route module>", Help: "the route module the write route goes with, or App for a button on any page", Example: "Posts.Index"},
+				{Name: "page", Kind: ArgRouteModule, Required: true, AppOK: true, Value: "<Route module>", Help: "the route module the write route goes with, or App for a button on any page", Example: "Posts.Index"},
 				{Name: "name", Kind: ArgText, Required: true, Value: "<Name>", Help: "the write route's name, a capitalised word", Example: "Archive"},
 				{Name: "fields", Kind: ArgFieldList, Variadic: true, Value: "<field>:<Type>…", Help: "the values the route carries, as name:Type words (none is fine)", Example: "note:Text"},
 			},
@@ -224,7 +224,7 @@ func newSpecs() []*Spec {
 			Flags: []Field{
 				{Name: "users", Kind: ArgTable, Value: "User", Summary: "the user table", Example: "User"},
 				{Name: "role", Kind: ArgText, Value: "Role", Summary: "the role type", Example: "Role"},
-				{Name: "to", Kind: ArgPage, Value: "Route", Summary: "the route after sign-in", Example: "Posts.Index"},
+				{Name: "to", Kind: ArgRouteModule, Value: "Route", Summary: "the route after sign-in", Example: "Posts.Index"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				created := false
@@ -328,7 +328,7 @@ func editSpecs() []*Spec {
 		{
 			ID: "edit route", Summary: "add a route parameter",
 			Args: []Field{
-				{Name: "page", Kind: ArgPage, Required: true, Value: "<Route module>", Help: "the route's module", Example: "Posts.Index"},
+				{Name: "page", Kind: ArgRouteModule, Required: true, Value: "<Route module>", Help: "the route's module", Example: "Posts.Index"},
 				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-param"}, Value: "add-param", Help: "what to do to the route", Example: "add-param"},
 				{Name: "field", Kind: ArgFieldList, Required: true, Value: "<name>:<Type>[=default]", Help: "the parameter as name:Type; =default keeps old links working", Example: "sort:Text=\"new\""},
 			},
@@ -349,7 +349,7 @@ func editSpecs() []*Spec {
 		},
 		{
 			ID: "edit auth", Summary: "change where sign-in leads",
-			Flags: []Field{{Name: "to", Kind: ArgPage, Required: true, Value: "Route", Summary: "the route after sign-in", Example: "Posts.Index"}},
+			Flags: []Field{{Name: "to", Kind: ArgRouteModule, Required: true, Value: "Route", Summary: "the route after sign-in", Example: "Posts.Index"}},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return EditAuth(p, s.One("to")) })
 			},
@@ -361,7 +361,7 @@ func editSpecs() []*Spec {
 				{Name: "field", Kind: ArgText, Required: true, Variadic: true, Value: "<name>:<Type>=<default> | <key>:<T>.<T>Id via <Membership>", Help: "the field as name:Type=default, or key:T.TId via Membership for a key", Example: "theme:Text=\"light\""},
 			},
 			Flags: []Field{
-				{Name: "choose", Kind: ArgPage, Value: "Route", Summary: "the route that chooses the key", Example: "Orgs.Choose"},
+				{Name: "choose", Kind: ArgRouteModule, Value: "Route", Summary: "the route that chooses the key", Example: "Orgs.Choose"},
 				{Name: "strict", Kind: ArgBool, Summary: "refuse a change that breaks code", Agent: true},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
@@ -379,9 +379,9 @@ func removeSpecs() []*Spec {
 	return []*Spec{
 		{
 			ID: "remove route", Summary: "remove a route module",
-			Args: []Field{{Name: "page", Kind: ArgPage, Required: true, Value: "<Route module>", Help: "the route's module to remove, with its file", Example: "Posts.Index"}},
+			Args: []Field{{Name: "page", Kind: ArgRouteModule, Required: true, Value: "<Route module>", Help: "the route's module to remove, with its file", Example: "Posts.Index"}},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
-				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return RemovePage(p, s.One("page")) })
+				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return RemoveRoute(p, s.One("page")) })
 			},
 		},
 		{
