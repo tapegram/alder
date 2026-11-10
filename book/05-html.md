@@ -432,14 +432,14 @@ membership rule is checked against the options just rendered.
    reads it on every request.
 2. Have `load` fetch at most 50 rows whose label contains it
    (`Db.where (User.email.contains params.findAuthor)`, `Db.limit 50`).
-3. Add a small second form with its own write route,
-   `route Find = POST "/author-search" { } form Find` with
-   `form Find = { q: Text }`, whose `Find.update` answers
-   `Response.redirect (New { findAuthor: p.form.q })`.
-
-It must be a `redirect`, not a `refresh`: `refresh` draws the page at the
-address it is on, with the old text, and only a request for the new address
-narrows by the new text.
+3. Add a small second form that is a plain `GET` to the page itself, with
+   an input named like the parameter:
+   `<form method="get" action="/posts/new"><input type="search"
+   name="findAuthor" value={model.findAuthor} /><button>Find</button></form>`.
+   It has no `submit` and no route of its own: a search is a read, so the
+   browser asks for `/posts/new?findAuthor=…` and `New.load` narrows the
+   list. (`action` names the page's path: without it the browser keeps the
+   address the page was posted at, after a refused form.)
 
 The select then holds the narrowed rows, and a posted value outside them
 (typed by hand, or left over from an earlier search) is "must be one of the

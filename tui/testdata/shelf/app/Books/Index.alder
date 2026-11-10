@@ -4,8 +4,8 @@ import Layout
 import Table.Book
 import Table.Loan
 
-route Index = GET  "/"       { }
-route Lend  = POST "/_/Lend" { id: Book.BookId }
+route Index = GET  "/"                 { }
+route Lend  = POST "/books/{id}/loans" { id: Book.BookId }
 
 type Model = { books: List Book }
 
