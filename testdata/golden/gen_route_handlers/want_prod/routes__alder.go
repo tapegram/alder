@@ -38,10 +38,10 @@ func decode__About__Show__Params(_ map[string]string, q url.Values) (r About__Sh
 	return r, errs
 }
 
-// page__About__Show runs route About.Show for rq up to its model: load (with params and the session
+// load__About__Show runs route About.Show for rq up to its model: load (with params and the session
 // of rq.Env). It returns the model and the session view and update take, or the response that ends
 // the request, which stores keep (the session a successful update left, or nil).
-func page__About__Show(rq *web.Request, params About__Show__Params, keep any) (string, App__Session, *web.Response) {
+func load__About__Show(rq *web.Request, params About__Show__Params, keep any) (string, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, About__Show__load(params, session))
 	if err != nil {
@@ -61,7 +61,7 @@ func Route__About__Show() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__About__Show(rq, params, nil)
+		model, session, stop := load__About__Show(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -76,13 +76,13 @@ func decode__Admin__Stats__Params(_ map[string]string, _ url.Values) (r Admin__S
 	return r, errs
 }
 
-// page__Admin__Stats runs route Admin.Stats for rq up to its model: `requires user` (a 303 to
+// load__Admin__Stats runs route Admin.Stats for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then `role Admin` (404,
 // App.notFound, as for a missing row, when the session's role is not one of them: a cookie check,
 // read when the user logged in), then load (with params and the narrowed session). It returns the
 // model and the session view and update take, or the response that ends the request, which stores
 // keep (the session a successful update left, or nil).
-func page__Admin__Stats(rq *web.Request, params Admin__Stats__Params, keep any) (int64, Admin__Stats__Session, *web.Response) {
+func load__Admin__Stats(rq *web.Request, params Admin__Stats__Params, keep any) (int64, Admin__Stats__Session, *web.Response) {
 	var model int64
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
@@ -114,7 +114,7 @@ func Route__Admin__Stats() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Admin__Stats(rq, params, nil)
+		model, session, stop := load__Admin__Stats(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -129,10 +129,10 @@ func decode__Auth__Login__Login__Params(_ map[string]string, _ url.Values) (r Au
 	return r, errs
 }
 
-// page__Auth__Login__Login runs route Auth.Login.Login for rq up to its model: load (with params
+// load__Auth__Login__Login runs route Auth.Login.Login for rq up to its model: load (with params
 // and the session of rq.Env). It returns the model and the session view and update take, or the
 // response that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Auth__Login__Login(rq *web.Request, params Auth__Login__Login__Params, keep any) (Auth__Login__Model, App__Session, *web.Response) {
+func load__Auth__Login__Login(rq *web.Request, params Auth__Login__Login__Params, keep any) (Auth__Login__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Auth__Login__Login__load(params, session))
 	if err != nil {
@@ -152,7 +152,7 @@ func Route__Auth__Login__Login() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Auth__Login__Login(rq, params, nil)
+		model, session, stop := load__Auth__Login__Login(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -174,11 +174,11 @@ func decode__Todos__Index__Params(_ map[string]string, q url.Values) (r Todos__I
 	return r, errs
 }
 
-// page__Todos__Index runs route Todos.Index for rq up to its model: `requires user` (a 303 to
+// load__Todos__Index runs route Todos.Index for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then load (with params and the
 // narrowed session). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Todos__Index(rq *web.Request, params Todos__Index__Params, keep any) (Todos__TodoList, Todos__Index__Session, *web.Response) {
+func load__Todos__Index(rq *web.Request, params Todos__Index__Params, keep any) (Todos__TodoList, Todos__Index__Session, *web.Response) {
 	var model Todos__TodoList
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
@@ -204,7 +204,7 @@ func Route__Todos__Index() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Todos__Index(rq, params, nil)
+		model, session, stop := load__Todos__Index(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -228,11 +228,11 @@ func decode__Todos__Row__Params(params map[string]string, _ url.Values) (r Todos
 	return r, errs
 }
 
-// page__Todos__Row runs route Todos.Row for rq up to its model: `requires user` (a 303 to
+// load__Todos__Row runs route Todos.Row for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then load (with params and the
 // narrowed session). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Todos__Row(rq *web.Request, params Todos__Row__Params, keep any) (Table__Todo__Todo, Todos__Index__Session, *web.Response) {
+func load__Todos__Row(rq *web.Request, params Todos__Row__Params, keep any) (Table__Todo__Todo, Todos__Index__Session, *web.Response) {
 	var model Table__Todo__Todo
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
@@ -258,7 +258,7 @@ func Route__Todos__Row() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Todos__Row(rq, params, nil)
+		model, session, stop := load__Todos__Row(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -539,11 +539,11 @@ func decode__Todos__Export__Params(_ map[string]string, _ url.Values) (r Todos__
 	return r, errs
 }
 
-// page__Todos__Export runs route Todos.Export for rq up to its model: `requires user` (a 303 to
+// load__Todos__Export runs route Todos.Export for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then load (with params and the
 // narrowed session). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Todos__Export(rq *web.Request, params Todos__Export__Params, keep any) ([]Table__Todo__Todo, Todos__Index__Session, *web.Response) {
+func load__Todos__Export(rq *web.Request, params Todos__Export__Params, keep any) ([]Table__Todo__Todo, Todos__Index__Session, *web.Response) {
 	var model []Table__Todo__Todo
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
@@ -570,7 +570,7 @@ func Route__Todos__Export() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Todos__Export(rq, params, nil)
+		model, session, stop := load__Todos__Export(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}

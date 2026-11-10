@@ -36,7 +36,7 @@ import (
 //	                                        Test.submit (routes__alder.go, test builds only)
 //	selector__N                             the N-th selector literal of the tests' queries,
 //	                                        parsed once (app__alder.go, test builds only)
-//	pageFunc    page__M__R                  GET route M.R's `requires` check and load (routes)
+//	loadFunc    load__M__R                  GET route M.R's `requires` check and load (routes)
 //	guardFunc   guard__M__R                 write route M.R's `requires` check (routes)
 //	routeFunc   Route__M__R                 route R of module M (routes)
 //	capName     Cap__M__Capability          a capability's Go interface (exported: an adapter
@@ -86,7 +86,7 @@ import (
 //     (an identifier never ends in "__"). Stripping that "__", Ctor is the text after the last
 //     "__" (Ctor has no "__" and does not start with '_'), and the rest is a GoName (1).
 //  3. payloadName, tagType, tagConst, widenName, tableName, insertName, insertVals, insertMineName, insertMineVals, enumName,
-//     checkName, decodeName, encodeName, selector__N, pageFunc, guardFunc, testFunc, fakeName, fakeEntry, fuzz__, lit__ and the
+//     checkName, decodeName, encodeName, selector__N, loadFunc, guardFunc, testFunc, fakeName, fakeEntry, fuzz__, lit__ and the
 //     route__/session__ helpers start with a lower-case word and "__". No GoName or ctorName does (they start with
 //     an upper-case module segment); no local does (a local contains "__" only at its end, or
 //     followed by its "_N" renaming suffix); the words differ, so the kinds cannot collide with
@@ -305,8 +305,8 @@ func checkName(module, brand string) string { return "check__" + GoName(module, 
 // ("decode__Todos__Index__NewTodo").
 func decodeName(module, record string) string { return "decode__" + GoName(module, record) }
 
-// pageFunc runs GET route key's (M.R) requires check and load ("page__Todos__Index").
-func pageFunc(module string) string { return "page__" + strings.ReplaceAll(module, ".", "__") }
+// loadFunc runs GET route key's (M.R) requires check and load ("load__Todos__Index").
+func loadFunc(module string) string { return "load__" + strings.ReplaceAll(module, ".", "__") }
 
 // routeFunc is the web.Route of route name of module M ("Route__Todos__Index",
 // "Route__App__Logout").

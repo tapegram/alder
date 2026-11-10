@@ -26,10 +26,10 @@ func decode__Index__Index__Params(_ map[string]string, _ url.Values) (r Index__I
 	return r, errs
 }
 
-// page__Index__Index runs route Index.Index for rq up to its model: load (with params and the
+// load__Index__Index runs route Index.Index for rq up to its model: load (with params and the
 // session of rq.Env). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Index__Index(rq *web.Request, params Index__Index__Params, keep any) (Index__Model, App__Session, *web.Response) {
+func load__Index__Index(rq *web.Request, params Index__Index__Params, keep any) (Index__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Index__Index__load(params, session))
 	if err != nil {
@@ -49,7 +49,7 @@ func Route__Index__Index() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Index__Index(rq, params, nil)
+		model, session, stop := load__Index__Index(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}

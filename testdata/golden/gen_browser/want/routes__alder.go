@@ -118,10 +118,10 @@ func decode__Auth__Login__Login__Params(_ map[string]string, _ url.Values) (r Au
 	return r, errs
 }
 
-// page__Auth__Login__Login runs route Auth.Login.Login for rq up to its model: load (with params
+// load__Auth__Login__Login runs route Auth.Login.Login for rq up to its model: load (with params
 // and the session of rq.Env). It returns the model and the session view and update take, or the
 // response that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Auth__Login__Login(rq *web.Request, params Auth__Login__Login__Params, keep any) (Auth__Login__Model, App__Session, *web.Response) {
+func load__Auth__Login__Login(rq *web.Request, params Auth__Login__Login__Params, keep any) (Auth__Login__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Auth__Login__Login__load(params, session))
 	if err != nil {
@@ -141,7 +141,7 @@ func Route__Auth__Login__Login() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Auth__Login__Login(rq, params, nil)
+		model, session, stop := load__Auth__Login__Login(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -229,11 +229,11 @@ func decode__Notes__Index__Index__Params(_ map[string]string, q url.Values) (r N
 	return r, errs
 }
 
-// page__Notes__Index__Index runs route Notes.Index.Index for rq up to its model: `requires user` (a
+// load__Notes__Index__Index runs route Notes.Index.Index for rq up to its model: `requires user` (a
 // 303 to App.login, storing keep, when the session's user is Nothing), then load (with params and
 // the narrowed session). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Notes__Index__Index(rq *web.Request, params Notes__Index__Index__Params, keep any) (Notes__Index__Model, Notes__Index__Index__Session, *web.Response) {
+func load__Notes__Index__Index(rq *web.Request, params Notes__Index__Index__Params, keep any) (Notes__Index__Model, Notes__Index__Index__Session, *web.Response) {
 	var model Notes__Index__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
@@ -259,7 +259,7 @@ func Route__Notes__Index__Index() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Notes__Index__Index(rq, params, nil)
+		model, session, stop := load__Notes__Index__Index(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -723,11 +723,11 @@ func decode__Notes__Show__Show__Params(params map[string]string, _ url.Values) (
 	return r, errs
 }
 
-// page__Notes__Show__Show runs route Notes.Show.Show for rq up to its model: `requires user` (a 303
+// load__Notes__Show__Show runs route Notes.Show.Show for rq up to its model: `requires user` (a 303
 // to App.login, storing keep, when the session's user is Nothing), then load (with params and the
 // narrowed session). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Notes__Show__Show(rq *web.Request, params Notes__Show__Show__Params, keep any) (Notes__Show__Model, Notes__Show__Show__Session, *web.Response) {
+func load__Notes__Show__Show(rq *web.Request, params Notes__Show__Show__Params, keep any) (Notes__Show__Model, Notes__Show__Show__Session, *web.Response) {
 	var model Notes__Show__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
@@ -754,7 +754,7 @@ func Route__Notes__Show__Show() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Notes__Show__Show(rq, params, nil)
+		model, session, stop := load__Notes__Show__Show(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}

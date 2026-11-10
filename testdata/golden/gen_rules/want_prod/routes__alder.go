@@ -28,13 +28,13 @@ func decode__Admin__Admin__Params(_ map[string]string, _ url.Values) (r Admin__A
 	return r, errs
 }
 
-// page__Admin__Admin runs route Admin.Admin for rq up to its model: `requires user` (a 303 to
+// load__Admin__Admin runs route Admin.Admin for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then `role Author | Admin` (404,
 // App.notFound, as for a missing row, when the session's role is not one of them: a cookie check,
 // read when the user logged in), then load (with params and the narrowed session). It returns the
 // model and the session view and update take, or the response that ends the request, which stores
 // keep (the session a successful update left, or nil).
-func page__Admin__Admin(rq *web.Request, params Admin__Admin__Params, keep any) (Admin__Model, Admin__Admin__Session, *web.Response) {
+func load__Admin__Admin(rq *web.Request, params Admin__Admin__Params, keep any) (Admin__Model, Admin__Admin__Session, *web.Response) {
 	var model Admin__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
@@ -66,7 +66,7 @@ func Route__Admin__Admin() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Admin__Admin(rq, params, nil)
+		model, session, stop := load__Admin__Admin(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -81,10 +81,10 @@ func decode__Login__Login__Params(_ map[string]string, _ url.Values) (r Login__L
 	return r, errs
 }
 
-// page__Login__Login runs route Login.Login for rq up to its model: load (with params and the
+// load__Login__Login runs route Login.Login for rq up to its model: load (with params and the
 // session of rq.Env). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Login__Login(rq *web.Request, params Login__Login__Params, keep any) (Login__Model, App__Session, *web.Response) {
+func load__Login__Login(rq *web.Request, params Login__Login__Params, keep any) (Login__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Login__Login__load(params, session))
 	if err != nil {
@@ -104,7 +104,7 @@ func Route__Login__Login() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Login__Login(rq, params, nil)
+		model, session, stop := load__Login__Login(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -119,11 +119,11 @@ func decode__Notes__Notes__Params(_ map[string]string, _ url.Values) (r Notes__N
 	return r, errs
 }
 
-// page__Notes__Notes runs route Notes.Notes for rq up to its model: `requires user` (a 303 to
+// load__Notes__Notes runs route Notes.Notes for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then load (with params and the
 // narrowed session). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Notes__Notes(rq *web.Request, params Notes__Notes__Params, keep any) (Notes__Model, Notes__Notes__Session, *web.Response) {
+func load__Notes__Notes(rq *web.Request, params Notes__Notes__Params, keep any) (Notes__Model, Notes__Notes__Session, *web.Response) {
 	var model Notes__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
@@ -149,7 +149,7 @@ func Route__Notes__Notes() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Notes__Notes(rq, params, nil)
+		model, session, stop := load__Notes__Notes(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}

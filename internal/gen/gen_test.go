@@ -2335,7 +2335,7 @@ func TestShop(t *testing.T) {
 `
 
 // TestGen_Routes: the routes of the ir_route_app app, against a golden written by hand before the
-// emitter (the spec of route emission): decoders, page__/update__ functions, the GET and POST
+// emitter (the spec of route emission): decoders, load__/update__ functions, the GET and POST
 // routes and their helpers. The whole app vets.
 func TestGen_Routes(t *testing.T) {
 	files := emit(t, "../../testdata/golden/ir_route_app")

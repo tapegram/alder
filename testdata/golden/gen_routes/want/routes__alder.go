@@ -40,10 +40,10 @@ func decode__Edit__Edit__Params(params map[string]string, _ url.Values) (r Edit_
 	return r, errs
 }
 
-// page__Edit__Edit runs route Edit.Edit for rq up to its model: load (with params and the session
+// load__Edit__Edit runs route Edit.Edit for rq up to its model: load (with params and the session
 // of rq.Env). It returns the model and the session view and update take, or the response that ends
 // the request, which stores keep (the session a successful update left, or nil).
-func page__Edit__Edit(rq *web.Request, params Edit__Edit__Params, keep any) (Edit__Model, App__Session, *web.Response) {
+func load__Edit__Edit(rq *web.Request, params Edit__Edit__Params, keep any) (Edit__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Edit__Edit__load(params, session))
 	if err != nil {
@@ -63,7 +63,7 @@ func Route__Edit__Edit() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Edit__Edit(rq, params, nil)
+		model, session, stop := load__Edit__Edit(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -193,10 +193,10 @@ func decode__Other__Other__Params(_ map[string]string, _ url.Values) (r Other__O
 	return r, errs
 }
 
-// page__Other__Other runs route Other.Other for rq up to its model: load (with params and the
+// load__Other__Other runs route Other.Other for rq up to its model: load (with params and the
 // session of rq.Env). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Other__Other(rq *web.Request, params Other__Other__Params, keep any) (Other__Model, App__Session, *web.Response) {
+func load__Other__Other(rq *web.Request, params Other__Other__Params, keep any) (Other__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Other__Other__load(params, session))
 	if err != nil {
@@ -216,7 +216,7 @@ func Route__Other__Other() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Other__Other(rq, params, nil)
+		model, session, stop := load__Other__Other(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -231,11 +231,11 @@ func decode__Secret__Secret__Params(_ map[string]string, _ url.Values) (r Secret
 	return r, errs
 }
 
-// page__Secret__Secret runs route Secret.Secret for rq up to its model: `requires user` (a 303 to
+// load__Secret__Secret runs route Secret.Secret for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then load (with params and the
 // narrowed session). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Secret__Secret(rq *web.Request, params Secret__Secret__Params, keep any) (Secret__Model, Secret__Secret__Session, *web.Response) {
+func load__Secret__Secret(rq *web.Request, params Secret__Secret__Params, keep any) (Secret__Model, Secret__Secret__Session, *web.Response) {
 	var model Secret__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
@@ -261,7 +261,7 @@ func Route__Secret__Secret() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Secret__Secret(rq, params, nil)
+		model, session, stop := load__Secret__Secret(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}

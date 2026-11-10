@@ -81,7 +81,7 @@ func TestGoNameInjective(t *testing.T) {
 			add(GoName(m, n), "decl "+m+"."+n)
 		}
 		add(widenName(m, "Session"), "widen "+m)
-		add(pageFunc(m), "page__ "+m)
+		add(loadFunc(m), "load__ "+m)
 		for _, i := range []int{1, 2, 10, 11, 101} {
 			add(testFunc(m, i), fmt.Sprintf("test %d of %s", i, m))
 		}

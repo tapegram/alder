@@ -49,13 +49,13 @@ func decode__Admin__Projects__Projects__Params(params map[string]string, _ url.V
 	return r, errs
 }
 
-// page__Admin__Projects__Projects runs route Admin.Projects.Projects for rq up to its model:
+// load__Admin__Projects__Projects runs route Admin.Projects.Projects for rq up to its model:
 // `requires user` (a 303 to App.login, storing keep, when the session's user is Nothing), then
 // `role Admin` (404, App.notFound, as for a missing row, when the session's role is not one of
 // them: a cookie check, read when the user logged in), then load (with params and the narrowed
 // session). It returns the model and the session view and update take, or the response that ends
 // the request, which stores keep (the session a successful update left, or nil).
-func page__Admin__Projects__Projects(rq *web.Request, params Admin__Projects__Projects__Params, keep any) (Admin__Projects__Model, Admin__Projects__Projects__Session, *web.Response) {
+func load__Admin__Projects__Projects(rq *web.Request, params Admin__Projects__Projects__Params, keep any) (Admin__Projects__Model, Admin__Projects__Projects__Session, *web.Response) {
 	var model Admin__Projects__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok && Mutant == 1 {
@@ -91,7 +91,7 @@ func Route__Admin__Projects__Projects() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Admin__Projects__Projects(rq, params, nil)
+		model, session, stop := load__Admin__Projects__Projects(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -213,10 +213,10 @@ func decode__Login__Login__Params(_ map[string]string, _ url.Values) (r Login__L
 	return r, errs
 }
 
-// page__Login__Login runs route Login.Login for rq up to its model: load (with params and the
+// load__Login__Login runs route Login.Login for rq up to its model: load (with params and the
 // session of rq.Env). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Login__Login(rq *web.Request, params Login__Login__Params, keep any) (Login__Model, App__Session, *web.Response) {
+func load__Login__Login(rq *web.Request, params Login__Login__Params, keep any) (Login__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Login__Login__load(params, session))
 	if err != nil {
@@ -236,7 +236,7 @@ func Route__Login__Login() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Login__Login(rq, params, nil)
+		model, session, stop := load__Login__Login(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -251,11 +251,11 @@ func decode__Notes__Index__Index__Params(_ map[string]string, _ url.Values) (r N
 	return r, errs
 }
 
-// page__Notes__Index__Index runs route Notes.Index.Index for rq up to its model: `requires user` (a
+// load__Notes__Index__Index runs route Notes.Index.Index for rq up to its model: `requires user` (a
 // 303 to App.login, storing keep, when the session's user is Nothing), then load (with params and
 // the narrowed session). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Notes__Index__Index(rq *web.Request, params Notes__Index__Index__Params, keep any) (Notes__Index__Model, Notes__Index__Index__Session, *web.Response) {
+func load__Notes__Index__Index(rq *web.Request, params Notes__Index__Index__Params, keep any) (Notes__Index__Model, Notes__Index__Index__Session, *web.Response) {
 	var model Notes__Index__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok && Mutant == 13 {
@@ -285,7 +285,7 @@ func Route__Notes__Index__Index() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Notes__Index__Index(rq, params, nil)
+		model, session, stop := load__Notes__Index__Index(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -354,11 +354,11 @@ func decode__Orgs__Orgs__Params(_ map[string]string, _ url.Values) (r Orgs__Orgs
 	return r, errs
 }
 
-// page__Orgs__Orgs runs route Orgs.Orgs for rq up to its model: `requires user` (a 303 to
+// load__Orgs__Orgs runs route Orgs.Orgs for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then load (with params and the
 // narrowed session). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Orgs__Orgs(rq *web.Request, params Orgs__Orgs__Params, keep any) (Orgs__Model, Orgs__Orgs__Session, *web.Response) {
+func load__Orgs__Orgs(rq *web.Request, params Orgs__Orgs__Params, keep any) (Orgs__Model, Orgs__Orgs__Session, *web.Response) {
 	var model Orgs__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok && Mutant == 18 {
@@ -387,7 +387,7 @@ func Route__Orgs__Orgs() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Orgs__Orgs(rq, params, nil)
+		model, session, stop := load__Orgs__Orgs(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -534,12 +534,12 @@ func decode__Projects__Index__Index__Params(_ map[string]string, _ url.Values) (
 	return r, errs
 }
 
-// page__Projects__Index__Index runs route Projects.Index.Index for rq up to its model: `requires
+// load__Projects__Index__Index runs route Projects.Index.Index for rq up to its model: `requires
 // user, org` (a 303 to App.login, storing keep, when the session's user or org is Nothing), then
 // load (with params and the narrowed session). It returns the model and the session view and update
 // take, or the response that ends the request, which stores keep (the session a successful update
 // left, or nil).
-func page__Projects__Index__Index(rq *web.Request, params Projects__Index__Index__Params, keep any) (Projects__Index__Model, Projects__Index__Index__Session, *web.Response) {
+func load__Projects__Index__Index(rq *web.Request, params Projects__Index__Index__Params, keep any) (Projects__Index__Model, Projects__Index__Index__Session, *web.Response) {
 	var model Projects__Index__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
@@ -571,7 +571,7 @@ func Route__Projects__Index__Index() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Projects__Index__Index(rq, params, nil)
+		model, session, stop := load__Projects__Index__Index(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}

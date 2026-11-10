@@ -30,7 +30,7 @@ import (
 // eff.Task[A]. A node the IR shares between several places (a table field's default, which
 // every record literal omitting the field holds) is switched everywhere it is emitted, tests
 // included. `requires dropped` is in the guard of its route (requiresChecks: a GET route's
-// page__M__R, a write route's guard__M__R): under its id, a session without the
+// load__M__R, a write route's guard__M__R): under its id, a session without the
 // field is served with the placeholder instead of the redirect; `role dropped` too: under its
 // id the role check lets every role through (roleDropped); `membership
 // dropped` in session__via: under its id the field's membership check is skipped. Schema mutants
@@ -320,7 +320,7 @@ func (f *fn) mutatedMatch(w *strings.Builder, x *ir.Match, ms []mutate.Mutant, s
 	w.WriteString("}\npanic(\"unreachable\")\n")
 }
 
-// requiresPlaceholder writes, into gd's guard (a GET route's page__M__R, a write
+// requiresPlaceholder writes, into gd's guard (a GET route's load__M__R, a write
 // route's guard__M__R), the `requires dropped` mutants of its `requires`: under the mutant's id
 // a session without the field gets the placeholder, so the check that follows lets the request
 // through. app is the guard's App session variable.

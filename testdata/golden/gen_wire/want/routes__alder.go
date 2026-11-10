@@ -46,10 +46,10 @@ func decode__Wood__Wood__Params(params map[string]string, q url.Values) (r Wood_
 	return r, errs
 }
 
-// page__Wood__Wood runs route Wood.Wood for rq up to its model: load (with params and the session
+// load__Wood__Wood runs route Wood.Wood for rq up to its model: load (with params and the session
 // of rq.Env). It returns the model and the session view and update take, or the response that ends
 // the request, which stores keep (the session a successful update left, or nil).
-func page__Wood__Wood(rq *web.Request, params Wood__Wood__Params, keep any) (Wood__Model, App__Session, *web.Response) {
+func load__Wood__Wood(rq *web.Request, params Wood__Wood__Params, keep any) (Wood__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Wood__Wood__load(params, session))
 	if err != nil {
@@ -69,7 +69,7 @@ func Route__Wood__Wood() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Wood__Wood(rq, params, nil)
+		model, session, stop := load__Wood__Wood(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}

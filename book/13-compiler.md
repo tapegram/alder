@@ -1638,7 +1638,7 @@ func Route__Todos__Index__Index() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Todos__Index__Index(rq, params, nil)
+		model, session, stop := load__Todos__Index__Index(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -1656,11 +1656,11 @@ constructor `Active` of `Todo.Filter`, through `web.Enum`. Any other text
 (`?filter=Nope`) is a decode error, and the answer is a 404. A missing
 `filter` is `All`, its default.
 
-`page__Todos__Index__Index` is the part of the lifecycle that a GET route
+`load__Todos__Index__Index` is the part of the lifecycle that a GET route
 shares with the write routes that render it again (below):
 
 ```go
-func page__Todos__Index__Index(rq *web.Request, params Todos__Index__Index__Params, keep any) (Todos__Index__Model, Todos__Index__Index__Session, *web.Response) {
+func load__Todos__Index__Index(rq *web.Request, params Todos__Index__Index__Params, keep any) (Todos__Index__Model, Todos__Index__Index__Session, *web.Response) {
 	var model Todos__Index__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
@@ -1874,8 +1874,8 @@ This is chapter 6's lifecycle, line by line:
 
 2. `guard__…` is `requires user` and the role: a 303 to `App.login` or a 404
    when the session falls short, otherwise the narrowed `Session` that
-   `update` takes. A write route has no `load`, so it has no `page__…`
-   function: `guard__` is what `page__` is without the load.
+   `update` takes. A write route has no `load`, so it has no `load__…`
+   function: `guard__` is what `load__` is without the load.
 
 3. Because `Toggle.update` mentions `Response.refresh`, the checker marked
    the route (`NeedsShown`, section 5), and the generator wrote the lines
@@ -2114,7 +2114,7 @@ the delivery an element fetch run in the server:
 3. It serves it with the session the write left.
 
 That is the same `serve` the router runs for a request from outside, so the
-target's own handler runs: `Route__Todos__Row`'s `page__…` (`requires`,
+target's own handler runs: `Route__Todos__Row`'s `load__…` (`requires`,
 then `Row.load`, one read by key) and `Row.view`, and the router delivers
 the result with `deliverElement`, as it would an element fetch from the
 browser:
@@ -2777,11 +2777,11 @@ the row stays the user's.
 
 A route with `role R` gets one more check in its
 guard, after the `requires user` redirect and before `load` or `update`.
-The blog's `page__Write__Write` (`build/blog/routes__alder.go`), which the
+The blog's `load__Write__Write` (`build/blog/routes__alder.go`), which the
 `GET /write` route runs before it renders:
 
 ```go
-func page__Write__Write(rq *web.Request, params Write__Write__Params, keep any) (Write__Model, Write__Write__Session, *web.Response) {
+func load__Write__Write(rq *web.Request, params Write__Write__Params, keep any) (Write__Model, Write__Write__Session, *web.Response) {
 	var model Write__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
@@ -5422,7 +5422,7 @@ mutator reads them from each `ir.Route`, one
 mutant per route, named by the route (`Save`), and the emitter keys them
 by the guard they belong to (the route's `Module.Name`). The `requires`
 mutant is a line in the route's guard before the check that sends a
-visitor to log in: `page__M__R` for a `GET` route, `guard__M__R` for a
+visitor to log in: `load__M__R` for a `GET` route, `guard__M__R` for a
 write route (here the blog's `Write.Edit`'s Save):
 
 ```go
@@ -6326,7 +6326,7 @@ parts are always joined by a double underscore, `__`:
 | `is__M__Union__Ctor` | a constructor's tag | `is__M__Shape__Circle` |
 | `widen__M__R__Session` | the session a route's `requires` narrows, turned into the app's | `widen__Todos__Index__Index__Session` |
 | `Route__M__R` | the handler of route `R` of module `M`, GET or write | `Route__Todos__Index__Toggle` |
-| `page__M__R`, `guard__M__R`, `params__M__R` | a GET route's `requires` and `load`; a write route's `requires`; a GET route's parameters as text | `page__Todos__Index__Index`, `guard__Todos__Index__Toggle` |
+| `load__M__R`, `guard__M__R`, `params__M__R` | a GET route's `requires` and `load`; a write route's `requires`; a GET route's parameters as text | `load__Todos__Index__Index`, `guard__Todos__Index__Toggle` |
 | `decode__M__R__Params`, `decode__M__F` | the decoder of a route's parameters, or of a form | `decode__Todos__Index__Toggle__Params`, `decode__Todos__Index__NewTodo` |
 | `check__M__Brand` | the check of a brand with a `where` refinement, run on decoded input | `check__Table__Post__Slug` |
 | `route__…`, `session__…` | helpers shared by every route, and the session codec | `route__fail`, `session__codec` |
@@ -6349,7 +6349,7 @@ joint, and a generated name can be read back into its parts:
 file.
 
 Names the compiler adds start with a lowercase word (`tag__`, `is__`,
-`payload__`, `widen__`, `page__`, `guard__`, `decode__`, …), which no
+`payload__`, `widen__`, `load__`, `guard__`, `decode__`, …), which no
 module name does, so they never clash with yours either.
 
 The names your adapters use must be exported, so they start with a

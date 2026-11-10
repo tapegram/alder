@@ -27,10 +27,10 @@ func decode__Sites__MnSos__MnSos__Params(_ map[string]string, q url.Values) (r S
 	return r, errs
 }
 
-// page__Sites__MnSos__MnSos runs route Sites.MnSos.MnSos for rq up to its model: load (with params
+// load__Sites__MnSos__MnSos runs route Sites.MnSos.MnSos for rq up to its model: load (with params
 // and the session of rq.Env). It returns the model and the session view and update take, or the
 // response that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Sites__MnSos__MnSos(rq *web.Request, params Sites__MnSos__MnSos__Params, keep any) (Sites__MnSos__Model, App__Session, *web.Response) {
+func load__Sites__MnSos__MnSos(rq *web.Request, params Sites__MnSos__MnSos__Params, keep any) (Sites__MnSos__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Sites__MnSos__MnSos__load(params, session))
 	if err != nil {
@@ -50,7 +50,7 @@ func Route__Sites__MnSos__MnSos() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Sites__MnSos__MnSos(rq, params, nil)
+		model, session, stop := load__Sites__MnSos__MnSos(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}

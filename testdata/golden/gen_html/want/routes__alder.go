@@ -70,10 +70,10 @@ func decode__M__M__Params(params map[string]string, _ url.Values) (r M__M__Param
 	return r, errs
 }
 
-// page__M__M runs route M.M for rq up to its model: load (with params and the session of rq.Env).
+// load__M__M runs route M.M for rq up to its model: load (with params and the session of rq.Env).
 // It returns the model and the session view and update take, or the response that ends the request,
 // which stores keep (the session a successful update left, or nil).
-func page__M__M(rq *web.Request, params M__M__Params, keep any) (M__Model, App__Session, *web.Response) {
+func load__M__M(rq *web.Request, params M__M__Params, keep any) (M__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, M__M__load(params, session))
 	if err != nil {
@@ -93,7 +93,7 @@ func Route__M__M() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__M__M(rq, params, nil)
+		model, session, stop := load__M__M(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -318,10 +318,10 @@ func decode__Other__Other__Params(_ map[string]string, _ url.Values) (r Other__O
 	return r, errs
 }
 
-// page__Other__Other runs route Other.Other for rq up to its model: load (with params and the
+// load__Other__Other runs route Other.Other for rq up to its model: load (with params and the
 // session of rq.Env). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Other__Other(rq *web.Request, params Other__Other__Params, keep any) (Other__Model, App__Session, *web.Response) {
+func load__Other__Other(rq *web.Request, params Other__Other__Params, keep any) (Other__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Other__Other__load(params, session))
 	if err != nil {
@@ -341,7 +341,7 @@ func Route__Other__Other() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Other__Other(rq, params, nil)
+		model, session, stop := load__Other__Other(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}

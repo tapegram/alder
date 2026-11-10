@@ -71,11 +71,11 @@ func decode__Index__Index__Params(params map[string]string, _ url.Values) (r Ind
 	return r, errs
 }
 
-// page__Index__Index runs route Index.Index for rq up to its model: `requires user` (a 303 to
+// load__Index__Index runs route Index.Index for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then load (with params and the
 // narrowed session). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Index__Index(rq *web.Request, params Index__Index__Params, keep any) (Index__Model, Index__Index__Session, *web.Response) {
+func load__Index__Index(rq *web.Request, params Index__Index__Params, keep any) (Index__Model, Index__Index__Session, *web.Response) {
 	var model Index__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
@@ -101,7 +101,7 @@ func Route__Index__Index() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Index__Index(rq, params, nil)
+		model, session, stop := load__Index__Index(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
@@ -358,10 +358,10 @@ func decode__Login__Login__Params(_ map[string]string, _ url.Values) (r Login__L
 	return r, errs
 }
 
-// page__Login__Login runs route Login.Login for rq up to its model: load (with params and the
+// load__Login__Login runs route Login.Login for rq up to its model: load (with params and the
 // session of rq.Env). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Login__Login(rq *web.Request, params Login__Login__Params, keep any) (struct{}, App__Session, *web.Response) {
+func load__Login__Login(rq *web.Request, params Login__Login__Params, keep any) (struct{}, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Login__Login__load(params, session))
 	if err != nil {
@@ -381,7 +381,7 @@ func Route__Login__Login() web.Route {
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Login__Login(rq, params, nil)
+		model, session, stop := load__Login__Login(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}

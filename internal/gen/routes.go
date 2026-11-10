@@ -16,8 +16,8 @@ import (
 //
 //	decode__M__R__Params(params, q) R's parameters: path ones from params, the others from the
 //	                                query q; defaults applied; an error is a 404
-//	page__M__R(rq, params, keep)    `requires` (a 303 to App.login), the role (404), then load
-//	Route__M__R()                   GET <path>: decode (404), page__M__R, R.view rendered with
+//	load__M__R(rq, params, keep)    `requires` (a 303 to App.login), the role (404), then load
+//	Route__M__R()                   GET <path>: decode (404), load__M__R, R.view rendered with
 //	                                rq.FormState (a File written raw); the router delivers it
 //	                                as the request asks (a document, a morph, one element)
 //
@@ -165,7 +165,7 @@ func comment(text string) string {
 	return b.String()
 }
 
-// getRoute writes GET route r's parameters decoder, its page__ function (`requires`, load) and
+// getRoute writes GET route r's parameters decoder, its load__ function (`requires`, load) and
 // its route, Route__M__R (#160). Its view renders with the request's FormState: nil for a
 // request of its own, the posted form's state when a write renders the page the browser is on
 // again (web.Request.RenderShown). How the view is delivered (a document, a body morph, one
@@ -174,7 +174,7 @@ func (g *gen) getRoute(b *strings.Builder, p *ir.Program, r *ir.Route) {
 	m, key := r.Module, routeKey(r)
 	decode := decodeName(m, r.Name+".Params")
 	g.paramsDecoderOf(b, decode, "route "+key, GoName(m, r.Name+".Params"), r.Path, r.Params)
-	g.pageFunc(b, p, routeGuard(r))
+	g.loadFunc(b, p, routeGuard(r))
 	steps := "decode the parameters (404 when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
 	if len(r.Requires) > 0 {
 		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
@@ -204,7 +204,7 @@ func (g *gen) getRoute(b *strings.Builder, p *ir.Program, r *ir.Route) {
 	}}
 }
 
-`, routeFunc(m, r.Name), strconv.Quote(r.Path), fileField, decode, pageFunc(key), respond)
+`, routeFunc(m, r.Name), strconv.Quote(r.Path), fileField, decode, loadFunc(key), respond)
 }
 
 // guardFunc is write route r's guard__ function ("guard__Todos__Toggle").
@@ -410,7 +410,7 @@ func routeUpdateFailure(p *ir.Program, hasForm bool) string {
 // isSecret reports whether b is the stdlib's Text.Secret.
 func isSecret(b *ir.Brand) bool { return b != nil && b.Module == "Text" && b.Name == "Secret" }
 
-// guarded is what page__M__R (pageFunc) runs for a GET route, and what a write route's
+// guarded is what load__M__R (loadFunc) runs for a GET route, and what a write route's
 // guard__M__R runs. key names the function ("Todos.Row" for route Row of module Todos: a module
 // Todos.Row and that route cannot both exist) and keys a mutate build's requires dropped and
 // role dropped mutants (mutation.go); what names it in comments.
@@ -433,11 +433,11 @@ func routeGuard(r *ir.Route) guarded {
 // routeKey is route r's qualified name, "Todos.Row".
 func routeKey(r *ir.Route) string { return r.Module + "." + r.Name }
 
-// pageFunc writes page__M__R for gd (a GET route): `requires`, then load.
-func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, gd guarded) {
+// loadFunc writes load__M__R for gd (a GET route): `requires`, then load.
+func (g *gen) loadFunc(b *strings.Builder, p *ir.Program, gd guarded) {
 	model, session := gd.model, GoName(gd.session.Module, gd.session.Name)
 	app := GoName(p.Session.Module, p.Session.Name)
-	fnName := pageFunc(gd.key)
+	fnName := loadFunc(gd.key)
 	if len(gd.requires) == 0 {
 		b.WriteString(comment(fmt.Sprintf("%s runs %s for rq up to its model: load (with params and the session of rq.Env). It returns the model and the session view and update take, or the response that ends the request, which stores keep (the session a successful update left, or nil).", fnName, gd.what)))
 		fmt.Fprintf(b, `func %s(rq *web.Request, params %s, keep any) (%s, %s, *web.Response) {
@@ -497,7 +497,7 @@ func sessionFields(p *ir.Program, gd guarded) []string {
 // requiresChecks writes gd's `requires` checks on App's session app (each key: a 303 to App.login
 // for user, to its `choose` target for another, else 404), its role check (404) and its
 // db.Narrow calls, after a mutate build's `requires dropped` placeholders (mutation.go). ret is
-// what each stopping return gives before the session ("model, " in page__X), keep the session
+// what each stopping return gives before the session ("model, " in load__X), keep the session
 // the stopping response stores ("nil": none).
 func (g *gen) requiresChecks(b *strings.Builder, p *ir.Program, gd guarded, ret, keep string) {
 	session := GoName(gd.session.Module, gd.session.Name)
