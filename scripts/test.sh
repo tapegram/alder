@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # The whole Go suite at once, in parallel: cmd/alder in shards (.github/shard.sh, by the weights in
-# .github/shard-weights) and every other package in one go test, each part logging to a file.
+# .github/shard-weights) and every other package in one go test, each part logging to a file. The
+# cmd/alder REPL tests (TestRepl_*) are left out of the shards and run as a part of their own,
+# after the shards finish.
 # Prints each part's result and time, and the tail of each failing part's log.
 #
 #   scripts/test.sh [go test flags...]    e.g. scripts/test.sh -short   (the quick local loop)
@@ -30,19 +32,20 @@ res() { # res NAME: sets code and secs from NAME's .res; a part that never finis
 }
 
 names=()
+pids=()
+trap 'kill $(jobs -p) 2>/dev/null; exit 130' INT TERM
 for k in $(seq 0 $((n - 1))); do
   part "cmd-alder-$k" .github/shard.sh "$n" "$k" ./cmd/alder -skip '^TestRepl_' "$@" &
+  pids+=($!)
   names+=("cmd-alder-$k")
 done
-# The REPL tests run on their own, once the cmd/alder shards are done, so they do not compete with
-# them for CPU (they are timing-sensitive: signals, interrupts, orphans).
-{
-  for name in "${names[@]}"; do until [ -f "$logs/$name.res" ]; do sleep 1; done; done
-  part repl go test ./cmd/alder -count=1 -timeout 10m -run '^TestRepl_' "$@"
-} &
-names+=(repl)
 part rest go test $(go list ./... | grep -v '^alder/cmd/alder$') -count=1 -timeout 30m "$@" &
 names+=(rest)
+# The REPL tests (timing-sensitive: signals, interrupts, orphans) run on their own once the cmd/alder
+# shards are done, so they do not compete with them for CPU; rest still runs alongside the shards.
+wait "${pids[@]}"
+part repl go test ./cmd/alder -count=1 -timeout 10m -run '^TestRepl_' "$@"
+names+=(repl)
 wait
 
 failed=0
