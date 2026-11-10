@@ -2,8 +2,8 @@ module About
 
 import Layout
 
-route About = GET  "/about"        { count: Int = 0 }
-route Bump  = POST "/about/_/Bump" { count: Int, by: Int }
+route About = GET  "/about" { count: Int = 0 }
+route Bump  = POST "/about" { count: Int, by: Int }
 
 -- example: a route keeps state in its parameters (or the session, or a table), never in Model
 -- between requests: `About.load` rebuilds Model on every request. Delete every part marked

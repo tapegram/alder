@@ -37,7 +37,7 @@ type RouteData struct {
 	Method   string   // GET, POST, PUT, PATCH or DELETE
 	Form     string   // the route line's " form F", "" for none
 	FormName string   // F, when the module declares the form
-	BumpPath string   // the example's write route's path: "/archive/_/Bump"
+	BumpPath string   // the example's write route's path: the page's own, "/archive"
 	Imports  []string // sorted
 	Path     string   // "/posts", "/posts/{id}"
 	Params   string   // the parameter record: "{ }", "{ page: Int = 1 }", "{ id: Post.PostId }"
@@ -111,7 +111,7 @@ type RouteOptions struct {
 	// page keeps --show's path and parameter (`/{id}`, the row's id), and nothing else of it.
 	Blank bool
 	// Example (--example): the plain route carries a `count: Int = 0` parameter, a write route
-	// `Bump = POST "<path>/_/Bump"` whose `update` redirects to the route with the new count and
+	// `Bump = POST "<path>"`, the page's own path (a GET reads it, a POST writes it), whose `update` redirects to the route with the new count and
 	// a view showing it, every part marked `-- example:` so the reader deletes it once
 	// understood. Off on the CLI; the editor's form starts with it on (Field.Default).
 	Example bool
@@ -314,7 +314,10 @@ func NewRoute(p *Program, o RouteOptions) ([]Edit, error) {
 	if o.Example {
 		d.Example = true
 		d.Params = "{ count: Int = 0 }"
-		d.BumpPath = strings.TrimSuffix(o.Path, "/") + "/_/Bump"
+		d.BumpPath = o.Path
+		if d.BumpPath != "/" {
+			d.BumpPath = strings.TrimSuffix(d.BumpPath, "/")
+		}
 	}
 	if o.Requires != "" {
 		d.Requires = " requires " + o.Requires

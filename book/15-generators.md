@@ -168,7 +168,7 @@ A newcomer can ask for more than the empty page. `alder new route About
 /about --example` adds a small, working example of how a page keeps state:
 
 - a `count` parameter;
-- a write route `Bump` (`POST "/about/_/Bump"`), whose `Bump.update`
+- a write route `Bump` (`POST "/about"`, the page's own path), whose `Bump.update`
   redirects to the same page with the new count;
 - a view with a button that sends it.
 
