@@ -9,7 +9,7 @@ import Member
 import User
 
 route Home = GET  "/"       { } requires user
-route Join = POST "/_/Join" { } requires user
+route Join = POST "/" { } requires user
 
 type Model = {
   n: Int,

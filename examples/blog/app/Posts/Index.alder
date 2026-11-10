@@ -4,10 +4,10 @@ import Layout
 import Table.Post
 import Table.User
 
-route Index  = GET  "/"         { page: Int = 1, q: Text = "" }
+route Index  = GET  "/"       { page: Int = 1, q: Text = "" }
 -- A search posts its form to a write route like any other: `update` redirects to the first page
 -- of the results, whose address (/?q=…) can be bookmarked and shared.
-route Search = POST "/_/Search" { } form SearchForm
+route Search = POST "/search" { } form SearchForm
 
 type Model = {
   page: Int,

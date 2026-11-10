@@ -3,8 +3,8 @@ module Todos.Index
 import Todo
 
 route Index  = GET  "/"         { filter: Int = 0, todos: List Todo } requires missing
-route Submit = POST "/_/Submit" { } form NewTodo                      requires missing
-route Toggle = POST "/_/Toggle" { id: Todo.TodoId }                   requires missing
+route Submit = POST "/" { } form NewTodo                      requires missing
+route Toggle = POST "/toggles" { id: Todo.TodoId }                   requires missing
 
 type Model = { todos: List Todo }
 

@@ -7,7 +7,7 @@ session { user: Maybe User.UserId }
 
 login = Auth.Login.Login
 
-route Logout = POST "/_/Logout" { }
+route Logout = DELETE "/session" { }
 
 Logout.update : Logout.Params -> Session -> Task Response
 Logout.update p session = {

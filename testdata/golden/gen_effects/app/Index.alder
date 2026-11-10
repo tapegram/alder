@@ -3,10 +3,10 @@ module Index
 import Todo
 
 route Index  = GET  "/pair/{a}/{b}"          { a: Todo.TodoId, b: Todo.TodoId }                  requires user
-route Add    = POST "/pair/{a}/{b}/_/Add"    { a: Todo.TodoId, b: Todo.TodoId, title: Text }     requires user
-route Toggle = POST "/pair/{a}/{b}/_/Toggle" { a: Todo.TodoId, b: Todo.TodoId, id: Todo.TodoId } requires user
-route Remove = POST "/pair/{a}/{b}/_/Remove" { a: Todo.TodoId, b: Todo.TodoId, id: Todo.TodoId } requires user
-route Notify = POST "/pair/{a}/{b}/_/Notify" { a: Todo.TodoId, b: Todo.TodoId }                  requires user
+route Add    = POST "/pair/{a}/{b}"    { a: Todo.TodoId, b: Todo.TodoId, title: Text }     requires user
+route Toggle = POST "/pair/{a}/{b}/toggles" { a: Todo.TodoId, b: Todo.TodoId, id: Todo.TodoId } requires user
+route Remove = POST "/pair/{a}/{b}/removes" { a: Todo.TodoId, b: Todo.TodoId, id: Todo.TodoId } requires user
+route Notify = POST "/pair/{a}/{b}/notifies" { a: Todo.TodoId, b: Todo.TodoId }                  requires user
 
 capability Mailer {
   send : { to: Text, body: Text } -> Task Bool,

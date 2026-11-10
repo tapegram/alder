@@ -3,9 +3,9 @@ module M
 import Layout
 
 route M    = GET  "/m/{id}"        { id: Int }
-route Save = POST "/m/{id}/_/Save" { id: Int } form Note
-route Pick = POST "/m/{id}/_/Pick" { id: Int, name: Text, n: Int }
-route Ping = POST "/m/{id}/_/Ping" { id: Int }
+route Save = POST "/m/{id}" { id: Int } form Note
+route Pick = POST "/m/{id}/picks" { id: Int, name: Text, n: Int }
+route Ping = POST "/m/{id}/pings" { id: Int }
 
 type Color = Red | Green
 

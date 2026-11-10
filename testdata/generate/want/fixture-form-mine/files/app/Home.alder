@@ -4,9 +4,9 @@ import Layout
 import Table.Post
 import Table.User
 
-route Home        = GET  "/"         { }            requires user
-route Submit      = POST "/_/Submit" { } form Write requires user
-route SubmitQuick = POST "/posts"    { } form Quick requires user
+route Home        = GET  "/"      { }            requires user
+route Submit      = POST "/"      { } form Write requires user
+route SubmitQuick = POST "/posts" { } form Quick requires user
 
 type Model = { posts: List Post }
 

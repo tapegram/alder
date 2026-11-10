@@ -36,7 +36,7 @@ printf '%s\n' "$a"
 func clearApp(t *testing.T) string {
 	t.Helper()
 	dir := genApp(t, "scaffold")
-	if code, out, errs := alderIn(t, dir, "", "new", "form", "Home", "Clear", "note:Text"); code != 0 {
+	if code, out, errs := alderIn(t, dir, "", "new", "form", "Home", "Clear", "note:Text", "--method", "PUT"); code != 0 {
 		t.Fatalf("new form: exit %d\n%s%s", code, out, errs)
 	}
 	return dir
@@ -201,7 +201,7 @@ func TestFill_AITestHint(t *testing.T) {
 // the model is asked for it by that name.
 func TestFill_AIRoute(t *testing.T) {
 	dir := genApp(t, "scaffold")
-	if code, out, errs := alderIn(t, dir, "", "new", "form", "Home", "Contact", "email:Text.Email", "topic:Text"); code != 0 {
+	if code, out, errs := alderIn(t, dir, "", "new", "form", "Home", "Contact", "email:Text.Email", "topic:Text", "--path", "/contacts"); code != 0 {
 		t.Fatalf("new form: exit %d\n%s%s", code, out, errs)
 	}
 	prompts := fakeModel(t, "Task.succeed Response.refresh")

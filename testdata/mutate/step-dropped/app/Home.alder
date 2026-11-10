@@ -3,8 +3,8 @@ module Home
 import User
 
 route Home   = GET  "/"         { }
-route Save   = POST "/_/Save"   { }
-route Login  = POST "/_/Login"  { id: User.UserId }
+route Save   = POST "/"   { }
+route Login  = POST "/logins"  { id: User.UserId }
 
 type Model = { }
 

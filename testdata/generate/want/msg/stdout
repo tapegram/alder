@@ -1,11 +1,15 @@
 edited app/Home.alder
 --- a/app/Home.alder
 +++ b/app/Home.alder
-@@ -5,6 +5,7 @@
+@@ -3,8 +3,9 @@
+ import Layout
+ import Table.Entry
  
- route Home   = GET  "/"         { }
- route Submit = POST "/_/Submit" { } form Sign
-+route Clear  = POST "/"         { }
+-route Home   = GET  "/" { }
+-route Submit = POST "/" { } form Sign
++route Home   = GET    "/" { }
++route Submit = POST   "/" { } form Sign
++route Clear  = DELETE "/" { }
  
  type Model = { entries: List Entry }
  

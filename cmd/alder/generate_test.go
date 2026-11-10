@@ -193,7 +193,7 @@ var genCases = []genCase{
 	{name: "remove-route-route", base: "scaffold", pre: [][]string{{"new", "route", "About", "/about"}}, args: []string{"remove", "route", "About"}, test: true},
 	{name: "table", base: "scaffold", args: []string{"new", "table", "Tag", "name:Text.NonEmpty@unique", "entry:Entry.EntryId@ref=Entry@cascade", "note:Maybe Text", "pinned:Bool=False"}, test: true},
 	{name: "form-insert", base: "scaffold", args: []string{"new", "form", "Home", "Quick", "name:Text.NonEmpty", "message:Text.NonEmpty"}, test: true},
-	{name: "form-hole", base: "scaffold", args: []string{"new", "form", "Home", "Contact", "email:Text.Email", "topic:Text"}, test: true,
+	{name: "form-hole", base: "scaffold", args: []string{"new", "form", "Home", "Contact", "email:Text.Email", "topic:Text", "--path", "/contacts"}, test: true,
 		fills: [][2]string{{"Home.SubmitContact.update", "Task.succeed Response.refresh"}, {`Home."submitting Contact"`, "Refreshed"}}},
 	// #160: new form on a route module adds the form, a POST route, its update and the markup
 	{name: "form-route", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--requires", "user"}}, args: []string{"new", "form", "Posts.Index", "Quick", "title:Text.NonEmpty", "body:Text"}, test: true},
@@ -204,7 +204,7 @@ var genCases = []genCase{
 	{name: "form-route-role", base: "fixture", pre: [][]string{{"new", "route", "Tags.Index", "/tags", "--list", "Tag", "--role", "Admin"}}, args: []string{"new", "form", "Tags.Index", "Quick", "name:Text.NonEmpty", "post:Post.PostId"}, test: true},
 	{name: "form-route-show-test", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "form", "Posts.Show", "Reply", "name:Text.NonEmpty", "post:Post.PostId", "--msg", "SendReply"}, test: true},
 	{name: "form-route-show", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "form", "Posts.Show", "Reply", "body:Text", "--hole", "--msg", "SendReply"}},
-	{name: "msg", base: "scaffold", args: []string{"new", "msg", "Home", "Clear"}, test: true,
+	{name: "msg", base: "scaffold", args: []string{"new", "msg", "Home", "Clear", "--method", "DELETE"}, test: true,
 		fills: [][2]string{{"--decl Home.Clear.update", "{\n  let _ <- Log.info \"cleared\"\n  Task.succeed Response.refresh\n}"}}},
 	{name: "capability", base: "scaffold", args: []string{"new", "capability", "Weather", "current", "{ city: Text } -> Query (Maybe Float)"}, test: true,
 		fills: [][2]string{{"Weather.Weather.current", "Query.succeed (Just 21.5)"}}},
@@ -216,7 +216,7 @@ var genCases = []genCase{
 	{name: "fixture-table", base: "fixture", args: []string{"new", "table", "Like", "post:Post.PostId@ref=Post@cascade", "owner:User.UserId@ref=User@owner"}, test: true},
 	{name: "fixture-form-mine", base: "fixture", args: []string{"new", "form", "Home", "Quick", "title:Text.NonEmpty", "body:Text"}, test: true},
 	{name: "fixture-form-ref", base: "fixture", args: []string{"new", "form", "Home", "Tagging", "name:Text.NonEmpty", "post:Post.PostId"}, test: true},
-	{name: "fixture-msg-params", base: "fixture", args: []string{"new", "msg", "Home", "Feature", "id:Post.PostId"}},
+	{name: "fixture-msg-params", base: "fixture", args: []string{"new", "msg", "Home", "Feature", "id:Post.PostId", "--method", "PATCH"}},
 	{name: "fixture-capability", base: "fixture", args: []string{"new", "capability", "Mail", "send", "{ to: Text.Email, subject: Text } -> Task Unit"}, test: true,
 		fills: [][2]string{{"Mail.Mail.send", "Task.succeed ()"}}},
 	{name: "fixture-edit-add", base: "fixture", args: []string{"edit", "table", "Post", "add-field", "summary:Maybe Text"}, breaks: true},
@@ -251,7 +251,7 @@ var genCases = []genCase{
 		fills: [][2]string{{"Notes.load", "Query.succeed { }"}, {"Notes.view", "<al-page><h1>Notes</h1></al-page>"}}},
 	{name: "fixture-route-blank-show", base: "fixture", args: []string{"new", "route", "Posts.Edit", "/posts/edit", "--show", "Post", "--blank", "--requires", "user"}, test: true,
 		fills: [][2]string{{"Posts.Edit.load", "Query.succeed { }"}, {"Posts.Edit.view", "<al-page><h1>Edit</h1></al-page>"}}},
-	{name: "msg-in-for", base: "scaffold", args: []string{"new", "msg", "Home", "Hide", "id:Entry.EntryId", "--in-for", "e", "--when", "List.length model.entries > 0"}, test: true,
+	{name: "msg-in-for", base: "scaffold", args: []string{"new", "msg", "Home", "Hide", "id:Entry.EntryId", "--in-for", "e", "--when", "List.length model.entries > 0", "--method", "PATCH"}, test: true,
 		fills: [][2]string{{`Home."pressing Hide" --hole ?hideId`, "entry1"}}},
 	{name: "edit-route-param", base: "scaffold", args: []string{"edit", "route", "Home", "add-param", `q:Text=""`}, test: true},
 
@@ -274,7 +274,7 @@ var genCases = []genCase{
 	{name: "app-msg-auth", base: "scaffold", pre: [][]string{{"new", "auth"}}, args: []string{"new", "msg", "App", "Ping", "--path", "/ping"}},
 	{name: "fixture-app-msg-hole", base: "fixture", args: []string{"new", "msg", "App", "Ping", "--path", "/ping"}},
 	{name: "edit-decl-add-prop", base: "scaffold", args: []string{"edit", "decl", "Layout.Page", "add-prop", "dark:Bool=False"}, test: true},
-	{name: "msg-id", base: "scaffold", args: []string{"new", "msg", "Home", "Clear", "--id", "clear"}, test: true},
+	{name: "msg-id", base: "scaffold", args: []string{"new", "msg", "Home", "Clear", "--id", "clear", "--method", "DELETE"}, test: true},
 	{name: "fixture-edit-session", base: "fixture", args: []string{"edit", "session", "add-field", `theme:Text="light"`}, test: true},
 	{name: "remove-route", base: "scaffold", args: []string{"remove", "route", "Home"}},
 	// #159: an `update` on one line is laid out over several for the new arm
@@ -382,7 +382,7 @@ func TestGenerate_DoesNotCheck(t *testing.T) {
 
 	// fill: an expression of the wrong type
 	dir = genApp(t, "scaffold")
-	if code, _, errs := alderIn(t, dir, "", "new", "form", "Home", "Clear", "note:Text"); code != 0 {
+	if code, _, errs := alderIn(t, dir, "", "new", "form", "Home", "Clear", "note:Text", "--method", "PUT"); code != 0 {
 		t.Fatalf("alder new form: %s", errs)
 	}
 	before = appFiles(t, dir)
@@ -470,8 +470,8 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "decl", "Home", "x", "Int ->"}, "", "alder new decl: `Int ->` is not a type: "},
 		{"scaffold", []string{"new", "test", "Home", "signing adds an entry"}, "", "alder new test: `Home` already has a test \"signing adds an entry\": choose another name"},
 		{"scaffold", []string{"new", "route", "Notes", "/notes", "--blank", "--list", "Entry"}, "", "alder new route: --blank takes no --list or --from"},
-		{"scaffold", []string{"new", "msg", "Home", "Hide", "--in-for", "x"}, "", "alder new msg: `Home`'s `view` has no `{for x in …}`: name the loop variable of one of its loops"},
-		{"scaffold", []string{"new", "msg", "Home", "Hide", "--when", "a b c,"}, "", "alder new msg: `--when a b c,` is not one expression"},
+		{"scaffold", []string{"new", "msg", "Home", "Hide", "--in-for", "x", "--method", "PATCH"}, "", "alder new msg: `Home`'s `view` has no `{for x in …}`: name the loop variable of one of its loops"},
+		{"scaffold", []string{"new", "msg", "Home", "Hide", "--when", "a b c,", "--method", "PATCH"}, "", "alder new msg: `--when a b c,` is not one expression"},
 		{"scaffold", []string{"edit", "route", "Table.Entry", "add-param", "q:Text"}, "", "alder edit route: `Table.Entry` is not a route module (it declares no route): `alder new route Table.Entry /path` makes one"},
 		{"scaffold", []string{"edit", "route", "Home", "add-param", "q:Text"}, "", "alder edit route: the result does not check (the errors above): nothing was written"},
 		{"scaffold", []string{"fill", "--decl", "Home.update.Submit", "-"}, "Task.succeed Rerender", "alder fill: `Home.update.Submit` names an arm: --decl replaces a whole declaration, `Home.update`"},
@@ -582,7 +582,7 @@ func TestGenerate_Refusals(t *testing.T) {
 func TestGenerate_JSON(t *testing.T) {
 	t.Parallel()
 	dir := genApp(t, "scaffold")
-	code, out, _ := alderIn(t, dir, "", "new", "form", "Home", "Clear", "note:Text", "--json")
+	code, out, _ := alderIn(t, dir, "", "new", "form", "Home", "Clear", "note:Text", "--method", "PUT", "--json")
 	if code != 0 || strings.Count(out, "\n") != 1 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
@@ -755,7 +755,7 @@ func TestGenerate_Mutate(t *testing.T) {
 func TestGenerate_FillImports(t *testing.T) {
 	t.Parallel()
 	dir := genApp(t, "fixture")
-	if code, _, errs := alderIn(t, dir, "", "new", "msg", "Home", "Purge"); code != 0 {
+	if code, _, errs := alderIn(t, dir, "", "new", "msg", "Home", "Purge", "--method", "DELETE"); code != 0 {
 		t.Fatalf("alder new msg: %s", errs)
 	}
 	fill := "{\n  let n <- Db.from Comment |> Db.where (Comment.body.contains (Text.trim \"x\")) |> Db.count\n  Task.succeed (if n > 0 then Response.refresh else Response.refresh)\n}"
@@ -946,7 +946,7 @@ func TestGenerate_E11Commands(t *testing.T) {
 	needGoTool(t)
 	t.Run("form-on-msg", func(t *testing.T) {
 		dir := genApp(t, "fixture")
-		if code, _, errs := alderIn(t, dir, "", "new", "msg", "Home", "Feature", "id:Post.PostId"); code != 0 {
+		if code, _, errs := alderIn(t, dir, "", "new", "msg", "Home", "Feature", "id:Post.PostId", "--method", "PATCH"); code != 0 {
 			t.Fatalf("new msg: %s", errs)
 		}
 		before := appFiles(t, dir)
@@ -965,7 +965,7 @@ func TestGenerate_E11Commands(t *testing.T) {
 		pre        [][]string
 		args       []string
 	}{
-		{"form-on-route", "scaffold", [][]string{{"new", "msg", "Home", "Clear"}}, []string{"new", "form", "Home", "Reason", "why:Text.NonEmpty", "--msg", "Clear"}},
+		{"form-on-route", "scaffold", [][]string{{"new", "msg", "Home", "Clear", "--method", "DELETE"}}, []string{"new", "form", "Home", "Reason", "why:Text.NonEmpty", "--msg", "Clear"}},
 		{"form-on-route-show", "fixture", [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}, {"new", "msg", "Posts.Show", "Feature", "note:Text"}},
 			[]string{"new", "form", "Posts.Show", "Reason", "why:Text.NonEmpty", "--msg", "Feature"}},
 	} {
@@ -1065,7 +1065,7 @@ func TestGenerate_E11Messages(t *testing.T) {
 	if code, o := run("True", "fill", `Notes."the page is shown"`, "-"); code != 1 || !strings.Contains(o, `alder fill --decl 'Notes."the page is shown"' -`) {
 		t.Errorf("a test without a hole: exit %d: %s", code, o)
 	}
-	if code, o := run("", "new", "form", "Home", "Feedback", "note:Text"); code != 0 {
+	if code, o := run("", "new", "form", "Home", "Feedback", "note:Text", "--path", "/feedback"); code != 0 {
 		t.Fatalf("new form: %s", o)
 	}
 	if code, o := run("{\n  Task.succeed True\n}", "fill", `Home."submitting Feedback"`, "-"); code != 1 || !strings.Contains(o, "to replace the whole test, use `alder fill --decl") {
@@ -1461,8 +1461,8 @@ func TestAuth_LogoutIsDelete(t *testing.T) {
 		t.Errorf("Auth.Login has no POST /session SignIn:\n%s", login)
 	}
 	for _, f := range []string{"app/App.alder", "app/Auth/Login.alder"} {
-		if strings.Contains(files[f], "/_/") {
-			t.Errorf("%s still has a /_/ path", f)
+		if strings.Contains(files[f], "/_"+"/") {
+			t.Errorf("%s still has an underscore-segment path", f)
 		}
 	}
 	code, out, errs := alderIn(t, dir, "", "test")

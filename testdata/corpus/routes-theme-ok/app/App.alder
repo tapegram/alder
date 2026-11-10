@@ -8,7 +8,7 @@ import Theme
 
 session { theme: Theme = Light }
 
-route SwitchTheme = POST "/_/SwitchTheme" { }
+route SwitchTheme = POST "/" { }
 
 SwitchTheme.update : SwitchTheme.Params -> Session -> Task Response
 SwitchTheme.update p session = {

@@ -107,20 +107,20 @@ func decode__Edit__Note(v url.Values) (r Edit__Note, errs []web.FieldError) {
 	return r, errs
 }
 
-// Route__Edit__Save serves route Edit.Save, POST /edit/{n}/_/Save: decode the parameters (404 when
-// they do not); decode form Note from the body (when it does not: 422, the page the browser is on
-// rendered again with the submitted values, no Text.Secret field, and the errors, without calling
-// update); render the page the browser is on before the update (refresh and invalid are diffed
-// against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
-// or Task.notFound, 303 for Query.redirect).
+// Route__Edit__Save serves route Edit.Save, POST /edit/{n}: decode the parameters (404 when they do
+// not); decode form Note from the body (when it does not: 422, the page the browser is on rendered
+// again with the submitted values, no Text.Secret field, and the errors, without calling update);
+// render the page the browser is on before the update (refresh and invalid are diffed against it);
+// run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
+// Task.notFound, 303 for Query.redirect).
 func Route__Edit__Save() web.Route {
-	return web.Route{Method: "POST", Pattern: "/edit/{n}/_/Save", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/edit/{n}", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Edit__Save__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
 		session := rq.Env.Session.(App__Session)
-		key := rt.RouteKey(rt.Route{Name: "Edit.Save", Method: "POST", Path: rt.Concat("/edit/", rt.PathSegment(std.TextFromInt(params.N)), "/_/Save")})
+		key := rt.RouteKey(rt.Route{Name: "Edit.Save", Method: "POST", Path: rt.Concat("/edit/", rt.PathSegment(std.TextFromInt(params.N)))})
 		values := route__values(rq.Form)
 		form, errs := decode__Edit__Note(rq.Form)
 		if errs != nil {
@@ -164,12 +164,12 @@ func decode__Edit__Ping__Params(params map[string]string, _ url.Values) (r Edit_
 	return r, errs
 }
 
-// Route__Edit__Ping serves route Edit.Ping, POST /edit/{n}/_/Ping: decode the parameters (404 when
+// Route__Edit__Ping serves route Edit.Ping, POST /edit/{n}/pings: decode the parameters (404 when
 // they do not); render the page the browser is on before the update (refresh and invalid are diffed
 // against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
 // or Task.notFound, 303 for Query.redirect).
 func Route__Edit__Ping() web.Route {
-	return web.Route{Method: "POST", Pattern: "/edit/{n}/_/Ping", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/edit/{n}/pings", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Edit__Ping__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())

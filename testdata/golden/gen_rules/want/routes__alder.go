@@ -197,14 +197,14 @@ func decode__Notes__NewNote(v url.Values) (r Notes__NewNote, errs []web.FieldErr
 	return r, errs
 }
 
-// Route__Notes__Add serves route Notes.Add, POST /notes/_/Add: decode the parameters (404 when they
-// do not); `requires` (303 to App.login); decode form NewNote from the body (when it does not: 422,
+// Route__Notes__Add serves route Notes.Add, POST /notes: decode the parameters (404 when they do
+// not); `requires` (303 to App.login); decode form NewNote from the body (when it does not: 422,
 // the page the browser is on rendered again with the submitted values, no Text.Secret field, and
 // the errors, without calling update); render the page the browser is on before the update (refresh
 // and invalid are diffed against it); run the update and answer its Response (a failed Task: 500,
 // 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Add() web.Route {
-	return web.Route{Method: "POST", Pattern: "/notes/_/Add", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/notes", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Add__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -213,7 +213,7 @@ func Route__Notes__Add() web.Route {
 		if stop != nil {
 			return *stop
 		}
-		key := rt.RouteKey(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes/_/Add"})
+		key := rt.RouteKey(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes"})
 		values := route__values(rq.Form)
 		form, errs := decode__Notes__NewNote(rq.Form)
 		if errs != nil {
@@ -266,12 +266,12 @@ func guard__Notes__Pin(rq *web.Request, params Notes__Pin__Params) (Notes__Notes
 	return Notes__Notes__Session{User: app.User.Val, Role: app.Role}, nil
 }
 
-// Route__Notes__Pin serves route Notes.Pin, POST /notes/_/Pin: decode the parameters (404 when they
+// Route__Notes__Pin serves route Notes.Pin, POST /notes/pins: decode the parameters (404 when they
 // do not); `requires` (303 to App.login); render the page the browser is on before the update
 // (refresh and invalid are diffed against it); run the update and answer its Response (a failed
 // Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Pin() web.Route {
-	return web.Route{Method: "POST", Pattern: "/notes/_/Pin", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/notes/pins", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Pin__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -318,12 +318,12 @@ func guard__Notes__Remove(rq *web.Request, params Notes__Remove__Params) (Notes_
 	return Notes__Notes__Session{User: app.User.Val, Role: app.Role}, nil
 }
 
-// Route__Notes__Remove serves route Notes.Remove, POST /notes/_/Remove: decode the parameters (404
+// Route__Notes__Remove serves route Notes.Remove, POST /notes/removes: decode the parameters (404
 // when they do not); `requires` (303 to App.login); render the page the browser is on before the
 // update (refresh and invalid are diffed against it); run the update and answer its Response (a
 // failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Remove() web.Route {
-	return web.Route{Method: "POST", Pattern: "/notes/_/Remove", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/notes/removes", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Remove__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())

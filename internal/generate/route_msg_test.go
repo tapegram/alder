@@ -70,11 +70,12 @@ func TestRouteMsg_DefaultPost(t *testing.T) {
 }
 
 func TestRouteMsg_RootPagePath(t *testing.T) {
-	edits, err := NewMsg(repliesProgram(t, ""), "Home", "Like", nil, MsgOptions{})
+	edits, err := NewMsg(repliesProgram(t, ""), "Home", "Like", nil, MsgOptions{Method: "DELETE"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b := msgBody(t, edits, "app/Home.alder"); !strings.Contains(b, `route Like = POST "/" { }`) {
+	// the scaffold's Home already answers POST /, so the root path is pinned with another method
+	if b := msgBody(t, edits, "app/Home.alder"); !strings.Contains(b, `route Like = DELETE "/" { }`) {
 		t.Errorf("got:\n%s", b)
 	}
 }

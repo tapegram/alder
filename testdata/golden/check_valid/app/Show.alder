@@ -3,7 +3,7 @@ module Show
 import Todo
 
 route Show   = GET  "/todos/{id}"          { id: Todo.TodoId }
-route Delete = POST "/todos/{id}/_/Delete" { id: Todo.TodoId }
+route Delete = POST "/todos/{id}" { id: Todo.TodoId }
 
 type Model = { }
 

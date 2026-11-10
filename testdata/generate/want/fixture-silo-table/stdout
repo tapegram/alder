@@ -25,7 +25,7 @@ edited migrations/schema.json
 -silo org { Project, Issue }
 +silo org { Project, Issue, Note }
  
- route Logout = POST "/_/Logout" { }
+ route Logout = DELETE "/session" { }
  
 @@ -25,21 +29,33 @@
  }

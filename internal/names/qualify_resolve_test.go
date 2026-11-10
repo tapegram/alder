@@ -236,7 +236,7 @@ func TestQual_Unqualifiable(t *testing.T) {
 // imported route module goes through its qualifier.
 func TestQual_RoutesStayFull(t *testing.T) {
 	_, bag, ms := resolveMods(t, std(t),
-		"module App\n\nroute Logout = POST \"/_/Logout\" { }\n",
+		"module App\n\nroute Logout = DELETE \"/session\" { }\n",
 		"module Todos.Index\n\nroute Index = GET \"/todos\" { }\n\nhelper : Int\nhelper = 1\n",
 		"module Admin.User.Index\n\nroute Index = GET \"/admin/users\" { }\n",
 		"module Use\n\nimport Todos.Index\n\na : Int\na = Index.helper\n\nv : Html\nv = <div><a href={Todos.Index.Index {}}>x</a><a href={Admin.User.Index.Index {}}>y</a><button click={App.Logout}>z</button></div>\n")

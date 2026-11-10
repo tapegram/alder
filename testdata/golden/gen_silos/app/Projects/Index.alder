@@ -7,11 +7,11 @@ import Project
 import User
 
 route Index  = GET  "/projects"          { }                       requires user, org
-route Add    = POST "/projects/_/Add"    { } form NewProject       requires user, org
-route Rename = POST "/projects/_/Rename" { id: Project.ProjectId } requires user, org
-route Remove = POST "/projects/_/Remove" { id: Project.ProjectId } requires user, org
-route Seed   = POST "/projects/_/Seed"   { }                       requires user, org
-route Tag    = POST "/projects/_/Tag"    { }                       requires user, org
+route Add    = POST "/projects"    { } form NewProject       requires user, org
+route Rename = POST "/projects/renames" { id: Project.ProjectId } requires user, org
+route Remove = POST "/projects/removes" { id: Project.ProjectId } requires user, org
+route Seed   = POST "/projects/seeds"   { }                       requires user, org
+route Tag    = POST "/projects/tags"    { }                       requires user, org
 
 type Model = {
   org: Text,

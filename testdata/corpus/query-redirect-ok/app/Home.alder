@@ -3,7 +3,7 @@ module Home
 import Note
 
 route Home = GET  "/"       { }
-route Save = POST "/_/Save" { }
+route Save = POST "/" { }
 
 type Model = { notes: Int }
 

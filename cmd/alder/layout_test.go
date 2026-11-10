@@ -124,7 +124,7 @@ func TestLayout_EditTable(t *testing.T) {
 func TestLayout_FormOnMsg(t *testing.T) {
 	t.Parallel()
 	dir := genApp(t, "scaffold")
-	layoutStep(t, dir, "", "new", "msg", "Home", "Pick", "first:Entry.EntryId", "second:Entry.EntryId", "third:Entry.EntryId")
+	layoutStep(t, dir, "", "new", "msg", "Home", "Pick", "first:Entry.EntryId", "second:Entry.EntryId", "third:Entry.EntryId", "--method", "PATCH")
 	if s := readApp(t, dir, "app/Home.alder"); !strings.Contains(s, "      click={Pick {\n") {
 		t.Fatalf("the button is not over several lines:\n%s", s)
 	}

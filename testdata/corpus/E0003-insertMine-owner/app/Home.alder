@@ -4,7 +4,7 @@ import Todo
 import User
 
 route Home = GET  "/"      { } requires user
-route Add  = POST "/_/Add" { } requires user
+route Add  = POST "/" { } requires user
 
 type Model = { }
 

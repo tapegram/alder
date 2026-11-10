@@ -3,7 +3,7 @@ module Checkout
 import Payments
 
 route Checkout = GET  "/checkout"       { }
-route Pay      = POST "/checkout/_/Pay" { }
+route Pay      = POST "/checkout" { }
 
 type Model = { n: Int }
 

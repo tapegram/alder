@@ -68,8 +68,8 @@ func Notes__Index__Index__view(model Notes__Index__Model, session Notes__Index__
 		html.El("ul", nil, html.Nodes(std.ListMap(func(n Note__Note) html.Node {
 			return html.El("li", nil, html.Text(n.Text))
 		}, model.Notes)...)),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Add", Method: "POST", Path: "/notes/_/Add"})}, html.Text("add")),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Leave", Method: "POST", Path: "/_/Leave"})}, html.Text("leave the org")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Add", Method: "POST", Path: "/notes"})}, html.Text("add")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Leave", Method: "POST", Path: "/"})}, html.Text("leave the org")),
 	))
 }
 
@@ -178,7 +178,7 @@ func test__Notes__Index__1() eff.Task[bool] {
 							Url    string
 							Status int64
 						}, error) {
-							_r17, _err18 := rtesting.BrowserOf(_e16).ClickRoute(rt.Route{Name: "Notes.Index.Add", Method: "POST", Path: "/notes/_/Add"}, rtesting.MsgName("Notes.Index.Add", nil))
+							_r17, _err18 := rtesting.BrowserOf(_e16).ClickRoute(rt.Route{Name: "Notes.Index.Add", Method: "POST", Path: "/notes"}, rtesting.MsgName("Notes.Index.Add", nil))
 							if _err18 != nil {
 								var _z19 struct {
 									Answer  rtesting.Answer
@@ -326,7 +326,7 @@ func test__Notes__Index__2() eff.Task[bool] {
 					Url    string
 					Status int64
 				}, error) {
-					_r15, _err16 := rtesting.BrowserOf(_e14).ClickRoute(rt.Route{Name: "App.Leave", Method: "POST", Path: "/_/Leave"}, rtesting.MsgName("App.Leave", nil))
+					_r15, _err16 := rtesting.BrowserOf(_e14).ClickRoute(rt.Route{Name: "App.Leave", Method: "POST", Path: "/"}, rtesting.MsgName("App.Leave", nil))
 					if _err16 != nil {
 						var _z17 struct {
 							Answer  rtesting.Answer

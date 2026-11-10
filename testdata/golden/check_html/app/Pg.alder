@@ -3,8 +3,8 @@ module Pg
 import Layout
 
 route Pg     = GET  "/"         { }
-route Submit = POST "/_/Submit" { } form F
-route Toggle = POST "/_/Toggle" { id: Int }
+route Submit = POST "/" { } form F
+route Toggle = POST "/toggles" { id: Int }
 
 type Model = {
   n: Int,

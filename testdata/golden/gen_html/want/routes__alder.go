@@ -30,12 +30,12 @@ func decode__App__Logout__Params(_ map[string]string, _ url.Values) (r App__Logo
 	return r, errs
 }
 
-// Route__App__Logout serves route App.Logout, POST /_/Logout: decode the parameters (404 when they
+// Route__App__Logout serves route App.Logout, DELETE /session: decode the parameters (404 when they
 // do not); render the page the browser is on before the update (refresh and invalid are diffed
 // against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
 // or Task.notFound, 303 for Query.redirect).
 func Route__App__Logout() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_/Logout", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "DELETE", Pattern: "/session", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__App__Logout__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -180,20 +180,20 @@ func decode__M__Note(v url.Values) (r M__Note, errs []web.FieldError) {
 	return r, errs
 }
 
-// Route__M__Save serves route M.Save, POST /m/{id}/_/Save: decode the parameters (404 when they do
-// not); decode form Note from the body (when it does not: 422, the page the browser is on rendered
-// again with the submitted values, no Text.Secret field, and the errors, without calling update);
-// render the page the browser is on before the update (refresh and invalid are diffed against it);
-// run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
-// Task.notFound, 303 for Query.redirect).
+// Route__M__Save serves route M.Save, POST /m/{id}: decode the parameters (404 when they do not);
+// decode form Note from the body (when it does not: 422, the page the browser is on rendered again
+// with the submitted values, no Text.Secret field, and the errors, without calling update); render
+// the page the browser is on before the update (refresh and invalid are diffed against it); run the
+// update and answer its Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303
+// for Query.redirect).
 func Route__M__Save() web.Route {
-	return web.Route{Method: "POST", Pattern: "/m/{id}/_/Save", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/m/{id}", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__M__Save__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
 		session := rq.Env.Session.(App__Session)
-		key := rt.RouteKey(rt.Route{Name: "M.Save", Method: "POST", Path: rt.Concat("/m/", rt.PathSegment(std.TextFromInt(params.Id)), "/_/Save")})
+		key := rt.RouteKey(rt.Route{Name: "M.Save", Method: "POST", Path: rt.Concat("/m/", rt.PathSegment(std.TextFromInt(params.Id)))})
 		values := route__values(rq.Form)
 		form, errs := decode__M__Note(rq.Form)
 		if errs != nil {
@@ -249,12 +249,12 @@ func decode__M__Pick__Params(params map[string]string, q url.Values) (r M__Pick_
 	return r, errs
 }
 
-// Route__M__Pick serves route M.Pick, POST /m/{id}/_/Pick: decode the parameters (404 when they do
+// Route__M__Pick serves route M.Pick, POST /m/{id}/picks: decode the parameters (404 when they do
 // not); render the page the browser is on before the update (refresh and invalid are diffed against
 // it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
 // Task.notFound, 303 for Query.redirect).
 func Route__M__Pick() web.Route {
-	return web.Route{Method: "POST", Pattern: "/m/{id}/_/Pick", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/m/{id}/picks", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__M__Pick__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -289,12 +289,12 @@ func decode__M__Ping__Params(params map[string]string, _ url.Values) (r M__Ping_
 	return r, errs
 }
 
-// Route__M__Ping serves route M.Ping, POST /m/{id}/_/Ping: decode the parameters (404 when they do
+// Route__M__Ping serves route M.Ping, POST /m/{id}/pings: decode the parameters (404 when they do
 // not); render the page the browser is on before the update (refresh and invalid are diffed against
 // it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
 // Task.notFound, 303 for Query.redirect).
 func Route__M__Ping() web.Route {
-	return web.Route{Method: "POST", Pattern: "/m/{id}/_/Ping", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/m/{id}/pings", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__M__Ping__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())

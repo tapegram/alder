@@ -1,7 +1,7 @@
 module Index
 
 route Index = GET  "/"     { }
-route Go    = POST "/_/Go" { }
+route Go    = POST "/" { }
 
 type Model = { n: Int, t: Maybe Text }
 

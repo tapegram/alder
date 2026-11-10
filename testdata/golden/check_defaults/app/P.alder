@@ -1,7 +1,7 @@
 module P
 
 route P  = GET  "/p"      { n: Int = "five", m: Int = 3 }
-route Go = POST "/p/_/Go" { k: Int = True }
+route Go = POST "/p" { k: Int = True }
 
 type Model = { }
 

@@ -49,7 +49,7 @@ func Notes__Index__Index__view(model Notes__Index__Model, session Notes__Index__
 		html.El("ul", nil, html.Nodes(std.ListMap(func(n Note__Note) html.Node {
 			return html.El("li", nil, html.Text(n.Text))
 		}, model.Notes)...)),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Add", Method: "POST", Path: "/notes/_/Add"})}, html.Text("add")),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Leave", Method: "POST", Path: "/_/Leave"})}, html.Text("leave the org")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Add", Method: "POST", Path: "/notes"})}, html.Text("add")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Leave", Method: "POST", Path: "/"})}, html.Text("leave the org")),
 	))
 }

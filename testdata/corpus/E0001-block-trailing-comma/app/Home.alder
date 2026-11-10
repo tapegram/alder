@@ -1,7 +1,7 @@
 module Home
 
 route Home = GET "/" { }
-route Add  = POST "/_/Add" { }
+route Add  = POST "/" { }
 
 type Model = { count: Int }
 

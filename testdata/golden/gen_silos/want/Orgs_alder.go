@@ -98,14 +98,14 @@ func Orgs__Switch__update(p Orgs__Switch__Params, session Orgs__Orgs__Session) e
 func Orgs__Orgs__view(model Orgs__Model, session Orgs__Orgs__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("ul", nil, html.Nodes(std.ListMap(func(m Membership__Membership) html.Node {
-			return html.El("li", nil, html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Orgs.Pick", Method: "POST", Path: "/orgs/_/Pick", Query: []rt.KV{{Key: "org", Value: m.Org}}})}, html.Text("pick")))
+			return html.El("li", nil, html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Orgs.Pick", Method: "POST", Path: "/orgs", Query: []rt.KV{{Key: "org", Value: m.Org}}})}, html.Text("pick")))
 		}, model.Mine)...)),
-		html.FormToRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/_/Switch"}, nil,
+		html.FormToRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/switches"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Orgs.SwitchOrg", Name: "org", Type: "text", Label: "Org"}),
 			html.Input(html.Control{Kind: "errors", Form: "Orgs.SwitchOrg"}),
 			html.El("button", nil, html.Text("switch")),
 		),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Leave", Method: "POST", Path: "/_/Leave"})}, html.Text("leave")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Leave", Method: "POST", Path: "/"})}, html.Text("leave")),
 	))
 }
 
@@ -216,7 +216,7 @@ func test__Orgs__1() eff.Task[bool] {
 							Status int64
 						}, error) {
 							_m16 := Orgs__Pick__Params{Org: a}
-							_r17, _err18 := rtesting.BrowserOf(_e15).ClickRoute(rt.Route{Name: "Orgs.Pick", Method: "POST", Path: "/orgs/_/Pick", Query: []rt.KV{{Key: "org", Value: _m16.Org}}}, rtesting.MsgName("Orgs.Pick", _m16))
+							_r17, _err18 := rtesting.BrowserOf(_e15).ClickRoute(rt.Route{Name: "Orgs.Pick", Method: "POST", Path: "/orgs", Query: []rt.KV{{Key: "org", Value: _m16.Org}}}, rtesting.MsgName("Orgs.Pick", _m16))
 							if _err18 != nil {
 								var _z19 struct {
 									Answer  rtesting.Answer
@@ -471,7 +471,7 @@ func test__Orgs__3() eff.Task[bool] {
 								Url    string
 								Status int64
 							}, error) {
-								_r17, _err18 := rtesting.BrowserOf(_e16).SubmitRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/_/Switch"}, "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: b}))
+								_r17, _err18 := rtesting.BrowserOf(_e16).SubmitRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/switches"}, "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: b}))
 								if _err18 != nil {
 									var _z19 struct {
 										Answer  rtesting.Answer
@@ -523,7 +523,7 @@ func test__Orgs__3() eff.Task[bool] {
 									Url    string
 									Status int64
 								}, error) {
-									_r21, _err22 := rtesting.BrowserOf(_e20).SubmitRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/_/Switch"}, "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: a}))
+									_r21, _err22 := rtesting.BrowserOf(_e20).SubmitRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/switches"}, "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: a}))
 									if _err22 != nil {
 										var _z23 struct {
 											Answer  rtesting.Answer
@@ -757,7 +757,7 @@ func test__Orgs__5() eff.Task[bool] {
 							Url    string
 							Status int64
 						}, error) {
-							_r16, _err17 := rtesting.BrowserOf(_e15).ClickRoute(rt.Route{Name: "App.Leave", Method: "POST", Path: "/_/Leave"}, rtesting.MsgName("App.Leave", nil))
+							_r16, _err17 := rtesting.BrowserOf(_e15).ClickRoute(rt.Route{Name: "App.Leave", Method: "POST", Path: "/"}, rtesting.MsgName("App.Leave", nil))
 							if _err17 != nil {
 								var _z18 struct {
 									Answer  rtesting.Answer

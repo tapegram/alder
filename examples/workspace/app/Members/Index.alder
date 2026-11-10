@@ -10,9 +10,9 @@ import Table.User
 -- partitioned (the page filters it by the org), Activity is partitioned by org (`Db.scoped
 -- Activity` adds the filter). Adding or removing a member writes Membership and Activity: one
 -- store, so one Task.
-route Index  = GET  "/members"          { }                   requires user, org
-route Add    = POST "/members/_/Add"    { } form Invite       requires user, org
-route Remove = POST "/members/_/Remove" { user: User.UserId } requires user, org
+route Index  = GET    "/members" { }                   requires user, org
+route Add    = POST   "/members" { } form Invite       requires user, org
+route Remove = DELETE "/members" { user: User.UserId } requires user, org
 
 type Model = { members: List User, activity: List Activity }
 

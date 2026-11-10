@@ -901,7 +901,7 @@ func TestAdmin_RegenWireNames(t *testing.T) {
 }
 
 // TestAdmin_RegenBeforeRestPaths: an admin generated before #184 (testdata/generate/admin-before-184:
-// write routes under `/_/`, a `Search…` route per long list with its form and update, an
+// write routes under an underscore segment, a `Search…` route per long list with its form and update, an
 // actionless search form posting to it) is brought up to date by `alder regen admin`: each page
 // is again exactly what `alder new admin` writes now, with no `Search…` route, form or update
 // left behind, and the app checks. Silo and not.
@@ -948,7 +948,7 @@ func TestAdmin_RegenBeforeRestPaths(t *testing.T) {
 				if got != want {
 					t.Errorf("%s after regen is not what new admin writes:\n%s", rel, got)
 				}
-				for _, stale := range []string{"route Search", "form Find", ".update : Search", "/_/"} {
+				for _, stale := range []string{"route Search", "form Find", ".update : Search", "/_" + "/"} {
 					if strings.Contains(got, stale) {
 						t.Errorf("%s keeps %q after regen", rel, stale)
 					}

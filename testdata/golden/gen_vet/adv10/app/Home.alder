@@ -3,8 +3,8 @@ module Home
 import Ui
 
 route Home = GET  "/home/{n}"        { n: Int }            requires user
-route Pick = POST "/home/{n}/_/Pick" { n: Int, who: Text } requires user
-route Go   = POST "/home/{n}/_/Go"   { n: Int }            requires user
+route Pick = POST "/home/{n}" { n: Int, who: Text } requires user
+route Go   = POST "/home/{n}/gos"   { n: Int }            requires user
 
 type Model = {
   items: List Int,

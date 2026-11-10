@@ -5,8 +5,8 @@ module M
 
 type Shape = Circle Float | Rect { w: Float, h: Float }
 
-route Pick  = POST "/m/_/Pick"  { id: Text, n: Int }
-route Clear = POST "/m/_/Clear" { }
+route Pick  = POST "/m"  { id: Text, n: Int }
+route Clear = POST "/m/clears" { }
 route M     = GET  "/m"         { }
 
 type Model = { n: Int }

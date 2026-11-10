@@ -37,7 +37,7 @@ import Theme
 -- the theme is the visitor's choice
 session { theme: Theme.Theme = Light }
 
-route Toggle = POST "/_/Toggle" { }
+route Toggle = POST "/theme" { }
 
 -- Toggle switches the theme.
 Toggle.update : Toggle.Params -> Session -> Task Response
@@ -103,7 +103,7 @@ login = Auth.Login.Login
 
 route Logout = DELETE "/session" { }
 
-route Toggle = POST "/_/Toggle" { }
+route Toggle = POST "/theme" { }
 
 -- Toggle switches the theme.
 Toggle.update : Toggle.Params -> Session -> Task Response
@@ -131,7 +131,7 @@ Toggle.update params session = {
 		t.Fatal(err)
 	}
 	for _, e := range edits {
-		if e.Path == "app/App.alder" && !strings.Contains(e.Body, "session {\n  theme: Theme.Theme = Light,\n  user: Maybe User.UserId,\n}\n\nlogin = Auth.Login.Login\n\nroute Logout = DELETE \"/session\" { }\n\nroute Toggle = POST \"/_/Toggle\" { }\n") {
+		if e.Path == "app/App.alder" && !strings.Contains(e.Body, "session {\n  theme: Theme.Theme = Light,\n  user: Maybe User.UserId,\n}\n\nlogin = Auth.Login.Login\n\nroute Logout = DELETE \"/session\" { }\n\nroute Toggle = POST \"/theme\" { }\n") {
 			t.Errorf("multi-line session:\n%s", e.Body)
 		}
 	}

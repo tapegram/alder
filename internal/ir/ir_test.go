@@ -124,7 +124,7 @@ func TestIR_Todos(t *testing.T) {
 	compareGolden(t, "../../testdata/golden/ir_todos.ir", got)
 	for _, want := range []string{"(value Todos.Index.Index.view ", "(component Todos.Index.Item ", "(component Layout.Page ",
 		"(value Todos.Index.Index.load ", "(value Todos.Index.Submit.update ", "(value App.Logout.update ",
-		`(route Todos.Index.Index GET "/"`, `(route App.Logout POST "/_/Logout"`} {
+		`(route Todos.Index.Index GET "/"`, `(route App.Logout DELETE "/session"`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("todos dump lacks %q", want)
 		}
@@ -681,7 +681,7 @@ func TestPositions(t *testing.T) {
 		t.Fatalf("positions:\n got %v\nwant %v", got, want)
 	}
 	for _, r := range p.Routes {
-		if r.Module == "Todos.Index" && r.Name == "Index" && r.RequiresPos != (Pos{7, 76}) {
+		if r.Module == "Todos.Index" && r.Name == "Index" && r.RequiresPos != (Pos{7, 80}) {
 			t.Fatalf("RequiresPos = %v", r.RequiresPos)
 		}
 	}

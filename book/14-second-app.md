@@ -293,11 +293,11 @@ import Table.Comment
 import Table.Post
 import Table.User
 
-route Edit      = GET  "/write/{id}"             { id: Post.PostId }               requires user, role Author
-route Save      = POST "/write/{id}/_/Save"      { id: Post.PostId } form EditPost requires user, role Author
-route Publish   = POST "/write/{id}/_/Publish"   { id: Post.PostId }               requires user, role Author
-route Unpublish = POST "/write/{id}/_/Unpublish" { id: Post.PostId }               requires user, role Author
-route Delete    = POST "/write/{id}/_/Delete"    { id: Post.PostId }               requires user, role Author
+route Edit      = GET    "/write/{id}"             { id: Post.PostId }               requires user, role Author
+route Save      = PUT    "/write/{id}"             { id: Post.PostId } form EditPost requires user, role Author
+route Publish   = POST   "/write/{id}/publication" { id: Post.PostId }               requires user, role Author
+route Unpublish = DELETE "/write/{id}/publication" { id: Post.PostId }               requires user, role Author
+route Delete    = DELETE "/write/{id}"             { id: Post.PostId }               requires user, role Author
 
 type Model = { post: Post }
 
@@ -927,10 +927,10 @@ import Layout
 import Table.Post
 import Table.User
 
-route Index  = GET  "/"         { page: Int = 1, q: Text = "" }
+route Index  = GET  "/"       { page: Int = 1, q: Text = "" }
 -- A search posts its form to a write route like any other: `update` redirects to the first page
 -- of the results, whose address (/?q=…) can be bookmarked and shared.
-route Search = POST "/_/Search" { } form SearchForm
+route Search = POST "/search" { } form SearchForm
 
 type Model = {
   page: Int,
@@ -1648,8 +1648,8 @@ without one. `silo org` puts the two tables in a database per org; the
 four others are shared.
 
 ```alder part=workspace/App
-route Logout = POST "/_/Logout" { }
-route Leave  = POST "/_/Leave"  { }
+route Logout = DELETE "/session"      { }
+route Leave  = DELETE "/orgs/current" { }
 
 -- logging out clears the user; a `via` key goes with it (the runtime clears `org`)
 Logout.update : Logout.Params -> Session -> Task Response
@@ -1751,8 +1751,8 @@ one is sent. Its two write routes are the two ways an org gets into a
 session:
 
 ```alder fragment
-route Open   = POST "/orgs/_/Open"   { org: Org.OrgId } requires user
-route Create = POST "/orgs/_/Create" { } form NewOrg    requires user
+route Open   = POST "/orgs/current" { org: Org.OrgId } requires user
+route Create = POST "/orgs"         { } form NewOrg    requires user
 
 Open.update : Open.Params -> Session -> Task Response
 Open.update p session = {

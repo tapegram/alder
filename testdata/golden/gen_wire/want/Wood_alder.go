@@ -39,7 +39,7 @@ func Wood__Wood__view(model Wood__Model, session App__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("p", []html.Attr{html.A("id", "election")}, html.Text(model.Election)),
 		html.El("a", []html.Attr{html.A("id", "next"), html.A("href", rt.RouteURL(rt.Route{Name: "Wood.Wood", Method: "GET", Path: rt.Concat("/r/", rt.PathSegment(model.Cfg), "/wood/Results"), Query: []rt.KV{rt.QueryKV("ElectionId", "18", ""), rt.QueryKV("ContestId", "5", "")}}))}, html.Text("next")),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Wood.Bump", Method: "POST", Path: rt.Concat("/r/", rt.PathSegment(model.Cfg), "/wood/Results/_/Bump"), Query: []rt.KV{rt.QueryKV("ElectionId", model.Election, "")}})}, html.Text("bump")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Wood.Bump", Method: "POST", Path: rt.Concat("/r/", rt.PathSegment(model.Cfg), "/wood/Results"), Query: []rt.KV{rt.QueryKV("ElectionId", model.Election, "")}})}, html.Text("bump")),
 	))
 }
 
@@ -129,7 +129,7 @@ func test__Wood__1() eff.Task[bool] {
 			Status int64
 		}, error) {
 			_m11 := Wood__Bump__Params{Cfg: "c", ElectionId: "17"}
-			_r12, _err13 := rtesting.BrowserOf(_e10).ClickRoute(rt.Route{Name: "Wood.Bump", Method: "POST", Path: rt.Concat("/r/", rt.PathSegment(_m11.Cfg), "/wood/Results/_/Bump"), Query: []rt.KV{rt.QueryKV("ElectionId", _m11.ElectionId, "")}}, rtesting.MsgName("Wood.Bump", _m11))
+			_r12, _err13 := rtesting.BrowserOf(_e10).ClickRoute(rt.Route{Name: "Wood.Bump", Method: "POST", Path: rt.Concat("/r/", rt.PathSegment(_m11.Cfg), "/wood/Results"), Query: []rt.KV{rt.QueryKV("ElectionId", _m11.ElectionId, "")}}, rtesting.MsgName("Wood.Bump", _m11))
 			if _err13 != nil {
 				var _z14 struct {
 					Answer  rtesting.Answer

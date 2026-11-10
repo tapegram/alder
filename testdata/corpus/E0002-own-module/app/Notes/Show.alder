@@ -1,7 +1,7 @@
 module Notes.Show
 
 route Show  = GET  "/notes"         { }
-route Clear = POST "/notes/_/Clear" { }
+route Clear = POST "/notes" { }
 
 type Model = { count: Int }
 

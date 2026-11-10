@@ -10,8 +10,8 @@ import Table.User
 -- logout (or the session's 30 days), so `load` also re-reads the user's row (User.isAuthor), and
 -- Create, which runs no `load`, begins with User.authorOnly: an author made a Reader gets the 404
 -- at once.
-route Write  = GET  "/write"          { }              requires user, role Author
-route Create = POST "/write/_/Create" { } form NewPost requires user, role Author
+route Write  = GET  "/write" { }              requires user, role Author
+route Create = POST "/write" { } form NewPost requires user, role Author
 
 type Model = { posts: List Post }
 

@@ -1,6 +1,6 @@
 module App
 
-route Go = POST "/_/Go" { }
+route Go = POST "/" { }
 
 Go.update : Go.Params -> Session -> Task Response
 Go.update params session = Task.succeed Nowhere

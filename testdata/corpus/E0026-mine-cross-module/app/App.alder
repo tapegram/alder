@@ -8,7 +8,7 @@ session { user: Maybe User.UserId, role: User.Role = Reader }
 
 login = Login.Login
 
-route Clear = POST "/_/Clear" { id: Todo.TodoId }
+route Clear = POST "/" { id: Todo.TodoId }
 
 Clear.update : Clear.Params -> Session -> Task Response
 Clear.update p session = {

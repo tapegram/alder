@@ -6,12 +6,12 @@ module Routes
 -- requires a team Pick does not, so a Reader without one is answered by Teams' team check.
 route Show = GET  "/routes"        { } requires user, role Admin
 route Home = GET  "/routes/home"   { } requires user
-route Save = POST "/routes/_/Save" { } requires user, role Author | Admin
-route Open = POST "/routes/_/Open" { } requires user
-route Find = POST "/routes/_/Find" { } requires user, role Author | Admin
-route Back = POST "/routes/_/Back" { } requires user, role Admin
+route Save = POST "/routes" { } requires user, role Author | Admin
+route Open = POST "/routes/opens" { } requires user
+route Find = POST "/routes/finds" { } requires user, role Author | Admin
+route Back = POST "/routes/backs" { } requires user, role Admin
 route Teams = GET "/routes/teams"  { } requires user, team, role Admin
-route Pick = POST "/routes/_/Pick" { } requires user, role Admin
+route Pick = POST "/routes/picks" { } requires user, role Admin
 
 type Model = { }
 

@@ -6,8 +6,8 @@ session { user: Maybe User.UserId, visits: Int = 0 }
 
 login = Auth.Login.Login
 
-route Logout = POST "/_/Logout" { }
-route Send   = POST "/_/Send"   { } form Feedback
+route Logout = DELETE "/session" { }
+route Send   = POST "/"   { } form Feedback
 
 form Feedback = { text: Text }
 

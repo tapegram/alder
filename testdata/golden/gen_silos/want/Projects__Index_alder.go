@@ -207,7 +207,7 @@ func Projects__Index__Index__view(model Projects__Index__Model, session Projects
 	return html.El("html", nil, html.El("body", nil,
 		html.El("h1", nil, html.Text(model.Org)),
 		html.El("p", []html.Attr{html.A("id", "labels")}, html.Text(std.TextFromInt(model.Labels))),
-		html.FormToRoute(rt.Route{Name: "Projects.Index.Add", Method: "POST", Path: "/projects/_/Add"}, nil,
+		html.FormToRoute(rt.Route{Name: "Projects.Index.Add", Method: "POST", Path: "/projects"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Projects.Index.NewProject", Name: "name", Type: "text", Label: "Name"}),
 			html.Input(html.Control{Kind: "errors", Form: "Projects.Index.NewProject"}),
 			html.El("button", nil, html.Text("Add")),
@@ -215,12 +215,12 @@ func Projects__Index__Index__view(model Projects__Index__Model, session Projects
 		html.El("ul", nil, html.Nodes(std.ListMap(func(p Project__Project) html.Node {
 			return html.El("li", nil,
 				html.El("span", nil, html.Text(p.Name)),
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Rename", Method: "POST", Path: "/projects/_/Rename", Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("rename")),
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Remove", Method: "POST", Path: "/projects/_/Remove", Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("remove")),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Rename", Method: "POST", Path: "/projects/renames", Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("rename")),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Remove", Method: "POST", Path: "/projects/removes", Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("remove")),
 			)
 		}, model.Projects)...)),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Seed", Method: "POST", Path: "/projects/_/Seed"})}, html.Text("seed")),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Tag", Method: "POST", Path: "/projects/_/Tag"})}, html.Text("tag")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Seed", Method: "POST", Path: "/projects/seeds"})}, html.Text("seed")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Tag", Method: "POST", Path: "/projects/tags"})}, html.Text("tag")),
 	))
 }
 
@@ -451,7 +451,7 @@ func test__Projects__Index__1() eff.Task[bool] {
 					Url    string
 					Status int64
 				}, error) {
-					_r14, _err15 := rtesting.BrowserOf(_e13).SubmitRoute(rt.Route{Name: "Projects.Index.Add", Method: "POST", Path: "/projects/_/Add"}, "NewProject", encode__Projects__Index__NewProject(Projects__Index__NewProject{Name: "mine"}))
+					_r14, _err15 := rtesting.BrowserOf(_e13).SubmitRoute(rt.Route{Name: "Projects.Index.Add", Method: "POST", Path: "/projects"}, "NewProject", encode__Projects__Index__NewProject(Projects__Index__NewProject{Name: "mine"}))
 					if _err15 != nil {
 						var _z16 struct {
 							Answer  rtesting.Answer
@@ -677,7 +677,7 @@ func test__Projects__Index__2() eff.Task[bool] {
 					Url    string
 					Status int64
 				}, error) {
-					_r14, _err15 := rtesting.BrowserOf(_e13).SubmitRoute(rt.Route{Name: "Projects.Index.Add", Method: "POST", Path: "/projects/_/Add"}, "NewProject", encode__Projects__Index__NewProject(Projects__Index__NewProject{Name: "p"}))
+					_r14, _err15 := rtesting.BrowserOf(_e13).SubmitRoute(rt.Route{Name: "Projects.Index.Add", Method: "POST", Path: "/projects"}, "NewProject", encode__Projects__Index__NewProject(Projects__Index__NewProject{Name: "p"}))
 					if _err15 != nil {
 						var _z16 struct {
 							Answer  rtesting.Answer
@@ -815,7 +815,7 @@ func test__Projects__Index__2() eff.Task[bool] {
 									Status int64
 								}, error) {
 									_m26 := Projects__Index__Rename__Params{Id: id}
-									_r27, _err28 := rtesting.BrowserOf(_e25).ClickRoute(rt.Route{Name: "Projects.Index.Rename", Method: "POST", Path: "/projects/_/Rename", Query: []rt.KV{{Key: "id", Value: _m26.Id}}}, rtesting.MsgName("Projects.Index.Rename", _m26))
+									_r27, _err28 := rtesting.BrowserOf(_e25).ClickRoute(rt.Route{Name: "Projects.Index.Rename", Method: "POST", Path: "/projects/renames", Query: []rt.KV{{Key: "id", Value: _m26.Id}}}, rtesting.MsgName("Projects.Index.Rename", _m26))
 									if _err28 != nil {
 										var _z29 struct {
 											Answer  rtesting.Answer
@@ -951,7 +951,7 @@ func test__Projects__Index__2() eff.Task[bool] {
 											Status int64
 										}, error) {
 											_m39 := Projects__Index__Remove__Params{Id: id}
-											_r40, _err41 := rtesting.BrowserOf(_e38).ClickRoute(rt.Route{Name: "Projects.Index.Remove", Method: "POST", Path: "/projects/_/Remove", Query: []rt.KV{{Key: "id", Value: _m39.Id}}}, rtesting.MsgName("Projects.Index.Remove", _m39))
+											_r40, _err41 := rtesting.BrowserOf(_e38).ClickRoute(rt.Route{Name: "Projects.Index.Remove", Method: "POST", Path: "/projects/removes", Query: []rt.KV{{Key: "id", Value: _m39.Id}}}, rtesting.MsgName("Projects.Index.Remove", _m39))
 											if _err41 != nil {
 												var _z42 struct {
 													Answer  rtesting.Answer
@@ -1463,7 +1463,7 @@ func test__Projects__Index__4() eff.Task[bool] {
 					Url    string
 					Status int64
 				}, error) {
-					_r14, _err15 := rtesting.BrowserOf(_e13).ClickRoute(rt.Route{Name: "Projects.Index.Seed", Method: "POST", Path: "/projects/_/Seed"}, rtesting.MsgName("Projects.Index.Seed", nil))
+					_r14, _err15 := rtesting.BrowserOf(_e13).ClickRoute(rt.Route{Name: "Projects.Index.Seed", Method: "POST", Path: "/projects/seeds"}, rtesting.MsgName("Projects.Index.Seed", nil))
 					if _err15 != nil {
 						var _z16 struct {
 							Answer  rtesting.Answer
@@ -1686,7 +1686,7 @@ func test__Projects__Index__5() eff.Task[bool] {
 						Url    string
 						Status int64
 					}, error) {
-						_r15, _err16 := rtesting.BrowserOf(_e14).ClickRoute(rt.Route{Name: "Projects.Index.Tag", Method: "POST", Path: "/projects/_/Tag"}, rtesting.MsgName("Projects.Index.Tag", nil))
+						_r15, _err16 := rtesting.BrowserOf(_e14).ClickRoute(rt.Route{Name: "Projects.Index.Tag", Method: "POST", Path: "/projects/tags"}, rtesting.MsgName("Projects.Index.Tag", nil))
 						if _err16 != nil {
 							var _z17 struct {
 								Answer  rtesting.Answer

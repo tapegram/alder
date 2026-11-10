@@ -18,7 +18,7 @@ choose org = Orgs.Index.Index
 
 silo org { Project, Issue }
 
-route Leave = POST "/_/Leave" { }
+route Leave = POST "/" { }
 
 Leave.update : Leave.Params -> Session -> Task Response
 Leave.update params session = {

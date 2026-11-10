@@ -6,7 +6,7 @@ import Project
 -- The admin form: the org comes from the page's parameter, the role check gates the page (an
 -- Admin need not be a member); unscoped and scoped operations on the silo are legal here.
 route Projects = GET  "/admin/orgs/{org}/projects"          { org: Org.OrgId }                        requires user, role Admin, silo org
-route Remove   = POST "/admin/orgs/{org}/projects/_/Remove" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
+route Remove   = POST "/admin/orgs/{org}/projects" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
 
 type Model = { projects: List Project, n: Int }
 

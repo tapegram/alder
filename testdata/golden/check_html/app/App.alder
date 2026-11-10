@@ -4,7 +4,7 @@ session { user: Maybe Text }
 
 login = Pg.Pg
 
-route Logout = POST "/_/Logout" { }
+route Logout = DELETE "/session" { }
 
 Logout.update : Logout.Params -> Session -> Task Response
 Logout.update params session = Task.succeed Response.refresh

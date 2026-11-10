@@ -49,17 +49,17 @@ func TestE2E_WireNames(t *testing.T) {
 	if !strings.Contains(body, `href="/r/c/wood/Results?ElectionId=18&amp;ContestId=5"`) {
 		t.Errorf("the link does not carry the wire keys:\n%s", body)
 	}
-	m := regexp.MustCompile(`/r/c/wood/Results/_/Bump[^"']*`).FindString(body)
-	if m == "" {
+	m := regexp.MustCompile(`(?:action|formaction)="(/r/c/wood/Results[^"]*)"`).FindStringSubmatch(body)
+	if m == nil {
 		t.Fatalf("no route URL for Bump:\n%s", body)
 	}
-	m = html.UnescapeString(m)
-	if !strings.Contains(m, "ElectionId=17") || strings.Contains(m, "electionId") {
-		t.Errorf("Bump's URL %q does not carry the wire key", m)
+	bump := html.UnescapeString(m[1])
+	if !strings.Contains(bump, "ElectionId=17") || strings.Contains(bump, "electionId") {
+		t.Errorf("Bump's URL %q does not carry the wire key", bump)
 	}
-	res, body = do("POST", m)
+	res, body = do("POST", bump)
 	if loc := res.Header.Get("Location"); res.StatusCode != 303 || loc != "/r/c/wood/Results?ElectionId=17&ContestId=9" {
-		t.Errorf("POST %s: %d Location %q\n%s", m, res.StatusCode, loc, body)
+		t.Errorf("POST %s: %d Location %q\n%s", bump, res.StatusCode, loc, body)
 	}
 
 	// the field's own name is not its key: the default applies

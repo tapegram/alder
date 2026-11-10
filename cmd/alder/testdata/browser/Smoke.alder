@@ -5,7 +5,7 @@ import Layout
 -- The smoke test's page of the interactive elements, written as Appendix C writes them: added
 -- to the copy of the blog the browser test serves (browser_test.go), never to the example.
 route Smoke   = GET  "/smoke"           { }
-route Refresh = POST "/smoke/_/Refresh" { }
+route Refresh = POST "/smoke"         { }
 
 type Model = { }
 

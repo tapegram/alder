@@ -28,12 +28,12 @@ func decode__App__Logout__Params(_ map[string]string, _ url.Values) (r App__Logo
 	return r, errs
 }
 
-// Route__App__Logout serves route App.Logout, POST /_/Logout: decode the parameters (404 when they
+// Route__App__Logout serves route App.Logout, DELETE /session: decode the parameters (404 when they
 // do not); render the page the browser is on before the update (refresh and invalid are diffed
 // against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
 // or Task.notFound, 303 for Query.redirect).
 func Route__App__Logout() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_/Logout", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "DELETE", Pattern: "/session", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__App__Logout__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -147,11 +147,11 @@ func guard__Index__Add(rq *web.Request, params Index__Add__Params) (Index__Index
 	return Index__Index__Session{User: app.User.Val, Theme: app.Theme}, nil
 }
 
-// Route__Index__Add serves route Index.Add, POST /pair/{a}/{b}/_/Add: decode the parameters (404
-// when they do not); `requires` (303 to App.login); run the update and answer its Response (a
-// failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+// Route__Index__Add serves route Index.Add, POST /pair/{a}/{b}: decode the parameters (404 when
+// they do not); `requires` (303 to App.login); run the update and answer its Response (a failed
+// Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Index__Add() web.Route {
-	return web.Route{Method: "POST", Pattern: "/pair/{a}/{b}/_/Add", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/pair/{a}/{b}", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Index__Add__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -205,12 +205,12 @@ func guard__Index__Toggle(rq *web.Request, params Index__Toggle__Params) (Index_
 	return Index__Index__Session{User: app.User.Val, Theme: app.Theme}, nil
 }
 
-// Route__Index__Toggle serves route Index.Toggle, POST /pair/{a}/{b}/_/Toggle: decode the
-// parameters (404 when they do not); `requires` (303 to App.login); render the page the browser is
-// on before the update (refresh and invalid are diffed against it); run the update and answer its
-// Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+// Route__Index__Toggle serves route Index.Toggle, POST /pair/{a}/{b}/toggles: decode the parameters
+// (404 when they do not); `requires` (303 to App.login); render the page the browser is on before
+// the update (refresh and invalid are diffed against it); run the update and answer its Response (a
+// failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Index__Toggle() web.Route {
-	return web.Route{Method: "POST", Pattern: "/pair/{a}/{b}/_/Toggle", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/pair/{a}/{b}/toggles", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Index__Toggle__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -268,12 +268,12 @@ func guard__Index__Remove(rq *web.Request, params Index__Remove__Params) (Index_
 	return Index__Index__Session{User: app.User.Val, Theme: app.Theme}, nil
 }
 
-// Route__Index__Remove serves route Index.Remove, POST /pair/{a}/{b}/_/Remove: decode the
-// parameters (404 when they do not); `requires` (303 to App.login); render the page the browser is
-// on before the update (refresh and invalid are diffed against it); run the update and answer its
-// Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+// Route__Index__Remove serves route Index.Remove, POST /pair/{a}/{b}/removes: decode the parameters
+// (404 when they do not); `requires` (303 to App.login); render the page the browser is on before
+// the update (refresh and invalid are diffed against it); run the update and answer its Response (a
+// failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Index__Remove() web.Route {
-	return web.Route{Method: "POST", Pattern: "/pair/{a}/{b}/_/Remove", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/pair/{a}/{b}/removes", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Index__Remove__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -326,12 +326,12 @@ func guard__Index__Notify(rq *web.Request, params Index__Notify__Params) (Index_
 	return Index__Index__Session{User: app.User.Val, Theme: app.Theme}, nil
 }
 
-// Route__Index__Notify serves route Index.Notify, POST /pair/{a}/{b}/_/Notify: decode the
+// Route__Index__Notify serves route Index.Notify, POST /pair/{a}/{b}/notifies: decode the
 // parameters (404 when they do not); `requires` (303 to App.login); render the page the browser is
 // on before the update (refresh and invalid are diffed against it); run the update and answer its
 // Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Index__Notify() web.Route {
-	return web.Route{Method: "POST", Pattern: "/pair/{a}/{b}/_/Notify", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/pair/{a}/{b}/notifies", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Index__Notify__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())

@@ -1,8 +1,8 @@
 module Edit
 
 route Edit = GET  "/edit/{n}"        { n: Int }
-route Save = POST "/edit/{n}/_/Save" { n: Int } form Note
-route Ping = POST "/edit/{n}/_/Ping" { n: Int }
+route Save = POST "/edit/{n}" { n: Int } form Note
+route Ping = POST "/edit/{n}/pings" { n: Int }
 
 type Color = Red | Green
 

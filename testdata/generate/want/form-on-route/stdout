@@ -3,10 +3,10 @@ edited app/Home.alder
 +++ b/app/Home.alder
 @@ -5,7 +5,7 @@
  
- route Home   = GET  "/"         { }
- route Submit = POST "/_/Submit" { } form Sign
--route Clear  = POST "/"         { }
-+route Clear  = POST "/"         { } form Reason
+ route Home   = GET    "/" { }
+ route Submit = POST   "/" { } form Sign
+-route Clear  = DELETE "/" { }
++route Clear  = DELETE "/" { } form Reason
  
  type Model = { entries: List Entry }
  

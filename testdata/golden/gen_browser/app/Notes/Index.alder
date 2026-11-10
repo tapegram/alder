@@ -4,12 +4,12 @@ import Note
 import User
 
 route Index     = GET  "/"            { filter: Note.Filter = All }  requires user
-route Submit    = POST "/_/Submit"    { } form NewNote               requires user
-route Toggle    = POST "/_/Toggle"    { id: Note.NoteId }            requires user
-route Boom      = POST "/_/Boom"      { }                            requires user
-route Rename    = POST "/_/Rename"    { id: Note.NoteId } form Title requires user
-route SavePrefs = POST "/_/SavePrefs" { } form Prefs                 requires user
-route Visit     = POST "/_/Visit"     { }                            requires user
+route Submit    = POST "/submits"    { } form NewNote               requires user
+route Toggle    = POST "/toggles"    { id: Note.NoteId }            requires user
+route Boom      = POST "/booms"      { }                            requires user
+route Rename    = POST "/renames"    { id: Note.NoteId } form Title requires user
+route SavePrefs = POST "/save-prefses" { } form Prefs                 requires user
+route Visit     = POST "/visits"     { }                            requires user
 
 type Model = {
   filter: Note.Filter,

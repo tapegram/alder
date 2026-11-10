@@ -222,15 +222,15 @@ func Notes__wipe(_m1 string) eff.Task[struct{}] {
 
 func Notes__Notes__view(model Notes__Model, session Notes__Notes__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
-		html.FormToRoute(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes/_/Add"}, nil,
+		html.FormToRoute(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Notes.NewNote", Name: "title", Type: "text", Label: "Title"}),
 			html.Input(html.Control{Kind: "errors", Form: "Notes.NewNote"}),
 			html.El("button", nil, html.Text("Add")),
 		),
 		html.El("ul", nil, html.Nodes(std.ListMap(func(n Note__Note) html.Node {
 			return html.El("li", nil,
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Pin", Method: "POST", Path: "/notes/_/Pin", Query: []rt.KV{{Key: "id", Value: n.Id}}})}, html.Text(n.Title)),
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Remove", Method: "POST", Path: "/notes/_/Remove", Query: []rt.KV{{Key: "id", Value: n.Id}}})}, html.Text("x")),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Pin", Method: "POST", Path: "/notes/pins", Query: []rt.KV{{Key: "id", Value: n.Id}}})}, html.Text(n.Title)),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Remove", Method: "POST", Path: "/notes/removes", Query: []rt.KV{{Key: "id", Value: n.Id}}})}, html.Text("x")),
 			)
 		}, model.Notes)...)),
 	))

@@ -98,7 +98,7 @@ func TestResolve_ImportCycle(t *testing.T) {
 }
 
 func TestResolve_GlobalsAndModulePath(t *testing.T) {
-	app := parse(t, "app/App.alder", "module App\n\nsession { user: Maybe Text }\n\nlogin = Auth.Login.Login\n\nroute Logout = POST \"/_/Logout\" { }\n\nLogout.update : Logout.Params -> Session -> Task Response\nLogout.update p session = Task.succeed ()\n")
+	app := parse(t, "app/App.alder", "module App\n\nsession { user: Maybe Text }\n\nlogin = Auth.Login.Login\n\nroute Logout = DELETE \"/session\" { }\n\nLogout.update : Logout.Params -> Session -> Task Response\nLogout.update p session = Task.succeed ()\n")
 	login := parse(t, "app/Auth/Login.alder", "module Auth.Login\n\nroute Login = GET \"/login\" { }\n\ntype Model = { }\n\nLogin.load : Login.Params -> Session -> Query Model\nLogin.load params session = Query.succeed { }\n\nLogin.view : Model -> Session -> Html\nLogin.view model session = <a href={Login {}}><button click={App.Logout}>x</button></a>\n")
 	wrong := parse(t, "app/Misc/Wrong.alder", "module Wrong\n\nx : Int\nx = 1\n")
 	prog, bag := Build([]*syntax.Module{app, login, wrong}, std(t))
@@ -168,7 +168,7 @@ func TestResolve_ModuleNameRuleBeatsPrelude(t *testing.T) {
 
 // `App` is global and never imported: no App-qualified name is reported as E0201.
 func TestResolve_AppQualifierNeverE0201(t *testing.T) {
-	app := parse(t, "app/App.alder", "module App\n\nroute Logout = POST \"/_/Logout\" { }\n")
+	app := parse(t, "app/App.alder", "module App\n\nroute Logout = DELETE \"/session\" { }\n")
 	lay := parse(t, "app/Layout.alder", "module Layout\n\nPage : { children: List Html } -> Html\nPage props = <main>{props.children}</main>\n\nx : App.Session\nx = ?x\n\ny : App.Theme\ny = ?y\n\nz : Int\nz = App.login\n\nw : Int\nw = App.update\n")
 	prog, bag := Build([]*syntax.Module{app, lay}, std(t))
 	prog.Resolve(bag)

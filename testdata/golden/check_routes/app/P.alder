@@ -3,8 +3,8 @@ module P
 import T
 
 route P   = GET  "/p/{id}"       { id: T.TId } requires user
-route Inc = POST "/p/{id}/_/Inc" { id: T.TId } requires user
-route Dec = POST "/p/{id}/_/Dec" { id: T.TId } requires user
+route Inc = POST "/p/{id}" { id: T.TId } requires user
+route Dec = POST "/p/{id}/decs" { id: T.TId } requires user
 
 type Model = { t: T }
 

@@ -1,7 +1,7 @@
 module Home
 
 route Home   = GET  "/"         { }
-route Notify = POST "/_/Notify" { }
+route Notify = POST "/" { }
 
 type Model = { }
 

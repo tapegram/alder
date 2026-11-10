@@ -167,7 +167,7 @@
 (value Login.Login.view : Model -> App.Session -> Html (model session)
   (elem p (htext "Log in")))
 (table Todo.Todo (id id) (created created) (insert title done due owner))
-(route App.Logout POST "/_/Logout"
+(route App.Logout DELETE "/session"
   (params Logout.Params)
   (update App.Logout.update)
   (needs-shown))
@@ -178,24 +178,24 @@
   (model Model)
   (load Index.Index.load)
   (view Index.Index.view))
-(route Index.Add POST "/pair/{a}/{b}/_/Add"
+(route Index.Add POST "/pair/{a}/{b}"
   (params Add.Params)
   (requires user)
   (session Index.Session)
   (update Index.Add.update))
-(route Index.Toggle POST "/pair/{a}/{b}/_/Toggle"
+(route Index.Toggle POST "/pair/{a}/{b}/toggles"
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
   (update Index.Toggle.update)
   (needs-shown))
-(route Index.Remove POST "/pair/{a}/{b}/_/Remove"
+(route Index.Remove POST "/pair/{a}/{b}/removes"
   (params Remove.Params)
   (requires user)
   (session Index.Session)
   (update Index.Remove.update)
   (needs-shown))
-(route Index.Notify POST "/pair/{a}/{b}/_/Notify"
+(route Index.Notify POST "/pair/{a}/{b}/notifies"
   (params Notify.Params)
   (requires user)
   (session Index.Session)

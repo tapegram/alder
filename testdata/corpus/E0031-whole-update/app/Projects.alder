@@ -4,7 +4,7 @@ import AuditLog
 import Project
 
 route Projects = GET  "/projects"          { } requires user, org
-route Create   = POST "/projects/_/Create" { } requires user, org
+route Create   = POST "/projects" { } requires user, org
 
 type Model = { }
 

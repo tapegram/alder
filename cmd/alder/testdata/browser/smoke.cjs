@@ -105,7 +105,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.click('#go');
     await at('/');
     await page.waitForFunction(() => document.title === 'Blog', null, { timeout: 5000 }).catch(() => {});
-    await page.route('**/_/**', async (route) => {
+    await page.route('**/session', async (route) => {
       const resp = await route.fetch();
       await sleep(1500);
       await route.fulfill({ response: resp }).catch(() => {});
@@ -123,7 +123,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     s = await state();
     check('a slow post then a click: the click wins', s.path === '/posts/no-such-post' && s.title === 'Not found', s);
     check('a slow post then a click: no document load', docs.length === 0 && s.marker, docs);
-    await page.unroute('**/_/**');
+    await page.unroute('**/session');
 
     // Back during a pending boosted GET: the slow page never lands over the one Back returned to
     await link('/');
@@ -202,7 +202,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     });
     check('tabs (Alder page): tablist, tab with aria-selected following the choice, tabpanel linked by id', aria.list === 'tablist' && aria.outside === 0 && aria.panelsInList === 0 && aria.sel.join() === 'false,true' && aria.idx.join() === '-1,0' && aria.linked, aria);
     // a message that rerenders morphs the body: the enhanced tabs must survive it, the choice kept
-    await Promise.all([page.waitForResponse((r) => r.url().includes('/smoke/_/Refresh')), page.click('al-button:has-text("Refresh")')]);
+    await Promise.all([page.waitForResponse((r) => r.request().method() === 'POST' && r.url().endsWith('/smoke')), page.click('al-button:has-text("Refresh")')]);
     await sleep(300); // the patch is applied
     const morphed = await page.evaluate(() => {
       const root = document.querySelector('al-tabs'), tabs = [...root.querySelectorAll('[role=tablist] > button[role=tab]')];

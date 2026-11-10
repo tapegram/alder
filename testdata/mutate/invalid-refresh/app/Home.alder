@@ -1,7 +1,7 @@
 module Home
 
 route Home = GET  "/"       { }
-route Save = POST "/_/Save" { n: Int }
+route Save = POST "/" { n: Int }
 
 type Model = { }
 

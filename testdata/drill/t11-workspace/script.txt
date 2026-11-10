@@ -81,7 +81,7 @@ alder fill --decl Orgs.Index.Index.view - <<'EOF'
   <al-button variant="outline" click={App.Logout}>Log out</al-button>
 </Layout.Page>
 EOF
-alder new msg Orgs.Index Open org:Org.OrgId --in-for o
+alder new msg Orgs.Index Open org:Org.OrgId --in-for o --path /orgs/current
 # opening an org puts it in the session (the runtime checks the Membership row: `via`)
 alder fill --decl Orgs.Index.Open.update - <<'EOF'
 {
@@ -163,7 +163,7 @@ alder fill --decl Projects.Index.Index.view - <<'EOF'
   <a href={Orgs.Index.Index {}}>Orgs</a>
 </Layout.Page>
 EOF
-alder new form Projects.Index NewProject name:Text.NonEmpty --msg Create
+alder new form Projects.Index NewProject name:Text.NonEmpty --msg Create --path /projects
 # a write route has no load before it: it checks the membership again, then (the form fits
 # Project, and `Db.insertScoped` fills its org) inserts, and the new project's page is next
 alder fill --decl Projects.Index.Create.update - <<'EOF'
@@ -251,7 +251,7 @@ alder fill --decl Projects.Show.Show.view - <<'EOF'
 </Layout.Page>
 EOF
 # the to-do's id is `todo`: the route takes the project's `id` from its path (#160)
-alder new msg Projects.Show Toggle todo:Todo.TodoId --in-for t
+alder new msg Projects.Show Toggle todo:Todo.TodoId --in-for t --method PATCH --path /projects/{id}/todos
 alder fill Projects.Show.Show.view - --hole '?toggleId' <<'EOF'
 model.project.id
 EOF

@@ -9,9 +9,9 @@ import Table.User
 
 -- One project of the org and its to-dos. `Db.getScoped Project` answers 404 for an id that is
 -- not in the org's database (another org's project included).
-route Show   = GET  "/projects/{id}"       { id: Project.ProjectId }              requires user, org
-route Add    = POST "/projects/{id}/_/Add" { id: Project.ProjectId } form NewTodo requires user, org
-route Toggle = POST "/projects/_/Toggle"   { id: Todo.TodoId }                    requires user, org
+route Show   = GET   "/projects/{id}" { id: Project.ProjectId }              requires user, org
+route Add    = POST  "/projects/{id}" { id: Project.ProjectId } form NewTodo requires user, org
+route Toggle = PATCH "/todos/{id}"    { id: Todo.TodoId }                    requires user, org
 
 type Model = { project: Project, todos: List Todo }
 

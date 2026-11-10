@@ -162,7 +162,7 @@ func Notes__Index__Visit__update(p Notes__Index__Visit__Params, session Notes__I
 func Notes__Index__Index__view(model Notes__Index__Model, session Notes__Index__Index__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("h1", nil, html.Text("Notes")),
-		html.FormToRoute(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/_/Submit"}, nil,
+		html.FormToRoute(rt.Route{Name: "Notes.Index.Submit", Method: "POST", Path: "/submits"}, nil,
 			html.Input(html.Control{Kind: "errors", Form: "Notes.Index.NewNote"}),
 			html.Input(html.Control{Kind: "input", Form: "Notes.Index.NewNote", Name: "title", Type: "text", Label: "Title", Required: true}),
 			html.Input(html.Control{Kind: "errors", Form: "Notes.Index.NewNote", Name: "title"}),
@@ -190,8 +190,8 @@ func Notes__Index__Index__view(model Notes__Index__Model, session Notes__Index__
 				}
 				return "open"
 			}())},
-				html.El("button", []html.Attr{html.A("class", "toggle"), html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Toggle", Method: "POST", Path: "/_/Toggle", Query: []rt.KV{{Key: "id", Value: n.Id}}})}, html.Text(n.Title)),
-				html.FormToRoute(rt.Route{Name: "Notes.Index.Rename", Method: "POST", Path: "/_/Rename", Query: []rt.KV{{Key: "id", Value: n.Id}}}, nil,
+				html.El("button", []html.Attr{html.A("class", "toggle"), html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Toggle", Method: "POST", Path: "/toggles", Query: []rt.KV{{Key: "id", Value: n.Id}}})}, html.Text(n.Title)),
+				html.FormToRoute(rt.Route{Name: "Notes.Index.Rename", Method: "POST", Path: "/renames", Query: []rt.KV{{Key: "id", Value: n.Id}}}, nil,
 					html.Input(html.Control{Kind: "input", Form: "Notes.Index.Title", Name: "title", Type: "text", Label: "New title", Required: true}),
 					html.Input(html.Control{Kind: "errors", Form: "Notes.Index.Title", Name: "title"}),
 					html.El("button", nil, html.Text("Rename")),
@@ -204,14 +204,14 @@ func Notes__Index__Index__view(model Notes__Index__Model, session Notes__Index__
 		),
 		html.El("p", []html.Attr{html.A("id", "filter")}, html.Text(Note__filterLabel(model.Filter))),
 		html.El("p", []html.Attr{html.A("id", "now")}, html.Text(std.TimeFormat("15:04:05", model.Now))),
-		html.FormToRoute(rt.Route{Name: "App.Send", Method: "POST", Path: "/_/Send"}, nil,
+		html.FormToRoute(rt.Route{Name: "App.Send", Method: "POST", Path: "/"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "App.Feedback", Name: "text", Type: "text", Label: "Feedback"}),
 			html.Input(html.Control{Kind: "errors", Form: "App.Feedback", Name: "text"}),
 			html.El("button", nil, html.Text("Send")),
 		),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Boom", Method: "POST", Path: "/_/Boom"})}, html.Text("Boom")),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Visit", Method: "POST", Path: "/_/Visit"})}, html.Text("Visit")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Boom", Method: "POST", Path: "/booms"})}, html.Text("Boom")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Visit", Method: "POST", Path: "/visits"})}, html.Text("Visit")),
 		html.El("p", []html.Attr{html.A("id", "visits")}, html.Text(std.TextFromInt(session.Visits))),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Logout", Method: "POST", Path: "/_/Logout"})}, html.Text("Log out")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Logout", Method: "DELETE", Path: "/session"})}, html.Text("Log out")),
 	))
 }

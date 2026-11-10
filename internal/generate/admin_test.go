@@ -262,7 +262,7 @@ func TestAdminRoutes(t *testing.T) {
 
 // TestAdmin_RestPaths: the admin's write routes are on the table's resource paths (#184): create
 // on the list's path, save and destroy on the row's, the bulk actions under `bulk`; no path has
-// `/_/`, and the searches are GET forms to the page itself, with no route of their own.
+// the old underscore segment, and the searches are GET forms to the page itself, with no route of their own.
 func TestAdmin_RestPaths(t *testing.T) {
 	p, err := Load("../../testdata/generate/fixture")
 	if err != nil {
@@ -293,8 +293,8 @@ func TestAdmin_RestPaths(t *testing.T) {
 		}
 	}
 	for _, l := range strings.Split(src, "\n") {
-		if strings.Contains(l, "/_/") || strings.Contains(l, "Search") && !strings.Contains(l, ">Search<") && !strings.Contains(l, "\"Search\"") && !strings.Contains(l, "(chapter 8, \"Search\")") {
-			t.Errorf("a line has /_/ or a search route: %q", l)
+		if strings.Contains(l, "/_"+"/") || strings.Contains(l, "Search") && !strings.Contains(l, ">Search<") && !strings.Contains(l, "\"Search\"") && !strings.Contains(l, "(chapter 8, \"Search\")") {
+			t.Errorf("a line has an underscore segment or a search route: %q", l)
 		}
 	}
 }

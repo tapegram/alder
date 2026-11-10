@@ -24,8 +24,8 @@ choose org = Orgs.Index.Index
 -- partitioned by org there, a predicate (`Db.scoped`), not a file of its own.
 silo org { Project, Todo }
 
-route Logout = POST "/_/Logout" { }
-route Leave  = POST "/_/Leave"  { }
+route Logout = DELETE "/session"      { }
+route Leave  = DELETE "/orgs/current" { }
 
 -- logging out clears the user; a `via` key goes with it (the runtime clears `org`)
 Logout.update : Logout.Params -> Session -> Task Response

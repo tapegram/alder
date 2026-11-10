@@ -8,11 +8,11 @@ import User
 -- still runs after the placeholder user: a 404, not the login page) and Look (a post whose form
 -- does not decode is a 422).
 route Show  = GET  "/routes"         { q: Text = "" } requires user
-route Save  = POST "/routes/_/Save"  { }              requires user
-route Count = POST "/routes/_/Count" { }              requires visits
-route Find  = POST "/routes/_/Find"  { }              requires user
-route Team  = POST "/routes/_/Team"  { }              requires user, team
-route Look  = POST "/routes/_/Look"  { } form LookForm requires user
+route Save  = POST "/routes"  { }              requires user
+route Count = POST "/routes/counts" { }              requires visits
+route Find  = POST "/routes/finds"  { }              requires user
+route Team  = POST "/routes/teams"  { }              requires user, team
+route Look  = POST "/routes/looks"  { } form LookForm requires user
 
 type Model = { user: User.UserId }
 

@@ -51,7 +51,7 @@ func Notes__Add__update(p Notes__Add__Params, session Notes__Notes__Session) eff
 func Notes__Notes__view(model Notes__Model, session Notes__Notes__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("h1", nil, html.Text("Notes")),
-		html.FormToRoute(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes/_/Add"}, nil,
+		html.FormToRoute(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Notes.NewNote", Name: "title", Type: "text", Label: "Title"}),
 			html.Input(html.Control{Kind: "errors", Form: "Notes.NewNote"}),
 			html.El("button", nil, html.Text("Add")),

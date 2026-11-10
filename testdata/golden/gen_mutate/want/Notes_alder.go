@@ -78,7 +78,7 @@ func Notes__Add__update(p Notes__Add__Params, session Notes__Notes__Session) eff
 func Notes__Notes__view(model Notes__Model, session Notes__Notes__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("h1", nil, html.Text("Notes")),
-		html.FormToRoute(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes/_/Add"}, nil,
+		html.FormToRoute(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Notes.NewNote", Name: "title", Type: "text", Label: "Title"}),
 			html.Input(html.Control{Kind: "errors", Form: "Notes.NewNote"}),
 			html.El("button", nil, html.Text("Add")),
@@ -357,7 +357,7 @@ func test__Notes__3() eff.Task[bool] {
 					Url    string
 					Status int64
 				}, error) {
-					_r13, _err14 := rtesting.BrowserOf(_e12).SubmitRoute(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes/_/Add"}, "NewNote", encode__Notes__NewNote(Notes__NewNote{Title: "Milk"}))
+					_r13, _err14 := rtesting.BrowserOf(_e12).SubmitRoute(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes"}, "NewNote", encode__Notes__NewNote(Notes__NewNote{Title: "Milk"}))
 					if _err14 != nil {
 						var _z15 struct {
 							Answer  rtesting.Answer
@@ -571,7 +571,7 @@ func test__Notes__4() eff.Task[bool] {
 					Url    string
 					Status int64
 				}, error) {
-					_r13, _err14 := rtesting.BrowserOf(_e12).SubmitRoute(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes/_/Add"}, "NewNote", encode__Notes__NewNote(Notes__NewNote{Title: "Milk"}))
+					_r13, _err14 := rtesting.BrowserOf(_e12).SubmitRoute(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes"}, "NewNote", encode__Notes__NewNote(Notes__NewNote{Title: "Milk"}))
 					if _err14 != nil {
 						var _z15 struct {
 							Answer  rtesting.Answer
@@ -712,7 +712,7 @@ func test__Notes__5() eff.Task[bool] {
 					Url    string
 					Status int64
 				}, error) {
-					_r13, _err14 := rtesting.BrowserOf(_e12).SubmitRoute(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes/_/Add"}, "NewNote", encode__Notes__NewNote(Notes__NewNote{Title: "Milk"}))
+					_r13, _err14 := rtesting.BrowserOf(_e12).SubmitRoute(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes"}, "NewNote", encode__Notes__NewNote(Notes__NewNote{Title: "Milk"}))
 					if _err14 != nil {
 						var _z15 struct {
 							Answer  rtesting.Answer

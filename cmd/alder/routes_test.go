@@ -23,7 +23,7 @@ func TestRoutes_Table(t *testing.T) {
 	if len(lines) < 3 || strings.Fields(lines[0])[0] != "METHOD" {
 		t.Fatalf("no header:\n%s", out)
 	}
-	for _, w := range []string{"GET     /posts/{slug}", "Posts.Show.Show", "app/Posts/Show.alder:9", "POST    /posts/{slug}/_/AddComment", "Posts.Show.AddComment", "app/Posts/Show.alder:12"} {
+	for _, w := range []string{"GET     /posts/{slug}", "Posts.Show.Show", "app/Posts/Show.alder:9", "POST    /posts/{slug}", "Posts.Show.AddComment", "app/Posts/Show.alder:12"} {
 		if !strings.Contains(out, w) {
 			t.Errorf("table lacks %q:\n%s", w, out)
 		}

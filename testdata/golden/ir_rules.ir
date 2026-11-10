@@ -911,32 +911,32 @@
   (model Model)
   (load Todos.Index.Index.load)
   (view Todos.Index.Index.view))
-(route Todos.Index.Add POST "/_/Add"
+(route Todos.Index.Add POST "/"
   (params Add.Params)
   (form NewTodo)
   (requires user)
   (session Index.Session)
   (update Todos.Index.Add.update)
   (needs-shown))
-(route Todos.Index.Toggle POST "/_/Toggle"
+(route Todos.Index.Toggle POST "/toggles"
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
   (update Todos.Index.Toggle.update)
   (needs-shown))
-(route Todos.Index.Rename POST "/_/Rename"
+(route Todos.Index.Rename POST "/renames"
   (params Rename.Params)
   (requires user)
   (session Index.Session)
   (update Todos.Index.Rename.update)
   (needs-shown))
-(route Todos.Index.Remove POST "/_/Remove"
+(route Todos.Index.Remove POST "/removes"
   (params Remove.Params)
   (requires user)
   (session Index.Session)
   (update Todos.Index.Remove.update)
   (needs-shown))
-(route Todos.Index.Duplicate POST "/_/Duplicate"
+(route Todos.Index.Duplicate POST "/duplicates"
   (params Duplicate.Params)
   (requires user)
   (session Index.Session)

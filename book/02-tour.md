@@ -102,8 +102,8 @@ module Home
 import Layout
 import Table.Entry
 
-route Home   = GET  "/"         { }
-route Submit = POST "/_/Submit" { } form Sign
+route Home   = GET  "/" { }
+route Submit = POST "/" { } form Sign
 ```
 
 `import` makes another module's names available: `Layout` for the HTML
@@ -616,10 +616,10 @@ import Layout
 import Table.Todo
 import Table.User
 
-route Index  = GET  "/"         { filter: Todo.Filter = All }              requires user
-route Submit = POST "/_/Submit" { filter: Todo.Filter = All } form NewTodo requires user
-route Toggle = POST "/_/Toggle" { id: Todo.TodoId }                        requires user
-route Delete = POST "/_/Delete" { id: Todo.TodoId }                        requires user
+route Index  = GET    "/"           { filter: Todo.Filter = All }              requires user
+route Submit = POST   "/todos"      { filter: Todo.Filter = All } form NewTodo requires user
+route Toggle = PATCH  "/todos/{id}" { id: Todo.TodoId }                        requires user
+route Delete = DELETE "/todos"      { id: Todo.TodoId }                        requires user
 ```
 
 `User` is imported for the tests at the end of the module. The module has

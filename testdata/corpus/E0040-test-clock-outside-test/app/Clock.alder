@@ -1,7 +1,7 @@
 module Clock
 
 route Clock = GET  "/clock"        { }
-route Tick  = POST "/clock/_/Tick" { }
+route Tick  = POST "/clock" { }
 
 type Model = { n: Int }
 

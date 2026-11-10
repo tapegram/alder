@@ -4,7 +4,7 @@ import Note
 
 -- the user key: M11's `mine` family and the generic one, on one `@owner` table
 route Index = GET  "/notes"       { } requires user
-route Add   = POST "/notes/_/Add" { } requires user
+route Add   = POST "/notes" { } requires user
 
 type Model = { notes: List Note, n: Int }
 

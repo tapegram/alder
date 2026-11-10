@@ -4,11 +4,11 @@ import Todo
 import User
 
 route Index     = GET  "/"            { }                 requires user
-route Add       = POST "/_/Add"       { } form NewTodo    requires user
-route Toggle    = POST "/_/Toggle"    { id: Todo.TodoId } requires user
-route Rename    = POST "/_/Rename"    { id: Todo.TodoId } requires user
-route Remove    = POST "/_/Remove"    { id: Todo.TodoId } requires user
-route Duplicate = POST "/_/Duplicate" { id: Todo.TodoId } requires user
+route Add       = POST "/"       { } form NewTodo    requires user
+route Toggle    = POST "/toggles"    { id: Todo.TodoId } requires user
+route Rename    = POST "/renames"    { id: Todo.TodoId } requires user
+route Remove    = POST "/removes"    { id: Todo.TodoId } requires user
+route Duplicate = POST "/duplicates" { id: Todo.TodoId } requires user
 
 type Model = { todos: List Todo, open: Int }
 

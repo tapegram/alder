@@ -3,7 +3,7 @@ module Wood
 -- #55: a results app whose real URLs carry capitalised query keys
 -- (/Results?ElectionId=17&ContestId=5); the fields stay lowercase.
 route Wood = GET  "/r/{cfg}/wood/Results"        { cfg: Text, electionId: Text = "" as "ElectionId", contestId: Maybe Int as "ContestId" }
-route Bump = POST "/r/{cfg}/wood/Results/_/Bump" { cfg: Text, electionId: Text = "" as "ElectionId" }
+route Bump = POST "/r/{cfg}/wood/Results" { cfg: Text, electionId: Text = "" as "ElectionId" }
 
 type Model = {
   cfg: Text,

@@ -7,7 +7,7 @@ session { user: Maybe Customer.UserId, cart: Int = 0 }
 
 login = Login.Login
 
-route Clear = POST "/_/Clear" { }
+route Clear = POST "/" { }
 
 Clear.update : Clear.Params -> Session -> Task Response
 Clear.update p session = {

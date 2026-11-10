@@ -6,7 +6,7 @@ session { user: Maybe Todo.UserId, theme: Text = "light" }
 
 login = Login.Login
 
-route Logout = POST "/_/Logout" { }
+route Logout = DELETE "/session" { }
 
 Logout.update : Logout.Params -> Session -> Task Response
 Logout.update p session = {

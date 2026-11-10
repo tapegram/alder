@@ -7,15 +7,15 @@ import Org
 import Project
 
 route Projects = GET  "/projects"          { } requires user, org, team
-route Create   = POST "/projects/_/Create" { } requires user, org, team
-route Helped   = POST "/projects/_/Helped" { } requires user, org, team
-route Many     = POST "/projects/_/Many"   { } requires user, org, team
-route Silos    = POST "/projects/_/Silos"  { } requires user, org, team
-route Reads    = POST "/projects/_/Reads"  { } requires user, org, team
-route Bound    = POST "/projects/_/Bound"  { } requires user, org, team
-route Lambda   = POST "/projects/_/Lambda" { } requires user, org, team
-route Mapped   = POST "/projects/_/Mapped" { } requires user, org, team
-route Other    = POST "/projects/_/Other"  { } requires user, org, team
+route Create   = POST "/projects" { } requires user, org, team
+route Helped   = POST "/projects/helpeds" { } requires user, org, team
+route Many     = POST "/projects/manies"   { } requires user, org, team
+route Silos    = POST "/projects/siloses"  { } requires user, org, team
+route Reads    = POST "/projects/readses"  { } requires user, org, team
+route Bound    = POST "/projects/bounds"  { } requires user, org, team
+route Lambda   = POST "/projects/lambdas" { } requires user, org, team
+route Mapped   = POST "/projects/mappeds" { } requires user, org, team
+route Other    = POST "/projects/others"  { } requires user, org, team
 
 type Model = { }
 

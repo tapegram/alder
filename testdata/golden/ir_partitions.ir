@@ -299,7 +299,7 @@
   (model Model)
   (load Admin.Projects.Projects.load)
   (view Admin.Projects.Projects.view))
-(route Admin.Projects.Remove POST "/admin/orgs/{org}/projects/_/Remove"
+(route Admin.Projects.Remove POST "/admin/orgs/{org}/projects"
   (params Remove.Params)
   (requires user)
   (roles Admin)
@@ -308,7 +308,7 @@
   (update Admin.Projects.Remove.update)
   (store silo org)
   (needs-shown))
-(route App.Leave POST "/_/Leave"
+(route App.Leave POST "/"
   (params Leave.Params)
   (update App.Leave.update)
   (store shared))
@@ -324,7 +324,7 @@
   (model Model)
   (load Notes.Index.Index.load)
   (view Notes.Index.Index.view))
-(route Notes.Index.Add POST "/notes/_/Add"
+(route Notes.Index.Add POST "/notes"
   (params Add.Params)
   (requires user)
   (session Index.Session)
@@ -338,7 +338,7 @@
   (model Model)
   (load Orgs.Index.Index.load)
   (view Orgs.Index.Index.view))
-(route Orgs.Index.Pick POST "/orgs/_/Pick"
+(route Orgs.Index.Pick POST "/orgs"
   (params Pick.Params)
   (requires user)
   (session Index.Session)
@@ -351,7 +351,7 @@
   (model Model)
   (load Projects.Index.Index.load)
   (view Projects.Index.Index.view))
-(route Projects.Index.Add POST "/projects/_/Add"
+(route Projects.Index.Add POST "/projects"
   (params Add.Params)
   (form NewProject)
   (requires user org)
@@ -359,35 +359,35 @@
   (update Projects.Index.Add.update)
   (store silo org)
   (needs-shown))
-(route Projects.Index.Rename POST "/projects/_/Rename"
+(route Projects.Index.Rename POST "/projects/renames"
   (params Rename.Params)
   (requires user org)
   (session Index.Session)
   (update Projects.Index.Rename.update)
   (store silo org)
   (needs-shown))
-(route Projects.Index.Remove POST "/projects/_/Remove"
+(route Projects.Index.Remove POST "/projects/removes"
   (params Remove.Params)
   (requires user org)
   (session Index.Session)
   (update Projects.Index.Remove.update)
   (store silo org)
   (needs-shown))
-(route Projects.Index.Seed POST "/projects/_/Seed"
+(route Projects.Index.Seed POST "/projects/seeds"
   (params Seed.Params)
   (requires user org)
   (session Index.Session)
   (update Projects.Index.Seed.update)
   (store silo org)
   (needs-shown))
-(route Projects.Index.Both POST "/projects/_/Both"
+(route Projects.Index.Both POST "/projects/boths"
   (params Both.Params)
   (requires user org)
   (session Index.Session)
   (update Projects.Index.Both.update)
   (store silo org)
   (needs-shown))
-(route Projects.Index.Tag POST "/projects/_/Tag"
+(route Projects.Index.Tag POST "/projects/tags"
   (params Tag.Params)
   (requires user org)
   (session Index.Session)

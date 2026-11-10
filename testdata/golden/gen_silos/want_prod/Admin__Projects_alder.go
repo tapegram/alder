@@ -54,7 +54,7 @@ func Admin__Projects__Projects__view(model Admin__Projects__Model, session Admin
 	return html.El("html", nil, html.El("body", nil, html.El("ul", nil, html.Nodes(std.ListMap(func(p Project__Project) html.Node {
 		return html.El("li", nil,
 			html.El("span", nil, html.Text(p.Name)),
-			html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Admin.Projects.Remove", Method: "POST", Path: rt.Concat("/admin/orgs/", rt.PathSegment(model.Org), "/projects/_/Remove"), Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("remove")),
+			html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Admin.Projects.Remove", Method: "POST", Path: rt.Concat("/admin/orgs/", rt.PathSegment(model.Org), "/projects"), Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("remove")),
 		)
 	}, model.Projects)...))))
 }

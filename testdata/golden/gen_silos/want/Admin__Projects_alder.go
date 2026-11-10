@@ -67,7 +67,7 @@ func Admin__Projects__Projects__view(model Admin__Projects__Model, session Admin
 	return html.El("html", nil, html.El("body", nil, html.El("ul", nil, html.Nodes(std.ListMap(func(p Project__Project) html.Node {
 		return html.El("li", nil,
 			html.El("span", nil, html.Text(p.Name)),
-			html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Admin.Projects.Remove", Method: "POST", Path: rt.Concat("/admin/orgs/", rt.PathSegment(model.Org), "/projects/_/Remove"), Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("remove")),
+			html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Admin.Projects.Remove", Method: "POST", Path: rt.Concat("/admin/orgs/", rt.PathSegment(model.Org), "/projects"), Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("remove")),
 		)
 	}, model.Projects)...))))
 }
@@ -194,7 +194,7 @@ func test__Admin__Projects__1() eff.Task[bool] {
 									Status int64
 								}, error) {
 									_m18 := Admin__Projects__Remove__Params{Org: b, Id: id}
-									_r19, _err20 := rtesting.BrowserOf(_e17).ClickRoute(rt.Route{Name: "Admin.Projects.Remove", Method: "POST", Path: rt.Concat("/admin/orgs/", rt.PathSegment(_m18.Org), "/projects/_/Remove"), Query: []rt.KV{{Key: "id", Value: _m18.Id}}}, rtesting.MsgName("Admin.Projects.Remove", _m18))
+									_r19, _err20 := rtesting.BrowserOf(_e17).ClickRoute(rt.Route{Name: "Admin.Projects.Remove", Method: "POST", Path: rt.Concat("/admin/orgs/", rt.PathSegment(_m18.Org), "/projects"), Query: []rt.KV{{Key: "id", Value: _m18.Id}}}, rtesting.MsgName("Admin.Projects.Remove", _m18))
 									if _err20 != nil {
 										var _z21 struct {
 											Answer  rtesting.Answer

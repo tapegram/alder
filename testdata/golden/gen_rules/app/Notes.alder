@@ -3,9 +3,9 @@ module Notes
 import Note
 
 route Notes  = GET  "/notes"          { }                 requires user
-route Add    = POST "/notes/_/Add"    { } form NewNote    requires user
-route Pin    = POST "/notes/_/Pin"    { id: Note.NoteId } requires user
-route Remove = POST "/notes/_/Remove" { id: Note.NoteId } requires user
+route Add    = POST "/notes"    { } form NewNote    requires user
+route Pin    = POST "/notes/pins"    { id: Note.NoteId } requires user
+route Remove = POST "/notes/removes" { id: Note.NoteId } requires user
 
 type Model = { notes: List Note, pinned: Int }
 

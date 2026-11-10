@@ -138,13 +138,13 @@ func decode__Notes__NewNote(v url.Values) (r Notes__NewNote, errs []web.FieldErr
 	return r, errs
 }
 
-// Route__Notes__Add serves route Notes.Add, POST /notes/_/Add: decode the parameters (404 when they
-// do not); `requires` (303 to App.login); decode form NewNote from the body (when it does not: 422,
+// Route__Notes__Add serves route Notes.Add, POST /notes: decode the parameters (404 when they do
+// not); `requires` (303 to App.login); decode form NewNote from the body (when it does not: 422,
 // the page the browser is on rendered again with the submitted values, no Text.Secret field, and
 // the errors, without calling update); run the update and answer its Response (a failed Task: 500,
 // 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Add() web.Route {
-	return web.Route{Method: "POST", Pattern: "/notes/_/Add", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/notes", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Add__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -153,7 +153,7 @@ func Route__Notes__Add() web.Route {
 		if stop != nil {
 			return *stop
 		}
-		key := rt.RouteKey(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes/_/Add"})
+		key := rt.RouteKey(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes"})
 		values := route__values(rq.Form)
 		form, errs := decode__Notes__NewNote(rq.Form)
 		if errs != nil {

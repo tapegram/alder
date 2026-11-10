@@ -5,7 +5,7 @@ import Org
 
 -- `choose org`'s page: it requires the user, not the org, and sets the org.
 route Index = GET  "/orgs"        { }                requires user
-route Pick  = POST "/orgs/_/Pick" { org: Org.OrgId } requires user
+route Pick  = POST "/orgs" { org: Org.OrgId } requires user
 
 type Model = { mine: List Membership }
 

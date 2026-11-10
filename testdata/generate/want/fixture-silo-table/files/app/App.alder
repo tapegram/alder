@@ -20,7 +20,7 @@ choose org = Orgs.Orgs
 
 silo org { Project, Issue, Note }
 
-route Logout = POST "/_/Logout" { }
+route Logout = DELETE "/session" { }
 
 Logout.update : Logout.Params -> Session -> Task Response
 Logout.update p session = {

@@ -4,7 +4,7 @@ import User
 
 session { user: Maybe User.UserId }
 
-route Logout = POST "/_/Logout" { }
+route Logout = DELETE "/session" { }
 
 -- A mutant: logging out no longer clears the user.
 Logout.update : Logout.Params -> Session -> Task Response

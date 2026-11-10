@@ -1,7 +1,7 @@
 module Poke
 
 route Show = GET  "/poke"        { }
-route Poke = POST "/poke/_/Poke" { }
+route Poke = POST "/poke" { }
 
 type Model = { n: Int }
 

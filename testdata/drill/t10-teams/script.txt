@@ -146,7 +146,7 @@ alder fill --decl Teams.Show.Show.view - <<'EOF'
   <a href={Teams.Index.Index {}}>All teams</a>
 </Layout.Page>
 EOF
-alder new msg Teams.Show Remove user:User.UserId --in-for u --when model.isOwner
+alder new msg Teams.Show Remove user:User.UserId --in-for u --when model.isOwner --method DELETE --path /teams/{id}/members
 alder new form Teams.Show NewInvite email:Text.Email --msg SendInvite
 alder fill Teams.Show.Show.view - --hole '?removeId' <<'EOF'
 model.team.id
@@ -287,8 +287,8 @@ alder fill --decl Invites.Index.Index.view - <<'EOF'
   <a href={Teams.Index.Index {}}>Teams</a>
 </Layout.Page>
 EOF
-alder new msg Invites.Index Accept id:Invite.InviteId --in-for r
-alder new msg Invites.Index Decline id:Invite.InviteId --in-for r
+alder new msg Invites.Index Accept id:Invite.InviteId --in-for r --path /invites/accepted
+alder new msg Invites.Index Decline id:Invite.InviteId --in-for r --path /invites/declined
 alder fill Invites.Index.Index.view - --hole '?acceptId' <<'EOF'
 r.invite.id
 EOF

@@ -63,7 +63,7 @@ func TestBuild_BinarySmoke(t *testing.T) {
 	if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "text/html; charset=utf-8" {
 		t.Fatalf("GET /login = %d %q:\n%s", res.StatusCode, res.Header.Get("Content-Type"), body)
 	}
-	for _, f := range []string{`<form method="post" action="/login/_/Submit"`, `type="password"`, `src="/_alder/datastar-v1.0.0.js"`} {
+	for _, f := range []string{`<form method="post" action="/session"`, `type="password"`, `src="/_alder/datastar-v1.0.0.js"`} {
 		if !strings.Contains(body, f) {
 			t.Fatalf("GET /login lacks %q:\n%s", f, body)
 		}
@@ -83,13 +83,13 @@ func TestBuild_BinarySmoke(t *testing.T) {
 		t.Fatalf("GET /login Set-Cookie %q, want none", sc)
 	}
 	// a Session.put (App.Logout's) stores it
-	out2, err := c.Post("http://"+a+"/_/Logout", "application/x-www-form-urlencoded", nil)
+	out2, err := doDelete(c, "http://"+a+"/session")
 	if err != nil {
 		t.Fatal(err)
 	}
 	out2.Body.Close()
 	if !strings.HasPrefix(out2.Header.Get("Set-Cookie"), "alder_session=") {
-		t.Fatalf("POST /_/Logout Set-Cookie %q", out2.Header.Get("Set-Cookie"))
+		t.Fatalf("DELETE /session Set-Cookie %q", out2.Header.Get("Set-Cookie"))
 	}
 	// the copied stylesheet is served from beside the executable
 	if res, body := get("/static/app.css"); res.StatusCode != http.StatusOK || body == "" {

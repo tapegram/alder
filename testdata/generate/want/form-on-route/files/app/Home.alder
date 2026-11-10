@@ -3,9 +3,9 @@ module Home
 import Layout
 import Table.Entry
 
-route Home   = GET  "/"         { }
-route Submit = POST "/_/Submit" { } form Sign
-route Clear  = POST "/"         { } form Reason
+route Home   = GET    "/" { }
+route Submit = POST   "/" { } form Sign
+route Clear  = DELETE "/" { } form Reason
 
 type Model = { entries: List Entry }
 

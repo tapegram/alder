@@ -1,7 +1,7 @@
 module Index
 
 route Index  = GET  "/"         { }
-route Submit = POST "/_/Submit" { } form NewPost
+route Submit = POST "/" { } form NewPost
 
 type Model = { n: Int }
 

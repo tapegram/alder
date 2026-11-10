@@ -4,8 +4,8 @@ edited app/App.alder
 @@ -10,6 +10,7 @@
  login = Auth.Login.Login
  
- route Logout = POST "/_/Logout" { }
-+route Ping   = POST "/ping"     { }
+ route Logout = DELETE "/session" { }
++route Ping   = POST   "/ping"    { }
  
  Logout.update : Logout.Params -> Session -> Task Response
  Logout.update p session = {

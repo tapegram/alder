@@ -3,8 +3,8 @@ module Todos.Index
 type Filter = All | Active
 
 route Index  = GET  "/"         { filter: Filter = All }
-route Submit = POST "/_/Submit" { } form NewTodo
-route Toggle = POST "/_/Toggle" { id: Text }
+route Submit = POST "/" { } form NewTodo
+route Toggle = POST "/toggles" { id: Text }
 
 type Model = { n: Int }
 

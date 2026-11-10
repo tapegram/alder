@@ -98,22 +98,21 @@ func decode__Index__NewPost(v url.Values) (r Index__NewPost, errs []web.FieldErr
 	return r, errs
 }
 
-// Route__Index__Submit serves route Index.Submit, POST /_/Submit: decode the parameters (404 when
-// they do not); decode form NewPost from the body (when it does not: 422, the page the browser is
-// on rendered again with the submitted values, no Text.Secret field, and the errors, without
-// calling update); check its options against the page it was posted from (a value that page did not
-// offer: as a form that does not decode; posted from another page: 400); render the page the
-// browser is on before the update (refresh and invalid are diffed against it); run the update and
-// answer its Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for
-// Query.redirect).
+// Route__Index__Submit serves route Index.Submit, POST /: decode the parameters (404 when they do
+// not); decode form NewPost from the body (when it does not: 422, the page the browser is on
+// rendered again with the submitted values, no Text.Secret field, and the errors, without calling
+// update); check its options against the page it was posted from (a value that page did not offer:
+// as a form that does not decode; posted from another page: 400); render the page the browser is on
+// before the update (refresh and invalid are diffed against it); run the update and answer its
+// Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Index__Submit() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_/Submit", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Index__Submit__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
 		session := rq.Env.Session.(App__Session)
-		key := rt.RouteKey(rt.Route{Name: "Index.Submit", Method: "POST", Path: "/_/Submit"})
+		key := rt.RouteKey(rt.Route{Name: "Index.Submit", Method: "POST", Path: "/"})
 		values := route__values(rq.Form)
 		form, errs := decode__Index__NewPost(rq.Form)
 		if errs != nil {
@@ -150,12 +149,12 @@ func decode__Index__Clear__Params(_ map[string]string, _ url.Values) (r Index__C
 	return r, errs
 }
 
-// Route__Index__Clear serves route Index.Clear, POST /_/Clear: decode the parameters (404 when they
+// Route__Index__Clear serves route Index.Clear, POST /clears: decode the parameters (404 when they
 // do not); render the page the browser is on before the update (refresh and invalid are diffed
 // against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
 // or Task.notFound, 303 for Query.redirect).
 func Route__Index__Clear() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_/Clear", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/clears", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Index__Clear__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())

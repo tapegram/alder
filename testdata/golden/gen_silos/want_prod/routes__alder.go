@@ -136,12 +136,12 @@ func guard__Admin__Projects__Remove(rq *web.Request, params Admin__Projects__Rem
 }
 
 // Route__Admin__Projects__Remove serves route Admin.Projects.Remove, POST
-// /admin/orgs/{org}/projects/_/Remove: decode the parameters (404 when they do not); `requires`
-// (303 to App.login); the role (404); render the page the browser is on before the update (refresh
-// and invalid are diffed against it); run the update and answer its Response (a failed Task: 500,
-// 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+// /admin/orgs/{org}/projects: decode the parameters (404 when they do not); `requires` (303 to
+// App.login); the role (404); render the page the browser is on before the update (refresh and
+// invalid are diffed against it); run the update and answer its Response (a failed Task: 500, 404
+// for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Admin__Projects__Remove() web.Route {
-	return web.Route{Method: "POST", Pattern: "/admin/orgs/{org}/projects/_/Remove", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/admin/orgs/{org}/projects", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Admin__Projects__Remove__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -175,11 +175,11 @@ func decode__App__Leave__Params(_ map[string]string, _ url.Values) (r App__Leave
 	return r, errs
 }
 
-// Route__App__Leave serves route App.Leave, POST /_/Leave: decode the parameters (404 when they do
-// not); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
+// Route__App__Leave serves route App.Leave, POST /: decode the parameters (404 when they do not);
+// run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
 // Task.notFound, 303 for Query.redirect).
 func Route__App__Leave() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_/Leave", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__App__Leave__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -302,12 +302,12 @@ func guard__Notes__Index__Add(rq *web.Request, params Notes__Index__Add__Params)
 	return Notes__Index__Index__Session{User: app.User.Val, Org: app.Org, Role: app.Role}, nil
 }
 
-// Route__Notes__Index__Add serves route Notes.Index.Add, POST /notes/_/Add: decode the parameters
-// (404 when they do not); `requires` (303 to App.login); render the page the browser is on before
-// the update (refresh and invalid are diffed against it); run the update and answer its Response (a
+// Route__Notes__Index__Add serves route Notes.Index.Add, POST /notes: decode the parameters (404
+// when they do not); `requires` (303 to App.login); render the page the browser is on before the
+// update (refresh and invalid are diffed against it); run the update and answer its Response (a
 // failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Index__Add() web.Route {
-	return web.Route{Method: "POST", Pattern: "/notes/_/Add", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/notes", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Index__Add__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -403,11 +403,11 @@ func guard__Orgs__Pick(rq *web.Request, params Orgs__Pick__Params) (Orgs__Orgs__
 	return Orgs__Orgs__Session{User: app.User.Val, Org: app.Org, Role: app.Role}, nil
 }
 
-// Route__Orgs__Pick serves route Orgs.Pick, POST /orgs/_/Pick: decode the parameters (404 when they
-// do not); `requires` (303 to App.login); run the update and answer its Response (a failed Task:
-// 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+// Route__Orgs__Pick serves route Orgs.Pick, POST /orgs: decode the parameters (404 when they do
+// not); `requires` (303 to App.login); run the update and answer its Response (a failed Task: 500,
+// 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Orgs__Pick() web.Route {
-	return web.Route{Method: "POST", Pattern: "/orgs/_/Pick", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/orgs", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Orgs__Pick__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -460,13 +460,13 @@ func decode__Orgs__SwitchOrg(v url.Values) (r Orgs__SwitchOrg, errs []web.FieldE
 	return r, errs
 }
 
-// Route__Orgs__Switch serves route Orgs.Switch, POST /orgs/_/Switch: decode the parameters (404
+// Route__Orgs__Switch serves route Orgs.Switch, POST /orgs/switches: decode the parameters (404
 // when they do not); `requires` (303 to App.login); decode form SwitchOrg from the body (when it
 // does not: 422, the page the browser is on rendered again with the submitted values, no
 // Text.Secret field, and the errors, without calling update); run the update and answer its
 // Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Orgs__Switch() web.Route {
-	return web.Route{Method: "POST", Pattern: "/orgs/_/Switch", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/orgs/switches", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Orgs__Switch__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -475,7 +475,7 @@ func Route__Orgs__Switch() web.Route {
 		if stop != nil {
 			return *stop
 		}
-		key := rt.RouteKey(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/_/Switch"})
+		key := rt.RouteKey(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/switches"})
 		values := route__values(rq.Form)
 		form, errs := decode__Orgs__SwitchOrg(rq.Form)
 		if errs != nil {
@@ -593,14 +593,14 @@ func decode__Projects__Index__NewProject(v url.Values) (r Projects__Index__NewPr
 	return r, errs
 }
 
-// Route__Projects__Index__Add serves route Projects.Index.Add, POST /projects/_/Add: decode the
+// Route__Projects__Index__Add serves route Projects.Index.Add, POST /projects: decode the
 // parameters (404 when they do not); `requires` (303 to App.login); decode form NewProject from the
 // body (when it does not: 422, the page the browser is on rendered again with the submitted values,
 // no Text.Secret field, and the errors, without calling update); render the page the browser is on
 // before the update (refresh and invalid are diffed against it); run the update and answer its
 // Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Projects__Index__Add() web.Route {
-	return web.Route{Method: "POST", Pattern: "/projects/_/Add", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/projects", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Projects__Index__Add__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -609,7 +609,7 @@ func Route__Projects__Index__Add() web.Route {
 		if stop != nil {
 			return *stop
 		}
-		key := rt.RouteKey(rt.Route{Name: "Projects.Index.Add", Method: "POST", Path: "/projects/_/Add"})
+		key := rt.RouteKey(rt.Route{Name: "Projects.Index.Add", Method: "POST", Path: "/projects"})
 		values := route__values(rq.Form)
 		form, errs := decode__Projects__Index__NewProject(rq.Form)
 		if errs != nil {
@@ -672,13 +672,13 @@ func guard__Projects__Index__Rename(rq *web.Request, params Projects__Index__Ren
 	return Projects__Index__Index__Session{User: app.User.Val, Org: app.Org.Val, Role: app.Role}, nil
 }
 
-// Route__Projects__Index__Rename serves route Projects.Index.Rename, POST /projects/_/Rename:
-// decode the parameters (404 when they do not); `requires` (303 to App.login); render the page the
-// browser is on before the update (refresh and invalid are diffed against it); run the update and
-// answer its Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for
+// Route__Projects__Index__Rename serves route Projects.Index.Rename, POST /projects/renames: decode
+// the parameters (404 when they do not); `requires` (303 to App.login); render the page the browser
+// is on before the update (refresh and invalid are diffed against it); run the update and answer
+// its Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for
 // Query.redirect).
 func Route__Projects__Index__Rename() web.Route {
-	return web.Route{Method: "POST", Pattern: "/projects/_/Rename", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/projects/renames", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Projects__Index__Rename__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -735,13 +735,13 @@ func guard__Projects__Index__Remove(rq *web.Request, params Projects__Index__Rem
 	return Projects__Index__Index__Session{User: app.User.Val, Org: app.Org.Val, Role: app.Role}, nil
 }
 
-// Route__Projects__Index__Remove serves route Projects.Index.Remove, POST /projects/_/Remove:
-// decode the parameters (404 when they do not); `requires` (303 to App.login); render the page the
-// browser is on before the update (refresh and invalid are diffed against it); run the update and
-// answer its Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for
+// Route__Projects__Index__Remove serves route Projects.Index.Remove, POST /projects/removes: decode
+// the parameters (404 when they do not); `requires` (303 to App.login); render the page the browser
+// is on before the update (refresh and invalid are diffed against it); run the update and answer
+// its Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for
 // Query.redirect).
 func Route__Projects__Index__Remove() web.Route {
-	return web.Route{Method: "POST", Pattern: "/projects/_/Remove", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/projects/removes", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Projects__Index__Remove__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -793,12 +793,12 @@ func guard__Projects__Index__Seed(rq *web.Request, params Projects__Index__Seed_
 	return Projects__Index__Index__Session{User: app.User.Val, Org: app.Org.Val, Role: app.Role}, nil
 }
 
-// Route__Projects__Index__Seed serves route Projects.Index.Seed, POST /projects/_/Seed: decode the
+// Route__Projects__Index__Seed serves route Projects.Index.Seed, POST /projects/seeds: decode the
 // parameters (404 when they do not); `requires` (303 to App.login); render the page the browser is
 // on before the update (refresh and invalid are diffed against it); run the update and answer its
 // Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Projects__Index__Seed() web.Route {
-	return web.Route{Method: "POST", Pattern: "/projects/_/Seed", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/projects/seeds", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Projects__Index__Seed__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -850,12 +850,12 @@ func guard__Projects__Index__Tag(rq *web.Request, params Projects__Index__Tag__P
 	return Projects__Index__Index__Session{User: app.User.Val, Org: app.Org.Val, Role: app.Role}, nil
 }
 
-// Route__Projects__Index__Tag serves route Projects.Index.Tag, POST /projects/_/Tag: decode the
+// Route__Projects__Index__Tag serves route Projects.Index.Tag, POST /projects/tags: decode the
 // parameters (404 when they do not); `requires` (303 to App.login); render the page the browser is
 // on before the update (refresh and invalid are diffed against it); run the update and answer its
 // Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Projects__Index__Tag() web.Route {
-	return web.Route{Method: "POST", Pattern: "/projects/_/Tag", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/projects/tags", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Projects__Index__Tag__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())

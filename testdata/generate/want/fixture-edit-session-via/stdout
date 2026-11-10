@@ -23,7 +23,7 @@ edited app/Home.alder
 +
  login = Auth.Login.Login
  
- route Logout = POST "/_/Logout" { }
+ route Logout = DELETE "/session" { }
 @@ -25,14 +33,16 @@
    </Layout.Page>
  
@@ -48,7 +48,15 @@ edited app/Home.alder
  }
 --- a/app/Home.alder
 +++ b/app/Home.alder
-@@ -11,14 +11,14 @@
+@@ -4,21 +4,21 @@
+ import Table.Post
+ import Table.User
+ 
+-route Home   = GET  "/"         { }            requires user
++route Home   = GET  "/" { }            requires user
+ route Submit = POST "/" { } form Write requires user
+ 
+ type Model = { posts: List Post }
  
  Home.load : Home.Params -> Session -> Query Model
  Home.load params session = {

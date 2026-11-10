@@ -3913,15 +3913,19 @@ fills the route's parameters from the binder where it can:
 `--when <expression>` shows it only when the expression holds:
 
 ```text command=guestbook
-$ alder new msg Home Hide id:Entry.EntryId --in-for e --when "List.length model.entries > 1"
+$ alder new msg Home Hide id:Entry.EntryId --in-for e --when "List.length model.entries > 1" --method PATCH
 edited app/Home.alder
 --- a/app/Home.alder
 +++ b/app/Home.alder
-@@ -5,6 +5,7 @@
+@@ -3,8 +3,9 @@
+ import Layout
+ import Table.Entry
  
- route Home   = GET  "/"         { }
- route Submit = POST "/_/Submit" { } form Sign
-+route Hide   = POST "/"         { id: Entry.EntryId }
+-route Home   = GET  "/" { }
+-route Submit = POST "/" { } form Sign
++route Home   = GET   "/" { }
++route Submit = POST  "/" { } form Sign
++route Hide   = PATCH "/" { id: Entry.EntryId }
  
  type Model = { entries: List Entry }
  
@@ -3976,8 +3980,8 @@ A button in a loop has its route's name as its class (`hide`), so a
 test can count the rows' buttons (`Test.count "#entries .hide"
 page.doc`).
 
-- The new route `Hide` is POST "/" (the page's own path) with the `id` it
-  takes.
+- The new route `Hide` is PATCH "/" (the page's own path; the page's `Submit`
+  already answers POST there) with the `id` it takes.
 
 - Its `Hide.update` starts as `Response.refresh`.
 
@@ -4650,7 +4654,7 @@ alder fill --decl Teams.Show.Show.view - <<'EOF'
   <a href={Teams.Index.Index {}}>All teams</a>
 </Layout.Page>
 EOF
-alder new msg Teams.Show Remove user:User.UserId --in-for u --when model.isOwner
+alder new msg Teams.Show Remove user:User.UserId --in-for u --when model.isOwner --method DELETE --path /teams/{id}/members
 alder new form Teams.Show NewInvite email:Text.Email --msg SendInvite
 alder fill Teams.Show.Show.view - --hole '?removeId' <<'EOF'
 model.team.id
@@ -4802,8 +4806,8 @@ alder fill --decl Invites.Index.Index.view - <<'EOF'
   <a href={Teams.Index.Index {}}>Teams</a>
 </Layout.Page>
 EOF
-alder new msg Invites.Index Accept id:Invite.InviteId --in-for r
-alder new msg Invites.Index Decline id:Invite.InviteId --in-for r
+alder new msg Invites.Index Accept id:Invite.InviteId --in-for r --path /invites/accepted
+alder new msg Invites.Index Decline id:Invite.InviteId --in-for r --path /invites/declined
 alder fill Invites.Index.Index.view - --hole '?acceptId' <<'EOF'
 r.invite.id
 EOF

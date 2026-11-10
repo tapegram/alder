@@ -4,13 +4,13 @@ import Layout
 import Table.Todo
 import Table.User
 
-route Show   = GET  "/todos/{id}"          { id: Todo.TodoId }               requires user
+route Show   = GET    "/todos/{id}" { id: Todo.TodoId }               requires user
 -- `Db.getMine` finds the todo only when it is the session's user's: anyone else's, like a missing
 -- one, is a 404. The write routes take the id from their path, as the page does, and no `load`
 -- runs before them: `Db.updateMine` and `Db.deleteMine` make the same check, so another user's id
 -- is a 404 there too (book 06, "Rules").
-route Save   = POST "/todos/{id}/_/Save"   { id: Todo.TodoId } form EditTodo requires user
-route Delete = POST "/todos/{id}/_/Delete" { id: Todo.TodoId }               requires user
+route Save   = PUT    "/todos/{id}" { id: Todo.TodoId } form EditTodo requires user
+route Delete = DELETE "/todos/{id}" { id: Todo.TodoId }               requires user
 
 type Model = { todo: Todo }
 

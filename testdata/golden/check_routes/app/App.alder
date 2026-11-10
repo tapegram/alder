@@ -2,7 +2,7 @@ module App
 
 session { user: Maybe Text }
 
-route Logout = POST "/_/Logout" { }
+route Logout = DELETE "/session" { }
 
 Logout.update : Logout.Params -> Session -> Task Response
 Logout.update p session = {

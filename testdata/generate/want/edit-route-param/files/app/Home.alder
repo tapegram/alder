@@ -3,8 +3,8 @@ module Home
 import Layout
 import Table.Entry
 
-route Home   = GET  "/"         { q: Text = "" }
-route Submit = POST "/_/Submit" { } form Sign
+route Home   = GET  "/" { q: Text = "" }
+route Submit = POST "/" { } form Sign
 
 type Model = { entries: List Entry }
 

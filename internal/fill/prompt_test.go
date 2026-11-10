@@ -162,7 +162,7 @@ func TestStripFence(t *testing.T) {
 // binders and the module's route members are in scope by their full names, and the card says
 // what routes and `Response` are.
 func TestPrompt_RouteMember(t *testing.T) {
-	dir := holeApp(t, map[string]string{"app/Notes.alder": "module Notes\n\nroute Notes = GET \"/notes\" { }\nroute Clear = POST \"/notes/_/Clear\" { }\n\n" +
+	dir := holeApp(t, map[string]string{"app/Notes.alder": "module Notes\n\nroute Notes = GET \"/notes\" { }\nroute Clear = POST \"/notes\" { }\n\n" +
 		"Notes.load : Notes.Params -> Session -> Query Int\nNotes.load params session = Query.succeed 1\n\n" +
 		"Notes.view : Int -> Session -> Html\nNotes.view n session = <p>n</p>\n\n" +
 		"Clear.update : Clear.Params -> Session -> Task Response\nClear.update params session = ?clear\n"})

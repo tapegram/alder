@@ -7,7 +7,7 @@ import User
 -- The admin form: the org comes from the page's parameter and the role check gates the page
 -- (an Admin need not be a member); the page reads and writes that org's database.
 route Projects = GET  "/admin/orgs/{org}/projects"          { org: Org.OrgId }                        requires user, role Admin, silo org
-route Remove   = POST "/admin/orgs/{org}/projects/_/Remove" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
+route Remove   = POST "/admin/orgs/{org}/projects" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
 
 type Model = { org: Org.OrgId, projects: List Project }
 

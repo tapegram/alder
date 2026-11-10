@@ -1,7 +1,7 @@
 module Index
 
 route Index = GET  "/"        { }
-route Close = POST "/_/Close" { }
+route Close = POST "/" { }
 
 type Model = { open: Bool }
 

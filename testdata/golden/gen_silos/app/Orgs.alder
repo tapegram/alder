@@ -7,8 +7,8 @@ import User
 
 -- `choose org`'s page: it requires the user, not the org, and sets the org.
 route Orgs   = GET  "/orgs"          { }                requires user
-route Pick   = POST "/orgs/_/Pick"   { org: Org.OrgId } requires user
-route Switch = POST "/orgs/_/Switch" { } form SwitchOrg requires user
+route Pick   = POST "/orgs"   { org: Org.OrgId } requires user
+route Switch = POST "/orgs/switches" { } form SwitchOrg requires user
 
 type Model = { mine: List Membership }
 

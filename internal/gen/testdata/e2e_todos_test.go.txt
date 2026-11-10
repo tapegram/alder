@@ -166,7 +166,7 @@ func (e *e2e) do(method, path string, form url.Values, hdr ...string) e2eResp {
 	if form != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
-	if method == "POST" && e.at != "" {
+	if method != "GET" && e.at != "" {
 		req.Header.Set("Referer", e.srv.URL+e.at)
 	}
 	for _, h := range hdr {
@@ -337,7 +337,7 @@ func (r e2eResp) noCookie(t *testing.T) {
 const datastarHdr = "Datastar-Request: true"
 
 // msgRef matches the write route URLs a page renders: form actions and Datastar @post(…) clicks.
-var msgRef = regexp.MustCompile(`(?:action="|@post\(&#39;)(/[^"]*?)(?:"|&#39;)`)
+var msgRef = regexp.MustCompile(`(?:action="|@(?:post|put|patch|delete)\(&#39;)(/[^"]*?)(?:"|&#39;)`)
 
 // msgURL is the first write route URL in body whose path is path and, when id is not "", whose
 // query's id is id. The test posts to the URLs the page renders, never hand-built ones.
@@ -367,7 +367,7 @@ func (e *e2e) login(t *testing.T) string {
 // loginAs logs email in through the login page's form and returns the user id the cookie holds.
 func (e *e2e) loginAs(t *testing.T, email string) string {
 	t.Helper()
-	submit := msgURL(t, e.do("GET", "/login", nil).body, "/login/_/Submit", "")
+	submit := msgURL(t, e.do("GET", "/login", nil).body, "/session", "")
 	r := e.do("POST", submit, url.Values{"email": {email}, "password": {"pw"}})
 	r.redirect(t, "/")
 	s, raw := r.cookieSet(t)
@@ -386,10 +386,10 @@ func TestE2E_RequiresUnderDatastar(t *testing.T) {
 	r := e.do("GET", "/", nil, datastarHdr)
 	r.navigate(t, "/login")
 	// a write route with requires user too
-	r = e.do("POST", "/_/Toggle?id=x", nil, datastarHdr)
+	r = e.do("PATCH", "/todos/x", nil, datastarHdr)
 	r.navigate(t, "/login")
 	// without Datastar: the 303
-	e.do("POST", "/_/Toggle?id=x", nil).redirect(t, "/login")
+	e.do("PATCH", "/todos/x", nil).redirect(t, "/login")
 }
 
 func TestE2E_Todos(t *testing.T) {
@@ -402,7 +402,7 @@ func TestE2E_Todos(t *testing.T) {
 	// 2. the login page
 	r = e.do("GET", "/login", nil)
 	r.want(t, 200,
-		`<form method="post" action="/login/_/Submit`,
+		`<form method="post" action="/session`,
 		`type="password"`, `name="password"`, `<input name="email" type="email" required />`,
 		`<script type="module" src="/_alder/datastar-v1.0.0.js"></script>`,
 		`<title>Log in</title>`, `<ul class="errors" data-errors="form"></ul>`)
@@ -410,7 +410,7 @@ func TestE2E_Todos(t *testing.T) {
 	// a visitor's session is the default: nothing to store (the cookie is stored only when a
 	// response changes the session or runs Session.put)
 	r.noCookie(t)
-	loginSubmit := msgURL(t, r.body, "/login/_/Submit", "")
+	loginSubmit := msgURL(t, r.body, "/session", "")
 
 	// 3. wrong password: Response.invalid on the form (a 422), the password not echoed
 	r = e.do("POST", loginSubmit, url.Values{"email": {"a@b.c"}, "password": {"hunter2"}})
@@ -439,7 +439,7 @@ func TestE2E_Todos(t *testing.T) {
 
 	// 5. the empty list; the filter link marked current
 	r = e.do("GET", "/", nil)
-	r.want(t, 200, `<h1>Todos</h1>`, `<form method="post" action="/_/Submit`, `name="title"`, `<ul id="todos"></ul>`, `<p id="summary">0 open</p>`,
+	r.want(t, 200, `<h1>Todos</h1>`, `<form method="post" action="/todos`, `name="title"`, `<ul id="todos"></ul>`, `<p id="summary">0 open</p>`,
 		`<a href="/" aria-current="page">All</a>`, `<a href="/?filter=Active">Active</a>`)
 	r.html(t)
 	// a page view leaves the session as it was: no Set-Cookie, so the cookie keeps the time it
@@ -448,7 +448,7 @@ func TestE2E_Todos(t *testing.T) {
 	if s, _ := e.session(); s.User.Val != uid {
 		t.Fatalf("the jar's user %q, want %q", s.User.Val, uid)
 	}
-	submit := msgURL(t, r.body, "/_/Submit", "")
+	submit := msgURL(t, r.body, "/todos", "")
 	r = e.do("GET", "/?filter=Active", nil)
 	r.want(t, 200, `<a href="/?filter=Active" aria-current="page">Active</a>`, `<a href="/">All</a>`)
 	r = e.do("GET", "/?filter=Nope", nil)
@@ -474,18 +474,18 @@ func TestE2E_Todos(t *testing.T) {
 		t.Fatalf("%d Milk rows, want 1:\n%s", len(m), r.body)
 	}
 	id := m[0][1]
-	toggle := msgURL(t, r.body, "/_/Toggle", id)
+	toggle := msgURL(t, r.body, "/todos/"+url.PathEscape(id), "")
 	// a click button works without JavaScript: a form of its own posting the write route, which
 	// Datastar posts on submit
 	q := url.QueryEscape(id)
-	r.want(t, 200, `<li class=""><form method="post" action="/_/Toggle?id=`+q+`" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_/Toggle?id=`+q+`&#39;, window._alderO?.(&#39;form&#39;)))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>`)
+	r.want(t, 200, `<li class=""><form method="post" action="/todos/`+url.PathEscape(id)+`" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @patch(&#39;/todos/`+url.PathEscape(id)+`&#39;, window._alderO?.(&#39;form&#39;)))"><input type="hidden" name="_method" value="PATCH" /><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>`)
 
 	// 7. Toggle under Datastar: an SSE patch of <body> with the toggled row; without: a 303 to the
 	// page
-	r = e.do("POST", toggle, nil, datastarHdr)
+	r = e.do("PATCH", toggle, nil, datastarHdr)
 	r.sse(t)
 	for _, f := range []string{
-		`<ul id="todos"><li class="done"><form method="post" action="/_/Toggle?id=` + q + `" class="_alder-click"`,
+		`<ul id="todos"><li class="done"><form method="post" action="/todos/` + url.PathEscape(id) + `" class="_alder-click"`,
 		`>Undo</button></al-button></form><a href="/todos/` + id + `">Milk</a>`,
 		`<p id="summary">0 open</p>`,
 	} {
@@ -502,8 +502,8 @@ func TestE2E_Todos(t *testing.T) {
 	// (Post/Redirect/Get), which shows the toggle
 	r = e.do("GET", "/?filter=Completed", nil)
 	r.want(t, 200, `>Undo</button>`)
-	toggle = msgURL(t, r.body, "/_/Toggle", id)
-	r = e.do("POST", toggle, url.Values{})
+	toggle = msgURL(t, r.body, "/todos/"+url.PathEscape(id), "")
+	r = e.do("PATCH", toggle, url.Values{})
 	r.redirect(t, "/?filter=Completed")
 	r.noCookie(t)
 	t.Run("RefreshKeepsFilter", func(t *testing.T) {
@@ -525,8 +525,8 @@ func TestE2E_Todos(t *testing.T) {
 
 	// 9. Delete (from the list, under Datastar): the patched list is empty, and stays empty
 	r = e.do("GET", "/", nil)
-	del := msgURL(t, r.body, "/_/Delete", id)
-	r = e.do("POST", del, nil, datastarHdr)
+	del := msgURL(t, r.body, "/todos", id)
+	r = e.do("DELETE", del, nil, datastarHdr)
 	r.sse(t)
 	r.want(t, 200, `<ul id="todos"></ul>`, `<p id="summary">0 open</p>`)
 	r.lacks(t, "Milk")
@@ -558,16 +558,17 @@ func TestE2E_Todos(t *testing.T) {
 	b.do("GET", "/todos/"+url.PathEscape(breadID), nil).want(t, 404, `<h1>Not found</h1>`)
 	q = url.QueryEscape(breadID)
 	for _, attack := range []struct {
-		path string
-		form url.Values
+		method string
+		path   string
+		form   url.Values
 	}{
-		{"/_/Toggle?id=" + q, nil},
-		{"/_/Delete?id=" + q, nil},
-		{"/todos/" + url.PathEscape(breadID) + "/_/Save", url.Values{"title": {"pwned"}}},
-		{"/todos/" + url.PathEscape(breadID) + "/_/Delete", nil},
+		{"PATCH", "/todos/" + url.PathEscape(breadID), nil},
+		{"DELETE", "/todos?id=" + q, nil},
+		{"PUT", "/todos/" + url.PathEscape(breadID), url.Values{"title": {"pwned"}}},
+		{"DELETE", "/todos/" + url.PathEscape(breadID), nil},
 	} {
-		b.do("POST", attack.path, attack.form).want(t, 404, `<h1>Not found</h1>`)
-		r = b.do("POST", attack.path, attack.form, datastarHdr)
+		b.do(attack.method, attack.path, attack.form).want(t, 404, `<h1>Not found</h1>`)
+		r = b.do(attack.method, attack.path, attack.form, datastarHdr)
 		r.sse(t)
 		r.want(t, 200, `<h1>Not found</h1>`)
 	}
@@ -576,11 +577,11 @@ func TestE2E_Todos(t *testing.T) {
 	r.lacks(t, "pwned")
 	// the owner can: Show's write routes take the todo's id from their path
 	r = e.do("GET", "/todos/"+url.PathEscape(breadID), nil)
-	save := msgURL(t, r.body, "/todos/"+breadID+"/_/Save", "")
-	if save != "/todos/"+url.PathEscape(breadID)+"/_/Save" {
+	save := msgURL(t, r.body, "/todos/"+breadID, "")
+	if save != "/todos/"+url.PathEscape(breadID) {
 		t.Fatalf("Show's Save URL %q", save)
 	}
-	e.do("POST", save, url.Values{"title": {"Rye"}}).redirect(t, "/")
+	e.do("PUT", save, url.Values{"title": {"Rye"}}).redirect(t, "/")
 	e.do("GET", "/", nil).want(t, 200, `">Rye</a>`)
 
 	// 11. a tampered cookie (a forged payload under the old signature) is no session
@@ -644,7 +645,7 @@ func TestE2E_Todos(t *testing.T) {
 	// production: the same page without the error text
 	p := newE2E(t, false)
 	pr := p.do("GET", "/login", nil)
-	r = p.do("POST", msgURL(t, pr.body, "/login/_/Submit", ""), url.Values{"email": {"boom@b.c"}, "password": {"pw"}})
+	r = p.do("POST", msgURL(t, pr.body, "/session", ""), url.Values{"email": {"boom@b.c"}, "password": {"pw"}})
 	r.want(t, 500, `<h1>Something went wrong</h1>`, `<p>Please try again.</p>`)
 	r.html(t)
 	r.lacks(t, "password service down", "<!-- error")
@@ -652,8 +653,8 @@ func TestE2E_Todos(t *testing.T) {
 	// 13. App's write route (the URL the page renders): Logout redirects to the login page (its
 	// update says so) with no user
 	r = e.do("GET", "/", nil)
-	logout := msgURL(t, r.body, "/_/Logout", "")
-	r = e.do("POST", logout, nil, datastarHdr)
+	logout := msgURL(t, r.body, "/session", "")
+	r = e.do("DELETE", logout, nil, datastarHdr)
 	r.navigate(t, "/login")
 	if s, raw := r.cookieSet(t); s.User.Ok {
 		t.Fatalf("session after a Datastar Logout: %s", raw)
@@ -662,7 +663,7 @@ func TestE2E_Todos(t *testing.T) {
 	if uid2 != uid {
 		t.Fatalf("logged in again as %q, want %q", uid2, uid)
 	}
-	r = e.do("POST", logout, nil)
+	r = e.do("DELETE", logout, nil)
 	r.redirect(t, "/login")
 	if s, raw := r.cookieSet(t); s.User.Ok {
 		t.Fatalf("session after Logout: %s", raw)

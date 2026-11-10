@@ -4,7 +4,7 @@ import Note
 import User
 
 route Notes = GET  "/notes"       { }              requires user
-route Add   = POST "/notes/_/Add" { } form NewNote requires user
+route Add   = POST "/notes" { } form NewNote requires user
 
 type Model = { notes: List Note }
 

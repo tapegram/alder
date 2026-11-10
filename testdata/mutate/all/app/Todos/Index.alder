@@ -5,9 +5,9 @@ import Todo
 import User
 
 route Index  = GET  "/"         { filter: Todo.Filter = All }              requires user
-route Submit = POST "/_/Submit" { filter: Todo.Filter = All } form NewTodo requires user
-route Toggle = POST "/_/Toggle" { id: Todo.TodoId }                        requires user
-route Delete = POST "/_/Delete" { id: Todo.TodoId }                        requires user
+route Submit = POST "/" { filter: Todo.Filter = All } form NewTodo requires user
+route Toggle = POST "/toggles" { id: Todo.TodoId }                        requires user
+route Delete = POST "/deletes" { id: Todo.TodoId }                        requires user
 
 type Model = { filter: Todo.Filter, todos: List Todo }
 

@@ -2,7 +2,7 @@ module App
 
 session { n: Int = 0 }
 
-route Noop = POST "/_/Noop" { }
+route Noop = POST "/" { }
 
 Noop.update : Noop.Params -> Session -> Task Response
 Noop.update params session = Task.succeed Response.refresh

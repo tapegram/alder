@@ -5,8 +5,8 @@ import Item
 route Show   = GET  "/items/{id}"          { id: Item.ItemId } requires user
 -- load reads the item with Db.getMine, but a write route does not run load: its scoped write of
 -- p.id is not covered by it, so its `scope dropped` is a mutant
-route Rename = POST "/items/{id}/_/Rename" { id: Item.ItemId } requires user
-route Remove = POST "/items/{id}/_/Remove" { id: Item.ItemId } requires user
+route Rename = POST "/items/{id}" { id: Item.ItemId } requires user
+route Remove = POST "/items/{id}/removes" { id: Item.ItemId } requires user
 
 type Model = { item: Item }
 

@@ -1,7 +1,7 @@
 module Index
 
 route Index  = GET  "/"         { q: Text = "" }
-route Search = POST "/_/Search" { } form Query
+route Search = POST "/" { } form Query
 
 type Model = { q: Text }
 

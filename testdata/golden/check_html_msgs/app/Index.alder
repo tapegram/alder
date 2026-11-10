@@ -3,7 +3,7 @@ module Index
 import Todo
 
 route Index  = GET  "/"         { }
-route Toggle = POST "/_/Toggle" { id: Todo.TodoId }
+route Toggle = POST "/" { id: Todo.TodoId }
 
 type Model = { todos: List Todo }
 

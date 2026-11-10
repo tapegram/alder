@@ -124,7 +124,7 @@ func Projects__Index__Index__view(model Projects__Index__Model, session Projects
 	return html.El("html", nil, html.El("body", nil,
 		html.El("h1", nil, html.Text(model.Org)),
 		html.El("p", []html.Attr{html.A("id", "labels")}, html.Text(std.TextFromInt(model.Labels))),
-		html.FormToRoute(rt.Route{Name: "Projects.Index.Add", Method: "POST", Path: "/projects/_/Add"}, nil,
+		html.FormToRoute(rt.Route{Name: "Projects.Index.Add", Method: "POST", Path: "/projects"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Projects.Index.NewProject", Name: "name", Type: "text", Label: "Name"}),
 			html.Input(html.Control{Kind: "errors", Form: "Projects.Index.NewProject"}),
 			html.El("button", nil, html.Text("Add")),
@@ -132,12 +132,12 @@ func Projects__Index__Index__view(model Projects__Index__Model, session Projects
 		html.El("ul", nil, html.Nodes(std.ListMap(func(p Project__Project) html.Node {
 			return html.El("li", nil,
 				html.El("span", nil, html.Text(p.Name)),
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Rename", Method: "POST", Path: "/projects/_/Rename", Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("rename")),
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Remove", Method: "POST", Path: "/projects/_/Remove", Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("remove")),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Rename", Method: "POST", Path: "/projects/renames", Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("rename")),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Remove", Method: "POST", Path: "/projects/removes", Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("remove")),
 			)
 		}, model.Projects)...)),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Seed", Method: "POST", Path: "/projects/_/Seed"})}, html.Text("seed")),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Tag", Method: "POST", Path: "/projects/_/Tag"})}, html.Text("tag")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Seed", Method: "POST", Path: "/projects/seeds"})}, html.Text("seed")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Tag", Method: "POST", Path: "/projects/tags"})}, html.Text("tag")),
 	))
 }
 

@@ -3,7 +3,7 @@ module Switch2
 import Item
 
 route Switch2 = GET  "/switch2/{id}"        { id: Item.ItemId } requires user
-route Drop    = POST "/switch2/{id}/_/Drop" { id: Item.ItemId } requires user
+route Drop    = POST "/switch2/{id}" { id: Item.ItemId } requires user
 
 type Model = { item: Item }
 

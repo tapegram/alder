@@ -9,8 +9,8 @@ session { user: Maybe User.UserId, role: User.Role = Reader }
 
 login = Auth.Login.Login
 
-route Logout = POST "/_/Logout" { }
-route Ping   = POST "/ping"     { }
+route Logout = DELETE "/session" { }
+route Ping   = POST   "/ping"    { }
 
 Logout.update : Logout.Params -> Session -> Task Response
 Logout.update p session = {

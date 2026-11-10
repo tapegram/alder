@@ -98,11 +98,11 @@ func decode__Wood__Bump__Params(params map[string]string, q url.Values) (r Wood_
 	return r, errs
 }
 
-// Route__Wood__Bump serves route Wood.Bump, POST /r/{cfg}/wood/Results/_/Bump: decode the
-// parameters (404 when they do not); run the update and answer its Response (a failed Task: 500,
-// 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+// Route__Wood__Bump serves route Wood.Bump, POST /r/{cfg}/wood/Results: decode the parameters (404
+// when they do not); run the update and answer its Response (a failed Task: 500, 404 for
+// Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Wood__Bump() web.Route {
-	return web.Route{Method: "POST", Pattern: "/r/{cfg}/wood/Results/_/Bump", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/r/{cfg}/wood/Results", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Wood__Bump__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())

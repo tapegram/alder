@@ -4,8 +4,8 @@ import Layout
 import Table.Entry
 
 route Home          = GET  "/"         { }
-route Submit        = POST "/_/Submit" { } form Sign
-route SubmitContact = POST "/"         { } form Contact
+route Submit        = POST "/"         { } form Sign
+route SubmitContact = POST "/contacts" { } form Contact
 
 type Model = { entries: List Entry }
 

@@ -5,7 +5,7 @@ import User
 
 -- the user key: `@owner` and Db.mine, as in M11
 route Index = GET  "/notes"       { } requires user
-route Add   = POST "/notes/_/Add" { } requires user
+route Add   = POST "/notes" { } requires user
 
 type Model = { notes: List Note }
 

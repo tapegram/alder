@@ -7,11 +7,11 @@ import Table.Comment
 import Table.Post
 import Table.User
 
-route Edit      = GET  "/write/{id}"             { id: Post.PostId }               requires user, role Author
-route Save      = POST "/write/{id}/_/Save"      { id: Post.PostId } form EditPost requires user, role Author
-route Publish   = POST "/write/{id}/_/Publish"   { id: Post.PostId }               requires user, role Author
-route Unpublish = POST "/write/{id}/_/Unpublish" { id: Post.PostId }               requires user, role Author
-route Delete    = POST "/write/{id}/_/Delete"    { id: Post.PostId }               requires user, role Author
+route Edit      = GET    "/write/{id}"             { id: Post.PostId }               requires user, role Author
+route Save      = PUT    "/write/{id}"             { id: Post.PostId } form EditPost requires user, role Author
+route Publish   = POST   "/write/{id}/publication" { id: Post.PostId }               requires user, role Author
+route Unpublish = DELETE "/write/{id}/publication" { id: Post.PostId }               requires user, role Author
+route Delete    = DELETE "/write/{id}"             { id: Post.PostId }               requires user, role Author
 
 type Model = { post: Post }
 

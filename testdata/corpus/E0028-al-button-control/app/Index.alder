@@ -3,7 +3,7 @@ module Index
 import Ui
 
 route Index = GET  "/"     { }
-route Go    = POST "/_/Go" { }
+route Go    = POST "/" { }
 
 type Model = {
   open: Bool,

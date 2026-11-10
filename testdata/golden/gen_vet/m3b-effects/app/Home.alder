@@ -4,7 +4,7 @@ import Order
 import Shop
 
 route Home = GET  "/home"       { }            requires user
-route Buy  = POST "/home/_/Buy" { code: Text } requires user
+route Buy  = POST "/home" { code: Text } requires user
 
 type Model = { n: Int, orders: List Order.Order }
 

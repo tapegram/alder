@@ -65,13 +65,13 @@ func Orgs__Switch__update(p Orgs__Switch__Params, session Orgs__Orgs__Session) e
 func Orgs__Orgs__view(model Orgs__Model, session Orgs__Orgs__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("ul", nil, html.Nodes(std.ListMap(func(m Membership__Membership) html.Node {
-			return html.El("li", nil, html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Orgs.Pick", Method: "POST", Path: "/orgs/_/Pick", Query: []rt.KV{{Key: "org", Value: m.Org}}})}, html.Text("pick")))
+			return html.El("li", nil, html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Orgs.Pick", Method: "POST", Path: "/orgs", Query: []rt.KV{{Key: "org", Value: m.Org}}})}, html.Text("pick")))
 		}, model.Mine)...)),
-		html.FormToRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/_/Switch"}, nil,
+		html.FormToRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/switches"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Orgs.SwitchOrg", Name: "org", Type: "text", Label: "Org"}),
 			html.Input(html.Control{Kind: "errors", Form: "Orgs.SwitchOrg"}),
 			html.El("button", nil, html.Text("switch")),
 		),
-		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Leave", Method: "POST", Path: "/_/Leave"})}, html.Text("leave")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Leave", Method: "POST", Path: "/"})}, html.Text("leave")),
 	))
 }

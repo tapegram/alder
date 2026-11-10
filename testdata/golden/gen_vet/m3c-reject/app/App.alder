@@ -8,7 +8,7 @@ session { n: Int = 0 }
 
 login = Names.Names
 
-route Reset = POST "/_/Reset" { }
+route Reset = POST "/" { }
 
 Reset.update : Reset.Params -> Session -> Task Response
 Reset.update p session = {
