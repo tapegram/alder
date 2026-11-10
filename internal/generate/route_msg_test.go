@@ -48,6 +48,15 @@ func wantRefusal(t *testing.T, err error, want string) {
 	}
 }
 
+// wantRefusalIs is wantRefusal for the whole text of the refusal.
+func wantRefusalIs(t *testing.T, err error, want string) {
+	t.Helper()
+	var r *Refusal
+	if !errors.As(err, &r) || r.Msg != want {
+		t.Fatalf("err = %v, want the refusal %q", err, want)
+	}
+}
+
 func TestRouteMsg_PagePath(t *testing.T) {
 	p := repliesProgram(t, "")
 	edits, err := NewMsg(p, "Replies.Show", "Delete", nil, MsgOptions{Method: "DELETE"})
@@ -109,15 +118,8 @@ func TestRouteMsg_SecondOnPageClashes(t *testing.T) {
 	like := "\nroute Like = POST \"/replies/{id}\" { id: Int }\n\nLike.update : Like.Params -> Session -> Task Response\nLike.update p session = Task.succeed Response.refresh\n"
 	p := repliesProgram(t, like)
 	_, err := NewMsg(p, "Replies.Show", "Archive", nil, MsgOptions{})
-	have := routeClash(p, "POST", "/replies/{id}", "")
-	if have == nil {
-		t.Fatal("fixture has no Like route")
-	}
-	want := clashRefusal(have, "Archive", "POST", "/replies/{id}")
-	var r *Refusal
-	if !errors.As(err, &r) || r.Msg != want.Error() {
-		t.Fatalf("err = %v, want %v", err, want)
-	}
+	// new msg has no --msg: only --path and --method are offered
+	wantRefusalIs(t, err, "routes `Replies.Show.Like` and `Archive` both answer POST /replies/{id}; give the new route its own resource with `--path` (and `--method` for what happens to it)")
 }
 
 func TestAppMsg_PathRequired(t *testing.T) {

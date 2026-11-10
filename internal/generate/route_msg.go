@@ -67,7 +67,7 @@ func newRouteMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions
 		return nil, Refusef("`%s` is not a route path: it %s; %s", path, why, check.PagePathRule)
 	}
 	if have := routeClash(p, method, path, ""); have != nil {
-		return nil, clashRefusal(have, name, method, path)
+		return nil, clashRefusal(have, page, name, method, path, false)
 	}
 	imports := newImports(page, p.Std)
 	d := MsgData{Name: name, Click: name, Label: Humanize(name), ID: o.ID}

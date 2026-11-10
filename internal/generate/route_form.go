@@ -65,6 +65,9 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 	if attach != nil && (o.Into != "" || o.Hole) {
 		return nil, Refusef("`%s` has its `update` already: --into and --hole belong to a new route", route)
 	}
+	if attach != nil && (o.Path != "" || o.Method != "") {
+		return nil, Refusef("`--path` and `--method` belong to a new route; `%s` has its path already", route)
+	}
 	for _, n := range []string{o.Name, route} {
 		if n == route && attach != nil {
 			continue
@@ -171,7 +174,7 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 	}
 	if attach == nil {
 		if have := routeClash(p, method, path, ""); have != nil {
-			return nil, clashRefusal(have, route, method, path)
+			return nil, clashRefusal(have, o.Page, route, method, path, true)
 		}
 	}
 	ps := "{ }"

@@ -30,7 +30,7 @@ func newAppRouteMsg(p *Program, name string, fields []FieldSpec, path, method st
 		method = "POST"
 	}
 	if have := routeClash(p, method, path, ""); have != nil {
-		return nil, clashRefusal(have, name, method, path)
+		return nil, clashRefusal(have, "App", name, method, path, false)
 	}
 	imports := newImports("App", p.Std)
 	var decl []string

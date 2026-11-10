@@ -3913,7 +3913,7 @@ fills the route's parameters from the binder where it can:
 `--when <expression>` shows it only when the expression holds:
 
 ```text command=guestbook
-$ alder new msg Home Hide id:Entry.EntryId --in-for e --when "List.length model.entries > 1" --method PATCH
+$ alder new msg Home Hide id:Entry.EntryId --in-for e --when "List.length model.entries > 1" --path /entries/{id}/hidden --method PUT
 edited app/Home.alder
 --- a/app/Home.alder
 +++ b/app/Home.alder
@@ -3923,9 +3923,9 @@ edited app/Home.alder
  
 -route Home   = GET  "/" { }
 -route Submit = POST "/" { } form Sign
-+route Home   = GET   "/" { }
-+route Submit = POST  "/" { } form Sign
-+route Hide   = PATCH "/" { id: Entry.EntryId }
++route Home   = GET  "/"                    { }
++route Submit = POST "/"                    { } form Sign
++route Hide   = PUT  "/entries/{id}/hidden" { id: Entry.EntryId }
  
  type Model = { entries: List Entry }
  
@@ -3980,8 +3980,12 @@ A button in a loop has its route's name as its class (`hide`), so a
 test can count the rows' buttons (`Test.count "#entries .hide"
 page.doc`).
 
-- The new route `Hide` is PATCH "/" (the page's own path; the page's `Submit`
-  already answers POST there) with the `id` it takes.
+- The new route `Hide` is `PUT "/entries/{id}/hidden"`: the path names the
+  resource, the entry's hidden state, and `PUT` sets it. Left out, `--path`
+  would be the page's own path, `/`, which names the guestbook and not the
+  entry, and where the page's `Submit` already answers `POST`. The `{id}`
+  segment is the route's `id` field, which the button fills from the row
+  (`e.id`).
 
 - Its `Hide.update` starts as `Response.refresh`.
 
@@ -5172,9 +5176,14 @@ parameters even when the new path leaves one out: it rides the query string,
 so the redirect back to the page still has it.
 
 Two routes cannot answer the same method and path, so a second form that
-inserts into the same table, from another page, is refused with both ways
-out: give the new route its own resource with `--path`, or attach the form
-to the route that is there with `--msg`.
+inserts into the same table is refused, with the ways out that work. Giving
+the new route its own resource with `--path` always does. When the route
+that is there belongs to the same page, is a write route and has no form
+yet, `--msg <its name>` attaches the form to it instead (and then refuses
+`--path` and `--method`: that route has its own). When it belongs to
+another page, the refusal names that module: `--msg` names a route of this
+page only, so sending that route from here is a form or a button written
+into the view by hand.
 
 ### A form with parameters
 
@@ -5186,8 +5195,8 @@ hole, as a button's is, because the generator cannot know where on the page
 it comes from.
 
 A name the module already declares is refused, so the form and its route
-come from one command (`--msg` names the route), and a form is not added to
-a route that exists. The form's fields are read as `params.form`, and a
+come from one command (`--msg` names the route); the one exception is the
+form-less write route that `--msg` attaches the form to. The form's fields are read as `params.form`, and a
 comment above the form says so.
 
 ### A login's route

@@ -61,10 +61,27 @@ func TestRouteClash_Except(t *testing.T) {
 }
 
 func TestClashRefusal_Text(t *testing.T) {
-	have := &Route{Module: "Replies.Show", Name: "Delete"}
-	err := clashRefusal(have, "Remove", "DELETE", "/replies/{id}")
-	want := "routes `Replies.Show.Delete` and `Remove` both answer DELETE /replies/{id}; give the new route its own resource with `--path`, or attach the form to `Replies.Show.Delete` with `--msg Delete`"
-	if err == nil || err.Error() != want {
-		t.Errorf("got %v\nwant %s", err, want)
+	formless := &Route{Module: "Replies.Show", Name: "Delete", Method: "DELETE"}
+	withForm := &Route{Module: "Replies.Show", Name: "Delete", Method: "DELETE", Form: "Gone"}
+	for _, c := range []struct {
+		name string
+		have *Route
+		from string
+		form bool
+		want string
+	}{
+		{"form, same module, no form yet", formless, "Replies.Show", true,
+			"routes `Replies.Show.Delete` and `Remove` both answer DELETE /replies/{id}; give the new route its own resource with `--path`, or attach the form to `Replies.Show.Delete` with `--msg Delete`"},
+		{"form, same module, has a form", withForm, "Replies.Show", true,
+			"routes `Replies.Show.Delete` and `Remove` both answer DELETE /replies/{id}; give the new route its own resource with `--path`"},
+		{"msg, same module", formless, "Replies.Show", false,
+			"routes `Replies.Show.Delete` and `Remove` both answer DELETE /replies/{id}; give the new route its own resource with `--path` (and `--method` for what happens to it)"},
+		{"form, other module", formless, "Home", true,
+			"routes `Replies.Show.Delete` and `Remove` both answer DELETE /replies/{id}; give the new route its own resource with `--path`; or, to send `Replies.Show.Delete` itself, write it into `Home`'s `view` by hand: it is a route of `Replies.Show`"},
+	} {
+		err := clashRefusal(c.have, c.from, "Remove", "DELETE", "/replies/{id}", c.form)
+		if err == nil || err.Error() != c.want {
+			t.Errorf("%s: got %v\nwant %s", c.name, err, c.want)
+		}
 	}
 }

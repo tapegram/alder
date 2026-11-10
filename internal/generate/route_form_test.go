@@ -1,7 +1,6 @@
 package generate
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -187,15 +186,34 @@ func TestRouteForm_TableClashRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = NewForm(p, FormOptions{Page: "Other", Name: "Reply2", Into: "Reply", Fields: formFields(t, "body:Text.NonEmpty")})
-	have := routeClash(p, "POST", "/replies", "")
-	if have == nil {
-		t.Fatal("no first route")
+	// Contact.SubmitSay is another module's route: --msg cannot reach it, so the refusal names
+	// its module instead
+	wantRefusalIs(t, err, "routes `Contact.SubmitSay` and `SubmitReply2` both answer POST /replies; give the new route its own resource with `--path`; or, to send `Contact.SubmitSay` itself, write it into `Other`'s `view` by hand: it is a route of `Contact`")
+}
+
+// A clash with a route of the page that has a form already: --msg would be refused, so only
+// --path is offered.
+func TestRouteForm_ClashWithFormRouteOffersPathOnly(t *testing.T) {
+	p, _ := formsApp(t)
+	_, err := NewForm(p, FormOptions{Page: "Home", Name: "Comment", Hole: true, Fields: formFields(t, "body:Text.NonEmpty")})
+	wantRefusalIs(t, err, "routes `Home.Submit` and `SubmitComment` both answer POST /; give the new route its own resource with `--path`")
+}
+
+// A clash with a form-less write route of the page: --msg attaches the form to it.
+func TestRouteForm_ClashWithFormlessRouteOffersMsg(t *testing.T) {
+	p, dir := formsApp(t)
+	src := "\nroute Send = POST \"/contact\" { }\n\nSend.update : Send.Params -> Session -> Task Response\nSend.update params session = Task.succeed Response.refresh\n"
+	f := filepath.Join(dir, "app/Contact.alder")
+	b, _ := os.ReadFile(f)
+	if err := os.WriteFile(f, append(b, src...), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	want := clashRefusal(have, "SubmitReply2", "POST", "/replies")
-	var r *Refusal
-	if !errors.As(err, &r) || r.Msg != want.Error() || !strings.Contains(r.Msg, "Contact.SubmitSay") {
-		t.Fatalf("err = %v, want %v", err, want)
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
 	}
+	_, err = NewForm(p, FormOptions{Page: "Contact", Name: "Message", Hole: true, Fields: formFields(t, "email:Text.Email")})
+	wantRefusalIs(t, err, "routes `Contact.Send` and `SubmitMessage` both answer POST /contact; give the new route its own resource with `--path`, or attach the form to `Contact.Send` with `--msg Send`")
 }
 
 func TestRouteForm_MsgAttachNoClash(t *testing.T) {
@@ -217,5 +235,27 @@ func TestRouteForm_MsgAttachNoClash(t *testing.T) {
 	}
 	if body := msgBody(t, edits, "app/Contact.alder"); strings.Count(body, "route Send") != 1 || !strings.Contains(body, "form Message") {
 		t.Errorf("got:\n%s", body)
+	}
+}
+
+// --msg attaching the form to a route that is there refuses --path and --method: the route has
+// its own.
+func TestRouteForm_MsgAttachRefusesPathAndMethod(t *testing.T) {
+	p, dir := formsApp(t)
+	src := "\nroute Send = POST \"/contact\" { }\n\nSend.update : Send.Params -> Session -> Task Response\nSend.update params session = Task.succeed Response.refresh\n"
+	f := filepath.Join(dir, "app/Contact.alder")
+	b, _ := os.ReadFile(f)
+	if err := os.WriteFile(f, append(b, src...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "`--path` and `--method` belong to a new route; `Send` has its path already"
+	for _, o := range []FormOptions{{Path: "/messages"}, {Method: "PUT"}} {
+		o.Page, o.Name, o.Msg, o.Fields = "Contact", "Message", "Send", formFields(t, "email:Text.Email")
+		_, err := NewForm(p, o)
+		wantRefusalIs(t, err, want)
 	}
 }

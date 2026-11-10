@@ -1,6 +1,7 @@
 package generate
 
 import (
+	"fmt"
 	"strings"
 
 	"alder/internal/check"
@@ -96,9 +97,22 @@ func routeClash(p *Program, method, path, except string) *Route {
 	return nil
 }
 
-// clashRefusal is the refusal for a new route newName answering method and path, which route
-// have already answers.
-func clashRefusal(have *Route, newName, method, path string) error {
+// clashRefusal is the refusal for a new route newName of module from answering method and path,
+// which route have already answers. It offers only the ways out that work: `--msg` attaches a
+// form (form is true for `new form`) to a write route of the same module that has no form yet;
+// `--path` (and, for a message, `--method`) gives the new route a resource of its own; a route
+// of another module is sent from from's view by hand.
+func clashRefusal(have *Route, from, newName, method, path string, form bool) error {
 	full := have.Module + "." + have.Name
-	return Refusef("routes `%s` and `%s` both answer %s %s; give the new route its own resource with `--path`, or attach the form to `%s` with `--msg %s`", full, newName, method, path, full, have.Name)
+	msg := fmt.Sprintf("routes `%s` and `%s` both answer %s %s; give the new route its own resource with `--path`", full, newName, method, path)
+	if !form {
+		msg += " (and `--method` for what happens to it)"
+	}
+	switch {
+	case form && have.Module == from && have.Write() && have.Form == "":
+		msg += fmt.Sprintf(", or attach the form to `%s` with `--msg %s`", full, have.Name)
+	case have.Module != from:
+		msg += fmt.Sprintf("; or, to send `%s` itself, write it into `%s`'s `view` by hand: it is a route of `%s`", full, from, have.Module)
+	}
+	return Refusef("%s", msg)
 }
