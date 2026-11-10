@@ -1601,8 +1601,8 @@ that has one, `False` for a `Bool`; those are left out, and the route
 decodes the same record.
 
 A page opened as `Todos.Index.Index { filter: Active }` renders its form
-as `Submit { filter: Active }`, whose address is `/_/Submit?filter=Active`;
-that is the route to write. `Submit {}` is `/_/Submit`, another address,
+as `Submit { filter: Active }`, whose address is `/todos?filter=Active`;
+that is the route to write. `Submit {}` is `/todos`, another address,
 and the step fails "the page /?filter=Active has no form NewTodo
 (Todos.Index.Submit)".
 
@@ -1787,7 +1787,7 @@ Section 10 shows how each is made.
   `redirect` the server rendered the page, and the browser compares each
   region the answer patched with the same region of the full render.
 
-  A difference fails the step: "POST /_/Toggle: the patched page differs
+  A difference fails the step: "PATCH /todos/3: the patched page differs
   from a full render at" the path of the first element that differs (named
   as a failed `Doc` comparison names it, below), with both markups, as the
   browser's parser builds them. A region the answer did not send is not
@@ -1807,7 +1807,7 @@ Section 10 shows how each is made.
 
 - **A patch with nowhere to go.** A `render` whose root `id` the held page
   lacks patches nothing in a real browser, silently. The test fails the
-  step: "POST /_/Toggle: the answer patched `#todo-9`, which the page does
+  step: "PATCH /todos/9: the answer patched `#todo-9`, which the page does
   not have".
 
   A view with no root `id` is not patched either: the answer is
@@ -2039,7 +2039,7 @@ it would print:
 
 ```text
 FAIL Todos.Index "the page and an empty view"
-  left:  <ul id="todos"><li class=""><form method="post" action="/_/Toggle?id=gt7bDOoKtnkV0adE5DOj" class="_alder-click" data-on…
+  left:  <ul id="todos"><li class=""><form method="post" action="/todos/gt7bDOoKtnkV0adE5DOj" class="_alder-click" data-on…
   right: <ul id="todos"></ul>
   note:  the documents differ at body > al-page > main > al-stack > ul#todos: left 1 child <li>, right 0
   trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.get Todos.Index.Index", "Db.mine Todo", "Db.all Todo"]
@@ -2077,7 +2077,7 @@ these texts, and nothing is sent:
 - "form NewTodo has no field `colour`": a `Test.submitRaw` name the form
   does not declare.
 
-- "POST /_/Toggle: the patched page differs from a full render at …",
+- "PATCH /todos/3: the patched page differs from a full render at …",
   "… the answer patched #todo-1 unlike Todos.Index.Row's view rendered on
   its own …" and "… the answer patched `#todo-9`, which the page does not
   have": the checks of "What the browser checks on every step".
@@ -2280,7 +2280,7 @@ test "adding a todo through the page"   (a fresh database in memory)
   │ Test.login                             the cookie; no request
   │ Test.get                               GET /
   │   Db.mine Todo, Db.all Todo            load reads in the test's transaction
-  │ Test.submit                            POST /_/Submit
+  │ Test.submit                            POST /todos
   │   SAVEPOINT alder_t1                   update is a Task
   │   │ Db.insertMine Todo
   │   └ RELEASE alder_t1                   it succeeded: the insert is the test's now
@@ -2366,7 +2366,7 @@ followed (at most ten in a row).
 #### Controls
 
 The page's buttons and forms request routes by the
-routes' own addresses (`/_/Toggle?id=…`, `/_/Submit?filter=Active`:
+routes' own addresses (`/todos/…`, `/todos?filter=Active`:
 chapter 6). Before it sends anything, the browser looks through the held
 page for a form or button whose method and address name the same route
 with the same parameters, and sends that control's request, with the

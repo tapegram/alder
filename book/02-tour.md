@@ -628,12 +628,15 @@ four **routes**:
 - `Index` is a `GET`: the page. `filter` is a query parameter with a
   default, so both `/` and `/?filter=Active` work and `filter` is never
   missing.
-- The other three are `POST`s that the page sends: `Submit` carries a form,
-  `NewTodo`, and `Toggle` and `Delete` carry an id.
+- The other three are writes that the page sends: `Submit` is a `POST` that
+  carries a form, `NewTodo`; `Toggle` is a `PATCH` that carries an id; and
+  `Delete` is a `DELETE` that carries an id.
 
 A route's parameters that are not in its path travel in the query string,
-so `Toggle { id: … }` posts to `/_/Toggle?id=…`; `/_/` is the convention
-for a write that has no address of its own (chapter 6).
+so `Delete { id: … }` is sent to `/todos?id=…`. The paths name the thing
+being changed (`/todos` is the todos, `/todos/{id}` is one todo) and the
+method says what happens to it. The route's name, `Toggle`, is for your
+code and never appears in the URL (chapter 6).
 
 `requires user` means the `user` field of the session must be `Just`;
 otherwise the runtime sends the visitor to the login page, and inside this
@@ -1123,7 +1126,7 @@ None of that needed a test.
 
 - `app/Todos/Show.alder`: a detail page with an edit form: the `GET`
   route `Show` and the write routes `Save` and `Delete`, whose paths hold
-  the todo's id (`/todos/{id}/_/Save`). `Show.load` reads the todo with
+  the todo's id (`PUT /todos/{id}` and `DELETE /todos/{id}`). `Show.load` reads the todo with
   `Db.getMine`, which answers 404 when the todo doesn't exist or belongs
   to someone else. Its tests send a visitor to log in, save the form and
   delete the todo through the page.

@@ -166,21 +166,21 @@ A `<button click={…}>` works with and without JavaScript. What it renders
 depends on the route's method.
 
 **A `POST` route.** Outside a form, the button is rendered inside a small
-form of its own that posts to the route's address (here `App.Logout`,
-`POST "/_/Logout"`):
+form of its own that posts to the route's address (here a route
+`Subscribe`, `POST "/subscriptions" { }`):
 
 ```html
-<form method="post" action="/_/Logout" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_/Logout&#39;, window._alderO?.(&#39;form&#39;)))"><button type="submit">Log out</button></form>
+<form method="post" action="/subscriptions" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/subscriptions&#39;, window._alderO?.(&#39;form&#39;)))"><button type="submit">Subscribe</button></form>
 ```
 
 **A `PUT`, `PATCH` or `DELETE` route.** A browser form can send only `GET`
 and `POST`, so such a route is sent as a `POST` that names its method in a
 hidden field, `_method`. It works without JavaScript too. This is
 `click={Toggle { id: "7" }}` for
-`route Toggle = PATCH "/rows/{id}/toggle" { id: Text }`:
+`route Toggle = PATCH "/rows/{id}" { id: Text }`:
 
 ```html
-<form method="post" action="/rows/7/toggle" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @patch(&#39;/rows/7/toggle&#39;, window._alderO?.(&#39;form&#39;)))"><input type="hidden" name="_method" value="PATCH" /><button type="submit">Toggle</button></form>
+<form method="post" action="/rows/7" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @patch(&#39;/rows/7&#39;, window._alderO?.(&#39;form&#39;)))"><input type="hidden" name="_method" value="PATCH" /><button type="submit">Toggle</button></form>
 ```
 
 The router honours `_method` on a `POST` only, and never in the query
@@ -433,7 +433,7 @@ membership rule is checked against the options just rendered.
 2. Have `load` fetch at most 50 rows whose label contains it
    (`Db.where (User.email.contains params.findAuthor)`, `Db.limit 50`).
 3. Add a small second form with its own write route,
-   `route Find = POST "/posts/_/Find" { } form Find` with
+   `route Find = POST "/author-search" { } form Find` with
    `form Find = { q: Text }`, whose `Find.update` answers
    `Response.redirect (New { findAuthor: p.form.q })`.
 

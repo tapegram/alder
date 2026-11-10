@@ -5157,7 +5157,7 @@ sends it with `click={Theme.Theme { dark: … }}`.
 ### The form's path
 
 A URL names a resource, and the method says what happens to it; the route's
-name stays in the code, so no URL carries `/_/` or a verb. A form that
+name stays in the code, so no URL carries the route's name or a verb. A form that
 inserts into a table posts to the table's collection: `POST /entries` for
 `Entry`, `POST /replies` for `Reply`, `POST /blog-posts` for `BlogPost`. When
 the table is partitioned by a key that a `{param}` of the page's path names

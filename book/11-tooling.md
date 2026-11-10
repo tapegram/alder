@@ -296,11 +296,11 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 #### `alder new form <Route module> <Name> <field>:<Type> …`
 
-**Writes:** in the route module: `form <Name>`, a write route `Submit<Name>` (`POST "<path>/_/Submit<Name>"`, with the parameters of the module's GET route and `form <Name>`), its `Submit<Name>.update` (an insert into the table whose columns the fields are, by name and type, or `--into T`'s, answering `Response.redirect` to the route with a `Response.success` toast; else the hole `?answer : Task Response`), the form in `view` (wrapped inputs, `<Errors form />` in an `al-alert`), and two browser tests
+**Writes:** in the route module: `form <Name>`, a write route `Submit<Name>` (`POST "<path>"`, with the parameters of the module's GET route and `form <Name>`; `<path>` is the collection of the table it inserts into, such as `/replies`, or the page's own path when it has no table; `--path` and `--method` name another, and a path and method a route already has are refused, chapter 15), its `Submit<Name>.update` (an insert into the table whose columns the fields are, by name and type, or `--into T`'s, answering `Response.redirect` to the route with a `Response.success` toast; else the hole `?answer : Task Response`), the form in `view` (wrapped inputs, `<Errors form />` in an `al-alert`), and two browser tests
 
 #### `alder new msg <Route module> <Name> [<field>:<Type> …]`
 
-**Writes:** in the route module: a write route `<Name>` (`POST "<path>/_/<Name>"`, with the GET route's parameters and the fields), its `<Name>.update` (answering `Response.refresh`), an `al-button` that sends it at the end of the view (the parameters it cannot know are holes, `?<name>Id`), and a test that clicks it and expects `Refreshed`
+**Writes:** in the route module: a write route `<Name>` (`POST "<path>"`, `<path>` the page's own path unless `--path` says another, `--method` another method; with the GET route's parameters and the fields), its `<Name>.update` (answering `Response.refresh`), an `al-button` that sends it at the end of the view (the parameters it cannot know are holes, `?<name>Id`), and a test that clicks it and expects `Refreshed`
 
 #### `alder new capability <Module> <entry> "<Type>"`
 
@@ -436,7 +436,7 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 #### `alder new msg App <Name> [<field>:<Type> …]`
 
-**Writes:** in `App`: `route <Name> = POST "/_/<Name>"` with the fields as its parameters, after `App`'s last route, its `<Name>.update` (answering `Response.refresh`) and a comment saying how to test it; no button and no test, as a route of `App` is sent from any page
+**Writes:** in `App`: `route <Name> = POST "<path>"` with the fields as its parameters (`--path` is required, since a route of `App` has no page to take a path from; `--method` names another method), after `App`'s last route, its `<Name>.update` (answering `Response.refresh`) and a comment saying how to test it; no button and no test, as a route of `App` is sent from any page
 
 #### `alder edit decl <Module>.<Name> add-prop <name>:<Type>=<default>`
 
@@ -533,26 +533,28 @@ with its method. Nested modules make a route's file easy to lose
 
 ```text
 $ alder routes examples/blog
-METHOD  PATH                                   MODULE.decl                        FILE:LINE
-GET     /admin/comment/bulk                    Admin.Comments.Bulk.Bulk           app/Admin/Comments/Bulk.alder:13
-DELETE  /admin/comment/bulk                    Admin.Comments.Bulk.BulkDelete     app/Admin/Comments/Bulk.alder:14
+METHOD  PATH                        MODULE.decl                        FILE:LINE
+GET     /admin/comment/bulk         Admin.Comments.Bulk.Bulk           app/Admin/Comments/Bulk.alder:13
+DELETE  /admin/comment/bulk         Admin.Comments.Bulk.BulkDelete     app/Admin/Comments/Bulk.alder:14
 …
-DELETE  /admin/comment/{id}                    Admin.Comments.Delete.Destroy      app/Admin/Comments/Delete.alder:14
+DELETE  /admin/comment/{id}         Admin.Comments.Delete.Destroy      app/Admin/Comments/Delete.alder:14
 …
-DELETE  /session                              App.Logout                         app/App.alder:13
-GET     /login                                 Auth.Login.Login                   app/Auth/Login.alder:23
-POST    /login/_/Submit                        Auth.Login.Submit                  app/Auth/Login.alder:24
+DELETE  /session                    App.Logout                         app/App.alder:13
+GET     /login                      Auth.Login.Login                   app/Auth/Login.alder:23
+POST    /session                    Auth.Login.Submit                  app/Auth/Login.alder:24
 …
-GET     /                                      Posts.Index.Index                  app/Posts/Index.alder:7
-POST    /_/Search                              Posts.Index.Search                 app/Posts/Index.alder:10
-GET     /posts/{slug}                          Posts.Show.Show                    app/Posts/Show.alder:9
-POST    /posts/{slug}/_/AddComment             Posts.Show.AddComment              app/Posts/Show.alder:12
+GET     /                           Posts.Index.Index                  app/Posts/Index.alder:7
+POST    /search                     Posts.Index.Search                 app/Posts/Index.alder:10
+GET     /posts/{slug}               Posts.Show.Show                    app/Posts/Show.alder:9
+POST    /posts/{slug}               Posts.Show.AddComment              app/Posts/Show.alder:12
 …
 ```
 
 The first column is the route's method and the second its path, as the `route`
-line declares it: a write route's own path (`/posts/{slug}/_/AddComment`), not
-a path of its page. The third is the module and the route's name, the way the
+line declares it: a write route's own path, not the path of the page that sends
+it. The comment form on `GET /posts/{slug}` posts to `POST /posts/{slug}`: the
+same path with another method, because a URL names the post and the method says
+what happens to it (chapter 6, "Paths name resources"). The third is the module and the route's name, the way the
 source writes them (`Posts.Show.AddComment` is the route `AddComment` of
 `Posts.Show`). The last column is the file (relative to the app directory) and
 line of the `route` line.
@@ -1584,8 +1586,8 @@ ok   Todos.Index "Toggle by another user is not found"
 Every click and submit a test makes also checks the runtime's partial updates
 (chapter 5, "Partial updates"): the test's browser applies the answer as a
 browser would, region by region, and then compares the page it holds with a
-full render of the same page. A difference fails the step, naming where: `POST
-/_/Toggle: the patched page differs from a full render at body > main >
+full render of the same page. A difference fails the step, naming where: `PATCH
+/todos/3: the patched page differs from a full render at body > main >
 ul#todos: …`.
 
 After a `Response.render` or a click on a GET route it makes a second check,
@@ -2296,7 +2298,7 @@ its `alder version` prints `devel+<commit>`.
 
 `alder run` serves the app in developer mode (`ALDER_DEV=1`). Every page then
 carries a panel, `<al-devpanel>`, a one-line bar along the bottom: the
-request's method and path (`GET /`, `POST /_/Toggle`), how it was answered,
+request's method and path (`GET /`, `PATCH /todos/3`), how it was answered,
 the time and the number of SQL statements. A tab opens it.
 
 Only developer mode has the panel, and the strip and the Errors tab below: a

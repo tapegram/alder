@@ -22,16 +22,18 @@ the twenty of a site admin that `alder new admin` generated in
 - **`Markdown`**: A capability that turns a post's body into HTML
 
 - **`Posts.Index`**: `/`: the published posts, a page at a time, and a search
-  (`POST /_/Search`)
+  (`POST /search`)
 
 - **`Posts.Show`**: `/posts/{slug}`: one post, its comments, a comment form
-  (`POST /posts/{slug}/_/AddComment`)
+  (`POST /posts/{slug}`)
 
 - **`Write`**: `/write`: an author's own posts, and a form for a new one
-  (`POST /write/_/Create`)
+  (`POST /write`)
 
 - **`Write.Edit`**: `/write/{id}`: edit, publish, unpublish or delete a post
-  (four `POST` routes under `/write/{id}/_/`)
+  (four write routes: `PUT` and `DELETE` on `/write/{id}`, and `POST` and
+  `DELETE` on `/write/{id}/publication`, since a post's publication is a thing it
+  has or has not)
 
 - **`Admin.…`**: `/admin`: every table's rows, to list, search, create, edit and
   delete, for an Admin; generated (chapter 15)
@@ -371,7 +373,8 @@ Delete.update p session = {
 ```
 
 The four write routes take the post's id from their path, as `Edit` does
-(`POST /write/{id}/_/Save`), and `Save` also decodes the form `EditPost`: its
+(`GET /write/{id}`; `Save` is `PUT /write/{id}`, which replaces the post, and `Delete`
+is `DELETE` on the same path), and `Save` also decodes the form `EditPost`: its
 fields reach `update` as `p.form`. A request can name any id, and no `load`
 runs first to find the post, so each `update` begins with `User.authorOnly` and
 then writes with the scoped `Db.updateMine` and `Db.deleteMine`, which find no
@@ -912,7 +915,7 @@ constructor `func Markdown()` (chapter 7 quotes its top, and the generated
 uses in the adapter's place (chapter 10, "Faking a capability").
 
 The comment form's route, `AddComment`, takes the post's slug from its
-path (`POST /posts/{slug}/_/AddComment`) and decodes the form
+path (`POST /posts/{slug}`) and decodes the form
 `NewComment`. No `load` runs before a write route, so its `update` finds
 the post again with `Post.bySlug` and refuses a comment on a draft, or on
 a slug never used, with `Task.notFound`; otherwise it inserts the comment
@@ -950,8 +953,8 @@ lastPage = 1000000
 
 Both query parameters have defaults, so `/`, `/?page=2` and
 `/?q=soup&page=2` reach this route (chapter 6); `/?page=abc` is a 404.
-The second route, `Search`, is a `POST` whose path, `/_/Search`, has no
-segment: it carries no parameters, only the form.
+The second route, `Search`, is a `POST` whose path, `/search`, names the
+search: it carries no parameters, only the form.
 
 ```alder part=blog/Posts.Index
 -- load reads one page of published posts, newest first, matching `q` when it is not blank; `q`
@@ -1594,8 +1597,9 @@ wrote (chapter 15, "The admin of a silo"):
 - **`Auth.Login`, `Layout`**: As in the blog; the login also puts the user's
   first org in the session
 
-- **`Orgs.Index`**: `/orgs`: the user's orgs, to open one (`POST /orgs/_/Open`),
-  and a form for a new one (`POST /orgs/_/Create`); `choose org`'s page
+- **`Orgs.Index`**: `/orgs`: the user's orgs, to open one (`POST /orgs/current`, since the org a
+  user has open is one thing, the current one), and a form for a new one
+  (`POST /orgs`); `choose org`'s page
 
 - **`Projects.Index`, `Projects.Show`**: `/projects`, `/projects/{id}`: the
   org's projects and their to-dos, and the write routes that change them

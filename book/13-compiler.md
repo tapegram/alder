@@ -1499,7 +1499,7 @@ The route itself is a node of its own, `ir.Route` (`internal/ir/ir.go`), printed
 after the values:
 
 ```
-(route Index.Toggle POST "/pair/{a}/{b}/_/Toggle"
+(route Index.Toggle PUT "/pair/{a}/{b}/done"
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
@@ -1769,15 +1769,17 @@ Content-Type: text/html; charset=utf-8
 and has the Done button with its route's URL:
 
 ```html
-<form method="post" action="/_/Toggle?id=M2PBzBsivm3srrcFIlTD" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_/Toggle?id=M2PBzBsivm3srrcFIlTD&#39;, window._alderO?.(&#39;form&#39;)))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
+<form method="post" action="/todos/M2PBzBsivm3srrcFIlTD" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @patch(&#39;/todos/M2PBzBsivm3srrcFIlTD&#39;, window._alderO?.(&#39;form&#39;)))"><input type="hidden" name="_method" value="PATCH" /><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
 ```
 
 The `&#39;` and `&amp;` are the escaping of section 8's first part: the
 attribute holds
-`(window._alderBusy||((e,p)=>p))(el, @post('/_/Toggle?id=…', window._alderO?.('form')))`.
+`(window._alderBusy||((e,p)=>p))(el, @patch('/todos/…', window._alderO?.('form')))`.
 
-`id` is a parameter of the route that is not in its path (`/_/Toggle`), so
-it rides in the query string. `window._alderO` (defined once in the page's
+`id` is a parameter of the route and is in its path (`/todos/{id}`), so it is a
+segment of the URL; a parameter that is not in the path rides in the query
+string. The form is a `POST` with a hidden `_method` field so that it works
+without JavaScript; with it, Datastar sends a real `PATCH`. `window._alderO` (defined once in the page's
 `<head>`) returns the post's options, and the headers in them are what the
 server does not remember:
 
@@ -1826,21 +1828,21 @@ The options also carry a new shared `AbortController` after aborting the
 request in flight, which makes the newest navigation the only one whose
 answer is applied (chapter 6, "Links and navigation").
 
-#### `POST /_/Toggle?id=M2PBzBsivm3srrcFIlTD`
+#### `PATCH /todos/M2PBzBsivm3srrcFIlTD`
 
 Click Done, and the button submits its little form; Datastar catches the
-submission and runs that `@post`. It sends the header
+submission and runs that `@patch`. It sends the header
 `Datastar-Request: true`, the three headers above
 (`Alder-Shown: 2bfef09fe1ff4b0c`, `Alder-Page: /?filter=Active`,
 `Alder-Build: 7459b858a2232e68`) and the form's fields, url-encoded: there
 are none.
 
-The router matches the `POST` route with pattern `/_/Toggle`.
+The router matches the `PATCH` route with pattern `/todos/{id}`.
 `rq.Datastar` is true. The handler is:
 
 ```go
 func Route__Todos__Index__Toggle() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_/Toggle", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "PATCH", Pattern: "/todos/{id}", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Todos__Index__Toggle__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -1864,8 +1866,9 @@ func Route__Todos__Index__Toggle() web.Route {
 
 This is chapter 6's lifecycle, line by line:
 
-1. `decode__…__Params` reads `id` from the query (the route's other
-   parameters are in its path, which `Toggle` has none of). If it does not
+1. `decode__…__Params` reads `id` from the path (`rq.Params`, which the
+   router filled when it matched `/todos/{id}`), and any parameter that is not
+   in the path from the query. If it does not
    decode, 404; `html.None()` is an empty document, which the router
    replaces with `App.notFound`.
 
@@ -4852,7 +4855,7 @@ eff.Call("Test.submit NewTodo", true, func(_e13 *eff.Env) (struct {
 	Status int64
 }, error) {
 	_m14 := Todos__Index__Submit__Params{Filter: Table__Todo__Filter__All__}
-	_r15, _err16 := rtesting.BrowserOf(_e13).SubmitRoute(rt.Route{Name: "Todos.Index.Submit", Method: "POST", Path: "/_/Submit", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Active", "Completed"}[_m14.Filter.Tag], "All")}}, "NewTodo", encode__Todos__Index__NewTodo(Todos__Index__NewTodo{Title: "Milk", Due: rt.Nothing[rt.Date]()}))
+	_r15, _err16 := rtesting.BrowserOf(_e13).SubmitRoute(rt.Route{Name: "Todos.Index.Submit", Method: "POST", Path: "/todos", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Active", "Completed"}[_m14.Filter.Tag], "All")}}, "NewTodo", encode__Todos__Index__NewTodo(Todos__Index__NewTodo{Title: "Milk", Due: rt.Nothing[rt.Date]()}))
 	if _err16 != nil {
 		var _z17 struct {
 			Answer  rtesting.Answer
@@ -4916,7 +4919,7 @@ name, for the error text. `Test.click (Toggle { id: id })` builds the same
 
 ```go
 _m15 := Todos__Index__Toggle__Params{Id: id}
-_r16, _err17 := rtesting.BrowserOf(_e14).ClickRoute(rt.Route{Name: "Todos.Index.Toggle", Method: "POST", Path: "/_/Toggle", Query: []rt.KV{{Key: "id", Value: _m15.Id}}}, rtesting.MsgName("Todos.Index.Toggle", _m15))
+_r16, _err17 := rtesting.BrowserOf(_e14).ClickRoute(rt.Route{Name: "Todos.Index.Toggle", Method: "PATCH", Path: rt.Concat("/todos/", rt.PathSegment(_m15.Id))}, rtesting.MsgName("Todos.Index.Toggle", _m15))
 ```
 
 `Test.get (Todos.Index.Index {})` builds the route's address as an `href`
@@ -5131,7 +5134,7 @@ is `Redirected`; a 404 or a 500 is `PageMissing` or `RequestFailed`.
 Before a `submit` or `click` is sent, the browser looks for the control on the
 held page. A page's controls are the Datastar actions its views render
 (`rt/html` `RouteClick` and `RouteSubmit`): a `<form>`'s
-`data-on:submit="…@post('/_/Submit?filter=Active', …)"`, or a button's
+`data-on:submit="…@post('/todos?filter=Active', …)"`, or a button's
 `data-on:click`.
 
 `routeControl` walks the held document in order, reads each action with a
@@ -6459,7 +6462,7 @@ func Todos__Index__Index__view(model Todos__Index__Model, session Todos__Index__
 		Children []html.Node
 	}{Title: "Todos", Children: []html.Node{
 		html.El("h1", nil, html.Text("Todos")),
-		html.El("al-card", nil, html.FormToRoute(rt.Route{Name: "Todos.Index.Submit", Method: "POST", Path: "/_/Submit", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Active", "Completed"}[model.Filter.Tag], "All")}}, nil,
+		html.El("al-card", nil, html.FormToRoute(rt.Route{Name: "Todos.Index.Submit", Method: "POST", Path: "/todos", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Active", "Completed"}[model.Filter.Tag], "All")}}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Todos.Index.NewTodo", Name: "title", Type: "text", Label: "What needs doing?", Required: true, Wrap: "al-input"}),
 ```
 
@@ -7019,7 +7022,7 @@ In the blog:
 
 ```text
 -> {"jsonrpc":"2.0","id":3,"method":"textDocument/hover","params":{"position":{"line":64,"character":21},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"}}}
-<- {"id":3,"jsonrpc":"2.0","result":{"contents":{"kind":"markdown","value":"```alder\nPOST /_/Search  { }  form SearchForm\n```\n\nA search posts its form to a write route like any other: `update` redirects to the first page\nof the results, whose address (/?q=…) can be bookmarked and shared."}}}
+<- {"id":3,"jsonrpc":"2.0","result":{"contents":{"kind":"markdown","value":"```alder\nPOST /search  { }  form SearchForm\n```\n\nA search posts its form to a write route like any other: `update` redirects to the first page\nof the results, whose address (/?q=…) can be bookmarked and shared."}}}
 -> {"jsonrpc":"2.0","id":4,"method":"textDocument/definition","params":{"position":{"line":64,"character":21},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"}}}
 <- {"id":4,"jsonrpc":"2.0","result":[{"uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":9,"character":6},"end":{"line":9,"character":12}}}]}
 ```
@@ -7313,7 +7316,7 @@ versions as well). For the blog's `Posts.Index`:
 
 ```text
 -> {"jsonrpc":"2.0","id":6,"method":"alder/routes","params":{}}
-<- {"id":6,"jsonrpc":"2.0","result":[…,{"kind":"route","method":"GET","path":"/","module":"Posts.Index","name":"Index","uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":6,"character":0},"end":{"line":6,"character":63}}},{"kind":"route","method":"POST","path":"/_/Search","module":"Posts.Index","name":"Search","uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":9,"character":0},"end":{"line":9,"character":51}}},…]}
+<- {"id":6,"jsonrpc":"2.0","result":[…,{"kind":"route","method":"GET","path":"/","module":"Posts.Index","name":"Index","uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":6,"character":0},"end":{"line":6,"character":63}}},{"kind":"route","method":"POST","path":"/search","module":"Posts.Index","name":"Search","uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":9,"character":0},"end":{"line":9,"character":49}}},…]}
 ```
 
 The routes come in the order the program declares them, not sorted by path.
@@ -7402,8 +7405,8 @@ the editor shows (here with its `\n` turned into line breaks):
 @@ -8,6 +8,7 @@
  -- A search posts its form to a write route like any other: `update` redirects to the first page
  -- of the results, whose address (/?q=…) can be bookmarked and shared.
- route Search = POST "/_/Search" { } form SearchForm
-+route Delete = POST "/_/Delete" { }
+ route Search = POST "/search" { } form SearchForm
++route Delete = POST "/"       { }
  
  type Model = {
    page: Int,

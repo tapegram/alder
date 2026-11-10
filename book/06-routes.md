@@ -16,7 +16,7 @@ import Table.Todo
 
 route Index  = GET   "/"                 { filter: Todo.Filter = All } requires user
 route Row    = GET   "/rows/{id}"        { id: Todo.TodoId }           requires user
-route Toggle = PATCH "/rows/{id}/toggle" { id: Todo.TodoId }           requires user
+route Toggle = PATCH "/rows/{id}"        { id: Todo.TodoId }           requires user
 
 type Model = { filter: Todo.Filter, todos: List Todo }
 
@@ -57,7 +57,7 @@ todo and answers `Response.render (Row { id: … })`, which sends that one
 `<li>` to the browser and nothing else.
 
 The to-do app in `examples/todos` is this with a form to add a todo and a
-button to delete one; its `Toggle` is a `POST` that answers
+button to delete one; its `Toggle` is a `PATCH` that answers
 `Response.refresh`, the other way to answer ("`Response`", below).
 
 `Db.mine Todo`, `Db.getMine` and `Db.updateMine` are the to-do table's
@@ -78,7 +78,7 @@ as") needs no model field.
 ```alder fragment
 route Show   = GET    "/todos/{id}"        { id: Todo.TodoId }
 route Index  = GET    "/"                  { filter: Todo.Filter = All, q: Maybe Text }
-route Toggle = PATCH  "/todos/{id}/toggle" { id: Todo.TodoId }           requires user
+route Toggle = PATCH  "/todos/{id}"        { id: Todo.TodoId }           requires user
 route Create = POST   "/todos"             { } form NewTodo              requires user
 route Delete = DELETE "/todos/{id}"        { id: Todo.TodoId }           requires user
 route Write  = GET    "/write"             { }                           requires user, role Author
@@ -115,6 +115,44 @@ The path is a literal with `{name}` segments.
 - A query parameter whose pair does not parse is a `400` naming the
   parameter, never a parameter quietly at its default. That covers a raw `;`
   (write `%3B`) and a bad `%` escape.
+
+#### Paths name resources
+
+A URL names a thing, and the method says what happens to it. `/replies` is
+all the replies, `/replies/{id}` is one reply, and `/session` is the visitor's
+sign-in. So the same path is read with a `GET`, made with a `POST`, replaced
+with a `PUT` and removed with a `DELETE`. The route's name (`Toggle`, `Remove`)
+is for your code: `click`, `submit` and `Response.redirect` take it, and it
+never appears in the URL. A path with a verb in it (`/replies/delete`) says
+the same thing twice, once in the method and once in the path, and gives you
+two places to keep in step.
+
+| To | Method and path |
+|---|---|
+| create a reply | `POST /replies` |
+| read one | `GET /replies/{id}` |
+| replace one | `PUT /replies/{id}` |
+| remove one | `DELETE /replies/{id}` |
+
+The generators (chapter 15) write paths like these. A page's own path names
+the resource, and a write route takes that path or, for one row, the path
+plus `{id}`.
+
+Some things are not collections. A visitor has one session at a time, so
+signing in is `POST /session` and signing out is `DELETE /session`: no id, because
+there is only one to name.
+
+When a change is not one of the four, name the part of the thing that
+changes. Archiving a reply is not a new verb; it is a sub-resource that a reply
+has, or does not have: `PUT /replies/{id}/archived` puts it in the archive and
+`DELETE /replies/{id}/archived` takes it out.
+
+Two routes may not share a method and a path (E0043), so when a page has
+two writes that would both be `POST` at the page's path, one of them needs a
+resource of its own.
+
+Routes you write by hand may use any path the language accepts. This is a
+convention that keeps URLs readable, and not a rule the checker enforces.
 
 ### Parameters
 
@@ -170,8 +208,8 @@ would set nothing. `alder check` warns about it (W0008) when the form's
 
 ### Shared paths and matching
 
-- Two routes may share a path when their methods differ (`GET "/todos/new"`
-  and `POST "/todos/new"`).
+- Two routes may share a path when their methods differ (`GET "/todos"`
+  and `POST "/todos"`).
 - They may not share a method and a path. `/x/{id}` and `/x/{slug}` are the
   same pattern, so the second is an error (E0043).
 - Patterns that merely overlap are fine, whatever the module order. A
@@ -407,8 +445,9 @@ default is optional in the request. A `Bool` field is a checkbox and is
 `False` when absent.
 
 A write route that declares `form NewTodo` gets the decoded form as
-`params.form`. Here is a page to add a todo, with its two routes; the pair
-share one path:
+`params.form`. Here is a page to add a todo, with its two routes: the page
+is at `/todos/new`, and the form posts to `/todos`, the address of the todos
+themselves:
 
 ```alder
 module Todos.New
@@ -417,7 +456,7 @@ import Layout
 import Table.Todo
 
 route New    = GET  "/todos/new" { }              requires user
-route Create = POST "/todos/new" { } form NewTodo requires user
+route Create = POST "/todos"     { } form NewTodo requires user
 
 form NewTodo = { title: Text.NonEmpty, due: Maybe Date }
 
@@ -483,7 +522,7 @@ page's address is sent with every write, "Delivery", below).
 
 ```alder fragment
 -- in App
-route Logout = POST "/_/Logout" { }
+route Logout = DELETE "/session" { }
 
 Logout.update : Logout.Params -> Session -> Task Response
 Logout.update p session = {
@@ -538,7 +577,7 @@ import Theme
 
 session { user: Maybe User.UserId, theme: Theme = Light }
 
-route SwitchTheme = POST "/_/SwitchTheme" { }
+route SwitchTheme = PUT "/theme" { }
 
 SwitchTheme.update : SwitchTheme.Params -> Session -> Task Response
 SwitchTheme.update p session = {
@@ -1180,7 +1219,7 @@ Show.load params session = {
 
 Why a write route needs them as much as a `load` does: `load` decides what
 the page shows, but a write route carries its own parameters. `Toggle { id }`
-puts the id in the request's URL (`/_/Toggle?id=…`), and anyone signed in can
+puts the id in the request's URL (`/todos/…`), and anyone signed in can
 send that request with an id that is not theirs. No `load` runs before a write
 route to have checked it. With `Db.updateMine` the id is only ever one of the
 user's own todos.
@@ -1480,7 +1519,7 @@ scoped form; it costs nothing.
 
 A write route runs no `load` before it, so it
 has not read the row: it takes the id from its path (`Todos.Show`'s `Save` and
-`Delete` are `POST "/todos/{id}/_/Save"` and `POST "/todos/{id}/_/Delete"`),
+`Delete` are `PUT "/todos/{id}"` and `DELETE "/todos/{id}"`),
 and the scoped write is what makes that id safe.
 
 `Todos.Show` writes
@@ -1606,9 +1645,9 @@ that `requires org`: `Index` does not"). The workspace's projects page and
 the write routes beside it (`examples/workspace/app/Projects/Index.alder`):
 
 ```alder fragment
-route Index  = GET  "/projects"          { }                       requires user, org
-route Create = POST "/projects/_/Create" { } form NewProject       requires user, org
-route Remove = POST "/projects/_/Remove" { id: Project.ProjectId } requires user, org
+route Index  = GET    "/projects" { }                       requires user, org
+route Create = POST   "/projects" { } form NewProject       requires user, org
+route Remove = DELETE "/projects" { id: Project.ProjectId } requires user, org
 ```
 
 A request is answered in this order:
@@ -2023,7 +2062,7 @@ session { user: Maybe User.UserId, role: User.Role = Member }
 
 login = Auth.Login.Login
 
-route Logout = POST "/_/Logout" { }
+route Logout = DELETE "/session" { }
 
 Logout.update : Logout.Params -> Session -> Task Response
 Logout.update p session = {
@@ -2163,8 +2202,8 @@ request it does these things, in order:
    site can never become a write.
 
 4. The method and path are matched against the generated list `Routes`.
-   A route is its method at its pattern, such as `POST /_/Toggle` or
-   `PATCH /todos/Em2Gv4v9BaA0Wf9ujESN/toggle`. The most specific pattern is
+   A route is its method at its pattern, such as `DELETE /session` or
+   `PATCH /todos/{id}`. The most specific pattern is
    tried first: segment by segment from the left, a literal before a
    parameter.
 
@@ -2211,7 +2250,7 @@ This is the handler for `Toggle`, a write route of the to-do app, from
 
 ```go
 func Route__Todos__Index__Toggle() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_/Toggle", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "PATCH", Pattern: "/todos/{id}", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Todos__Index__Toggle__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -2266,19 +2305,23 @@ GET route and its parameters with the matcher a GET uses. This is the Done
 button of `GET /?filter=Active`, as the running app sends it:
 
 ```html
-<form method="post" action="/_/Toggle?id=Vggu4dUM2D0o1KQ-UzWf" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_/Toggle?id=Vggu4dUM2D0o1KQ-UzWf&#39;, window._alderO?.(&#39;form&#39;)))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
+<form method="post" action="/todos/Vggu4dUM2D0o1KQ-UzWf" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @patch(&#39;/todos/Vggu4dUM2D0o1KQ-UzWf&#39;, window._alderO?.(&#39;form&#39;)))"><input type="hidden" name="_method" value="PATCH" /><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
 ```
 
 (A `click` button is wrapped in a form of its own so that it works without
 JavaScript too; "With and without JavaScript", below, explains it.)
 
-`id` is the route's own parameter, in the query string because it is not in
-the route's path (`/_/Toggle`). The page's parameters are not in the URL at
+`id` is the route's own parameter, and it is in the route's path
+(`/todos/{id}`), so it is in the URL as a segment. (The form is a `POST`
+with a hidden `_method` field because a browser form sends only `GET` and
+`POST`; with JavaScript the request is a real `PATCH`, as `@patch` shows.) A
+parameter that is not in the path rides in the query string instead, as the
+`id` of `Delete` does (`DELETE /todos?id=…`). The page's parameters are not in the URL at
 all: the filter is in `Alder-Page: /?filter=Active`, which the post carries as a
 header.
 
 A route whose parameters are in its path puts them there, as `Todos.Show`'s
-`Save` does (`/todos/Vggu4dUM2D0o1KQ-UzWf/_/Save`).
+`Save` does (`PUT /todos/Vggu4dUM2D0o1KQ-UzWf`).
 
 A `List` parameter repeats its key, as in links (`rt.QueryKVs` in
 `rt/core.go`): a route parameter `tag` holding `["a", "b"]` is
@@ -2545,10 +2588,11 @@ as the element's child.
 
 Inside a
 `<form submit>`, where forms cannot nest, a `click` button on a write route
-is a submit button with its own target instead:
+is a submit button with its own target instead (here for a route
+`POST "/subscriptions"`):
 
 ```html
-<button type="submit" formaction="/_/Logout" formmethod="post" formnovalidate data-on:click__prevent="@post(&#39;/_/Logout&#39;)">Log out</button>
+<button type="submit" formaction="/subscriptions" formmethod="post" formnovalidate data-on:click__prevent="@post(&#39;/subscriptions&#39;)">Subscribe</button>
 ```
 
 Datastar sends the request on click and stops the form's own submission.
