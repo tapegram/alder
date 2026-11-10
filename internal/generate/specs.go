@@ -153,13 +153,15 @@ func newSpecs() []*Spec {
 				{Name: "into", Kind: ArgTable, Value: "T", Summary: "insert the submitted form into table T", Example: "Comment"},
 				{Name: "msg", Kind: ArgText, Value: "Route", Summary: "the write route's name (Submit<Name> by default); an existing write route of the module without a form gets this form", Example: "Submit", Agent: true},
 				{Name: "hole", Kind: ArgBool, Summary: "leave the route's `update` body a hole (?answer) instead of inserting into a table"},
+				{Name: "method", Kind: ArgChoice, Choices: []string{"POST", "PUT", "PATCH", "DELETE"}, Value: "POST|PUT|PATCH|DELETE", Summary: "the write route's method (POST by default)", Example: "PUT"},
+				{Name: "path", Kind: ArgRoute, Value: "/path", Summary: "the write route's path (the table's collection, else the page's own path)", Example: "/contact/messages"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				fields, err := fieldList(s.All("fields"), false)
 				if err != nil {
 					return nil, err
 				}
-				o := FormOptions{Page: s.One("page"), Name: s.One("name"), Fields: fields, Into: s.One("into"), Msg: s.One("msg"), Hole: s.Has("hole")}
+				o := FormOptions{Page: s.One("page"), Name: s.One("name"), Fields: fields, Into: s.One("into"), Msg: s.One("msg"), Hole: s.Has("hole"), Method: s.One("method"), Path: s.One("path")}
 				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return NewForm(p, o) })
 			},
 		},

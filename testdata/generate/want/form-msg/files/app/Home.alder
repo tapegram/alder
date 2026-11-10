@@ -5,7 +5,7 @@ import Table.Entry
 
 route Home   = GET  "/"         { }
 route Submit = POST "/_/Submit" { } form Sign
-route Sign2  = POST "/_/Sign2"  { } form Quick
+route Sign2  = POST "/entries"  { } form Quick
 
 type Model = { entries: List Entry }
 

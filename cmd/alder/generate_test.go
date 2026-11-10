@@ -1071,7 +1071,7 @@ func TestGenerate_E11Messages(t *testing.T) {
 	if code, o := run("{\n  Task.succeed True\n}", "fill", `Home."submitting Feedback"`, "-"); code != 1 || !strings.Contains(o, "to replace the whole test, use `alder fill --decl") {
 		t.Errorf("a block in ?expected: exit %d: %s", code, o)
 	}
-	if code, o := run("", "new", "msg", "Home", "Pick", "role:Role"); code != 1 || !strings.Contains(o, "write `User.Role`") {
+	if code, o := run("", "new", "msg", "Home", "Pick", "role:Role", "--path", "/pick"); code != 1 || !strings.Contains(o, "write `User.Role`") {
 		t.Errorf("a bare app type: exit %d: %s", code, o)
 	}
 	if code, o := run("", "check"); code != 0 || !strings.Contains(o, "alder check: 3 typed holes left\n") {

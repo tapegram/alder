@@ -35,6 +35,10 @@ type FormOptions struct {
 	Into   string // --into T: the table the arm inserts into
 	Msg    string // --msg M: the message that posts the form ("Submit<Name>" by default); on a route module, the route's name
 	Hole   bool   // --hole: on a route module, the `update` body is the hole ?answer
+	// Method is --method, the write route's method ("" for POST); Path is --path, its path ("" for
+	// the table's collection, else the page's own path).
+	Method string
+	Path   string
 }
 
 // NewForm generates `alder new form`: newRouteForm's POST route on a route module, refused on

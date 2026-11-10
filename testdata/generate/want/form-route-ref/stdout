@@ -9,8 +9,8 @@ edited app/Posts/Index.alder
  import Table.User
  
 -route Index = GET "/posts" { page: Int = 1 } requires user
-+route Index         = GET  "/posts"                 { page: Int = 1 } requires user
-+route SubmitTagging = POST "/posts/_/SubmitTagging" { } form Tagging  requires user
++route Index         = GET  "/posts" { page: Int = 1 } requires user
++route SubmitTagging = POST "/tags"  { } form Tagging  requires user
  
  type Model = {
    rows: List Post,

@@ -5,18 +5,23 @@ import (
 	"slices"
 	"strings"
 
+	"alder/internal/check"
+	"alder/internal/names"
 	"alder/internal/syntax"
 	"alder/internal/types"
 )
 
 // newRouteForm is `alder new form` on a route module (plan call 13): `form <Name>`, the write
-// route `<Name> = POST "<page path>/_/<Name>" { <page path parameters> } form <Name>` with the
+// route `<Name> = <METHOD> "<path>" { <page path parameters> } form <Name>` with the
 // page's guard (named `Submit<Name>`, or --msg's name: a route cannot share its form's name), its
 // `update` (an insert into the table the fields match by name and type, or --into's, then
 // `Response.redirect` to the page and `Response.success "Saved"`; the hole `?answer` with
 // --hole, and when no table fits), the form in the GET route's `view` (inside its last
 // `al-card`, or in a card of its own), and two tests: a valid submission, and an empty required
-// field (FormRejected, nothing inserted).
+// field (FormRejected, nothing inserted). The route's path is --path, else the collection of the
+// table the form inserts into (`POST /entries`; formPath), else the page's own path; its method
+// is --method, else POST. A new route that answers a method and path another route does is
+// refused (routeClash), unless --msg attaches the form to a route that is there already.
 func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 	r := p.RouteModule(o.Page)
 	if r == nil {
@@ -154,7 +159,21 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 	if len(holes) > 0 {
 		d.Msg = route + " { " + strings.Join(holes, ", ") + " }"
 	}
-	path := strings.TrimSuffix(r.Path, "/") + "/_/" + route
+	method := o.Method
+	if method == "" {
+		method = "POST"
+	}
+	path := o.Path
+	if path == "" {
+		path = formPath(r, into)
+	} else if why := check.PagePathProblem(path); why != "" {
+		return nil, Refusef("`%s` is not a route path: it %s; %s", path, why, check.PagePathRule)
+	}
+	if attach == nil {
+		if have := routeClash(p, method, path, ""); have != nil {
+			return nil, clashRefusal(have, route, method, path)
+		}
+	}
 	ps := "{ }"
 	if len(params) > 0 {
 		ps = "{ " + strings.Join(params, ", ") + " }"
@@ -171,7 +190,7 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 			d.Msg = route + " { " + strings.Join(holes, ", ") + " }"
 		}
 	}
-	line := fmt.Sprintf("route %s = POST \"%s\" %s form %s%s", route, path, ps, o.Name, guardText(r))
+	line := fmt.Sprintf("route %s = %s \"%s\" %s form %s%s", route, method, path, ps, o.Name, guardText(r))
 
 	// the update
 	response := "Response.refresh"
@@ -372,4 +391,23 @@ func rowKeyExpr(p *Program, page *Module, par *Param) (string, bool) {
 		return "model.row." + t.IDField, true
 	}
 	return "", false
+}
+
+// formPath is the path a form's write route answers by default: the collection of the table the
+// form inserts into (`/entries`), nested after the page's path segment `{k}` when the table is
+// partitioned by a key k the path binds (`/a/{org}/tasks`), the page's own path when there is no
+// table. A partition key that is not a path parameter comes from the session, so the collection
+// is top level.
+func formPath(r *Route, into *Table) string {
+	if into == nil {
+		return r.Path
+	}
+	coll := "/" + names.Collection(into.Name)
+	if k := into.PartKey; k != "" {
+		seg := "{" + k + "}"
+		if i := strings.Index(r.Path, seg); i >= 0 {
+			return r.Path[:i+len(seg)] + coll
+		}
+	}
+	return coll
 }

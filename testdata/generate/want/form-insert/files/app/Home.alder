@@ -3,9 +3,9 @@ module Home
 import Layout
 import Table.Entry
 
-route Home        = GET  "/"              { }
-route Submit      = POST "/_/Submit"      { } form Sign
-route SubmitQuick = POST "/_/SubmitQuick" { } form Quick
+route Home        = GET  "/"         { }
+route Submit      = POST "/_/Submit" { } form Sign
+route SubmitQuick = POST "/entries"  { } form Quick
 
 type Model = { entries: List Entry }
 

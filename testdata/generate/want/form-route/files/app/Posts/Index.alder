@@ -4,8 +4,8 @@ import Layout
 import Table.Post
 import Table.User
 
-route Index       = GET  "/posts"               { page: Int = 1 } requires user
-route SubmitQuick = POST "/posts/_/SubmitQuick" { } form Quick    requires user
+route Index       = GET  "/posts" { page: Int = 1 } requires user
+route SubmitQuick = POST "/posts" { } form Quick    requires user
 
 type Model = {
   rows: List Post,

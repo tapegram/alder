@@ -7,9 +7,9 @@ edited app/Home.alder
  
 -route Home   = GET  "/"         { }
 -route Submit = POST "/_/Submit" { } form Sign
-+route Home          = GET  "/"                { }
-+route Submit        = POST "/_/Submit"        { } form Sign
-+route SubmitContact = POST "/_/SubmitContact" { } form Contact
++route Home          = GET  "/"         { }
++route Submit        = POST "/_/Submit" { } form Sign
++route SubmitContact = POST "/"         { } form Contact
  
  type Model = { entries: List Entry }
  

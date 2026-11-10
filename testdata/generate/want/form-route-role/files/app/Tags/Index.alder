@@ -5,8 +5,8 @@ import Table.Post
 import Table.Tag
 import Table.User
 
-route Index       = GET  "/tags"               { page: Int = 1 } requires user, role Admin
-route SubmitQuick = POST "/tags/_/SubmitQuick" { } form Quick    requires user, role Admin
+route Index       = GET  "/tags" { page: Int = 1 } requires user, role Admin
+route SubmitQuick = POST "/tags" { } form Quick    requires user, role Admin
 
 type Model = {
   rows: List Tag,

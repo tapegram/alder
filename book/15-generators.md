@@ -462,8 +462,8 @@ edited app/Replies.alder
  import Table.Reply
  
 -route Replies = GET "/replies" { page: Int = 1 }
-+route Replies        = GET  "/replies"                  { page: Int = 1 }
-+route SubmitNewReply = POST "/replies/_/SubmitNewReply" { } form NewReply
++route Replies        = GET  "/replies" { page: Int = 1 }
++route SubmitNewReply = POST "/replies" { } form NewReply
  
  type Model = {
    rows: List Reply,
@@ -550,8 +550,10 @@ this module (the copy would not check, so nothing would be written).
 The generator wrote these into the module:
 
 - **The `form` declaration** and a write route that takes it: `route
-  SubmitNewReply = POST "/replies/_/SubmitNewReply" { } form NewReply` (the
-  `form` clause of a route line names the form it decodes).
+  SubmitNewReply = POST "/replies" { } form NewReply` (the `form` clause of
+  a route line names the form it decodes). Its path is the collection of the
+  table the form inserts into, `Reply`, and its method says what it does:
+  a `POST` to `/replies` adds a reply.
 
 - **Its `SubmitNewReply.update`**, a member qualified with the route's name,
   which inserts the row and answers `Response.redirect (Replies {}) |>
@@ -914,7 +916,7 @@ alder new route: module `About` exists (`app/About.alder`): a generator never ov
 `entry`, and an insert must have one:
 
 ```text command=guestbook
-$ alder new form Replies.Show Note message:Text.NonEmpty --into Reply
+$ alder new form Replies.Show Note message:Text.NonEmpty --into Reply --path /replies/{id}/notes
 app/Replies/Show.alder:67:28: error[E0003]: record `Reply.Insert Reply` is missing field(s): entry
     let _ <- Db.insert Reply { message: params.form.message }
                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -4105,7 +4107,7 @@ edited app/Auth/Login.alder
 
 A form goes in the route's `view`, so a `view` that is still a hole is
 refused (fill it first); and `--msg` names the write route that posts the
-form, as a task does (`route Add = POST "/_/Add" { } form NewNote`):
+form, as a task does (`route Add = POST "/" { } form NewNote`):
 
 ```text command=notes
 $ alder new form Notes.Index NewNote title:Text.NonEmpty --msg Add
@@ -4142,8 +4144,8 @@ edited app/Notes/Index.alder
 +import Table.User
  
 -route Index = GET "/" { } requires user
-+route Index = GET  "/"      { }              requires user
-+route Add   = POST "/_/Add" { } form NewNote requires user
++route Index = GET  "/" { }              requires user
++route Add   = POST "/" { } form NewNote requires user
  
  type Model = { }
  
@@ -5145,6 +5147,28 @@ parameters: `alder new route Theme /theme --method POST --param dark:Bool`
 writes `app/Theme.alder` with `route Theme = POST "/theme" { dark: Bool }`
 and a `Theme.update` that answers `Response.refresh`, and any page's view
 sends it with `click={Theme.Theme { dark: … }}`.
+
+### The form's path
+
+A URL names a resource, and the method says what happens to it; the route's
+name stays in the code, so no URL carries `/_/` or a verb. A form that
+inserts into a table posts to the table's collection: `POST /entries` for
+`Entry`, `POST /replies` for `Reply`, `POST /blog-posts` for `BlogPost`. When
+the table is partitioned by a key that a `{param}` of the page's path names
+(`/admin/orgs/{org}/…` with `@partition org`), the collection goes after that
+segment (`POST /admin/orgs/{org}/tasks`). A form with no table (`--hole`)
+posts to the page's own path (`POST /contact`), so that the page and its form
+are one resource.
+
+`--path` names another path and `--method` another method (`POST` by
+default; `PUT`, `PATCH` or `DELETE`). The route keeps the page's path
+parameters even when the new path leaves one out: it rides the query string,
+so the redirect back to the page still has it.
+
+Two routes cannot answer the same method and path, so a second form that
+inserts into the same table, from another page, is refused with both ways
+out: give the new route its own resource with `--path`, or attach the form
+to the route that is there with `--msg`.
 
 ### A form with parameters
 

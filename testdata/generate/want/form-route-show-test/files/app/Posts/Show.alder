@@ -5,8 +5,8 @@ import Table.Post
 import Table.Tag
 import Table.User
 
-route Show      = GET  "/posts/{id}"             { id: Post.PostId }
-route SendReply = POST "/posts/{id}/_/SendReply" { id: Post.PostId } form Reply
+route Show      = GET  "/posts/{id}" { id: Post.PostId }
+route SendReply = POST "/tags"       { id: Post.PostId } form Reply
 
 type Model = { row: Post }
 

@@ -4,8 +4,8 @@ import Layout
 import Table.Post
 import Table.User
 
-route Index            = GET  "/posts"                    { page: Int = 1 }   requires user
-route SubmitNewComment = POST "/posts/_/SubmitNewComment" { } form NewComment requires user
+route Index            = GET  "/posts" { page: Int = 1 }   requires user
+route SubmitNewComment = POST "/posts" { } form NewComment requires user
 
 type Model = {
   rows: List Post,
