@@ -899,3 +899,64 @@ func TestAdmin_RegenWireNames(t *testing.T) {
 		t.Fatalf("alder test after regen: exit %d\n%s%s", code, out, errs)
 	}
 }
+
+// TestAdmin_RegenBeforeRestPaths: an admin generated before #184 (testdata/generate/admin-before-184:
+// write routes under `/_/`, a `Search…` route per long list with its form and update, an
+// actionless search form posting to it) is brought up to date by `alder regen admin`: each page
+// is again exactly what `alder new admin` writes now, with no `Search…` route, form or update
+// left behind, and the app checks. Silo and not.
+func TestAdmin_RegenBeforeRestPaths(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	for _, app := range []string{"fixture", "fixture-silo"} {
+		t.Run(app, func(t *testing.T) {
+			t.Parallel()
+			dir := genApp(t, app)
+			if code, out, errs := alderIn(t, dir, "", "new", "admin"); code != 0 {
+				t.Fatalf("alder new admin: exit %d\n%s%s", code, out, errs)
+			}
+			old := filepath.Join("..", "..", "testdata", "generate", "admin-before-184", app)
+			fresh := map[string]string{}
+			err := filepath.WalkDir(old, func(path string, d os.DirEntry, err error) error {
+				if err != nil || d.IsDir() {
+					return err
+				}
+				rel, _ := filepath.Rel(old, path)
+				now, err := os.ReadFile(filepath.Join(dir, rel))
+				if err != nil {
+					return err
+				}
+				fresh[rel] = string(now)
+				b, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				return os.WriteFile(filepath.Join(dir, rel), b, 0o644)
+			})
+			if err != nil || len(fresh) == 0 {
+				t.Fatalf("copying the old admin: %v (%d files)", err, len(fresh))
+			}
+			if code, out, errs := alderIn(t, dir, "", "regen", "admin"); code != 0 {
+				t.Fatalf("alder regen admin: exit %d\n%s%s", code, out, errs)
+			}
+			for rel, want := range fresh {
+				b, err := os.ReadFile(filepath.Join(dir, rel))
+				if err != nil {
+					t.Fatal(err)
+				}
+				got := string(b)
+				if got != want {
+					t.Errorf("%s after regen is not what new admin writes:\n%s", rel, got)
+				}
+				for _, stale := range []string{"route Search", "form Find", ".update : Search", "/_/"} {
+					if strings.Contains(got, stale) {
+						t.Errorf("%s keeps %q after regen", rel, stale)
+					}
+				}
+			}
+			if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || strings.Contains(out+errs, "error") {
+				t.Errorf("alder check after regen: exit %d\n%s%s", code, out, errs)
+			}
+		})
+	}
+}

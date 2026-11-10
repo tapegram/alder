@@ -285,7 +285,8 @@ func TestAdmin_RestPaths(t *testing.T) {
 		`route Destroy = DELETE "/admin/post/{id}" { id: Post.PostId }`,
 		`route BulkDelete = DELETE "/admin/post/bulk" { ids: List Post.PostId }`,
 		`route BulkSetStatus = PUT "/admin/post/bulk/status" { ids: List Post.PostId }`,
-		`<form method="get"><al-input><label>Find author <input type="search" name="findAuthor" value={model.findAuthor} /></label></al-input>`,
+		`<form method="get" action="/admin/post/new"><al-input><label>Find author <input type="search" name="findAuthor" value={model.findAuthor} /></label></al-input>`,
+		`<form method="get" action={"/admin/post/" ++ model.row.id ++ "/edit"}><al-input><label>Find author <input type="search" name="findAuthor" value={model.findAuthor} /></label></al-input>`,
 	} {
 		if !strings.Contains(src, w) && !strings.Contains(flat, w) {
 			t.Errorf("no %q in the admin", w)
@@ -294,6 +295,36 @@ func TestAdmin_RestPaths(t *testing.T) {
 	for _, l := range strings.Split(src, "\n") {
 		if strings.Contains(l, "/_/") || strings.Contains(l, "Search") && !strings.Contains(l, ">Search<") && !strings.Contains(l, "\"Search\"") && !strings.Contains(l, "(chapter 8, \"Search\")") {
 			t.Errorf("a line has /_/ or a search route: %q", l)
+		}
+	}
+}
+
+// TestAdmin_FinderAction: a search form names the page it narrows, New's path or Edit's with the
+// row's id, and in a silo the key's value too; with no action, a search sent after a refused
+// write (no JavaScript: the address is the write's) would go to the write's path.
+func TestAdmin_FinderAction(t *testing.T) {
+	for _, c := range []struct {
+		app, path string
+		want      []string
+	}{
+		{"fixture", "app/Admin/Comments/New.alder", []string{`<form method="get" action="/admin/comment/new">`}},
+		{"fixture", "app/Admin/Comments/Edit.alder", []string{`<form method="get" action={"/admin/comment/" ++ model.row.id ++ "/edit"}>`}},
+		{"fixture-silo", "app/Admin/Issues/New.alder", []string{`<form method="get" action={"/admin/orgs/" ++ session.org ++ "/issue/new"}>`}},
+		{"fixture-silo", "app/Admin/Issues/Edit.alder", []string{`<form method="get" action={"/admin/orgs/" ++ session.org ++ "/issue/" ++ model.row.id ++ "/edit"}>`}},
+	} {
+		p, err := Load("../../testdata/generate/" + c.app)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files, _ := AdminFiles(p, AdminOptions{Module: "Admin", Path: "/admin"})
+		src := regexp.MustCompile(`\s+`).ReplaceAllString(files[c.path], " ") // the formatter may wrap a form's attributes
+		for _, w := range c.want {
+			if n := strings.Count(src, w); n != 2 {
+				t.Errorf("%s/%s: %d forms %q, want 2 (one per long list)", c.app, c.path, n, w)
+			}
+		}
+		if strings.Contains(src, `<form method="get">`) {
+			t.Errorf("%s/%s: a GET form with no action", c.app, c.path)
 		}
 	}
 }

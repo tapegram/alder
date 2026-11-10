@@ -129,7 +129,7 @@ Edit.view model session =
     <al-card>
       -- @admin begin finder
       {if model.postsTotal > 200 then
-        <form method="get">
+        <form method="get" action={"/admin/comment/" ++ model.row.id ++ "/edit"}>
           <al-input>
             <label>Find post <input type="search" name="findPost" value={model.findPost} /></label>
           </al-input>
@@ -138,7 +138,7 @@ Edit.view model session =
       else
         Html.none}
       {if model.authorsTotal > 200 then
-        <form method="get">
+        <form method="get" action={"/admin/comment/" ++ model.row.id ++ "/edit"}>
           <al-input>
             <label>
               Find author <input type="search" name="findAuthor" value={model.findAuthor} />

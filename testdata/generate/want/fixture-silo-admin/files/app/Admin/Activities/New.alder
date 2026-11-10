@@ -67,7 +67,7 @@ New.view model session =
     <al-card>
       -- @admin begin finder
       {if model.orgsTotal > 200 then
-        <form method="get">
+        <form method="get" action="/admin/activity/new">
           <al-input>
             <label>Find org <input type="search" name="findOrg" value={model.findOrg} /></label>
           </al-input>

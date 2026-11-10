@@ -1705,17 +1705,19 @@ func (g *adminGen) findParams(at *adminTable) []string {
 	return out
 }
 
-// finders are the searches of at's New or Edit page (module mod): forms above the page's form,
-// shown while a list is long, each a GET form to the page itself. The narrowed list is the
-// page's parameter, so the browser sends the text to the page's own URL (its path keeps the row's
-// id on Edit) and the page loads again at it.
-func (g *adminGen) finders(at *adminTable, mod string) (view []string) {
+// finders are the searches of at's New or Edit page (module mod, its address action, a form's
+// `action`): forms above the page's form, shown while a list is long, each a GET form to the
+// page itself. The narrowed list is the page's parameter, so the browser sends the text to the
+// page's address and the page loads again at it. The action is written out: after a refused
+// write without JavaScript the address bar holds the write's path (`/admin/post`), and a form
+// with no action would go there.
+func (g *adminGen) finders(at *adminTable, mod, action string) (view []string) {
 	for _, c := range at.refs {
 		if !g.finds(c) {
 			continue
 		}
-		view = append(view, fmt.Sprintf(`{if model.%s > 200 then <form method="get"><al-input><label>%s <input type="search" name=%s value={model.%s} /></label></al-input><al-button type="submit" variant="secondary">Find</al-button></form> else Html.none}`,
-			totalField(c), "Find "+strings.ToLower(Humanize(c.Name)), quote(g.wire(mod, findParam(c))), findParam(c)))
+		view = append(view, fmt.Sprintf(`{if model.%s > 200 then <form method="get" action=%s><al-input><label>%s <input type="search" name=%s value={model.%s} /></label></al-input><al-button type="submit" variant="secondary">Find</al-button></form> else Html.none}`,
+			totalField(c), action, "Find "+strings.ToLower(Humanize(c.Name)), quote(g.wire(mod, findParam(c))), findParam(c)))
 	}
 	return
 }
@@ -1850,7 +1852,7 @@ func (g *adminGen) newPage(at *adminTable) {
 
 	var b strings.Builder
 	path := at.path + "/new"
-	finder := g.finders(at, mod)
+	finder := g.finders(at, mod, at.actionAt("/new", ""))
 	routes := []string{
 		routeLine("New", "GET", path, g.keepWires(mod, at.params(mod, imports, g.findParams(at))), "", at.requires()),
 		routeLine("Create", "POST", at.path, at.params(mod, imports, nil), at.formName(), at.requires()),
@@ -2183,7 +2185,7 @@ func (g *adminGen) edit(at *adminTable) {
 	var b strings.Builder
 	path := at.path + "/{id}/edit"
 	idParam := "id: " + types.StringIn(t.IDType, mod)
-	finder := g.finders(at, mod)
+	finder := g.finders(at, mod, at.actionAt("/{id}/edit", textOf(at.idColumn(), "model.row."+t.IDField)))
 	routes := []string{
 		routeLine("Edit", "GET", path, g.keepWires(mod, at.params(mod, imports, append([]string{idParam}, g.findParams(at)...))), "", at.requires()),
 		routeLine("Save", "PUT", at.path+"/{id}", at.params(mod, imports, []string{idParam}), at.formName(), at.requires()),

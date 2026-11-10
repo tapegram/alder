@@ -78,7 +78,7 @@ New.view model session =
     <al-card>
       -- @admin begin finder
       {if model.authorsTotal > 200 then
-        <form method="get">
+        <form method="get" action="/admin/post/new">
           <al-input>
             <label>
               Find author <input type="search" name="findAuthor" value={model.findAuthor} />

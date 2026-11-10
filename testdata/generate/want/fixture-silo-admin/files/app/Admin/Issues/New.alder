@@ -93,7 +93,7 @@ New.view model session =
     <al-card>
       -- @admin begin finder
       {if model.projectsTotal > 200 then
-        <form method="get">
+        <form method="get" action={"/admin/orgs/" ++ session.org ++ "/issue/new"}>
           <al-input>
             <label>
               Find project <input type="search" name="findProject" value={model.findProject} />
@@ -104,7 +104,7 @@ New.view model session =
       else
         Html.none}
       {if model.assigneesTotal > 200 then
-        <form method="get">
+        <form method="get" action={"/admin/orgs/" ++ session.org ++ "/issue/new"}>
           <al-input>
             <label>
               Find assignee <input type="search" name="findAssignee" value={model.findAssignee} />

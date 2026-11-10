@@ -122,6 +122,40 @@ func (at *adminTable) action(suffix string) string {
 	return `{"` + before + `" ++ session.` + at.silo.key + ` ++ "` + after + `"}`
 }
 
+// actionAt is a GET form's `action` attribute to the table's path with suffix, whose `{id}` is
+// the text id (an expression), and for a siloed table whose key is the session's value: the
+// text, or the text built around those values.
+func (at *adminTable) actionAt(suffix, id string) string {
+	vals := map[string]string{"id": id}
+	if at.silo != nil {
+		vals[at.silo.key] = "session." + at.silo.key
+	}
+	var parts []string
+	lit := ""
+	rest := at.path + suffix
+	for {
+		before, after, ok := strings.Cut(rest, "{")
+		if !ok {
+			break
+		}
+		name, tail, _ := strings.Cut(after, "}")
+		lit += before
+		if lit != "" {
+			parts = append(parts, quote(lit))
+		}
+		parts = append(parts, vals[name])
+		lit, rest = "", tail
+	}
+	lit += rest
+	if len(parts) == 0 {
+		return quote(lit)
+	}
+	if lit != "" {
+		parts = append(parts, quote(lit))
+	}
+	return "{" + strings.Join(parts, " ++ ") + "}"
+}
+
 // siloLits adds the key, expr, to every route value of a table in silo s in text, and to the
 // routes own of the module text is in, written bare: `Admin.Projects.Show.Show { id: x }` becomes
 // `Admin.Projects.Show.Show { org: expr, id: x }` (one that names the key is left). The key's

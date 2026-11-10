@@ -102,7 +102,7 @@ Edit.view model session =
     <al-card>
       -- @admin begin finder
       {if model.postsTotal > 200 then
-        <form method="get">
+        <form method="get" action={"/admin/tag/" ++ model.row.id ++ "/edit"}>
           <al-input>
             <label>Find post <input type="search" name="findPost" value={model.findPost} /></label>
           </al-input>

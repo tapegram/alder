@@ -75,7 +75,7 @@ New.view model session =
     <al-card>
       -- @admin begin finder
       {if model.postsTotal > 200 then
-        <form method="get">
+        <form method="get" action="/admin/comment/new">
           <al-input>
             <label>Find post <input type="search" name="findPost" value={model.findPost} /></label>
           </al-input>

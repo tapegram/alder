@@ -2189,7 +2189,7 @@ New.view model session =
     <al-card>
       -- @admin begin finder
       {if model.authorsTotal > 200 then
-        <form method="get">
+        <form method="get" action="/admin/post/new">
           <al-input>
             <label>
               Find author <input type="search" name="findAuthor" value={model.findAuthor} />
@@ -2643,9 +2643,13 @@ or be tricked into posting, a user the select did not offer.
 #### The search form
 
 A search is a read, so it is a plain `<form method="get">` with one input,
-named by the parameter (`name="findAuthor"`), and no `action`: the browser
-sends it to the page's own address with the text in the query
-(`/admin/post/new?findAuthor=…`). `load` runs again, cuts the text to 200
+named by the parameter (`name="findAuthor"`), whose `action` is the page's
+own path: the browser sends it there with the text in the query
+(`/admin/post/new?findAuthor=…`). The Edit page's is its path with the
+row's id (`{"/admin/post/" ++ model.row.id ++ "/edit"}`). The action is
+written out because a form without one goes to the address in the bar,
+and after a refused `Create` without JavaScript that address is the
+write's, `/admin/post`. `load` runs again, cuts the text to 200
 characters and narrows by it, and the input shows it again
 (`value={model.findAuthor}`). There is no route for the search and no
 `update`.
