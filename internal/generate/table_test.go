@@ -169,7 +169,7 @@ func TestNewMsgIdOfAliasedTable(t *testing.T) {
 	if e == nil {
 		t.Fatalf("no edit of Notes: %+v", edits)
 	}
-	for _, want := range []string{"Test.click (Feature { id: post1 })", "route Feature = POST \"/notes/_/Feature\" { id: TablePost.PostId }", "Db.insert TablePost {"} {
+	for _, want := range []string{"Test.click (Feature { id: post1 })", "route Feature = POST \"/notes\" { id: TablePost.PostId }", "Db.insert TablePost {"} {
 		if !strings.Contains(e.Body, want) {
 			t.Errorf("missing %q in:\n%s", want, e.Body)
 		}

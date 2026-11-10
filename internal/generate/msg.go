@@ -18,17 +18,25 @@ type MsgOptions struct {
 	InFor string // --in-for: the binder of the view's loop the button goes in
 	When  string // --when: the Bool expression the button is shown on
 	ID    string // --id: the button's id attribute
+	// Method is --method, the write route's method ("" for POST); Path is --path, its path ("" for
+	// the page's own path, which App has none of).
+	Method string
+	Path   string
 }
 
 // NewMsg generates `alder new msg`: a write route on a route module (newRouteMsg: the route, its
 // button at the end of the view and a test that presses it; --in-for, --when and --id place the
-// button), or on App (newAppRouteMsg: a route without a button, sent from any page).
+// button), or on App (newAppRouteMsg: a route without a button, sent from any page). The route
+// answers the page's own path (--path overrides it, App needs it) with POST (--method overrides).
 func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]Edit, error) {
 	if page == "App" {
 		if o.InFor != "" || o.When != "" || o.ID != "" {
 			return nil, Refusef("`alder new msg App` adds a route without a button: --in-for, --when and --id belong to a route module")
 		}
-		return newAppRouteMsg(p, name, fields)
+		if o.Path == "" {
+			return nil, Refusef("`alder new msg App` needs `--path`: a route of App has no page to take a path from, such as `--path /theme`")
+		}
+		return newAppRouteMsg(p, name, fields, o.Path, o.Method)
 	}
 	if len(p.RoutesOf(page)) == 0 {
 		return nil, notRouteModule(p, page)

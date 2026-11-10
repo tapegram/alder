@@ -275,7 +275,7 @@ const newAdminUsage = "usage: alder new admin [--module Admin] [--path /admin] [
 
 const newFormUsage = "usage: alder new form <Route module> <Name> <field>:<Type>[=default] … [--into T] [--hole] [--msg <Route>] [--dir app] [--json] [--dry-run]"
 
-const newMsgUsage = "usage: alder new msg <Route module> <Name> [<field>:<Type> …] [--in-for <binder>] [--when <Bool expression>] [--id <id>] [--dir app] [--json] [--dry-run]"
+const newMsgUsage = "usage: alder new msg <Route module> <Name> [<field>:<Type> …] [--in-for <binder>] [--when <Bool expression>] [--id <id>] [--method POST|PUT|PATCH|DELETE] [--path /path] [--dir app] [--json] [--dry-run]"
 
 const newCapabilityUsage = "usage: alder new capability <Module> <entry> \"<Type>\" [--dir app] [--json] [--dry-run]"
 

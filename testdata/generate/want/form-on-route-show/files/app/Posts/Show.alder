@@ -4,8 +4,8 @@ import Layout
 import Table.Post
 import Table.User
 
-route Show    = GET  "/posts/{id}"           { id: Post.PostId }
-route Feature = POST "/posts/{id}/_/Feature" { id: Post.PostId, note: Text } form Reason
+route Show    = GET  "/posts/{id}" { id: Post.PostId }
+route Feature = POST "/posts/{id}" { id: Post.PostId, note: Text } form Reason
 
 type Model = { row: Post }
 

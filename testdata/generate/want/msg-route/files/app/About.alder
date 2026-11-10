@@ -2,8 +2,8 @@ module About
 
 import Layout
 
-route About = GET  "/about"         { }
-route Clear = POST "/about/_/Clear" { }
+route About = GET  "/about" { }
+route Clear = POST "/about" { }
 
 type Model = { }
 

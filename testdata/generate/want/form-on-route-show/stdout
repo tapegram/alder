@@ -4,9 +4,9 @@ edited app/Posts/Show.alder
 @@ -5,7 +5,7 @@
  import Table.User
  
- route Show    = GET  "/posts/{id}"           { id: Post.PostId }
--route Feature = POST "/posts/{id}/_/Feature" { id: Post.PostId, note: Text }
-+route Feature = POST "/posts/{id}/_/Feature" { id: Post.PostId, note: Text } form Reason
+ route Show    = GET  "/posts/{id}" { id: Post.PostId }
+-route Feature = POST "/posts/{id}" { id: Post.PostId, note: Text }
++route Feature = POST "/posts/{id}" { id: Post.PostId, note: Text } form Reason
  
  type Model = { row: Post }
  

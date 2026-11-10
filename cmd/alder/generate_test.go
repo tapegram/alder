@@ -268,11 +268,11 @@ var genCases = []genCase{
 		fills: [][2]string{{"Tags.Txt.load", "Query.succeed { }"}, {"Tags.Txt.view --hole ?body", `"hi"`}}},
 	{name: "form-msg", base: "scaffold", args: []string{"new", "form", "Home", "Quick", "name:Text.NonEmpty", "message:Text.NonEmpty", "--msg", "Sign2"}, test: true},
 	// E11 fixes: the four commands
-	{name: "app-msg", base: "scaffold", args: []string{"new", "msg", "App", "ToggleTheme", "dark:Bool"}, test: true,
+	{name: "app-msg", base: "scaffold", args: []string{"new", "msg", "App", "ToggleTheme", "dark:Bool", "--path", "/theme", "--method", "PUT"}, test: true,
 		fills: [][2]string{{"--decl Home.Home.view", "<Layout.Page title=\"Guestbook\">\n  <al-card>\n    <form submit={Submit}>\n      <al-input field=\"name\" label=\"Your name\" />\n      <al-input field=\"message\" label=\"Message\" />\n      <al-button type=\"submit\">Sign</al-button>\n    </form>\n  </al-card>\n  <al-button click={App.ToggleTheme { dark: True }}>Dark</al-button>\n  <ul id=\"entries\">{for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}</ul>\n</Layout.Page>"}}},
 	// #160: an App that holds `route Logout` takes a route too
-	{name: "app-msg-auth", base: "scaffold", pre: [][]string{{"new", "auth"}}, args: []string{"new", "msg", "App", "Ping"}},
-	{name: "fixture-app-msg-hole", base: "fixture", args: []string{"new", "msg", "App", "Ping"}},
+	{name: "app-msg-auth", base: "scaffold", pre: [][]string{{"new", "auth"}}, args: []string{"new", "msg", "App", "Ping", "--path", "/ping"}},
+	{name: "fixture-app-msg-hole", base: "fixture", args: []string{"new", "msg", "App", "Ping", "--path", "/ping"}},
 	{name: "edit-decl-add-prop", base: "scaffold", args: []string{"edit", "decl", "Layout.Page", "add-prop", "dark:Bool=False"}, test: true},
 	{name: "msg-id", base: "scaffold", args: []string{"new", "msg", "Home", "Clear", "--id", "clear"}, test: true},
 	{name: "fixture-edit-session", base: "fixture", args: []string{"edit", "session", "add-field", `theme:Text="light"`}, test: true},
@@ -1023,7 +1023,7 @@ func TestGenerate_E11Commands(t *testing.T) {
 	}{
 		{[]string{"edit", "decl", "Layout.Page", "add-prop", "dark:Bool"}, "needs a default"},
 		{[]string{"edit", "decl", "Layout.Page", "add-prop", "title:Text=\"x\""}, "already has a property `title`"},
-		{[]string{"new", "msg", "App", "Logout"}, "`App` already declares `Logout`"},
+		{[]string{"new", "msg", "App", "Logout", "--path", "/logout"}, "`App` already declares `Logout`"},
 	} {
 		dir := genApp(t, "fixture")
 		code, _, errs := alderIn(t, dir, "", c.args...)

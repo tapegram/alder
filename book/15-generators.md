@@ -605,7 +605,7 @@ Now a button that deletes the reply. `alder new msg` adds a **write
 route** to a route module, and a button that sends it:
 
 ```text command=guestbook
-$ alder new msg Replies.Show Delete
+$ alder new msg Replies.Show Delete --method DELETE
 edited app/Replies/Show.alder
 --- a/app/Replies/Show.alder
 +++ b/app/Replies/Show.alder
@@ -614,8 +614,8 @@ edited app/Replies/Show.alder
  import Table.Reply
  
 -route Show = GET "/replies/{id}" { id: Reply.ReplyId }
-+route Show   = GET  "/replies/{id}"          { id: Reply.ReplyId }
-+route Delete = POST "/replies/{id}/_/Delete" { id: Reply.ReplyId }
++route Show   = GET    "/replies/{id}" { id: Reply.ReplyId }
++route Delete = DELETE "/replies/{id}" { id: Reply.ReplyId }
  
  type Model = { row: Reply }
  
@@ -657,12 +657,17 @@ page and no button) is made with `alder new route … --method POST` instead.
 
 ### The new write route
 
-- **The route** is `route Delete = POST "/replies/{id}/_/Delete" { id:
+- **The route** is `route Delete = DELETE "/replies/{id}" { id:
   Reply.ReplyId }`.
 
-- **Its path** is its module's route path with `/_/` and its name on the end
-  (the `<path>/_/<Name>` convention), and it takes the parameters of the route
-  it was added to.
+- **Its path** is its page's own path, `/replies/{id}`: a write route is the
+  same resource as the page it goes with, and its method says what it does to
+  it. `--method` is `POST` unless you name another (`PUT`, `PATCH` or
+  `DELETE`), and `--path` names another path when the action is not the page's
+  resource (`--path /replies/{id}/pin`). The route takes the parameters of the
+  route it was added to. Two routes of the app cannot answer the same method
+  and path, so a second `alder new msg` on a page that already has a `POST`
+  route at its path is refused, with the advice to give it its own `--path`.
 
 - **Its `Delete.update`** answers with a `Response` (chapter 6), and starts as
   `Response.refresh`, the answer that shows the same page again.
@@ -3912,7 +3917,7 @@ edited app/Home.alder
  
  route Home   = GET  "/"         { }
  route Submit = POST "/_/Submit" { } form Sign
-+route Hide   = POST "/_/Hide"   { id: Entry.EntryId }
++route Hide   = POST "/"         { id: Entry.EntryId }
  
  type Model = { entries: List Entry }
  
@@ -3967,7 +3972,8 @@ A button in a loop has its route's name as its class (`hide`), so a
 test can count the rows' buttons (`Test.count "#entries .hide"
 page.doc`).
 
-- The new route `Hide` is POST "/_/Hide" with the `id` it takes.
+- The new route `Hide` is POST "/" (the page's own path) with the `id` it
+  takes.
 
 - Its `Hide.update` starts as `Response.refresh`.
 
@@ -5063,17 +5069,19 @@ E11 (below) found four things the commands could not do.
 ### A button in `App`
 
 The first was a button that is on every page (`click={App.Logout}` is one):
-`alder new msg App <Name> [fields]` makes one. `App` holds write routes like
-any module: `route Logout = POST
+`alder new msg App <Name> --path /path [fields]` makes one. `App` holds write
+routes like any module: `route Logout = POST
 "/_/Logout"` is one, written by `alder new auth`.
 
-So `alder new msg App <Name>` writes a route there too, `route <Name> =
-POST "/_/<Name>"` with the fields as its payload, after the last route of
+So `alder new msg App <Name> --path /path` writes a route there too, `route
+<Name> = POST "/path"` with the fields as its payload (`--method` names
+another method). `App` has no page to take a path from, so `--path` is
+required. The route goes after the last route of
 `App`, together with its `update` (answering `Response.refresh`, which the
 author then replaces) and a comment saying how to test it:
 
 ```text command=guestbook
-$ alder new msg App ToggleTheme dark:Bool
+$ alder new msg App ToggleTheme dark:Bool --path /theme --method PUT
 edited app/App.alder
 --- a/app/App.alder
 +++ b/app/App.alder
@@ -5082,8 +5090,8 @@ edited app/App.alder
  login = Auth.Login.Login
  
 -route Logout = POST "/_/Logout" { }
-+route Logout      = POST "/_/Logout"      { }
-+route ToggleTheme = POST "/_/ToggleTheme" { dark: Bool }
++route Logout      = POST "/_/Logout" { }
++route ToggleTheme = PUT  "/theme"    { dark: Bool }
  
  error : Error -> Html
  error err =

@@ -5,7 +5,7 @@ edited app/Home.alder
  
  route Home   = GET  "/"         { }
  route Submit = POST "/_/Submit" { } form Sign
-+route Clear  = POST "/_/Clear"  { }
++route Clear  = POST "/"         { }
  
  type Model = { entries: List Entry }
  

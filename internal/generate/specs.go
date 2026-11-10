@@ -174,6 +174,8 @@ func newSpecs() []*Spec {
 				{Name: "in-for", Kind: ArgText, Value: "binder", Summary: "the button goes inside this for loop", Example: "post", Agent: true},
 				{Name: "when", Kind: ArgText, Value: "Bool expression", Summary: "show the button only when this holds", Example: "model.canWrite", Agent: true},
 				{Name: "id", Kind: ArgText, Value: "id", Summary: "the button's id", Example: "archive", Agent: true},
+				{Name: "method", Kind: ArgChoice, Choices: []string{"POST", "PUT", "PATCH", "DELETE"}, Value: "POST|PUT|PATCH|DELETE", Summary: "the write route's method (POST by default)", Example: "DELETE"},
+				{Name: "path", Kind: ArgRoute, Value: "/path", Summary: "the write route's path (the page's own path by default; required on App)", Example: "/replies/{id}/pin"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				fields, err := fieldList(s.All("fields"), false)
@@ -183,7 +185,7 @@ func newSpecs() []*Spec {
 				onRoute := false
 				res, err := runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) {
 					onRoute = len(p.RoutesOf(s.One("page"))) > 0
-					return NewMsg(p, s.One("page"), s.One("name"), fields, MsgOptions{InFor: s.One("in-for"), When: s.One("when"), ID: s.One("id")})
+					return NewMsg(p, s.One("page"), s.One("name"), fields, MsgOptions{InFor: s.One("in-for"), When: s.One("when"), ID: s.One("id"), Method: s.One("method"), Path: s.One("path")})
 				})
 				if res != nil && onRoute {
 					res.Notices = append(res.Notices, "`alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`")

@@ -4,7 +4,7 @@ import Layout
 
 session { }
 
-route ToggleTheme = POST "/_/ToggleTheme" { dark: Bool }
+route ToggleTheme = PUT "/theme" { dark: Bool }
 
 error : Error -> Html
 error err =

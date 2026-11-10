@@ -4,22 +4,33 @@ import (
 	"fmt"
 	"strings"
 
+	"alder/internal/check"
 	"alder/internal/syntax"
 )
 
 // newAppRouteMsg is `alder new msg App <Name> [fields]` on an App written with routes (plan call
-// 13): `route <Name> = POST "/_/<Name>" { fields }` after App's last route (else after its
+// 13): `route <Name> = <METHOD> "<path>" { fields }` (POST unless method says otherwise; the path
+// is --path, which App needs, as it has no page to take one from) after App's last route (else after its
 // `login`, else after its `session`), and `<Name>.update` answering `Response.refresh`, with a
 // comment saying how to test it. It writes no test: a route of App is sent by a button on any
 // page (`click={App.<Name>}`), so no page's view is touched, and which page has the button is the
 // author's to say.
-func newAppRouteMsg(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
+func newAppRouteMsg(p *Program, name string, fields []FieldSpec, path, method string) ([]Edit, error) {
 	app := p.Modules["App"]
 	if !IsUpperIdent(name) {
 		return nil, Refusef("`%s` is not a route name: a route is named by a capitalised identifier, such as `ToggleTheme`", name)
 	}
 	if declared(app.Syntax, name) {
 		return nil, Refusef("`App` already declares `%s`: choose another route name", name)
+	}
+	if why := check.PagePathProblem(path); why != "" {
+		return nil, Refusef("`%s` is not a route path: it %s; %s", path, why, check.PagePathRule)
+	}
+	if method == "" {
+		method = "POST"
+	}
+	if have := routeClash(p, method, path, ""); have != nil {
+		return nil, clashRefusal(have, name, method, path)
 	}
 	imports := newImports("App", p.Std)
 	var decl []string
@@ -35,9 +46,9 @@ func newAppRouteMsg(p *Program, name string, fields []FieldSpec) ([]Edit, error)
 		}
 		typeImports(imports, f.Type, p)
 	}
-	line := fmt.Sprintf("route %s = POST \"/_/%s\" { }", name, name)
+	line := fmt.Sprintf("route %s = %s \"%s\" { }", name, method, path)
 	if len(decl) > 0 {
-		line = fmt.Sprintf("route %s = POST \"/_/%s\" { %s }", name, name, strings.Join(decl, ", "))
+		line = fmt.Sprintf("route %s = %s \"%s\" { %s }", name, method, path, strings.Join(decl, ", "))
 	}
 	e := newSrcEdit(app.Source)
 	var after, firstTest syntax.Decl

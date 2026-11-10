@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"alder/internal/check"
 	"alder/internal/syntax"
 )
 
@@ -25,8 +26,9 @@ func guardText(r *Route) string {
 }
 
 // newRouteMsg is `alder new msg` on a route module (plan call 13, aliased as `new route
-// --method POST` from the page's side): a write route `M = POST "<page path>/_/M" { <page path
-// parameters>, <fields> }` with the page's guard, its `M.update` answering `Response.refresh`,
+// --method POST` from the page's side): a write route `M = <METHOD> "<path>" { <page path
+// parameters>, <fields> }`, the method POST unless --method says otherwise and the path the
+// page's own unless --path says otherwise (the method tells the router which one is meant), with the page's guard, its `M.update` answering `Response.refresh`,
 // a button sending it at the end of the page's view (--in-for, --when and --id place it as for a
 // page), and a test that presses it from the page. The fields' values in the button and the
 // test are holes, as a page's are, except a table's id: the row the page shows.
@@ -53,6 +55,19 @@ func newRouteMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions
 	}
 	if r.Silo != "" {
 		return nil, Refusef("`%s` is an admin page of a silo: its routes are written by `alder regen admin`", page)
+	}
+	method := o.Method
+	if method == "" {
+		method = "POST"
+	}
+	path := o.Path
+	if path == "" {
+		path = r.Path
+	} else if why := check.PagePathProblem(path); why != "" {
+		return nil, Refusef("`%s` is not a route path: it %s; %s", path, why, check.PagePathRule)
+	}
+	if have := routeClash(p, method, path, ""); have != nil {
+		return nil, clashRefusal(have, name, method, path)
 	}
 	imports := newImports(page, p.Std)
 	d := MsgData{Name: name, Click: name, Label: Humanize(name), ID: o.ID}
@@ -99,10 +114,9 @@ func newRouteMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions
 		own = append(own, f)
 	}
 	fields = own
-	path := strings.TrimSuffix(r.Path, "/") + "/_/" + name
-	line := fmt.Sprintf("route %s = POST \"%s\" { %s }%s", name, path, strings.Join(params, ", "), guardText(r))
+	line := fmt.Sprintf("route %s = %s \"%s\" { %s }%s", name, method, path, strings.Join(params, ", "), guardText(r))
 	if len(params) == 0 {
-		line = fmt.Sprintf("route %s = POST \"%s\" { }%s", name, path, guardText(r))
+		line = fmt.Sprintf("route %s = %s \"%s\" { }%s", name, method, path, guardText(r))
 	}
 	update := fmt.Sprintf("%s.update : %s.Params -> Session -> Task Response\n%s.update params session = Task.succeed Response.refresh", name, name, name)
 

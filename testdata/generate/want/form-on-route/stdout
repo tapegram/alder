@@ -5,8 +5,8 @@ edited app/Home.alder
  
  route Home   = GET  "/"         { }
  route Submit = POST "/_/Submit" { } form Sign
--route Clear  = POST "/_/Clear"  { }
-+route Clear  = POST "/_/Clear"  { } form Reason
+-route Clear  = POST "/"         { }
++route Clear  = POST "/"         { } form Reason
  
  type Model = { entries: List Entry }
  

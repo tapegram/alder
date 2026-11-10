@@ -4,8 +4,8 @@ import Layout
 import Table.Post
 import Table.User
 
-route Index = GET  "/posts"       { page: Int = 1 }
-route Pin   = POST "/posts/_/Pin" { id: Post.PostId }
+route Index = GET  "/posts" { page: Int = 1 }
+route Pin   = POST "/posts" { id: Post.PostId }
 
 type Model = {
   rows: List Post,

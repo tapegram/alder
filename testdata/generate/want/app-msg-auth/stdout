@@ -5,7 +5,7 @@ edited app/App.alder
  login = Auth.Login.Login
  
  route Logout = POST "/_/Logout" { }
-+route Ping   = POST "/_/Ping"   { }
++route Ping   = POST "/ping"     { }
  
  error : Error -> Html
  error err =

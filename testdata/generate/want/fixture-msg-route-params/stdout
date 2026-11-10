@@ -6,8 +6,8 @@ edited app/Posts/Show.alder
  import Table.User
  
 -route Show = GET "/posts/{id}" { id: Post.PostId }
-+route Show    = GET  "/posts/{id}"           { id: Post.PostId }
-+route Feature = POST "/posts/{id}/_/Feature" { id: Post.PostId, note: Text }
++route Show    = GET  "/posts/{id}" { id: Post.PostId }
++route Feature = POST "/posts/{id}" { id: Post.PostId, note: Text }
  
  type Model = { row: Post }
  
