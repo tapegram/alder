@@ -19,7 +19,9 @@ appears in the URL.** Generators should make that path the easy one and the defa
 stay allowed everywhere.
 
 This is a generator-level change. Nothing in the language changes; a `resource` declaration was
-considered and deferred (see follow-ups).
+considered and deferred (see follow-ups). The principle throughout: **hand-written routes may have
+any path and method the language accepts; the generators, the book and the error hints encourage
+the RESTful one.** Nothing here refuses a URL a person typed.
 
 ## Goals
 
@@ -36,7 +38,8 @@ considered and deferred (see follow-ups).
 
 - No new language syntax (`resource`), no new checker rule, no inflector.
 - No `/_/` → resource migration tool. Existing apps keep working, since a path is a path; the one
-  production app (nightvote-replay) is the user's to rename by hand, or not.
+  production app (nightvote-replay, a separate repo) is out of scope and the user's to rename by
+  hand, or not. alder-dx-demo in ~/projects is in scope (three lines).
 - Where a write lands afterwards stays the `update`'s decision (`Response.redirect`,
   `Response.refresh`); this design does not change the response side. Generators keep today's
   defaults: a form redirects back to its page, admin create/save redirect to `Show`, destroy to
@@ -81,18 +84,30 @@ considered and deferred (see follow-ups).
    pluralise with a small rule (`y`→`ies`; `s`, `x`, `z`, `ch`, `sh`→`+es`; else `+s`):
    `Entry`→`entries`, `Reply`→`replies`, `BlogPost`→`blog-posts`, `Status`→`statuses`. Odd
    plurals (`Person`) are a `--path` away; no inflector. *(my call)*
-3. **Nesting.** When the form's page path has parameters, the collection nests under the page path
-   cut after its last parameter segment: a form on `/projects/{pid}` or on `/projects/{pid}/edit`
-   inserting `Task` posts to `/projects/{pid}/tasks`. A page with no parameters gives a top-level
-   collection: the guestbook form on `/` posts to `/entries`. *(my call)*
+3. **Nesting.** The collection nests under the page path when the insert is scoped by one of the
+   page's parameters, which the form generator already knows (route_form.go chooses
+   `Db.insertScoped`/`Db.insertMine` when the table's partition key is among the page's keys):
+   the page path is cut after the segment that binds that key, so a form on `/projects/{pid}` or
+   on `/projects/{pid}/edit` inserting a project-scoped `Task` posts to `/projects/{pid}/tasks`,
+   and on `/a/{x}/b/{y}` with the key bound by `{x}` it posts to `/a/{x}/tasks`. An unscoped
+   insert gives a top-level collection whatever the page: the guestbook form on `/` posts to
+   `/entries`. `--path` for anything else. *(my call)*
 4. **A write-only path is fine.** `POST /entries` with no `GET /entries` page is correct REST; a
    GET there is a 405 with `Allow`, as the runtime already does. `alder routes` lists it as is.
 5. **No resource: the page's own path.** A `new msg`, or a `new form` with no table, defaults to
    `<page path>` with the method given (`POST` by default). The first write on a page is almost
-   always a submit-to-self and this is the Remix shape. The second write with the same method on
-   the same page fails E0043 before anything is written; the error names the clash and the two
-   ways out (`--path`, or `--msg` to attach a form to the existing route). The editor form
-   pre-fills the page path, so the clash is visible before generating. *(user's choice)*
+   always a submit-to-self and this is the Remix shape. A second write that would share a method
+   and a path shape with any route in the program fails before anything is written; the error
+   names the clash and the two ways out (`--path`, or `--msg` to attach a form to the existing
+   route). The editor form pre-fills the page path, so the clash is visible before generating.
+   *(user's choice)*
+   - The clash is program-wide, as E0043 is (one `seen` map over every module, with `pathShape`
+     collapsing `{x}`), not per page. The generators already load and resolve the program, so the
+     pre-write check runs the checker's own rule over the parsed program plus the new route, never
+     a text scan. Every generator that writes a write route runs it, `new msg App --path` included.
+   - A table clash is refused, not reused: two pages each running `new form … --into Entry` both
+     derive `POST /entries`; the second refuses with the `--msg SubmitEntry` hint, because it is
+     one resource and should be one route. *(decided with the user)*
 6. **`--path` everywhere, `--method` where it was missing.** Every generator that writes a write
    route accepts `--path`; `new msg` and `new form` gain `--method` so that
    `new msg Replies.Show Delete --method DELETE` writes `DELETE "/replies/{id}"` and the person
@@ -109,15 +124,15 @@ Where the `/_/` default is computed today, and what replaces it.
 
 | Generator | Today | After |
 |---|---|---|
-| `new route <module> <path>` | explicit path, no default; `--example`'s Bump is `<path>/_/Bump` (route.go:317) | unchanged; Bump becomes `POST <path>` (the example page's own path, rule 5) |
+| `new route <module> <path>` | explicit path, no default; `--example`'s Bump is `<path>/_/Bump` (route.go:317) | unchanged; Bump becomes `POST <path>` (the example page's own path, rule 5), keeping any `{param}` the path declares |
 | `new form <page> <name> --into T` | `POST <page>/_/Submit<Name>` (route_form.go:157,169) | `POST <collection of T>` per rules 2–3; `--path`, `--method` override; `--msg` unchanged |
 | `new form <page> <name>` (no table) | same | `POST <page path>` (rule 5); second one is E0043 with the hint |
 | `new msg <page> <name>` | `POST <page>/_/<Name>` (route_msg.go:102) | `<method> <page path>`, `--method` default POST, `--path` override; second one is E0043 with the hint |
 | `new msg App <name>` | `POST /_/<Name>` (appmsg.go:38,40) | `--path` required (there is no page to borrow a path from); the usage error says so |
 | `new auth` | `POST /login/_/SignIn`, `POST /_/Logout` (auth.go, templates/auth_login.tmpl:26) | `GET /login` page unchanged; `POST /session` SignIn; `DELETE /session` Logout. Book and comments say "the session is the resource" |
 | `new admin` (admin.go `writePath`, line 595) | `POST <path>/_/Create`, `PUT <path>/{id}/edit/_/Save`, `DELETE <path>/{id}/_/Destroy` | `POST <path>`, `PUT <path>/{id}`, `DELETE <path>/{id}`; `New`/`Edit`/`Delete` GET pages keep `/new`, `/{id}/edit`, `/{id}/delete` |
-| `new admin` search (`Search<Col>`, admin.go:1722-1732) | `POST <path>/_/Search<Col>` with a form | a search is a read: `GET <path>` with an optional query parameter per searchable column, submitted by a hand-written GET form (book 06-routes.md:156). Details are the builder's; if merging into `Index` turns out to be a large admin change, a separate `GET <path>/search` route is acceptable and noted in the plan |
-| `new admin` bulk (admin_bulk.go:95) | `POST <path>/bulk/_/<Action>` | `POST <path>/bulk/<action>` lowercased, e.g. `POST /admin/posts/bulk/archive`. The one named-action spot: a bulk action is a command over a selection, and REST's job-resource answer is overkill here *(my call; the user may prefer a noun)* |
+| `new admin` search (`Search<Col>`, admin.go:1722-1732) | `POST <path>/_/Search<Col>` with a form | a search is a read: one `GET <path>/search` route with a query parameter per searchable column, submitted by a hand-written GET form (book 06-routes.md:156). It sits beside `GET <path>/{id}` safely (literal before parameter). Merging it into `Index` as query parameters is the purer shape but changes `Index`'s load and tests; it is not part of this work *(my call)* |
+| `new admin` bulk (admin_bulk.go:95-115) | `POST <path>/bulk/_/BulkDelete`, `POST <path>/bulk/_/BulkSet<Col>` | the selection (`GET <path>/bulk`, ids in the query) is the resource, and the generator writes only two actions, both states of it: `DELETE <path>/bulk` removes the selected rows and `PUT <path>/bulk/<col>` sets a column on them (`PUT /admin/posts/bulk/status`), ids in the form body as today. No verb segment anywhere *(my call)* |
 | `new resource` (#194, not built yet) | — | inherits the admin table |
 
 The E0043 message for a duplicate method+path today reads "routes `A` and `B` both answer `M
@@ -179,8 +194,7 @@ Generators, docs and tests must agree after the change, so the plan ends with a 
 ## Left to the builder
 
 - The exact E0046 hint text and the exact generator refusal text.
-- Whether admin search merges into `Index` as query parameters or becomes `GET <path>/search`
-  (see the table), and the query-parameter names.
+- The admin search route's query-parameter names.
 - The pluralisation helper's home (`internal/names` is the likely place) and its tests.
 - Order of the mechanical pass (generators → goldens → examples → book) and how much of it is
   scripted.
