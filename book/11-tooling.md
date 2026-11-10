@@ -2708,7 +2708,7 @@ A `deploy` declaration `alder deploy` cannot use (chapter 16):
 
 A `Task` that writes to two stores (chapter 8, "Partitions and silos"):
 
-- A shared table and a silo: "`Create` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route."
+- A shared table and a silo: "`Create.update` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route."
 - Two silos: "… `Board` (silo `team`): a Task writes to one store. Send one of the writes from its own route."
 - The write route whose `update` holds the writes is named.
 
