@@ -148,7 +148,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
-		DevMap:      "{\"pages\":[{\"module\":\"Wood.Wood\",\"path\":\"/r/{cfg}/wood/Results\",\"params\":[\"cfg: Text\",\"electionId: Text as \\\"ElectionId\\\"\",\"contestId: Maybe Int as \\\"ContestId\\\"\"]}],\"tables\":[],\"caps\":[],\"session\":[\"visits: Int\"]}",
+		DevMap:      "{\"routes\":[{\"method\":\"GET\",\"module\":\"Wood.Wood\",\"path\":\"/r/{cfg}/wood/Results\",\"params\":[\"cfg: Text\",\"electionId: Text as \\\"ElectionId\\\"\",\"contestId: Maybe Int as \\\"ContestId\\\"\"]},{\"method\":\"POST\",\"module\":\"Wood.Bump\",\"path\":\"/r/{cfg}/wood/Results\",\"params\":[\"cfg: Text\",\"electionId: Text as \\\"ElectionId\\\"\"]}],\"tables\":[],\"caps\":[],\"session\":[\"visits: Int\"]}",
 	}
 }
 

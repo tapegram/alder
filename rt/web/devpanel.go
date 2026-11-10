@@ -433,12 +433,12 @@ func (rt *router) notify(w http.ResponseWriter) {
 func (rt *router) devOn() bool { return rt.opts.Dev && os.Getenv("ALDER_DEV") == "1" }
 
 // devPage is /_dev's template: the generator's map (Options.DevMap) with what only the runtime
-// knows, the build, the routes, how each capability is wired and the migrations the database has.
+// knows, the build, how each capability is wired and the migrations the database has.
 var devPage = template.Must(template.New("dev").Parse(`<!doctype html><html><head><meta charset="utf-8"><title>Alder dev map</title></head><body>
 <h1>Alder dev map</h1>
 <p>build <code>{{.Build}}</code></p>
-<h2>Pages</h2>
-{{range .Map.Pages}}<h3>{{if .Link}}<a href="{{.Path}}">{{.Path}}</a>{{else}}<code>{{.Path}}</code>{{end}} <small>{{.Module}}</small></h3>
+<h2>Routes</h2>
+{{range .Map.Routes}}<h3>{{.Method}} {{if .Link}}<a href="{{.Path}}">{{.Path}}</a>{{else}}<code>{{.Path}}</code>{{end}} <small>{{.Module}}</small></h3>
 <ul>{{if .Requires}}<li>requires {{.Requires}}{{if .Roles}}, role {{range $i, $r := .Roles}}{{if $i}} | {{end}}{{$r}}{{end}}{{end}}</li>{{end}}
 {{range .Params}}<li>param <code>{{.}}</code></li>{{end}}</ul>
 {{end}}
@@ -453,21 +453,20 @@ var devPage = template.Must(template.New("dev").Parse(`<!doctype html><html><hea
 <ul>{{range .Map.Session}}<li><code>{{.}}</code></li>{{end}}</ul>
 <h2>Migrations applied</h2>
 <ul>{{range .Migrations}}<li><code>{{.}}</code></li>{{else}}<li>none</li>{{end}}</ul>
-<h2>Routes</h2>
-<ul>{{range .Routes}}<li>{{if .Link}}{{.Method}} <a href="{{.Pat}}">{{.Pat}}</a>{{else}}{{.Method}} <code>{{.Pat}}</code>{{end}}</li>{{end}}</ul>
 </body></html>`))
 
 // devMapData is the generator's map (internal/gen's devMap) as the runtime reads it. /_dev shows
 // it and /_dev/map.json re-encodes it, so every field the generator writes is named here.
 type devMapData struct {
-	Pages   []devMapPage  `json:"pages"`
+	Routes  []devMapRoute `json:"routes"`
 	Tables  []devMapTable `json:"tables"`
 	Caps    []string      `json:"caps,omitempty"`
 	Session []string      `json:"session"`
 	Silos   []devMapSilo  `json:"silos,omitempty"`
 }
 
-type devMapPage struct {
+type devMapRoute struct {
+	Method   string   `json:"method"`
 	Module   string   `json:"module"`
 	Path     string   `json:"path"`
 	Requires string   `json:"requires,omitempty"`
@@ -513,11 +512,6 @@ type devCap struct {
 	Name string `json:"name"`
 	Kind string `json:"kind"`
 }
-type devRoute struct {
-	Method string `json:"method"`
-	Pat    string `json:"pat"`
-	Link   bool   `json:"-"`
-}
 
 // devMapView is what /_dev shows and /_dev/map.json encodes: the generator's map and what only the
 // running router knows.
@@ -526,13 +520,12 @@ type devMapView struct {
 	Map        devMapData `json:"map"`
 	Caps       []devCap   `json:"caps"`
 	Migrations []string   `json:"migrations"`
-	Routes     []devRoute `json:"routes"`
 }
 
 // devMapView collects the running app's map: the generator's (Options.DevMap), the capabilities
 // (adapter or fake wired), the migrations applied, the routes and the build id.
 func (rt *router) devMapView() devMapView {
-	data := devMapView{Build: BuildID(), Migrations: rt.opts.Migrations, Caps: []devCap{}, Routes: []devRoute{}}
+	data := devMapView{Build: BuildID(), Migrations: rt.opts.Migrations, Caps: []devCap{}}
 	if data.Migrations == nil {
 		data.Migrations = []string{}
 	}
@@ -541,22 +534,9 @@ func (rt *router) devMapView() devMapView {
 			rt.log("error", "reading the dev map: "+err.Error())
 		}
 	}
-	for i := range data.Map.Pages {
-		data.Map.Pages[i].Link = !strings.Contains(data.Map.Pages[i].Path, "{")
-	}
-	for _, rtn := range rt.routes {
-		pat := ""
-		for _, s := range rtn.segs {
-			if s.param != "" {
-				pat += "/{" + s.param + "}"
-			} else {
-				pat += "/" + s.lit
-			}
-		}
-		if pat == "" {
-			pat = "/"
-		}
-		data.Routes = append(data.Routes, devRoute{Method: rtn.method, Pat: pat, Link: rtn.method == http.MethodGet && !strings.Contains(pat, "{")})
+	for i := range data.Map.Routes {
+		r := &data.Map.Routes[i]
+		r.Link = r.Method == http.MethodGet && !strings.Contains(r.Path, "{")
 	}
 	caps := make([]string, 0, len(rt.opts.Caps))
 	for k := range rt.opts.Caps {
@@ -573,8 +553,8 @@ func (rt *router) devMapView() devMapView {
 	return data
 }
 
-// devMap serves /_dev: the running app's pages, tables, capabilities (adapter or fake
-// wired), session shape, migrations applied, routes and build id.
+// devMap serves /_dev: the running app's routes, tables, capabilities (adapter or fake
+// wired), session shape, migrations applied and build id.
 func (rt *router) devMap(w http.ResponseWriter, r *http.Request) {
 	var b bytes.Buffer
 	if err := devPage.Execute(&b, rt.devMapView()); err != nil {

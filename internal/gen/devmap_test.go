@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -82,5 +83,67 @@ func TestDevMapJSON_Silos(t *testing.T) {
 		if tb.Silo != want {
 			t.Errorf("%s: silo = %q, want %q", tb.Name, tb.Silo, want)
 		}
+	}
+}
+
+// The map lists every route once, GET and write, with its method, module, path and requires.
+func TestDevMapJSON_Routes(t *testing.T) {
+	m := decodeDevMap(t, map[string]string{
+		"App.alder": `module App
+
+import User
+
+session { user: Maybe User.UserId }
+
+login = Login.Login
+
+error : Error -> Html
+error err = <html><body><h1>error</h1></body></html>
+
+notFound : Html
+notFound = <html><body><h1>not found</h1></body></html>
+`,
+		"Login.alder": `module Login
+
+route Login = GET "/login" { }
+
+Login.load : Login.Params -> Session -> Query {}
+Login.load params session = Query.succeed {}
+
+Login.view : {} -> Session -> Html
+Login.view model session = <html><body><h1>log in</h1></body></html>
+`,
+		"User.alder": `module User
+
+type UserId = brand Text
+
+table User { id: UserId @id, name: Text }
+`,
+		"Items.alder": `module Items
+
+route Index = GET  "/items" { }
+route Add   = POST "/items" { name: Text } requires user
+
+Index.load : Index.Params -> Session -> Query {}
+Index.load params session = Query.succeed {}
+
+Index.view : {} -> Session -> Html
+Index.view model session = <html><body><h1>items</h1></body></html>
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update params session = Task.succeed Response.refresh
+`})
+	var got []devRoute
+	for _, r := range m.Routes {
+		if r.Module == "Items.Index" || r.Module == "Items.Add" {
+			got = append(got, r)
+		}
+	}
+	want := []devRoute{
+		{Method: "GET", Module: "Items.Index", Path: "/items"},
+		{Method: "POST", Module: "Items.Add", Path: "/items", Requires: "user", Params: []string{"name: Text"}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("routes = %+v, want %+v (all: %+v)", got, want, m.Routes)
 	}
 }

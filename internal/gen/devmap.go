@@ -13,23 +13,24 @@ import (
 	"alder/rt/db"
 )
 
-// devMap is the app's map for the dev server's /_dev page, as compact JSON: the pages (each GET
-// route: its path, requires, roles, parameters), the tables (columns and attributes), the capability
+// devMap is the app's map for the dev server's /_dev page, as compact JSON: the routes (each GET
+// and write route: its method, path, requires, roles, parameters), the tables (columns and attributes), the capability
 // names and the session's shape. Each table also carries its SQL name, its columns' SQL names
 // and storage types, and its silo; the map lists the app's silos. The runtime adds what only it
 // knows: the build id, the migrations applied and, per capability, whether an adapter or a fake
 // is wired. Serve hands it to web.Options.DevMap; only the dev server (ALDER_DEV=1) ever serves
 // it.
 type devMap struct {
-	Pages   []devPage  `json:"pages"`
+	Routes  []devRoute `json:"routes"`
 	Tables  []devTable `json:"tables"`
 	Caps    []string   `json:"caps"`
 	Session []string   `json:"session"`
 	Silos   []devSilo  `json:"silos,omitempty"`
 }
 
-// devPage is a GET route; Module is its qualified name ("Todos.Index").
-type devPage struct {
+// devRoute is a route, GET or write; Module is its qualified name ("Todos.Index").
+type devRoute struct {
+	Method   string   `json:"method"`
 	Module   string   `json:"module"`
 	Path     string   `json:"path"`
 	Requires string   `json:"requires,omitempty"`
@@ -109,11 +110,9 @@ func devFields(r *ir.RecordType) []string {
 
 // devMapJSON is p's devMap, encoded (map keys sort, so the output is stable).
 func devMapJSON(p *ir.Program) string {
-	m := devMap{Pages: []devPage{}, Tables: []devTable{}, Caps: []string{}, Session: devFields(p.Session)}
+	m := devMap{Routes: []devRoute{}, Tables: []devTable{}, Caps: []string{}, Session: devFields(p.Session)}
 	for _, r := range p.Routes {
-		if r.Method == "GET" {
-			m.Pages = append(m.Pages, devPage{Module: routeKey(r), Path: r.Path, Requires: strings.Join(r.Requires, ", "), Roles: r.Roles, Params: devFields(r.Params)})
-		}
+		m.Routes = append(m.Routes, devRoute{Method: r.Method, Module: routeKey(r), Path: r.Path, Requires: strings.Join(r.Requires, ", "), Roles: r.Roles, Params: devFields(r.Params)})
 	}
 	siloOf := map[*ir.Table]string{}
 	for _, k := range slices.Sorted(maps.Keys(p.Silos)) {

@@ -155,7 +155,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
-		DevMap:      "{\"pages\":[{\"module\":\"M.M\",\"path\":\"/m/{id}\",\"params\":[\"id: Int\"]},{\"module\":\"Other.Other\",\"path\":\"/other\"}],\"tables\":[],\"caps\":[],\"session\":[\"visits: Int\"]}",
+		DevMap:      "{\"routes\":[{\"method\":\"DELETE\",\"module\":\"App.Logout\",\"path\":\"/session\"},{\"method\":\"GET\",\"module\":\"M.M\",\"path\":\"/m/{id}\",\"params\":[\"id: Int\"]},{\"method\":\"POST\",\"module\":\"M.Save\",\"path\":\"/m/{id}\",\"params\":[\"id: Int\",\"form: M.Note\"]},{\"method\":\"POST\",\"module\":\"M.Pick\",\"path\":\"/m/{id}/choice\",\"params\":[\"id: Int\",\"name: Text\",\"n: Int\"]},{\"method\":\"POST\",\"module\":\"M.Ping\",\"path\":\"/m/{id}/ping\",\"params\":[\"id: Int\"]},{\"method\":\"GET\",\"module\":\"Other.Other\",\"path\":\"/other\"}],\"tables\":[],\"caps\":[],\"session\":[\"visits: Int\"]}",
 	}
 }
 

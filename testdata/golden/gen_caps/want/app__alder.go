@@ -163,7 +163,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
-		DevMap:      "{\"pages\":[],\"tables\":[],\"caps\":[\"App.Clock\",\"Auth.Login.Password\",\"Markdown.Markdown\",\"Payments.Stripe\"],\"session\":[\"user: Maybe Text\"]}",
+		DevMap:      "{\"routes\":[],\"tables\":[],\"caps\":[\"App.Clock\",\"Auth.Login.Password\",\"Markdown.Markdown\",\"Payments.Stripe\"],\"session\":[\"user: Maybe Text\"]}",
 	}
 }
 

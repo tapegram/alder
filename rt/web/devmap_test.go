@@ -15,7 +15,7 @@ func TestRouter_MapJSON(t *testing.T) {
 	opts := func(o *Options) {
 		o.Dev = true
 		o.Migrations = []string{"0001_init"}
-		o.DevMap = `{"pages":[{"module":"X","path":"/x/{id}"}],` +
+		o.DevMap = `{"routes":[{"method":"GET","module":"X","path":"/x/{id}"}],` +
 			`"tables":[{"name":"Shelf.Book","sql":"Shelf__Book","columns":["title: Text"],"cols":[{"name":"title","type":"Text","sql":"title","sqlType":"TEXT"}],"silo":"org"}],` +
 			`"silos":[{"key":"org","ref":"Org.Org","tables":["Shelf.Book"],"path":"silos/org/{value}.db"}],"caps":[],"session":[]}`
 	}
@@ -29,6 +29,7 @@ func TestRouter_MapJSON(t *testing.T) {
 		var got struct {
 			Build string
 			Map   struct {
+				Routes []struct{ Method, Module, Path string }
 				Tables []struct {
 					Name, SQL, Silo string
 					Cols            []struct{ Name, Type, SQL, SQLType string }
@@ -40,7 +41,6 @@ func TestRouter_MapJSON(t *testing.T) {
 			}
 			Caps       []struct{ Name, Kind string }
 			Migrations []string
-			Routes     []struct{ Method, Pat string }
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 			t.Fatal(err)
@@ -55,8 +55,12 @@ func TestRouter_MapJSON(t *testing.T) {
 		if len(got.Migrations) != 1 || got.Migrations[0] != "0001_init" {
 			t.Errorf("migrations = %v", got.Migrations)
 		}
-		if len(got.Routes) == 0 || got.Routes[0].Method != "GET" || got.Routes[0].Pat != "/x/{id}" {
-			t.Errorf("routes = %+v", got.Routes)
+		if r := got.Map.Routes; len(r) != 1 || r[0].Method != "GET" || r[0].Module != "X" || r[0].Path != "/x/{id}" {
+			t.Errorf("routes = %+v", r)
+		}
+		page := serve(NewRouter(route, testOpts(opts)), httptest.NewRequest("GET", "/_dev", nil)).Body.String()
+		if n := strings.Count(page, "/x/{id}"); n != 1 {
+			t.Errorf("/_dev lists /x/{id} %d times, want once: %s", n, page)
 		}
 	})
 

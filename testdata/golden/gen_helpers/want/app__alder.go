@@ -176,7 +176,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
-		DevMap:      "{\"pages\":[{\"module\":\"Sites.MnSos.MnSos\",\"path\":\"/mnsos\",\"params\":[\"cfg: Text\"]}],\"tables\":[],\"caps\":[\"Gate.Gate\"],\"session\":null}",
+		DevMap:      "{\"routes\":[{\"method\":\"GET\",\"module\":\"Sites.MnSos.MnSos\",\"path\":\"/mnsos\",\"params\":[\"cfg: Text\"]}],\"tables\":[],\"caps\":[\"Gate.Gate\"],\"session\":null}",
 	}
 }
 

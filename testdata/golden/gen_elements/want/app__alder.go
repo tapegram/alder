@@ -154,7 +154,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
-		DevMap:      "{\"pages\":[{\"module\":\"Index.Index\",\"path\":\"/\"}],\"tables\":[],\"caps\":[],\"session\":null}",
+		DevMap:      "{\"routes\":[{\"method\":\"GET\",\"module\":\"Index.Index\",\"path\":\"/\"},{\"method\":\"POST\",\"module\":\"Index.Submit\",\"path\":\"/\",\"params\":[\"form: Index.NewPost\"]},{\"method\":\"DELETE\",\"module\":\"Index.Clear\",\"path\":\"/\"}],\"tables\":[],\"caps\":[],\"session\":null}",
 	}
 }
 
