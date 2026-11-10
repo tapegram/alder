@@ -1,4 +1,8 @@
 app/Todos.alder:15:45 W0012 `Notice.success` is now `Response.success`
+  fix 15:45-15:59 Response.success
 app/Todos.alder:18:64 W0012 `Notice.with` is now `Response.toast`
+  fix 18:64-18:75 Response.toast
 app/Todos.alder:18:88 W0012 `Notice.warning` is now `Response.warning`
+  fix 18:88-18:102 Response.warning
 app/Todos.alder:18:116 W0012 `Notice.error` is now `Response.error`
+  fix 18:116-18:128 Response.error

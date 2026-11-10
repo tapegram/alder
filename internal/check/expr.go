@@ -1199,7 +1199,9 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			if b == "with" {
 				b = "toast"
 			}
-			c.bag.Warn(diag.NoticeDeprecated, x.Span, "`Notice.%s` is now `Response.%s`", x.Ref.Name, b)
+			d := c.bag.Warn(diag.NoticeDeprecated, x.Span, "`Notice.%s` is now `Response.%s`", x.Ref.Name, b)
+			d.Fix = diag.ReplaceSpan(x.Span, "Response."+b)
+			d.Fix.Preferred = true // the one obvious repair
 		}
 		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Session" && mc.fake != "" { // the entry's prefix names the fake
 			c.errorf(diag.TypeMismatch, x.Span, "a fake cannot use `Session`: an adapter has no session")

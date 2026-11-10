@@ -456,3 +456,44 @@ func TestAliasedEponymousType(t *testing.T) {
 		t.Fatalf("want E0003, got:\n%s", got)
 	}
 }
+
+// W0012 on a `Notice.*` alias carries the fix that swaps it for its `Response` builder, and the
+// editor may list it first (#205).
+func TestNoticeDeprecatedFix(t *testing.T) {
+	dir := "../../testdata/corpus/W0012-notice"
+	src, err := os.ReadFile(filepath.Join(dir, "app/Todos.alder"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"Notice.success": "Response.success", "Notice.with": "Response.toast", "Notice.warning": "Response.warning", "Notice.error": "Response.error"}
+	n := 0
+	for _, d := range runDir(t, dir).Items {
+		if d.Code != "W0012" {
+			continue
+		}
+		n++
+		if d.Fix == nil || !d.Fix.Preferred {
+			t.Errorf("%s: fix %+v, want a preferred fix", d.Message, d.Fix)
+			continue
+		}
+		out, err := diag.Apply(string(src), []diag.Fix{*d.Fix})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var old string
+		for k, v := range want {
+			if strings.HasPrefix(d.Message, "`"+k+"`") {
+				old = k
+				if d.Fix.Replace != v {
+					t.Errorf("%s: replaces with %q, want %q", k, d.Fix.Replace, v)
+				}
+			}
+		}
+		if old == "" || strings.Count(out, old) != strings.Count(string(src), old)-1 {
+			t.Errorf("%s: fix does not remove exactly one %q", d.Message, old)
+		}
+	}
+	if n != 4 {
+		t.Fatalf("%d W0012 diagnostics, want 4", n)
+	}
+}

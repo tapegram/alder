@@ -319,3 +319,30 @@ func TestCodeAction_HookSignatureFixFirst(t *testing.T) {
 		t.Fatalf("no generator actions in %+v", acts)
 	}
 }
+
+// A deprecated `Notice.with` offers "Fix: … `Response.toast`" as a preferred quick fix (#205).
+func TestCodeAction_NoticeAliasFixPreferred(t *testing.T) {
+	c := start(t, blogCopy(t))
+	rel := "app/Posts/Show.alder"
+	text := openClean(t, c, rel)
+	old := "Task.succeed (Response.redirect (Show { slug: post.slug }))"
+	if !strings.Contains(text, old) {
+		t.Fatal("blog fixture changed")
+	}
+	broken := strings.Replace(text, old, "Task.succeed (Response.redirect (Show { slug: post.slug }) |> Notice.with \"Hi\")", 1)
+	c.change(rel, broken)
+	c.diags(rel)
+	line := c.at(rel, "Notice.with", 0).Line
+	acts := actionsIn(t, c, rel, line, line+1)
+	if len(acts) == 0 {
+		t.Fatal("no actions")
+	}
+	first := acts[0]
+	if first.Kind != "quickfix" || !first.IsPreferred || first.Edit == nil || !strings.Contains(first.Title, "Response.toast") {
+		t.Fatalf("first action %+v", first)
+	}
+	edits := first.Edit.DocumentChanges[0].Edits
+	if got := applyEdits(t, broken, edits); !strings.Contains(got, "|> Response.toast \"Hi\"") {
+		t.Fatalf("fixed text:\n%s", got)
+	}
+}
