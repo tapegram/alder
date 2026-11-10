@@ -1495,4 +1495,12 @@ func TestGenerate_NewPageNamesAnApp(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "page", "app", "App.alder")); err != nil {
 		t.Errorf("alder new page wrote no app: %v", err)
 	}
+	dir2 := outsideModule(t)
+	t.Chdir(dir2)
+	if code, _, errs := runNew(t, "page", "--bare"); code != 0 {
+		t.Fatalf("alder new page --bare: exit %d, %q", code, errs)
+	}
+	if _, err := os.Stat(filepath.Join(dir2, "page", "app", "App.alder")); err != nil {
+		t.Errorf("alder new page --bare wrote no app: %v", err)
+	}
 }
