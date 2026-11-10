@@ -101,7 +101,7 @@ session { theme: Theme.Theme = Light, user: Maybe User.UserId }
 
 login = Auth.Login.Login
 
-route Logout = POST "/_/Logout" { }
+route Logout = DELETE "/session" { }
 
 route Toggle = POST "/_/Toggle" { }
 
@@ -112,7 +112,7 @@ Toggle.update params session = {
   Task.succeed Response.refresh
 }
 `
-	logout := "\n-- Logout empties the session's user and goes to log in: a `POST`, sent by a button\n-- (`click={App.Logout}`), a form without JavaScript.\nLogout.update : Logout.Params -> Session -> Task Response\nLogout.update params session = {\n  let _ <- Session.put (\\s -> { s | user: Nothing })\n  Task.succeed (Response.redirect (Auth.Login.Login {}))\n}\n"
+	logout := "\n-- Logout empties the session's user and goes to log in: a `DELETE` of the session, sent by a button\n-- (`click={App.Logout}`), a form without JavaScript.\nLogout.update : Logout.Params -> Session -> Task Response\nLogout.update params session = {\n  let _ <- Session.put (\\s -> { s | user: Nothing })\n  Task.succeed (Response.redirect (Auth.Login.Login {}))\n}\n"
 	if !strings.HasPrefix(app, want) || !strings.Contains(app, "\nnotFound : Html\n") || !strings.Contains(app, logout) ||
 		!strings.Contains(app, "test \"Logout clears the user and goes to log in\"") || !strings.Contains(app, "let r <- Test.click Logout\n") {
 		t.Errorf("App:\n%s\nwant it to start:\n%s\nand have:\n%s", app, want, logout)
@@ -131,7 +131,7 @@ Toggle.update params session = {
 		t.Fatal(err)
 	}
 	for _, e := range edits {
-		if e.Path == "app/App.alder" && !strings.Contains(e.Body, "session {\n  theme: Theme.Theme = Light,\n  user: Maybe User.UserId,\n}\n\nlogin = Auth.Login.Login\n\nroute Logout = POST \"/_/Logout\" { }\n\nroute Toggle = POST \"/_/Toggle\" { }\n") {
+		if e.Path == "app/App.alder" && !strings.Contains(e.Body, "session {\n  theme: Theme.Theme = Light,\n  user: Maybe User.UserId,\n}\n\nlogin = Auth.Login.Login\n\nroute Logout = DELETE \"/session\" { }\n\nroute Toggle = POST \"/_/Toggle\" { }\n") {
 			t.Errorf("multi-line session:\n%s", e.Body)
 		}
 	}
@@ -148,7 +148,7 @@ Toggle.update params session = {
 		t.Fatal(err)
 	}
 	for _, e := range edits {
-		if e.Path == "app/App.alder" && !strings.HasPrefix(e.Body, "module App\n\nimport Layout\nimport Table.User\n\nsession { user: Maybe User.UserId }\n\nlogin = Auth.Login.Login\n\nroute Logout = POST \"/_/Logout\" { }\n\nerror : Error") {
+		if e.Path == "app/App.alder" && !strings.HasPrefix(e.Body, "module App\n\nimport Layout\nimport Table.User\n\nsession { user: Maybe User.UserId }\n\nlogin = Auth.Login.Login\n\nroute Logout = DELETE \"/session\" { }\n\nerror : Error") {
 			t.Errorf("scaffold's App:\n%s", e.Body)
 		}
 	}

@@ -1440,3 +1440,49 @@ func TestGenerate_EditAuthPrePR(t *testing.T) {
 		t.Errorf("the comment does not name the page:\n%s", got)
 	}
 }
+
+// TestAuth_LogoutIsDelete (#184): the session is the resource. `new auth` writes
+// `POST "/session"` (SignIn) and `DELETE "/session"` (Logout), and the app's own tests pass,
+// among them the one that presses `click={App.Logout}`: a button sends the DELETE, and without
+// JavaScript a form with a hidden `_method` does. An app with a hand-written `POST /session`
+// is refused before anything is written.
+func TestAuth_LogoutIsDelete(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := genApp(t, "scaffold")
+	if code, out, errs := alderIn(t, dir, "", "new", "auth"); code != 0 {
+		t.Fatalf("alder new auth: exit %d\n%s%s", code, out, errs)
+	}
+	files := appFiles(t, dir)
+	if app := files["app/App.alder"]; !strings.Contains(app, "route Logout = DELETE \"/session\" { }\n") {
+		t.Errorf("App has no DELETE /session Logout:\n%s", app)
+	}
+	if login := files["app/Auth/Login.alder"]; !strings.Contains(login, "route SignIn = POST \"/session\" { } form Credentials\n") {
+		t.Errorf("Auth.Login has no POST /session SignIn:\n%s", login)
+	}
+	for _, f := range []string{"app/App.alder", "app/Auth/Login.alder"} {
+		if strings.Contains(files[f], "/_/") {
+			t.Errorf("%s still has a /_/ path", f)
+		}
+	}
+	code, out, errs := alderIn(t, dir, "", "test")
+	if code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") || !strings.Contains(out, "Logout clears the user") {
+		t.Fatalf("alder test after new auth: exit %d\n%s%s", code, out, errs)
+	}
+
+	// a route of the app's own at POST /session: refused, nothing written
+	clash := genApp(t, "scaffold")
+	src := appFiles(t, clash)["app/App.alder"]
+	src = strings.Replace(src, "\nerror :", "\nroute Enter = POST \"/session\" { }\n\nEnter.update : Enter.Params -> Session -> Task Response\nEnter.update params session = Task.succeed Response.refresh\n\nerror :", 1)
+	if err := os.WriteFile(filepath.Join(clash, "app", "App.alder"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := appFiles(t, clash)
+	code, out, errs = alderIn(t, clash, "", "new", "auth")
+	if code == 0 || !strings.Contains(errs, "both answer POST /session") {
+		t.Errorf("alder new auth beside POST /session: exit %d\n%s%s", code, out, errs)
+	}
+	if after := appFiles(t, clash); len(after) != len(before) {
+		t.Errorf("a refused `new auth` wrote files")
+	}
+}

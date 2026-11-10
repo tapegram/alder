@@ -7,8 +7,8 @@ session { user: Maybe User.UserId }
 
 login = Auth.Login.Login
 
-route Logout = POST "/_/Logout" { }
-route Ping   = POST "/ping"     { }
+route Logout = DELETE "/session" { }
+route Ping   = POST   "/ping"    { }
 
 error : Error -> Html
 error err =
@@ -20,7 +20,7 @@ error err =
 notFound : Html
 notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 
--- Logout empties the session's user and goes to log in: a `POST`, sent by a button
+-- Logout empties the session's user and goes to log in: a `DELETE` of the session, sent by a button
 -- (`click={App.Logout}`), a form without JavaScript.
 Logout.update : Logout.Params -> Session -> Task Response
 Logout.update params session = {

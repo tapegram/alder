@@ -3404,7 +3404,7 @@ edited migrations/schema.json
  
 +login = Auth.Login.Login
 +
-+route Logout = POST "/_/Logout" { }
++route Logout = DELETE "/session" { }
 +
  error : Error -> Html
  error err =
@@ -3414,7 +3414,7 @@ edited migrations/schema.json
  notFound : Html
  notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 +
-+-- Logout empties the session's user and goes to log in: a `POST`, sent by a button
++-- Logout empties the session's user and goes to log in: a `DELETE` of the session, sent by a button
 +-- (`click={App.Logout}`), a form without JavaScript.
 +Logout.update : Logout.Params -> Session -> Task Response
 +Logout.update params session = {
@@ -3447,8 +3447,8 @@ edited migrations/schema.json
 2. `login = Auth.Login.Login` follows the session, naming the route that is
    the login page.
 
-3. `route Logout = POST "/_/Logout" { }` is the write route that logs out,
-   with its `Logout.update` (a `POST`, so that a link cannot log anyone
+3. `route Logout = DELETE "/session" { }` is the write route that logs out,
+   with its `Logout.update` (a `DELETE`, so that a link cannot log anyone
    out), which empties the user and answers `Response.redirect` to the
    login.
 
@@ -3504,7 +3504,7 @@ The login is two routes in `Auth.Login`:
 
 - `route Login = GET "/login" { }`, the page;
 
-- `route SignIn = POST "/login/_/SignIn" { } form Credentials`, the write
+- `route SignIn = POST "/session" { } form Credentials`, the write
   route that takes the form `Credentials` (an email and a `Text.Secret`
   password).
 
@@ -5072,8 +5072,8 @@ E11 (below) found four things the commands could not do.
 
 The first was a button that is on every page (`click={App.Logout}` is one):
 `alder new msg App <Name> --path /path [fields]` makes one. `App` holds write
-routes like any module: `route Logout = POST
-"/_/Logout"` is one, written by `alder new auth`.
+routes like any module: `route Logout = DELETE
+"/session"` is one, written by `alder new auth`.
 
 So `alder new msg App <Name> --path /path` writes a route there too, `route
 <Name> = POST "/path"` with the fields as its payload (`--method` names
@@ -5091,9 +5091,9 @@ edited app/App.alder
  
  login = Auth.Login.Login
  
--route Logout = POST "/_/Logout" { }
-+route Logout      = POST "/_/Logout" { }
-+route ToggleTheme = PUT  "/theme"    { dark: Bool }
+-route Logout = DELETE "/session" { }
++route Logout      = DELETE "/session" { }
++route ToggleTheme = PUT    "/theme"   { dark: Bool }
  
  error : Error -> Html
  error err =

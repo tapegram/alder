@@ -411,7 +411,7 @@ func TestNew_Bare(t *testing.T) {
 		t.Fatalf("alder test: exit %d\n%s%s", code, out, errs)
 	}
 	app, _ := os.ReadFile(filepath.Join(dir, "app", "App.alder"))
-	if !strings.Contains(string(app), "session { user: Maybe User.UserId }\n\nlogin = Auth.Login.Login\n\nroute Logout = POST \"/_/Logout\" { }\n") {
+	if !strings.Contains(string(app), "session { user: Maybe User.UserId }\n\nlogin = Auth.Login.Login\n\nroute Logout = DELETE \"/session\" { }\n") {
 		t.Errorf("App:\n%s", app)
 	}
 }

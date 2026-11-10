@@ -351,8 +351,8 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 **Writes:**
 
-- the login: `app/Auth/Login.alder` (`capability Password { verify, hash }`, its fake, the routes `route Login = GET "/login" { }` and `route SignIn = POST "/login/_/SignIn" { } form Credentials`, the form `Credentials`, `SignIn.update` that puts the user, and the role, in the session or answers `Response.invalid`, a Log out button for a signed-in user, three tests);
-- `App` edited at fixed places (the session's `user` and `role` after its fields, `login = Auth.Login.Login`, `route Logout = POST "/_/Logout" { }` and its `Logout.update`, a test of it);
+- the login: `app/Auth/Login.alder` (`capability Password { verify, hash }`, its fake, the routes `route Login = GET "/login" { }` and `route SignIn = POST "/session" { } form Credentials`, the form `Credentials`, `SignIn.update` that puts the user, and the role, in the session or answers `Response.invalid`, a Log out button for a signed-in user, three tests);
+- `App` edited at fixed places (the session's `user` and `role` after its fields, `login = Auth.Login.Login`, `route Logout = DELETE "/session" { }` and its `Logout.update`, a test of it);
 - the user table when it does not exist, in `app/Table/User.alder` (`email @unique`, `name`, `passwordHash: Text.Secret`, the role, `created`) and its migration;
 - and the adapter `adapters/auth/login_password.go` (PBKDF2-SHA256, 600,000 iterations, a 16-byte salt, a constant-time compare; stored as `pbkdf2-sha256$<iterations>$<salt>$<hash>`) with its Go tests.
 
@@ -541,7 +541,7 @@ POST    /admin/comment/bulk/_/BulkDelete       Admin.Comments.Bulk.BulkDelete   
 …
 DELETE  /admin/comment/{id}/delete/_/Destroy   Admin.Comments.Delete.Destroy      app/Admin/Comments/Delete.alder:14
 …
-POST    /_/Logout                              App.Logout                         app/App.alder:13
+DELETE  /session                              App.Logout                         app/App.alder:13
 GET     /login                                 Auth.Login.Login                   app/Auth/Login.alder:23
 POST    /login/_/Submit                        Auth.Login.Submit                  app/Auth/Login.alder:24
 …

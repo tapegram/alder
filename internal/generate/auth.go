@@ -42,10 +42,11 @@ const hashColumn = "passwordHash"
 
 // NewAuth generates `alder new auth` (#160: routes): the login module app/Auth/Login.alder (the
 // capability Password { verify, hash }, its fake, `route Login = GET "/login"` with its view, the
-// form Credentials and `route SignIn = POST "/login/_/SignIn" { } form Credentials`, whose
+// form Credentials and `route SignIn = POST "/session" { } form Credentials`, whose
 // update puts the user (and the role) in the session and redirects, or answers
 // Response.invalid; two tests), the edits of App (the session's `user` and `role` fields,
-// `login = Auth.Login.Login`, `route Logout = POST "/_/Logout"` and its update, a test of it:
+// `login = Auth.Login.Login`, `route Logout = DELETE "/session"` and its update (the session is the resource: POST /session
+// signs in, DELETE /session signs out), a test of it:
 // editApp), the user table when it does not exist (with its migration, the caller's
 // Options.Migrate), and the Go adapter adapters/auth/login_password.go (PBKDF2-SHA256) with its
 // tests. The login goes to --to's route (loginTarget), else the GET route (or page) at `/`, else
@@ -78,6 +79,11 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 	}
 	if declared(app.Syntax, "Logout") || routeDecl(app.Syntax, "Logout") != nil {
 		return nil, false, Refusef("`App` already declares `Logout`")
+	}
+	for _, w := range []struct{ name, method string }{{"SignIn", "POST"}, {"Logout", "DELETE"}} {
+		if have := routeClash(p, w.method, "/session", ""); have != nil {
+			return nil, false, Refusef("routes `%s.%s` and `%s` both answer %s /session; `alder new auth` makes the session a resource (POST /session signs in, DELETE /session signs out): move `%s` to another path first", have.Module, have.Name, w.name, w.method, have.Name)
+		}
 	}
 	if !IsUpperIdent(o.Users) {
 		return nil, false, Refusef("`--users %s`: a table is named by one capitalised identifier, such as `User`", o.Users)
@@ -264,11 +270,12 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 }
 
 // editApp is App with a login (RF1, chapter 15): the session's `user` (and role) fields after
-// its others, `login = Auth.Login.Login` and `route Logout = POST "/_/Logout" { }` after the
+// its others, `login = Auth.Login.Login` and `route Logout = DELETE "/session" { }` after the
 // session, the user module imported, and at the end `Logout.update` (it empties the session's
-// user and role and goes to log in) and a test of it. Nothing else moves. Logout is a `POST`:
-// a button `click={App.Logout}` sends it, a form posting to /_/Logout without JavaScript, so a
-// link (a GET) can never log anyone out.
+// user and role and goes to log in) and a test of it. Nothing else moves. Logout is a `DELETE`
+// on /session (the session is the resource: POST /session signs in, DELETE /session signs out):
+// a button `click={App.Logout}` sends it, a form with a hidden `_method` does without
+// JavaScript, so a link (a GET) can never log anyone out.
 func editApp(p *Program, app *Module, users *Table, idType, roleField, roleColumn string, ctors []string) (Edit, error) {
 	e := newSrcEdit(app.Source)
 	newFields := []string{"user: Maybe " + idType}
@@ -281,7 +288,7 @@ func editApp(p *Program, app *Module, users *Table, idType, roleField, roleColum
 			sd = s
 		}
 	}
-	after := "\nlogin = " + loginRoute + "\n\nroute Logout = POST \"/_/Logout\" { }" // what follows the session
+	after := "\nlogin = " + loginRoute + "\n\nroute Logout = DELETE \"/session\" { }" // what follows the session
 	switch {
 	case sd == nil:
 		at := len(e.lines) + 1
@@ -327,7 +334,7 @@ func editApp(p *Program, app *Module, users *Table, idType, roleField, roleColum
 	if roleField != "" {
 		put = "{ s | user: Nothing, role: " + ctors[0] + " }"
 	}
-	e.appendText("\n-- Logout empties the session's user and goes to log in: a `POST`, sent by a button\n" +
+	e.appendText("\n-- Logout empties the session's user and goes to log in: a `DELETE` of the session, sent by a button\n" +
 		"-- (`click={App.Logout}`), a form without JavaScript.\n" +
 		"Logout.update : Logout.Params -> Session -> Task Response\n" +
 		"Logout.update params session = {\n  let _ <- Session.put (\\s -> " + put + ")\n  Task.succeed (Response.redirect (" + loginRoute + " {}))\n}")

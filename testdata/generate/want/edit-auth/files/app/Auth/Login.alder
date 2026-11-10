@@ -26,8 +26,8 @@ fake Password {
   hash text = Task.succeed text
 }
 
-route Login  = GET  "/login"          { }
-route SignIn = POST "/login/_/SignIn" { } form Credentials
+route Login  = GET  "/login"   { }
+route SignIn = POST "/session" { } form Credentials
 
 type Model = { }
 
