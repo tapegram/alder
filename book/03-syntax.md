@@ -20,8 +20,9 @@ scope and never imported.
 
 > **Stdlib names are taken.** No module of the app may take a
 > standard-library module's name: an app module `Test` would be hidden
-> behind the stdlib's `Test`, so it is refused (E0017); call it
-> `TestHelpers` or `Todos.Fixtures` instead.
+> behind the stdlib's `Test`, so it is refused (E0017); rename the module,
+> its file and its imports (`AppTest`, say, or `Todos.Fixtures`), or use the
+> standard library's module in its place.
 
 ### The qualifier
 

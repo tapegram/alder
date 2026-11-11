@@ -175,7 +175,7 @@ func Build(mods []*syntax.Module, std map[string]*syntax.Module) (*Program, *dia
 		// A module named like a stdlib module would be shadowed by it: `Test.helper` would be
 		// looked up in the stdlib's Test. It is refused and left out of the program.
 		if _, isStd := std[m.Name]; isStd {
-			bag.Error(diag.StdModule, m.Span, "module `%s` is a standard-library module; rename it", m.Name)
+			bag.Error(diag.StdModule, m.Span, "module `%[1]s` is named like the standard library's `%[1]s`, which is always in scope and would hide it; rename the module, its file and its imports (for example to `App%[1]s`), or use the standard library's `%[1]s` in its place", m.Name)
 			p.stdNamed[m.Name] = true
 			p.Refused = append(p.Refused, m)
 			continue

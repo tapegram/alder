@@ -2526,6 +2526,7 @@ A route module generates none: `R.Params` is reached through the route's name.
 
 - A module named like a standard-library module (`Test`, `List`, `Http`, …): the stdlib's would shadow it.
 - Uses of its names are not reported separately.
+- An app that compiled before can get this after an upgrade, when the standard library gains a module of that name (as it gained `Json` in v0.2.0); `CHANGELOG.md` lists every such addition.
 
 #### E0018 — a table in the wrong module
 
