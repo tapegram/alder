@@ -1348,6 +1348,23 @@ func tamper(b *Browser, old, new string) {
 	})
 }
 
+// The build a click sends is the one the held page's head names (its alder-build meta's
+// content), as the page's script reads it: a page of another build sends that build, not this
+// binary's, nor "" (#177).
+func TestBrowser_StaleBuildSent(t *testing.T) {
+	app := newRouteApp("one")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		tamper(b, `name="alder-build" content="`+web.BuildID()+`"`, `name="alder-build" content="old"`)
+		if _, err := b.Get("/r"); err != nil {
+			t.Fatal(err)
+		}
+		_, _ = b.ClickRoute(rNudge(), "R.Nudge") // its answer, a stale tab's reload, is not the point
+		if s, ok := app.seen["Nudge"]; !ok || s.build != "old" {
+			t.Errorf("the click sent build %q (seen %v), want the held page's %q", s.build, ok, "old")
+		}
+	})
+}
+
 // The region check (#160) runs after `refresh`, `invalid` and `redirect`: every region the
 // answer patched must equal that region of the full render the server made; a step whose patch
 // differs fails, naming the region. Untampered, each passes.

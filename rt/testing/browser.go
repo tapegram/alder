@@ -99,6 +99,10 @@ var cookieNow = func() time.Time { return defaultNow }
 // (web's line).
 var failHead = regexp.MustCompile(`^[A-Z]+ [^ ]+: `)
 
+// buildMeta matches the alder-build meta a page's head carries (web.BuildMeta); its group is the
+// build named.
+var buildMeta = regexp.MustCompile(`<meta name="alder-build" content="([^"]*)"`)
+
 // redirectLimit is how many redirects in a row the browser follows before it gives up (RequestFailed).
 const redirectLimit = 10
 
@@ -706,12 +710,14 @@ const maintenanceText = "503 maintenance"
 
 // hold makes page (a document the router served for u) the held one: its doctype and the
 // Datastar script tag the router injected are left out, so it is the page as the view renders it.
-// The build its head names is kept (Browser.build), as the page's script reads it.
+// The build its head names (its alder-build meta's content, web.BuildMeta) is kept
+// (Browser.build), as the page's script reads it: another build's page keeps that build, a page
+// without the meta "".
 func (b *Browser) hold(u, page string) error {
 	page = strings.TrimPrefix(page, "<!doctype html>\n")
 	build := ""
-	if strings.Contains(page, web.BuildMeta()) {
-		build = web.BuildID()
+	if m := buildMeta.FindStringSubmatch(page); m != nil {
+		build = m[1]
 	}
 	page = web.StripHeadTags(page)
 	doc, err := html.Parse(page)
