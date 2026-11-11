@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"encoding/json"
+	"strings"
 
 	"alder/internal/diag"
 	"alder/internal/syntax"
@@ -95,9 +96,16 @@ func uses(a *analysis, ref syntax.Ref, local *binder) []diag.Span {
 		var walk func(path []syntax.Spanned)
 		walk = func(path []syntax.Spanned) {
 			n := path[len(path)-1]
-			if sp, ok := useSpan(m, n, path, ref, local); ok {
+			if sp, ok := useSpan(a, m, n, path, ref, local); ok {
 				sp.File = m.File
 				out = append(out, sp)
+			}
+			if d, ok := n.(*syntax.ValueDecl); ok && local == nil && ref.Kind == syntax.RefRoute && d.Route == ref.Name && m.Name == ref.Module {
+				// a route member's signature and definition each name the route (`Row` of `Row.view`)
+				out = append(out, d.RouteSpan)
+				if def := defNameSpan(d, m); def.Start.Line > 0 {
+					out = append(out, lineSpan(m.File, def.Start.Line, def.Start.Col, len(d.Route)))
+				}
 			}
 			for _, c := range syntax.Children(n) {
 				walk(append(path[:len(path):len(path)], c))
@@ -109,7 +117,7 @@ func uses(a *analysis, ref syntax.Ref, local *binder) []diag.Span {
 }
 
 // useSpan is the span of the name n uses when n is a use of ref (or of the local binder).
-func useSpan(m *syntax.Module, n syntax.Spanned, path []syntax.Spanned, ref syntax.Ref, local *binder) (diag.Span, bool) {
+func useSpan(a *analysis, m *syntax.Module, n syntax.Spanned, path []syntax.Spanned, ref syntax.Ref, local *binder) (diag.Span, bool) {
 	var r syntax.Ref
 	var qual, name string
 	switch n := n.(type) {
@@ -134,6 +142,18 @@ func useSpan(m *syntax.Module, n syntax.Spanned, path []syntax.Spanned, ref synt
 			return diag.Span{}, false
 		}
 		return wordSpan(m, n.GetSpan(), 0, name), true
+	}
+	if ref.Kind == syntax.RefRoute && (r.Kind == syntax.RefValue || r.Kind == syntax.RefType) && r.Module == ref.Module &&
+		strings.HasPrefix(r.Name, ref.Name+".") && a.prog.Route(r.Module, ref.Name) != nil && strings.Count(r.Name, ".") == strings.Count(ref.Name, ".")+1 {
+		// a member (`Row.view`, `Row.Params`) uses its route: the span is the route part
+		skip := 0
+		switch {
+		case qual == ref.Name || strings.HasSuffix(qual, "."+ref.Name):
+			skip = len(qual) - len(ref.Name) // the qualifier already ends in the route
+		case qual != "":
+			skip = len(qual) + 1
+		}
+		return wordSpan(m, n.GetSpan(), skip, ref.Name), true
 	}
 	ns := namespace(ref.Kind)
 	if ns == 0 || namespace(r.Kind) != ns || r.Module != ref.Module || r.Name != ref.Name {

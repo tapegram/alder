@@ -1,7 +1,10 @@
 package lsp
 
 import (
+	"fmt"
 	"os"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -106,8 +109,26 @@ func TestDefinition_FromClick(t *testing.T) {
 		"context": map[string]any{"includeDeclaration": true}}, &refs); e != nil {
 		t.Fatal(e)
 	}
-	if len(refs) < 2 {
-		t.Fatalf("references %+v", refs)
+	// the declaration, the constructor, and the route part of each member: the signature's name,
+	// the `Toggle.Params` in it, and the definition line
+	var got []string
+	for _, r := range refs {
+		if r.Range.End.Line != r.Range.Start.Line || r.Range.End.Character-r.Range.Start.Character != len("Toggle") {
+			t.Errorf("reference %+v does not span the route part only", r.Range)
+		}
+		got = append(got, fmt.Sprintf("%d:%d", r.Range.Start.Line, r.Range.Start.Character))
+	}
+	sort.Strings(got)
+	var want []string
+	for _, w := range []Position{
+		c.at(rel, "route Toggle", len("route ")), c.at(rel, "Toggle { id: t.id }", 0),
+		c.at(rel, "Toggle.update :", 0), c.at(rel, "Toggle.Params ->", 0), c.at(rel, "Toggle.update params", 0),
+	} {
+		want = append(want, fmt.Sprintf("%d:%d", w.Line, w.Character))
+	}
+	sort.Strings(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("references %v, want %v", got, want)
 	}
 }
 
