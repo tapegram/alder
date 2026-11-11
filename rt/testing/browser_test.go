@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"alder/rt"
+	"alder/rt/datastar"
 	"alder/rt/db"
 	"alder/rt/eff"
 	"alder/rt/html"
@@ -1459,6 +1460,36 @@ func TestCheck_RenderTargetMissing(t *testing.T) {
 		_, err := b.ClickRoute(rToggle(2), "R.Toggle")
 		if err == nil || !strings.Contains(err.Error(), "the answer patched `#row-2`, which the page does not have") {
 			t.Errorf("err = %v", err)
+		}
+	})
+}
+
+// The element check's fetch answers a patch by the right selector whose element lacks the id
+// (here a router that drops it from the element fetch only): the failure says so, not a
+// difference against nothing (#177).
+func TestCheck_ElementIDMissingAlone(t *testing.T) {
+	app := newRouteApp("one")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/r"))
+		inner := b.handler
+		b.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get(datastar.FetchHeader) != "1" {
+				inner.ServeHTTP(w, r)
+				return
+			}
+			rec := httptest.NewRecorder()
+			inner.ServeHTTP(rec, r)
+			for k, vs := range rec.Header() {
+				w.Header()[k] = vs
+			}
+			w.WriteHeader(rec.Code)
+			_, _ = io.WriteString(w, strings.Replace(rec.Body.String(), `<li id="row-1"`, `<li data-id="row-1"`, 1))
+		})
+		_, err := b.ClickRoute(rToggle(1), `R.Toggle { id: "1" }`)
+		want := "PATCH /r/rows/1: the answer patched #row-1 unlike R.Row's view rendered on its own (GET /r/rows/1): on its own the view has no element with id row-1"
+		if err == nil || err.Error() != want {
+			t.Errorf("err = %v, want %q", err, want)
 		}
 	})
 }

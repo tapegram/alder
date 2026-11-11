@@ -1129,7 +1129,11 @@ func (b *Browser) checkElement(r rt.Route) error {
 		fail.Why = "on its own it answered no view (status " + status + ")"
 		return fail
 	}
-	want, _ := elementByID(alone, id)
+	want, ok := elementByID(alone, id)
+	if !ok {
+		fail.Why = "on its own the view has no element with id " + id
+		return fail
+	}
 	got, ok := elementByID(b.dom, id)
 	if !ok {
 		fail.Why = "the page the browser built has no element with that id"
