@@ -32,7 +32,7 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 		return nil, Refusef("a file route has no button: `view` returns `File`, so nothing can be posted from it; put the write route on an HTML route")
 	}
 	if r.Silo != "" {
-		return nil, Refusef("`%s` is an admin page of a silo: its routes are written by `alder regen admin`", o.Page)
+		return nil, Refusef("`%s` is an admin route of a silo: its routes are written by `alder regen admin`", o.Page)
 	}
 	if !IsUpperIdent(o.Name) {
 		return nil, Refusef("`%s` is not a form name: a form is named by a capitalised identifier, such as `Contact`", o.Name)

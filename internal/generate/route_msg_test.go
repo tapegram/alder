@@ -124,7 +124,7 @@ func TestRouteMsg_SecondOnPageClashes(t *testing.T) {
 
 func TestAppMsg_PathRequired(t *testing.T) {
 	_, err := NewAction(repliesProgram(t, ""), "App", "Ping", nil, ActionOptions{})
-	wantRefusal(t, err, "`alder new action App` needs `--path`: a route of App has no page to take a path from, such as `--path /theme`")
+	wantRefusal(t, err, "`alder new action App` needs `--path`: a route of App has no GET route to take a path from, such as `--path /theme`")
 }
 
 func TestAppMsg_Path(t *testing.T) {

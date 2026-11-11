@@ -10,7 +10,7 @@ import (
 
 // newAppRouteMsg is `alder new action App <Name> [fields]` on an App written with routes (plan call
 // 13): `route <Name> = <METHOD> "<path>" { fields }` (POST unless method says otherwise; the path
-// is --path, which App needs, as it has no page to take one from) after App's last route (else after its
+// is --path, which App needs, as it has no GET route to take one from) after App's last route (else after its
 // `login`, else after its `session`), and `<Name>.update` answering `Response.refresh`, with a
 // comment saying how to test it. It writes no test: a route of App is sent by a button on any
 // page (`click={App.<Name>}`), so no page's view is touched, and which page has the button is the

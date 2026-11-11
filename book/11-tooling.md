@@ -436,7 +436,7 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 #### `alder new action App <Name> [<field>:<Type> …]`
 
-**Writes:** in `App`: `route <Name> = POST "<path>"` with the fields as its parameters (`--path` is required, since a route of `App` has no page to take a path from; `--method` names another method), after `App`'s last route, its `<Name>.update` (answering `Response.refresh`) and a comment saying how to test it; no button and no test, as a route of `App` is sent from any page
+**Writes:** in `App`: `route <Name> = POST "<path>"` with the fields as its parameters (`--path` is required, since a route of `App` has no GET route to take a path from; `--method` names another method), after `App`'s last route, its `<Name>.update` (answering `Response.refresh`) and a comment saying how to test it; no button and no test, as a route of `App` is sent from any page
 
 #### `alder edit decl <Module>.<Name> add-prop <name>:<Type>=<default>`
 

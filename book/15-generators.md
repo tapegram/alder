@@ -5088,7 +5088,7 @@ routes like any module: `route Logout = DELETE
 
 So `alder new action App <Name> --path /path` writes a route there too, `route
 <Name> = POST "/path"` with the fields as its payload (`--method` names
-another method). `App` has no page to take a path from, so `--path` is
+another method). `App` has no GET route to take a path from, so `--path` is
 required. The route goes after the last route of
 `App`, together with its `update` (answering `Response.refresh`, which the
 author then replaces) and a comment saying how to test it:

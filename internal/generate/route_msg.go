@@ -54,7 +54,7 @@ func newRouteMsg(p *Program, page, name string, fields []FieldSpec, o ActionOpti
 		return nil, Refusef("`%s`'s `view` is a hole: fill `view` first (`alder fill %s.view -`), then add the route's button", page, page)
 	}
 	if r.Silo != "" {
-		return nil, Refusef("`%s` is an admin page of a silo: its routes are written by `alder regen admin`", page)
+		return nil, Refusef("`%s` is an admin route of a silo: its routes are written by `alder regen admin`", page)
 	}
 	method := o.Method
 	if method == "" {
@@ -103,7 +103,7 @@ func newRouteMsg(p *Program, page, name string, fields []FieldSpec, o ActionOpti
 			if pathType[f.Name] == f.Type { // `id:Post.PostId` on a page whose path has {id}: the route's own
 				continue
 			}
-			return nil, Refusef("field `%s` is a parameter of the page's path already, with another type (`%s`): the route takes it from there", f.Name, pathType[f.Name])
+			return nil, Refusef("field `%s` is a parameter of the route's path already, with another type (`%s`): the route takes it from there", f.Name, pathType[f.Name])
 		}
 		seen[f.Name] = true
 		if err := bareType(p, page, f.Type); err != nil {

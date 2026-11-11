@@ -34,7 +34,7 @@ func NewAction(p *Program, page, name string, fields []FieldSpec, o ActionOption
 			return nil, Refusef("`alder new action App` adds a route without a button: --in-for, --when and --id belong to a route module")
 		}
 		if o.Path == "" {
-			return nil, Refusef("`alder new action App` needs `--path`: a route of App has no page to take a path from, such as `--path /theme`")
+			return nil, Refusef("`alder new action App` needs `--path`: a route of App has no GET route to take a path from, such as `--path /theme`")
 		}
 		return newAppRouteMsg(p, name, fields, o.Path, o.Method)
 	}

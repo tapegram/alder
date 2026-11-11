@@ -217,7 +217,7 @@ func NewRoute(p *Program, o RouteOptions) ([]Edit, error) {
 		return newWriteRoute(p, o, route, method)
 	}
 	if o.File && (o.List != "" || o.Show != "" || len(o.From) > 0 || o.Blank || o.Example) {
-		return nil, Refusef("--file makes a file page; --list and --show make HTML pages")
+		return nil, Refusef("--file makes a file route; --list and --show make GET routes that render HTML")
 	}
 	if o.ContentType != "" && !o.File {
 		return nil, Refusef("--type goes with --file")
@@ -238,7 +238,7 @@ func NewRoute(p *Program, o RouteOptions) ([]Edit, error) {
 	var params []FieldSpec
 	if len(o.Params) > 0 {
 		if o.Show != "" || o.List != "" || len(o.From) > 0 {
-			return nil, Refusef("--param goes with a page of its own or a --blank one: a --list, --show or --from page has its parameters made for it")
+			return nil, Refusef("--param goes with a route of its own or a --blank one: a --list, --show or --from route has its parameters made for it")
 		}
 		names := map[string]bool{}
 		for _, a := range o.Params {
@@ -289,10 +289,10 @@ func NewRoute(p *Program, o RouteOptions) ([]Edit, error) {
 		}
 	}
 	if o.Example && (o.Blank || kinds > 0 || len(o.Params) > 0) {
-		return nil, Refusef("--example goes with a plain page: a --list, --show or --from page already shows `load` reading a table, and --blank and --param leave `load` to you")
+		return nil, Refusef("--example goes with a plain route: a --list, --show or --from route already shows `load` reading a table, and --blank and --param leave `load` to you")
 	}
 	if o.Blank && (o.List != "" || len(o.From) > 0) {
-		return nil, Refusef("--blank takes no --list or --from: a blank page's `load` and `view` are holes (with --show T it has the row's `/{id}` parameter)")
+		return nil, Refusef("--blank takes no --list or --from: a blank route's `load` and `view` are holes (with --show T it has the row's `/{id}` parameter)")
 	}
 	if kinds > 1 {
 		return nil, Refusef(pageKindsMsg)

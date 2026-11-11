@@ -5,7 +5,7 @@ package generate
 // the module, else its first GET route, else its first route).
 func EditRoute(p *Program, module, op string, args []string) ([]Edit, error) {
 	if module == "App" {
-		return nil, Refusef("`App` is not a route module: its routes (such as `Logout`) are write routes with no page, so there is no route to add a parameter to; edit `app/App.alder` by hand")
+		return nil, Refusef("`App` is not a route module: its routes (such as `Logout`) are write routes with no GET route, so there is no route to add a parameter to; edit `app/App.alder` by hand")
 	}
 	if len(p.RoutesOf(module)) == 0 {
 		return nil, notRouteModule(p, module)
