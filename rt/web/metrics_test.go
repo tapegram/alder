@@ -237,7 +237,7 @@ func TestMetrics_FileRoutes(t *testing.T) {
 var labelRE = regexp.MustCompile(`(route|method|status)="((?:[^"\\]|\\.)*)"`)
 
 // Hostile paths, queries and methods never become label values: the route label stays a pattern
-// or a fixed name, the method one of four, the status one of five.
+// or a fixed name, the method one of seven, the status one of five.
 func TestMetrics_HostileLabels(t *testing.T) {
 	h := NewRouter([]Route{{Method: "GET", Pattern: "/u/{id}", Handle: page}, {Method: "POST", Pattern: "/u/{id}", Handle: page}},
 		testOpts(func(o *Options) { o.Metrics = metrics.New("") }))

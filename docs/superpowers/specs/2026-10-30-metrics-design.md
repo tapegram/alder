@@ -36,7 +36,7 @@ away. And `alder logs --since` reaches back further than `-n` on every target th
 ## Anti-goals
 
 - A series an attacker can grow: the route label is the matched pattern or one of four fixed
-  names, the method one of four, the status one of five, the effect name a Call name from the
+  names, the method one of seven, the status one of five, the effect name a Call name from the
   generated code.
 - A cost when it is off: with `ALDER_METRICS` unset and `ALDER_SLOW_MS` unset, no statement is
   timed, no `time.Now` is added, no allocation is added to a request.

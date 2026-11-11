@@ -4,7 +4,7 @@
 // database statements, effect steps, Go runtime basics and the build id.
 //
 // Every label value comes from a finite set the program fixes: the route is the matched
-// pattern or one of a few fixed names (the router's), the method one of four, the status one of
+// pattern or one of a few fixed names (the router's), the method one of seven, the status one of
 // five classes, the effect a Call name of the generated code. No series is made from a path,
 // query, header, parameter or session value.
 package metrics
