@@ -157,13 +157,18 @@ Event attributes are not HTML event names (`onclick`); they are `click`,
 function. The last three need JavaScript (chapter 6, "Patterns").
 
 > **A route of the wrong kind** is E0045: `href`, `load`, `intersect` or
-> `input` to a write route (a link, a timer or a keystroke only reads), or
-> `submit` to a `GET` route (a form posts).
+> `input` to a write route (a link, a timer or a keystroke only reads),
+> `submit` to a `GET` route (a form posts), or `click` to a write route that
+> declares a form (`form F`): a click sends a route without a form, and such a
+> route is sent by a `<form submit={R}>`.
 
 #### Buttons with `click`
 
 A `<button click={…}>` works with and without JavaScript. What it renders
-depends on the route's method.
+depends on the route's method. A `click` sends a route without a form: a
+write route that declares `form F` is sent by a `<form submit={R}>`, and
+`click` of it is E0045 (a button has no fields to send). A route value the
+compiler cannot see, such as `click={model.r}`, is not checked.
 
 **A `POST` route.** Outside a form, the button is rendered inside a small
 form of its own that posts to the route's address (here a route

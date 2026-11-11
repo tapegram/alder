@@ -1,0 +1,2 @@
+app/Todos.alder:24:20 E0045 `click` sends a route without a form; `Submit` posts form `NewTodo`: use a submit button in a form for that route (`<form submit={Submit}>`)
+app/Todos.alder:28:22 E0045 `click` sends a route without a form; `Submit` posts form `NewTodo`: use a submit button in a form for that route (`<form submit={Submit}>`)

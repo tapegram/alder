@@ -255,7 +255,9 @@ Todos.Index.Index {} == Todos.Index.Index { filter: All }
 A GET route may also be asked for by `click`, which fetches it and puts the
 answer where the route's root `id` stands ("Delivery", below): its view needs a
 root element with an `id`, or nothing is patched. `href` to a
-write route, and `submit` to a GET route, are errors (E0045).
+write route, `submit` to a GET route, and `click` to a write route that
+declares a `form` (a click sends no fields: use `<form submit={R}>`), are
+errors (E0045).
 
 ## Qualified declarations
 

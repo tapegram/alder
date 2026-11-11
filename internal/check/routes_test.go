@@ -221,7 +221,7 @@ func TestRoutes_OptionRoutes(t *testing.T) {
 // submitted, not clicked; a file route is fetched; a route's form is posted by naming the route.
 func TestRoutes_Steps(t *testing.T) {
 	src := "module Todos\n\nroute A = GET \"/a\" { }\nroute Csv = GET \"/a.csv\" { }\nroute Add = POST \"/add\" { } form NewTodo\n\nform NewTodo = { title: Text }\n\n" +
-		getRoute("A", "<p>a</p>") +
+		getRoute("A", "<button click={Add}>add</button>") +
 		"Csv.load : Csv.Params -> Session -> Query Int\nCsv.load params session = Query.succeed 1\n\n" +
 		"Csv.view : Int -> Session -> File\nCsv.view n session = File.text { contentType: \"text/csv\", body: \"\" }\n\n" +
 		"Add.update : Add.Params -> Session -> Task Response\nAdd.update params session = Task.succeed Response.refresh\n\n" +
@@ -232,13 +232,14 @@ func TestRoutes_Steps(t *testing.T) {
 		{"E0003", "`Csv` is a file route: use `Test.fetch`"},
 		{"E0003", "`Test.submit` names the route that posts a form: write `Test.submit Add …`"},
 		{"E0045", "`Test.submit` posts a route's form; `A` is GET: use `Test.get`"},
+		{"E0045", "`click` sends a route without a form; `Add` posts form `NewTodo`: use a submit button in a form for that route (`<form submit={Add}>`)"},
 	} {
 		if !hasError(errs, want[0], want[1]) {
 			t.Errorf("errors = %q, want %s %s", errs, want[0], want[1])
 		}
 	}
-	if len(errs) != 4 {
-		t.Errorf("errors = %q, want only those four", errs)
+	if len(errs) != 5 {
+		t.Errorf("errors = %q, want only those five", errs)
 	}
 }
 

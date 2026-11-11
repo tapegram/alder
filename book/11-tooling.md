@@ -2585,6 +2585,8 @@ A route requested the way its method refuses (chapter 6, 10):
 - `Response.redirect` or `Response.render` of a write route.
 - `Test.submit` of a route without `form`.
 - `Test.click` of a route with one.
+- `click` of a write route with `form` (a button sends a route without a form; use
+  `<form submit={R}>`).
 
 #### E0046 — page-era syntax that routes replaced
 

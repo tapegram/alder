@@ -299,8 +299,14 @@ func (mc *modCtx) attribute(x *syntax.Element, a *syntax.HtmlAttr, m types.Type,
 		if mc.bareRoute(a.Value, false) {
 			return
 		}
-		if ct, r := mc.routeTarget(a.Value); a.Name == "submit" && r != nil && !isWrite(r.Method) {
+		ct, r := mc.routeTarget(a.Value)
+		if a.Name == "submit" && r != nil && !isWrite(r.Method) {
 			c.errorf(diag.RouteTarget, a.Value.GetSpan(), "`submit` posts to a write route; `%s` is GET: link to it with `href`", ct.Name)
+			mc.infer(a.Value, env, eff)
+			return
+		}
+		if a.Name == "click" && r != nil && isWrite(r.Method) && r.Decl.Form != "" {
+			c.errorf(diag.RouteTarget, a.Value.GetSpan(), "`click` sends a route without a form; `%s` posts form `%s`: use a submit button in a form for that route (`<form submit={%s}>`)", ct.Name, r.Decl.Form, ct.Name)
 			mc.infer(a.Value, env, eff)
 			return
 		}

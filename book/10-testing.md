@@ -1738,7 +1738,8 @@ is a route without a `form`, with its parameters, written as in a
   the way a button fetches an element, and its view is patched into the page
   held as the element with the view's root `id`.
 - A route that carries a form is posted with `Test.submit`; a link is followed with `Test.get` or
-  `Test.open`.
+  `Test.open`. The markup has the same rule: `click={R}` of a write route with a form is E0045
+  too, and the page sends such a route with `<form submit={R}>`.
 
 The page must show a button (or form) that sends exactly that route,
 with the same parameters: a test can only do what the user it is logged

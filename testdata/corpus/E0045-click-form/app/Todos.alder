@@ -1,0 +1,33 @@
+module Todos
+
+route Index  = GET   "/"                  { }
+route Submit = POST  "/todos"             { } form NewTodo
+route Toggle = PATCH "/todos/{id}/toggle" { id: Text }
+
+form NewTodo = {
+  title: Text,
+}
+
+Index.load : Index.Params -> Session -> Query { r: Route }
+Index.load params session = Query.succeed { r: Toggle { id: "c" } }
+
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update params session = Task.succeed Response.refresh
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update params session = Task.succeed Response.refresh
+
+-- `click` sends a route without a form; a route with `form NewTodo` is sent by a form
+Index.view : { r: Route } -> Session -> Html
+Index.view model session =
+  <div>
+    <button click={Submit}>Add</button>
+    <form submit={Submit}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <button click={Submit}>Add</button>
+      <button click={Toggle { id: "a" }}>Toggle in a form</button>
+    </form>
+    <button click={Toggle { id: "b" }}>Toggle</button>
+    <button click={model.r}>Computed</button>
+  </div>
