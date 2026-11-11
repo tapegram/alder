@@ -3,7 +3,7 @@
 Every release of alder, newest first. "Breaking" lists what stops an app that compiled
 with the previous release, each with what to do.
 
-## v0.2.0 — unreleased
+## v0.2.0 — 2026-11-11
 
 ### Breaking
 
@@ -16,7 +16,7 @@ with the previous release, each with what to do.
   `remove page` are gone for `alder new route`, `edit route` and `remove route`; `alder new msg`
   is `alder new action` (the old name still works as an alias until the next release). In
   tests, `Answer`'s `Rerendered` is `Refreshed` (or `Rendered r`, with the route), and
-  `Test.click` and `Test.submit` take the route (`Test.click (Toggle { id })`).
+  `Test.click` and `Test.submit` take the route (`Test.click (Toggle { id: id })`).
 - alder-ui is v0.4 or later (the shadcn look; v0.1.0 shipped v0.3.3). The `--al-*` tokens of
   v0.3 are removed, so your own CSS that uses `var(--al-…)` stops applying, and `[data-theme]`
   and the OS-dark CSS are gone, so dark mode needs the theme script in your Layout's `<head>`.

@@ -122,12 +122,12 @@ instead of a version. Pull and run the `go build` again to update.
   Homebrew installs Go with it.
 
 - **The container image**, for CI: `ghcr.io/tapegram/alder:<version>`
-  (the version without its `v`, such as `:0.1.0`) is Go's official image
+  (the version without its `v`, such as `:0.2.0`) is Go's official image
   with `alder` added, so a pipeline can check, test and build an app
   without installing anything:
 
   ```
-  docker run --rm -v "$PWD":/app -w /app ghcr.io/tapegram/alder:0.1.0 alder test
+  docker run --rm -v "$PWD":/app -w /app ghcr.io/tapegram/alder:0.2.0 alder test
   ```
 
   A fresh container has an empty Go module cache, so each run would
@@ -152,11 +152,11 @@ manager).
 Nothing else is needed: the runtime your app is built on is inside the
 `alder` binary, and SQLite is compiled into every app.
 
-Check what you have (here, a binary of the release `v0.1.0`):
+Check what you have (here, a binary of the release `v0.2.0`):
 
 ```
 $ alder version
-alder v0.1.0 (go 1.27.1)
+alder v0.2.0 (go 1.27.1)
 $ go version
 go version go1.27.1 darwin/arm64
 ```

@@ -2234,7 +2234,7 @@ binary it builds (`runtime/debug.ReadBuildInfo`, read by
 `internal/version`):
 
 - a released binary (a release archive, or Homebrew's) gives its module
-  version: `alder v0.1.0 (go 1.27.1)`;
+  version: `alder v0.2.0 (go 1.27.1)`;
 - one built in a checkout of the repository (`go build ./cmd/alder`, `go
   install ./cmd/alder`) gives `devel+` and the first twelve hex digits of
   the commit, with `-dirty` added when the checkout had uncommitted
