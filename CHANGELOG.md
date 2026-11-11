@@ -14,7 +14,13 @@ with the previous release, each with what to do.
   rewrite); there is no migration tool. A write route that declares `form F` is sent with
   `<form submit={R}>`: `click={R}` of it is E0045. `alder new page`, `edit page` and
   `remove page` are gone for `alder new route`, `edit route` and `remove route`; `alder new msg`
-  is `alder new action` (the old name still works as an alias until the next release).
+  is `alder new action` (the old name still works as an alias until the next release). In
+  tests, `Answer`'s `Rerendered` is `Refreshed` (or `Rendered r`, with the route), and
+  `Test.click` and `Test.submit` take the route (`Test.click (Toggle { id })`).
+- alder-ui is v0.4 or later (the shadcn look; v0.1.0 shipped v0.3.3). The `--al-*` tokens of
+  v0.3 are removed, so your own CSS that uses `var(--al-…)` stops applying, and `[data-theme]`
+  and the OS-dark CSS are gone, so dark mode needs the theme script in your Layout's `<head>`.
+  Appendix C, "Migrating from v0.3.x", has the steps and the table of removed tokens.
 - The standard library gained `Json` (and `Bytes`, `File`, `Fuzz` and `Response`). An app module
   with one of those names is E0017: rename it, or use the standard library's.
 - Imports have one canonical spelling (#23). An `import` whose `as` is missing, redundant or
