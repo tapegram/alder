@@ -417,3 +417,24 @@ func TestQual_UnqualifiableDoesNotHideRealModule(t *testing.T) {
 		t.Fatalf("no E0201: %s", codes(bag))
 	}
 }
+
+func TestQual_NotImportedOncePerModule(t *testing.T) {
+	_, bag, _ := resolveMods(t, std(t), "module Table.Todo\n\ntype Filter = All | Active\n\ntype Todo = { title: Text }\n",
+		"module Use\n\na : Todo.Filter -> Int\na f = 1\n\nb : List Todo -> Int\nb xs = 1\n")
+	n := 0
+	for _, d := range bag.Items {
+		if d.Code != "E0201" {
+			continue
+		}
+		n++
+		if !strings.Contains(d.Message, "`Table.Todo`") {
+			t.Errorf("E0201 does not name Table.Todo: %s", d.Message)
+		}
+		if d.Fix == nil || !strings.Contains(d.Fix.Replace, "import Table.Todo") {
+			t.Errorf("E0201 lacks the import Table.Todo fix: %+v", d.Fix)
+		}
+	}
+	if n != 1 {
+		t.Fatalf("want one E0201, got %d: %s", n, codes(bag))
+	}
+}

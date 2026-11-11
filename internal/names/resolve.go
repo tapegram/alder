@@ -728,13 +728,18 @@ func modulePath(x string) string { return "app/" + strings.ReplaceAll(x, ".", "/
 // does not exist but names a table of another module gets the table's message; and when x
 // imports this module, directly or not, the import cannot be added, so none is offered.
 func (r *resolver) notImported(span diag.Span, x string) {
-	if r.missing[x] || r.isUnqual(x) || r.reported[x] {
+	if r.missing[x] || r.isUnqual(x) {
+		return
+	}
+	// Keyed on the module x resolves to: `Todo.Filter` and a bare `Todo` both name `Table.Todo`.
+	key := r.p.moduleByLastSegment(x)
+	if r.reported[key] {
 		return
 	}
 	if r.reported == nil {
 		r.reported = map[string]bool{}
 	}
-	r.reported[x] = true
+	r.reported[key] = true
 	if owner, table, ok := r.tableInOtherModule(x); ok {
 		r.tableMisplaced(span, owner, table)
 		return

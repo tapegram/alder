@@ -1,0 +1,5 @@
+module Table.Todo
+
+type Filter = All | Active
+
+type Todo = { title: Text, done: Bool }

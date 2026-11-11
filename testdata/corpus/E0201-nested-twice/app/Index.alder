@@ -1,0 +1,11 @@
+module Index
+
+route Index = GET "/" { }
+
+type Model = { filters: List Todo.Filter, todos: List Todo }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { filters: [], todos: [] }
+
+Index.view : Model -> Session -> Html
+Index.view model session = <p>{Text.fromInt (List.length model.todos)}</p>
