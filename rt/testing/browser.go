@@ -1066,8 +1066,11 @@ func (e *ElementError) Error() string {
 // cookie), and the element the held page now has must equal the view that fetch answers, as the
 // browser's parser builds both. Equal by construction; the check proves it. The fetch runs in a
 // savepoint of the test's transaction that is rolled back (quietly): it sees the step's writes
-// and leaves none, and it is not part of the step. The savepoint undoes database writes only: a
-// `load` that calls a Query capability runs the test's fake a second time.
+// and leaves none, and it is not part of the step. The savepoint undoes database writes only:
+// the fetch runs the route's `load` a second time, so a Query capability it calls runs twice,
+// a test's fake too. The fake's tables are rolled back with the savepoint; any Go-side state it
+// keeps sees both calls. Replaying the first run's capability calls instead would need a hook
+// per capability call in rt/eff and generated wrappers: not worth it for a check (#177).
 func (b *Browser) checkElement(r rt.Route) error {
 	id := b.regions[len(b.regions)-1]
 	u := rt.RouteURL(r)

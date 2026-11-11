@@ -1084,6 +1084,12 @@ fake Stripe {
   is a failing step: under `Test.run` it is `Err` with the entry's
   message, its writes undone; outside it, the test fails.
 
+- After a `render` or an element fetch, the browser's element check
+  (section 9) runs the route's `load` again, so an entry that `load`
+  calls runs twice in that step. The second call's rows are undone with
+  the check's savepoint and it is not in the trace; what the fake keeps
+  outside its tables (the Go value `Test.fake` installs) sees both calls.
+
 - Each test starts with a fresh database and its own capabilities, so a
   fake installed in one test, and its rows, are never seen by the next.
 
@@ -1804,7 +1810,10 @@ Section 10 shows how each is made.
   The step fails: "the answer patched #todo-1 unlike
   Todos.Index.Row's view rendered on its own (GET /rows/…) at li#todo-1".
   The second request runs in a savepoint that is undone, and is not a step
-  of the trace.
+  of the trace. It runs the route's `load` a second time, so a capability
+  the `load` calls is called twice, a fake too (section 8): the savepoint
+  undoes the rows in the fake's tables, not what it keeps outside the
+  database.
 
 - **A patch with nowhere to go.** A `render` whose root `id` the held page
   lacks patches nothing in a real browser, silently. The test fails the
