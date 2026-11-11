@@ -96,14 +96,14 @@ func newSpecs() []*Spec {
 				{Name: "path", Kind: ArgRoute, Required: true, Value: "<path>", Help: "the URL path the route answers, starting with / (`{name}` segments are parameters)", Example: "/archive"},
 			},
 			Flags: []Field{
-				{Name: "list", Kind: ArgTable, Value: "T", Summary: "a page listing the rows of table T", Example: "Post"},
-				{Name: "show", Kind: ArgTable, Value: "T", Summary: "a page showing one row of table T", Example: "Post"},
+				{Name: "list", Kind: ArgTable, Value: "T", Summary: "a GET route listing the rows of table T", Example: "Post"},
+				{Name: "show", Kind: ArgTable, Value: "T", Summary: "a GET route showing one row of table T", Example: "Post"},
 				{Name: "by", Kind: ArgText, Value: "column", Summary: "with --show, the unique column in the path", Example: "slug"},
 				{Name: "from", Kind: ArgTable, Greedy: true, Value: "T…", Summary: "a card of every row of each table T; takes several tables up to the next flag (--from A B)", Example: "Post Comment"},
 				{Name: "method", Kind: ArgChoice, Choices: []string{"GET", "POST", "PUT", "PATCH", "DELETE"}, Value: "GET|POST|PUT|PATCH|DELETE", Summary: "the route's method: GET has load and view (the default); a write method has only update, answering Response.refresh", Example: "POST"},
 				{Name: "form", Kind: ArgText, Value: "F", Summary: "with a write method, the form the route posts (declared empty; add its fields)", Example: "Contact"},
 				{Name: "blank", Kind: ArgBool, Summary: "an empty route with typed holes", Agent: true},
-				{Name: "file", Kind: ArgBool, Summary: "a file page: view returns File (text, CSV, JSON, a zip) instead of HTML"},
+				{Name: "file", Kind: ArgBool, Summary: "a file route: view returns File (text, CSV, JSON, a zip) instead of HTML"},
 				{Name: "type", Kind: ArgText, Value: "T", Summary: "with --file, the content type (default text/plain)", Example: "text/csv"},
 				{Name: "example", Kind: ArgBool, Default: "true", DefaultUnless: []string{"blank", "file", "list", "show", "from", "param", "method"}, Summary: "a working example — state in a URL parameter, a write route that changes it and a view that uses them — to delete once read"},
 				{Name: "param", Kind: ArgText, Variadic: true, Value: "name:Type", Summary: "a route parameter (repeatable)", Example: "q:Text"},
@@ -154,7 +154,7 @@ func newSpecs() []*Spec {
 				{Name: "msg", Kind: ArgText, Value: "Route", Summary: "the write route's name (Submit<Name> by default); an existing write route of the module without a form gets this form", Example: "Submit", Agent: true},
 				{Name: "hole", Kind: ArgBool, Summary: "leave the route's `update` body a hole (?answer) instead of inserting into a table"},
 				{Name: "method", Kind: ArgChoice, Choices: []string{"POST", "PUT", "PATCH", "DELETE"}, Value: "POST|PUT|PATCH|DELETE", Summary: "the write route's method (POST by default)", Example: "PUT"},
-				{Name: "path", Kind: ArgRoute, Value: "/path", Summary: "the write route's path (the table's collection, else the page's own path)", Example: "/contact/messages"},
+				{Name: "path", Kind: ArgRoute, Value: "/path", Summary: "the write route's path (the table's collection, else the route module's own path)", Example: "/contact/messages"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				fields, err := fieldList(s.All("fields"), false)
@@ -177,7 +177,7 @@ func newSpecs() []*Spec {
 				{Name: "when", Kind: ArgText, Value: "Bool expression", Summary: "show the button only when this holds", Example: "model.canWrite", Agent: true},
 				{Name: "id", Kind: ArgText, Value: "id", Summary: "the button's id", Example: "archive", Agent: true},
 				{Name: "method", Kind: ArgChoice, Choices: []string{"POST", "PUT", "PATCH", "DELETE"}, Value: "POST|PUT|PATCH|DELETE", Summary: "the write route's method (POST by default)", Example: "DELETE"},
-				{Name: "path", Kind: ArgRoute, Value: "/path", Summary: "the write route's path (the page's own path by default; required on App)", Example: "/replies/{id}/pin"},
+				{Name: "path", Kind: ArgRoute, Value: "/path", Summary: "the write route's path (the GET route's own path by default; required on App)", Example: "/replies/{id}/pin"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				fields, err := fieldList(s.All("fields"), false)
@@ -209,7 +209,7 @@ func newSpecs() []*Spec {
 			},
 		},
 		{
-			ID: "new admin", Summary: "the admin pages for every table",
+			ID: "new admin", Summary: "the admin routes for every table",
 			Flags: []Field{
 				{Name: "module", Kind: ArgModule, Value: "Admin", Summary: "the admin's module prefix", Example: "Admin"},
 				{Name: "path", Kind: ArgRoute, Value: "/admin", Summary: "the admin's path prefix", Example: "/admin"},
@@ -397,11 +397,11 @@ func removeSpecs() []*Spec {
 
 func regenSpecs() []*Spec {
 	return []*Spec{{
-		ID: "regen admin", Summary: "the admin pages",
+		ID: "regen admin", Summary: "the admin routes",
 		Flags: []Field{
 			{Name: "module", Kind: ArgModule, Value: "Admin", Summary: "the admin's module prefix", Example: "Admin"},
 			{Name: "path", Kind: ArgRoute, Value: "/admin", Summary: "the admin's path prefix", Example: "/admin"},
-			{Name: "all", Kind: ArgBool, Summary: "recreate the admin pages the author deleted"},
+			{Name: "all", Kind: ArgBool, Summary: "recreate the admin routes the author deleted"},
 		},
 		Run: func(s Sets, app App, dry bool) (*Result, error) {
 			o := AdminOptions{Module: s.One("module"), Path: s.One("path")}

@@ -231,3 +231,37 @@ func TestHelpJSON_ReplDeprecated(t *testing.T) {
 	}
 	t.Error("no repl command")
 }
+
+// TestHelpJSON_NoPageWords: a page is a route now, and a message is a write route's params or
+// an action; no command, subcommand or flag summary says page or message (#195). Flag names such
+// as `--msg` are names, not summaries, and are not checked.
+func TestHelpJSON_NoPageWords(t *testing.T) {
+	t.Parallel()
+	var out bytes.Buffer
+	writeHelpJSON(&out)
+	var doc struct {
+		Commands []cmdSpec `json:"commands"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	words := regexp.MustCompile(`(?i)\b(pages?|messages?|msgs?)\b`)
+	var walk func(path string, c cmdSpec)
+	walk = func(path string, c cmdSpec) {
+		path += " " + c.Name
+		if m := words.FindString(c.Summary); m != "" {
+			t.Errorf("%s: summary %q says %q", path, c.Summary, m)
+		}
+		for _, f := range c.Flags {
+			if m := words.FindString(f.Summary); m != "" {
+				t.Errorf("%s %s: summary %q says %q", path, f.Name, f.Summary, m)
+			}
+		}
+		for _, s := range c.Subcommands {
+			walk(path, s)
+		}
+	}
+	for _, c := range doc.Commands {
+		walk("alder", c)
+	}
+}

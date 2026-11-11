@@ -19,14 +19,14 @@ func EditAuth(p *Program, to string) ([]Edit, error) {
 	}
 	lit, hasParams, ok := loginTarget(p, to, "Auth.Login")
 	if !ok {
-		return nil, Refusef("`--to %s` is not a page of this app: name a route module (`Home`) or a GET route (`Posts.Index.Index`)", to)
+		return nil, Refusef("`--to %s` is not a route of this app: name a route module (`Home`) or a GET route (`Posts.Index.Index`)", to)
 	}
 	if hasParams {
-		return nil, Refusef("`%s` has parameters: a login goes to a page without, name another with `--to <Route>`", to)
+		return nil, Refusef("`%s` has parameters: a login goes to a route without, name another with `--to <Route>`", to)
 	}
 	m := p.Modules["Auth.Login"]
 	if m == nil || !strings.Contains(m.Source, "?afterLogin") {
-		return nil, Refusef("`Auth.Login` has no hole ?afterLogin: the login goes to a page already (change `SignIn.update`'s redirect with `alder fill --decl Auth.Login.SignIn.update -`)")
+		return nil, Refusef("`Auth.Login` has no hole ?afterLogin: the login goes to a route already (change `SignIn.update`'s redirect with `alder fill --decl Auth.Login.SignIn.update -`)")
 	}
 	body := strings.ReplaceAll(m.Source, afterLoginComment, lit)
 	body = strings.ReplaceAll(body, afterLoginCommentPage, lit)

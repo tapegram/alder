@@ -158,7 +158,7 @@ Toggle.update params session = {
 }
 
 // TestNewAuth_Refusals: a second login, an Auth module, a role that is not a union of the user
-// module, a user table without a password column, a --to that is not a page.
+// module, a user table without a password column, a --to that is not a route.
 func TestNewAuth_Refusals(t *testing.T) {
 	refused := func(dir string, o AuthOptions, want string) {
 		t.Helper()
@@ -175,7 +175,7 @@ func TestNewAuth_Refusals(t *testing.T) {
 	refused(scaffoldApp(t, map[string]string{"app/Auth/Other.alder": "module Auth.Other\n"}), AuthOptions{}, "module `Auth.Other` exists")
 	refused(scaffoldApp(t, map[string]string{"app/User.alder": "module User\n\ntype UserId = brand Text\n\ntable User {\n  id: UserId @id,\n  email: Text.Email,\n}\n"}),
 		AuthOptions{}, "`User` needs the columns `email: Text.Email` and `passwordHash")
-	refused(scaffoldApp(t, nil), AuthOptions{To: "Nope"}, "`--to Nope` is not a page")
+	refused(scaffoldApp(t, nil), AuthOptions{To: "Nope"}, "`--to Nope` is not a route")
 	// a root module of the user table's name: the table would go in Table.User beside it
 	refused(scaffoldApp(t, map[string]string{"app/User.alder": "module User\n\ntype Role = Member | Admin\n"}), AuthOptions{},
 		"module `User` exists (`app/User.alder`): the user table goes in `app/Table/User.alder`")

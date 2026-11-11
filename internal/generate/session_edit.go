@@ -42,7 +42,7 @@ func EditSessionChoose(p *Program, op string, args []string, choose string) ([]E
 		return nil, Refusef("%v", err)
 	}
 	if choose != "" && via == "" {
-		return nil, Refusef("--choose names the page that picks a `via` key: `add-field %s:<T>.<T>Id via <Membership> --choose %s`", f.Name, choose)
+		return nil, Refusef("--choose names the route that picks a `via` key: `add-field %s:<T>.<T>Id via <Membership> --choose %s`", f.Name, choose)
 	}
 	if via != "" {
 		if !IsUpperIdent(via) {
@@ -77,7 +77,7 @@ func EditSessionChoose(p *Program, op string, args []string, choose string) ([]E
 		if choose != "" {
 			target, ok := chooseTarget(p, choose)
 			if !ok {
-				return nil, Refusef("--choose %s: `%s` is not a page of this app: name a route module (`Orgs.Index`) or a GET route (`Orgs.Index.Index`)", choose, choose)
+				return nil, Refusef("--choose %s: `%s` is not a route of this app: name a route module (`Orgs.Index`) or a GET route (`Orgs.Index.Index`)", choose, choose)
 			}
 			choose = target
 		}

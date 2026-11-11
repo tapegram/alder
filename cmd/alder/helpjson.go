@@ -187,7 +187,7 @@ var commandTree = []cmdSpec{
 		}},
 	{Name: "new", Summary: "create an app, or generate code in one", Usage: commandUsages["new"],
 		Args:        []string{"<name>"},
-		Flags:       []flagSpec{{Name: "--bare", Summary: "the app without its starter pages"}, {Name: "--theme", Value: "name", Summary: "start from a theme (" + strings.Join(theme.PresetNames(), ", ") + ")"}},
+		Flags:       []flagSpec{{Name: "--bare", Summary: "the app without its starter routes"}, {Name: "--theme", Value: "name", Summary: "start from a theme (" + strings.Join(theme.PresetNames(), ", ") + ")"}},
 		Subcommands: groupCmd("new")},
 	{Name: "edit", Summary: "change a table, route, declaration, auth or the session", Usage: commandUsages["edit"],
 		Flags:       withGenFlags(),

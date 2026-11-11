@@ -94,7 +94,7 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 	if o.To != "" {
 		var ok bool
 		if home, homeParams, ok = loginTarget(p, o.To, "Auth.Login"); !ok {
-			return nil, false, Refusef("`--to %s` is not a page of this app: name a route module (`Home`) or a GET route (`Posts.Index.Index`)", o.To)
+			return nil, false, Refusef("`--to %s` is not a route of this app: name a route module (`Home`) or a GET route (`Posts.Index.Index`)", o.To)
 		}
 	} else {
 		for _, r := range p.Routes {
@@ -104,7 +104,7 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 		}
 	}
 	if home != "" && homeParams {
-		return nil, false, Refusef("`%s` has parameters: a login goes to a page without, name one with `--to <Route>`", strings.TrimSuffix(home, " {}"))
+		return nil, false, Refusef("`%s` has parameters: a login goes to a route without, name one with `--to <Route>`", strings.TrimSuffix(home, " {}"))
 	}
 
 	var edits []Edit

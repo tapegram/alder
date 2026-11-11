@@ -517,7 +517,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"fixture-silo", []string{"edit", "session", "add-field", "team:Org.OrgId", "via", "Membership"}, "", "alder edit session: the session's `org` is `via Membership` already: one `via` field per session (for now)"},
 		{"fixture", []string{"edit", "session", "add-field", "post:Post.PostId", "via", "Nope"}, "", "alder edit session: `via Nope`: `Nope` is not a table of this app"},
 		{"fixture", []string{"edit", "session", "add-field", "post:Post.PostId=Nothing", "via", "Comment"}, "", "alder edit session: session field `post` is a key with `via Comment`: it takes no default"},
-		{"fixture", []string{"edit", "session", "add-field", "theme:Text=\"x\"", "--choose", "Home"}, "", "alder edit session: --choose names the page that picks a `via` key"},
+		{"fixture", []string{"edit", "session", "add-field", "theme:Text=\"x\"", "--choose", "Home"}, "", "alder edit session: --choose names the route that picks a `via` key"},
 	} {
 		dir := genApp(t, c.base)
 		before := appFiles(t, dir)
