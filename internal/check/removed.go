@@ -112,13 +112,13 @@ func qualifyMessage(module, member string, cands []string) string {
 		kind = "write"
 	}
 	if len(cands) == 1 {
-		return fmt.Sprintf("`%s` must be qualified with the route it belongs to: `%s.%s` (route `%s` is the only %s route in `%s`)", member, cands[0], member, cands[0], kind, module)
+		return fmt.Sprintf("`%s` must be qualified with the route it belongs to: `%s.%s` (route `%s` is the only %s route in `%s`); %s", member, cands[0], member, cands[0], kind, module, removedHint)
 	}
 	qs := make([]string, len(cands))
 	for i, r := range cands {
 		qs[i] = "`" + r + "." + member + "`"
 	}
-	return fmt.Sprintf("`%s` must be qualified with the route it belongs to: one of %s (the %s routes in `%s`)", member, strings.Join(qs, ", "), kind, module)
+	return fmt.Sprintf("`%s` must be qualified with the route it belongs to: one of %s (the %s routes in `%s`); %s", member, strings.Join(qs, ", "), kind, module, removedHint)
 }
 
 // reportRemoved reports the `page` and `msg` declarations rejectRemoved found.
