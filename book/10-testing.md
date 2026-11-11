@@ -2516,7 +2516,7 @@ breaks, in five classes; every mutant is well-typed:
 
 | Class | Operator | What it changes |
 |---|---|---|
-| authorization | `requires dropped` | A route's `requires user` no longer redirects a visitor, who is served as `User.UserId "mutant"` (for a field that is a brand over `Text`); one mutant per route |
+| authorization | `requires dropped` | A route's first required field (`requires user`, say) is dropped: the route serves a visitor as `<Brand> "mutant"` (for a field that is a brand over `Text`; other fields are skipped); one mutant per route |
 | authorization | `role dropped` | A route's `requires user, role R` becomes `requires user` |
 | authorization | `scope dropped` | `Db.mine T` becomes `Db.from T`; the other scoped operations act on anyone's row; likewise `Db.scoped` and its family (not on a siloed table) |
 | authorization | `membership dropped` | A key's `via M` check removed: a `Session.put` of any org succeeds |
