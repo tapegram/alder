@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1637,6 +1638,85 @@ func TestCheck_ElementRollbackFails(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The element check's fetch is not part of the step (#177): what its request's hooks record —
+// its Envs (their trace and statements), the model, the render, the answer, an error logged —
+// is put back as the step left it, and the test's trace (gathered from a step's Envs when it
+// ends) is unchanged. Served plainly, the fetches here change each of the five (checked last,
+// so the restore is not vacuous): a write that sets a model, inserts a row and answers
+// `refresh`, and an element fetch of a view with no root id, which logs an error.
+func TestCheck_ElementFetchRestoresState(t *testing.T) {
+	routes := append(dbRenderRoutes(), web.Route{Method: "PATCH", Pattern: "/d/all", Handle: func(rq *web.Request) web.Response {
+		rq.Model = "fetched"
+		if _, err := eff.Run(rq.Env, eff.KTask, insertTask("quiet")); err != nil {
+			return fail(err)
+		}
+		before, _ := rq.RenderShown(nil)
+		return web.AnswerResponse(rt.Refresh(), before, nil)
+	}})
+	fetches := func() []*http.Request {
+		write := httptest.NewRequest("PATCH", "/d/all?datastar=%7B%7D", nil)
+		write.Header.Set("Datastar-Request", "true")
+		write.Header.Set(html.PageHeader, "/d")
+		fetch := httptest.NewRequest("GET", "/d?datastar=%7B%7D", nil)
+		fetch.Header.Set("Datastar-Request", "true")
+		fetch.Header.Set(datastar.FetchHeader, "1")
+		fetch.Header.Set(html.PageHeader, "/d")
+		return []*http.Request{write, fetch}
+	}
+	browseOpts(t, Options{}, routes, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/d"))
+		cur, err := b.within()
+		if err != nil || cur == nil {
+			t.Fatalf("no transaction: %v", err)
+		}
+		b.cur = cur
+		held := &eff.Env{Trace: []string{"Step.call"}, Rec: &eff.Recorder{Loads: 1}}
+		answer := &rt.Response{}
+		hold := func() {
+			b.reqEnvs, b.model, b.rendered, b.answered, b.lastErr = []*eff.Env{held}, "held", "<body>held</body>", answer, "held error"
+		}
+		trace := slices.Clone(e.Trace)
+		same := func(when string) {
+			t.Helper()
+			if len(b.reqEnvs) != 1 || b.reqEnvs[0] != held || !reflect.DeepEqual(held.Trace, []string{"Step.call"}) ||
+				held.Rec.Loads != 1 || len(held.Rec.SQL) != 0 || len(held.Rec.Steps) != 0 {
+				t.Errorf("%s: envs %v", when, b.reqEnvs)
+			}
+			if b.model != "held" || b.rendered != "<body>held</body>" || b.answered != answer || b.lastErr != "held error" {
+				t.Errorf("%s: model %v, rendered %q, answered %v, lastErr %q", when, b.model, b.rendered, b.answered, b.lastErr)
+			}
+			if !reflect.DeepEqual(e.Trace, trace) {
+				t.Errorf("%s: trace %v, want %v", when, e.Trace, trace)
+			}
+		}
+		for _, req := range fetches() {
+			hold()
+			if _, err := b.quietly(context.Background(), req); err != nil {
+				t.Fatal(err)
+			}
+			same(req.Method + " " + req.URL.Path)
+		}
+		if got := strings.Join(titles(t, e), ","); strings.Contains(got, "quiet") {
+			t.Errorf("rows %q: the write's row was kept", got)
+		}
+		// served plainly, the same fetches change each
+		changed := map[string]bool{}
+		for _, req := range fetches() {
+			hold()
+			b.handler.ServeHTTP(httptest.NewRecorder(), req)
+			changed["envs"] = changed["envs"] || len(b.reqEnvs) > 1
+			changed["model"] = changed["model"] || b.model != "held"
+			changed["rendered"] = changed["rendered"] || b.rendered != "<body>held</body>"
+			changed["answered"] = changed["answered"] || b.answered != answer
+			changed["lastErr"] = changed["lastErr"] || b.lastErr != "held error"
+		}
+		if len(changed) != 5 || slices.Contains(slices.Collect(maps.Values(changed)), false) {
+			t.Errorf("served plainly, changed %v: the fetches do not exercise every restore", changed)
+		}
+	})
 }
 
 // Test.refresh (#160): a plain GET of the held URL whose body must equal the held one, compared
