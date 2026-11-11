@@ -2597,6 +2597,10 @@ type, a type argument on `Html`, and an unqualified `load`, `view` or
   `Task Response`.
 - `Rerender` is `Response.refresh`, `Redirect r` is `Response.redirect r`,
   `Reject t` is `Response.invalid t`, and `Html Msg` is `Html`.
+- An unqualified `load`, `view` or `update` in a module with routes names the
+  route to qualify it with (``route `Submit` is the only write route in `Home` ``),
+  or lists the routes that lack the member. That route's own E0043 ("it needs
+  `Submit.update`") is then not shown.
 - Every message ends with "see the book's chapter 6, Routes, for the route syntax
   that replaced it".
 

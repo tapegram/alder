@@ -1,0 +1,2 @@
+app/Home.alder:5:1 E0046 `load` must be qualified with the route it belongs to: `Home.load` (route `Home` is the only GET route in `Home`)
+app/Home.alder:8:1 E0046 `view` must be qualified with the route it belongs to: `Home.view` (route `Home` is the only GET route in `Home`)

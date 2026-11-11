@@ -283,6 +283,9 @@ func (mc *modCtx) checkWriteRoute(r *RouteInfo, members map[string]*syntax.Value
 	}
 	d := members["update"]
 	if d == nil {
+		if c.unqualified[mc.m.Name]["update"] {
+			return
+		}
 		c.errorf(diag.RouteDecl, r.Decl.Span, "route `%s` is a %s route: it needs `%s.update : %s`", r.Name, r.Method, r.Name, sig)
 		return
 	}
@@ -395,10 +398,10 @@ func (mc *modCtx) checkGetRoute(r *RouteInfo, members map[string]*syntax.ValueDe
 			}
 		}
 	}
-	if load == nil {
+	if load == nil && !c.unqualified[mc.m.Name]["load"] {
 		c.errorf(diag.RouteDecl, r.Decl.Span, "route `%s` is a GET route: it needs `%s.load : %s.Params -> Session -> Query %s`", r.Name, r.Name, r.Name, mc.modelText(nil, r.Model))
 	}
-	if view == nil {
+	if view == nil && !c.unqualified[mc.m.Name]["view"] {
 		c.errorf(diag.RouteDecl, r.Decl.Span, "route `%s` is a GET route: it needs `%s.view : %s -> Session -> Html`", r.Name, r.Name, mc.modelText(nil, r.Model))
 	}
 }

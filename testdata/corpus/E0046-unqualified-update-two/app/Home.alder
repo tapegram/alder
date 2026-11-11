@@ -1,0 +1,14 @@
+module Home
+
+route Home = GET "/" { }
+route A = POST "/_/A" { }
+route B = POST "/_/B" { }
+
+Home.load : Home.Params -> Session -> Query Int
+Home.load params session = Query.succeed 1
+
+Home.view : Int -> Session -> Html
+Home.view n session = <p>{Text.fromInt n}</p>
+
+update : A.Params -> Session -> Task Response
+update params session = Task.succeed Response.refresh

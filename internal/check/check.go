@@ -36,10 +36,13 @@ type Checker struct {
 	fakeUses   map[diag.Span]bool
 	// routes are each route module's routes, in declaration order (routes.go); routeRefs the
 	// references from route members to values of their module, for checkRouteRefs
-	routes    map[string][]*RouteInfo
-	routeRefs []routeRef
-	session   *types.Record
-	losers    map[syntax.Decl]bool
+	routes map[string][]*RouteInfo
+	// unqualified[module][member]: an unqualified load/view/update already reported as E0046 with
+	// the route to qualify it with; those routes' E0043 for the member is not shown (#185)
+	unqualified map[string]map[string]bool
+	routeRefs   []routeRef
+	session     *types.Record
+	losers      map[syntax.Decl]bool
 	// elements are the custom elements a program may use: the embedded `alder-ui` manifest's
 	// and the app's elements/custom-elements.json's (loadElements); appElementsBad is set when
 	// the app's file does not parse, so elements only it could declare are not reported again
