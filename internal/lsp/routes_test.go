@@ -68,6 +68,18 @@ func TestHover_Route(t *testing.T) {
 	}
 }
 
+// A member's hover names its own route's session even when the route shares a narrowed record
+// with an earlier one (Row and Index both `requires user`).
+func TestHover_MemberOwnSession(t *testing.T) {
+	c, rel := routesCopy(t)
+	for _, p := range []Position{c.at(rel, "Row.view :", len("Row.")), c.at(rel, "Row.view t session}", len("Row."))} {
+		got := hover(t, c, rel, p)
+		if !strings.Contains(got, "Row.view : Todo -> Row.Session -> Html") || strings.Contains(got, "Index.Session") {
+			t.Errorf("hover at %+v: %q", p, got)
+		}
+	}
+}
+
 // Definition from a route's member goes to the route line (on the route's name) or to the member
 // (on the member's name); from a route constructor in markup, to the route line.
 func TestDefinition_FromMember(t *testing.T) {

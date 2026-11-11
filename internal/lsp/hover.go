@@ -3,6 +3,7 @@ package lsp
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"alder/internal/diag"
@@ -116,6 +117,7 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 				t = a.res.Types[n]
 			}
 			if t != nil {
+				t = ownSession(a, ref, t)
 				name := ref.Name
 				if v, ok := n.(*syntax.Var); ok && v.Module != "" && a.prog.Modules[ref.Module] != nil {
 					name = ref.Module + "." + ref.Name // `Todo.find` is `Table.Todo.find` in full
@@ -333,4 +335,26 @@ func themeHover(fs []*syntax.DeployField, pos diag.Pos) string {
 		return fmt.Sprintf("`%s`: `%s`, a %s token of alder-ui %s\n\n%s\n\nalder-ui's default: light `%s`, dark `%s`", t.Field, t.CSS, t.Kind, theme.Version(), t.Description, d.Light, d.Dark)
 	}
 	return ""
+}
+
+// ownSession is member type t of a route member (`Row.view`) with the route's shared narrowed
+// session record printed as the member's own `Row.Session`: the checker gives routes with the
+// same `requires` one record, named for the first of them. Hover only; the shared record, and so
+// type identity across routes, is unchanged.
+func ownSession(a *analysis, ref syntax.Ref, t types.Type) types.Type {
+	i := strings.LastIndexByte(ref.Name, '.')
+	f, ok := t.(*types.Fun)
+	if i < 0 || !ok || a.prog.Route(ref.Module, ref.Name[:i]) == nil {
+		return t
+	}
+	own := ref.Name[:i] + ".Session"
+	out := &types.Fun{Params: slices.Clone(f.Params), Result: f.Result}
+	for j, p := range out.Params {
+		if r, ok := p.(*types.Record); ok && r.Module == ref.Module && r.Name != own && strings.HasSuffix(r.Name, ".Session") {
+			c := *r
+			c.Name = own
+			out.Params[j] = &c
+		}
+	}
+	return out
 }
