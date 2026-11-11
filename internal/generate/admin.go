@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"alder/internal/check"
@@ -2751,6 +2752,25 @@ const childrenText = "Delete its children first."
 
 // deletedText is Destroy's toast.
 const deletedText = "Deleted"
+
+// The bulk actions' toasts: the verb, then the counts (bulkNotice).
+const (
+	bulkDeletedText = "Deleted"
+	bulkUpdatedText = "Updated"
+)
+
+// bulkNotice is a bulk action's toast: the verb and its counts, "Deleted 1 of 2" for two counts,
+// "Updated 1" for one.
+func bulkNotice(verb string, counts ...int) string {
+	s := verb
+	for i, n := range counts {
+		if i > 0 {
+			s += " of"
+		}
+		s += " " + strconv.Itoa(n)
+	}
+	return s
+}
 
 // indentAll is lines, each with prefix.
 func indentAll(lines []string, prefix string) []string {

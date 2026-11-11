@@ -99,7 +99,7 @@ func (g *adminGen) bulk(at *adminTable) {
 	}
 	if at.bulkDel {
 		forms = append(forms, "-- BulkDelete takes no input: the form is the button, and the place a refusal is shown.", "form Confirm = { }", "")
-		action("BulkDelete", "DELETE", path, "Confirm", "Deleted", "Text.fromInt (List.length allowed) ++ \" of \" ++ Text.fromInt (List.length model.rows)", []string{
+		action("BulkDelete", "DELETE", path, "Confirm", bulkDeletedText, "Text.fromInt (List.length allowed) ++ \" of \" ++ Text.fromInt (List.length model.rows)", []string{
 			"let allowed = List.filter (\\row -> " + refused + " == False) model.rows",
 			"let _ <- Task.all (List.map (\\row -> Db.delete " + t.Name + " row." + id + ") allowed)",
 		})
@@ -112,7 +112,7 @@ func (g *adminGen) bulk(at *adminTable) {
 		importTypes(imports, c.Type)
 		name := UpperFirst(c.Name)
 		forms = append(forms, "form Set"+name+" = { value: "+c.TypeIn(mod)+" }", "")
-		action("BulkSet"+name, "PUT", path+"/"+kebab(c.Name), "Set"+name, "Updated", "Text.fromInt (List.length model.rows)", []string{
+		action("BulkSet"+name, "PUT", path+"/"+kebab(c.Name), "Set"+name, bulkUpdatedText, "Text.fromInt (List.length model.rows)", []string{
 			"let _ <- Task.all (List.map (\\row -> Db.update " + t.Name + " row." + id + " (\\r -> { r | " + c.Name + ": params.form.value })) model.rows)",
 		})
 		tag := "al-select"
@@ -172,12 +172,12 @@ func (g *adminGen) bulk(at *adminTable) {
 		unchosen := tb.insertRow(t, "", nil, false)
 		sel := []string{free}
 		lhs := "answer: r.answer, notices: r.notices, gone: Maybe.map (\\row -> row." + id + ") gone, left: Maybe.map (\\row -> row." + id + ") left"
-		rhs := "answer: Refreshed, notices: [\"Deleted 1 of 1\"], gone: Nothing, left: Just " + unchosen
+		rhs := "answer: Refreshed, notices: [" + quote(bulkNotice(bulkDeletedText, 1, 1)) + "], gone: Nothing, left: Just " + unchosen
 		name := "deleting the chosen rows"
 		if keep != "" {
 			sel = []string{keep, free}
 			name = "deleting the chosen rows leaves the ones other rows refer to"
-			rhs = strings.Replace(rhs, "Deleted 1 of 1", "Deleted 1 of 2", 1)
+			rhs = strings.Replace(rhs, bulkNotice(bulkDeletedText, 1, 1), bulkNotice(bulkDeletedText, 1, 2), 1)
 		}
 		tb.let("let _ <- Test.get (%s)", pageLit("Bulk", []string{ids(sel...)}))
 		tb.let("let r <- Test.submit (%s) { }", pageLit("BulkDelete", []string{ids(sel...)}))
@@ -209,8 +209,8 @@ func (g *adminGen) bulk(at *adminTable) {
 		tb.let("let one <- Db.get %s %s", t.Name, a)
 		tb.let("let other <- Db.get %s %s", t.Name, o)
 		tests = append(tests, TestData{Name: quote("setting " + strings.ToLower(Humanize(c.Name)) + " changes the chosen rows only"), Lines: tb.lines,
-			Result: fmt.Sprintf("{ answer: r.answer, notices: r.notices, one: Maybe.map (\\row -> row.%s == %s) one, other: Maybe.map (\\row -> row.%s == %s) other } == { answer: Refreshed, notices: [\"Updated 1\"], one: Just True, other: Just False }",
-				c.Name, v, c.Name, v)})
+			Result: fmt.Sprintf("{ answer: r.answer, notices: r.notices, one: Maybe.map (\\row -> row.%s == %s) one, other: Maybe.map (\\row -> row.%s == %s) other } == { answer: Refreshed, notices: [%s], one: Just True, other: Just False }",
+				c.Name, v, c.Name, v, quote(bulkNotice(bulkUpdatedText, 1)))})
 	}
 	// at most maxRows ids: maxRows are taken, one more is refused (the others are ids of no row)
 	for _, n := range []int{bulkMax, bulkMax + 1} {
