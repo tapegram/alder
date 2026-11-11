@@ -1013,7 +1013,10 @@ func responseStd(ty types.Type, name string) *ir.Var {
 // stays on the page it was sent from), `render r` → `redirect r` (the same route, but a 303 to
 // it) and → refresh (the whole page rendered again, not r's element), `invalid t` → refresh (a
 // refused write answered as a done one); and drops a notice (`toast`, `success`, `warning`,
-// `error`), leaving the Response it decorates.
+// `error`), leaving the Response it decorates. A mutant keeps the original route's NeedsShown
+// (every mutant is a switch arm of one binary, internal/gen/routes.go), so a `redirect` → refresh
+// mutant of a route that never mentions refresh is patched under Datastar with no before-view;
+// kills in the test browser are unaffected.
 func (c *collector) answer(x *ir.Call) {
 	v, ok := x.Fn.(*ir.Var)
 	if !ok || v.Kind != ir.VarStd || v.Module != "Response" {
@@ -1035,7 +1038,7 @@ func (c *collector) answer(x *ir.Call) {
 }
 
 // refresh answers `Response.refresh` with `Response.invalid "mutant"`: a done write answered
-// as a refused one.
+// as a refused one. Like answer's, the mutant runs with the original route's NeedsShown.
 func (c *collector) refresh(x *ir.Var) {
 	if x.Kind != ir.VarStd || x.Module != "Response" || x.Name != "refresh" {
 		return
