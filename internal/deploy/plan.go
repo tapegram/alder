@@ -105,11 +105,10 @@ func MakePlan(migrationsDir string, live []byte, haveLive, known bool) (Plan, er
 // a table the live one does not (its DROPS DATA then needs --allow-data-loss).
 func MakePlanApplied(migrationsDir string, live []byte, haveLive, known bool, applied []string) (Plan, error) {
 	p := Plan{Known: known && haveLive, FirstDeploy: known && !haveLive, Migrations: []PlanMigration{}}
-	files, err := filepath.Glob(filepath.Join(migrationsDir, "*.sql"))
+	files, err := migrate.SQLFiles(migrationsDir)
 	if err != nil {
 		return p, err
 	}
-	sort.Strings(files)
 	snapPath := filepath.Join(migrationsDir, "schema.json")
 	if _, err := os.Stat(snapPath); err != nil && len(files) == 0 {
 		p.NoMigrations = true

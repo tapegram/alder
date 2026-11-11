@@ -175,6 +175,25 @@ func TestSchemaDrift(t *testing.T) {
 	}
 }
 
+func TestCopyMigrations_GlobCharsInPath(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "demo-[x]", "migrations")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"schema.json", "0001_init.sql"} {
+		if err := os.WriteFile(filepath.Join(src, n), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dst := filepath.Join(t.TempDir(), "migrations")
+	if err := CopyMigrations(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "0001_init.sql")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCopyMigrations(t *testing.T) {
 	dst := filepath.Join(t.TempDir(), "migrations")
 	if err := CopyMigrations(filepath.Join(migrated, "migrations"), dst); err != nil {

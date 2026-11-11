@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"alder/internal/ir"
+	"alder/internal/migrate"
 	"alder/rt/db"
 )
 
@@ -523,7 +524,7 @@ func (r *Render) BuildSchema(ctx context.Context, id string) (Schema, error) {
 		} else if err != nil {
 			return Schema{}, err
 		}
-		files, _ := filepath.Glob(filepath.Join(mig, "*.sql"))
+		files, _ := migrate.SQLFiles(mig)
 		sc := Schema{Have: true, Snapshot: snap}
 		for _, f := range files {
 			sc.Migrations = append(sc.Migrations, strings.TrimSuffix(filepath.Base(f), ".sql"))

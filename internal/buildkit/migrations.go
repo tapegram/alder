@@ -29,8 +29,7 @@ func HasMigrations(dir string) bool {
 
 // migrationFiles are the migrations/*.sql files of the app in dir, sorted (nil without any).
 func migrationFiles(dir string) []string {
-	files, _ := filepath.Glob(filepath.Join(dir, "migrations", "*.sql"))
-	slices.Sort(files)
+	files, _ := migrate.SQLFiles(filepath.Join(dir, "migrations"))
 	return files
 }
 
@@ -45,8 +44,7 @@ func CopyMigrations(src, dst string) error {
 	if st, err := os.Stat(filepath.Join(src, "schema.json")); err != nil || st.IsDir() {
 		return nil
 	}
-	files, _ := filepath.Glob(filepath.Join(src, "*.sql"))
-	slices.Sort(files)
+	files, _ := migrate.SQLFiles(src)
 	if len(files) == 0 {
 		return fmt.Errorf("%s has schema.json but no migration (*.sql): run `alder migrate`", src)
 	}
