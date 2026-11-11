@@ -282,17 +282,23 @@ func (t *tracker) Write(b []byte) (int, error) {
 
 // line is a log line about request r answered on w: "<method> <masked URL>: <what>" (the URL
 // cut at applog.MaxPath like an access line's), ending
-// " rid=<id>" (the request's id) when w is the router's tracker. A stack, when there is one,
-// follows on the next lines (after the id).
+// " rid=<id>" (the request's id) when w is the router's tracker. The method is the one r was
+// routed by (a POST's _method, as in the access line) when r is the tracker's own request; a
+// followed redirect's GET keeps its own. A stack, when there is one, follows on the next lines
+// (after the id).
 func line(w http.ResponseWriter, r *http.Request, what string) string {
-	u := ""
-	if tw, ok := w.(*tracker); ok && tw.masker != nil {
-		u = tw.masker(r.Method, r.URL)
+	method, u := r.Method, ""
+	tw, ok := w.(*tracker)
+	if ok && tw.r == r {
+		method = tw.loggedMethod()
+	}
+	if ok && tw.masker != nil {
+		u = tw.masker(method, r.URL)
 	} else {
 		u = applog.MaskURL(r.URL)
 	}
-	s := r.Method + " " + applog.CutPath(u) + ": " + applog.CutText(what)
-	if tw, ok := w.(*tracker); ok && tw.id != "" {
+	s := method + " " + applog.CutPath(u) + ": " + applog.CutText(what)
+	if ok && tw.id != "" {
 		s += " rid=" + tw.id
 	}
 	return s
@@ -599,7 +605,7 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 				if v == http.ErrAbortHandler && status == 0 {
 					status = http.StatusInternalServerError // aborted before writing anything: a failure, not a 2xx
 				}
-				m.Request(label, r.Method, status, dur)
+				m.Request(label, w.loggedMethod(), status, dur)
 				m.Statements(&w.stats)
 				if !scrape {
 					m.InFlight(-1)

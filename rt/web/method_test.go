@@ -1,11 +1,15 @@
 package web
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+
+	"alder/rt/html"
+	"alder/rt/metrics"
 )
 
 // methodRoutes declares one handler per method; each records its name in *hit.
@@ -318,34 +322,93 @@ func TestRouter_DatastarDropsSignalsEveryMethod(t *testing.T) {
 	}
 }
 
-// A POST carrying _method is logged by the method it is routed by, in the access line and in the
-// dev panel's request record, so a reader matching a logged request to a route (the TUI) finds
-// the PUT/PATCH/DELETE route and not a POST one. A plain POST stays POST; a refused _method (400)
-// never reached a route and is logged as the POST it was.
+// A POST carrying _method is logged by the method it is routed by, in the access line, the dev
+// panel's request record, an error line and the metrics label, so a reader matching a logged
+// request to a route (the TUI) finds the PUT/PATCH/DELETE route and not a POST one. A plain POST
+// stays POST; a refused _method (400) never reached a route and is logged as the POST it was. A
+// 405 after the override names the overriding method; a Datastar override whose redirect is
+// followed is logged once, by the first request's method, while a line about the followed page
+// names that page's GET. Sensitive path parameters stay masked throughout.
 func TestRequestLog_EffectiveMethod(t *testing.T) {
 	var s sink
+	redirect := func(rq *Request) Response { return RedirectResponse("/", nil) }
 	routes := []Route{
 		{Method: "GET", Pattern: "/t/{id}", Handle: func(rq *Request) Response { return PageResponse(doc("t"), nil, nil) }},
-		{Method: "DELETE", Pattern: "/t/{id}", Handle: func(rq *Request) Response { return RedirectResponse("/", nil) }},
-		{Method: "PATCH", Pattern: "/t/{id}", Handle: func(rq *Request) Response { return RedirectResponse("/", nil) }},
-		{Method: "POST", Pattern: "/t", Handle: func(rq *Request) Response { return RedirectResponse("/", nil) }},
+		{Method: "DELETE", Pattern: "/t/{id}", Handle: redirect},
+		{Method: "PATCH", Pattern: "/t/{id}", Handle: redirect},
+		{Method: "POST", Pattern: "/t", Handle: redirect},
+		{Method: "GET", Pattern: "/g/{token}", Handle: func(rq *Request) Response { return PageResponse(doc("g"), nil, nil) }},
+		{Method: "DELETE", Pattern: "/g/{token}", Handle: redirect},
+		{Method: "DELETE", Pattern: "/x/{token}", Handle: func(rq *Request) Response { panic("kaboom") }},
+		{Method: "DELETE", Pattern: "/e/{token}", Handle: func(rq *Request) Response { return ErrorResponse(html.None(), errors.New("db is down")) }},
+		{Method: "DELETE", Pattern: "/f/{token}", Handle: func(rq *Request) Response { return RedirectResponse("/t/7", nil) }},
+		{Method: "DELETE", Pattern: "/fe/{token}", Handle: func(rq *Request) Response { return RedirectResponse("/bad/s3cret", nil) }},
+		{Method: "GET", Pattern: "/bad/{token}", Handle: func(rq *Request) Response { return ErrorResponse(html.None(), errors.New("gone")) }},
 	}
 	t.Setenv("ALDER_DEV", "1")
-	dev := NewRouter(routes, s.opts(func(o *Options) { o.Dev = true })).(*router)
-	for _, c := range []struct{ path, body, want string }{
-		{"/t/7", "_method=DELETE", "DELETE"},
-		{"/t/7", "_method=PATCH", "PATCH"},
-		{"/t", "", "POST"},
-		{"/t/7", "_method=GET", "POST"}, // 400: refused, never routed
+	dev := NewRouter(routes, s.opts(func(o *Options) { o.Dev, o.Metrics = true, metrics.New("") })).(*router)
+	for _, c := range []struct {
+		path, body string
+		datastar   bool
+		want       string // the access line's and the dev record's method
+		norec      bool   // no dev record: the request never reached a handler
+		path2      string // the access line's path, when not path
+		line       string // the error line's first line without " rid=…", when one is logged
+	}{
+		{path: "/t/7", body: "_method=DELETE", want: "DELETE"},
+		{path: "/t/7", body: "_method=PATCH", want: "PATCH"},
+		{path: "/t", want: "POST"},
+		{path: "/t/7", body: "_method=GET", want: "POST", norec: true},                       // 400: refused, never routed
+		{path: "/g/s3cret", body: "_method=PUT", want: "PUT", path2: "/g/••••", norec: true}, // 405
+		{path: "/x/s3cret", body: "_method=DELETE", want: "DELETE", path2: "/x/••••", line: "error: DELETE /x/••••: panic: kaboom"},
+		{path: "/e/s3cret", body: "_method=DELETE", want: "DELETE", path2: "/e/••••", line: "error: DELETE /e/••••: db is down"},
+		{path: "/f/s3cret", body: "_method=DELETE", datastar: true, want: "DELETE", path2: "/f/••••"},
+		{path: "/fe/s3cret", body: "_method=DELETE", datastar: true, want: "DELETE", path2: "/fe/••••", line: "error: GET /bad/••••: gone"},
 	} {
 		s.reset()
-		serve(dev, formReq("POST", c.path, c.body))
-		if a := s.one(t); a.Method != c.want {
-			t.Errorf("access line of POST %s %q: method %q, want %q", c.path, c.body, a.Method, c.want)
+		req := formReq("POST", c.path, c.body)
+		if c.datastar {
+			req.Header.Set("Datastar-Request", "true")
 		}
-		got := summaries(t, dev)
-		if len(got) == 0 || got[0].Method != c.want {
-			t.Errorf("dev record of POST %s %q: %+v, want method %q", c.path, c.body, got, c.want)
+		w := serve(dev, req)
+		want := c.path
+		if c.path2 != "" {
+			want = c.path2
+		}
+		if a := s.one(t); a.Method != c.want || a.Path != want {
+			t.Errorf("access line of POST %s %q: %s %s, want %s %s", c.path, c.body, a.Method, a.Path, c.want, want)
+		}
+		rid := w.Header().Get("X-Request-Id")
+		var rec *ReqSummary
+		for _, g := range summaries(t, dev) {
+			if g.RID == rid {
+				rec = &g
+			}
+		}
+		if c.norec && rec != nil || !c.norec && (rec == nil || rec.Method != c.want) {
+			t.Errorf("dev record of POST %s %q: %+v, want method %q (none: %v)", c.path, c.body, rec, c.want, c.norec)
+		}
+		var errs []string
+		for _, l := range s.lines {
+			if strings.HasPrefix(l, "error: ") {
+				first, _, _ := strings.Cut(l, "\n")
+				errs = append(errs, first)
+			}
+		}
+		if c.line == "" && len(errs) != 0 || c.line != "" && (len(errs) != 1 || errs[0] != c.line+" rid="+rid) {
+			t.Errorf("error lines of POST %s %q: %q, want %q", c.path, c.body, errs, c.line)
+		}
+	}
+	b := scrape(t, dev, "").Body.String()
+	for _, series := range []string{
+		`alder_http_requests_total{route="/t/{id}",method="DELETE",status="3xx"}`,
+		`alder_http_requests_total{route="/x/{token}",method="DELETE",status="5xx"}`,
+		`alder_http_requests_total{route="/e/{token}",method="DELETE",status="5xx"}`,
+		`alder_http_requests_total{route="/f/{token}",method="DELETE",status="2xx"}`,
+		`alder_http_requests_total{route="(none)",method="PUT",status="4xx"}`,
+	} {
+		if v := value(t, b, series); v != 1 {
+			t.Errorf("%s: %v\n%s", series, v, b)
 		}
 	}
 }

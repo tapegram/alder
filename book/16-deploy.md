@@ -1162,7 +1162,8 @@ Every label comes from a set the program fixes, never from a request:
   file), `/_dev`, or `(none)` (nothing matched).
 
 - **`method`** is `GET`, `POST`, `HEAD`, `PUT`, `PATCH`, `DELETE` or
-  `other`.
+  `other`. A form's POST that carries `_method` counts under the method
+  it is routed by: a delete button's request is `DELETE`, not `POST`.
 
 - **`status`** is the class, `2xx` to `5xx` (a request the handler
   aborted before writing anything counts as `5xx`; one that wrote
