@@ -162,6 +162,8 @@ func TestRouteDecls(t *testing.T) {
 		{"Create.update :", 7, TFunction, Declaration},
 		{"Create.update params", 0, TNamespace, 0},
 		{"Create.update params", 7, TFunction, Declaration},
+		{"Create.Params", 0, TNamespace, 0},
+		{"Create.Params", 7, TType, 0},
 	} {
 		want(t, routeSrc, toks, c.needle, c.off, c.kind, c.mods)
 	}
