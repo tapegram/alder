@@ -857,6 +857,12 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		return
 	}
 	if hit == nil && r.Method != http.MethodPost { // a POST's _method may yet name a declared method
+		if elementFetch(r) {
+			// a path declared only for other methods is no view to fetch: as above, never the
+			// 405 page morphed into the body (#177)
+			rt.renderFailed(w, r, nil, NotFoundResponse(html.None()), "element fetch")
+			return
+		}
 		rt.notAllowed(w, r, st, method, declared)
 		return
 	}

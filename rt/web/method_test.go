@@ -106,6 +106,18 @@ func TestRouter_405Allow(t *testing.T) {
 	if w.Header().Get(StatusHeader) != "405" || w.Header().Get("Allow") != "GET, HEAD" {
 		t.Fatalf("datastar 405: %d %q Allow %q", w.Code, w.Header().Get(StatusHeader), w.Header().Get("Allow"))
 	}
+	// an element fetch of a path declared only for other methods patches nothing, as an
+	// unmatched one does (#177): one "Not found" toast, never the 405 body patch; a boosted GET
+	// of it still gets the 405
+	hit = ""
+	w = serve(h, elementGet("/only-delete?datastar=%7B%7D"))
+	if ev := events(w.Body.String()); w.Code != http.StatusOK || w.Header().Get(StatusHeader) == "405" || len(ev) != 1 ||
+		ev[0] != toastEvent("destructive", "10000", "Not found") || hit != "" {
+		t.Fatalf("element fetch: %d %q hit %q", w.Code, w.Body.String(), hit)
+	}
+	if w := serve(h, dsGet("/only-delete")); w.Header().Get(StatusHeader) != "405" || w.Header().Get("Allow") != "DELETE" {
+		t.Fatalf("boosted 405: %d %q Allow %q", w.Code, w.Header().Get(StatusHeader), w.Header().Get("Allow"))
+	}
 }
 
 func TestRouter_MethodOverride(t *testing.T) {

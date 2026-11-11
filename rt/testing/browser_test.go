@@ -994,6 +994,10 @@ func rNudge() rt.Route { return rt.Route{Name: "R.Nudge", Method: "PATCH", Path:
 // rGone is a GET route of no app: the page /r/few renders a control for it.
 func rGone() rt.Route { return rt.Route{Name: "R.Gone", Method: "GET", Path: "/r/gone/1"} }
 
+// rPeek is a GET route of a path the app declares only for PATCH (R.Nudge's): /r/few renders a
+// control for it.
+func rPeek() rt.Route { return rt.Route{Name: "R.Peek", Method: "GET", Path: "/r/nudge"} }
+
 func (a *routeApp) row(i int) html.Node {
 	return html.El("li", []html.Attr{html.A("id", "row-"+strconv.Itoa(i))}, html.Text(a.rows[i-1]),
 		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rToggle(i))}, html.Text("Toggle")),
@@ -1070,12 +1074,13 @@ func (a *routeApp) routes() []web.Route {
 			}
 			return web.PageResponse(a.row(i), &html.FormState{}, nil)
 		}},
-		// a page of row 1 alone, with controls for row 2 (which it does not show) and R.Gone
+		// a page of row 1 alone, with controls for row 2 (which it does not show), R.Gone and R.Peek
 		{Method: "GET", Pattern: "/r/few", Handle: func(rq *web.Request) web.Response {
 			return web.PageResponse(layout("Few",
 				html.El("ul", []html.Attr{html.A("id", "rows")}, a.row(1)),
 				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rToggle(2))}, html.Text("Toggle 2")),
-				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rGone())}, html.Text("Gone"))), &html.FormState{}, nil)
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rGone())}, html.Text("Gone")),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rPeek())}, html.Text("Peek"))), &html.FormState{}, nil)
 		}},
 		{Method: "PATCH", Pattern: "/r/rows/{id}", Handle: func(rq *web.Request) web.Response {
 			a.see(rq, "Toggle")
@@ -1470,6 +1475,26 @@ func TestBrowser_ClickUnmatchedGetRoute(t *testing.T) {
 		wantAnswer(t, r, Answer{Tag: PageMissing})
 		if html.Render(r.Doc) != before || len(r.Toasts) != 1 || r.Toasts[0] != (Toast{Kind: "error", Text: "Not found"}) {
 			t.Errorf("toasts %v, doc changed: %v\n%s", r.Toasts, html.Render(r.Doc) != before, html.Render(r.Doc))
+		}
+	})
+}
+
+// An element fetch of a path the app declares only for other methods (R.Peek: GET /r/nudge,
+// whose path is R.Nudge's PATCH) patches nothing, as an unmatched one does (#177): PageMissing,
+// the "Not found" toast, never the router's 405 page.
+func TestBrowser_ClickGetRouteOfWritePath(t *testing.T) {
+	app := newRouteApp("one")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/r/few"))
+		before := html.Render(b.Doc())
+		r := must(b.ClickRoute(rPeek(), "R.Peek"))
+		wantAnswer(t, r, Answer{Tag: PageMissing})
+		if html.Render(r.Doc) != before || len(r.Toasts) != 1 || r.Toasts[0] != (Toast{Kind: "error", Text: "Not found"}) {
+			t.Errorf("toasts %v, doc changed: %v\n%s", r.Toasts, html.Render(r.Doc) != before, html.Render(r.Doc))
+		}
+		if _, ok := app.seen["Nudge"]; ok {
+			t.Error("R.Nudge ran")
 		}
 	})
 }
