@@ -197,32 +197,39 @@ func routeSignatureActions(a *analysis, rel string, now []string, rng Range, doc
 				last = max(last, v.Span.End.Line)
 			}
 		}
-		var sigs []string
+		// each member is its signature then its definition, a hole for the body
+		var sigs, blocks []string
+		add := func(sig, params string) {
+			sigs = append(sigs, sig)
+			name, _, _ := strings.Cut(sig, " : ")
+			blocks = append(blocks, sig+"\n"+name+" "+params+" = ?")
+		}
 		if r.Method == "GET" {
 			model := routeModelText(m, have)
 			if have["load"] == nil {
-				sigs = append(sigs, r.Name+".load : "+r.Name+".Params -> Session -> Query "+model)
+				add(r.Name+".load : "+r.Name+".Params -> Session -> Query "+argWrap(model), "params session")
 			}
 			if have["view"] == nil {
-				sigs = append(sigs, r.Name+".view : "+model+" -> Session -> Html")
+				add(r.Name+".view : "+model+" -> Session -> Html", "model session")
 			}
 		} else if have["update"] == nil {
-			sigs = append(sigs, r.Name+".update : "+r.Name+".Params -> Session -> Task Response")
+			add(r.Name+".update : "+r.Name+".Params -> Session -> Task Response", "params session")
 		}
 		if len(sigs) == 0 {
 			continue
 		}
-		body := strings.Join(sigs, "\n")
-		var at Position
-		var text string
-		switch {
-		case last > 0: // after the route's last member, a blank line between
-			at, text = Position{Line: last - 1, Character: len(now[last-1])}, "\n\n"+body
-		case now[len(now)-1] == "": // the file ends with a line break
-			at, text = Position{Line: len(now) - 1}, "\n"+body+"\n"
-		default:
-			at, text = Position{Line: len(now) - 1, Character: len(now[len(now)-1])}, "\n\n"+body+"\n"
+		body := strings.Join(blocks, "\n\n")
+		// after the route's last member, else right after the route's own line; a blank line
+		// before, and one after unless the next line is blank already or there is none
+		line := r.Span.End.Line
+		if last > 0 {
+			line = last
 		}
+		text := "\n\n" + body
+		if line < len(now) && now[line] != "" {
+			text += "\n"
+		}
+		at := Position{Line: line - 1, Character: len(now[line-1])}
 		title := "Insert " + strings.Join(missingNames(sigs), ", ") + " for route " + r.Name
 		out = append(out, codeAction{
 			Title: title, Kind: "quickfix",
@@ -243,13 +250,22 @@ func missingNames(sigs []string) []string {
 	return out
 }
 
+// argWrap is type text s as the argument of a type constructor (`Query (List Todo)`).
+func argWrap(s string) string {
+	if strings.Contains(s, " ") && !strings.HasPrefix(s, "(") && !strings.HasPrefix(s, "{") {
+		return "(" + s + ")"
+	}
+	return s
+}
+
 // routeModelText is the model type of a GET route whose members are have, as a signature writes
 // it: what its written `load` gives (the argument of `Query`), else what its written `view`
 // takes, else `m`.
 func routeModelText(m *syntax.Module, have map[string]*syntax.ValueDecl) string {
+	// parenthesised only when a function type, which a signature needs as a parameter
 	wrap := func(t syntax.Type) string {
 		s := spanText(m.Lines, t.GetSpan())
-		if strings.Contains(s, " ") && !strings.HasPrefix(s, "(") && !strings.HasPrefix(s, "{") {
+		if _, ok := t.(*syntax.FunType); ok && !strings.HasPrefix(s, "(") {
 			s = "(" + s + ")"
 		}
 		return s

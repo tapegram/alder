@@ -211,8 +211,36 @@ func TestRoutes_ListRoutes(t *testing.T) {
 	}
 }
 
+// insertEdit is the text of the "Insert ..." action offered on the line of needle.
+func insertEdit(t *testing.T, c *client, rel, needle string) TextEdit {
+	t.Helper()
+	acts := actions(t, c, rel, c.at(rel, needle, 0).Line)
+	var got *action
+	for i, a := range acts {
+		if strings.HasPrefix(a.Title, "Insert ") {
+			got = &acts[i]
+		}
+	}
+	if got == nil || got.Kind != "quickfix" || got.Edit == nil || len(got.Edit.DocumentChanges) != 1 || len(got.Edit.DocumentChanges[0].Edits) != 1 {
+		t.Fatalf("%s: actions %+v", needle, acts)
+	}
+	return got.Edit.DocumentChanges[0].Edits[0]
+}
+
+// insertInto is text with the single insertion e made (ASCII text: character is a byte offset).
+func insertInto(text string, e TextEdit) string {
+	lines := strings.SplitAfter(text, "\n")
+	off := 0
+	for _, l := range lines[:e.Range.Start.Line] {
+		off += len(l)
+	}
+	off += e.Range.Start.Character
+	return text[:off] + e.NewText + text[off:]
+}
+
 // On a route line the code actions offer the signatures of its missing members, typed from the
-// route: the GET pair (the model from a declared member), or the write signature.
+// route and each followed by its definition with a hole: the GET pair (the model from a declared
+// member), or the write signature. With no member yet they go right after the route's line.
 func TestAction_InsertSignatures(t *testing.T) {
 	c, rel := routesCopy(t)
 	text := c.disk(rel)
@@ -221,30 +249,65 @@ func TestAction_InsertSignatures(t *testing.T) {
 	c.change(rel, text)
 	c.diags(rel)
 	want := map[string]string{
-		"route Stats":   "\nStats.load : Stats.Params -> Session -> Query m\nStats.view : m -> Session -> Html\n",
-		"route Archive": "\nArchive.update : Archive.Params -> Session -> Task Response\n",
-		"route Count":   "\n\nCount.view : (List Todo) -> Session -> Html",
+		"route Stats": "\n\nStats.load : Stats.Params -> Session -> Query m\nStats.load params session = ?\n\n" +
+			"Stats.view : m -> Session -> Html\nStats.view model session = ?\n",
+		"route Archive": "\n\nArchive.update : Archive.Params -> Session -> Task Response\nArchive.update params session = ?\n",
+		"route Count":   "\n\nCount.view : List Todo -> Session -> Html\nCount.view model session = ?",
 	}
 	for needle, sigs := range want {
-		acts := actions(t, c, rel, c.at(rel, needle, 0).Line)
-		var got *action
-		for i, a := range acts {
-			if strings.HasPrefix(a.Title, "Insert ") {
-				got = &acts[i]
-			}
-		}
-		if got == nil || got.Kind != "quickfix" || got.Edit == nil || len(got.Edit.DocumentChanges) != 1 || len(got.Edit.DocumentChanges[0].Edits) != 1 {
-			t.Fatalf("%s: actions %+v", needle, acts)
-		}
-		if nt := got.Edit.DocumentChanges[0].Edits[0].NewText; nt != sigs {
+		if nt := insertEdit(t, c, rel, needle).NewText; nt != sigs {
 			t.Errorf("%s: inserts %q, want %q", needle, nt, sigs)
 		}
+	}
+	// the edit goes right after the route's line when it has no member yet, after the last member otherwise
+	if e := insertEdit(t, c, rel, "route Stats"); e.Range.Start != (Position{Line: c.at(rel, "route Stats", 0).Line, Character: len("route Stats = GET \"/stats\" { } requires user")}) {
+		t.Errorf("Stats edit at %+v", e.Range.Start)
 	}
 	// a route with all its members is offered nothing
 	for _, a := range actions(t, c, rel, c.at(rel, "route Toggle", 0).Line) {
 		if strings.HasPrefix(a.Title, "Insert ") {
 			t.Errorf("complete route offered %q", a.Title)
 		}
+	}
+}
+
+// A file that ends in a blank line gets no second one, and with the inserted holes it builds with
+// only the W0002 hole warnings (so fill-with-AI can take over).
+func TestAction_InsertSignaturesBuilds(t *testing.T) {
+	for name, tail := range map[string]string{
+		"route last, file ends with a line break": "\nroute Count = GET \"/count\" { } requires user\n",
+		"route last, file ends blank":             "\nroute Count = GET \"/count\" { } requires user\n\n",
+		"route last, no final line break":         "\nroute Count = GET \"/count\" { } requires user",
+		"write route":                             "\nroute Archive = PATCH \"/todos/{id}/archive\" { id: Todo.TodoId } requires user\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			c, rel := routesCopy(t)
+			text := strings.TrimRight(c.disk(rel), "\n") + "\n" + tail
+			c.change(rel, text)
+			c.diags(rel)
+			needle := "route Count"
+			if strings.Contains(name, "write") {
+				needle = "route Archive"
+			}
+			got := insertInto(text, insertEdit(t, c, rel, needle))
+			// the file's own trailing blank line stays; the edit adds none
+			if strings.Count(got, "\n\n\n") > 0 || strings.HasSuffix(got, "\n\n") != strings.HasSuffix(text, "\n\n") {
+				t.Errorf("a doubled blank line in %q", got[len(got)-120:])
+			}
+			c.change(rel, got)
+			ds := c.diags(rel)
+			holes := 0
+			for _, d := range ds {
+				if d.Code != "W0002" {
+					t.Errorf("diagnostic %s %q after the insert", d.Code, d.Message)
+				} else {
+					holes++
+				}
+			}
+			if holes == 0 {
+				t.Errorf("no hole warnings in %+v", ds)
+			}
+		})
 	}
 }
 
