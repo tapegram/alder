@@ -145,7 +145,9 @@ func useSpan(a *analysis, m *syntax.Module, n syntax.Spanned, path []syntax.Span
 	}
 	if ref.Kind == syntax.RefRoute && (r.Kind == syntax.RefValue || r.Kind == syntax.RefType) && r.Module == ref.Module &&
 		strings.HasPrefix(r.Name, ref.Name+".") && a.prog.Route(r.Module, ref.Name) != nil && strings.Count(r.Name, ".") == strings.Count(ref.Name, ".")+1 {
-		// a member (`Row.view`, `Row.Params`) uses its route: the span is the route part
+		// a member (`Row.view`, `Row.Params`) uses its route: the span is the route part. The name is
+		// exactly one segment longer than the route (not `Row.Sub.x`), and a qualifier that already
+		// ends in the route (`Todos.Row`) must not be skipped past it.
 		skip := 0
 		switch {
 		case qual == ref.Name || strings.HasSuffix(qual, "."+ref.Name):

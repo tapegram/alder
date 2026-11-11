@@ -392,3 +392,61 @@ func TestHover_RouteGuards(t *testing.T) {
 		t.Errorf("hover %q, want it to contain %q", got, want)
 	}
 }
+
+// References on a route include its member uses at a call: `Row.view` in the same module and
+// `Todos.Row.view` from a module importing Todos, each spanning the route segment `Row` only.
+func TestReferences_RouteMemberCalls(t *testing.T) {
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("../../testdata/corpus/routes-ok")); err != nil {
+		t.Fatal(err)
+	}
+	const other = "app/Other.alder"
+	src := "module Other\n\nimport Table.Todo\nimport Todos\n\nshown : Todo -> Todos.Row.Session -> Html\nshown = Todos.Row.view\n"
+	if err := os.WriteFile(filepath.Join(root, other), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := start(t, root)
+	const rel = "app/Todos.alder"
+	c.open(rel, c.disk(rel))
+	c.diags(rel)
+	c.open(other, src)
+	if ds := c.diags(other); len(ds) != 0 {
+		t.Fatalf("diagnostics %+v", ds)
+	}
+	var refs []Location
+	p := c.at(rel, "route Row", len("route "))
+	if e := c.call("textDocument/references", map[string]any{"textDocument": map[string]any{"uri": c.uri(rel)}, "position": p,
+		"context": map[string]any{"includeDeclaration": true}}, &refs); e != nil {
+		t.Fatal(e)
+	}
+	var got, want []string
+	for _, r := range refs {
+		if r.Range.End.Line != r.Range.Start.Line || r.Range.End.Character-r.Range.Start.Character != len("Row") {
+			t.Errorf("reference %+v does not span the route part only", r.Range)
+		}
+		got = append(got, fmt.Sprintf("%s %d:%d", filepath.Base(r.URI), r.Range.Start.Line, r.Range.Start.Character))
+	}
+	for _, w := range []struct {
+		file string
+		p    Position
+	}{
+		{"Todos.alder", c.at(rel, "route Row", len("route "))},
+		{"Todos.alder", c.at(rel, "Row.view t session}", 0)},
+		{"Todos.alder", c.at(rel, "Row.load :", 0)},
+		{"Todos.alder", c.at(rel, "Row.Params ->", 0)},
+		{"Todos.alder", c.at(rel, "Row.load params", 0)},
+		{"Todos.alder", c.at(rel, "Row.view :", 0)},
+		{"Todos.alder", c.at(rel, "Row.view t session =", 0)},
+		{"Todos.alder", c.at(rel, "Row { id: params.id }", 0)},
+		{"Todos.alder", c.at(rel, "Row.Session", 0)},
+		{"Other.alder", c.at(other, "Row.Session", 0)},
+		{"Other.alder", c.at(other, "Row.view\n", 0)},
+	} {
+		want = append(want, fmt.Sprintf("%s %d:%d", w.file, w.p.Line, w.p.Character))
+	}
+	sort.Strings(got)
+	sort.Strings(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("references %v, want %v", got, want)
+	}
+}
