@@ -1,0 +1,10 @@
+module M
+
+a : File
+a = File.json "\{\"ok\":true}"
+
+b : File
+b = File.json 3
+
+c : File
+c = File.json { ok: True }

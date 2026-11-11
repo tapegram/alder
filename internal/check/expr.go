@@ -516,6 +516,9 @@ func (mc *modCtx) mismatch(span diag.Span, got, expected types.Type) *diag.Diagn
 	if inner, ok := maybeOf(g); ok && c.u.Clone().Check(inner, e) == nil { // a clone: reporting never decides a literal
 		msg += "; match it: match m { Just x -> …, Nothing -> … }"
 	}
+	if jv, ok := c.types["Json.Value"]; ok && e == jv && g == types.Type(types.Text) { // the stdlib's Json.Value by identity, never by printed name
+		msg += "; `Json.string` makes a JSON string of a Text; text that is already JSON goes in `File.text { contentType: \"application/json\", body: … }`"
+	}
 	msg += mc.recordDiff(g, e)
 	return c.errorf(diag.TypeMismatch, span, "%s", msg)
 }

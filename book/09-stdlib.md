@@ -514,6 +514,10 @@ A list of values is a pipeline, `xs |> List.map Json.int |> Json.list`, and
 a `Dict Text Json.Value` becomes an object with
 `d |> Dict.toList |> Json.object`.
 
+Text that is already JSON is served with
+`File.text { contentType: "application/json", body: t }`. There is no
+`Json.raw`, because `Json.encode` never writes text that is not JSON.
+
 `Json.float` writes the shortest decimal that reads back as the same
 number, without an exponent (`Json.float 1.0` is `1`), and writes `null` for
 NaN and the infinities, which JSON has no spelling for; test with

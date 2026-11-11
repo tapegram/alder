@@ -1,0 +1,3 @@
+app/M.alder:4:15 E0003 expected Json.Value, got Text; `Json.string` makes a JSON string of a Text; text that is already JSON goes in `File.text { contentType: "application/json", body: … }`
+app/M.alder:7:15 E0003 expected Json.Value, got Int
+app/M.alder:10:15 E0003 expected Json.Value, got { ok: Bool }
