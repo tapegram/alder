@@ -325,7 +325,7 @@ module.exports = grammar({
         optional(seq('form', field('form', $.constructor))),
         optional(field('requires', $.requires_clause)),
       ),
-    route_method: ($) => choice('GET', 'POST', 'PUT', 'PATCH', 'DELETE'),
+    route_method: () => choice('GET', 'POST', 'PUT', 'PATCH', 'DELETE'),
 
     form_decl: ($) => seq('form', field('name', $.constructor), '=', field('fields', $.record_type)),
 

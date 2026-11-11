@@ -571,3 +571,56 @@ route C = PUT "/c" { }
     method: (route_method)
     path: (string)
     params: (record_type)))
+
+================================================================================
+routes: requires user, role and silo
+================================================================================
+
+module M
+
+route A = POST "/a" { } requires user, role Admin, silo org
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (route_decl
+    name: (constructor)
+    method: (route_method)
+    path: (string)
+    params: (record_type)
+    requires: (requires_clause
+      (session_key)
+      (role_clause
+        role: (constructor))
+      (silo_clause
+        key: (identifier)))))
+
+================================================================================
+routes: a route in a scratch file
+================================================================================
+
+in Todos
+
+route A = GET "/a" { }
+
+> 1 + 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (scratch_file
+    (scratch_header
+      module: (module_name
+        (constructor)))
+    (route_decl
+      name: (constructor)
+      method: (route_method)
+      path: (string)
+      params: (record_type))
+    (watch
+      expr: (additive_expr
+        left: (integer)
+        right: (integer)))))
