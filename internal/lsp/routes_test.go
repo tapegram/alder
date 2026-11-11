@@ -3,6 +3,7 @@ package lsp
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -344,5 +345,50 @@ func TestComplete_RouteModuleFullPath(t *testing.T) {
 	}
 	if it.Kind != kindModule {
 		t.Errorf("Posts.Index kind %d, want a module", it.Kind)
+	}
+}
+
+// In a module that imports Todos, `Todos.` offers its route constructors and `Todos.Row.` that
+// route's members.
+func TestComplete_ModuleQualifiedRoute(t *testing.T) {
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("../../testdata/corpus/routes-ok")); err != nil {
+		t.Fatal(err)
+	}
+	const rel = "app/Other.alder"
+	src := "module Other\n\nimport Todos\n\nnote : Text\nnote = \"x\"\n"
+	if err := os.WriteFile(filepath.Join(root, rel), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := start(t, root)
+	openClean(t, c, rel)
+	p := typing(t, c, rel, "note = \"x\"\n", "other = Todos.")
+	got := labels(complete(t, c, rel, p))
+	for _, name := range []string{"Index", "Row", "Toggle", "Create", "Delete", "Export"} {
+		if _, ok := got[name]; !ok {
+			t.Errorf("Todos. lacks the route %s: %v", name, got)
+		}
+	}
+	p = typing(t, c, rel, "note = \"x\"\n", "other2 = Todos.Row.")
+	got = labels(complete(t, c, rel, p))
+	for _, name := range []string{"load", "view", "Params", "Session"} {
+		if _, ok := got[name]; !ok {
+			t.Errorf("Todos.Row. lacks %s: %v", name, got)
+		}
+	}
+}
+
+// A route's hover ends in its whole `requires` clause: the roles and the silo as written.
+func TestHover_RouteGuards(t *testing.T) {
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("../../testdata/corpus/partitions-ok")); err != nil {
+		t.Fatal(err)
+	}
+	c := start(t, root)
+	const rel = "app/Admin/Projects.alder"
+	openClean(t, c, rel)
+	want := "GET /admin/orgs/{org}/projects  { org: Org.OrgId }  requires user, role Admin, silo org"
+	if got := hover(t, c, rel, c.at(rel, "route Projects", len("route "))); !strings.Contains(got, want) {
+		t.Errorf("hover %q, want it to contain %q", got, want)
 	}
 }
