@@ -1161,8 +1161,8 @@ Every label comes from a set the program fixes, never from a request:
   `/todos/3`), or `/static/` (a static file), `/_alder/` (a runtime
   file), `/_dev`, or `(none)` (nothing matched).
 
-- **`method`** is `GET`, `POST`, `HEAD` or `other` (a `PUT`, `PATCH` or
-  `DELETE` route counts as `other`).
+- **`method`** is `GET`, `POST`, `HEAD`, `PUT`, `PATCH`, `DELETE` or
+  `other`.
 
 - **`status`** is the class, `2xx` to `5xx` (a request the handler
   aborted before writing anything counts as `5xx`; one that wrote

@@ -25,8 +25,9 @@ import (
 // buckets are the latency histogram's upper bounds, in seconds.
 var buckets = [...]float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10}
 
-// methods are the method label's values: GET, POST, HEAD and every other method as "other".
-var methods = [...]string{"GET", "POST", "HEAD", "other"}
+// methods are the method label's values: GET, POST, HEAD, the write routes' PUT, PATCH and
+// DELETE, and every other method as "other".
+var methods = [...]string{"GET", "POST", "HEAD", "PUT", "PATCH", "DELETE", "other"}
 
 // classes are the status label's values.
 var classes = [...]string{"1xx", "2xx", "3xx", "4xx", "5xx"}
@@ -87,7 +88,7 @@ func (c *Collector) InFlight(delta int64) {
 }
 
 // Request counts one request answered: route (the router's label: a route pattern or a fixed
-// name), method (anything but GET, POST and HEAD is "other"), status (its class; 0, nothing
+// name), method (anything but GET, POST, HEAD, PUT, PATCH and DELETE is "other"), status (its class; 0, nothing
 // written, is 2xx) and how long it took.
 func (c *Collector) Request(route, method string, status int, d time.Duration) {
 	m := methodIndex(method)
@@ -147,8 +148,14 @@ func methodIndex(m string) uint8 {
 		return 1
 	case "HEAD":
 		return 2
+	case "PUT":
+		return 3
+	case "PATCH":
+		return 4
+	case "DELETE":
+		return 5
 	}
-	return 3
+	return 6
 }
 
 func classIndex(status int) uint8 {

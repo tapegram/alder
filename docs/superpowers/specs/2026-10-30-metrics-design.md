@@ -75,7 +75,7 @@ func (c *Collector) Write(w io.Writer, build string) // the exposition, metrics 
   (the value is never echoed) **(call)**; the generated main prints `alder: <err>` and exits 1.
 - Labels: `route` is the matched `Route.Pattern` (`/todos/{id}`), or `/static/` (a static file),
   `/_alder/` (a runtime file), `/_dev`, `(none)` (no route matched, or the path did not parse)
-  **(call)**. `method` is `GET`, `POST`, `HEAD` or `other`. `status` is `1xx`…`5xx`; 0 (nothing
+  **(call)**. `method` is `GET`, `POST`, `HEAD`, `PUT`, `PATCH`, `DELETE` or `other`. `status` is `1xx`…`5xx`; 0 (nothing
   written) is `2xx`. Label values are escaped per the text format (`\\`, `\"`, `\n`).
 - The metrics, all prefixed `alder_` **(call)**:
 

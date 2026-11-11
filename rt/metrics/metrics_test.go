@@ -218,10 +218,16 @@ func TestCollector_StatusClass(t *testing.T) {
 func TestCollector_MethodOther(t *testing.T) {
 	c := New("")
 	c.Request("/", "PUT", 404, time.Millisecond)
+	c.Request("/", "PATCH", 404, time.Millisecond)
 	c.Request("/", "DELETE", 404, time.Millisecond)
+	c.Request("/", "DELETE", 404, time.Millisecond)
+	c.Request("/", "OPTIONS", 404, time.Millisecond)
+	c.Request("/", "TRACE", 404, time.Millisecond)
 	c.Request("/", "HEAD", 200, time.Millisecond)
-	if got := line(t, c, `alder_http_requests_total{route="/",method="other",status="4xx"}`); got != 2 {
-		t.Errorf("other: %v", got)
+	for m, n := range map[string]float64{"PUT": 1, "PATCH": 1, "DELETE": 2, "other": 2} {
+		if got := line(t, c, `alder_http_requests_total{route="/",method="`+m+`",status="4xx"}`); got != n {
+			t.Errorf("%s: %v, want %v", m, got, n)
+		}
 	}
 	if got := line(t, c, `alder_http_requests_total{route="/",method="HEAD",status="2xx"}`); got != 1 {
 		t.Errorf("HEAD: %v", got)

@@ -262,7 +262,7 @@ func TestMetrics_HostileLabels(t *testing.T) {
 	b := scrape(t, h, "").Body.String()
 	allowed := map[string]map[string]bool{
 		"route":  {"/u/{id}": true, "(none)": true, "/static/": true, "/_alder/": true, "/_dev": true},
-		"method": {"GET": true, "POST": true, "HEAD": true, "other": true},
+		"method": {"GET": true, "POST": true, "HEAD": true, "PUT": true, "PATCH": true, "DELETE": true, "other": true},
 		"status": {"1xx": true, "2xx": true, "3xx": true, "4xx": true, "5xx": true},
 	}
 	found := labelRE.FindAllStringSubmatch(b, -1)
