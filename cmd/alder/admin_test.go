@@ -180,9 +180,14 @@ func TestAdmin_DryRunJSON(t *testing.T) {
 // and its search and filters are `Db.and []` (the two `where dropped`, equivalent), the `step
 // dropped` of the `adminOnly` that begins a Create or Save whose form selects another table's
 // rows (a demoted Admin's post is refused by the options check first: the page it came from is
-// rendered again, and its load begins with `adminOnly` too), and the fixture's Logout and
-// the picker's Pick routes (`redirect` → `refresh`, `requires` dropped, `refresh` → `invalid`:
-// the fixture's tests reach them only as a signed-in user, where each ends at the same page).
+// rendered again, and its load begins with `adminOnly` too). Three more survive in the fixture's
+// own routes, not the admin's (the same 3 of 20 mutants without the admin, 0.85): Logout's
+// `redirect` → `refresh` is equivalent (the test opens Orgs first, a refresh renders it again,
+// and it `requires user`, which Logout has just cleared: it ends at the login page as the
+// redirect does); Pick's `refresh` → `invalid` and `requires` dropped are test gaps, not
+// equivalents: the pick test checks the session's org but not the answer (an `invalid` is
+// FormRejected, and the test still passes), and no test posts Pick as a visitor (`Test.click`
+// needs a button on the open page, the login page has none, and `Test.run` skips the guard).
 func TestAdmin_Mutate(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
