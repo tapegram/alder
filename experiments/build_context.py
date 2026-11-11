@@ -90,7 +90,7 @@ DROP_SUBSECTIONS = {
            "How effects run": ["Waiting: `Query.delay` and `Task.sleep`"]},
     "08": {"Migrations": ["When the app starts", "Statements you add"]},
     "09": {"Test": ["Browser steps and queries"]},
-    "10": {"11. Mutation testing": ["Why a mutation score", "The rules' mutants in a report", "The mutant that needs a stranger", "How the two tests kill them", "All fourteen, and one killed by luck", "What is never a mutant",
+    "10": {"11. Mutation testing": ["Why a mutation score", "The rules' mutants in a report", "The mutant that needs a stranger", "How the two tests kill them", "All twelve, and one killed by luck", "What is never a mutant",
                                     "The logout redirect", "Mutants that are the same program", "The exact score",
                                     "`-run`, `-timeout` and `--json`", "Ids and lines change with the code"],
            "9. Testing through the browser": ["Why through the browser", "Step by step", "`Test.get` and `Test.open`: requesting a page",

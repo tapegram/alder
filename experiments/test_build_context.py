@@ -296,17 +296,17 @@ class BuildContextTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("\n## 11. Mutation testing\n", out)
         for kept in ("alder test --mutate [--min R] [--json] [-run re] [-timeout d] [dir]",
-                     "45 mutants: 21 killed, 24 survived  (score 0.47)", "| `requires dropped` |",
+                     "41 mutants: 21 killed, 20 survived  (score 0.51)", "| `requires dropped` |",
                      "### A surviving mutant is a test you have not written", "test \"saving changes the title and the due date\"",
                      "### Survivors that are not gaps", "### `--min` in CI"):
             self.assertIn(kept, out)
         for gone in ("### Why a mutation score", "### What is never a mutant", "line coverage", '"tables":"ensure"',
                      "### The mutant that needs a stranger", "test \"saving or deleting another user's todo is not found\"",
-                     "### Ids and lines change with the code", "### All fourteen, and one killed by luck",
+                     "### Ids and lines change with the code", "### All twelve, and one killed by luck",
                      "### The logout redirect", "### Mutants that are the same program", "### The exact score",
                      "ok   Todo \"countOpen ignores done todos\""):
             self.assertNotIn(gone, out)
-        self.assertIn("45 mutants: 45 killed, 0 survived  (score 1.00)", out)   # the run after: its score line only
+        self.assertIn("41 mutants: 41 killed, 0 survived  (score 1.00)", out)   # the run after: its score line only
         section = out[out.index("\n## 11. Mutation testing\n"):].split("\n## 12. Properties\n")[0].rstrip("\n")   # chapter 10's next section starts here
         # 6.5k until M11, whose two operators (`role dropped`, `scope dropped`) are two more rows; M15's
         # `membership dropped` is one more, with a sentence on the partition mutants; the operators table
@@ -385,7 +385,8 @@ class BuildContextTests(unittest.TestCase):
         # formatting pass (docs/markdown-style.md: blank lines, short paragraphs, `###` headings, callouts) to 70k.
         # #160 PR 10 raised it to 73k: chapter 6's "Patterns" section (`load=`, `every=`, `intersect=`, `input=`, the
         # `More` shape, E0047) and the attribute and `Test.load/intersect/input` rows in chapters 5 and 10.
-        self.assertLessEqual(len(out) // 4, 73000, "the reference is at most 73k tokens (len/4)")
+        # Item 4's route/method book edits (#177, #180, #193, #195) measured 73.4k, so 73.5k.
+        self.assertLessEqual(len(out) // 4, 73500, "the reference is at most 73.5k tokens (len/4)")
         # M17 (file pages) raised from 48000; see the M17 plan
         # M15: the partition rules, `via`, `silo`, the one-store rule and the commands are in; the
         # silo files, the open-time check and moving a table into a silo (the inside) are not
