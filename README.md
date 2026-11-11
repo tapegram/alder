@@ -29,7 +29,7 @@ Once a release is published:
 Alder needs **Go 1.27 or newer** on your `PATH`: it generates Go and builds it. The first
 build on a machine downloads `modernc.org/sqlite` once through Go's module proxy; later builds
 are offline. `alder version` says which alder you have. (There is no `go install`.) The book's
-chapter 1, "Installing", has the details.
+chapter 1, "Installing", has the details. [CHANGELOG.md](CHANGELOG.md) lists what each release changes.
 
 ## A first app
 

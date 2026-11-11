@@ -2,7 +2,7 @@
 #
 # Pushing a tag vX.Y.Z runs .github/workflows/release.yml, which runs this file: it builds
 # cmd/alder for every target below, archives each with a checksum, writes the GitHub release
-# (notes from the commits since the previous tag), pushes a Homebrew formula to
+# (its notes are the tag's section of CHANGELOG.md, passed with --release-notes), pushes a Homebrew formula to
 # tapegram/homebrew-alder and pushes the container image ghcr.io/tapegram/alder:<version>.
 #
 # Locally: `goreleaser release --snapshot --clean --skip=docker` builds everything into dist/
@@ -86,6 +86,9 @@ checksum:
 snapshot:
   version_template: "{{ incpatch .Version }}-snapshot"
 
+# The release notes are CHANGELOG.md's section for the tag (release.yml passes them with
+# --release-notes). This block stays so GoReleaser still loads the notes file; it is not
+# where the notes come from.
 changelog:
   use: git
   sort: asc

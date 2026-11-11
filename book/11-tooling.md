@@ -2259,6 +2259,12 @@ A version is cut by pushing a tag: `git tag v0.1.0 && git push origin v0.1.0`.
 The tag starts `.github/workflows/release.yml`, which runs GoReleaser with
 `.goreleaser.yaml`.
 
+Before tagging, rename the section's heading in `CHANGELOG.md` from
+`## vX.Y.Z — unreleased` to the date (`## vX.Y.Z — 2026-11-12`). The release's
+notes are that section: a tag without one fails the release job before
+anything is published. CI's `lint` job runs the script on the top section, so
+a changelog whose newest section is empty fails before the tag.
+
 It builds `cmd/alder` with `CGO_ENABLED=0` (the SQLite driver is pure Go) for
 macOS and Linux on amd64 and arm64, and for Windows on amd64 (it builds;
 running alder on Windows is untested). The terminal UI, `alder-tui` (its own
@@ -2268,8 +2274,8 @@ with the LICENSE and README, and `alder-tui_<version>_<os>_<arch>.tar.gz`
 holds the terminal UI alone; all are listed in
 `alder_<version>_checksums.txt`.
 
-GoReleaser then writes the GitHub release, its notes taken from the commits
-since the previous tag; pushes a Homebrew formula to `tapegram/homebrew-alder`
+GoReleaser then writes the GitHub release, its notes the tag's section of
+`CHANGELOG.md` (`scripts/release-notes.sh vX.Y.Z` prints it); pushes a Homebrew formula to `tapegram/homebrew-alder`
 (so `brew install tapegram/alder/alder` works and installs `alder-tui` beside
 `alder`, and the formula's test runs `alder version`); and pushes the
 container image `ghcr.io/tapegram/alder:<version>`, Go's official image plus

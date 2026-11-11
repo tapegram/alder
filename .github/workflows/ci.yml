@@ -182,6 +182,8 @@ jobs:
         run: python3 -m unittest
       - name: docs site (book/site/test_site.py)
         run: python3 book/site/test_site.py
+      - name: changelog (the top section is the release notes)
+        run: scripts/release-notes.sh "$(grep -m1 '^## v' CHANGELOG.md | cut -d' ' -f2)" > /dev/null
 
   test:
     needs: [changes, warm]
