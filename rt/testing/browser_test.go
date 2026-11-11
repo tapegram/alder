@@ -945,7 +945,8 @@ func TestToastOf_DestructiveReadsBackAsError(t *testing.T) {
 // it sits beside the fixture app. GET /r (R.Index) lists rows, each `<li id="row-N">` with
 // click buttons for R.Toggle (PATCH, render), R.Delete (DELETE, redirect), R.Row (GET, an
 // element fetch) and R.Rename (POST with `form RenameF`), and a form #add posting R.Add (POST
-// `form NewRow`: refresh, invalid) with a click of R.Purge (DELETE `form PurgeF`) inside it.
+// `form NewRow`: refresh, invalid) with a click of R.Purge (DELETE, no form) and of R.Nudge
+// (PATCH, no form) inside it: a click sends a route without a form, whatever form it is in.
 // seen records what each write route received, as the page's script sends it.
 type routeApp struct {
 	rows []string // the rows' titles; "" a deleted row
@@ -988,6 +989,7 @@ func rRename(i int) rt.Route {
 }
 func rAdd() rt.Route   { return rt.Route{Name: "R.Add", Method: "POST", Path: "/r/rows"} }
 func rPurge() rt.Route { return rt.Route{Name: "R.Purge", Method: "DELETE", Path: "/r/purge"} }
+func rNudge() rt.Route { return rt.Route{Name: "R.Nudge", Method: "PATCH", Path: "/r/nudge"} }
 
 // rGone is a GET route of no app: the page /r/few renders a control for it.
 func rGone() rt.Route { return rt.Route{Name: "R.Gone", Method: "GET", Path: "/r/gone/1"} }
@@ -1025,7 +1027,8 @@ func (a *routeApp) index() html.Node {
 			html.Input(html.Control{Kind: "input", Form: newRowRoute, Name: "title", Label: "Title"}),
 			html.Input(html.Control{Kind: "errors", Form: newRowRoute, Name: "title"}),
 			html.El("button", nil, html.Text("Add")),
-			html.El("button", []html.Attr{html.RouteAttr("data-on:click", rPurge())}, html.Text("Purge"))))...)...)
+			html.El("button", []html.Attr{html.RouteAttr("data-on:click", rPurge())}, html.Text("Purge")),
+			html.El("button", []html.Attr{html.RouteAttr("data-on:click", rNudge())}, html.Text("Nudge"))))...)...)
 }
 
 func (a *routeApp) see(rq *web.Request, name string) {
@@ -1133,10 +1136,14 @@ func (a *routeApp) routes() []web.Route {
 		{Method: "DELETE", Pattern: "/r/purge", Handle: func(rq *web.Request) web.Response {
 			a.see(rq, "Purge")
 			before, _ := rq.RenderShown(nil)
-			resp := web.InvalidResponse(&html.FormState{Form: "R.PurgeF", Msg: rt.RouteKey(rPurge()), Values: map[string]string{"why": ""},
-				Errors: map[string][]string{"why": {"is required"}}}, nil)
-			resp.Shown = before
+			resp := web.AnswerResponse(rt.Invalid("nothing to purge"), before, nil)
+			resp.State = &html.FormState{Form: newRowRoute, Msg: rt.RouteKey(rPurge())}
 			return resp
+		}},
+		{Method: "PATCH", Pattern: "/r/nudge", Handle: func(rq *web.Request) web.Response {
+			a.see(rq, "Nudge")
+			before, _ := rq.RenderShown(nil)
+			return web.AnswerResponse(rt.Refresh(), before, nil)
 		}},
 	}
 }
@@ -1287,12 +1294,12 @@ func TestBrowser_NoControlRoute(t *testing.T) {
 	})
 }
 
-// Ruling R-P2: a click of a write route with `form F` sends what the page's control sends, never
-// a body of the test's: outside any form its own form's fields (a POST: none), inside another
-// form the script's empty JSON payload (a DELETE: `datastar={}` in the query, which rt/web
-// drops, and no body) — F
-// decodes empty, and the answer is the form's invalid page, 422.
-func TestBrowser_ClickFormRouteSendsThePageBody(t *testing.T) {
+// Ruling R-P2: a click sends what the page's control sends, never a body of the test's: outside
+// any form a route's own form's fields (a POST: none; the checker refuses such a click in markup,
+// #177, but a generated page may still carry one), inside another form the script's empty
+// payload (a DELETE: `datastar={}` in the query, which rt/web drops, and no body; a PATCH: the
+// JSON `{}`). A form that decodes empty answers the form's invalid page, 422.
+func TestBrowser_InFormClickSendsNoFormBody(t *testing.T) {
 	app := newRouteApp("one")
 	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
 		must := mustOf(t)
@@ -1312,6 +1319,16 @@ func TestBrowser_ClickFormRouteSendsThePageBody(t *testing.T) {
 		s = app.seen["Purge"]
 		if s.method != "DELETE" || s.query != "" || s.body != "" || len(s.form) != 0 || s.page != "/r" || s.build != web.BuildID() {
 			t.Errorf("the in-form click sent %+v", s)
+		}
+		// a click of a PATCH route without a form, inside a form: the empty JSON payload, not the
+		// form's fields
+		r = must(b.ClickRoute(rNudge(), "R.Nudge"))
+		if r.Answer.Tag != Refreshed {
+			t.Errorf("nudge: answer %v", r.Answer)
+		}
+		s = app.seen["Nudge"]
+		if s.method != "PATCH" || s.ctype != "application/json" || s.body != "{}" || len(s.form) != 0 {
+			t.Errorf("the in-form PATCH click sent %+v", s)
 		}
 	})
 }
