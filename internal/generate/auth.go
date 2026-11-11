@@ -352,7 +352,7 @@ func editApp(p *Program, app *Module, users *Table, idType, roleField, roleColum
 		loginRole, outRole, want = ", role: "+r, ", role: r.session.role", want+", role: "+ctors[0]
 	}
 	me := tb.insertRow(users, "me", over, true)
-	tb.let("let _ <- Test.login { user: Just %s%s }", me, loginRole)
+	tb.setSession(fmt.Sprintf("user: Just %s%s", me, loginRole))
 	tb.let("let _ <- Test.get (%s {})", loginRoute)
 	tb.let("let r <- Test.click Logout")
 	e.appendText("\n" + snippet("test", TestData{Name: quote("Logout clears the user and goes to log in"),

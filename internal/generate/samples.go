@@ -11,20 +11,21 @@ import (
 // with sample values, and the rows they refer to first), the login, the route value it opens.
 // Its lines are the test block's statements, in order.
 type testBuilder struct {
-	p       *Program
-	home    string
-	imports *importSet
-	lines   []string
-	ids     map[string]string   // table module → the variable holding the id of a row of it
-	counts  map[string]int      // rows of each table inserted so far
-	rows    map[string][]rowRef // table module → its named rows, in insertion order
-	bulk    map[string]int      // table module → rows inserted by bulkInsert for the signed-in user (or ownerless)
-	me      string              // the signed-in user's id, "" before login
-	other   string              // another user's id, "" until otherUser
-	today   bool                // `let today <- Date.today` was written
-	meRole  string              // the role the signed-in user's row is inserted with ("" for its default)
-	taken   map[string]bool     // variable names in use
-	silo    *siloCtx            // a test of an admin page in a silo: its key's row; nil otherwise
+	p         *Program
+	home      string
+	imports   *importSet
+	lines     []string
+	lastLogin string              // the last `Test.login` statement written (login, logout), "" before one
+	ids       map[string]string   // table module → the variable holding the id of a row of it
+	counts    map[string]int      // rows of each table inserted so far
+	rows      map[string][]rowRef // table module → its named rows, in insertion order
+	bulk      map[string]int      // table module → rows inserted by bulkInsert for the signed-in user (or ownerless)
+	me        string              // the signed-in user's id, "" before login
+	other     string              // another user's id, "" until otherUser
+	today     bool                // `let today <- Date.today` was written
+	meRole    string              // the role the signed-in user's row is inserted with ("" for its default)
+	taken     map[string]bool     // variable names in use
+	silo      *siloCtx            // a test of an admin page in a silo: its key's row; nil otherwise
 }
 
 // siloCtx is a test of a page in `silo key`: the row of the key's table every row of the test
@@ -73,6 +74,12 @@ func newTestBuilder(p *Program, home string, imports *importSet) *testBuilder {
 // let adds a statement.
 func (b *testBuilder) let(format string, args ...any) {
 	b.lines = append(b.lines, fmt.Sprintf(format, args...))
+}
+
+// setSession writes a `Test.login` of the session record fields, and remembers it as lastLogin.
+func (b *testBuilder) setSession(fields string) {
+	b.let("let _ <- Test.login { %s }", fields)
+	b.lastLogin = b.lines[len(b.lines)-1]
 }
 
 // fresh is a variable name based on base that is not yet taken.
@@ -150,7 +157,7 @@ func (b *testBuilder) login(role string) {
 		b.typeRef(b.p.Session.Role.Type)
 		fields = append(fields, "role: "+role)
 	}
-	b.let("let _ <- Test.login { %s }", strings.Join(fields, ", "))
+	b.setSession(strings.Join(fields, ", "))
 }
 
 // logout ends the session (Test.login of a session without a user, every other `Maybe` field
@@ -168,7 +175,7 @@ func (b *testBuilder) logout() {
 			fields = append(fields, f.Name+": Nothing")
 		}
 	}
-	b.let("let _ <- Test.login { %s }", strings.Join(fields, ", "))
+	b.setSession(strings.Join(fields, ", "))
 }
 
 // insert inserts a row of t with sample values, after the rows it refers to, and returns the

@@ -901,14 +901,9 @@ func (g *adminGen) writeGate(mod string, imports *importSet, what string, refs b
 		tb := g.tb(mod, imports, true)
 		get, send, check := build(tb)
 		tb.let("let _ <- Test.get (%s)", get)
-		admin := ""
-		for _, line := range tb.lines {
-			if strings.HasPrefix(line, "let _ <- Test.login ") {
-				admin = line
-			}
-		}
+		admin := tb.lastLogin
 		change(tb)
-		relogged := strings.HasPrefix(tb.lines[len(tb.lines)-1], "let _ <- Test.login ")
+		relogged := tb.lastLogin != admin
 		tb.let("let r <- %s", send)
 		if tb.silo != nil && tb.silo.member && relogged {
 			tb.let("%s", admin) // the Admin's session again: the test's own reads go to the silo by its key
