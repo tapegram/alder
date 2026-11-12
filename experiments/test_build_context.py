@@ -349,10 +349,10 @@ class BuildContextTests(unittest.TestCase):
         self.assertIn("\n## 12. Properties\n", out)
         for kept in ("### The function form", "### Where the inputs come from", "### `Int` when the type is open",
                      "### Brands as constraints", "### `Fuzz.forAll` and shared `Fuzzer`s",
-                     "### Properties over the database", "### Reading a failure",
-                     "### `--fuzz`, `--seed` and saved failures", "### Two errors", "### Health checks"):
+                     "### Properties over the database", "### Two errors"):
             self.assertIn("\n" + kept + "\n", out)
-        for dropped in ("### Keeping the case",
+        for dropped in ("### Reading a failure", "### `--fuzz`, `--seed` and saved failures", "### Health checks",
+                        "### Keeping the case",
                         "### How the shrinking works, and why you do not write it", "### Properties and `--mutate`"):
             self.assertNotIn(dropped, out)
 
@@ -386,6 +386,7 @@ class BuildContextTests(unittest.TestCase):
         # #160 PR 10 raised it to 73k: chapter 6's "Patterns" section (`load=`, `every=`, `intersect=`, `input=`, the
         # `More` shape, E0047) and the attribute and `Test.load/intersect/input` rows in chapters 5 and 10.
         # Item 4's route/method book edits (#177, #180, #193, #195) measured 73.4k, so 73.5k.
+        # E12 (#208): the COMMANDS table on routes, paid for by three drops in chapter 10's Properties
         self.assertLessEqual(len(out) // 4, 73500, "the reference is at most 73.5k tokens (len/4)")
         # M17 (file pages) raised from 48000; see the M17 plan
         # M15: the partition rules, `via`, `silo`, the one-store rule and the commands are in; the
@@ -393,7 +394,7 @@ class BuildContextTests(unittest.TestCase):
         for added in ("`@partition k` generalises `@owner`", "Session.put org:\n  no Membership for this user and org",
                       "silo org { Project, Todo }", "a `Task` writes to one store", "E0031", "isMember user org = {",
                       "`requires user, role Admin, silo org`", "`Test.member ann acme`", "alder new silo <key> <T>",
-                      "via Membership [--choose <Page>]", "@partition=org", "alder migrate silos <env>", "membership dropped"):
+                      "via Membership [--choose <Route>]", "@partition=org", "alder migrate silos <env>", "membership dropped"):
             self.assertIn(added, out)
         for cut in ("### The open-time check", "### Where the files live", "### Moving a table into a silo", "### Two orgs"):
             self.assertNotIn(cut, out)
@@ -417,6 +418,20 @@ class BuildContextTests(unittest.TestCase):
         for gone in ("$ alder test examples/todos -run 'without a login'", "module Public",
                      "Db.mine       : Table t -> Select t", "The to-do list's page uses four of them\n(`examples", "\n### When the app starts\n",
                      "let author <- User.isAuthor session.user"):
+            self.assertNotIn(gone, out)
+
+
+    def test_real_reference_commands(self):
+        # E12 (#208): the command table names the route-era generators, not the page-era ones
+        bc.HUMAN_SECTIONS, bc.KEEP_SUBSECTIONS = self.saved, self.saved_keep
+        bc.DROP_SUBSECTIONS, bc.TRIMS = self.saved_drop, self.saved_trims
+        code, out, _ = self.run_main("--reference", "--chapters", ",".join(bc.DEFAULT_CHAPTERS), "--book", str(bc.BOOK),
+                                     "--example", str(bc.EXAMPLE))
+        self.assertEqual(code, 0)
+        for want in ("alder new route ", "alder new action ", "--msg <Route>", "alder edit route ", "add-param",
+                     "alder remove route "):
+            self.assertIn(want, out)
+        for gone in ("alder new page ", "alder new msg ", "alder edit page ", "alder remove page "):
             self.assertNotIn(gone, out)
 
 

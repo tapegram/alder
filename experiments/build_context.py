@@ -79,9 +79,10 @@ KEEP_SUBSECTIONS = {
 # "Statements you add" (M12 final review): hand-written migration SQL, which an agent never
 # writes. Chapter 6's "Example: a theme switch" (a worked App message) goes too: the rules it
 # shows are stated in the section around it. Chapter 10's "12. Properties" keeps the forms, the
-# input rules, the database properties, the report, the health checks (the reasons a run reports
-# failing) and the commands an agent writing a property needs; it drops the saved-case walkthrough,
-# the shrinker's internals and the `--mutate` interplay, reading for a person.
+# input rules and the database properties; it drops the saved-case walkthrough, the shrinker's
+# internals and the `--mutate` interplay, reading for a person. E12 (#208) also drops "Reading a
+# failure", "`--fuzz`, `--seed` and saved failures" and "Health checks" to pay for the route-era
+# COMMANDS table (the failure text and the flags are met by running the test, not needed to write one).
 DROP_SUBSECTIONS = {
     "06": {"Rules": ["The rules and a replicated database"],
            "App-level routes": ["Example: a theme switch"],
@@ -98,7 +99,8 @@ DROP_SUBSECTIONS = {
                                               "Comparing a page with its view", "`Test.fetch`: requesting a file",
                                               "When `Test.refresh` fails"],
            "12. Properties": ["Keeping the case", "How the shrinking works, and why you do not write it",
-                              "Properties and `--mutate`"]},
+                              "Properties and `--mutate`",
+                              "Reading a failure", "`--fuzz`, `--seed` and saved failures", "Health checks"]},
 }
 
 # Spans of text --reference shortens in a chapter (before dropping sections), by chapter: (start, end,
@@ -358,37 +360,36 @@ alder new table <Name> <field>:<Type>[=default][@ref=T][@cascade|@restrict|@setN
   `org:Org.OrgId@ref=Org@partition=org`; --silo puts it in App's `silo org` (a table referring to a siloed one must)
 alder new silo <key> <T> … [--empty]   App's `silo key { T, … }`; each T must be @partition key;
   a T migrations/ create needs --empty (no rows yet: it writes the move's migration)
-alder new page <Module> <path> [--list T | --show T [--by <unique col>] | --from T …] [--requires user|org] [--role R]
+alder new route [<Module>] <path> [--method GET|POST|PUT|PATCH|DELETE [--form F]] [--list T | --show T [--by <unique col>] | --from T …]
+  [--blank] [--param <name>:<Type> …] [--requires user|org] [--role R]   (a write route has only update)
   --requires org writes `requires user, org`; --list/--show read an org-partitioned T with Db.scoped/getScoped
   a {x} in the path needs --param x:Type (load is then ?load); --show, --list and --from make their own
-  parameters: --param only with --blank or a plain page. A --list page's Model and load go together:
+  parameters: --param only with --blank or a plain route. A --list route's Model and load go together:
   replace both (fill --decl), or start --blank
-alder new form <Page> <Name> <field>:<Type> … [--into T] [--msg M]   (msg M, default Submit<Name>)
-alder new msg <Page> <Name> [<field>:<Type> …] [--id id]
-  form and msg refuse while view is ?view: fill view first; the view must be one element over several
-  lines (`<Layout.Page …>` … `</Layout.Page>`)
-alder new msg App <Name> [<field>:<Type> …]   a message of App (a button on any page): an arm with a hole
-  in App.update and a test with a hole
-alder new form <Page> <Form> <field>:<Type> … --msg M   when `msg M { … }` exists without a form: it becomes
-  `msg M { … } form F` (its arm reads p.form); refused if M has a form already
+alder new form <Route> <Name> <field>:<Type>[=default] … [--into T] [--hole] [--msg <Route>] [--method POST|PUT|PATCH|DELETE] [--path /p]
+  --msg <Route>: the form posts to that existing write route, which then decodes it (`form F`)
+alder new action <Route> <Name> [<field>:<Type> …] [--id id] [--method POST|PUT|PATCH|DELETE] [--path /p]
+  a write route and its button in the page's view (`Route.Name`, update starts as Response.refresh);
+  App for a button on any page. form and action refuse while view is ?view: fill view first; the view
+  must be one element over several lines (`<Layout.Page …>` … `</Layout.Page>`)
 alder new capability <Module> <entry> "<Type>"
-alder new auth [--users User] [--role R] [--to Page]   the login (Auth.Login, Password with a real
+alder new auth [--users User] [--role R] [--to Route]   the login (Auth.Login, Password with a real
   PBKDF2 adapter, App's session user/role, login, Logout); creates User (passwordHash: Text.Secret)
-  if absent, else uses yours; R must exist; no / page and no --to: ?afterLogin, fill it later
-alder edit auth --to <Page>   fills ?afterLogin in Auth.Login.update and its test (refused if none)
+  if absent, else uses yours; R must exist; no / route and no --to: ?afterLogin, fill it later
+alder edit auth --to <Route>   fills ?afterLogin in Auth.Login.update and its test (refused if none)
 alder edit decl Layout.Page add-prop <name>:<Type>=<default>   a prop on a component; every use keeps checking
 alder new type <Module> "Status = A | B" | "Slug = brand Text where …" | "Row = { … }"
 alder new decl <Module> <name> "<Type>"   (name = ?name; fill a function with a lambda)
 alder new test <Module> "<name>"   (its block is ?test : Task Bool; fill it with a block)
-alder new page … --blank   Model = { }, load and view holes; with --show T keeps /{id}
-alder new msg … --in-for <binder> [--when <Bool expr>]   the button in that `for`'s element,
-  class = the msg's name, fields from the binder (u.id) or holes; its test clicks a hole:
+alder new route … --blank   Model = { }, load and view holes; with --show T keeps /{id}
+alder new action … --in-for <binder> [--when <Bool expr>]   the button in that `for`'s element,
+  class = the action's name, fields from the binder (u.id) or holes; its test clicks a hole:
   insert rows the loop shows the signed-in user, fill the hole with one
-alder edit page <Page> add-param <name>:<Type>[=default]
+alder edit route <Route> add-param <name>:<Type>[=default]
 alder edit session add-field <name>:<Type>=<default>
-alder edit session add-field org:Org.OrgId via Membership [--choose <Page>]   a key: `org: Maybe Org.OrgId via
-  Membership` (+ `choose org = Page`); the Membership table and the page must exist first
-alder remove page <Page> | remove table <T>   refused while used; a table's migration drops data
+alder edit session add-field org:Org.OrgId via Membership [--choose <Route>]   a key: `org: Maybe Org.OrgId via
+  Membership` (+ `choose org = Route`); the Membership table and the route must exist first
+alder remove route <Route> | remove table <T>   refused while used; a table's migration drops data
 alder fill --decl <Module>.<decl> -   replaces a whole body (value, test, type's right side):
   for Model (no hole) and bodies that do not fit; prefer a hole when there is one. The parameters
   of `load params session = ?load` are bound: send the body, not `\\params session -> …`
