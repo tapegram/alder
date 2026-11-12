@@ -30,8 +30,7 @@ of the route-era language, after porting the experiment's tasks, hidden tests, r
 ```
 experiments/e12-routes/
   README.md           this page
-  RUN.md              binary, prompt, gate output, dates (E12_COMMIT, ALDER_SHA256)
-  gate-notes.md       every gate-time decision (merged into RUN.md in Task 17)
+  RUN.md              binary, prompt, gate output, gate-time fixes, rulings, run log (E12_COMMIT, ALDER_SHA256)
   tasks -> ../tasks   the canonical texts (symlink, as e11-cli); experiments/tasks/README.md records the port
   hidden/<task>/Hidden.alder
   reference/<task>/   a verified solution (app/, SURVIVORS.md where a survivor is equivalent)
@@ -119,4 +118,4 @@ Hidden test counts per ported task are unchanged, so hidden pass rates compare o
 old texts is corrected (T6's form on a parameterised write route), and four texts state implicitly-held
 checks (a write route on another user's record is 404) that E8/E9 had through `load`; see
 `experiments/tasks/README.md`. T9 and T10's references are the drill replay plus four tests added at the gate
-(`gate-notes.md`).
+(`RUN.md`).
