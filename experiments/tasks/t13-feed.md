@@ -29,7 +29,11 @@ further tables or fields.
   entries after the first `after` (the next ten, newest first, each an
   `<li>` as on `/feed`), then the next sentinel, which asks for `More`
   with the new number shown; none after the last entry. The first page's
-  sentinel asks for `More { after: 10 }`. The page has no other `<li>`.
+  sentinel asks for `More { after: 10 }`. The sentinel is an element with
+  `intersect=` (chapter 6, "Infinite scroll"), not an `<li>`, and is the
+  only element with `intersect=`. Neither `/feed` nor `More`'s answer has
+  any `<li>` but the entries' (no `<li>` for an empty feed or for "load
+  more").
   `form NewEntry = { text: Text.NonEmpty }`, posted by
   `route Post form NewEntry`, which answers
   `Response.redirect (Feed.Index.Index {})`.
