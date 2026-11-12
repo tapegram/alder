@@ -1,0 +1,65 @@
+module Posts.Index
+
+import Layout
+import Table.Post
+import Table.User
+
+route Index = GET "/" { }
+
+type Model = { posts: List Post }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let posts <-
+    Db.from Post
+      |> Db.where (Post.published.eq True)
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Blog">
+    <h1>Blog</h1>
+    <ul id="posts">
+      {for post in model.posts ->
+        <li><a href={Posts.Show.Show { slug: post.slug }}>{post.title}</a></li>}
+    </ul>
+  </Layout.Page>
+
+test "/ lists only published posts, newest first" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.setClock Time.epoch
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "Old",
+    slug: Post.Slug "old",
+    body: "",
+    published: True,
+    author: me,
+  }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "Draft",
+    slug: Post.Slug "draft",
+    body: "",
+    author: me,
+  }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "New",
+    slug: Post.Slug "new",
+    body: "",
+    published: True,
+    author: me,
+  }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    { titles: Test.texts "#posts li a" page.doc, href: Test.attr "href" "#posts li a" page.doc }
+      == { titles: ["New", "Old"], href: Just "/posts/new" }
+  )
+}

@@ -1,0 +1,69 @@
+module Table.Post
+
+import Table.User
+
+type PostId = brand Text
+
+-- A slug is lowercase letters, digits and hyphens, at least one.
+type Slug = brand Text where (\s -> isSlug s)
+
+-- `author` is the table's `@owner`: the admin reads and writes only the logged-in author's posts
+-- with `Db.mine`, `Db.insertMine` and `Db.updateMine`.
+table Post {
+  id: PostId @id,
+  title: Text.NonEmpty,
+  slug: Slug @unique,
+  body: Text,
+  published: Bool = False,
+  author: User.UserId @ref User @owner,
+  created: Time @created,
+}
+
+isSlug : Text -> Bool
+isSlug s = Text.matches "^[a-z0-9-]+$" s
+
+bySlug : Slug -> Query (Maybe Post)
+bySlug slug =
+  Db.from Post
+    |> Db.where (Post.slug.eq slug)
+    |> Db.first
+
+-- visible is whether the viewer may see the post: everyone a published one, only its author a draft.
+visible : Maybe User.UserId -> Post -> Bool
+visible viewer post = post.published || viewer == Just post.author
+
+test "a slug is lowercase letters, digits and hyphens" =
+  List.map isSlug ["hello-world", "post-2", "Hello", "a b", "", "x/y"]
+    == [True, True, False, False, False, False]
+
+test "a draft is visible to its author only" = {
+  let draft : Post = {
+    id: PostId "p",
+    title: Text.NonEmpty "Draft",
+    slug: Slug "draft",
+    body: "",
+    published: False,
+    author: User.UserId "author",
+    created: Time.epoch,
+  }
+  Task.succeed (
+    [
+      visible Nothing draft,
+      visible (Just (User.UserId "reader")) draft,
+      visible (Just (User.UserId "author")) draft,
+      visible Nothing { draft | published: True },
+    ] == [False, False, True, True]
+  )
+}
+
+test "bySlug finds the post with that slug" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Post { title: Text.NonEmpty "First", slug: Slug "first", body: "", author: me }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Second", slug: Slug "second", body: "", author: me }
+  let found <- bySlug (Slug "second")
+  Task.succeed (Maybe.map (\p -> p.title) found == Just (Text.NonEmpty "Second"))
+}

@@ -1,0 +1,174 @@
+module Posts.Show
+
+import Layout
+import Table.Comment
+import Table.Post
+import Table.User
+
+route Show       = GET  "/posts/{slug}"          { slug: Post.Slug }
+route AddComment = POST "/posts/{slug}/comments" { slug: Post.Slug } form NewComment
+
+type Model = { post: Post, comments: List Comment }
+
+-- A draft is a 404 for everyone but its author, like a missing post.
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let post <- visiblePost session.user params.slug
+  let comments <-
+    Db.from Comment
+      |> Db.where (Comment.post.eq post.id)
+      |> Db.orderBy Comment.created.asc
+      |> Db.all
+  Query.succeed { post: post, comments: comments }
+}
+
+visiblePost : Maybe User.UserId -> Post.Slug -> Query Post
+visiblePost viewer slug = {
+  let found <- Post.bySlug slug
+  match found {
+    Just post -> if Post.visible viewer post then Query.succeed post else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewComment = { author: Text.NonEmpty, body: Text.NonEmpty }
+
+-- No `load` runs before a write route: the post is looked up again, so a draft takes no comments
+-- from a reader.
+AddComment.update : AddComment.Params -> Session -> Task Response
+AddComment.update p session = {
+  let post <- visiblePost session.user p.slug
+  let _ <- Db.insert Comment { post: post.id, author: p.form.author, body: p.form.body }
+  Task.succeed (Response.redirect (Show { slug: p.slug }))
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title={model.post.title}>
+    <article>
+      <h1 id="title">{model.post.title}</h1>
+      <div id="body">{model.post.body}</div>
+    </article>
+    <section>
+      <h2>Comments</h2>
+      <ul id="comments">
+        {for c in model.comments ->
+          <li><strong class="author">{c.author}</strong> <span class="body">{c.body}</span></li>}
+      </ul>
+      <form submit={AddComment { slug: model.post.slug }}>
+        <Errors form />
+        <Input field="author" label="Name" />
+        <Errors field="author" />
+        <Textarea field="body" label="Comment" />
+        <Errors field="body" />
+        <button type="submit">Comment</button>
+      </form>
+    </section>
+  </Layout.Page>
+
+test "an unpublished post is not found for a reader" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let reader <- Db.insert User {
+    email: Text.Email "reader@example.com",
+    name: Text.NonEmpty "Reader",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "Draft",
+    slug: Post.Slug "draft",
+    body: "",
+    author: me,
+  }
+  let visitor <- Test.open (Show { slug: Post.Slug "draft" })
+  let _ <- Test.login { user: Just reader }
+  let other <- Test.open (Show { slug: Post.Slug "draft" })
+  let _ <- Test.login { user: Just me }
+  let author <- Test.open (Show { slug: Post.Slug "draft" })
+  Task.succeed (
+    { visitor: visitor.answer, other: other.answer, author: author.answer }
+      == { visitor: PageMissing, other: PageMissing, author: Shown }
+  )
+}
+
+test "a comment with an empty author is refused" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "Hello",
+    slug: Post.Slug "hello",
+    body: "",
+    published: True,
+    author: me,
+  }
+  let _ <- Test.get (Show { slug: Post.Slug "hello" })
+  let r <- Test.submitRaw (AddComment { slug: Post.Slug "hello" }) [
+    { name: "author", value: "" },
+    { name: "body", value: "Nice post" },
+  ]
+  let comments <- Db.from Comment |> Db.count
+  Task.succeed (
+    { answer: r.answer, status: r.status, comments: comments }
+      == {
+        answer: FormRejected [{ field: "author", message: "must not be empty" }],
+        status: 422,
+        comments: 0,
+      }
+  )
+}
+
+test "a reader comments on a published post" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "Hello",
+    slug: Post.Slug "hello",
+    body: "Hi there",
+    published: True,
+    author: me,
+  }
+  let _ <- Test.get (Show { slug: Post.Slug "hello" })
+  let r <- Test.submit (AddComment { slug: Post.Slug "hello" }) {
+    author: Text.NonEmpty "Ann",
+    body: Text.NonEmpty "Nice post",
+  }
+  let page <- Test.get (Show { slug: Post.Slug "hello" })
+  Task.succeed (
+    {
+      answer: r.answer,
+      authors: Test.texts "#comments .author" page.doc,
+      body: Test.text "#body" page.doc,
+    } == {
+      answer: Redirected (Show { slug: Post.Slug "hello" }),
+      authors: ["Ann"],
+      body: Just "Hi there",
+    }
+  )
+}
+
+test "a draft takes no comment from a reader" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "Draft",
+    slug: Post.Slug "draft",
+    body: "",
+    author: me,
+  }
+  let params = { slug: Post.Slug "draft", form: { author: Text.NonEmpty "Ann", body: Text.NonEmpty "Hi" } }
+  let r <- Test.run (AddComment.update params { user: Nothing })
+  let comments <- Db.from Comment |> Db.count
+  Task.succeed ({ value: r.value, comments: comments } == { value: Err "not found", comments: 0 })
+}

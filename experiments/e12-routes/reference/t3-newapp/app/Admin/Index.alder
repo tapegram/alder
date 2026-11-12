@@ -1,0 +1,157 @@
+module Admin.Index
+
+import Layout
+import Table.Post
+import Table.User
+
+route Index  = GET  "/admin"                   { }                          requires user
+route Create = POST "/admin/posts"             { }             form NewPost requires user
+route Toggle = POST "/admin/posts/{id}/toggle" { id: Post.PostId }          requires user
+
+type Model = { posts: List Post }
+
+-- Every post of the logged-in author, published or not, newest first.
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let posts <- Db.mine Post |> Db.orderBy Post.created.desc |> Db.all
+  Query.succeed { posts: posts }
+}
+
+form NewPost = { title: Text.NonEmpty, slug: Post.Slug, body: Text }
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let taken <- Post.bySlug p.form.slug
+  match taken {
+    Just _ -> Task.succeed (Response.invalid "That slug is taken."),
+    Nothing -> {
+      let _ <- Db.insertMine Post { title: p.form.title, slug: p.form.slug, body: p.form.body }
+      Task.succeed (Response.redirect (Index {}))
+    },
+  }
+}
+
+-- `Db.updateMine`: another author's post, like a missing one, is a 404.
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let _ <- Db.updateMine Post p.id (\post -> { post | published: not post.published })
+  Task.succeed Response.refresh
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Admin">
+    <h1>Admin</h1>
+    <table id="posts">
+      {for post in model.posts ->
+        <tr>
+          <td class="title"><a href={Posts.Show.Show { slug: post.slug }}>{post.title}</a></td>
+          <td class="status">{if post.published then "Published" else "Draft"}</td>
+          <td>
+            <button click={Toggle { id: post.id }}>
+              {if post.published then "Unpublish" else "Publish"}
+            </button>
+          </td>
+        </tr>}
+    </table>
+    <h2>New post</h2>
+    <form submit={Create}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Input field="slug" label="Slug" />
+      <Textarea field="body" label="Body" />
+      <button type="submit">Create</button>
+    </form>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "creating a post lists it as a draft" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Create {}) {
+    title: Text.NonEmpty "Hello",
+    slug: Post.Slug "hello",
+    body: "Hi",
+  }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    {
+      answer: r.answer,
+      titles: Test.texts "#posts .title" page.doc,
+      status: Test.texts "#posts .status" page.doc,
+    } == {
+      answer: Redirected (Index {}),
+      titles: ["Hello"],
+      status: ["Draft"],
+    }
+  )
+}
+
+test "a taken slug is refused" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Post { title: Text.NonEmpty "Hello", slug: Post.Slug "hello", body: "", author: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Create {}) { title: Text.NonEmpty "Again", slug: Post.Slug "hello", body: "" }
+  let posts <- Db.from Post |> Db.count
+  Task.succeed (
+    { answer: r.answer, posts: posts }
+      == { answer: FormRejected [{ field: "", message: "That slug is taken." }], posts: 1 }
+  )
+}
+
+test "toggling publishes and unpublishes" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Post { title: Text.NonEmpty "Hello", slug: Post.Slug "hello", body: "", author: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let on <- Test.click (Toggle { id: id })
+  let off <- Test.click (Toggle { id: id })
+  Task.succeed (
+    {
+      on: on.answer,
+      onStatus: Test.text "#posts .status" on.doc,
+      offStatus: Test.text "#posts .status" off.doc,
+    } == {
+      on: Refreshed,
+      onStatus: Just "Published",
+      offStatus: Just "Draft",
+    }
+  )
+}
+
+test "another author's post cannot be toggled" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Post { title: Text.NonEmpty "Hello", slug: Post.Slug "hello", body: "", author: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.click (Toggle { id: id })
+  let after <- Db.get Post id
+  Task.succeed (
+    { answer: r.answer, published: Maybe.map (\p -> p.published) after }
+      == { answer: PageMissing, published: Just False }
+  )
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
+}
