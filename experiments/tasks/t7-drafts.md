@@ -18,26 +18,30 @@ that a post can be a draft:
   drafts.
 
 **Names.** Use exactly these names; anything not listed here is your choice.
-Every name the app already has (modules, pages, forms, messages, fields,
-the `ul.posts` list of the front page) stays as it is.
+Every name the app already has (modules, routes, forms, fields, the
+`ul.posts` list of the front page) stays as it is.
 
 - `app/Post.alder`: `table Post` gains exactly one field,
   `published: Bool = False`, and no other table changes.
 - `app/App.alder`: the session stays exactly `session { user: Maybe User.UserId }`.
-- `app/Admin.alder` (page `Admin`, `/admin`, the dashboard): the author's
-  drafts, and only those, are listed inside an element with `id="drafts"`;
-  each draft's title is the whole text of an element with `class="title"`.
-  `msg Publish { id: Post.PostId }`, sent by the "Publish" button beside
-  each draft, publishes that post when it is the logged-in author's (any
-  other id is a 404, `Task.notFound`) and answers `Redirect (Admin {})`.
-  `form NewPost` and `msg Create` stay as they are, and `Create` still
-  answers `Redirect (Admin.Edit { id: … })`.
-- `app/Posts/Index.alder` (page `Posts.Index`, `/`, `{ page: Int = 1, q: Text = "" }`):
-  the posts stay listed in `<ul class="posts">`, each post's link having the
-  post's title as its whole text; `form SearchForm` and `msg Search` stay.
-- `app/Posts/Show.alder` (page `Posts.Show`, `/posts/{slug}`,
-  `{ slug: Post.Slug }`): a draft is a 404 (`Query.notFound`) for anyone
-  but its author.
+- `app/Admin.alder`: route module `Admin`,
+  `route Admin = GET "/admin" { } requires user` (the dashboard): the
+  author's drafts, and only those, are listed inside an element with
+  `id="drafts"`; each draft's title is the whole text of an element with
+  `class="title"`. `route Publish { id: Post.PostId }`, sent by the
+  "Publish" button beside each draft, publishes that post when it is the
+  logged-in author's (any other id is a 404, `Task.notFound`) and answers
+  `Response.redirect (Admin.Admin {})`. `form NewPost` and
+  `route Create form NewPost` stay as they are, and `Create` still answers
+  `Response.redirect (Admin.Edit.Edit { id: … })`.
+- `app/Posts/Index.alder`: route module `Posts.Index`,
+  `route Index = GET "/" { page: Int = 1, q: Text = "" }`: the posts stay
+  listed in `<ul class="posts">`, each post's link having the post's title
+  as its whole text; `form SearchForm` and `route Search form SearchForm`
+  stay.
+- `app/Posts/Show.alder`: route module `Posts.Show`,
+  `route Show = GET "/posts/{slug}" { slug: Post.Slug }`: a draft is a 404
+  (`Query.notFound`) for anyone but its author.
 
 Also write tests (`test "…" = …`, chapter 10) in the modules they test: a
 draft is not on the front page and not found by a search; a reader opening a

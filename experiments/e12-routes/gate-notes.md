@@ -44,3 +44,27 @@
   both after the solutions gained tests for the new write-route checks (Staff posts, a page held
   across a logout). A probe (reference without the Open check) fails exactly the stale-page
   hidden test.
+
+## T7 (Task 9)
+
+- **The base, `base/blog-nodrafts`, ported by hand** from `e8-hidden/base/blog-nodrafts` (11
+  modules, `adapters/`, `migrations/`, `go.mod`, `static/` unchanged; `alder migrate` reports no
+  change since `0001_initial`; `alder build` compiles the Go adapters). Each page module is a
+  route module whose GET route is named after it (`Admin.Admin`, `Admin.Edit.Edit`,
+  `Posts.Index.Index`, `Posts.Show.Show`, `Auth.Login.Login`), each msg a write route of the same
+  name. Ruling: the write routes that acted on `model.post` now take the post from their path
+  (`Admin.Edit.Save`/`Delete { id }`, `Posts.Show.AddComment { slug }`) and re-check what the
+  page's `load` checked (Admin.Edit's `editable`; Admin's `Create` asks `User.author`), since no
+  `load` runs before a write route. Its 25 tests are E8's, ported (one trace now starts with the
+  re-check's `Db.first User`, `Db.get Post`). Committed before the solutions (66985b39).
+- **Write-route gaps (tests added, no app code changed).** Ported as they were, the solutions
+  scored 0.89 (reference) and 0.85 (alt). The new survivors were route-era test gaps: the
+  `requires dropped` of `Admin.Create`, `Admin.Publish`, `Admin.Edit.Save` and `.Delete` (killed
+  by a write sent from a page held while the user logged out: reference, one test in `Admin` and
+  one in `Admin.Edit`; alt, one test in `Admin` for all four), alt's `Publish.update where dropped`
+  (`Post.id.eq`: the "did not list" test now gives the author a draft of their own, which must
+  stay a draft) and alt's `Save.update refresh → invalid` (the edit test now asserts `Refreshed`).
+  Both now score 0.95; the three survivors left in each are E8's equivalent mutants, justified in
+  each `SURVIVORS.md`.
+- **No hidden test changed** beyond the port (7/7 on both; names `ok`; `drops` no / yes: the alt
+  keeps E8's lossy migration, `0002_drop_created_change_post.sql`, dropping `User.created`).
