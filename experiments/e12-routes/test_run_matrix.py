@@ -66,7 +66,10 @@ class RunMatrix(unittest.TestCase):
 
     def progress(self):
         p = os.path.join(self.e, "logs", "matrix.progress")
-        return open(p).read() if os.path.exists(p) else ""
+        if not os.path.exists(p):
+            return ""
+        with open(p) as f:
+            return f.read()
 
     def test_cell_order_and_flags(self):
         r = self.dry()
@@ -149,7 +152,8 @@ class RunMatrix(unittest.TestCase):
         # always names the first cell not yet done
         d = os.path.join(self.e, "runs", "claude-claude-haiku-5-5", "t2-newpage-s1")
         os.makedirs(d)
-        open(os.path.join(d, "summary.json"), "w").close()
+        with open(os.path.join(d, "summary.json"), "w"):
+            pass
         r = self.dry("2 0900")
         self.assertEqual(r.returncode, 3)
         self.assertIn("STOPPED before " + FIRST, r.stdout)
