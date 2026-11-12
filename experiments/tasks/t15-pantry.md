@@ -33,8 +33,9 @@ further tables or fields.
   `Row`). In it, the item's name is the whole text of an element with
   `class="name"` and its quantity, as digits only (`3`), the whole text of
   an element with `class="quantity"`; no other element in the list has
-  either class. The `<li>` also holds the item's rename form, its "add
-  one" button (`click={Bump { id: … }}`) and its remove button
+  either class. The `<li>` also holds the item's rename form
+  (`submit={Rename { id: … }}`), its "add one" button
+  (`click={Bump { id: … }}`) and its remove button
   (`click={Remove { id: … }}`).
   `form NewName = { name: Text.NonEmpty }`, posted by
   `route Rename { id: Item.ItemId } form NewName`, which answers

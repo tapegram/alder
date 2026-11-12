@@ -4,10 +4,10 @@ import Table.Item
 import Layout
 
 route Index  = GET  "/pantry"                   { }
-route Row    = GET  "/pantry/{id}"              { id: Item.ItemId }
-route Rename = PUT  "/pantry/{id}"              { id: Item.ItemId } form NewName
-route Bump   = POST "/pantry/{id}/bump"         { id: Item.ItemId }
-route Remove = POST "/pantry/{id}/remove"       { id: Item.ItemId }
+route Row    = GET  "/pantry/items/{id}"        { id: Item.ItemId }
+route Rename = PUT  "/pantry/items/{id}"        { id: Item.ItemId } form NewName
+route Bump   = POST "/pantry/items/{id}/bump"   { id: Item.ItemId }
+route Remove = POST "/pantry/items/{id}/remove" { id: Item.ItemId }
 
 form NewName = { name: Text.NonEmpty }
 
@@ -71,8 +71,8 @@ Bump.update p session = {
   let item <- Db.get Item p.id
   match item {
     Nothing -> Task.notFound,
-    Just i -> {
-      let _ <- Db.update Item p.id (\row -> { row | quantity: i.quantity + 1 })
+    Just _ -> {
+      let _ <- Db.update Item p.id (\row -> { row | quantity: row.quantity + 1 })
       Task.succeed (Response.render (Row { id: p.id }))
     },
   }

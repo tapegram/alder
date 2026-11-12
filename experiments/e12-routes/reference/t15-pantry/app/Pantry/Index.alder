@@ -83,7 +83,7 @@ test "the pantry lists every item by name, with its quantity" = {
 
 test "an empty pantry lists nothing" = {
   let r <- Test.get (Index {})
-  Task.succeed (Test.count "li" r.doc == 0)
+  Task.succeed (Test.count "#items > li" r.doc == 0)
 }
 
 test "a row is one item's li" = {
