@@ -21,7 +21,7 @@ FIRST = "s1 %s t2-newpage" % HAIKU
 
 
 STUB = r"""#!/usr/bin/env bash
-# stand-in for run_loop.py: STUB_MODE = ok | harness | fail | sleep
+# stand-in for run_loop.py: STUB_MODE = ok | harness | fail | sleep | stdin
 while [ $# -gt 0 ]; do case "$1" in --model) m="$2";; --task) t="$2";; --sample) s="$2";; esac; shift; done
 d="experiments/e12-routes/runs/${m//:/-}/$t-$s"
 mkdir -p "$d"
@@ -29,6 +29,7 @@ case "$STUB_MODE" in
   ok) echo '{"outcome": "pass"}' > "$d/summary.json" ;;
   harness) echo '{"outcome": "harness_error"}' > "$d/summary.json"; exit 1 ;;
   fail) exit 1 ;;
+  stdin) read -t 3 x; echo $? > "$STUB_PIDFILE"; echo '{"outcome": "pass"}' > "$d/summary.json" ;;
   sleep) sleep 60 & echo $! > "$STUB_PIDFILE"; wait ;;
 esac
 """
@@ -246,6 +247,34 @@ class RunMatrix(unittest.TestCase):
         r = self.real(TASKS="t2-newpage", MODELS=HAIKU, SAMPLES="s1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn(FIRST + " rerun", self.progress())
+
+    def test_bad_deadline_refuses_to_run_unwatched(self):
+        r = self.real(TASKS="t2-newpage", MODELS=HAIKU, SAMPLES="s1", E12_DEADLINE_SECS="abc")
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("09:00", r.stderr)
+        self.assertFalse(os.path.exists(self.cell_dir()))
+
+    def test_cell_gets_no_terminal_stdin(self):
+        # the stub reads stdin; with the parent's stdin an open pipe it must still see EOF (rc 1),
+        # not block (rc > 128)
+        out = os.path.join(self.tmp, "stdin.rc")
+        e = dict(os.environ, STUB_MODE="stdin", STUB_PIDFILE=out, RUN_LOOP=self.stub, E12_CLOCK="6 1200",
+                 TASKS="t2-newpage", MODELS=HAIKU, SAMPLES="s1")
+        p = subprocess.Popen(["bash", os.path.join(self.e, "run-matrix.sh")], cwd=self.repo, env=e,
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        text = p.stdout.read()
+        p.wait()
+        p.stdin.close()
+        p.stdout.close()
+        self.assertEqual(p.returncode, 0, text)
+        with open(out) as f:
+            self.assertEqual(f.read().strip(), "1")
+
+    def test_empty_fresh_lock_is_held(self):
+        os.makedirs(os.path.join(self.e, "logs", "matrix.lock"))  # holder between mkdir and its pid write
+        r = self.dry()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("matrix.lock", r.stderr)
 
     def test_stop_at_weekday_only(self):
         r = self.dry("1 0850")

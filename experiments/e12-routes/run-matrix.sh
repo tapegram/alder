@@ -55,10 +55,10 @@ preflight() {
   cmp -s "$TMP/prompt/prompt-reference.md" "$E/prompt-reference.md" || fail "$E/prompt-reference.md differs from build_context.py --reference at $commit"
   # 4. the inputs are unchanged since the pin and clean
   local names
-  names="$(git diff --name-only "$commit" -- $INPUTS)"
+  names="$(git diff --name-only "$commit" -- $INPUTS)" || fail "git diff against $commit failed"
   [ -z "$names" ] || fail "changed since $commit: $(echo $names)"
-  names="$(git status --porcelain -- $INPUTS | sed 's/^...//')"
-  [ -z "$names" ] || fail "uncommitted or untracked: $(echo $names)"
+  names="$(git status --porcelain -- $INPUTS)" || fail "git status failed"
+  [ -z "$names" ] || fail "uncommitted or untracked: $(echo $names | sed 's/^...//')"
   # 5. every requested task has its text, and T4 on its hidden tests
   local t
   for t in $TASKS; do
@@ -74,17 +74,24 @@ preflight
 
 # one matrix at a time, dry runs included
 mkdir -p "$E/logs"
+mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; }
 if ! mkdir "$E/logs/matrix.lock" 2>/dev/null; then
   other="$(cat "$E/logs/matrix.lock/pid" 2>/dev/null || true)"
-  if [ -n "$other" ] && kill -0 "$other" 2>/dev/null; then
-    echo "another run-matrix.sh (pid $other) holds $E/logs/matrix.lock" >&2
+  if [ -n "$other" ]; then
+    if kill -0 "$other" 2>/dev/null; then
+      echo "another run-matrix.sh (pid $other) holds $E/logs/matrix.lock" >&2
+      exit 2
+    fi
+  elif [ $(( $(date +%s) - $(mtime "$E/logs/matrix.lock") )) -lt 10 ]; then
+    # a holder between mkdir and writing its pid: held, not stale
+    echo "another run-matrix.sh is taking $E/logs/matrix.lock" >&2
     exit 2
   fi
   rm -rf "$E/logs/matrix.lock"
   mkdir "$E/logs/matrix.lock" 2>/dev/null || { echo "cannot take $E/logs/matrix.lock" >&2; exit 2; }
 fi
 LOCK="$E/logs/matrix.lock"
-echo $$ > "$LOCK/pid"
+echo $$ > "$LOCK/pid.tmp" && mv "$LOCK/pid.tmp" "$LOCK/pid"
 
 PROGRESS="$E/logs/matrix.progress"
 note() { echo "$(TZ=America/New_York date '+%a %F %H:%M') $*" >> "$PROGRESS"; }
@@ -101,7 +108,10 @@ stop_now() {
   [ "$u" -le 5 ] && [ $((10#$hm)) -ge $((10#$STOP_AT)) ] && [ $((10#$hm)) -lt 1700 ]
 }
 
-# seconds until the next weekday 09:00 in New York
+# seconds until the next weekday 09:00 in New York. The kill at that time reaches the claude CLI
+# (the cell's process group) but NOT children run_loop.py starts with start_new_session (alder
+# build/test, go): those can outlive the kill and finish on their own; they write nothing the
+# next invocation trusts, because the cut cell has no summary.json and is deleted and rerun.
 secs_to_nine() {
   if [ -n "${RUN_LOOP:-}" ] && [ -n "${E12_DEADLINE_SECS:-}" ]; then echo "$E12_DEADLINE_SECS"; return; fi
   python3 - <<'PY'
@@ -157,20 +167,21 @@ for s in $SAMPLES; do
       fi
       # the cell runs in its own process group under a watchdog that kills it at 09:00 on a weekday
       deadline="$(secs_to_nine)"
+      case "$deadline" in ''|*[!0-9]*) echo "cannot compute the seconds until 09:00 (got '$deadline'); refusing to run unwatched" >&2; exit 2 ;; esac
       set -m
-      "${cmd[@]}" >> "$E/logs/$label.log" 2>&1 &
+      "${cmd[@]}" </dev/null >> "$E/logs/$label.log" 2>&1 &
       pid=$!
       set +m
-      elapsed=0; killed=0
+      started="$(date +%s)"; killed=0
       while kill -0 "$pid" 2>/dev/null; do
-        if [ "$elapsed" -ge "$deadline" ]; then
+        if [ $(( $(date +%s) - started )) -ge "$deadline" ]; then
           kill -TERM -- "-$pid" 2>/dev/null
           sleep 2
           kill -KILL -- "-$pid" 2>/dev/null
           killed=1
           break
         fi
-        sleep 1; elapsed=$((elapsed + 1))
+        sleep 1
       done
       rc=0; wait "$pid" 2>/dev/null || rc=$?
       if [ "$killed" = 1 ]; then
