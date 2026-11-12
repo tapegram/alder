@@ -35,7 +35,8 @@ further tables or fields.
     badge `<span id="open" load={Open {}} every="10s">`, and lists every
     pending ticket, each with a button that sends
     `route Close { id: Ticket.TicketId }`. These buttons are on the page
-    as `Board` renders it, not inside `#recent` or `#open`.
+    as `Board` renders it, not inside `#recent` or `#open`. The badge is
+    the only element with `id="open"`.
   - `Recent`'s view is a `<section id="recent">` holding the five newest
     tickets (all of them when there are fewer; pending or closed alike),
     newest first, one `<li>` per ticket with the ticket's title as its

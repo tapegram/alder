@@ -18,7 +18,7 @@ Board.load params session =
     |> Db.all
 
 Board.view : List Ticket -> Session -> Html
-Board.view open session =
+Board.view pending session =
   <Layout.Page title="Board">
     <h1>Board</h1>
     <p>Open tickets: <span id="open" load={Open {}} every="10s">…</span></p>
@@ -26,7 +26,7 @@ Board.view open session =
     <section id="recent" load={Recent {}}>Loading…</section>
     <h2>Open</h2>
     <al-stack gap="sm">
-      {for t in open ->
+      {for t in pending ->
         <al-card>
           <p>{t.title}</p>
           <al-button variant="outline" click={Close { id: t.id }}>Close</al-button>
