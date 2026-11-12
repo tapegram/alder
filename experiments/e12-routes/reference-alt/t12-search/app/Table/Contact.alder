@@ -1,0 +1,31 @@
+module Table.Contact
+
+import Table.User
+
+type ContactId = brand Text
+
+table Contact {
+  id: ContactId @id,
+  name: Text.NonEmpty,
+  email: Text.Email,
+  owner: User.UserId @ref User @owner,
+}
+
+-- matches is whether a contact's name contains `q`, ignoring case; every name contains "".
+matches : Text -> Contact -> Bool
+matches q c = Text.contains (Text.toLower q) (Text.toLower c.name)
+
+test "matches ignores case, and the empty query matches" = {
+  let c = { id: ContactId "c", name: Text.NonEmpty "Ada Lovelace", email: Text.Email "ada@example.com", owner: User.UserId "u" }
+  Task.succeed ({ lower: matches "love" c, upper: matches "ADA" c, empty: matches "" c, other: matches "Turing" c } == { lower: True, upper: True, empty: True, other: False })
+}
+
+-- `owner` is `@ref User` with the default rule, `@restrict`: a user who still has contacts cannot
+-- be deleted, and the contacts stay.
+test "a user with contacts cannot be deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Contact { name: Text.NonEmpty "Ann", email: Text.Email "ann@example.com", owner: me }
+  let r <- Test.run (Db.delete User me)
+  let after <- Db.get Contact id
+  Task.succeed ({ deleted: Result.toMaybe r.value, contact: Maybe.map (\c -> c.name) after } == { deleted: Nothing, contact: Just (Text.NonEmpty "Ann") })
+}

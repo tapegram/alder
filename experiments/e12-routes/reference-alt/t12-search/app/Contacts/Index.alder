@@ -1,0 +1,138 @@
+module Contacts.Index
+
+import Table.User
+import Table.Contact
+import Layout
+
+route Results = GET "/contacts/results" { q: Text = "" } requires user
+route Find = GET "/contacts" { q: Text = "" } requires user
+
+-- The new contact's form is posted here; it belongs to whoever is logged in.
+route Add = POST "/contacts/new" { } form NewContact requires user
+
+form NewContact = {
+  name: Text.NonEmpty,
+  email: Text.Email,
+}
+
+type Page = { query: Text, found: List Contact }
+
+-- found reads the session user's contacts, then keeps the ones whose name matches.
+found : Text -> User.UserId -> Query (List Contact)
+found q user = {
+  let all <- Db.from Contact |> Db.where (Contact.owner.eq user) |> Db.all
+  Query.succeed (List.filter (Contact.matches q) all)
+}
+
+Results.load : Results.Params -> Session -> Query (List Contact)
+Results.load p session = found p.q session.user
+
+Results.view : List Contact -> Session -> Html
+Results.view list session =
+  <ul id="results" class="contacts">
+    {for c in list -> <li title={c.email}><span class="name">{c.name}</span></li>}
+  </ul>
+
+Find.load : Find.Params -> Session -> Query Page
+Find.load p session = {
+  let list <- found p.q session.user
+  Query.succeed { query: p.q, found: list }
+}
+
+Find.view : Page -> Session -> Html
+Find.view page session =
+  <Layout.Page title="Contacts">
+    <header>
+      <h1>My contacts</h1>
+      <button click={App.Logout}>Log out</button>
+    </header>
+    <section>
+      <label>
+        Search
+        <input type="text" name="q" autocomplete="off" value={page.query} input={Results { q: page.query }} />
+      </label>
+      {Results.view page.found session}
+    </section>
+    <section>
+      <h2>New contact</h2>
+      <form submit={Add}>
+        <Errors form />
+        <Input field="name" label="Name" />
+        <Errors field="name" />
+        <Input field="email" label="Email" />
+        <Errors field="email" />
+        <button>Save</button>
+      </form>
+    </section>
+  </Layout.Page>
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insert Contact { name: p.form.name, email: p.form.email, owner: session.user }
+  Task.succeed (Response.redirect (Find {}))
+}
+
+test "a visitor cannot search" = {
+  let a <- Test.open (Find { q: "x" })
+  let b <- Test.open (Results { q: "x" })
+  Task.succeed ([a.answer, b.answer] == [Redirected (Auth.Login.Login {}), Redirected (Auth.Login.Login {})])
+}
+
+test "typing narrows the list to the matches" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Milk Man", email: Text.Email "milk@example.com", owner: me }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Baker", email: Text.Email "baker@example.com", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Find {})
+  let r <- Test.input (Results { q: "milk" })
+  Task.succeed (Test.texts "#results li" r.doc == ["Milk Man"])
+}
+
+test "the empty query shows them all" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Milk Man", email: Text.Email "milk@example.com", owner: me }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Baker", email: Text.Email "baker@example.com", owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Find {})
+  let r <- Test.input (Results { q: "" })
+  Task.succeed ([Test.count "#results li" page.doc, Test.count "#results li" r.doc] == [2, 2])
+}
+
+test "a page opened with a query lists its matches" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Milk Man", email: Text.Email "milk@example.com", owner: me }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Baker", email: Text.Email "baker@example.com", owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Find { q: "BAK" })
+  Task.succeed (Test.texts "#results li" page.doc == ["Baker"])
+}
+
+test "only my own contacts are searched" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let you <- Db.insert User { email: Text.Email "you@example.com", name: Text.NonEmpty "You", passwordHash: "" }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Baker", email: Text.Email "baker@example.com", owner: me }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Butcher", email: Text.Email "butcher@example.com", owner: you }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Find {})
+  let r <- Test.input (Results { q: "B" })
+  Task.succeed ([Test.texts "#results li" page.doc, Test.texts "#results li" r.doc] == [["Baker"], ["Baker"]])
+}
+
+test "a contact added through the form is mine and listed" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Find {})
+  let r <- Test.submit (Add {}) { name: Text.NonEmpty "Baker", email: Text.Email "baker@example.com" }
+  let mine <- Db.from Contact |> Db.where (Contact.owner.eq me) |> Db.all
+  Task.succeed ({ answer: r.answer, listed: Test.texts "#results li" r.doc, emails: List.map (\c -> c.email) mine } == { answer: Redirected (Find {}), listed: ["Baker"], emails: [Text.Email "baker@example.com"] })
+}
+
+test "an add after logging out is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Find {})
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit (Add {}) { name: Text.NonEmpty "Baker", email: Text.Email "baker@example.com" }
+  let n <- Db.from Contact |> Db.count
+  Task.succeed ([r.answer] == [Redirected (Auth.Login.Login {})] && n == 0)
+}

@@ -68,3 +68,21 @@
   each `SURVIVORS.md`.
 - **No hidden test changed** beyond the port (7/7 on both; names `ok`; `drops` no / yes: the alt
   keeps E8's lossy migration, `0002_drop_created_change_post.sql`, dropping `User.created`).
+
+## T12 (Task 11)
+
+- **New task, nothing refused.** The language took everything the text asks for (`input=` on a
+  plain `<input name="q">`, two GET routes in `Contacts.Index`, `@owner` on `Contact.owner`), so
+  the text is the plan's names as written. The text adds two things the names leave open, both
+  to fix what the hidden tests read: the page lists its matches in its own `<ul id="results">`
+  (the element `Test.input` patches), and matching ignores case (`.contains`, chapter 8). The
+  hidden tests query in each name's own case and compare single matches or counts, so they fix
+  neither a case rule nor an order.
+- **Drafting fix before the first gate run (not a loosening).** The first draft of "an empty
+  query lists every contact" read `answer` from `Test.get`, whose result has no `answer`; it
+  now opens the page with `Test.open`. Same assertions.
+- **Mutation gap closed by a test.** Both solutions first left `Contact:… cascade ↔ restrict`
+  alive; each `Table.Contact` now has "a user with contacts cannot be deleted" (as T5's
+  `Note`). Both score 1.000 with no survivors, so neither has a `SURVIVORS.md`.
+- **verify.sh** has no expected count for `t12-search` yet (added in a later task); the hidden
+  module has 4 tests.
