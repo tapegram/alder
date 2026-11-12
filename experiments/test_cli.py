@@ -9,25 +9,6 @@ DRILL = ROOT / "testdata" / "drill"
 TASKS = pathlib.Path(__file__).resolve().parent / "tasks"
 
 
-# The t5-ownership Names block in route form, inline until the task text is ported (E12 Task 7).
-NAMES_TASK = """# T5
-
-Task.
-
-**Names.** Use exactly these names; anything not listed here is your choice.
-
-- `app/User.alder`: module `User`, `type UserId = brand Text`, and
-  `table User { id: UserId @id, email: Text.Email @unique, name: Text.NonEmpty, passwordHash: Text, created: Time @created }`.
-- `app/App.alder`: module `App`, with exactly
-  `session { user: Maybe User.UserId }` and `route Logout = DELETE "/session" { }`.
-- `app/Note.alder`: module `Note`, `type NoteId = brand Text`, and
-  `table Note { id: NoteId @id, title: Text.NonEmpty, body: Text, owner: User.UserId @ref User, created: Time @created }`.
-- `app/Notes/Index.alder`: module `Notes.Index`, `route Index = GET "/" { } requires user`.
-  `form NewNote = { title: Text.NonEmpty, body: Text }`, posted by
-  `route Add = POST "/notes" { } form NewNote requires user`.
-"""
-
-
 def drill(task):
     return (DRILL / task / "script.txt").read_text()
 
@@ -215,7 +196,7 @@ class SummaryTests(unittest.TestCase):
         self.assertTrue(p.rstrip().endswith(rl.CLI_CONTINUE))
 
     def test_names_check(self):
-        task = NAMES_TASK
+        task = (TASKS / "t5-ownership.md").read_text()
         self.assertIsNone(rl.names_check((TASKS / "t2-newpage.md").read_text(), pathlib.Path(".")))
         tmp = pathlib.Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)

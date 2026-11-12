@@ -1,0 +1,116 @@
+module Notes.Index
+
+import Note
+import User
+import Layout
+
+route Index  = GET  "/"                   { }                 requires user
+route Add    = POST "/"                   { } form NewNote    requires user
+route Delete = POST "/notes/{id}/delete"  { id: Note.NoteId } requires user
+
+type Model = { notes: List Note }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let notes <- Note.mine session.user |> Db.orderBy Note.created.desc |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+  Task.succeed (Response.redirect (Index {}))
+}
+
+Delete.update : Delete.Params -> Session -> Task Response
+Delete.update p session = {
+  let found <- Note.mine session.user |> Db.where (Note.id.eq p.id) |> Db.first
+  match found {
+    Nothing -> Task.notFound,
+    Just note -> {
+      let _ <- Db.delete Note note.id
+      Task.succeed (Response.redirect (Index {}))
+    },
+  }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Shell heading="My notes">
+    <nav><form submit={App.Logout}><button>Log out</button></form></nav>
+    {if List.isEmpty model.notes then <p class="empty">No notes yet.</p> else Html.none}
+    <ul id="notes">
+      {for note in model.notes ->
+        <li>
+          <article>
+            <h2><a class="title" href={Notes.Show.Show { id: note.id }}>{note.title}</a></h2>
+            <form submit={Delete { id: note.id }}><button>Delete</button></form>
+          </article>
+        </li>}
+    </ul>
+    <form submit={Add}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Textarea field="body" label="Text" />
+      <Errors field="body" />
+      <button>Add</button>
+    </form>
+  </Layout.Shell>
+
+test "a stranger's id, or a missing one, is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "", owner: me }
+  let stranger = User.UserId "stranger"
+  let theirs <- Test.run (Delete.update { id: id } { user: stranger })
+  let missing <- Test.run (Delete.update { id: Note.NoteId "nope" } { user: stranger })
+  let left <- Db.from Note |> Db.count
+  Task.succeed ({ theirs: theirs.value, missing: missing.value, left: left } == { theirs: Err "not found", missing: Err "not found", left: 1 })
+}
+
+test "the owner can delete" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "", owner: me }
+  let r <- Delete.update { id: id } { user: me }
+  let left <- Db.from Note |> Db.count
+  Task.succeed ({ response: r, left: left } == { response: Response.redirect (Index {}), left: 0 })
+}
+
+test "deleting one note keeps the other" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let a <- Db.insert Note { title: Text.NonEmpty "A", body: "", owner: me }
+  let b <- Db.insert Note { title: Text.NonEmpty "B", body: "", owner: me }
+  let _ <- Delete.update { id: b } { user: me }
+  let left <- Db.from Note |> Db.all
+  Task.succeed (List.map (\n -> n.id) left == [a])
+}
+
+test "the list through the browser: login required, add, newest first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let visitor <- Test.open (Index {})
+  let _ <- Db.insert Note { title: Text.NonEmpty "First", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Add {}) { title: Text.NonEmpty "Second", body: "" }
+  Task.succeed ({ visitor: visitor.answer, answer: r.answer, titles: Test.texts "#notes .title" r.doc } == { visitor: Redirected (Auth.Login.Login {}), answer: Redirected (Index {}), titles: ["Second", "First"] })
+}
+
+test "a list left open after the session ends changes nothing" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Kept", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let add <- Test.submit (Add {}) { title: Text.NonEmpty "Lost", body: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let del <- Test.click (Delete { id: id })
+  let titles <- Db.from Note |> Db.all
+  Task.succeed (add.answer == Redirected (Auth.Login.Login {}) && del.answer == Redirected (Auth.Login.Login {}) && List.map (\n -> n.title) titles == [Text.NonEmpty "Kept"])
+}

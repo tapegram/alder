@@ -1,0 +1,148 @@
+module Notes.Index
+
+import Note
+import User
+import Layout
+
+route Index  = GET    "/"           { }                              requires user
+route Add    = POST   "/notes"      { }               form NewNote requires user
+route Delete = DELETE "/notes/{id}" { id: Note.NoteId }              requires user
+
+type Model = { notes: List Note }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let notes <-
+    Db.from Note
+      |> Db.where (Note.owner.eq session.user)
+      |> Db.orderBy Note.created.desc
+      |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+  Task.succeed (Response.redirect (Index {}))
+}
+
+-- The id comes from the request, and no `load` runs before a write route: anyone can send Delete
+-- with another user's id, so it checks the owner again; a stranger's note and a missing one are
+-- both a 404.
+Delete.update : Delete.Params -> Session -> Task Response
+Delete.update p session = {
+  let found <- Note.owned p.id session.user
+  match found {
+    Just note -> {
+      let _ <- Db.delete Note note.id
+      Task.succeed (Response.redirect (Index {}))
+    },
+    Nothing -> Task.notFound,
+  }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Notes">
+    <h1>Notes</h1>
+
+    <form submit={Add}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <button>Add note</button>
+    </form>
+
+    <ul id="notes">
+      {for note in model.notes ->
+        <li>
+          <a class="title" href={Notes.Show.Show { id: note.id }}>{note.title}</a>
+          <button click={Delete { id: note.id }}>Delete</button>
+        </li>}
+    </ul>
+
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+-- My list is still open when another user logs in on it: their Delete of my note is a 404 and
+-- the note stays.
+test "deleting another user's note is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let mine <- Db.insert Note { title: Text.NonEmpty "Mine", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Just other }
+  let r <- Test.click (Delete { id: mine })
+  let left <- Db.from Note |> Db.count
+  Task.succeed ({ answer: r.answer, left: left } == { answer: PageMissing, left: 1 })
+}
+
+test "deleting a missing note is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Db.delete Note id
+  let r <- Test.click (Delete { id: id })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "the owner deletes a note through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Keep", body: "", owner: me }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let r <- Test.click (Delete { id: id })
+  let left <- Db.from Note |> Db.count
+  Task.succeed ({ answer: r.answer, titles: Test.texts "#notes .title" r.doc, left: left } == { answer: Redirected (Index {}), titles: ["Keep"], left: 1 })
+}
+
+test "the list shows only the user's notes" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Mine", body: "", owner: me }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Theirs", body: "", owner: other }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.texts "#notes .title" page.doc == ["Mine"])
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
+}
+
+test "a note added through the form is listed, newest first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Old", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Add {}) { title: Text.NonEmpty "New", body: "Text" }
+  Task.succeed ({ answer: r.answer, titles: Test.texts "#notes .title" r.doc } == { answer: Redirected (Index {}), titles: ["New", "Old"] })
+}
+
+-- The list is still open when the session loses its user: Add and Delete are sent to log in and
+-- change nothing.
+test "adding or deleting after logging out is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let added <- Test.submit (Add {}) { title: Text.NonEmpty "Bread", body: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let deleted <- Test.click (Delete { id: id })
+  let left <- Db.from Note |> Db.all
+  Task.succeed ({ added: added.answer, deleted: deleted.answer, left: List.map (\n -> n.title) left } == { added: Redirected (Auth.Login.Login {}), deleted: Redirected (Auth.Login.Login {}), left: [Text.NonEmpty "Milk"] })
+}

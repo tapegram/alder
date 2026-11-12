@@ -8,9 +8,9 @@ users on one server:
 - A note has a title and a body, and belongs to the user who wrote it.
 - `/` requires login and lists only the logged-in user's notes, each
   linking to its page, with a form to add a note.
-- Messages: add a note, and delete a note by its id.
+- Write routes: add a note, and delete a note by its id.
 - Deleting a note that belongs to another user, or that does not exist,
-  must answer 404 (`Task.notFound`).
+  must answer 404 (`Task.notFound`): nothing is deleted.
 - `/notes/{id}` requires login and shows one note. Another user's note is
   404 there too.
 - `/login` and logout, an `App` module, a `Layout` module, and a `User`
@@ -23,24 +23,26 @@ further tables or fields.
 - `app/User.alder`: module `User`, `type UserId = brand Text`, and
   `table User { id: UserId @id, email: Text.Email @unique, name: Text.NonEmpty, passwordHash: Text, created: Time @created }`.
 - `app/App.alder`: module `App`, with exactly
-  `session { user: Maybe User.UserId }`, `login = Auth.Login`, and
-  `msg Logout`, which answers `Redirect (Auth.Login {})`.
+  `session { user: Maybe User.UserId }`, `login = Auth.Login.Login`, and
+  `route Logout`, which answers `Response.redirect (Auth.Login.Login {})`.
 - `app/Note.alder`: module `Note`, `type NoteId = brand Text`, and
   `table Note { id: NoteId @id, title: Text.NonEmpty, body: Text, owner: User.UserId @ref User, created: Time @created }`.
-- `app/Notes/Index.alder`: page module `Notes.Index`, `page "/" { } requires user`.
+- `app/Notes/Index.alder`: route module `Notes.Index`,
+  `route Index = GET "/" { } requires user`.
   `form NewNote = { title: Text.NonEmpty, body: Text }`, posted by
-  `msg Add form NewNote`, which answers `Redirect (Notes.Index {})`.
-  `msg Delete { id: Note.NoteId }`, sent by a "Delete" button beside each
-  note, answers `Redirect (Notes.Index {})`. The notes are listed in an
+  `route Add form NewNote`, which answers
+  `Response.redirect (Notes.Index.Index {})`.
+  `route Delete { id: Note.NoteId }`, sent by a "Delete" button beside each
+  note, answers `Response.redirect (Notes.Index.Index {})`. The notes are listed in an
   element with `id="notes"`, one `<li>` per note; each note's link to its
   page has `class="title"` and the note's title as its whole text.
-- `app/Notes/Show.alder`: page module `Notes.Show`,
-  `page "/notes/{id}" { id: Note.NoteId } requires user`. The title is the
+- `app/Notes/Show.alder`: route module `Notes.Show`,
+  `route Show = GET "/notes/{id}" { id: Note.NoteId } requires user`. The title is the
   whole text of an element with `id="title"`, the body of one with
   `id="body"`.
-- `app/Auth/Login.alder`: page module `Auth.Login`, `page "/login" { }`, with
-  the `Password` capability, form `Credentials` and `msg Submit` as in the
-  reference.
+- `app/Auth/Login.alder`: route module `Auth.Login`,
+  `route Login = GET "/login" { }`, with the `Password` capability and
+  form `Credentials` as in the reference.
 
 Also write tests (`test "…" = …`, chapter 10) in the modules they test:
 deleting another user's note, or a missing id, is not found; the owner can

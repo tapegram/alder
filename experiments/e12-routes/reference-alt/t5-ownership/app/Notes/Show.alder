@@ -1,0 +1,42 @@
+module Notes.Show
+
+import Note
+import User
+import Layout
+
+route Show = GET "/notes/{id}" { id: Note.NoteId } requires user
+
+type Model = { note: Note }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <- Note.mine session.user |> Db.where (Note.id.eq params.id) |> Db.first
+  match found {
+    Nothing -> Query.notFound,
+    Just note -> Query.succeed { note: note },
+  }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Shell heading="Note">
+    <section>
+      <h2 id="title">{model.note.title}</h2>
+      <div id="body">{model.note.body}</div>
+    </section>
+    <a href={Notes.Index.Index {}}>Back to my notes</a>
+    <form submit={App.Logout}><button>Log out</button></form>
+  </Layout.Shell>
+
+test "a note's page shows that note, to its owner only" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let you <- Db.insert User { email: Text.Email "you@example.com", name: Text.NonEmpty "You", passwordHash: "" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "One", body: "1", owner: me }
+  let two <- Db.insert Note { title: Text.NonEmpty "Two", body: "2", owner: me }
+  let visitor <- Test.open (Show { id: two })
+  let _ <- Test.login { user: Just you }
+  let stranger <- Test.open (Show { id: two })
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Show { id: two })
+  Task.succeed ({ visitor: visitor.answer, stranger: stranger.answer, title: Test.text "#title" page.doc, body: Test.text "#body" page.doc } == { visitor: Redirected (Auth.Login.Login {}), stranger: PageMissing, title: Just "Two", body: Just "2" })
+}

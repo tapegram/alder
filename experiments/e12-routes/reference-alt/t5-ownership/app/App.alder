@@ -1,0 +1,37 @@
+module App
+
+import User
+import Layout
+
+session { user: Maybe User.UserId }
+
+login = Auth.Login.Login
+
+route Logout = POST "/logout" { }
+
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
+}
+
+error : Error -> Html
+error err = <Layout.Shell heading="Something went wrong"><p>Please try again.</p></Layout.Shell>
+
+notFound : Html
+notFound = <Layout.Shell heading="Not found"><p>There is nothing here.</p></Layout.Shell>
+
+-- The Log out buttons are all on pages that require a user, where a refresh would land on the
+-- login page as well; only the Response itself shows the redirect.
+test "Logout empties the session and redirects to the login page" = {
+  let r <- Test.run (Logout.update {} { user: Just (User.UserId "u") })
+  Task.succeed (r.value == Ok (Response.redirect (Auth.Login.Login {})) && r.trace == ["Session.put"])
+}
+
+test "Logout through the button ends at the login page, signed out" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index.Index {})
+  let r <- Test.click Logout
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}) && r.session.user == Nothing)
+}
