@@ -146,3 +146,32 @@
   close button, newest first" now fixes that order. Both score 1.000, no `SURVIVORS.md`.
 - **verify.sh** has no expected count for `t14-board` yet (added in a later task); the hidden
   module has 3 tests.
+
+## T15 (Task 14)
+
+- **New task, nothing refused.** The language took everything the text asks for (`@unique` on
+  `Item.name`, set up by the hidden tests with two `Db.insert`s of different names; two GET
+  routes in `Pantry.Index`; a per-row form posted by `Rename { id }`), so the Names block is the
+  plan's names as written. The text adds what the hidden tests read and the names leave open:
+  the `<ul id="items">`'s children are exactly the items' `<li>`s, the `.name`/`.quantity`
+  elements (quantity as digits only) are the only ones of their class in the list, and the
+  `<li>` holds the rename form and the `click={Bump …}`/`click={Remove …}` buttons that
+  `Test.submit`/`Test.click` need. Rows are found by their fixed id (`#item-…`), so no hidden
+  test depends on the list's order, which stays the model's choice.
+- **Drafting fix before the first gate run (not a loosening).** The first draft counted
+  `"#items li"`, which also counted the `<li>` of `<Errors form />`'s message list after a
+  refused rename (3 instead of 2); it now counts `"#items > li"`, the children the text fixes.
+- **No message check in the hidden tests.** `FormRejected` carries the errors the page shows,
+  so the message is there only when the row's form has `<Errors form />` (W0005 warns without
+  it). The hidden test checks `FormRejected _`, status 422, the stored row and the shown name;
+  both solutions check the exact `[{ field: "", message: "name already taken" }]` themselves.
+- **Toasts need no `<al-toasts>` for the test.** `r.notices` is `["Removed"]` with the alt's
+  layout, which has no `<al-toasts>` region (the reference's has one).
+- **Mutation gap closed by a test.** The alt first left `Table.Item nameTakenBy:14 where
+  dropped` alive (its `Db.first` then returned the first row, which happened to be the item
+  itself or the holder); a fourth case (a free name asked for the second item) kills it. Both
+  solutions score 1.000 (14/14, 15/15) with no survivors, so neither has a `SURVIVORS.md`.
+- Hidden 4/4 on both, names `ok`. Probes on the reference: `Bump` answering `refresh` fails
+  only "bump adds one…"; `Remove` without the toast fails only "remove refreshes…"; `Rename`
+  without the check fails only "renaming to a taken name…". **verify.sh** has no expected
+  count for `t15-pantry` yet (added later); the hidden module has 4 tests.

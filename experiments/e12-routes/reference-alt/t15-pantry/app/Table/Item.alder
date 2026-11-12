@@ -1,0 +1,41 @@
+module Table.Item
+
+type ItemId = brand Text
+
+table Item {
+  id: ItemId @id,
+  name: Text.NonEmpty @unique,
+  quantity: Int,
+}
+
+-- Whether an item other than `id` is called `name`.
+nameTakenBy : ItemId -> Text.NonEmpty -> Query Bool
+nameTakenBy id name = {
+  let holder <- Db.from Item |> Db.where (Item.name.eq name) |> Db.first
+  Query.succeed (match holder {
+    Just other -> other.id != id,
+    Nothing -> False,
+  })
+}
+
+-- The shelf: the most plentiful first, ties by name.
+shelf : Query (List Item)
+shelf = Db.from Item |> Db.orderBy Item.quantity.desc |> Db.orderBy Item.name.asc |> Db.all
+
+test "a name is taken only by another item" = {
+  let rice <- Db.insert Item { name: Text.NonEmpty "Rice", quantity: 1 }
+  let beans <- Db.insert Item { name: Text.NonEmpty "Beans", quantity: 1 }
+  let byOther <- nameTakenBy beans (Text.NonEmpty "Rice")
+  let byItself <- nameTakenBy rice (Text.NonEmpty "Rice")
+  let free <- nameTakenBy rice (Text.NonEmpty "Lentils")
+  let freeForBeans <- nameTakenBy beans (Text.NonEmpty "Lentils")
+  Task.succeed ({ byOther: byOther, byItself: byItself, free: free, freeForBeans: freeForBeans } == { byOther: True, byItself: False, free: False, freeForBeans: False })
+}
+
+test "the shelf puts the most plentiful first, ties by name" = {
+  let _ <- Db.insert Item { name: Text.NonEmpty "Salt", quantity: 1 }
+  let _ <- Db.insert Item { name: Text.NonEmpty "Flour", quantity: 4 }
+  let _ <- Db.insert Item { name: Text.NonEmpty "Beans", quantity: 1 }
+  let items <- shelf
+  Task.succeed (List.map (\i -> i.name) items == [Text.NonEmpty "Flour", Text.NonEmpty "Beans", Text.NonEmpty "Salt"])
+}

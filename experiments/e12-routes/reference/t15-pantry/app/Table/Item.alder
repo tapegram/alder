@@ -1,0 +1,11 @@
+module Table.Item
+
+type ItemId = brand Text
+
+-- One thing on the pantry's shelves. Items are added outside the app; the app renames, counts
+-- and removes them. No two items share a name.
+table Item {
+  id: ItemId @id,
+  name: Text.NonEmpty @unique,
+  quantity: Int,
+}

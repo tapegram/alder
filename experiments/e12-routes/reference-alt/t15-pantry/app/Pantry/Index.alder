@@ -1,0 +1,151 @@
+module Pantry.Index
+
+import Table.Item
+import Layout
+
+route Index  = GET  "/pantry"                   { }
+route Row    = GET  "/pantry/{id}"              { id: Item.ItemId }
+route Rename = PUT  "/pantry/{id}"              { id: Item.ItemId } form NewName
+route Bump   = POST "/pantry/{id}/bump"         { id: Item.ItemId }
+route Remove = POST "/pantry/{id}/remove"       { id: Item.ItemId }
+
+form NewName = { name: Text.NonEmpty }
+
+Index.load : Index.Params -> Session -> Query (List Item)
+Index.load params session = Item.shelf
+
+Index.view : List Item -> Session -> Html
+Index.view items session =
+  <Layout.Page title="Pantry">
+    <h1>What's in the pantry</h1>
+    <al-card>
+      <ul id="items" class="shelf">{for i in items -> Row.view i session}</ul>
+    </al-card>
+  </Layout.Page>
+
+Row.load : Row.Params -> Session -> Query Item
+Row.load params session = {
+  let item <- Db.get Item params.id
+  match item {
+    Nothing -> Query.notFound,
+    Just i -> Query.succeed i,
+  }
+}
+
+Row.view : Item -> Session -> Html
+Row.view i session =
+  <li id={"item-" ++ i.id} class="item">
+    <al-stack gap="sm">
+      <div>
+        <strong class="name">{i.name}</strong> ×
+        <b class="quantity">{Text.fromInt i.quantity}</b>
+      </div>
+      <div>
+        <al-button click={Bump { id: i.id }}>One more</al-button>
+        <al-button variant="destructive" click={Remove { id: i.id }}>Remove</al-button>
+      </div>
+      <details>
+        <summary>Rename</summary>
+        <form submit={Rename { id: i.id }}>
+          <Errors form />
+          <al-input field="name" label="Name" />
+          <al-button type="submit">Save</al-button>
+        </form>
+      </details>
+    </al-stack>
+  </li>
+
+Rename.update : Rename.Params -> Session -> Task Response
+Rename.update p session = {
+  let taken <- Item.nameTakenBy p.id p.form.name
+  if taken then Task.succeed (Response.invalid "name already taken")
+  else {
+    let _ <- Db.update Item p.id (\i -> { i | name: p.form.name })
+    Task.succeed (Response.redirect (Index {}))
+  }
+}
+
+-- A button held on a page whose item was removed since: 404, nothing written.
+Bump.update : Bump.Params -> Session -> Task Response
+Bump.update p session = {
+  let item <- Db.get Item p.id
+  match item {
+    Nothing -> Task.notFound,
+    Just i -> {
+      let _ <- Db.update Item p.id (\row -> { row | quantity: i.quantity + 1 })
+      Task.succeed (Response.render (Row { id: p.id }))
+    },
+  }
+}
+
+Remove.update : Remove.Params -> Session -> Task Response
+Remove.update p session = {
+  let _ <- Db.delete Item p.id
+  Task.succeed (Response.toast "Removed" Response.refresh)
+}
+
+test "each row shows its item's name and quantity" = {
+  let flour <- Db.insert Item { name: Text.NonEmpty "Flour", quantity: 4 }
+  let _ <- Db.insert Item { name: Text.NonEmpty "Salt", quantity: 1 }
+  let r <- Test.get (Index {})
+  Task.succeed ({ rows: Test.count "#items > li" r.doc, name: Test.text ("#item-" ++ flour ++ " .name") r.doc, quantities: Test.texts ".quantity" r.doc } == { rows: 2, name: Just "Flour", quantities: ["4", "1"] })
+}
+
+test "the row route answers the item's li, or 404" = {
+  let flour <- Db.insert Item { name: Text.NonEmpty "Flour", quantity: 4 }
+  let gone <- Db.insert Item { name: Text.NonEmpty "Gone", quantity: 1 }
+  let _ <- Db.delete Item gone
+  let r <- Test.get (Row { id: flour })
+  let missing <- Test.open (Row { id: gone })
+  Task.succeed ({ quantity: Test.text ("#item-" ++ flour ++ " .quantity") r.doc, missing: missing.answer } == { quantity: Just "4", missing: PageMissing })
+}
+
+test "a taken name is refused with a message, nothing renamed" = {
+  let _ <- Db.insert Item { name: Text.NonEmpty "Flour", quantity: 4 }
+  let salt <- Db.insert Item { name: Text.NonEmpty "Salt", quantity: 1 }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Rename { id: salt }) { name: Text.NonEmpty "Flour" }
+  let names <- Db.from Item |> Db.orderBy Item.name.asc |> Db.all
+  Task.succeed ({ answer: r.answer, names: List.map (\i -> i.name) names } == { answer: FormRejected [{ field: "", message: "name already taken" }], names: [Text.NonEmpty "Flour", Text.NonEmpty "Salt"] })
+}
+
+test "a free name is stored and the pantry shown again" = {
+  let salt <- Db.insert Item { name: Text.NonEmpty "Salt", quantity: 1 }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Rename { id: salt }) { name: Text.NonEmpty "Sea salt" }
+  Task.succeed ({ answer: r.answer, names: Test.texts ".name" r.doc } == { answer: Redirected (Index {}), names: ["Sea salt"] })
+}
+
+test "renaming to the same name is fine" = {
+  let salt <- Db.insert Item { name: Text.NonEmpty "Salt", quantity: 1 }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Rename { id: salt }) { name: Text.NonEmpty "Salt" }
+  Task.succeed (r.answer == Redirected (Index {}))
+}
+
+test "one more renders the row with the new quantity" = {
+  let salt <- Db.insert Item { name: Text.NonEmpty "Salt", quantity: 1 }
+  let flour <- Db.insert Item { name: Text.NonEmpty "Flour", quantity: 4 }
+  let _ <- Test.get (Index {})
+  let r <- Test.click (Bump { id: salt })
+  let stored <- Db.get Item salt
+  let other <- Db.get Item flour
+  Task.succeed ({ answer: r.answer, shown: Test.text ("#item-" ++ salt ++ " .quantity") r.doc, stored: Maybe.map (\i -> i.quantity) stored, other: Maybe.map (\i -> i.quantity) other } == { answer: Rendered (Row { id: salt }), shown: Just "2", stored: Just 2, other: Just 4 })
+}
+
+test "one more on an item removed since the page loaded is not found" = {
+  let salt <- Db.insert Item { name: Text.NonEmpty "Salt", quantity: 1 }
+  let _ <- Test.get (Index {})
+  let _ <- Db.delete Item salt
+  let r <- Test.click (Bump { id: salt })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "remove drops the item, refreshes and toasts" = {
+  let salt <- Db.insert Item { name: Text.NonEmpty "Salt", quantity: 1 }
+  let flour <- Db.insert Item { name: Text.NonEmpty "Flour", quantity: 4 }
+  let _ <- Test.get (Index {})
+  let r <- Test.click (Remove { id: salt })
+  let left <- Db.from Item |> Db.count
+  Task.succeed ({ answer: r.answer, notices: r.notices, salt: Test.has ("#item-" ++ salt) r.doc, flour: Test.has ("#item-" ++ flour) r.doc, left: left } == { answer: Refreshed, notices: ["Removed"], salt: False, flour: True, left: 1 })
+}
