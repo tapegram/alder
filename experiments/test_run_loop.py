@@ -1077,6 +1077,24 @@ class NamesTest(unittest.TestCase):
         self.assertIn("route Contacts.Index.Results (GET /contacts/results)", r["matches"])
         self.assertTrue(r["ok"], r)
 
+    def test_names_check_named_get_route_path(self):
+        task = ("Task.\n\n**Names.** Use these.\n\n"
+                '- `app/Pantry/Index.alder`: module `Pantry.Index`, `route Index = GET "/pantry" { }` and '
+                '`route Row = GET "/pantry/items/{id}" { id: Item.ItemId }`.\n')
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (tmp / "app" / "Pantry").mkdir(parents=True)
+        f = tmp / "app" / "Pantry" / "Index.alder"
+        f.write_text('module Pantry.Index\n\nroute Index = GET "/pantry" { }\nroute Row = GET "/pantry/{id}" { id: Item.ItemId }\n')
+        r = rl.names_check(task, tmp)
+        self.assertFalse(r["ok"])
+        self.assertIn("route Pantry.Index.Row: /pantry/{id}", r["mismatches"])
+        self.assertIn("page Pantry.Index /pantry", r["matches"])
+        f.write_text('module Pantry.Index\n\nroute Index = GET "/pantry" { }\n')
+        self.assertIn("route Pantry.Index.Row: missing", rl.names_check(task, tmp)["mismatches"])
+        f.write_text('module Pantry.Index\n\nroute Index = GET "/pantry" { }\nroute Row = GET "/pantry/items/{id}" { id: Item.ItemId }\n')
+        self.assertTrue(rl.names_check(task, tmp)["ok"])
+
     def test_names_in_files_summary(self):
         exp = pathlib.Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, exp, True)

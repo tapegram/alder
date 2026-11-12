@@ -1320,7 +1320,7 @@ def names_check(task_text: str, app_dir: pathlib.Path):
     "mismatches"}, or None for a task without one. Tables and their columns (`name: Type`, the type as
     written, attributes and defaults dropped) and the session must be exactly the block's; each named
     page must have its path (any GET route of the module with it will do), and its named routes (by name;
-    the app's method and path are reported) and forms must exist."""
+    a named GET route must have its path too; the app's method and path are reported) and forms must exist."""
     want = task_names(task_text)
     if want is None:
         return None
@@ -1336,13 +1336,19 @@ def names_check(task_text: str, app_dir: pathlib.Path):
         paths = {r["path"] for r in got["routes"].get(mod, {}).values() if r["get"]} | ({got["pages"][mod]} if mod in got["pages"] else set())
         g = path if path in paths else got["pages"].get(mod)
         (ok if path in paths else bad).append(f"page {mod} {path}" + ("" if path in paths else f": {g or 'missing'}"))
-    for mod, routes in sorted(want["routes"].items()):
+    wroutes = {mod: dict(r) for mod, r in want["routes"].items()}
+    for mod, nm in want["page_names"].items():   # a module's first GET route is held as its page: it is a named route too
+        wroutes.setdefault(mod, {})[nm] = {"method": "GET", "path": want["pages"][mod], "get": True}
+    for mod, routes in sorted(wroutes.items()):
         for nm in sorted(routes):
+            w = routes[nm]
             app_route = got["routes"].get(mod, {}).get(nm)
             if app_route is None and nm == got["page_names"].get(mod):   # the module's first GET route is held as its page
                 app_route = {"method": "GET", "path": got["pages"][mod]}
             if app_route is None:
                 bad.append(f"route {mod}.{nm}: missing")
+            elif w["get"] and w["path"] is not None and (app_route["method"], app_route["path"]) != ("GET", w["path"]):
+                bad.append(f"route {mod}.{nm}: {app_route['path']}")   # a named GET route keeps its path
             else:
                 ok.append(f"route {mod}.{nm}" + (f" ({app_route['method']} {app_route['path']})" if app_route["method"] else ""))
     for mod, names in sorted(want["forms"].items()):
