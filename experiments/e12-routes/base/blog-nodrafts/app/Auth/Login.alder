@@ -1,0 +1,48 @@
+module Auth.Login
+
+import User
+import Layout
+
+-- Password checking is outside the language: a capability implemented in Go.
+capability Password {
+  verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
+}
+
+route Login  = GET  "/login"   { }
+route Submit = POST "/session" { } form Credentials
+
+type Model = { }
+
+Login.load : Login.Params -> Session -> Query Model
+Login.load params session = Query.succeed { }
+
+form Credentials = {
+  email: Text.Email,
+  password: Text.Secret,
+}
+
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = {
+  let found <- Password.verify { email: p.form.email, password: p.form.password }
+  match found {
+    Just id -> {
+      let _ <- Session.put (\s -> { s | user: Just id })
+      Task.succeed (Response.redirect (Posts.Index.Index {}))
+    },
+    Nothing -> Task.succeed (Response.invalid "Email or password is incorrect."),
+  }
+}
+
+Login.view : Model -> Session -> Html
+Login.view model session =
+  <Layout.Page title="Log in">
+    <h1>Log in</h1>
+    <form submit={Submit}>
+      <Errors form />
+      <Input field="email" label="Email" />
+      <Errors field="email" />
+      <Input field="password" label="Password" />
+      <Errors field="password" />
+      <button>Log in</button>
+    </form>
+  </Layout.Page>
