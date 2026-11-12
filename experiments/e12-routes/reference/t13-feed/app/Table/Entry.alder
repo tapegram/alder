@@ -1,0 +1,10 @@
+module Table.Entry
+
+type EntryId = brand Text
+
+-- One line of the feed; `created` orders it, newest first.
+table Entry {
+  id: EntryId @id,
+  text: Text.NonEmpty,
+  created: Time @created,
+}

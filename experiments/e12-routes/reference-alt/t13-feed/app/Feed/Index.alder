@@ -1,0 +1,107 @@
+module Feed.Index
+
+import Table.Entry
+import Layout
+
+route Index = GET  "/feed"         { }
+route More  = GET  "/feed/more"    { after: Int }
+route Post  = POST "/feed/entries" { } form NewEntry
+
+-- `entries` are the ones after the first `from`; `next` is what the sentinel asks for, if
+-- anything is left.
+type Chunk = { from: Int, entries: List Entry, next: Maybe Int }
+
+chunk : Int -> Query Chunk
+chunk from = {
+  let entries <- Entry.slice from 10
+  let upTo = from + List.length entries
+  let more <- Entry.anyAfter upTo
+  Query.succeed { from: from, entries: entries, next: if more then Just upTo else Nothing }
+}
+
+anchor : Int -> Text
+anchor n = "after-" ++ Text.fromInt n
+
+-- Without JavaScript the sentinel never fires, so it says what it is waiting for.
+viewChunk : Chunk -> List Html
+viewChunk c = [
+  <ol class="feed">
+    {for e in c.entries -> <li class="entry">{e.text}</li>}
+  </ol>,
+  match c.next {
+    Just n -> <p id={anchor n} class="sentinel" intersect={More { after: n }}>Loading older entries…</p>,
+    Nothing -> Html.none,
+  },
+]
+
+Index.load : Index.Params -> Session -> Query Chunk
+Index.load params session = chunk 0
+
+Index.view : Chunk -> Session -> Html
+Index.view c session =
+  <Layout.Page title="Activity">
+    <h1>Activity</h1>
+    <al-card>
+      <form submit={Post}>
+        <Errors form />
+        <Textarea field="text" label="New entry" />
+        <Errors field="text" />
+        <button>Post entry</button>
+      </form>
+    </al-card>
+    <section id="feed">{viewChunk c}</section>
+  </Layout.Page>
+
+More.load : More.Params -> Session -> Query Chunk
+More.load params session = chunk params.after
+
+More.view : Chunk -> Session -> Html
+More.view c session = <section id={anchor c.from}>{viewChunk c}</section>
+
+form NewEntry = { text: Text.NonEmpty }
+
+Post.update : Post.Params -> Session -> Task Response
+Post.update p session = {
+  let _ <- Db.insert Entry { text: p.form.text }
+  Task.succeed (Response.redirect (Index {}))
+}
+
+-- n entries, "e1" the oldest, a second apart (the clock stands still once set).
+seed : List Text.NonEmpty -> Task (List Entry.EntryId)
+seed texts = {
+  let _ <- Test.setClock (Time.fromMillis 1767225600000)
+  Task.all (List.map (\t -> {
+    let _ <- Test.advance 1000
+    Db.insert Entry { text: t }
+  }) texts)
+}
+
+test "scrolling twice through 25 entries shows each once, newest first, and stops" = {
+  let _ <- seed (List.map (\i -> Text.NonEmpty ("e" ++ Text.fromInt i)) (List.range 1 25))
+  let page <- Test.get (Index {})
+  let _ <- Test.intersect (More { after: 10 })
+  let last <- Test.intersect (More { after: 20 })
+  let expected = List.map (\i -> "e" ++ Text.fromInt i) (List.reverse (List.range 1 25))
+  Task.succeed ({ page: Test.texts ".entry" page.doc, last: Test.texts ".entry" last.doc, sentinels: Test.count ".sentinel" last.doc } == { page: List.take 10 expected, last: expected, sentinels: 0 })
+}
+
+test "a feed of exactly ten entries has no sentinel" = {
+  let _ <- seed (List.map (\i -> Text.NonEmpty ("e" ++ Text.fromInt i)) (List.range 1 10))
+  let page <- Test.get (Index {})
+  Task.succeed ({ entries: Test.count ".entry" page.doc, sentinels: Test.count ".sentinel" page.doc } == { entries: 10, sentinels: 0 })
+}
+
+test "eleven entries leave one for the scroll" = {
+  let _ <- seed (List.map (\i -> Text.NonEmpty ("e" ++ Text.fromInt i)) (List.range 1 11))
+  let page <- Test.get (Index {})
+  let more <- Test.intersect (More { after: 10 })
+  Task.succeed ({ sentinel: Test.has "#after-10" page.doc, entries: Test.texts ".entry" more.doc, sentinels: Test.count ".sentinel" more.doc } == { sentinel: True, entries: ["e11", "e10", "e9", "e8", "e7", "e6", "e5", "e4", "e3", "e2", "e1"], sentinels: 0 })
+}
+
+test "posting an entry puts it first" = {
+  let _ <- seed [Text.NonEmpty "older", Text.NonEmpty "old"]
+  let _ <- Test.advance 1000
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Post {}) { text: Text.NonEmpty "new" }
+  Task.succeed ({ answer: r.answer, entries: Test.texts ".entry" r.doc } == { answer: Redirected (Index {}), entries: ["new", "old", "older"] })
+}

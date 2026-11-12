@@ -1,0 +1,27 @@
+module Table.Entry
+
+type EntryId = brand Text
+
+table Entry {
+  id: EntryId @id,
+  text: Text.NonEmpty,
+  created: Time @created,
+}
+
+-- The newest entries first, skipping the first `skip` of them.
+newestFrom : Int -> Select Entry
+newestFrom skip = Db.from Entry |> Db.orderBy Entry.created.desc |> Db.offset skip
+
+-- Up to `n` entries after the first `skip`, newest first.
+slice : Int -> Int -> Query (List Entry)
+slice skip n = newestFrom skip |> Db.limit n |> Db.all
+
+-- Whether any entry comes after the first `skip`.
+anyAfter : Int -> Query Bool
+anyAfter skip = {
+  let next <- newestFrom skip |> Db.first
+  Query.succeed (match next {
+    Just _ -> True,
+    Nothing -> False,
+  })
+}

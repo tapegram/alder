@@ -1,0 +1,151 @@
+module Feed.Index
+
+import Table.Entry
+import Layout
+
+route Index = GET  "/feed"      { }
+route More  = GET  "/feed/more" { after: Int }
+route Post  = POST "/feed"      { } form NewEntry
+
+-- Entries a page.
+pageSize : Int
+pageSize = 10
+
+-- One page of the feed: the entries after the first `after`, newest first, and how many entries
+-- there are in all.
+type Page = { after: Int, entries: List Entry, total: Int }
+
+onePage : Int -> Query Page
+onePage after = {
+  let rows <-
+    Db.from Entry
+      |> Db.orderBy Entry.created.desc
+      |> Db.offset after
+      |> Db.limit pageSize
+      |> Db.all
+  let total <- Db.from Entry |> Db.count
+  Query.succeed { after: after, entries: rows, total: total }
+}
+
+-- The number of entries shown once this page is on screen.
+shown : Page -> Int
+shown p = p.after + List.length p.entries
+
+sentinelId : Int -> Text
+sentinelId after = "more-" ++ Text.fromInt after
+
+-- The element that asks for the entries after this page; none after the last entry.
+sentinel : Page -> Html
+sentinel p =
+  if shown p < p.total then <div id={sentinelId (shown p)} intersect={More { after: shown p }}></div>
+  else Html.none
+
+entryList : Page -> Html
+entryList p = <ul class="entries">{for e in p.entries -> <li>{e.text}</li>}</ul>
+
+Index.load : Index.Params -> Session -> Query Page
+Index.load params session = onePage 0
+
+Index.view : Page -> Session -> Html
+Index.view p session =
+  <Layout.Page title="Feed">
+    <h1>Feed</h1>
+
+    <form submit={Post}>
+      <Errors form />
+      <Input field="text" label="What happened?" />
+      <Errors field="text" />
+      <button>Post</button>
+    </form>
+
+    {entryList p}
+    {sentinel p}
+  </Layout.Page>
+
+More.load : More.Params -> Session -> Query Page
+More.load params session = onePage params.after
+
+-- Replaces the sentinel that asked for it (same `id`) with the next entries and the next sentinel.
+More.view : Page -> Session -> Html
+More.view p session =
+  <div id={sentinelId p.after}>
+    {entryList p}
+    {sentinel p}
+  </div>
+
+form NewEntry = {
+  text: Text.NonEmpty,
+}
+
+Post.update : Post.Params -> Session -> Task Response
+Post.update p session = {
+  let _ <- Db.insert Entry { text: p.form.text }
+  Task.succeed (Response.redirect (Index {}))
+}
+
+-- Inserts the texts in order, oldest first, a second apart (the clock set, then advanced before
+-- each insert), so every entry's `created` differs. The texts are made in the tests: a brand
+-- constructor is only allowed inside a `test`.
+insertAll : List Text.NonEmpty -> Task (List Entry.EntryId)
+insertAll texts = {
+  let _ <- Test.setClock (Time.fromMillis 1772582400000)
+  Task.all (List.map (\t -> {
+    let _ <- Test.advance 1000
+    Db.insert Entry { text: t }
+  }) texts)
+}
+
+-- "Entry n" … "Entry 1": the feed of n entries, newest first.
+newestFirst : Int -> List Text
+newestFirst n = List.map (\i -> "Entry " ++ Text.fromInt (n + 1 - i)) (List.range 1 n)
+
+test "the first page shows the ten newest and asks for the rest" = {
+  let _ <- insertAll (List.map (\i -> Text.NonEmpty ("Entry " ++ Text.fromInt i)) (List.range 1 25))
+  let r <- Test.get (Index {})
+  Task.succeed ({ texts: Test.texts "li" r.doc, sentinel: Test.has "#more-10[data-on-intersect__once]" r.doc } == { texts: List.take 10 (newestFirst 25), sentinel: True })
+}
+
+test "scrolling twice through 25 entries shows each once, newest first, and stops" = {
+  let _ <- insertAll (List.map (\i -> Text.NonEmpty ("Entry " ++ Text.fromInt i)) (List.range 1 25))
+  let _ <- Test.get (Index {})
+  let second <- Test.intersect (More { after: 10 })
+  let r <- Test.intersect (More { after: 20 })
+  Task.succeed ({ second: Test.texts "li" second.doc, texts: Test.texts "li" r.doc, sentinel: Test.has "[data-on-intersect__once]" r.doc } == { second: List.take 20 (newestFirst 25), texts: newestFirst 25, sentinel: False })
+}
+
+test "a feed of exactly ten entries has no sentinel" = {
+  let _ <- insertAll (List.map (\i -> Text.NonEmpty ("Entry " ++ Text.fromInt i)) (List.range 1 10))
+  let r <- Test.get (Index {})
+  Task.succeed ({ rows: Test.count "li" r.doc, sentinel: Test.has "[data-on-intersect__once]" r.doc } == { rows: 10, sentinel: False })
+}
+
+test "a feed of exactly twenty entries stops after one scroll" = {
+  let _ <- insertAll (List.map (\i -> Text.NonEmpty ("Entry " ++ Text.fromInt i)) (List.range 1 20))
+  let _ <- Test.get (Index {})
+  let r <- Test.intersect (More { after: 10 })
+  Task.succeed ({ texts: Test.texts "li" r.doc, sentinel: Test.has "[data-on-intersect__once]" r.doc } == { texts: newestFirst 20, sentinel: False })
+}
+
+test "an empty feed shows no entries and no sentinel" = {
+  let r <- Test.get (Index {})
+  Task.succeed ({ rows: Test.count "li" r.doc, sentinel: Test.has "[data-on-intersect__once]" r.doc } == { rows: 0, sentinel: False })
+}
+
+test "posting an entry puts it first" = {
+  let _ <- insertAll (List.map (\i -> Text.NonEmpty ("Entry " ++ Text.fromInt i)) (List.range 1 3))
+  let _ <- Test.advance 1000
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Post {}) { text: Text.NonEmpty "Newest" }
+  Task.succeed ({ answer: r.answer, texts: Test.texts "li" r.doc } == { answer: Redirected (Index {}), texts: ["Newest", "Entry 3", "Entry 2", "Entry 1"] })
+}
+
+test "an empty entry is refused and not stored" = {
+  let _ <- Test.get (Index {})
+  let r <- Test.submitRaw (Post {}) [{ name: "text", value: "" }]
+  let stored <- Db.from Entry |> Db.count
+  let rejected = match r.answer {
+    FormRejected errors -> List.any (\e -> e.field == "text") errors,
+    _ -> False,
+  }
+  Task.succeed ({ rejected: rejected, stored: stored } == { rejected: True, stored: 0 })
+}

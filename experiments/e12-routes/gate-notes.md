@@ -86,3 +86,30 @@
   `Note`). Both score 1.000 with no survivors, so neither has a `SURVIVORS.md`.
 - **verify.sh** has no expected count for `t12-search` yet (added in a later task); the hidden
   module has 4 tests.
+
+## T13 (Task 12)
+
+- **The cursor is `More { after: Int }`, the number of entries already shown (user's ruling).**
+  The spec's T13 bullet left the cursor's type to the model (`More { before: … }`, an `Int`
+  offset or a key). But `Test.intersect r` finds the element on the held page that requests
+  exactly `r`, so a hidden test must construct the very route value the page's sentinel asks
+  for, which it cannot do for a type it does not know. Under the spec's rule for "a behaviour …
+  the test cannot set up", the Names block fixes `route More = GET "/feed/more" { after: Int }`
+  and says the first sentinel asks for `More { after: 10 }`, as chapter 6's `Feed` does. The
+  alternative (drop the scroll test, record the cursor choice as a signal only) was declined:
+  the scroll steps are the point of the task. The cost: the cursor's design is no longer the
+  model's choice, so a keyset cursor (robust to entries posted between scrolls) is not
+  observable in E12; offset paging, which the fixed cursor implies, repeats an entry when one is
+  posted between scrolls, so no hidden test posts between scrolls.
+- **Brand constructors only inside a `test`.** The hidden module's helper `insertAll` takes the
+  texts as `Text.NonEmpty` values made in each test (`Text.NonEmpty (…)` in a top-level helper is
+  E0011); the clock is set, then advanced a second before each insert, so `created` differs.
+- **An equivalent mutant designed out of the reference.** The first reference read one row past
+  the page (`Db.limit (pageSize + 1)`) to decide on the sentinel; dropping that limit is
+  invisible to any test (the page is still `List.take 10`), scoring 5/6. The reference was
+  rewritten (not trimmed) to count the table instead; `Db.limit pageSize` is then killed. Both
+  solutions now score 1.000 with no survivors. The alt decides with `Db.first` at the next
+  offset, in `Table.Entry`, with `<ol>`, a `<p>` sentinel and the design system's layout.
+- **No language refusal changed the text.** Hidden 3/3 on both solutions, names `ok`. Probes: a
+  `More` whose offset is one short fails "two scrolls…" and "no entry repeats"; an
+  oldest-first feed fails "no entry repeats" and "posting an entry puts it first".
