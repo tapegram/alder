@@ -31,8 +31,10 @@ further tables or fields.
   `route Results = GET "/contacts/results" { q: Text = "" } requires user`,
   the matching contacts alone. `Results`'s view is a `<ul id="results">`
   with one `<li>` per matching contact, the contact's name its whole
-  text; the page lists its matches the same way, in a
-  `<ul id="results">`. The search field has `name="q"` and
+  text, and no other `<li>` (no item saying nothing matched). The page
+  lists its matches the same way, in its own `<ul id="results">`: filled
+  with the matches for `q`, not left empty as in chapter 6's `Search`
+  pattern. The search field has `name="q"` and
   `input={Results { q: … }}` (chapter 6, "Search as you type").
   `form NewContact = { name: Text.NonEmpty, email: Text.Email }`, posted by
   `route Add form NewContact`, adds a contact for the logged-in user and
