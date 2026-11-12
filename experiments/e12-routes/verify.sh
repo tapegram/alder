@@ -169,7 +169,7 @@ for task in "${TASKS[@]}"; do
       own="$p/$((p + f))"
     fi
 
-    names=$(names_cell "$task" "$dir/app")
+    names=$(names_cell "$task" "$dir")
     if [ "$names" = "?" ]; then
       names="FAIL"; bad=1
     elif [ "$names" != ok ] && [ "$names" != "-" ]; then
