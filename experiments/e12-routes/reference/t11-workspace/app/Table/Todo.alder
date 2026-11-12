@@ -1,0 +1,35 @@
+module Table.Todo
+
+import Table.Org
+import Table.Project
+import Table.User
+
+type TodoId = brand Text
+
+table Todo {
+  id: TodoId @id,
+  title: Text.NonEmpty,
+  done: Bool = False,
+  project: Project.ProjectId @ref Project @cascade,
+  org: Org.OrgId @ref Org @partition org,
+}
+
+test "deleting its project deletes a Todo" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+  }
+  let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let _ <- Test.member me org
+  let _ <- Test.login { user: Just me, org: Just org }
+  let target <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    project: target,
+    org: org,
+  }
+  let _ <- Db.delete Project target
+  let left <- Db.from Todo |> Db.count
+  Task.succeed (left == 0)
+}

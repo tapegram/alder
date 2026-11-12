@@ -1,0 +1,139 @@
+module Teams.Index
+
+import Layout
+import Table.Member
+import Table.Team
+import Table.User
+
+route Index  = GET  "/teams" { }              requires user
+route Create = POST "/teams" { } form NewTeam requires user
+
+type Model = { teams: List Team }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let memberships <-
+    Db.from Member
+      |> Db.where (Member.user.eq session.user)
+      |> Db.all
+  let teams <-
+    Db.from Team
+      |> Db.where (Db.or [
+        Team.owner.eq session.user,
+        Team.id.in (List.map (\m -> m.team) memberships),
+      ])
+      |> Db.orderBy Team.name.asc
+      |> Db.all
+  Query.succeed { teams: teams }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Teams">
+    <h1>Your teams</h1>
+    <ul id="teams">
+      {for team in model.teams ->
+        <li><a class="name" href={Teams.Show.Show { id: team.id }}>{team.name}</a></li>}
+    </ul>
+    <a href={Invites.Index.Index {}}>Invites</a>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+
+    <al-card>
+      <h2 slot="header">New team</h2>
+      <form submit={Create}>
+        <al-input field="name" label="Name" />
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-button type="submit">New team</al-button>
+      </form>
+    </al-card>
+  </Layout.Page>
+
+form NewTeam = { name: Text.NonEmpty }
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session = {
+  let id <- Db.insert Team { name: params.form.name, owner: session.user }
+  Task.succeed (Response.redirect (Teams.Show.Show { id: id }))
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
+}
+
+test "submitting NewTeam" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit Create { name: Text.NonEmpty "Red" }
+  let teams <-
+    Db.from Team
+      |> Db.where (Team.owner.eq ann)
+      |> Db.all
+  let ids = List.map (\t -> t.id) teams
+  Task.succeed (
+    { answer: r.answer, teams: List.length ids }
+      == {
+        answer: Redirected (Teams.Show.Show {
+          id: Maybe.withDefault (Team.TeamId "") (List.head ids),
+        }),
+        teams: 1,
+      }
+  )
+}
+
+test "NewTeam refuses an empty name" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let r <- Test.submitRaw Create [{ name: "name", value: "" }]
+  Task.succeed (r.answer == FormRejected [{ field: "name", message: "must not be empty" }])
+}
+
+test "a visitor cannot submit NewTeam" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit Create { name: Text.NonEmpty "name-1" }
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
+}
+
+test "the list: teams owned and joined, by name" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let cid <- Db.insert User {
+    email: Text.Email "cid@example.com",
+    name: Text.NonEmpty "Cid",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Amber", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: bob }
+  let green <- Db.insert Team { name: Text.NonEmpty "Green", owner: cid }
+  let _ <- Db.insert Team { name: Text.NonEmpty "Zinc", owner: cid }
+  let _ <- Db.insert Member { team: green, user: bob }
+  let _ <- Db.insert Member { team: blue, user: ann }
+  let _ <- Test.login { user: Just ann }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.texts "#teams .name" page.doc == ["Amber", "Blue"])
+}

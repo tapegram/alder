@@ -1,0 +1,11 @@
+module Table.Room
+
+type RoomId = brand Text
+
+table Room { id: RoomId @id, name: Text.NonEmpty }
+
+nameOf : List Room -> RoomId -> Text
+nameOf = \rooms id -> match List.find (\r -> r.id == id) rooms {
+  Just r -> r.name,
+  Nothing -> "",
+}

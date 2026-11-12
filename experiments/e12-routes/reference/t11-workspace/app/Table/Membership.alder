@@ -1,0 +1,69 @@
+module Table.Membership
+
+import Table.Org
+import Table.User
+
+type MembershipId = brand Text
+
+table Membership {
+  id: MembershipId @id,
+  user: User.UserId @ref User,
+  org: Org.OrgId @ref Org,
+}
+
+isMember : User.UserId -> Org.OrgId -> Query Bool
+isMember = \user org -> {
+  let n <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq user)
+      |> Db.where (Membership.org.eq org)
+      |> Db.count
+  Query.succeed (n > 0)
+}
+
+test "a Membership keeps its user from being deleted" = {
+  let target <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+  }
+  let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let _ <- Db.insert Membership { user: target, org: org1 }
+  let r <- Test.run (Db.delete User target)
+  let left <- Db.from Membership |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: 1 })
+}
+
+test "a Membership keeps its org from being deleted" = {
+  let target <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+  }
+  let _ <- Db.insert Membership { user: me, org: target }
+  let r <- Test.run (Db.delete Org target)
+  let left <- Db.from Membership |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: 1 })
+}
+
+test "isMember is whether that user has a row for that org" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Db.insert Membership { user: bob, org: globex }
+  let a <- isMember ann acme
+  let b <- isMember ann globex
+  let c <- isMember bob acme
+  Task.succeed ([a, b, c] == [True, False, False])
+}
