@@ -1043,7 +1043,69 @@ class ModelTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmp)
 
+class NamesTest(unittest.TestCase):
+    def test_names_of_routes(self):
+        app = ('route Show   = GET    "/todos/{id}" { id: Todo.TodoId }               requires user\n'
+               'route Save   = PUT    "/todos/{id}" { id: Todo.TodoId } form EditTodo requires user\n'
+               'route Index = GET "/projects" { } requires user, org\n'
+               '-- route Ghost = POST "/x" { }\n'
+               'form EditTodo = { title: Text.NonEmpty }\n')
+        d = rl._empty_names()
+        rl._names_of("M", app, d, line_start=True)
+        self.assertEqual(d["pages"], {"M": "/todos/{id}"})
+        self.assertEqual(d["routes"]["M"]["Save"], {"method": "PUT", "path": "/todos/{id}", "get": False})
+        self.assertIs(d["routes"]["M"]["Index"]["get"], True)
+        self.assertNotIn("Ghost", d["routes"]["M"])
+        self.assertEqual(d["forms"]["M"], {"EditTodo"})
+        t = rl._empty_names()
+        rl._names_of("M", "`route Rename { id: Item.ItemId } form NewName`", t, line_start=False)
+        self.assertEqual(t["routes"]["M"]["Rename"], {"method": None, "path": None, "get": False})
+        self.assertEqual(t["forms"]["M"], {"NewName"})
+
+    def test_names_check_second_get_route(self):
+        task = ("Task.\n\n**Names.** Use these.\n\n"
+                '- `app/Contacts/Index.alder`: module `Contacts.Index`, `route Find = GET "/contacts" { q: Text = "" } requires user` '
+                'and `route Results = GET "/contacts/results" { q: Text = "" } requires user`.\n')
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (tmp / "app" / "Contacts").mkdir(parents=True)
+        (tmp / "app" / "Contacts" / "Index.alder").write_text(
+            'module Contacts.Index\n\nroute Results = GET "/contacts/results" { q: Text = "" } requires user\n'
+            'route Find = GET "/contacts" { q: Text = "" } requires user\n')
+        r = rl.names_check(task, tmp)
+        self.assertIn("page Contacts.Index /contacts", r["matches"])
+        self.assertIn("route Contacts.Index.Results (GET /contacts/results)", r["matches"])
+        self.assertTrue(r["ok"], r)
+
+    def test_names_in_files_summary(self):
+        exp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, exp, True)
+        (exp / "tasks").mkdir()
+        chk = FakeChecker(exp, [(0, "", "")])
+        task = ('Task.\n\n**Names.** Use these.\n\n- `app/X.alder`: module `X`, `route Ping = GET "/ping" { }`.\n')
+        ans = "--- file: app/X.alder ---\nmodule X\n\nroute Ping = GET \"/ping\" { }\n"
+        s = rl.run_one(exp, rl.FakeModel([ans]), "fake", "t", task, "sys", chk.path, retries=0)
+        self.assertTrue(s["names"]["ok"], s["names"])
+        self.assertIn("page X /ping", s["names"]["matches"])
+        s2 = rl.run_one(exp, rl.FakeModel([ans]), "fake", "t2", "no names block", "sys", FakeChecker(exp, [(0, "", "")]).path, retries=0)
+        self.assertIsNone(s2["names"])
+
+
 class ReportTests(unittest.TestCase):
+    def test_names_column_in_files_summary(self):
+        import report_loop as rp
+        def summ(task, names):
+            return {"model": "m", "task": task, "error": None, "final_pass": True, "names": names, "harness": {"build": True},
+                    "rounds": [{"n": 0, "errors": 0, "codes": {}}]}
+        md = rp.markdown(rp.rows([summ("a", {"ok": True, "matches": ["x"], "mismatches": []}),
+                                  summ("b", {"ok": False, "matches": [], "mismatches": ["p", "q"]}), summ("c", None)]))
+        lines = md.splitlines()
+        self.assertIn("| Names |", lines[0])
+        self.assertIn("| ok |", lines[2])
+        self.assertIn("| 2 differ |", lines[3])
+        self.assertIn("| — |", lines[4])
+        self.assertNotIn("Names", rp.markdown(rp.rows([summ("c", None)])))
+
     def test_report_table(self):
         import report_loop as rp
         rows = rp.rows([{"model": "m", "task": "t", "error": None, "final_pass": True,

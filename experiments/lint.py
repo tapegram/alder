@@ -2,6 +2,8 @@
 """Throwaway heuristic linter for scoring model outputs. Not a parser.
 
 Usage: lint.py <output.md> [...]
+Predates routes (#160): it scores the page/msg model and is not used by the loop.
+
 Prints one line per finding: file:line CODE message
 Then a summary count per code.
 """

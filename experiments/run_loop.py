@@ -1263,6 +1263,11 @@ def _columns(body: str):
     return cols
 
 
+# A route declaration (cmd/alder/drill_test.go's mapping): `route Name = METHOD "path"` in the app; a
+# Names-block bullet may give just `route Name`.
+ROUTE_RE = r'route\s+([A-Z]\w*)(?:\s*=\s*(GET|POST|PUT|PATCH|DELETE)\s+"([^"]*)")?'
+
+
 def _names_of(module: str, text: str, decls: dict, line_start: bool):
     a = "^" if line_start else r"(?<![\w.])"
     flags = re.M if line_start else 0
@@ -1271,16 +1276,20 @@ def _names_of(module: str, text: str, decls: dict, line_start: bool):
     m = re.search(a + r"session\s*\{([^}]*)\}", text, flags)
     if m:
         decls["session"] = sorted(_columns(m.group(1)))
-    m = re.search(a + r'page\s+"([^"]*)"', text, flags)
-    if m:
-        decls["pages"][module] = m.group(1)
-    for kind in ("msg", "form"):
-        for m in re.finditer(a + kind + r"\s+`?([A-Z]\w*)", text, flags):
-            decls[kind + "s"].setdefault(module, set()).add(m.group(1))
+    for m in re.finditer(a + ROUTE_RE, text, flags):
+        name, method, path = m.group(1), m.group(2), m.group(3)
+        is_get = method == "GET"
+        if is_get and module not in decls["pages"]:   # a module's first GET route is its page
+            decls["pages"][module] = path
+            decls["page_names"][module] = name
+        else:
+            decls["routes"].setdefault(module, {})[name] = {"method": method, "path": path, "get": is_get}
+    for m in re.finditer(a + r"form\s+`?([A-Z]\w*)", text, flags):
+        decls["forms"].setdefault(module, set()).add(m.group(1))
 
 
 def _empty_names():
-    return {"tables": {}, "session": None, "pages": {}, "msgs": {}, "forms": {}}
+    return {"tables": {}, "session": None, "pages": {}, "page_names": {}, "routes": {}, "forms": {}}
 
 
 def task_names(task_text: str):
@@ -1310,7 +1319,8 @@ def names_check(task_text: str, app_dir: pathlib.Path):
     """The final app against the task's Names block (reported, never scored): {"ok", "matches",
     "mismatches"}, or None for a task without one. Tables and their columns (`name: Type`, the type as
     written, attributes and defaults dropped) and the session must be exactly the block's; each named
-    page must have its path, and its named messages and forms must exist."""
+    page must have its path (any GET route of the module with it will do), and its named routes (by name;
+    the app's method and path are reported) and forms must exist."""
     want = task_names(task_text)
     if want is None:
         return None
@@ -1322,14 +1332,23 @@ def names_check(task_text: str, app_dir: pathlib.Path):
     if want["session"] is not None:
         (ok if want["session"] == got["session"] else bad).append(
             "session" + ("" if want["session"] == got["session"] else f": {got['session']}, want {want['session']}"))
-    for mod, path in sorted(want["pages"].items()):
-        g = got["pages"].get(mod)
-        (ok if g == path else bad).append(f"page {mod} {path}" + ("" if g == path else f": {g or 'missing'}"))
-    for kind in ("msgs", "forms"):
-        for mod, names in sorted(want[kind].items()):
-            for nm in sorted(names):
-                has = nm in got[kind].get(mod, set())
-                (ok if has else bad).append(f"{kind[:-1]} {mod}.{nm}" + ("" if has else ": missing"))
+    for mod, path in sorted(want["pages"].items()):   # any GET route of the module with the path is the page
+        paths = {r["path"] for r in got["routes"].get(mod, {}).values() if r["get"]} | ({got["pages"][mod]} if mod in got["pages"] else set())
+        g = path if path in paths else got["pages"].get(mod)
+        (ok if path in paths else bad).append(f"page {mod} {path}" + ("" if path in paths else f": {g or 'missing'}"))
+    for mod, routes in sorted(want["routes"].items()):
+        for nm in sorted(routes):
+            app_route = got["routes"].get(mod, {}).get(nm)
+            if app_route is None and nm == got["page_names"].get(mod):   # the module's first GET route is held as its page
+                app_route = {"method": "GET", "path": got["pages"][mod]}
+            if app_route is None:
+                bad.append(f"route {mod}.{nm}: missing")
+            else:
+                ok.append(f"route {mod}.{nm}" + (f" ({app_route['method']} {app_route['path']})" if app_route["method"] else ""))
+    for mod, names in sorted(want["forms"].items()):
+        for nm in sorted(names):
+            has = nm in got["forms"].get(mod, set())
+            (ok if has else bad).append(f"form {mod}.{nm}" + ("" if has else ": missing"))
     return {"ok": not bad, "matches": ok, "mismatches": bad}
 
 
@@ -1757,10 +1776,11 @@ def run_one(exp: pathlib.Path, model: Model, model_label: str, task_name: str, t
         else:
             summary["hidden"] = {"skipped": skip}
             summary["hidden_pass"] = None
+    last = summary["rounds"][-1] if summary["rounds"] else None
+    final_app = (run_dir / f"round{last['n']}" / (app_name if cli else "")) if last else None   # E12: the names check runs in every mode
+    names = names_check(task_text, final_app) if final_app is not None and (final_app / "app").is_dir() else None
+    summary["names"] = names
     if cli:
-        last = summary["rounds"][-1] if summary["rounds"] else None
-        final_app = run_dir / f"round{last['n']}" / app_name if last else None
-        names = names_check(task_text, final_app) if final_app is not None and (final_app / "app").is_dir() else None
         summary["cli"] = {**cli_summary(summary["rounds"], app_name, names),
                           **({"setup": summary["cli"]["setup"]} if "setup" in summary["cli"] else {})}
     run_dir.mkdir(parents=True, exist_ok=True)

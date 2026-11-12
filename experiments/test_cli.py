@@ -9,6 +9,25 @@ DRILL = ROOT / "testdata" / "drill"
 TASKS = pathlib.Path(__file__).resolve().parent / "tasks"
 
 
+# The t5-ownership Names block in route form, inline until the task text is ported (E12 Task 7).
+NAMES_TASK = """# T5
+
+Task.
+
+**Names.** Use exactly these names; anything not listed here is your choice.
+
+- `app/User.alder`: module `User`, `type UserId = brand Text`, and
+  `table User { id: UserId @id, email: Text.Email @unique, name: Text.NonEmpty, passwordHash: Text, created: Time @created }`.
+- `app/App.alder`: module `App`, with exactly
+  `session { user: Maybe User.UserId }` and `route Logout = DELETE "/session" { }`.
+- `app/Note.alder`: module `Note`, `type NoteId = brand Text`, and
+  `table Note { id: NoteId @id, title: Text.NonEmpty, body: Text, owner: User.UserId @ref User, created: Time @created }`.
+- `app/Notes/Index.alder`: module `Notes.Index`, `route Index = GET "/" { } requires user`.
+  `form NewNote = { title: Text.NonEmpty, body: Text }`, posted by
+  `route Add = POST "/notes" { } form NewNote requires user`.
+"""
+
+
 def drill(task):
     return (DRILL / task / "script.txt").read_text()
 
@@ -196,7 +215,7 @@ class SummaryTests(unittest.TestCase):
         self.assertTrue(p.rstrip().endswith(rl.CLI_CONTINUE))
 
     def test_names_check(self):
-        task = (TASKS / "t5-ownership.md").read_text()
+        task = NAMES_TASK
         self.assertIsNone(rl.names_check((TASKS / "t2-newpage.md").read_text(), pathlib.Path(".")))
         tmp = pathlib.Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)
@@ -204,12 +223,12 @@ class SummaryTests(unittest.TestCase):
         (tmp / "app" / "User.alder").write_text("module User\n\ntable User {\n  id: UserId @id,\n  email: Text.Email @unique,\n"
                                                 "  name: Text.NonEmpty,\n  passwordHash: Text,\n  created: Time @created,\n}\n")
         (tmp / "app" / "Note.alder").write_text("module Note\n\ntable Note {\n  id: NoteId @id,\n  title: Text,\n}\n")
-        (tmp / "app" / "App.alder").write_text("module App\n\nsession { user: Maybe User.UserId }\n\nmsg Logout\n")
+        (tmp / "app" / "App.alder").write_text("module App\n\nsession { user: Maybe User.UserId }\n\nroute Logout = DELETE \"/session\" { }\n")
         r = rl.names_check(task, tmp)
         self.assertFalse(r["ok"])
         self.assertIn("table User", r["matches"])
         self.assertIn("session", r["matches"])
-        self.assertIn("msg App.Logout", r["matches"])
+        self.assertIn("route App.Logout (DELETE /session)", r["matches"])
         self.assertTrue(any(m.startswith("table Note: ") for m in r["mismatches"]))
         self.assertIn("page Notes.Index /: missing", r["mismatches"])
         self.assertIn("form Notes.Index.NewNote: missing", r["mismatches"])
