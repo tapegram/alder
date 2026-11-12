@@ -1,0 +1,270 @@
+# E12: AI usability after routes — Design
+
+Date: 2026-11-11. Status: plan approved in conversation (the four steps below);
+the remaining choices in this document are the author's calls, marked
+**(call)**. Issue: #208. Related: #160 (routes replaced pages and messages;
+PR 10 added `input=`, `load=`, `intersect=`, `every=`), E8–E11
+(`experiments/e8-hidden`, `e9-feedback`, `e11-cli`), `experiments/README.md`,
+`experiments/tasks/README.md`.
+
+## Intent
+
+Measure, with the loop harness, how well Claude models write Alder from the
+route-era reference (book chapters 3–10 as `build_context.py --reference`
+cuts them): the same question E7–E11 asked, after the language's largest
+change since those runs. Everything the experiments own (tasks, hidden
+tests, reference solutions, bases, the harness's names check, the prompt's
+command table) still speaks the page/msg model and does not run under
+`alder` v0.2.0; E12 ports it first, then runs.
+
+## Goals
+
+1. Port the nine practice tasks (T2–T7, T9–T11), their hidden tests and
+   reference solutions to routes, and verify them before any model run.
+2. Add four route-era tasks for the things no old task exercises: `input=`,
+   `intersect=`, `load=`/`every=`, and `Response` (`render`, `refresh`,
+   `invalid`, `redirect`) with a form.
+3. Run Haiku, Sonnet and Opus on all thirteen tasks; record first-round
+   pass rate, rounds to green, hidden-test and mutation results, the
+   diagnostics' error codes, and the "reasonable but not Alder" signals.
+4. `findings.md` compared with E7–E11, and one GitHub issue per fix (book,
+   diagnostics, generators).
+
+## Non-goals
+
+- The `cli` condition (E11's script rounds), the mutation `--feedback`
+  loop (E9), Qwen/Ollama models, the `full` prompt, `--adapters`.
+- Changing the book, the checker or the generators before the run: E12
+  measures v0.2.0 as released; fixes come after, as issues.
+- `lint.py`: the E1–E4 hand-scoring heuristic, imported by nothing in the
+  loop. It stays, with one docstring line saying it predates routes.
+
+## Constraints
+
+- **Working hours.** No model run 9:00–17:00 America/New_York Monday to
+  Friday; weekends free. The matrix script stops before 9:00 and resumes
+  from the next unfinished cell (below).
+- **Prompt budget.** `build_context.py --reference --size` at HEAD:
+  293,865 characters, 73,466 tokens (len/4); the cap in
+  `test_build_context.py` is 73,500. Rewriting the COMMANDS table must not
+  grow the reference; a larger table needs a matching `TRIMS` entry.
+- **Harness isolation** as E11: `claude -p` with `--setting-sources ""`,
+  `--strict-mcp-config`, `--tools ""`, in an empty temp cwd (`README.md`,
+  "Models"); `claude --version` at design time: 2.1.309.
+- **Reproducibility.** The run binary is built from one commit into
+  `experiments/e12-routes/alder` (git-ignored by `experiments/*/alder`),
+  its sha256 and `alder version` recorded in `RUN.md`; `prompt-reference.md`
+  is regenerated at that commit and committed, with `sizes.md`. E11 run 2
+  ran a stale prompt file and a base that did not check
+  (`e11-cli/findings-run2.md`, "Three things differ"); both are preflight
+  steps here.
+
+## Decisions
+
+### Condition: `files` only **(call)**
+
+E12 keeps E11's `files` condition (the model emits `--- file: app/… ---`
+sections; `--build --test --mutate --hidden`) and drops `cli`. Reasons: the
+issue asks about the language and the book, which every experiment from E7
+measured in file mode, so `files` is the only condition with a history to
+compare against; E11 showed `cli` measures the command set (4–6 rounds
+against 1–3, two thirds of its refusals a command misused), and that set
+changed again with #160 (`new route`, `new action`, `edit route`), so a
+`cli` run needs its own re-recorded drills, format page and gap list, which
+is E11's "run 3", not E12. The names check still runs on every `files`
+cell (it is reported for any task with a Names block), so the design
+signals E11's command gaps came from are kept.
+
+### Models, samples, budget **(call)**
+
+- Models: `claude:claude-haiku-5-5`, `claude:claude-sonnet-5-5`,
+  `claude:claude-opus-5-5`, the exact ids, not the `haiku`/`sonnet`/`opus`
+  aliases E11 used (an alias moves; each round records `model` and
+  `claude_version` anyway). The run directory label is the spec with `:`
+  replaced (`runs/claude-claude-haiku-5-5/`); accepted, not worth a flag.
+- Samples: **2 per cell for every model** (`--sample s1`, `s2`). E8/E9 ran
+  Opus once and E11 once for everyone; E11 run 2's own finding is that one
+  sample cannot tell a budget's edge from a regression. File mode is cheap
+  (E11 Opus `files`: 8 cells in 14 minutes).
+- Rounds: `--retries 5` (6 rounds), E11's budget. E8/E9 ran 3 rounds and
+  every cell passed within them, so "rounds to green" stays comparable.
+- Flags: `--build --test --mutate --hidden experiments/e12-routes/hidden
+  --condition files`; T2 adds `--base examples/todos`; T7 adds
+  `--base experiments/e12-routes/base/blog-nodrafts --migrate`. No
+  `--feedback`, no `--adapters`.
+- **Cells: 13 tasks × 3 models × 2 samples = 78**, run sequentially by one
+  script. T2 and T3 have no hidden tests (as in E11); the other eleven do.
+
+### Comparability with E8–E11 after the port
+
+The ported tasks keep everything the hidden tests and scores depend on:
+the tables and fields, the session, the element ids and classes, the
+behaviours, the tests paragraph and the output paragraph. Only the
+vocabulary changes: a page becomes a route module's GET route, a message a
+write route, `Redirect (X {})` becomes `Response.redirect (X.R {})`,
+`Rerender` becomes `Response.refresh` (or `render`). The hidden test count
+per task is unchanged (T4 8, T5 8, T6 9, T7 7, T9 7, T10 8, T11 9: 56), so
+hidden pass rates compare one to one. The metrics are the ones every run
+since E7 recorded from `summary.json`: round-0 clean checks and passes,
+rounds used by passing cells, `codes` per round (the error taxonomy as the
+checker counts it), hidden `k/n`, mutation score, names check. The reference
+prompt necessarily differs; `findings.md` compares per task, old cells of
+the same task against the ported task, and reports the four new tasks on
+their own with no history. One cut of the old texts is corrected in the
+port and named in findings: T6's `msg AddLine { product } form NewLine`
+(a form on a parameterised message) is an ordinary write route now.
+
+### Names blocks for routes **(call)**
+
+A Names bullet names the route module, its GET route in full (`route Index
+= GET "/" { } requires user`: the path is the task's URL anyway), each
+write route's **name, parameters and form** (`route Delete { id:
+Note.NoteId }`, `route Add form NewNote`) and what it answers
+(`Response.redirect (Index {})`). The write route's **method and path are
+the model's choice**: the hidden tests act through the page (`Test.submit
+(Notes.Index.Add {}) {…}`, `Test.click (Notes.Index.Delete { id })`),
+never through a URL, so they need neither, and which method a model picks
+for a delete or a toggle is a design signal worth recording. The names
+check reports them (below) and never scores them. `App` keeps its
+app-level routes under their old names (`App.Logout`, `App.SwitchTheme`),
+as `examples/todos` declares `route Logout = DELETE "/session" { }`.
+
+### Porting the hidden tests, and the gate before any model run
+
+- Sources. `testdata/drill/{t9-bookings,t10-teams,t11-workspace}/Hidden.alder`
+  are already the route-era copies of E9's hidden tests (commit `7a08151b`;
+  `cmd/alder/drill_test.go` runs them against the drill-built apps):
+  copied as they are. T4 (`e8-hidden/hidden`), T5, T6, T7
+  (`e9-feedback/hidden`) are ported by hand in the same style: route values
+  with the full path (`Notes.Index.Index {}`), forms posted to their route,
+  `Answer` names of chapter 10 (`Redirected`, `Refreshed`, `Rendered`,
+  `FormRejected`, `PageMissing`). Test names and counts stay.
+- Reference solutions. E8/E9's gate (two solutions per task, `reference/`
+  and `reference-alt/`, deliberately different markup and structure, so a
+  hidden test that fixes a detail the text does not is caught) is kept.
+  For T9, T10, T11 one solution is the app the drill script builds
+  (replayed with the E12 binary into `reference/<task>/`); the other and
+  all of T4–T7's are the E9/E8 solutions ported by hand to routes. T2 and
+  T3 keep no reference (no hidden tests), but each gets one hand-written
+  route-era solution run through check, build and test as a smoke test of
+  the text. The T7 base (`e8-hidden/base/blog-nodrafts`, 11 modules, 720
+  lines, page-era) is ported to `e12-routes/base/blog-nodrafts` with its
+  `adapters/` and `migrations/`; `reference-alt/t7-drafts` keeps E8's lossy
+  migration as the negative control.
+- Gate. `e12-routes/verify.sh`, E9's script with the task list extended
+  (T4–T7, T9–T11) and the T2/T3 smoke test added, run with
+  `ALDER=experiments/e12-routes/alder`: every solution checks, builds,
+  passes its own tests and every hidden test, scores ≥ 0.9 under
+  `--mutate` with every survivor justified in `SURVIVORS.md`, `DROPS DATA`
+  only on T7's alt. Its output goes in `RUN.md`. No model runs until it
+  exits 0, and it is run again after any later change to the material.
+- The old directories (`e8-hidden/`, `e9-feedback/`, `e11-cli/`) are not
+  touched: they document their runs as run.
+
+### Where E12 lives
+
+`experiments/e12-routes/`: `README.md` (summary and exact commands),
+`RUN.md` (binary, prompt, gate output, dates), `tasks -> ../tasks`
+(symlink, as `e11-cli`), `hidden/<task>/Hidden.alder`, `reference/`,
+`reference-alt/`, `base/blog-nodrafts/`, `verify.sh`, `prompt-reference.md`,
+`sizes.md`, `run-matrix.sh`, `logs/`, `runs/<model>/<task>-<sample>/`,
+`scores.md` (from `report_loop.py`), `findings.md`.
+
+The canonical texts in `experiments/tasks/` are rewritten in place (they
+are the texts E12 runs; `tasks/README.md` records the port and keeps the
+old wording's history). `e11-cli/tasks` is a symlink to them, which is
+fine: E11's runs record the text they ran in each round's prompt.
+
+### Harness fixes (before the gate)
+
+1. `run_loop.py` `_names_of`: parse `route NAME = METHOD "path" { params }
+   [form F] [requires …]` on both the task and the app side. `pages` becomes
+   module → its GET route's path (one per module; a second GET route is
+   recorded as a message-like entry, not an error); `msgs` the write
+   routes, with method and path kept beside the name so the check can
+   report them; `forms` from `form F = {…}` declarations as before. The
+   `page "…"`/`msg` regexes go. `cmd/alder/drill_test.go`'s `drillNames`
+   already does this mapping for the drills and is the model to port;
+   `test_cli.py` and `test_run_loop.py` get route-era fixtures.
+2. `build_context.py` COMMANDS: replace `new page`/`new msg`/`edit page`/
+   `remove page` with `new route`, `new action`, `new form … --msg <Route>`,
+   `edit route add-param`, `remove route`, from `alder new route --help`,
+   `alder new action --help`, `alder edit --help` at the run commit; the
+   page-era `--in-for` and `--blank` lines re-worded for routes. Keep the
+   reference at or under 73,500 tokens; `test_build_context.py`'s
+   assertions on the table follow.
+3. `README.md`: the taxonomy's ROUTE row ("route/form wiring: `href` with a
+   string, a write route's params missing, `update` on a GET route, `form`
+   field mismatch, `Params` written by hand"), the Tasks list (T11 and the
+   four new ones), an E12 entry in the experiment list, the `--cli`
+   paragraph's description of the names check.
+4. `run-matrix.sh`: E11's shape (skips a cell whose `summary.json` exists;
+   one log per model) plus a `STOP_AT` wall-clock check before each cell
+   (default `08:45` local on a weekday; the script exits, prints the next
+   cell, and a re-run resumes). Cell granularity suffices: the longest
+   model time of an E11 `files` cell was 417 s (Opus T2, two rounds), plus
+   check, build, tests and mutation; the builder times the first cells and
+   lowers `STOP_AT` if one nears a quarter hour.
+5. Preflight in the script, before the first cell: `alder check` exit 0 on
+   `examples/todos` and `base/blog-nodrafts` under the run binary;
+   `prompt-reference.md` byte-equal to `build_context.py --reference` at
+   HEAD; `verify.sh` green; `git status` clean. Any failure aborts.
+
+### The new tasks
+
+Each is a complete new app with a Names block, a tests paragraph and the
+output paragraph; each gets hidden tests and two reference solutions under
+the gate. Login as in the reference where the task needs a user.
+
+- **T12 search** (`t12-search`, `input=`): contacts with a name and an
+  email; `/contacts` (`Find`, `{ q: Text = "" }`) lists the user's contacts
+  matching `q` and has a field `name="q"` that asks for `Results` as the
+  user types; `Results.view` is `<ul id="results">`, one `<li>` per match
+  with the name as its whole text; a form adds a contact. Hidden tests:
+  `Test.input (Contacts.Index.Results { q: … })` returns only the matches;
+  an empty `q` lists everything; another user's contacts never appear.
+- **T13 feed** (`t13-feed`, `intersect=`): an activity log of entries
+  (text, created); `/feed` shows the ten newest entries and a sentinel
+  that asks for `More { before: … }` (the cursor fixed as a parameter name,
+  its type the model's: an `Int` offset or a key); `More.view` renders the
+  next ten and the next sentinel, none after the last; a form posts an
+  entry (`Response.redirect`). Hidden tests: 25 entries, two
+  `Test.intersect` steps give 25 `<li>` and no sentinel; no entry repeats.
+- **T14 board** (`t14-board`, `load=`/`every=`): tickets with a title and
+  a `Open | Closed` status; `/board` renders at once with
+  `<section id="recent" load={Recent {}}>` (the five newest) and a badge
+  `<span id="open" load={Open {}} every="10s">` (the open count); a button
+  per ticket closes it (`Response.refresh`). Hidden tests: `Test.load
+  (Board.Open {})` before and after an insert and after a close; the badge's
+  view keeps `load` and `every` on its root (`Test.has` on the attributes);
+  `Recent` lists five of six, newest first.
+- **T15 pantry** (`t15-pantry`, `Response` and a form): items with a name
+  (`@unique`) and a quantity; `/pantry` lists them; `Rename form NewName`
+  answers `Response.invalid "name already taken"` when the name exists
+  (nothing stored) and `Response.redirect (Index {})` otherwise; `Bump {
+  id }` adds one and answers `Response.render (Row { id })` (a GET route
+  whose view is the `<li id="item-…">`); `Remove { id }` answers
+  `Response.refresh |> Response.toast "Removed"`. Hidden tests: `answer ==
+  FormRejected …` and the row unchanged; `Rendered`/`Refreshed` answers; the
+  rendered row's text; the list without the removed item.
+
+### What `findings.md` reports
+
+E11's headline rows for `files` (cells passing own tests, rounds used,
+round-0 clean checks, hidden passed, cells passing every hidden test,
+mutation score), E12 beside E8/E9/E11-`files` per task; `codes` counts over
+round-0 checks, old against new; a section per new task; the hand-scored
+design signals (write methods chosen, `render` against `refresh`, trigger
+attributes misused, anything reasonable but not Alder); E0045–E0047 as the
+models met them; the issue list, one per fix, each citing cells.
+
+## Left to the builder
+
+- The exact wording of the thirteen task texts and the four new tasks'
+  Names blocks (within the rules above), the ported hidden tests and the
+  reference solutions, `SURVIVORS.md` justifications.
+- The route grammar in `_names_of` and its tests; the COMMANDS text and any
+  `TRIMS` needed to stay under the cap.
+- `run-matrix.sh`, `verify.sh`, `README.md`, `RUN.md`; the run schedule
+  (evenings and the weekend), the binary and prompt commit.
+- `findings.md` and the issues, after the run.
