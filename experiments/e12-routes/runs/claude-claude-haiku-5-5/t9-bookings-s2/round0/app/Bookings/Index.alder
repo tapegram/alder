@@ -1,0 +1,58 @@
+module Bookings.Index
+
+import Layout
+import Table.Booking
+import Table.Room
+
+route Index = GET "/bookings" { } requires user
+
+type Line = { id: Booking.BookingId, room: Text, from: Date }
+
+type Model = { lines: List Line }
+
+-- The room's name, trimmed, or "" when the room is gone.
+roomName : List Room -> Room.RoomId -> Text
+roomName rooms id = {
+  let found = rooms |> List.find (\r -> r.id == id)
+  match found {
+    Just r -> Text.trim r.name,
+    Nothing -> "",
+  }
+}
+
+lineFor : List Room -> Booking -> Line
+lineFor rooms booking =
+  {
+    id: booking.id,
+    room: roomName rooms booking.room,
+    from: booking.from,
+  }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.owner.eq session.user)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  let rooms <- Db.from Room |> Db.all
+  let lines : List Line = bookings |> List.map (lineFor rooms)
+  Query.succeed { lines: lines }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="My bookings">
+    <h1>My bookings</h1>
+    <ul id="mine">
+      {for line in model.lines ->
+        <li>
+          <a href={Bookings.Show.Show { id: line.id }}><span class="room">{line.room}</span></a>
+          <span class="from">{Date.toText line.from}</span>
+        </li>}
+    </ul>
+    <nav>
+      <a href={Rooms.Index.Index {}}>Rooms</a>
+    </nav>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>

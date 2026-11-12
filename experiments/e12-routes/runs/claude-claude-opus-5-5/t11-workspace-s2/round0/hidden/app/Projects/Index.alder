@@ -1,0 +1,137 @@
+module Projects.Index
+
+import Layout
+import Table.Membership
+import Table.Org
+import Table.Project
+import Table.User
+
+route Index  = GET  "/projects" { }                  requires user, org
+route Create = POST "/projects" { } form NewProject requires user, org
+
+type Model = { org: Org, projects: List Project }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let found <- Db.get Org session.org
+  let projects <-
+    Db.scoped Project
+      |> Db.orderBy Project.name.asc
+      |> Db.all
+  match found {
+    Just org -> Query.succeed { org: org, projects: projects },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewProject = { name: Text.NonEmpty }
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let id <- Db.insertScoped Project { name: p.form.name }
+  Task.succeed (Response.redirect (Projects.Show.Show { id: id }))
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title={model.org.name}>
+    <h1 id="org">{model.org.name}</h1>
+    <ul id="projects">
+      {for p in model.projects ->
+        <li><a class="name" href={Projects.Show.Show { id: p.id }}>{p.name}</a></li>}
+    </ul>
+    <al-card>
+      <form submit={Create}>
+        <al-input field="name" label="New project" />
+        <al-button type="submit">Create</al-button>
+      </form>
+    </al-card>
+    <a href={Orgs.Index.Index {}}>Orgs</a>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "a member sees only their org's projects" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member ann acme
+  let _ <- Test.member bob globex
+  let _ <- Test.login { user: Just bob, org: Just globex }
+  let _ <- Db.insertScoped Project { name: Text.NonEmpty "Secret" }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Db.insertScoped Project { name: Text.NonEmpty "Beta" }
+  let _ <- Db.insertScoped Project { name: Text.NonEmpty "Alpha" }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    { org: Test.text "#org" page.doc, projects: Test.texts "#projects .name" page.doc }
+      == { org: Just "Acme", projects: ["Alpha", "Beta"] }
+  )
+}
+
+test "a user without an org is sent to choose one" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Orgs.Index.Index {}))
+}
+
+test "creating a project goes to its page" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Test.member ann acme
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Create {}) { name: Text.NonEmpty "Alpha" }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    { name: Test.text "#name" r.doc, projects: Test.texts "#projects .name" page.doc }
+      == { name: Just "Alpha", projects: ["Alpha"] }
+  )
+}
+
+-- The session keeps the org after the membership is deleted; the pages read it again.
+test "a member removed from the org loses access at once" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let membership <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let pid <- Db.insertScoped Project { name: Text.NonEmpty "Alpha" }
+  let before <- Test.get (Index {})
+  let _ <- Db.delete Membership membership
+  let list <- Test.open (Index {})
+  let show <- Test.open (Projects.Show.Show { id: pid })
+  Task.succeed (
+    {
+      before: Test.texts "#projects .name" before.doc,
+      list: list.answer,
+      show: show.answer,
+    } == {
+      before: ["Alpha"],
+      list: PageMissing,
+      show: PageMissing,
+    }
+  )
+}

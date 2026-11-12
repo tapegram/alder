@@ -1,0 +1,75 @@
+module Notes.Index
+
+import Layout
+import Note
+import Theme
+import User
+
+route Index = GET "/" { } requires user
+route Add   = POST "/notes" { } form NewNote requires user
+
+form NewNote = { title: Text.NonEmpty, body: Text }
+
+type Model = { notes: List Note, theme: Theme.Theme }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let notes <-
+    Db.mine Note
+      |> Db.orderBy Note.created.desc
+      |> Db.all
+  Query.succeed { notes: notes, theme: session.theme }
+}
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insertMine Note { title: p.form.title, body: p.form.body }
+  Task.succeed (Response.redirect (Index {}))
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Notes" theme={model.theme} body={model.theme}>
+    <h1>Notes</h1>
+
+    <al-button id="theme" variant="outline" click={App.SwitchTheme}>
+      {if model.theme == Light then "Switch to dark" else "Switch to light"}
+    </al-button>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+
+    <al-card>
+      <form submit={Add}>
+        <al-input field="title" label="Title" />
+        <al-input field="body" label="Body" />
+        <al-button type="submit">Add</al-button>
+      </form>
+    </al-card>
+
+    <ul id="notes">
+      {for note in model.notes -> <Item note={note} />}
+    </ul>
+  </Layout.Page>
+
+Item : { note: Note } -> Html
+Item props =
+  <li>
+    <a class="title" href={Notes.Show.Show { id: props.note.id }}>{props.note.title}</a>
+  </li>
+
+test "a user sees only their own notes" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let other <- Db.insert User {
+    email: Text.Email "other@example.com",
+    name: Text.NonEmpty "Other",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Mine", body: "", owner: me }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Theirs", body: "", owner: other }
+  let _ <- Test.login { user: Just me, theme: Light }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.texts "a.title" page.doc == ["Mine"])
+}

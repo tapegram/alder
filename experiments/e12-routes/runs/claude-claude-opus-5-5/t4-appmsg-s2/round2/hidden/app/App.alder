@@ -1,0 +1,101 @@
+module App
+
+import Layout
+import Theme
+import User
+
+session { user: Maybe User.UserId, theme: Theme.Theme = Light }
+
+login = Auth.Login.Login
+
+route SwitchTheme = PUT    "/theme"   { }
+route Logout      = DELETE "/session" { }
+
+SwitchTheme.update : SwitchTheme.Params -> Session -> Task Response
+SwitchTheme.update p session = {
+  let _ <- Session.put (\s -> { s | theme: Theme.toggle s.theme })
+  Task.succeed Response.refresh
+}
+
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
+}
+
+error : Error -> Html
+error err =
+  <Layout.Page title="Error" theme={Light}>
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html
+notFound = <Layout.Page title="Not found" theme={Light}><h1>Not found</h1></Layout.Page>
+
+test "the theme flips" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let before <- Test.get (Notes.Index.Index {})
+  let dark <- Test.click SwitchTheme
+  let light <- Test.click SwitchTheme
+  Task.succeed (
+    {
+      before: Test.text "#theme" before.doc,
+      beforeDark: Test.has "body.dark" before.doc,
+      answer: dark.answer,
+      darkTheme: dark.session.theme,
+      darkLabel: Test.text "#theme" dark.doc,
+      darkBody: Test.has "body.dark" dark.doc,
+      lightTheme: light.session.theme,
+      lightLabel: Test.text "#theme" light.doc,
+      lightBody: Test.has "body.dark" light.doc,
+    } == {
+      before: Just "Switch to dark",
+      beforeDark: False,
+      answer: Refreshed,
+      darkTheme: Dark,
+      darkLabel: Just "Switch to light",
+      darkBody: True,
+      lightTheme: Light,
+      lightLabel: Just "Switch to dark",
+      lightBody: False,
+    }
+  )
+}
+
+test "the theme flips on the login page too" = {
+  let _ <- Test.get (Auth.Login.Login {})
+  let r <- Test.click SwitchTheme
+  Task.succeed (
+    { theme: r.session.theme, label: Test.text "#theme" r.doc }
+      == { theme: Dark, label: Just "Switch to light" }
+  )
+}
+
+test "Logout clears the user and goes to log in" = {
+  let r <- Test.run (Logout.update {} { user: Just (User.UserId "me"), theme: Light })
+  Task.succeed (
+    { value: r.value, trace: r.trace }
+      == { value: Ok (Response.redirect (Auth.Login.Login {})), trace: ["Session.put"] }
+  )
+}
+
+test "logging out from a page" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index.Index {})
+  let out <- Test.click Logout
+  Task.succeed (
+    { answer: out.answer, user: out.session.user }
+      == { answer: Redirected (Auth.Login.Login {}), user: Nothing }
+  )
+}

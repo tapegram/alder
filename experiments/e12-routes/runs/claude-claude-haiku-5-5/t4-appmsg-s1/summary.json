@@ -1,0 +1,814 @@
+{
+ "model": "claude-claude-haiku-5-5",
+ "task": "t4-appmsg",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "hidden": "experiments/e12-routes/hidden",
+  "condition": "files",
+  "sample": "s1"
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 8,
+   "exit": 1,
+   "errors": 2,
+   "warnings": 0,
+   "codes": {
+    "E0002": 2
+   },
+   "rejected": [],
+   "seconds": 14.1,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.309 (Claude Code)",
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "n": 1,
+   "files": 8,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 29.5,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.309 (Claude Code)",
+   "model": "claude-haiku-5-5",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 3,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Auth.Login",
+      "name": "the theme flips",
+      "file": "app/Auth/Login.alder",
+      "line": 62,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: Refreshed, theme: Dark, body: Just \"dark\" }",
+      "right": "{ answer: Refreshed, theme: Dark, body: Just \"dark\" }",
+      "trace": [
+       "Test.login",
+       "Test.get Auth.Login.Login",
+       "Test.click App.SwitchTheme",
+       "Session.put",
+       "Test.get Auth.Login.Login"
+      ],
+      "ms": 12.819
+     },
+     {
+      "module": "Notes.Index",
+      "name": "a user sees only their own notes",
+      "file": "app/Notes/Index.alder",
+      "line": 59,
+      "col": 1,
+      "ok": true,
+      "left": "[\"Mine\"]",
+      "right": "[\"Mine\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Note",
+       "Db.insert Note",
+       "Test.login",
+       "Test.get Notes.Index.Index",
+       "Db.mine Note",
+       "Db.all Note"
+      ],
+      "ms": 0.792
+     },
+     {
+      "module": "Notes.Show",
+      "name": "a user cannot open another user's note",
+      "file": "app/Notes/Show.alder",
+      "line": 57,
+      "col": 1,
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Note",
+       "Test.login",
+       "Test.open Notes.Show.Show",
+       "Db.getMine Note"
+      ],
+      "ms": 0.428
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.18518518518518517,
+    "killed": 5,
+    "survived": 22,
+    "suppressed": 0,
+    "skipped": 8,
+    "survivors": [
+     {
+      "module": "App",
+      "file": "app/App.alder",
+      "decl": "Logout.update",
+      "line": 26,
+      "col": 3,
+      "kind": "session put dropped",
+      "before": "let _ <- Session.put (\\s -> { s | user: Nothing })",
+      "after": "let _ <- Task.succeed ()"
+     },
+     {
+      "module": "App",
+      "file": "app/App.alder",
+      "decl": "Logout.update",
+      "line": 27,
+      "col": 17,
+      "kind": "redirect \u2192 refresh",
+      "before": "Response.redirect (Auth.Login.Login {})",
+      "after": "Response.refresh"
+     },
+     {
+      "module": "Auth.Login",
+      "file": "app/Auth/Login.alder",
+      "decl": "Submit.update",
+      "line": 36,
+      "col": 7,
+      "kind": "session put dropped",
+      "before": "let _ <- Session.put (\\s -> { s | user: Just id })",
+      "after": "let _ <- Task.succeed ()"
+     },
+     {
+      "module": "Auth.Login",
+      "file": "app/Auth/Login.alder",
+      "decl": "Submit.update",
+      "line": 37,
+      "col": 21,
+      "kind": "redirect \u2192 refresh",
+      "before": "Response.redirect (Notes.Index.Index {})",
+      "after": "Response.refresh"
+     },
+     {
+      "module": "Auth.Login",
+      "file": "app/Auth/Login.alder",
+      "decl": "Submit.update",
+      "line": 39,
+      "col": 30,
+      "kind": "invalid \u2192 refresh",
+      "before": "Response.invalid \"Email or password is incorrect.\"",
+      "after": "Response.refresh"
+     },
+     {
+      "module": "Note",
+      "file": "app/Note.alder",
+      "decl": "Note",
+      "line": 11,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "owner @ref User @restrict",
+      "after": "owner @ref User @cascade"
+     },
+     {
+      "module": "Notes.Index",
+      "file": "app/Notes/Index.alder",
+      "decl": "Index",
+      "line": 8,
+      "col": 27,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = User.UserId \"mutant\")"
+     },
+     {
+      "module": "Notes.Index",
+      "file": "app/Notes/Index.alder",
+      "decl": "Add",
+      "line": 9,
+      "col": 46,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = User.UserId \"mutant\")"
+     },
+     {
+      "module": "Notes.Index",
+      "file": "app/Notes/Index.alder",
+      "decl": "Index.load",
+      "line": 19,
+      "col": 10,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Note.created.desc",
+      "after": "Db.orderBy Note.created.asc"
+     },
+     {
+      "module": "Notes.Index",
+      "file": "app/Notes/Index.alder",
+      "decl": "Add.update",
+      "line": 26,
+      "col": 3,
+      "kind": "write replaced",
+      "before": "let _ <- Db.insertMine Note { title: p.form.title, body: p.form.body }",
+      "after": "let _ <- Task.succeed (Note.NoteId \"mutant\")"
+     },
+     {
+      "module": "Notes.Index",
+      "file": "app/Notes/Index.alder",
+      "decl": "Add.update",
+      "line": 27,
+      "col": 17,
+      "kind": "redirect \u2192 refresh",
+      "before": "Response.redirect (Index {})",
+      "after": "Response.refresh"
+     },
+     {
+      "module": "Notes.Show",
+      "file": "app/Notes/Show.alder",
+      "decl": "Show",
+      "line": 8,
+      "col": 54,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = User.UserId \"mutant\")"
+     },
+     {
+      "module": "Notes.Show",
+      "file": "app/Notes/Show.alder",
+      "decl": "Save",
+      "line": 9,
+      "col": 68,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = User.UserId \"mutant\")"
+     },
+     {
+      "module": "Notes.Show",
+      "file": "app/Notes/Show.alder",
+      "decl": "Delete",
+      "line": 10,
+      "col": 57,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = User.UserId \"mutant\")"
+     },
+     {
+      "module": "Notes.Show",
+      "file": "app/Notes/Show.alder",
+      "decl": "Save.update",
+      "line": 24,
+      "col": 3,
+      "kind": "write replaced",
+      "before": "let _ <- Db.updateMine Note p.id \u2026",
+      "after": "let _ <- Task.succeed ()"
+     },
+     {
+      "module": "Notes.Show",
+      "file": "app/Notes/Show.alder",
+      "decl": "Save.update",
+      "line": 24,
+      "col": 12,
+      "kind": "scope dropped",
+      "before": "Db.updateMine Note p.id (\\n -> { n | title: p.form.title, body: p.form.body })",
+      "after": "Db.update Note p.id \u2026, not found when missing"
+     },
+     {
+      "module": "Notes.Show",
+      "file": "app/Notes/Show.alder",
+      "decl": "Save.update",
+      "line": 24,
+      "col": 43,
+      "kind": "update field dropped",
+      "before": "{ n | title: p.form.title, body: p.form.body }",
+      "after": "{ n | body: p.form.body }"
+     },
+     {
+      "module": "Notes.Show",
+      "file": "app/Notes/Show.alder",
+      "decl": "Save.update",
+      "line": 24,
+      "col": 43,
+      "kind": "update field dropped",
+      "before": "{ n | title: p.form.title, body: p.form.body }",
+      "after": "{ n | title: p.form.title }"
+     },
+     {
+      "module": "Notes.Show",
+      "file": "app/Notes/Show.alder",
+      "decl": "Save.update",
+      "line": 25,
+      "col": 17,
+      "kind": "redirect \u2192 refresh",
+      "before": "Response.redirect (Show { id: p.id })",
+      "after": "Response.refresh"
+     },
+     {
+      "module": "Notes.Show",
+      "file": "app/Notes/Show.alder",
+      "decl": "Delete.update",
+      "line": 30,
+      "col": 3,
+      "kind": "write replaced",
+      "before": "let _ <- Db.deleteMine Note p.id",
+      "after": "let _ <- Task.succeed ()"
+     },
+     {
+      "module": "Notes.Show",
+      "file": "app/Notes/Show.alder",
+      "decl": "Delete.update",
+      "line": 30,
+      "col": 12,
+      "kind": "scope dropped",
+      "before": "Db.deleteMine Note p.id",
+      "after": "Db.delete Note p.id, not found when missing"
+     },
+     {
+      "module": "Notes.Show",
+      "file": "app/Notes/Show.alder",
+      "decl": "Delete.update",
+      "line": 31,
+      "col": 17,
+      "kind": "redirect \u2192 refresh",
+      "before": "Response.redirect (Notes.Index.Index {})",
+      "after": "Response.refresh"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "claude-haiku-5-5",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "mutation": {
+  "score": 0.18518518518518517,
+  "killed": 5,
+  "survived": 22,
+  "suppressed": 0,
+  "skipped": 8,
+  "survivors": [
+   {
+    "module": "App",
+    "file": "app/App.alder",
+    "decl": "Logout.update",
+    "line": 26,
+    "col": 3,
+    "kind": "session put dropped",
+    "before": "let _ <- Session.put (\\s -> { s | user: Nothing })",
+    "after": "let _ <- Task.succeed ()"
+   },
+   {
+    "module": "App",
+    "file": "app/App.alder",
+    "decl": "Logout.update",
+    "line": 27,
+    "col": 17,
+    "kind": "redirect \u2192 refresh",
+    "before": "Response.redirect (Auth.Login.Login {})",
+    "after": "Response.refresh"
+   },
+   {
+    "module": "Auth.Login",
+    "file": "app/Auth/Login.alder",
+    "decl": "Submit.update",
+    "line": 36,
+    "col": 7,
+    "kind": "session put dropped",
+    "before": "let _ <- Session.put (\\s -> { s | user: Just id })",
+    "after": "let _ <- Task.succeed ()"
+   },
+   {
+    "module": "Auth.Login",
+    "file": "app/Auth/Login.alder",
+    "decl": "Submit.update",
+    "line": 37,
+    "col": 21,
+    "kind": "redirect \u2192 refresh",
+    "before": "Response.redirect (Notes.Index.Index {})",
+    "after": "Response.refresh"
+   },
+   {
+    "module": "Auth.Login",
+    "file": "app/Auth/Login.alder",
+    "decl": "Submit.update",
+    "line": 39,
+    "col": 30,
+    "kind": "invalid \u2192 refresh",
+    "before": "Response.invalid \"Email or password is incorrect.\"",
+    "after": "Response.refresh"
+   },
+   {
+    "module": "Note",
+    "file": "app/Note.alder",
+    "decl": "Note",
+    "line": 11,
+    "col": 3,
+    "kind": "cascade \u2194 restrict",
+    "before": "owner @ref User @restrict",
+    "after": "owner @ref User @cascade"
+   },
+   {
+    "module": "Notes.Index",
+    "file": "app/Notes/Index.alder",
+    "decl": "Index",
+    "line": 8,
+    "col": 27,
+    "kind": "requires dropped",
+    "before": "requires user",
+    "after": "served without user (user = User.UserId \"mutant\")"
+   },
+   {
+    "module": "Notes.Index",
+    "file": "app/Notes/Index.alder",
+    "decl": "Add",
+    "line": 9,
+    "col": 46,
+    "kind": "requires dropped",
+    "before": "requires user",
+    "after": "served without user (user = User.UserId \"mutant\")"
+   },
+   {
+    "module": "Notes.Index",
+    "file": "app/Notes/Index.alder",
+    "decl": "Index.load",
+    "line": 19,
+    "col": 10,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Note.created.desc",
+    "after": "Db.orderBy Note.created.asc"
+   },
+   {
+    "module": "Notes.Index",
+    "file": "app/Notes/Index.alder",
+    "decl": "Add.update",
+    "line": 26,
+    "col": 3,
+    "kind": "write replaced",
+    "before": "let _ <- Db.insertMine Note { title: p.form.title, body: p.form.body }",
+    "after": "let _ <- Task.succeed (Note.NoteId \"mutant\")"
+   },
+   {
+    "module": "Notes.Index",
+    "file": "app/Notes/Index.alder",
+    "decl": "Add.update",
+    "line": 27,
+    "col": 17,
+    "kind": "redirect \u2192 refresh",
+    "before": "Response.redirect (Index {})",
+    "after": "Response.refresh"
+   },
+   {
+    "module": "Notes.Show",
+    "file": "app/Notes/Show.alder",
+    "decl": "Show",
+    "line": 8,
+    "col": 54,
+    "kind": "requires dropped",
+    "before": "requires user",
+    "after": "served without user (user = User.UserId \"mutant\")"
+   },
+   {
+    "module": "Notes.Show",
+    "file": "app/Notes/Show.alder",
+    "decl": "Save",
+    "line": 9,
+    "col": 68,
+    "kind": "requires dropped",
+    "before": "requires user",
+    "after": "served without user (user = User.UserId \"mutant\")"
+   },
+   {
+    "module": "Notes.Show",
+    "file": "app/Notes/Show.alder",
+    "decl": "Delete",
+    "line": 10,
+    "col": 57,
+    "kind": "requires dropped",
+    "before": "requires user",
+    "after": "served without user (user = User.UserId \"mutant\")"
+   },
+   {
+    "module": "Notes.Show",
+    "file": "app/Notes/Show.alder",
+    "decl": "Save.update",
+    "line": 24,
+    "col": 3,
+    "kind": "write replaced",
+    "before": "let _ <- Db.updateMine Note p.id \u2026",
+    "after": "let _ <- Task.succeed ()"
+   },
+   {
+    "module": "Notes.Show",
+    "file": "app/Notes/Show.alder",
+    "decl": "Save.update",
+    "line": 24,
+    "col": 12,
+    "kind": "scope dropped",
+    "before": "Db.updateMine Note p.id (\\n -> { n | title: p.form.title, body: p.form.body })",
+    "after": "Db.update Note p.id \u2026, not found when missing"
+   },
+   {
+    "module": "Notes.Show",
+    "file": "app/Notes/Show.alder",
+    "decl": "Save.update",
+    "line": 24,
+    "col": 43,
+    "kind": "update field dropped",
+    "before": "{ n | title: p.form.title, body: p.form.body }",
+    "after": "{ n | body: p.form.body }"
+   },
+   {
+    "module": "Notes.Show",
+    "file": "app/Notes/Show.alder",
+    "decl": "Save.update",
+    "line": 24,
+    "col": 43,
+    "kind": "update field dropped",
+    "before": "{ n | title: p.form.title, body: p.form.body }",
+    "after": "{ n | title: p.form.title }"
+   },
+   {
+    "module": "Notes.Show",
+    "file": "app/Notes/Show.alder",
+    "decl": "Save.update",
+    "line": 25,
+    "col": 17,
+    "kind": "redirect \u2192 refresh",
+    "before": "Response.redirect (Show { id: p.id })",
+    "after": "Response.refresh"
+   },
+   {
+    "module": "Notes.Show",
+    "file": "app/Notes/Show.alder",
+    "decl": "Delete.update",
+    "line": 30,
+    "col": 3,
+    "kind": "write replaced",
+    "before": "let _ <- Db.deleteMine Note p.id",
+    "after": "let _ <- Task.succeed ()"
+   },
+   {
+    "module": "Notes.Show",
+    "file": "app/Notes/Show.alder",
+    "decl": "Delete.update",
+    "line": 30,
+    "col": 12,
+    "kind": "scope dropped",
+    "before": "Db.deleteMine Note p.id",
+    "after": "Db.delete Note p.id, not found when missing"
+   },
+   {
+    "module": "Notes.Show",
+    "file": "app/Notes/Show.alder",
+    "decl": "Delete.update",
+    "line": 31,
+    "col": 17,
+    "kind": "redirect \u2192 refresh",
+    "before": "Response.redirect (Notes.Index.Index {})",
+    "after": "Response.refresh"
+   }
+  ]
+ },
+ "hidden": {
+  "passed": 8,
+  "failed": 0,
+  "results": [
+   {
+    "module": "Hidden",
+    "name": "the theme starts light and the list's button switches it to dark",
+    "file": "app/Hidden.alder",
+    "line": 13,
+    "col": 1,
+    "ok": true,
+    "left": "{ dark: False, label: Just \"Switch to dark\", after: True, afterLabel: Just \"Switch to light\", session: Dark }",
+    "right": "{ dark: False, label: Just \"Switch to dark\", after: True, afterLabel: Just \"Switch to light\", session: Dark }",
+    "trace": [
+     "Db.insert User",
+     "Test.login",
+     "Test.open Notes.Index.Index",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.click App.SwitchTheme",
+     "Db.mine Note",
+     "Db.all Note",
+     "Session.put",
+     "Db.mine Note",
+     "Db.all Note"
+    ],
+    "ms": 12.945
+   },
+   {
+    "module": "Hidden",
+    "name": "the theme stays in the session from page to page",
+    "file": "app/Hidden.alder",
+    "line": 21,
+    "col": 1,
+    "ok": true,
+    "left": "{ show: True, list: True, session: Dark }",
+    "right": "{ show: True, list: True, session: Dark }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Index.Index",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.click App.SwitchTheme",
+     "Db.mine Note",
+     "Db.all Note",
+     "Session.put",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.open Notes.Show.Show",
+     "Db.getMine Note",
+     "Test.open Notes.Index.Index",
+     "Db.mine Note",
+     "Db.all Note"
+    ],
+    "ms": 1.122
+   },
+   {
+    "module": "Hidden",
+    "name": "a note's page switches the theme there and back",
+    "file": "app/Hidden.alder",
+    "line": 32,
+    "col": 1,
+    "ok": true,
+    "left": "{ once: True, twice: False, title: Just \"Milk\", label: Just \"Switch to dark\" }",
+    "right": "{ once: True, twice: False, title: Just \"Milk\", label: Just \"Switch to dark\" }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Show.Show",
+     "Db.getMine Note",
+     "Test.click App.SwitchTheme",
+     "Db.getMine Note",
+     "Session.put",
+     "Db.getMine Note",
+     "Test.click App.SwitchTheme",
+     "Db.getMine Note",
+     "Session.put",
+     "Db.getMine Note"
+    ],
+    "ms": 0.938
+   },
+   {
+    "module": "Hidden",
+    "name": "a visitor switches the theme on the login page",
+    "file": "app/Hidden.alder",
+    "line": 42,
+    "col": 1,
+    "ok": true,
+    "left": "{ dark: True, session: Dark, user: Nothing }",
+    "right": "{ dark: True, session: Dark, user: Nothing }",
+    "trace": [
+     "Test.get Auth.Login.Login",
+     "Test.click App.SwitchTheme",
+     "Session.put"
+    ],
+    "ms": 0.48
+   },
+   {
+    "module": "Hidden",
+    "name": "logging out from the list",
+    "file": "app/Hidden.alder",
+    "line": 48,
+    "col": 1,
+    "ok": true,
+    "left": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "right": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "trace": [
+     "Db.insert User",
+     "Test.login",
+     "Test.get Notes.Index.Index",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.click App.Logout",
+     "Session.put",
+     "Test.open Notes.Index.Index"
+    ],
+    "ms": 1.152
+   },
+   {
+    "module": "Hidden",
+    "name": "logging out from a note's page",
+    "file": "app/Hidden.alder",
+    "line": 57,
+    "col": 1,
+    "ok": true,
+    "left": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "right": "{ out: Redirected /login, user: Nothing, after: Redirected /login }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.get Notes.Show.Show",
+     "Db.getMine Note",
+     "Test.click App.Logout",
+     "Session.put",
+     "Test.open Notes.Show.Show"
+    ],
+    "ms": 0.498
+   },
+   {
+    "module": "Hidden",
+    "name": "another user's note is missing",
+    "file": "app/Hidden.alder",
+    "line": 67,
+    "col": 1,
+    "ok": true,
+    "left": "{ answer: PageMissing, items: 0 }",
+    "right": "{ answer: PageMissing, items: 0 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Note",
+     "Test.login",
+     "Test.open Notes.Show.Show",
+     "Db.getMine Note",
+     "Test.open Notes.Index.Index",
+     "Db.mine Note",
+     "Db.all Note"
+    ],
+    "ms": 0.413
+   },
+   {
+    "module": "Hidden",
+    "name": "a note is added on the list and edited on its page",
+    "file": "app/Hidden.alder",
+    "line": 77,
+    "col": 1,
+    "ok": true,
+    "left": "{ added: Redirected /, titles: [\"Milk\"], saved: Redirected /notes/9VYaC4Z5b_Y5vaCPWSN0, title: Just \"Oat milk\", body: Just \"One litre.\" }",
+    "right": "{ added: Redirected /, titles: [\"Milk\"], saved: Redirected /notes/9VYaC4Z5b_Y5vaCPWSN0, title: Just \"Oat milk\", body: Just \"One litre.\" }",
+    "trace": [
+     "Db.insert User",
+     "Test.login",
+     "Test.get Notes.Index.Index",
+     "Db.mine Note",
+     "Db.all Note",
+     "Test.submit NewNote",
+     "Db.insertMine Note",
+     "Db.mine Note",
+     "Db.all Note",
+     "Db.first Note",
+     "Test.get Notes.Show.Show",
+     "Db.getMine Note",
+     "Test.submit EditNote",
+     "Db.updateMine Note",
+     "Db.getMine Note"
+    ],
+    "ms": 0.752
+   }
+  ],
+  "exit": 0
+ },
+ "hidden_pass": "8/8",
+ "names": {
+  "ok": true,
+  "matches": [
+   "table Note",
+   "table User",
+   "session",
+   "page Auth.Login /login",
+   "page Notes.Index /",
+   "page Notes.Show /notes/{id}",
+   "route App.Logout (DELETE /session)",
+   "route App.SwitchTheme (PATCH /theme)",
+   "route Auth.Login.Login (GET /login)",
+   "route Notes.Index.Add (POST /notes)",
+   "route Notes.Index.Index (GET /)",
+   "route Notes.Show.Delete (DELETE /notes/{id})",
+   "route Notes.Show.Save (PUT /notes/{id})",
+   "route Notes.Show.Show (GET /notes/{id})",
+   "form Auth.Login.Credentials",
+   "form Notes.Index.NewNote",
+   "form Notes.Show.EditNote"
+  ],
+  "mismatches": []
+ }
+}

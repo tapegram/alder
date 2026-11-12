@@ -1,0 +1,23 @@
+module Table.Post
+
+import Table.User
+
+type PostId = brand Text
+
+type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
+
+-- `author` is the table's `@owner`: `Db.mine Post` and `Db.updateMine Post` act on the signed-in
+-- author's posts only.
+table Post {
+  id: PostId @id,
+  slug: Slug @unique,
+  title: Text.NonEmpty,
+  body: Text,
+  published: Bool = False,
+  author: User.UserId @ref User @owner,
+  created: Time @created,
+}
+
+-- A published post is shown to every reader; an unpublished one only to its author.
+visibleTo : Post -> Maybe User.UserId -> Bool
+visibleTo post viewer = post.published || viewer == Just (post.author)

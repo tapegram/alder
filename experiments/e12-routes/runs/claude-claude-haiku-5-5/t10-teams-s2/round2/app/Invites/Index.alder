@@ -1,0 +1,138 @@
+module Invites.Index
+
+import Layout
+import Table.Invite
+import Table.Member
+import Table.Team
+import Table.User
+
+route Index   = GET "/invites" { } requires user
+route Accept  = PUT "/invites/{id}/accepted" { id: Invite.InviteId } requires user
+route Decline = PUT "/invites/{id}/declined" { id: Invite.InviteId } requires user
+
+type Line = { invite: Invite.InviteId, name: Text.NonEmpty }
+
+type Model = { lines: List Line }
+
+-- An invite with its team's name.
+line : List Team -> Invite -> Maybe Line
+line teams invite = {
+  let found = List.find (\t -> t.id == invite.team) teams
+  match found {
+    Just t -> Just { invite: invite.id, name: t.name },
+    Nothing -> Nothing,
+  }
+}
+
+-- The invites waiting for the signed-in user's email.
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let me <- Db.get User session.user
+  let email = Maybe.map (\u -> u.email) me
+  let waiting <- Db.from Invite |> Db.where (Invite.status.eq Pending) |> Db.all
+  let mine = List.filter (\i -> Just i.email == email) waiting
+  let teams <- Db.from Team |> Db.all
+  Query.succeed { lines: List.filterMap (line teams) mine }
+}
+
+-- Accepting makes the user a member, and the team is then on their list and page.
+Accept.update : Accept.Params -> Session -> Task Response
+Accept.update p session = {
+  let found <- Invite.waitingFor session.user p.id
+  match found {
+    Nothing -> Task.notFound,
+    Just inv -> {
+      let _ <- Db.update Invite inv.id (\i -> { i | status: Accepted })
+      let _ <- Member.join session.user inv.team
+      Task.succeed (Response.redirect (Teams.Show.Show { id: inv.team }))
+    },
+  }
+}
+
+-- Declining leaves the team closed to the user.
+Decline.update : Decline.Params -> Session -> Task Response
+Decline.update p session = {
+  let found <- Invite.waitingFor session.user p.id
+  match found {
+    Nothing -> Task.notFound,
+    Just inv -> {
+      let _ <- Db.update Invite inv.id (\i -> { i | status: Declined })
+      Task.succeed (Response.redirect (Index {}))
+    },
+  }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Invites">
+    <h1>Invites</h1>
+    <ul id="invites">
+      {for l in model.lines ->
+        <li>
+          <span class="team">{l.name}</span>
+          <al-button variant="secondary" size="sm" click={Accept { id: l.invite }}>Accept</al-button>
+          <al-button variant="ghost" size="sm" click={Decline { id: l.invite }}>Decline</al-button>
+        </li>}
+    </ul>
+    <a href={Teams.Index.Index {}}>Teams</a>
+  </Layout.Page>
+
+test "accepting an invite makes the team visible" = {
+  let owner <- Db.insert User {
+    email: Text.Email "owner@example.com",
+    name: Text.NonEmpty "Owner",
+    passwordHash: "",
+  }
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let team <- Db.insert Team { name: Text.NonEmpty "Club", owner: owner }
+  let invite <- Db.insert Invite { team: team, email: Text.Email "me@example.com" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let accepted <- Test.click (Accept { id: invite })
+  let teams <- Test.get (Teams.Index.Index {})
+  Task.succeed (
+    {
+      answer: accepted.answer,
+      page: Test.text "#name" accepted.doc,
+      listed: Test.texts "#teams .name" teams.doc,
+    } == {
+      answer: Redirected (Teams.Show.Show { id: team }),
+      page: Just "Club",
+      listed: ["Club"],
+    }
+  )
+}
+
+test "declining an invite leaves the team closed" = {
+  let owner <- Db.insert User {
+    email: Text.Email "owner@example.com",
+    name: Text.NonEmpty "Owner",
+    passwordHash: "",
+  }
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let team <- Db.insert Team { name: Text.NonEmpty "Club", owner: owner }
+  let invite <- Db.insert Invite { team: team, email: Text.Email "me@example.com" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let declined <- Test.click (Decline { id: invite })
+  let page <- Test.open (Teams.Show.Show { id: team })
+  Task.succeed (
+    {
+      answer: declined.answer,
+      waiting: Test.count "#invites li" declined.doc,
+      team: page.answer,
+    } == {
+      answer: Redirected (Index {}),
+      waiting: 0,
+      team: PageMissing,
+    }
+  )
+}

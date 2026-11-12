@@ -1,0 +1,85 @@
+module Orders.Show
+
+import Layout
+import Order
+import Line
+import Product
+import User
+
+route Show   = GET  "/orders/{id}" { id: Order.OrderId } requires user, role Manager | Staff
+route AddLine = POST "/orders/{id}/lines" { id: Order.OrderId, product: Product.ProductId } form NewLine requires user
+route Pay    = POST "/orders/{id}/pay"    { id: Order.OrderId } requires user
+route Cancel = POST "/orders/{id}/cancel" { id: Order.OrderId } requires user
+
+form NewLine = { quantity: Int.Positive }
+
+type Model = { order: Order, lines: List { line: Line, product: Product }, total: Int, products: List Product }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let order <- Db.getMine Order params.id
+  let lines <- Db.from Line |> Db.where (Line.order.eq params.id) |> Db.all
+  let products <- Db.from Product |> Db.where (Product.active.eq True) |> Db.all
+  let pairs <- Query.all (List.map (\l -> {
+    let p <- Db.get Product l.product
+    Query.succeed { line: l, product: Maybe.withDefault { id: l.product, name: Text.NonEmpty "?", price: Int.NonNegative 0, active: False } p }
+  }) lines)
+  let total = List.sum (List.map (\x -> x.line.quantity * x.product.price) pairs)
+  Query.succeed { order: order, lines: pairs, total: total, products: products }
+}
+
+-- Adding a line is refused unless the order is still Open, whatever page it was posted from.
+AddLine.update : AddLine.Params -> Session -> Task Response
+AddLine.update p session = {
+  let order <- Db.getMine Order p.id
+  if order.status != Open then
+    Task.succeed (Response.invalid "This order is no longer open.")
+  else {
+    let _ <- Db.insertMine Line { order: p.id, product: p.product, quantity: p.form.quantity }
+    Task.succeed (Response.redirect (Orders.Show.Show { id: p.id }))
+  }
+}
+
+Pay.update : Pay.Params -> Session -> Task Response
+Pay.update p session = {
+  let _ <- Db.updateMine Order p.id (\o -> { o | status: Paid })
+  Task.succeed (Response.redirect (Orders.Show.Show { id: p.id }))
+}
+
+Cancel.update : Cancel.Params -> Session -> Task Response
+Cancel.update p session = {
+  let _ <- Db.updateMine Order p.id (\o -> { o | status: Cancelled })
+  Task.succeed (Response.redirect (Orders.Show.Show { id: p.id }))
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title="Order">
+    <h1>Order</h1>
+    <p id="status">{statusText model.order.status}</p>
+    <ul>
+      {for x in model.lines ->
+        <li>{x.product.name} × {Text.fromInt x.line.quantity}</li>}
+    </ul>
+    <p id="total">{Text.fromInt model.total}</p>
+    {if model.order.status == Open then
+      <div>
+        {for p in model.products ->
+          <form submit={AddLine { id: model.order.id, product: p.id }}>
+            <span>{p.name}</span>
+            <al-input field="quantity" label="Quantity" />
+            <al-button type="submit">Add</al-button>
+          </form>}
+        <al-button click={Pay { id: model.order.id }}>Mark paid</al-button>
+        <al-button variant="destructive" click={Cancel { id: model.order.id }}>Cancel order</al-button>
+      </div>
+    else Html.none}
+    <a href={Orders.Index.Index {}}>Back</a>
+  </Layout.Page>
+
+statusText : Order.Status -> Text
+statusText s = match s {
+  Open -> "Open",
+  Paid -> "Paid",
+  Cancelled -> "Cancelled",
+}

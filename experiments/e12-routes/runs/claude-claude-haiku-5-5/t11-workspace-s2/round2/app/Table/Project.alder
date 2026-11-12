@@ -1,0 +1,12 @@
+module Table.Project
+
+import Table.Org
+
+type ProjectId = brand Text
+
+-- A project belongs to one org; its rows live in that org's silo (App's `silo org`).
+table Project {
+  id: ProjectId @id,
+  name: Text.NonEmpty,
+  org: Org.OrgId @ref Org @partition org,
+}

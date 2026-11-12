@@ -1,0 +1,72 @@
+module Rooms.Index
+
+import Layout
+import Table.Booking
+import Table.Room
+import Table.User
+
+route Index = GET "/rooms" { } requires user
+
+type Line = { id: Room.RoomId, name: Text, free: Date }
+
+type Model = { lines: List Line }
+
+-- One room's line: its name, and the first day from `today` on that none of its bookings holds.
+lineOf : Date -> List Booking -> Room -> Line
+lineOf today bookings room =
+  {
+    id: room.id,
+    name: Text.trim room.name,
+    free: Booking.nextFree today (List.filter (\b -> b.room == room.id) bookings),
+  }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let rooms <- Db.from Room |> Db.orderBy Room.name.asc |> Db.all
+  let bookings <- Db.from Booking |> Db.all
+  let today <- Date.today
+  let lines : List Line = rooms |> List.map (lineOf today bookings)
+  Query.succeed { lines: lines }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Rooms">
+    <h1>Rooms</h1>
+    <ul id="rooms">
+      {for line in model.lines ->
+        <li>
+          <a class="name" href={Rooms.Show.Show { id: line.id }}>{line.name}</a>
+          <span class="free">{Date.toText line.free}</span>
+        </li>}
+    </ul>
+    <nav>
+      <a href={Bookings.Index.Index {}}>My bookings</a>
+    </nav>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "the next free date skips back-to-back bookings" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let oak <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let _ <- Db.insert Booking {
+    room: oak,
+    owner: me,
+    from: today,
+    to: Date.addDays 2 today,
+  }
+  let _ <- Db.insert Booking {
+    room: oak,
+    owner: me,
+    from: Date.addDays 2 today,
+    to: Date.addDays 4 today,
+  }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.texts "#rooms .free" page.doc == [Date.toText (Date.addDays 4 today)])
+}

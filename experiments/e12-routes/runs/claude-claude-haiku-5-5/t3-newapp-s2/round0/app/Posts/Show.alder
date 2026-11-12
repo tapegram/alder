@@ -1,0 +1,122 @@
+module Posts.Show
+
+import Layout
+import Table.Comment
+import Table.Post
+import Table.User
+
+route Show  = GET  "/posts/{slug}"          { slug: Post.Slug }
+route Reply = POST "/posts/{slug}/comments" { slug: Post.Slug } form NewComment
+
+type Model = { post: Post, comments: List Comment }
+
+form NewComment = { authorName: Text.NonEmpty, body: Text.NonEmpty }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <- Db.from Post |> Db.where (Post.slug.eq params.slug) |> Db.first
+  match found {
+    Nothing -> Query.notFound,
+    Just post -> {
+      let comments <-
+        Db.from Comment
+          |> Db.where (Comment.post.eq post.id)
+          |> Db.orderBy Comment.created.asc
+          |> Db.all
+      if Post.visibleTo post session.user then Query.succeed { post: post, comments: comments } else Query.notFound
+    },
+  }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title={model.post.title}>
+    <a href={Home.Index {}}>All posts</a>
+    <h1>{model.post.title}</h1>
+    <p>{model.post.body}</p>
+    <h2>Comments</h2>
+    <ul id="comments">
+      {for c in model.comments -> <li><strong>{c.authorName}</strong>: {c.body}</li>}
+    </ul>
+    <al-card>
+      <form submit={Reply { slug: model.post.slug }}>
+        <Errors form />
+        <al-input field="authorName" label="Your name" />
+        <al-textarea field="body" label="Comment" />
+        <al-button type="submit">Post comment</al-button>
+      </form>
+    </al-card>
+  </Layout.Page>
+
+Reply.update : Reply.Params -> Session -> Task Response
+Reply.update p session = {
+  let found <- Db.from Post |> Db.where (Post.slug.eq p.slug) |> Db.first
+  match found {
+    Nothing -> Task.notFound,
+    Just post -> {
+      let _ <- Db.insert Comment { post: post.id, authorName: p.form.authorName, body: p.form.body }
+      Task.succeed (Response.redirect (Show { slug: p.slug }))
+    },
+  }
+}
+
+test "an unpublished post is not found for a reader" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "draft",
+    title: Text.NonEmpty "Draft",
+    body: "Not yet.",
+    published: False,
+    author: me,
+  }
+  let r <- Test.open (Show { slug: Post.Slug "draft" })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "the author sees her own unpublished post" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "draft",
+    title: Text.NonEmpty "Draft",
+    body: "Not yet.",
+    published: False,
+    author: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Show { slug: Post.Slug "draft" })
+  Task.succeed (r.answer == Shown)
+}
+
+test "a comment with an empty author is refused" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "hello",
+    title: Text.NonEmpty "Hello",
+    body: "Hi.",
+    published: True,
+    author: me,
+  }
+  let _ <- Test.get (Show { slug: Post.Slug "hello" })
+  let r <- Test.submitRaw (Reply { slug: Post.Slug "hello" }) [
+    { name: "authorName", value: "" },
+    { name: "body", value: "Nice post." },
+  ]
+  let n <- Db.from Comment |> Db.count
+  let refused = match r.answer {
+    FormRejected _ -> True,
+    _ -> False,
+  }
+  Task.succeed ({ refused: refused, comments: n } == { refused: True, comments: 0 })
+}

@@ -1,0 +1,46 @@
+module Table.Booking
+
+import Table.Room
+import Table.User
+
+type BookingId = brand Text
+
+-- A booking holds its room from `from` up to, but not including, `to`.
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- A date written out in a test.
+dateOf : Text -> Date
+dateOf text = Date.fromText text ?? Date.epoch
+
+-- Whether the stay from `start` up to, not including, `finish` shares a day with booking `b`.
+clashes : Date -> Date -> Booking -> Bool
+clashes start finish b = start < b.to && b.from < finish
+
+-- The first day, from `start` on, that no booking of the list holds.
+nextFree : List Booking -> Date -> Date
+nextFree bookings start =
+  match List.find (\(b : Booking) -> b.from <= start && start < b.to) bookings {
+    Just b -> nextFree bookings b.to,
+    Nothing -> start,
+  }
+
+test "the next free day skips back-to-back bookings" =
+  nextFree [
+    { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: dateOf "2026-03-01", to: dateOf "2026-03-03" },
+    { id: BookingId "b", room: Room.RoomId "r", owner: User.UserId "u", from: dateOf "2026-03-03", to: dateOf "2026-03-05" },
+  ] (dateOf "2026-03-01") == dateOf "2026-03-05"
+
+test "a free room's next free day is the day asked about" =
+  nextFree [] (dateOf "2026-03-01") == dateOf "2026-03-01"
+
+test "a stay that starts on the other's last day does not clash" =
+  not (clashes (dateOf "2026-03-03") (dateOf "2026-03-05") { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: dateOf "2026-03-01", to: dateOf "2026-03-03" })
+
+test "a stay that starts inside the other clashes" =
+  clashes (dateOf "2026-03-02") (dateOf "2026-03-04") { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: dateOf "2026-03-01", to: dateOf "2026-03-03" }

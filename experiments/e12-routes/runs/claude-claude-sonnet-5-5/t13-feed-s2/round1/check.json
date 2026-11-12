@@ -1,0 +1,1 @@
+{"code": "E0002", "severity": "error", "file": "app/Feed/Index.alder", "line": 73, "col": 36, "endLine": 73, "endCol": 52, "message": "inside `Feed.Index`, its own names are written unqualified: `Index`", "fix": {"line": 73, "col": 36, "endLine": 73, "endCol": 52, "replace": "Index"}}

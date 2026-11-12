@@ -1,0 +1,36 @@
+module Order
+
+import User
+
+type OrderId = brand Text
+
+type Status = Open | Paid | Cancelled
+
+table Order {
+  id: OrderId @id,
+  owner: User.UserId @ref User,
+  status: Status = Open,
+  created: Time @created,
+}
+
+statusText : Status -> Text
+statusText status = match status {
+  Open -> "Open",
+  Paid -> "Paid",
+  Cancelled -> "Cancelled",
+}
+
+-- The order, when the user may see it: their own, or anyone's for a Manager. Any other order,
+-- like a missing one, is not found.
+visible : User.UserId -> OrderId -> Query Order
+visible user id = {
+  let found <- Db.get Order id
+  let manager <- User.isManager user
+  match found {
+    Just o -> if o.owner == user || manager then Query.succeed o else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+test "each status has its text" =
+  List.map statusText [Open, Paid, Cancelled] == ["Open", "Paid", "Cancelled"]

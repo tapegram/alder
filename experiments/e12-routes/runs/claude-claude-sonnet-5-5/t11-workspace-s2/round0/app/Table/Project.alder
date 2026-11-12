@@ -1,0 +1,11 @@
+module Table.Project
+
+import Table.Org
+
+type ProjectId = brand Text
+
+table Project {
+  id: ProjectId @id,
+  name: Text.NonEmpty,
+  org: Org.OrgId @ref Org @partition org,
+}

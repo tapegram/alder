@@ -1,0 +1,15 @@
+module Table.Todo
+
+import Table.Org
+import Table.Project
+
+type TodoId = brand Text
+
+-- A to-do belongs to a project, and goes with it.
+table Todo {
+  id: TodoId @id,
+  title: Text.NonEmpty,
+  done: Bool = False,
+  project: Project.ProjectId @ref Project @cascade,
+  org: Org.OrgId @ref Org @partition org,
+}

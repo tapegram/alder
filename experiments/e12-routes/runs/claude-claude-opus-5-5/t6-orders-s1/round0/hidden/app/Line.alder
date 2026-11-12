@@ -1,0 +1,33 @@
+module Line
+
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+type Item = { name: Text, quantity: Int, subtotal: Int }
+
+-- quantity × price of the line's product.
+lineTotal : List Product -> Line -> Int
+lineTotal products line =
+  match List.find (\p -> p.id == line.product) products {
+    Just p -> line.quantity * p.price,
+    Nothing -> 0,
+  }
+
+total : List Product -> List Line -> Int
+total products lines = List.sum (List.map (lineTotal products) lines)
+
+describe : List Product -> Line -> Item
+describe products line = {
+  let found = List.find (\p -> p.id == line.product) products
+  let name : Text = Maybe.withDefault "" (Maybe.map (\p -> "{p.name}") found)
+  { name: name, quantity: line.quantity, subtotal: lineTotal products line }
+}

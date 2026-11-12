@@ -1,0 +1,5 @@
+{"code": "E0025", "severity": "error", "file": "app/Notes/Index.alder", "line": 16, "col": 5, "endLine": 16, "endCol": 12, "message": "`Note` has no `@owner` column, so `Db.mine Note` has nothing to scope by"}
+{"code": "E0025", "severity": "error", "file": "app/Notes/Index.alder", "line": 26, "col": 12, "endLine": 26, "endCol": 25, "message": "`Note` has no `@owner` column, so `Db.insertMine Note` has nothing to scope by"}
+{"code": "E0003", "severity": "error", "file": "app/Notes/Index.alder", "line": 26, "col": 31, "endLine": 26, "endCol": 73, "message": "record `Note.Insert Note` is missing field(s): owner"}
+{"code": "E0025", "severity": "error", "file": "app/Notes/Index.alder", "line": 34, "col": 12, "endLine": 34, "endCol": 25, "message": "`Note` has no `@owner` column, so `Db.deleteMine Note` has nothing to scope by"}
+{"code": "E0025", "severity": "error", "file": "app/Notes/Show.alder", "line": 13, "col": 15, "endLine": 13, "endCol": 25, "message": "`Note` has no `@owner` column, so `Db.getMine Note` has nothing to scope by"}

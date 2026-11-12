@@ -1,0 +1,26 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  title: Text.NonEmpty,
+  body: Text,
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+-- Whether the note belongs to the given user.
+ownedBy : User.UserId -> Note -> Bool
+ownedBy user note = note.owner == user
+
+test "ownedBy compares the owner" =
+  ownedBy (User.UserId "u") {
+    id: NoteId "a",
+    title: Text.NonEmpty "x",
+    body: "",
+    owner: User.UserId "u",
+    created: Time.epoch,
+  }

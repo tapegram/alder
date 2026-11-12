@@ -1,0 +1,72 @@
+module Notes.Show
+
+import Layout
+import Note
+import Theme
+import User
+
+route Show   = GET "/notes/{id}" { id: Note.NoteId } requires user
+route Save   = PUT "/notes/{id}" { id: Note.NoteId } form EditNote requires user
+route Delete = DELETE "/notes/{id}" { id: Note.NoteId } requires user
+
+form EditNote = { title: Text.NonEmpty, body: Text }
+
+type Model = { note: Note, theme: Theme.Theme }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let note <- Db.getMine Note params.id
+  Query.succeed { note: note, theme: session.theme }
+}
+
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session = {
+  let _ <- Db.updateMine Note p.id (\n -> { n | title: p.form.title, body: p.form.body })
+  Task.succeed (Response.redirect (Notes.Show.Show { id: p.id }))
+}
+
+Delete.update : Delete.Params -> Session -> Task Response
+Delete.update p session = {
+  let _ <- Db.deleteMine Note p.id
+  Task.succeed (Response.redirect (Notes.Index.Index {}))
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title={model.note.title} theme={model.theme} body={model.theme}>
+    <h1 id="title">{model.note.title}</h1>
+    <p id="body">{model.note.body}</p>
+
+    <al-button id="theme" variant="outline" click={App.SwitchTheme}>
+      {if model.theme == Light then "Switch to dark" else "Switch to light"}
+    </al-button>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+
+    <al-card>
+      <form submit={Save { id: model.note.id }}>
+        <al-input field="title" label="Title" value={model.note.title} />
+        <al-input field="body" label="Body" value={model.note.body} />
+        <al-button type="submit">Save</al-button>
+      </form>
+      <al-button variant="destructive" click={Delete { id: model.note.id }}>Delete</al-button>
+    </al-card>
+
+    <a href={Notes.Index.Index {}}>Back</a>
+  </Layout.Page>
+
+test "a user cannot open another user's note" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let other <- Db.insert User {
+    email: Text.Email "other@example.com",
+    name: Text.NonEmpty "Other",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note { title: Text.NonEmpty "Secret", body: "", owner: other }
+  let _ <- Test.login { user: Just me, theme: Light }
+  let r <- Test.open (Show { id: id })
+  Task.succeed (r.answer == PageMissing)
+}

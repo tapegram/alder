@@ -1,0 +1,150 @@
+module Orgs.Index
+
+import Layout
+import Table.Membership
+import Table.Org
+import Table.User
+
+route Index  = GET  "/orgs"              { }                          requires user
+route Open   = PUT  "/orgs/{org}/opened" { org: Org.OrgId }           requires user
+route Create = POST "/orgs"              { }              form NewOrg requires user
+
+type Model = { orgs: List Org }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let memberships <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq session.user)
+      |> Db.all
+  let orgs <-
+    Db.from Org
+      |> Db.where (Org.id.in (List.map (\m -> m.org) memberships))
+      |> Db.orderBy Org.name.asc
+      |> Db.all
+  Query.succeed { orgs: orgs }
+}
+
+-- The session's `via Membership` refuses an org the user is no member of: the Task fails.
+Open.update : Open.Params -> Session -> Task Response
+Open.update p session = {
+  let _ <- Session.put (\s -> { s | org: Just p.org })
+  Task.succeed (Response.redirect (Projects.Index.Index {}))
+}
+
+form NewOrg = { name: Text.NonEmpty }
+
+-- The creator becomes the first member, then the org is opened.
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let org <- Db.insert Org { name: p.form.name }
+  let _ <- Db.insert Membership { user: session.user, org: org }
+  let _ <- Session.put (\s -> { s | org: Just org })
+  Task.succeed (Response.redirect (Projects.Index.Index {}))
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Orgs">
+    <h1>Orgs</h1>
+    <ul id="orgs">
+      {for o in model.orgs ->
+        <li>
+          <span class="name">{o.name}</span>
+          <al-button variant="secondary" size="sm" click={Open { org: o.id }}>Open</al-button>
+        </li>}
+    </ul>
+    <al-card>
+      <form submit={Create}>
+        <al-input field="name" label="New org" />
+        <al-button type="submit">Create</al-button>
+      </form>
+    </al-card>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "the list shows only the user's orgs, by name" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let zeta <- Db.insert Org { name: Text.NonEmpty "Zeta" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let other <- Db.insert Org { name: Text.NonEmpty "Other" }
+  let _ <- Test.member ann zeta
+  let _ <- Test.member ann acme
+  let _ <- Test.member bob other
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.texts "#orgs .name" page.doc == ["Acme", "Zeta"])
+}
+
+test "opening an org goes to its projects" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Test.member ann acme
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let _ <- Test.get (Index {})
+  let r <- Test.click (Open { org: acme })
+  Task.succeed (
+    { answer: r.answer, org: r.session.org, name: Test.text "#org" r.doc }
+      == { answer: Redirected (Projects.Index.Index {}), org: Just acme, name: Just "Acme" }
+  )
+}
+
+-- A crafted Open of an org the user is no member of: the server refuses it, and the session
+-- keeps the org it had.
+test "a user cannot open an org they are not a member of" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member ann acme
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let orgs <- Test.get (Index {})
+  let r <- Test.run (Open.update { org: globex } { user: ann, org: Just acme })
+  let page <- Test.get (Projects.Index.Index {})
+  Task.succeed (
+    {
+      listed: Test.texts "#orgs .name" orgs.doc,
+      value: r.value,
+      org: Test.text "#org" page.doc,
+    } == {
+      listed: ["Acme"],
+      value: Err "Session.put org: no Membership for this user and org",
+      org: Just "Acme",
+    }
+  )
+}
+
+test "creating an org makes the creator a member and opens it" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Create {}) { name: Text.NonEmpty "Acme" }
+  let members <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq ann)
+      |> Db.count
+  Task.succeed (
+    { answer: r.answer, org: Test.text "#org" r.doc, members: members }
+      == { answer: Redirected (Projects.Index.Index {}), org: Just "Acme", members: 1 }
+  )
+}

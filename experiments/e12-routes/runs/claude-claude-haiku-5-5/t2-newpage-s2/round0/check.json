@@ -1,0 +1,2 @@
+{"code": "E0003", "severity": "error", "file": "app/Profile.alder", "line": 47, "col": 52, "endLine": 47, "endCol": 62, "message": "expected Text.NonEmpty, got Text"}
+{"code": "E0028", "severity": "error", "file": "app/Profile.alder", "line": 48, "col": 9, "endLine": 48, "endCol": 32, "message": "`<al-input field=\"name\">` already shows the errors of `name`; remove `<Errors field=\"name\" />`"}

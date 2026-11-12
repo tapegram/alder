@@ -1,0 +1,491 @@
+{
+ "model": "claude-claude-opus-5-5",
+ "task": "t12-search",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "hidden": "experiments/e12-routes/hidden",
+  "condition": "files",
+  "sample": "s2"
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 6,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 57.1,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.309 (Claude Code)",
+   "model": "claude-opus-5-5",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 10,
+    "failed": 0,
+    "results": [
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes to log in",
+      "file": "app/App.alder",
+      "line": 28,
+      "col": 1,
+      "ok": true,
+      "left": "{ value: Ok (Response.redirect (Auth.Login.Login /login)), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Response.redirect (Auth.Login.Login /login)), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 2.728
+     },
+     {
+      "module": "App",
+      "name": "logging out from the contacts page",
+      "file": "app/App.alder",
+      "line": 36,
+      "col": 1,
+      "ok": true,
+      "left": "{ out: Redirected /login, user: Nothing }",
+      "right": "{ out: Redirected /login, user: Nothing }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Contacts.Index.Find",
+       "Db.mine Contact",
+       "Db.all Contact",
+       "Test.click App.Logout",
+       "Session.put"
+      ],
+      "ms": 9.597
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "file": "app/Auth/Login.alder",
+      "line": 59,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 0.714
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "file": "app/Auth/Login.alder",
+      "line": 75,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: Redirected /contacts, user: Just \"lJHaJDZrxkR5oLeCaV7g\", title: Just \"Contacts\" }",
+      "right": "{ answer: Redirected /contacts, user: Just \"lJHaJDZrxkR5oLeCaV7g\", title: Just \"Contacts\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Session.put",
+       "Db.mine Contact",
+       "Db.all Contact"
+      ],
+      "ms": 0.584
+     },
+     {
+      "module": "Contacts.Index",
+      "name": "typing a query lists only the matching contacts",
+      "file": "app/Contacts/Index.alder",
+      "line": 66,
+      "col": 1,
+      "ok": true,
+      "left": "[\"Alice Smith\", \"Malia Brown\"]",
+      "right": "[\"Alice Smith\", \"Malia Brown\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Contact",
+       "Db.insert Contact",
+       "Db.insert Contact",
+       "Test.login",
+       "Test.get Contacts.Index.Find",
+       "Db.mine Contact",
+       "Db.all Contact",
+       "Test.input Contacts.Index.Results",
+       "Db.mine Contact",
+       "Db.all Contact"
+      ],
+      "ms": 0.578
+     },
+     {
+      "module": "Contacts.Index",
+      "name": "the page opened with a query lists only its matches",
+      "file": "app/Contacts/Index.alder",
+      "line": 93,
+      "col": 1,
+      "ok": true,
+      "left": "[\"Bob Jones\"]",
+      "right": "[\"Bob Jones\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Contact",
+       "Db.insert Contact",
+       "Test.login",
+       "Test.get Contacts.Index.Find",
+       "Db.mine Contact",
+       "Db.all Contact"
+      ],
+      "ms": 0.484
+     },
+     {
+      "module": "Contacts.Index",
+      "name": "an empty query lists every contact",
+      "file": "app/Contacts/Index.alder",
+      "line": 114,
+      "col": 1,
+      "ok": true,
+      "left": "{ page: [\"Alice Smith\", \"Bob Jones\"], typed: [\"Bob Jones\"], cleared: [\"Alice Smith\", \"Bob Jones\"] }",
+      "right": "{ page: [\"Alice Smith\", \"Bob Jones\"], typed: [\"Bob Jones\"], cleared: [\"Alice Smith\", \"Bob Jones\"] }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Contact",
+       "Db.insert Contact",
+       "Test.login",
+       "Test.get Contacts.Index.Find",
+       "Db.mine Contact",
+       "Db.all Contact",
+       "Test.input Contacts.Index.Results",
+       "Db.mine Contact",
+       "Db.all Contact",
+       "Test.input Contacts.Index.Results",
+       "Db.mine Contact",
+       "Db.all Contact"
+      ],
+      "ms": 0.693
+     },
+     {
+      "module": "Contacts.Index",
+      "name": "another user's contacts never appear",
+      "file": "app/Contacts/Index.alder",
+      "line": 147,
+      "col": 1,
+      "ok": true,
+      "left": "{ page: [\"Alice Smith\"], typed: [\"Alice Smith\"], searched: [] }",
+      "right": "{ page: [\"Alice Smith\"], typed: [\"Alice Smith\"], searched: [] }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert User",
+       "Db.insert Contact",
+       "Db.insert Contact",
+       "Test.login",
+       "Test.get Contacts.Index.Find",
+       "Db.mine Contact",
+       "Db.all Contact",
+       "Test.input Contacts.Index.Results",
+       "Db.mine Contact",
+       "Db.all Contact",
+       "Test.get Contacts.Index.Find",
+       "Db.mine Contact",
+       "Db.all Contact"
+      ],
+      "ms": 1.383
+     },
+     {
+      "module": "Contacts.Index",
+      "name": "the form adds a contact",
+      "file": "app/Contacts/Index.alder",
+      "line": 185,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: Redirected /contacts, listed: [\"Carol White\"], rows: [{ name: \"Carol White\", email: \"carol@example.com\", owner: \"6ryPmVFy6zYqBC_GdZC3\" }] }",
+      "right": "{ answer: Redirected /contacts, listed: [\"Carol White\"], rows: [{ name: \"Carol White\", email: \"carol@example.com\", owner: \"6ryPmVFy6zYqBC_GdZC3\" }] }",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.get Contacts.Index.Find",
+       "Db.mine Contact",
+       "Db.all Contact",
+       "Test.submit NewContact",
+       "Db.insertMine Contact",
+       "Db.mine Contact",
+       "Db.all Contact",
+       "Db.all Contact"
+      ],
+      "ms": 0.578
+     },
+     {
+      "module": "Contacts.Index",
+      "name": "a visitor is sent to log in",
+      "file": "app/Contacts/Index.alder",
+      "line": 217,
+      "col": 1,
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Contacts.Index.Find"
+      ],
+      "ms": 0.306
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.7857142857142857,
+    "killed": 11,
+    "survived": 3,
+    "suppressed": 0,
+    "skipped": 5,
+    "survivors": [
+     {
+      "module": "Table.Contact",
+      "file": "app/Table/Contact.alder",
+      "decl": "Contact",
+      "line": 13,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "owner @ref User @restrict",
+      "after": "owner @ref User @cascade"
+     },
+     {
+      "module": "Contacts.Index",
+      "file": "app/Contacts/Index.alder",
+      "decl": "Results",
+      "line": 8,
+      "col": 75,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = Table.User.UserId \"mutant\")"
+     },
+     {
+      "module": "Contacts.Index",
+      "file": "app/Contacts/Index.alder",
+      "decl": "Add",
+      "line": 9,
+      "col": 75,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = Table.User.UserId \"mutant\")"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "claude-opus-5-5",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "mutation": {
+  "score": 0.7857142857142857,
+  "killed": 11,
+  "survived": 3,
+  "suppressed": 0,
+  "skipped": 5,
+  "survivors": [
+   {
+    "module": "Table.Contact",
+    "file": "app/Table/Contact.alder",
+    "decl": "Contact",
+    "line": 13,
+    "col": 3,
+    "kind": "cascade \u2194 restrict",
+    "before": "owner @ref User @restrict",
+    "after": "owner @ref User @cascade"
+   },
+   {
+    "module": "Contacts.Index",
+    "file": "app/Contacts/Index.alder",
+    "decl": "Results",
+    "line": 8,
+    "col": 75,
+    "kind": "requires dropped",
+    "before": "requires user",
+    "after": "served without user (user = Table.User.UserId \"mutant\")"
+   },
+   {
+    "module": "Contacts.Index",
+    "file": "app/Contacts/Index.alder",
+    "decl": "Add",
+    "line": 9,
+    "col": 75,
+    "kind": "requires dropped",
+    "before": "requires user",
+    "after": "served without user (user = Table.User.UserId \"mutant\")"
+   }
+  ]
+ },
+ "hidden": {
+  "passed": 4,
+  "failed": 0,
+  "results": [
+   {
+    "module": "Hidden",
+    "name": "typing asks for the matching contacts only",
+    "file": "app/Hidden.alder",
+    "line": 13,
+    "col": 1,
+    "ok": true,
+    "left": "{ love: [\"Ada Lovelace\"], tur: [\"Alan Turing\"], none: 0 }",
+    "right": "{ love: [\"Ada Lovelace\"], tur: [\"Alan Turing\"], none: 0 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Contact",
+     "Db.insert Contact",
+     "Db.insert Contact",
+     "Test.login",
+     "Test.get Contacts.Index.Find",
+     "Db.mine Contact",
+     "Db.all Contact",
+     "Test.input Contacts.Index.Results",
+     "Db.mine Contact",
+     "Db.all Contact",
+     "Test.input Contacts.Index.Results",
+     "Db.mine Contact",
+     "Db.all Contact",
+     "Test.input Contacts.Index.Results",
+     "Db.mine Contact",
+     "Db.all Contact"
+    ],
+    "ms": 12.006
+   },
+   {
+    "module": "Hidden",
+    "name": "an empty query lists every contact",
+    "file": "app/Hidden.alder",
+    "line": 26,
+    "col": 1,
+    "ok": true,
+    "left": "{ answer: Shown, page: 3, cleared: 3 }",
+    "right": "{ answer: Shown, page: 3, cleared: 3 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert Contact",
+     "Db.insert Contact",
+     "Db.insert Contact",
+     "Test.login",
+     "Test.open Contacts.Index.Find",
+     "Db.mine Contact",
+     "Db.all Contact",
+     "Test.input Contacts.Index.Results",
+     "Db.mine Contact",
+     "Db.all Contact",
+     "Test.input Contacts.Index.Results",
+     "Db.mine Contact",
+     "Db.all Contact"
+    ],
+    "ms": 0.684
+   },
+   {
+    "module": "Hidden",
+    "name": "another user's contacts never appear",
+    "file": "app/Hidden.alder",
+    "line": 38,
+    "col": 1,
+    "ok": true,
+    "left": "{ page: [\"Ada Lovelace\"], typed: [\"Ada Lovelace\"], theirs: 0, opened: 0 }",
+    "right": "{ page: [\"Ada Lovelace\"], typed: [\"Ada Lovelace\"], theirs: 0, opened: 0 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Db.insert Contact",
+     "Db.insert Contact",
+     "Test.login",
+     "Test.get Contacts.Index.Find",
+     "Db.mine Contact",
+     "Db.all Contact",
+     "Test.input Contacts.Index.Results",
+     "Db.mine Contact",
+     "Db.all Contact",
+     "Test.input Contacts.Index.Results",
+     "Db.mine Contact",
+     "Db.all Contact",
+     "Test.open Contacts.Index.Find",
+     "Db.mine Contact",
+     "Db.all Contact"
+    ],
+    "ms": 0.727
+   },
+   {
+    "module": "Hidden",
+    "name": "the form adds a contact",
+    "file": "app/Hidden.alder",
+    "line": 51,
+    "col": 1,
+    "ok": true,
+    "left": "{ answer: Redirected /contacts, names: [\"Zoe Smith\"], mine: [{ name: \"Zoe Smith\", email: \"zoe@example.com\" }], theirs: 0 }",
+    "right": "{ answer: Redirected /contacts, names: [\"Zoe Smith\"], mine: [{ name: \"Zoe Smith\", email: \"zoe@example.com\" }], theirs: 0 }",
+    "trace": [
+     "Db.insert User",
+     "Db.insert User",
+     "Test.login",
+     "Test.get Contacts.Index.Find",
+     "Db.mine Contact",
+     "Db.all Contact",
+     "Test.submit NewContact",
+     "Db.insertMine Contact",
+     "Db.mine Contact",
+     "Db.all Contact",
+     "Db.all Contact",
+     "Test.login",
+     "Test.open Contacts.Index.Find",
+     "Db.mine Contact",
+     "Db.all Contact"
+    ],
+    "ms": 1.398
+   }
+  ],
+  "exit": 0
+ },
+ "hidden_pass": "4/4",
+ "names": {
+  "ok": true,
+  "matches": [
+   "table Contact",
+   "table User",
+   "session",
+   "page Auth.Login /login",
+   "page Contacts.Index /contacts",
+   "route App.Logout (DELETE /session)",
+   "route Auth.Login.Login (GET /login)",
+   "route Contacts.Index.Add (POST /contacts)",
+   "route Contacts.Index.Find (GET /contacts)",
+   "route Contacts.Index.Results (GET /contacts/results)",
+   "form Auth.Login.Credentials",
+   "form Contacts.Index.NewContact"
+  ],
+  "mismatches": []
+ }
+}

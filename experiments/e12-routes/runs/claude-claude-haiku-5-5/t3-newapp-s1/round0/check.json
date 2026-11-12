@@ -1,0 +1,8 @@
+{"code": "E0002", "severity": "error", "file": "app/Home.alder", "line": 32, "col": 23, "endLine": 32, "endCol": 27, "message": "unknown constructor `User`"}
+{"code": "E0002", "severity": "error", "file": "app/Home.alder", "line": 36, "col": 11, "endLine": 36, "endCol": 17, "message": "`Author` is a constructor of `Table.User.Role`; import `Table.User`", "fix": {"line": 5, "col": 1, "endLine": 5, "endCol": 1, "replace": "import Table.User\n"}}
+{"code": "E0201", "severity": "error", "file": "app/Reading.alder", "line": 15, "col": 21, "endLine": 15, "endCol": 32, "message": "module `Table.User` is not imported", "fix": {"line": 6, "col": 1, "endLine": 6, "endCol": 1, "replace": "import Table.User\n"}}
+{"code": "E0002", "severity": "error", "file": "app/Reading.alder", "line": 68, "col": 23, "endLine": 68, "endCol": 27, "message": "unknown constructor `User`"}
+{"code": "E0002", "severity": "error", "file": "app/Reading.alder", "line": 84, "col": 23, "endLine": 84, "endCol": 27, "message": "unknown constructor `User`"}
+{"code": "E0002", "severity": "error", "file": "app/Reading.alder", "line": 101, "col": 23, "endLine": 101, "endCol": 27, "message": "unknown constructor `User`"}
+{"code": "E0011", "severity": "error", "file": "app/Table/Post.alder", "line": 28, "col": 10, "endLine": 28, "endCol": 23, "message": "brand constructor `NonEmpty` can only be used in module `Text` or inside a `test`"}
+{"code": "E0011", "severity": "error", "file": "app/Table/Post.alder", "line": 31, "col": 11, "endLine": 31, "endCol": 22, "message": "brand constructor `UserId` can only be used in module `Table.User` or inside a `test`"}

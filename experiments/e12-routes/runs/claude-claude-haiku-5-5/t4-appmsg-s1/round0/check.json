@@ -1,0 +1,2 @@
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 27, "col": 36, "endLine": 27, "endCol": 53, "message": "inside `Notes.Index`, its own names are written unqualified: `Index`", "fix": {"line": 27, "col": 36, "endLine": 27, "endCol": 53, "replace": "Index"}}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Show.alder", "line": 25, "col": 36, "endLine": 25, "endCol": 51, "message": "inside `Notes.Show`, its own names are written unqualified: `Show`", "fix": {"line": 25, "col": 36, "endLine": 25, "endCol": 51, "replace": "Show"}}

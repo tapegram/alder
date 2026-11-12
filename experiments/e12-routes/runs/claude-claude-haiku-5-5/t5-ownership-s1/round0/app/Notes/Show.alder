@@ -1,0 +1,38 @@
+module Notes.Show
+
+import Layout
+import Note
+
+route Show = GET "/notes/{id}" { id: Note.NoteId } requires user
+
+type Model = { note: Note }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let note <- Db.getMine Note params.id
+  Query.succeed { note: note }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title={model.note.title}>
+    <h1 id="title">{model.note.title}</h1>
+    <p id="body">{model.note.body}</p>
+    <a href={Notes.Index.Index {}}>Back</a>
+  </Layout.Page>
+
+test "another user's note is not found" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note {
+    title: Text.NonEmpty "Milk",
+    body: "",
+    owner: me,
+  }
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.open (Show { id: id })
+  Task.succeed (r.answer == PageMissing)
+}

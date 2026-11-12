@@ -1,0 +1,505 @@
+--- file: app/Profile.alder ---
+module Profile
+
+import Layout
+import Table.Todo
+import Table.User
+
+route Show   = GET "/profile" { } requires user
+route Rename = PUT "/profile" { } form RenameForm requires user
+
+type Model = {
+  name: Text.NonEmpty,
+  email: Text.Email,
+  total: Int,
+  doneCount: Int,
+}
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <- Db.get User session.user
+  let total <- Db.mine Todo |> Db.count
+  let doneCount <- Db.mine Todo |> Db.where (Todo.done.eq True) |> Db.count
+  match found {
+    Just u -> Query.succeed { name: u.name, email: u.email, total: total, doneCount: doneCount },
+    Nothing -> Query.notFound,
+  }
+}
+
+form RenameForm = { name: Text.NonEmpty }
+
+Rename.update : Rename.Params -> Session -> Task Response
+Rename.update p session = {
+  let _ <- Db.update User session.user (\u -> { u | name: p.form.name })
+  Task.succeed (Response.redirect (Show {}))
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title="Profile">
+    <h1>Profile</h1>
+
+    <al-card>
+      <p>Email: {model.email}</p>
+      <p id="counts">{Text.fromInt model.total} todos, {Text.fromInt model.doneCount} done</p>
+    </al-card>
+
+    <al-card>
+      <form submit={Rename {}}>
+        <al-input field="name" label="Name" value={model.name} />
+        <Errors field="name" />
+        <al-button type="submit">Save</al-button>
+      </form>
+    </al-card>
+
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+    <a href={Todos.Index.Index {}}>Back to the todos</a>
+  </Layout.Page>
+
+-- The counts are this user's only: another user's todo is not in them.
+test "the page counts only the user's todos" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let other <- Db.insert User {
+    email: Text.Email "other@example.com",
+    name: Text.NonEmpty "Other",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Bread",
+    done: True,
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Eggs",
+    done: True,
+    due: Nothing,
+    owner: other,
+  }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Show {})
+  Task.succeed (
+    { total: page.model.total, done: page.model.doneCount } == { total: 2, done: 1 }
+  )
+}
+
+test "renaming changes the name" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show {})
+  let r <- Test.submit (Rename {}) { name: Text.NonEmpty "Ann" }
+  let after <- Db.get User me
+  Task.succeed (
+    { answer: r.answer, name: Maybe.map (\u -> u.name) after }
+      == { answer: Redirected (Show {}), name: Just (Text.NonEmpty "Ann") }
+  )
+}
+
+test "renaming to an empty name is refused" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show {})
+  let r <- Test.submitRaw (Rename {}) [{ name: "name", value: "" }]
+  let after <- Db.get User me
+  Task.succeed (
+    { answer: r.answer, name: Maybe.map (\u -> u.name) after }
+      == {
+        answer: FormRejected [{ field: "name", message: "must not be empty" }],
+        name: Just (Text.NonEmpty "Me"),
+      }
+  )
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Show {})
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
+}
+
+--- file: app/Todos/Index.alder ---
+module Todos.Index
+
+import Layout
+import Table.Todo
+import Table.User
+
+route Index  = GET   "/"           { filter: Todo.Filter = All }              requires user
+route Submit = POST  "/todos"      { filter: Todo.Filter = All } form NewTodo requires user
+route Toggle = PATCH "/todos/{id}" { id: Todo.TodoId }                        requires user
+
+type Model = { filter: Todo.Filter, todos: List Todo }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let todos <-
+    Db.mine Todo
+      |> Db.orderBy Todo.created.desc
+      |> Db.all
+  Query.succeed { filter: params.filter, todos: List.filter (Todo.matches params.filter) todos }
+}
+
+form NewTodo = { title: Text.NonEmpty, due: Maybe Date }
+
+-- The filter the page shows rides in the form's URL, so a new todo lands on the same list.
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = {
+  let _ <- Db.insertMine Todo { title: p.form.title, due: p.form.due }
+  Task.succeed (Response.redirect (Index { filter: p.filter }))
+}
+
+-- A write's id comes from the request: anyone can post `Toggle` with another user's id.
+-- `Db.updateMine` and `Db.deleteMine` change the row only when it is the session's user's;
+-- any other id, like a missing one, is a 404 (book 06, "Rules").
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
+  Task.succeed Response.refresh
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Todos">
+    <h1>Todos</h1>
+
+    <al-card>
+      <form submit={Submit { filter: model.filter }}>
+        <al-input field="title" label="What needs doing?" />
+        <al-input field="due" label="Due" />
+        <al-button type="submit">Add</al-button>
+      </form>
+    </al-card>
+
+    <nav>
+      {for f in [All, Active, Completed] ->
+        <a
+          href={Index { filter: f }}
+          aria-current={if model.filter == f then Just "page" else Nothing}>
+          {Todo.filterLabel f}
+        </a>}
+    </nav>
+
+    <ul id="todos">
+      {for todo in model.todos -> <Item todo={todo} />}
+    </ul>
+
+    <p id="summary">{Text.fromInt (Todo.countOpen model.todos)} open</p>
+
+    <a href={Profile.Show.Show {}}>Your profile</a>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+Item : { todo: Todo } -> Html
+Item props =
+  <li class={if props.todo.done then "done" else ""}>
+    <al-button variant="secondary" size="sm" click={Toggle { id: props.todo.id }}>
+      {if props.todo.done then "Undo" else "Done"}
+    </al-button>
+    <a href={Todos.Show.Show { id: props.todo.id }}>{props.todo.title}</a>
+    {match props.todo.due {
+      Just d -> <al-badge variant="outline" class="due">{Date.format "Jan 2" d}</al-badge>,
+      Nothing -> Html.none,
+    }}
+    <al-button variant="ghost" size="sm" click={Todos.Show.Delete { id: props.todo.id }}>
+      Delete
+    </al-button>
+  </li>
+
+test "Toggle flips done" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.run (Toggle.update { id: id } { user: me, role: Member })
+  let after <- Db.get Todo id
+  let done = Maybe.map (\t -> t.done) after
+  Task.succeed (
+    { trace: r.trace, done: done } == { trace: ["Db.updateMine Todo"], done: Just True }
+  )
+}
+
+-- A stranger's own page lists none of my todos, but a write's id comes from the request.
+-- Here my page is still open in the browser when a stranger logs in on it and presses my todo's
+-- Toggle: `Db.updateMine` finds no todo of the stranger's with that id, so the answer is a 404
+-- and nothing changes.
+test "Toggle by another user is not found" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.click (Toggle { id: id })
+  let after <- Db.get Todo id
+  Task.succeed (
+    { answer: r.answer, done: Maybe.map (\t -> t.done) after }
+      == { answer: PageMissing, done: Just False }
+  )
+}
+
+test "Delete by another user is not found" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.click (Todos.Show.Delete { id: id })
+  let after <- Db.get Todo id
+  Task.succeed (
+    { answer: r.answer, todo: Maybe.map (\t -> t.title) after }
+      == { answer: PageMissing, todo: Just (Text.NonEmpty "Milk") }
+  )
+}
+
+-- The same page through the browser: the test logs in, opens the page, and uses the form and
+-- the buttons the page renders, as a user would (book 10, "Testing through the browser").
+test "adding a todo through the page" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let added <- Test.submit (Submit {}) { title: Text.NonEmpty "Milk", due: Nothing }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    {
+      answer: added.answer,
+      todos: List.map (\t -> t.title) page.model.todos,
+      summary: Test.text "#summary" page.doc,
+    } == {
+      answer: Redirected (Index {}),
+      todos: [Text.NonEmpty "Milk"],
+      summary: Just "1 open",
+    }
+  )
+}
+
+test "toggling a todo through the page" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let r <- Test.click (Toggle { id: id })
+  Task.succeed (
+    {
+      answer: r.answer,
+      done: Test.has "li.done" r.doc,
+      summary: Test.text "#summary" r.doc,
+    } == {
+      answer: Refreshed,
+      done: True,
+      summary: Just "0 open",
+    }
+  )
+}
+
+-- Each write route has its own `requires user`: a visitor who adds, toggles or deletes from a
+-- page still open after the session ended is sent to log in, and nothing changes.
+test "a write after logging out is sent to log in" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let added <- Test.submit (Submit {}) { title: Text.NonEmpty "Eggs", due: Nothing }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let toggled <- Test.click (Toggle { id: id })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let deleted <- Test.click (Todos.Show.Delete { id: id })
+  let todos <- Db.from Todo |> Db.all
+  Task.succeed (
+    {
+      added: added.answer,
+      toggled: toggled.answer,
+      deleted: deleted.answer,
+      todos: List.map (\t -> { title: t.title, done: t.done }) todos,
+    } == {
+      added: Redirected (Auth.Login.Login {}),
+      toggled: Redirected (Auth.Login.Login {}),
+      deleted: Redirected (Auth.Login.Login {}),
+      todos: [{ title: Text.NonEmpty "Milk", done: False }],
+    }
+  )
+}
+
+-- A stranger's page lists none of my todos, so it has no Toggle button to click for them; the
+-- todo's own page is a 404 for the stranger.
+test "a stranger cannot see my todo" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let page <- Test.get (Index {})
+  let show <- Test.open (Todos.Show.Show { id: id })
+  Task.succeed (
+    { items: Test.count "li" page.doc, show: show.answer } == { items: 0, show: PageMissing }
+  )
+}
+
+-- The list deletes through the todo's own route, `DELETE /todos/{id}`: one todo, one URL. Its
+-- update redirects to the list, so the page comes back without the todo.
+test "deleting from the list" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let r <- Test.click (Todos.Show.Delete { id: id })
+  let page <- Test.get (Index {})
+  let after <- Db.get Todo id
+  Task.succeed (
+    {
+      answer: r.answer,
+      todo: Maybe.map (\t -> t.title) after,
+      items: Test.count "li" page.doc,
+    } == {
+      answer: Redirected (Index {}),
+      todo: Nothing,
+      items: 0,
+    }
+  )
+}
+
+test "the newest todo is listed first" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "First",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Second",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.texts "li a" page.doc == ["Second", "First"])
+}
+
+-- A test may use the scoped operations itself: they act for the test's session, which
+-- `Test.login` sets. `Db.mine Todo` is what Me sees, and not the other user's todo.
+test "Db.mine is what Me sees" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let other <- Db.insert User {
+    email: Text.Email "other@example.com",
+    name: Text.NonEmpty "Other",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Bread",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Eggs",
+    due: Nothing,
+    owner: other,
+  }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.run {
+    let n <- Db.mine Todo |> Db.count
+    Task.succeed n
+  }
+  Task.succeed (
+    { value: r.value, trace: r.trace } == { value: Ok 2, trace: ["Db.mine Todo", "Db.count Todo"] }
+  )
+}
+
+-- The list links to the profile page, which is a GET route of its own.
+test "the to-do list links to the profile page" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.has "a[href=\"/profile\"]" page.doc)
+}

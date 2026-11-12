@@ -1,0 +1,18 @@
+module Table.Ticket
+
+type TicketId = brand Text
+
+type Status = Pending | Closed
+
+table Ticket {
+  id: TicketId @id,
+  title: Text.NonEmpty,
+  status: Status = Pending,
+  created: Time @created,
+}
+
+test "a new ticket is pending" = {
+  let id <- Db.insert Ticket { title: Text.NonEmpty "Printer jam" }
+  let found <- Db.get Ticket id
+  Task.succeed (Maybe.map (\t -> t.status) found == Just Pending)
+}

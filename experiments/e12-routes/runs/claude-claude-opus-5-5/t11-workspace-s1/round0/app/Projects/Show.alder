@@ -1,0 +1,154 @@
+module Projects.Show
+
+import Layout
+import Table.Membership
+import Table.Org
+import Table.Project
+import Table.Todo
+import Table.User
+
+route Show   = GET   "/projects/{id}"              { id: Project.ProjectId }                       requires user, org
+route Add    = POST  "/projects/{id}/todos"        { id: Project.ProjectId }        form NewTodo requires user, org
+route Toggle = PATCH "/projects/{id}/todos/{todo}" { id: Project.ProjectId, todo: Todo.TodoId }    requires user, org
+
+type Model = { project: Project, todos: List Todo }
+
+-- `Db.getScoped` finds the project only in the session's org: another org's is a 404.
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let project <- Db.getScoped Project params.id
+  let todos <-
+    Db.scoped Todo
+      |> Db.where (Todo.project.eq params.id)
+      |> Db.orderBy Todo.title.asc
+      |> Db.all
+  Query.succeed { project: project, todos: todos }
+}
+
+form NewTodo = { title: Text.NonEmpty }
+
+-- No `load` runs before a write route: each checks the membership and the org itself.
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let project <- Db.getScoped Project p.id
+  let _ <- Db.insertScoped Todo { title: p.form.title, project: project.id }
+  Task.succeed (Response.redirect (Show { id: project.id }))
+}
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let todo <- Db.getScoped Todo p.todo
+  if todo.project != p.id then
+    Task.notFound
+  else {
+    let _ <- Db.updateScoped Todo todo.id (\t -> { t | done: not t.done })
+    Task.succeed (Response.redirect (Show { id: p.id }))
+  }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title={model.project.name}>
+    <h1 id="name">{model.project.name}</h1>
+    <ul id="todos">
+      {for t in model.todos ->
+        <li class={if t.done then "done" else ""}>
+          <span class="title">{t.title}</span>
+          <button click={Toggle { id: model.project.id, todo: t.id }}>
+            {if t.done then "Reopen" else "Done"}
+          </button>
+        </li>}
+    </ul>
+    <al-card>
+      <form submit={Add { id: model.project.id }}>
+        <al-input field="title" label="New to-do" />
+        <al-button type="submit">Add</al-button>
+      </form>
+    </al-card>
+    <a href={Projects.Index.Index {}}>All projects</a>
+  </Layout.Page>
+
+test "a project of another org is not found" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let mine <- Db.insert Project { name: Text.NonEmpty "Rockets", org: acme }
+  let theirs <- Db.insert Project { name: Text.NonEmpty "Lasers", org: globex }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let shown <- Test.get (Show { id: mine })
+  let missing <- Test.open (Show { id: theirs })
+  Task.succeed (
+    { name: Test.text "#name" shown.doc, missing: missing.answer }
+      == { name: Just "Rockets", missing: PageMissing }
+  )
+}
+
+test "adding and toggling a to-do" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let p <- Db.insert Project { name: Text.NonEmpty "Rockets", org: acme }
+  let fuel <- Db.insert Todo { title: Text.NonEmpty "Fuel", project: p, org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Test.get (Show { id: p })
+  let added <- Test.submit (Add { id: p }) { title: Text.NonEmpty "Launch" }
+  let toggled <- Test.click (Toggle { id: p, todo: fuel })
+  Task.succeed (
+    {
+      added: added.answer,
+      titles: Test.texts "#todos .title" added.doc,
+      toggled: toggled.answer,
+      done: Test.texts "#todos li.done .title" toggled.doc,
+    } == {
+      added: Redirected (Show { id: p }),
+      titles: ["Fuel", "Launch"],
+      toggled: Redirected (Show { id: p }),
+      done: ["Fuel"],
+    }
+  )
+}
+
+-- The session keeps the org after the membership is deleted; the pages and the writes read
+-- the membership again, so the removed member is turned away at once.
+test "a member removed from the org loses access at once" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let membership <- Db.insert Membership { user: ann, org: acme }
+  let p <- Db.insert Project { name: Text.NonEmpty "Rockets", org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let before <- Test.open (Projects.Index.Index {})
+  let _ <- Test.get (Show { id: p })
+  let _ <- Db.delete Membership membership
+  let added <- Test.submit (Add { id: p }) { title: Text.NonEmpty "Launch" }
+  let index <- Test.open (Projects.Index.Index {})
+  let show <- Test.open (Show { id: p })
+  Task.succeed (
+    {
+      before: before.answer,
+      added: added.answer,
+      index: index.answer,
+      show: show.answer,
+    } == {
+      before: Shown,
+      added: PageMissing,
+      index: PageMissing,
+      show: PageMissing,
+    }
+  )
+}

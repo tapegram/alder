@@ -1,0 +1,52 @@
+module Table.Booking
+
+import Table.Room
+import Table.User
+
+type BookingId = brand Text
+
+-- A booking holds its room from `from` up to, but not including, `to`.
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- The first date, `today` or later, that none of the bookings holds. The bookings are one
+-- room's, which never overlap, ordered by `from`.
+nextFree : Date -> List Booking -> Date
+nextFree today bookings =
+  List.foldl (\b d -> if b.from <= d && b.to > d then b.to else d) today bookings
+
+-- A booking can be cancelled while today is before its `from` date.
+cancellable : Date -> Booking -> Bool
+cancellable today booking = today < booking.from
+
+test "next free date skips back-to-back bookings" =
+  nextFree (Date.addDays 10 Date.epoch) [
+    {
+      id: BookingId "a",
+      room: Room.RoomId "r",
+      owner: User.UserId "u",
+      from: Date.addDays 9 Date.epoch,
+      to: Date.addDays 12 Date.epoch,
+    },
+    {
+      id: BookingId "b",
+      room: Room.RoomId "r",
+      owner: User.UserId "u",
+      from: Date.addDays 12 Date.epoch,
+      to: Date.addDays 14 Date.epoch,
+    },
+    {
+      id: BookingId "c",
+      room: Room.RoomId "r",
+      owner: User.UserId "u",
+      from: Date.addDays 15 Date.epoch,
+      to: Date.addDays 16 Date.epoch,
+    },
+  ] == Date.addDays 14 Date.epoch
+
+test "a free room is free today" = nextFree Date.epoch [] == Date.epoch

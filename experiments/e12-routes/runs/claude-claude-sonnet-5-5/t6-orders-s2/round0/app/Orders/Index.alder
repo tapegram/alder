@@ -1,0 +1,57 @@
+module Orders.Index
+
+import Layout
+import Line
+import Order
+import Product
+
+route Index  = GET  "/"       { } requires user
+route Create = POST "/orders" { } requires user
+
+type Row = { order: Order, total: Int }
+
+type Model = { rows: List Row }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let orders <-
+    Db.from Order
+      |> Db.where (Order.owner.eq session.user)
+      |> Db.orderBy Order.created.desc
+      |> Db.all
+  let products <- Db.from Product |> Db.all
+  let lines <-
+    Db.from Line
+      |> Db.where (Line.order.in (List.map (\o -> o.id) orders))
+      |> Db.all
+  let rows = List.map (\o -> {
+    order: o,
+    total: Line.total products (List.filter (\l -> l.order == o.id) lines),
+  }) orders
+  Query.succeed { rows: rows }
+}
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let id <- Db.insert Order { owner: session.user }
+  Task.succeed (Response.redirect (Orders.Show.Show { id: id }))
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Orders">
+    <h1>Orders</h1>
+    <al-button click={Create}>New order</al-button>
+    <ul id="orders">
+      {for r in model.rows ->
+        <li>
+          <a href={Orders.Show.Show { id: r.order.id }}>{Time.format "2006-01-02 15:04" r.order.created}</a>
+          <span class="status">{Order.statusLabel r.order.status}</span>
+          <span class="total">{Text.fromInt r.total}</span>
+        </li>}
+    </ul>
+    <nav>
+      <a href={Products.Index.Index {}}>Products</a>
+    </nav>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>

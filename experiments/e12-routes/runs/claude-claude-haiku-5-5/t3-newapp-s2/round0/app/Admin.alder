@@ -1,0 +1,96 @@
+module Admin
+
+import Layout
+import Table.Post
+import Table.User
+
+route Dashboard = GET   "/admin"            { }                     requires user
+route Create    = POST  "/admin/posts"      { } form NewPost        requires user
+route Publish   = PATCH "/admin/posts/{id}" { id: Post.PostId }     requires user
+
+type Model = { posts: List Post }
+
+form NewPost = { title: Text.NonEmpty, slug: Post.Slug, body: Text }
+
+Dashboard.load : Dashboard.Params -> Session -> Query Model
+Dashboard.load params session = {
+  let posts <-
+    Db.mine Post
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let taken <- Db.from Post |> Db.where (Post.slug.eq p.form.slug) |> Db.count
+  if taken > 0 then {
+    Task.succeed (Response.invalid "A post with that slug already exists.")
+  } else {
+    let _ <- Db.insertMine Post { slug: p.form.slug, title: p.form.title, body: p.form.body, published: False }
+    Task.succeed (Response.redirect (Dashboard {}))
+  }
+}
+
+Publish.update : Publish.Params -> Session -> Task Response
+Publish.update p session = {
+  let _ <- Db.updateMine Post p.id (\t -> { t | published: not t.published })
+  Task.succeed Response.refresh
+}
+
+Row : { post: Post } -> Html
+Row props =
+  <li id={"post-" ++ props.post.id}>
+    <a href={Posts.Show.Show { slug: props.post.slug }}>{props.post.title}</a>
+    {if props.post.published then <al-badge>Published</al-badge> else <al-badge variant="outline">Draft</al-badge>}
+    <al-button variant="secondary" size="sm" click={Publish { id: props.post.id }}>
+      {if props.post.published then "Unpublish" else "Publish"}
+    </al-button>
+  </li>
+
+Dashboard.view : Model -> Session -> Html
+Dashboard.view model session =
+  <Layout.Page title="Admin">
+    <h1>Your posts</h1>
+    <al-card>
+      <form submit={Create {}}>
+        <al-input field="title" label="Title" />
+        <al-input field="slug" label="Slug" />
+        <al-textarea field="body" label="Body" />
+        <Errors form />
+        <al-button type="submit">Create post</al-button>
+      </form>
+    </al-card>
+    <ul id="posts">
+      {for p in model.posts -> <Row post={p} />}
+    </ul>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "the admin page asks a visitor to log in" = {
+  let visitor <- Test.open (Dashboard {})
+  Task.succeed (visitor.answer == Redirected (Auth.Login.Login {}))
+}
+
+test "publish toggles a post through the admin page" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let p <- Db.insert Post {
+    slug: Post.Slug "draft",
+    title: Text.NonEmpty "Draft",
+    body: "Not yet.",
+    published: False,
+    author: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Dashboard {})
+  let r <- Test.click (Publish { id: p })
+  let after <- Db.get Post p
+  Task.succeed (
+    { answer: r.answer, published: Maybe.map (\t -> t.published) after }
+      == { answer: Refreshed, published: Just True }
+  )
+}

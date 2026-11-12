@@ -1,0 +1,91 @@
+module Orgs.Index
+
+import Layout
+import Table.Membership
+import Table.Org
+import Table.User
+
+route Index  = GET  "/orgs"            { }                requires user
+route Open   = POST "/orgs/{org}/open" { org: Org.OrgId } requires user
+route Create = POST "/orgs"            { } form NewOrg    requires user
+
+type Model = { orgs: List Org }
+
+form NewOrg = { name: Text.NonEmpty }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let memberships <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq session.user)
+      |> Db.all
+  let found <-
+    memberships
+      |> List.map (\m -> Db.get Org m.org)
+      |> Query.all
+  let orgs =
+    found
+      |> List.filterMap (\o -> o)
+      |> List.sortByText (\o -> o.name)
+  Query.succeed { orgs: orgs }
+}
+
+-- Opening an org the user is no member of is refused before the session changes.
+Open.update : Open.Params -> Session -> Task Response
+Open.update p session = {
+  let _ <- Membership.memberOnly session.user p.org
+  let _ <- Session.put (\s -> { s | org: Just p.org })
+  Task.succeed (Response.redirect (Projects.Index.Index {}))
+}
+
+-- The creator becomes the org's first member, and the org is opened.
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let id <- Db.insert Org { name: p.form.name }
+  let _ <- Db.insert Membership { user: session.user, org: id }
+  let _ <- Session.put (\s -> { s | org: Just id })
+  Task.succeed (Response.redirect (Projects.Index.Index {}))
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Orgs">
+    <h1>Your orgs</h1>
+
+    <ul id="orgs">
+      {for o in model.orgs ->
+        <li>
+          <span class="name">{o.name}</span>
+          <al-button size="sm" click={Open { org: o.id }}>Open</al-button>
+        </li>}
+    </ul>
+
+    <al-card>
+      <form submit={Create}>
+        <al-input field="name" label="New org" />
+        <al-button type="submit">Create org</al-button>
+      </form>
+    </al-card>
+
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "a user cannot open an org they are not a member of" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let mine <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let other <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member me mine
+  let refused <- Test.run (Open.update { org: other } { user: me, org: Nothing })
+  let allowed <- Test.run (Open.update { org: mine } { user: me, org: Nothing })
+  Task.succeed (
+    { refused: refused.value, allowed: allowed.value }
+      == {
+        refused: Err "not found",
+        allowed: Ok (Response.redirect (Projects.Index.Index {})),
+      }
+  )
+}

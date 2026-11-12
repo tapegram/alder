@@ -1,0 +1,92 @@
+module Projects.Show
+
+import Layout
+import Table.Membership
+import Table.Org
+import Table.Project
+import Table.Todo
+import Table.User
+
+route Show   = GET   "/projects/{id}"              { id: Project.ProjectId }                    requires user, org
+route Add    = POST  "/projects/{id}/todos"        { id: Project.ProjectId } form NewTodo       requires user, org
+route Toggle = PATCH "/projects/{id}/todos/{todo}" { id: Project.ProjectId, todo: Todo.TodoId } requires user, org
+
+type Model = { project: Project, todos: List Todo }
+
+form NewTodo = { title: Text.NonEmpty }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let project <- Db.getScoped Project params.id
+  let todos <-
+    Db.scoped Todo
+      |> Db.where (Todo.project.eq params.id)
+      |> Db.orderBy Todo.title.asc
+      |> Db.all
+  Query.succeed { project: project, todos: todos }
+}
+
+-- The project must be one of this org's: another org's project is a 404.
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let _ <- Db.getScoped Project p.id
+  let _ <- Db.insertScoped Todo { title: p.form.title, project: p.id }
+  Task.succeed (Response.redirect (Show { id: p.id }))
+}
+
+-- A to-do is toggled only through its own project's URL.
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let todo <- Db.getScoped Todo p.todo
+  if todo.project == p.id then {
+    let _ <- Db.updateScoped Todo p.todo (\t -> { t | done: not t.done })
+    Task.succeed (Response.redirect (Show { id: p.id }))
+  } else {
+    Task.notFound
+  }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title={model.project.name}>
+    <h1 id="name">{model.project.name}</h1>
+
+    <al-card>
+      <form submit={Add { id: model.project.id }}>
+        <al-input field="title" label="New to-do" />
+        <al-button type="submit">Add to-do</al-button>
+      </form>
+    </al-card>
+
+    <ul id="todos">
+      {for t in model.todos ->
+        <li class={if t.done then "done" else ""}>
+          <span class="title">{t.title}</span>
+          <al-button variant="secondary" size="sm" click={Toggle { id: model.project.id, todo: t.id }}>
+            {if t.done then "Undo" else "Done"}
+          </al-button>
+        </li>}
+    </ul>
+
+    <al-button variant="ghost" href={Projects.Index.Index {}}>Back</al-button>
+  </Layout.Page>
+
+test "a project of another org is not found" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member me acme
+  let _ <- Test.member me globex
+  let _ <- Test.login { user: Just me, org: Just globex }
+  let theirs <- Db.insertScoped Project { name: Text.NonEmpty "Secret" }
+  let _ <- Test.login { user: Just me, org: Just acme }
+  let r <- Test.open (Show { id: theirs })
+  Task.succeed (r.answer == PageMissing)
+}

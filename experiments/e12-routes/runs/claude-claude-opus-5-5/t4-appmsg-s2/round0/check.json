@@ -1,0 +1,2 @@
+{"code": "E0001", "severity": "error", "file": "app/Notes/Show.alder", "line": 117, "col": 7, "endLine": 117, "endCol": 8, "message": "expected `)`, got `{`"}
+{"code": "E0001", "severity": "error", "file": "app/Notes/Show.alder", "line": 119, "col": 3, "endLine": 119, "endCol": 4, "message": "expected `}`, got `)`"}

@@ -1,0 +1,5 @@
+{"code": "E0001", "severity": "error", "file": "app/Products/Index.alder", "line": 97, "col": 5, "endLine": 97, "endCol": 12, "message": "expected `,` or `}`, got `Nothing`"}
+{"code": "E0001", "severity": "error", "file": "app/Products/Index.alder", "line": 97, "col": 13, "endLine": 97, "endCol": 15, "message": "expected end of line after `let` statement"}
+{"code": "E0001", "severity": "error", "file": "app/Products/Index.alder", "line": 97, "col": 28, "endLine": 97, "endCol": 29, "message": "expected `}`, got `,`; the last expression of a block is its result and takes no `,`"}
+{"code": "E0001", "severity": "error", "file": "app/Products/Index.alder", "line": 99, "col": 3, "endLine": 99, "endCol": 6, "message": "expected a declaration, got `let`"}
+{"code": "E0001", "severity": "error", "file": "app/Products/Index.alder", "line": 113, "col": 1, "endLine": 113, "endCol": 5, "message": "expected end of line after declaration, got `test`"}

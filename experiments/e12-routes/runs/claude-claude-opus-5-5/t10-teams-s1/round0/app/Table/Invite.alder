@@ -1,0 +1,28 @@
+module Table.Invite
+
+import Table.Team
+import Table.User
+
+type InviteId = brand Text
+
+type Status = Pending | Accepted | Declined
+
+table Invite {
+  id: InviteId @id,
+  team: Team.TeamId @ref Team,
+  email: Text.Email,
+  status: Status = Pending,
+}
+
+-- The invite, when it is still waiting and is to the user's email; otherwise not found.
+waitingFor : InviteId -> User.UserId -> Query Invite
+waitingFor id user = {
+  let found <- Db.get Invite id
+  let me <- Db.get User user
+  match found {
+    Just invite ->
+      if invite.status == Pending && Maybe.map (\u -> u.email) me == Just invite.email then Query.succeed invite
+      else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}

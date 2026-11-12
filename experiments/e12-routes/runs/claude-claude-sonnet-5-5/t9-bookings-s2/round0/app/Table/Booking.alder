@@ -1,0 +1,42 @@
+module Table.Booking
+
+import Table.Room
+import Table.User
+
+type BookingId = brand Text
+
+-- A booking holds its room from `from` up to, but not including, `to`.
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+day : Text -> Date
+day s = Date.fromText s ?? Date.epoch
+
+-- The first date, `today` or later, that none of the bookings holds.
+nextFree : Date -> List Booking -> Date
+nextFree today bookings =
+  bookings
+    |> List.sortBy (\b -> Date.diffDays Date.epoch b.from)
+    |> List.foldl (\b c -> if b.from <= c && c < b.to then b.to else c) today
+
+mk : Room.RoomId -> User.UserId -> Text -> Text -> Booking
+mk room owner a b = { id: BookingId "x", room: room, owner: owner, from: day a, to: day b }
+
+test "next free date with back-to-back bookings" =
+  nextFree (day "2026-03-01") [
+    mk (Room.RoomId "r") (User.UserId "u") "2026-03-03" "2026-03-05",
+    mk (Room.RoomId "r") (User.UserId "u") "2026-03-01" "2026-03-03",
+  ] == day "2026-03-05"
+
+test "next free date is today when nothing holds it" =
+  nextFree (day "2026-02-20") [mk (Room.RoomId "r") (User.UserId "u") "2026-03-01" "2026-03-03"]
+    == day "2026-02-20"
+
+test "next free date skips past bookings" =
+  nextFree (day "2026-03-10") [mk (Room.RoomId "r") (User.UserId "u") "2026-03-01" "2026-03-03"]
+    == day "2026-03-10"

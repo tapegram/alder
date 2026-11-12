@@ -1,0 +1,1 @@
+{"code": "E0003", "severity": "error", "file": "app/Invites/Index.alder", "line": 42, "col": 3, "endLine": 42, "endCol": 99, "message": "expected Maybe Waiting, got Maybe { id: Invite.InviteId, team: Text.NonEmpty }"}

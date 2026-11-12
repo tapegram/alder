@@ -1,0 +1,21 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  title: Text.NonEmpty,
+  body: Text,
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+-- The note with this id when `user` owns it, otherwise nothing: another user's note is as
+-- missing as one that does not exist.
+ownedNote : User.UserId -> NoteId -> Query (Maybe Note)
+ownedNote user id = {
+  let found <- Db.get Note id
+  Query.succeed (Maybe.andThen (\n -> if n.owner == user then Just n else Nothing) found)
+}

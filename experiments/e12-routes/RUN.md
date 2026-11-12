@@ -381,4 +381,6 @@ concurrency, review rounds) are left out.
 Each stop and the end of the matrix gets a line here: date and time, the last finished cell, the
 exit code, and the commit of `runs/`, `logs/` and `scores.md`.
 
-Resume point: none yet (the matrix has not started; the first cell is `s1` / `claude:claude-haiku-5-5` / `t2-newpage`).
+- Night 1, Wed 2026-11-11 22:04 EST to Thu 2026-11-12 ~00:43 EST: all 78/78 cells done in one run (STOP_AT=0845, not reached), exit 0 ("matrix complete"). Committed in `e12: run, 78/78 cells (#208)`.
+
+Resume point: complete.

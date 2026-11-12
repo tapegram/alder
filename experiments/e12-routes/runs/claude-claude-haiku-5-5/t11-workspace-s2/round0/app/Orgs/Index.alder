@@ -1,0 +1,117 @@
+module Orgs.Index
+
+import Layout
+import Table.Membership
+import Table.Org
+import Table.User
+
+route Index  = GET  "/orgs"        { }                  requires user
+route Create = POST "/orgs"        { } form NewOrg      requires user
+route Open   = PUT  "/session/org" { org: Org.OrgId }   requires user
+
+type Model = { orgs: List Org }
+
+form NewOrg = { name: Text.NonEmpty }
+
+-- The orgs the user is a member of, by name.
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let memberships <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq session.user)
+      |> Db.all
+  let found <- Query.all (List.map (\m -> Db.get Org m.org) memberships)
+  let orgs =
+    found
+      |> List.filterMap (\o -> o)
+      |> List.sortByText (\o -> o.name)
+  Query.succeed { orgs: orgs }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Your orgs">
+    <h1>Your orgs</h1>
+    <ul id="orgs">
+      {for o in model.orgs ->
+        <li>
+          <span class="name">{o.name}</span>
+          <al-button variant="secondary" size="sm" click={Open { org: o.id }}>Open</al-button>
+        </li>}
+    </ul>
+    <al-card>
+      <form submit={Create}>
+        <al-input field="name" label="New org" />
+        <al-button type="submit">Create org</al-button>
+      </form>
+    </al-card>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+-- The creator becomes the org's first member, and the org is opened.
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let org <- Db.insert Org { name: p.form.name }
+  let _ <- Db.insert Membership { user: session.user, org: org }
+  let _ <- Session.put (\s -> { s | org: Just org })
+  Task.succeed (Response.redirect (Projects.Index.Index {}))
+}
+
+-- A crafted request for an org the user is not a member of is refused by `via Membership`.
+Open.update : Open.Params -> Session -> Task Response
+Open.update p session = {
+  let _ <- Session.put (\s -> { s | org: Just p.org })
+  Task.succeed (Response.redirect (Projects.Index.Index {}))
+}
+
+test "Open makes the org the session's org" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Db.insert Membership { user: me, org: acme }
+  let _ <- Test.login { user: Just me, org: Nothing }
+  let _ <- Test.get (Index {})
+  let r <- Test.click (Open { org: acme })
+  Task.succeed (
+    { answer: r.answer, org: r.session.org }
+      == { answer: Redirected (Projects.Index.Index {}), org: Just acme }
+  )
+}
+
+test "a user cannot open an org they are not a member of" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: me, org: acme }
+  let _ <- Test.login { user: Just me, org: Nothing }
+  let _ <- Test.get (Index {})
+  let r <- Test.run (Open.update { org: globex } { user: me, org: Nothing })
+  let page <- Test.get (Index {})
+  Task.succeed (
+    { refused: Result.toMaybe r.value == Nothing, org: page.session.org }
+      == { refused: True, org: Nothing }
+  )
+}
+
+test "creating an org makes its creator a member and opens it" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me, org: Nothing }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Create {}) { name: Text.NonEmpty "Acme" }
+  let members <- Db.from Membership |> Db.where (Membership.user.eq me) |> Db.count
+  Task.succeed (
+    { answer: r.answer, title: Test.text "#org" r.doc, members: members }
+      == { answer: Redirected (Projects.Index.Index {}), title: Just "Acme", members: 1 }
+  )
+}

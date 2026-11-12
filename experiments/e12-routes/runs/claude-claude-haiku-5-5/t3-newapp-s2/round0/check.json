@@ -1,0 +1,1 @@
+{"code": "E0201", "severity": "error", "file": "app/App.alder", "line": 19, "col": 3, "endLine": 22, "endCol": 17, "message": "module `Layout` is not imported", "fix": {"line": 4, "col": 1, "endLine": 4, "endCol": 1, "replace": "import Layout\n"}}

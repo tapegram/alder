@@ -1,0 +1,88 @@
+module Rooms.Index
+
+import Layout
+import Table.Booking
+import Table.Room
+import Table.User
+
+route Index = GET "/rooms" { } requires user
+
+type Row = { room: Room, free: Date }
+
+type Model = { rows: List Row }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let today <- Date.today
+  let rooms <-
+    Db.from Room
+      |> Db.orderBy Room.name.asc
+      |> Db.all
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.to.gt today)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  Query.succeed { rows: List.map (row today bookings) rooms }
+}
+
+row : Date -> List Booking -> Room -> Row
+row today bookings room = {
+  room: room,
+  free: Booking.nextFree today (List.filter (\b -> b.room == room.id) bookings),
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Rooms">
+    {Layout.nav}
+    <h1>Rooms</h1>
+    <ul id="rooms">
+      {for r in model.rows ->
+        <li>
+          <a class="name" href={Rooms.Show.Show { id: r.room.id }}>{r.room.name}</a>
+          {" free from "}
+          <span class="free">{Date.toText r.free}</span>
+        </li>}
+    </ul>
+  </Layout.Page>
+
+test "the next free date follows back-to-back bookings" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let oak <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let _ <- Db.insert Room { name: Text.NonEmpty "Elm" }
+  let today <- Date.today
+  let _ <- Db.insert Booking {
+    room: oak,
+    owner: me,
+    from: Date.addDays (-5) today,
+    to: Date.addDays (-3) today,
+  }
+  let _ <- Db.insert Booking {
+    room: oak,
+    owner: me,
+    from: today,
+    to: Date.addDays 2 today,
+  }
+  let _ <- Db.insert Booking {
+    room: oak,
+    owner: me,
+    from: Date.addDays 2 today,
+    to: Date.addDays 4 today,
+  }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    {
+      names: Test.texts "#rooms .name" page.doc,
+      free: Test.texts "#rooms .free" page.doc,
+    } == {
+      names: ["Elm", "Oak"],
+      free: [Date.toText today, Date.toText (Date.addDays 4 today)],
+    }
+  )
+}

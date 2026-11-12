@@ -1,0 +1,49 @@
+module Table.Member
+
+import Table.Team
+import Table.User
+
+type MemberId = brand Text
+
+-- One row per member who is not the owner: the owner has no row.
+table Member {
+  id: MemberId @id,
+  team: Team.TeamId @ref Team,
+  user: User.UserId @ref User,
+}
+
+-- Whether the user has a membership row for the team.
+isMember : User.UserId -> Team.TeamId -> Query Bool
+isMember user team = {
+  let n <-
+    Db.from Member
+      |> Db.where (Member.team.eq team)
+      |> Db.where (Member.user.eq user)
+      |> Db.count
+  Query.succeed (n > 0)
+}
+
+-- The team, when the user owns it or is one of its members; otherwise nothing.
+visibleTeam : User.UserId -> Team.TeamId -> Query (Maybe Team)
+visibleTeam user team = {
+  let found <- Db.get Team team
+  match found {
+    Nothing -> Query.succeed Nothing,
+    Just t -> {
+      let member <- isMember user team
+      Query.succeed (if t.owner == user || member then Just t else Nothing)
+    },
+  }
+}
+
+-- Makes the user a member of the team, unless they own it or already are one.
+join : User.UserId -> Team.TeamId -> Task Unit
+join user team = {
+  let t <- Db.get Team team
+  let already <- isMember user team
+  let owner = Maybe.map (\x -> x.owner == user) t ?? False
+  if already || owner then Task.succeed () else {
+    let _ <- Db.insert Member { team: team, user: user }
+    Task.succeed ()
+  }
+}

@@ -1,0 +1,1 @@
+{"code": "E0011", "severity": "error", "file": "app/Table/Post.alder", "line": 29, "col": 10, "endLine": 29, "endCol": 23, "message": "brand constructor `NonEmpty` can only be used in module `Text` or inside a `test`"}

@@ -1,0 +1,29 @@
+module User
+
+type UserId = brand Text
+
+-- A Staff user keeps their own orders. A Manager may also open anyone's order and manage the
+-- products. The session holds only the user: the role is read from the user's row each time.
+type Role = Staff | Manager
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  role: Role = Staff,
+  created: Time @created,
+}
+
+isManager : UserId -> Query Bool
+isManager id = {
+  let me <- Db.get User id
+  Query.succeed (Maybe.map (\u -> u.role) me == Just Manager)
+}
+
+-- Begins every route only a Manager may use: anyone else gets a 404.
+managerOnly : UserId -> Query Unit
+managerOnly id = {
+  let manager <- isManager id
+  if manager then Query.succeed () else Query.notFound
+}

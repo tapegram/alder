@@ -1,0 +1,40 @@
+module Table.Post
+
+import Table.User
+
+type PostId = brand Text
+
+-- Lowercase letters, digits and hyphens: checked whenever a slug comes from a route or a form.
+type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
+
+table Post {
+  id: PostId @id,
+  slug: Slug @unique,
+  title: Text.NonEmpty,
+  body: Text,
+  published: Bool = False,
+  author: User.UserId @ref User,
+  created: Time @created,
+}
+
+-- A draft is shown only to its author; a published post to everyone.
+visibleTo : Maybe User.UserId -> Post -> Bool
+visibleTo me post = post.published || me == Just post.author
+
+-- A post by `author`, published or not, for the tests of `visibleTo`.
+ownedBy : Bool -> User.UserId -> Post
+ownedBy published author = {
+  id: PostId "p",
+  slug: Slug "draft",
+  title: Text.NonEmpty "Draft",
+  body: "",
+  published: published,
+  author: author,
+  created: Time.epoch,
+}
+
+test "a draft is visible to its author only" =
+  not (visibleTo Nothing (ownedBy False (User.UserId "u")))
+    && not (visibleTo (Just (User.UserId "other")) (ownedBy False (User.UserId "u")))
+    && visibleTo (Just (User.UserId "u")) (ownedBy False (User.UserId "u"))
+    && visibleTo Nothing (ownedBy True (User.UserId "u"))

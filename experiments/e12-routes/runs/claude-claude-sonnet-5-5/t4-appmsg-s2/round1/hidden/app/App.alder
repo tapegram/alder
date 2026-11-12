@@ -1,0 +1,83 @@
+module App
+
+import Layout
+import Theme
+import User
+
+session { user: Maybe User.UserId, theme: Theme.Theme = Light }
+
+login = Auth.Login.Login
+
+route SwitchTheme = POST   "/theme"   { }
+route Logout      = DELETE "/session" { }
+
+SwitchTheme.update : SwitchTheme.Params -> Session -> Task Response
+SwitchTheme.update p session = {
+  let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
+  Task.succeed Response.refresh
+}
+
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
+}
+
+error : Error -> Html
+error err =
+  <Layout.Page title="Error" theme={Light}>
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html
+notFound =
+  <Layout.Page title="Not found" theme={Light}>
+    <h1>Not found</h1>
+  </Layout.Page>
+
+test "the theme flips" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let before <- Test.get (Notes.Index.Index {})
+  let r <- Test.click SwitchTheme
+  let back <- Test.click SwitchTheme
+  Task.succeed (
+    {
+      beforeDark: Test.has "body.dark" before.doc,
+      beforeLabel: Test.text "#theme" before.doc,
+      theme: r.session.theme,
+      dark: Test.has "body.dark" r.doc,
+      label: Test.text "#theme" r.doc,
+      backTheme: back.session.theme,
+      backDark: Test.has "body.dark" back.doc,
+    } == {
+      beforeDark: False,
+      beforeLabel: Just "Switch to dark",
+      theme: Dark,
+      dark: True,
+      label: Just "Switch to light",
+      backTheme: Light,
+      backDark: False,
+    }
+  )
+}
+
+test "logging out works from any page" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Notes.Index.Index {})
+  let out <- Test.click Logout
+  Task.succeed (
+    { answer: out.answer, user: out.session.user }
+      == { answer: Redirected (Auth.Login.Login {}), user: Nothing }
+  )
+}

@@ -1,0 +1,19 @@
+module Table.Team
+
+import Table.User
+
+type TeamId = brand Text
+
+table Team {
+  id: TeamId @id,
+  name: Text.NonEmpty,
+  owner: User.UserId @ref User,
+}
+
+-- Stops with a 404 unless the user owns the team: a write route, which runs no `load`,
+-- begins with it.
+ownerOnly : User.UserId -> TeamId -> Query Unit
+ownerOnly user id = {
+  let found <- Db.get Team id
+  if Maybe.map (\t -> t.owner) found == Just user then Query.succeed () else Query.notFound
+}

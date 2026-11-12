@@ -1,0 +1,53 @@
+module Posts.Index
+
+import Layout
+import Table.Post
+
+route Index = GET "/" { }
+
+type Model = { posts: List Post }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let posts <-
+    Db.from Post
+      |> Db.where (Post.published.eq True)
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Blog">
+    <h1>Posts</h1>
+    <ul id="posts">
+      {for post in model.posts ->
+        <li>
+          <a href={Posts.Show.Show { slug: post.slug }}>{post.title}</a>
+        </li>}
+    </ul>
+  </Layout.Page>
+
+test "the front page lists only published posts, newest first" = {
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "First",
+    slug: Post.Slug "first",
+    body: "one",
+    published: True,
+  }
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "Hidden",
+    slug: Post.Slug "hidden",
+    body: "secret",
+    published: False,
+  }
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "Second",
+    slug: Post.Slug "second",
+    body: "two",
+    published: True,
+  }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.texts "#posts a" page.doc == ["Second", "First"])
+}

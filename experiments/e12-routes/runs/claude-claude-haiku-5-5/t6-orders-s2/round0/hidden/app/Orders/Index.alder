@@ -1,0 +1,56 @@
+module Orders.Index
+
+import Layout
+import Line
+import Order
+
+route Index  = GET  "/"       { } requires user
+route Create = POST "/orders" { } requires user
+
+type OrderRow = { order: Order, total: Int }
+
+type Model = { orders: List OrderRow }
+
+withTotal : Order -> Query OrderRow
+withTotal order = {
+  let total <- Line.total order.id
+  Query.succeed { order: order, total: total }
+}
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let orders <-
+    Db.mine Order
+      |> Db.orderBy Order.created.desc
+      |> Db.all
+  let rows <- Query.all (List.map withTotal orders)
+  Query.succeed { orders: rows }
+}
+
+-- Creates a new, empty, Open order for the signed-in user and opens it.
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let id <- Db.insertMine Order { status: Open }
+  Task.succeed (Response.redirect (Orders.Show.Show { id: id }))
+}
+
+OrderItem : { row: OrderRow } -> Html
+OrderItem props =
+  <li>
+    <a href={Orders.Show.Show { id: props.row.order.id }}>View</a>
+    <span class="status">{Order.statusText props.row.order.status}</span>
+    <span class="total">{Text.fromInt props.row.total}</span>
+  </li>
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Orders">
+    <h1>Orders</h1>
+    <form submit={Create {}}>
+      <al-button type="submit">New order</al-button>
+    </form>
+    <ul id="orders">
+      {for row in model.orders -> <OrderItem row={row} />}
+    </ul>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>

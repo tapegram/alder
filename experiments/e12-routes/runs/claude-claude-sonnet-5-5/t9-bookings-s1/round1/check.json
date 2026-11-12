@@ -1,0 +1,1 @@
+{"code": "E0003", "severity": "error", "file": "app/Table/Booking.alder", "line": 36, "col": 3, "endLine": 46, "endCol": 4, "message": "expected Task Bool, got Bool; a block test is a Task: end it with `Task.succeed (\u2026)`"}

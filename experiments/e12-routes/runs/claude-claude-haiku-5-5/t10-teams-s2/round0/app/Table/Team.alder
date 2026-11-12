@@ -1,0 +1,11 @@
+module Table.Team
+
+import Table.User
+
+type TeamId = brand Text
+
+table Team {
+  id: TeamId @id,
+  name: Text.NonEmpty,
+  owner: User.UserId @ref User,
+}

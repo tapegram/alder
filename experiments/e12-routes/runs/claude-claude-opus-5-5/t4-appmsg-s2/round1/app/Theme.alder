@@ -1,0 +1,20 @@
+module Theme
+
+type Theme = Light | Dark
+
+toggle : Theme -> Theme
+toggle theme = match theme {
+  Light -> Dark,
+  Dark -> Light,
+}
+
+switchLabel : Theme -> Text
+switchLabel theme = match theme {
+  Light -> "Switch to dark",
+  Dark -> "Switch to light",
+}
+
+test "toggle flips the theme" = List.map toggle [Light, Dark] == [Dark, Light]
+
+test "the button says what it switches to" =
+  List.map switchLabel [Light, Dark] == ["Switch to dark", "Switch to light"]

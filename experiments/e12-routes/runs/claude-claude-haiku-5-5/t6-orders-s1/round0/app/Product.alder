@@ -1,0 +1,16 @@
+module Product
+
+type ProductId = brand Text
+
+table Product {
+  id: ProductId @id,
+  name: Text.NonEmpty,
+  price: Int.NonNegative,
+  active: Bool = True,
+}
+
+test "a new product is active by default" = {
+  let p <- Db.insert Product { name: Text.NonEmpty "Mug", price: Int.NonNegative 500 }
+  let row <- Db.get Product p
+  Task.succeed (Maybe.map (\r -> r.active) row == Just True)
+}

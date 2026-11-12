@@ -1,0 +1,31 @@
+module Table.Membership
+
+import Table.Org
+import Table.User
+
+type MembershipId = brand Text
+
+-- One row per member of an org.
+table Membership {
+  id: MembershipId @id,
+  user: User.UserId @ref User,
+  org: Org.OrgId @ref Org,
+}
+
+-- The session keeps the org it was given; a page that must notice a removed member at once
+-- reads the membership again (the re-read idiom).
+isMember : User.UserId -> Org.OrgId -> Query Bool
+isMember user org = {
+  let n <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq user)
+      |> Db.where (Membership.org.eq org)
+      |> Db.count
+  Query.succeed (n > 0)
+}
+
+memberOnly : User.UserId -> Org.OrgId -> Query Unit
+memberOnly user org = {
+  let member <- isMember user org
+  if member then Query.succeed () else Query.notFound
+}

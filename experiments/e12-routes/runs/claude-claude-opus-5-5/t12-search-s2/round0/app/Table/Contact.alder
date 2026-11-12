@@ -1,0 +1,14 @@
+module Table.Contact
+
+import Table.User
+
+type ContactId = brand Text
+
+-- `owner` is the table's `@owner`: `Db.mine Contact` and `Db.insertMine` keep to the signed-in
+-- user's contacts.
+table Contact {
+  id: ContactId @id,
+  name: Text.NonEmpty,
+  email: Text.Email,
+  owner: User.UserId @ref User @owner,
+}

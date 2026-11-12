@@ -1,0 +1,135 @@
+module Products.Index
+
+import Layout
+import Product
+import User
+
+route Index  = GET   "/products"      { }                                  requires user
+route Add    = POST  "/products"      { }                 form NewProduct requires user
+route Toggle = PATCH "/products/{id}" { id: Product.ProductId }            requires user
+
+form NewProduct = { name: Text.NonEmpty, price: Int.NonNegative }
+
+type Model = { products: List Product }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let _ <- User.managerOnly session.user
+  let products <-
+    Db.from Product
+      |> Db.orderBy Product.name.asc
+      |> Db.all
+  Query.succeed { products: products }
+}
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- User.managerOnly session.user
+  let _ <- Db.insert Product { name: p.form.name, price: p.form.price }
+  Task.succeed (Response.redirect (Index {}))
+}
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let _ <- User.managerOnly session.user
+  let found <- Db.get Product p.id
+  match found {
+    Just x -> {
+      let _ <- Db.update Product x.id (\y -> { y | active: not y.active })
+      Task.succeed (Response.redirect (Index {}))
+    },
+    Nothing -> Task.notFound,
+  }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Products">
+    <h1>Products</h1>
+    <al-card>
+      <form submit={Add}>
+        <Errors form />
+        <al-input field="name" label="Name" />
+        <al-input field="price" label="Price (cents)" />
+        <al-button type="submit">Add product</al-button>
+      </form>
+    </al-card>
+    <ul id="products">
+      {for x in model.products ->
+        <li>
+          <span class="name">{x.name}</span>
+          {" "}
+          <span class="price">{Text.fromInt x.price}</span>
+          {" "}
+          <span class="active">{if x.active then "Active" else "Inactive"}</span>
+          <al-button variant="secondary" size="sm" click={Toggle { id: x.id }}>
+            {if x.active then "Deactivate" else "Activate"}
+          </al-button>
+        </li>}
+    </ul>
+    <al-button variant="ghost" href={Orders.Index.Index {}}>Orders</al-button>
+  </Layout.Page>
+
+test "a Staff user gets 404 from the products page" = {
+  let staff <- Db.insert User {
+    email: Text.Email "staff@example.com",
+    name: Text.NonEmpty "Staff",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just staff }
+  let page <- Test.open (Index {})
+  Task.succeed (page.answer == PageMissing)
+}
+
+test "a Manager adds a product and toggles it" = {
+  let boss <- Db.insert User {
+    email: Text.Email "boss@example.com",
+    name: Text.NonEmpty "Boss",
+    passwordHash: "",
+    role: Manager,
+  }
+  let _ <- Test.login { user: Just boss }
+  let _ <- Test.get (Index {})
+  let added <- Test.submit (Add {}) { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let tea <- Db.from Product |> Db.first
+  let toggled <- match tea {
+    Just x -> Test.click (Toggle { id: x.id })
+    Nothing -> Test.refresh,
+  }
+  let after <- Db.from Product |> Db.all
+  Task.succeed (
+    {
+      answer: added.answer,
+      names: Test.texts ".name" added.doc,
+      active: List.map (\x -> x.active) after,
+    } == {
+      answer: Redirected (Index {}),
+      names: ["Tea"],
+      active: [False],
+    }
+  )
+}
+
+test "a Staff user cannot toggle a product" = {
+  let boss <- Db.insert User {
+    email: Text.Email "boss@example.com",
+    name: Text.NonEmpty "Boss",
+    passwordHash: "",
+    role: Manager,
+  }
+  let staff <- Db.insert User {
+    email: Text.Email "staff@example.com",
+    name: Text.NonEmpty "Staff",
+    passwordHash: "",
+  }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let _ <- Test.login { user: Just boss }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Just staff }
+  let r <- Test.click (Toggle { id: tea })
+  let after <- Db.get Product tea
+  Task.succeed (
+    { answer: r.answer, active: Maybe.map (\x -> x.active) after }
+      == { answer: PageMissing, active: Just True }
+  )
+}

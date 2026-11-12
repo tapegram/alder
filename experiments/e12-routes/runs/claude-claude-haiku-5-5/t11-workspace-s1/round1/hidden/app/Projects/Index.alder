@@ -1,0 +1,95 @@
+module Projects.Index
+
+import Layout
+import Table.Membership
+import Table.Org
+import Table.Project
+import Table.User
+
+route Index  = GET  "/projects" { }                    requires user, org
+route Create = POST "/projects" { } form NewProject    requires user, org
+
+type Model = { orgName: Text, projects: List Project }
+
+form NewProject = { name: Text.NonEmpty }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let org <- Db.get Org session.org
+  let projects <-
+    Db.scoped Project
+      |> Db.orderBy Project.name.asc
+      |> Db.all
+  Query.succeed { orgName: Org.nameOf org, projects: projects }
+}
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let id <- Db.insertScoped Project { name: p.form.name }
+  Task.succeed (Response.redirect (Projects.Show.Show { id: id }))
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Projects">
+    <h1 id="org">{model.orgName}</h1>
+
+    <al-card>
+      <form submit={Create}>
+        <al-input field="name" label="New project" />
+        <al-button type="submit">Add project</al-button>
+      </form>
+    </al-card>
+
+    <ul id="projects">
+      {for p in model.projects ->
+        <li>
+          <a class="name" href={Projects.Show.Show { id: p.id }}>{p.name}</a>
+        </li>}
+    </ul>
+  </Layout.Page>
+
+test "a member sees only their org's projects" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member me acme
+  let _ <- Test.member me globex
+  let _ <- Test.login { user: Just me, org: Just globex }
+  let _ <- Db.insertScoped Project { name: Text.NonEmpty "Secret" }
+  let _ <- Test.login { user: Just me, org: Just acme }
+  let _ <- Db.insertScoped Project { name: Text.NonEmpty "Roadmap" }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    { names: Test.texts ".name" page.doc, org: Test.text "#org" page.doc }
+      == { names: ["Roadmap"], org: Just "Acme" }
+  )
+}
+
+test "a member removed from the org loses access at once" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Test.member me acme
+  let _ <- Test.login { user: Just me, org: Just acme }
+  let shown <- Test.open (Index {})
+  let row <- Db.from Membership |> Db.where (Membership.user.eq me) |> Db.first
+  let _ <- match row {
+    Just m -> Db.delete Membership m.id,
+    Nothing -> Task.succeed (),
+  }
+  let after <- Test.open (Index {})
+  Task.succeed (
+    { before: shown.answer, after: after.answer }
+      == { before: Shown, after: PageMissing }
+  )
+}

@@ -1,0 +1,99 @@
+module Orders.Index
+
+import Layout
+import Line
+import Order
+import Product
+import User
+
+route Index  = GET  "/"       { } requires user
+route Create = POST "/orders" { } requires user
+
+type Entry = { order: Order, total: Int }
+
+type Model = { orders: List Entry, manager: Bool }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let orders <-
+    Db.from Order
+      |> Db.where (Order.owner.eq session.user)
+      |> Db.orderBy Order.created.desc
+      |> Db.all
+  let products <- Db.from Product |> Db.all
+  let lines <- Query.all (List.map (\o -> Line.linesOf o.id) orders)
+  let manager <- User.isManager session.user
+  Query.succeed {
+    orders: List.map2 (\o ls -> { order: o, total: Line.total products ls }) orders lines,
+    manager: manager,
+  }
+}
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let id <- Db.insert Order { owner: session.user }
+  Task.succeed (Response.redirect (Orders.Show.Show { id: id }))
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Orders">
+    <h1>Orders</h1>
+    <al-button click={Create}>New order</al-button>
+    <ul id="orders">
+      {for e in model.orders -> <OrderItem entry={e} />}
+    </ul>
+    {if model.manager then <a href={Products.Index.Index {}}>Products</a> else Html.none}
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+OrderItem : { entry: Entry } -> Html
+OrderItem props =
+  <li>
+    <a href={Orders.Show.Show { id: props.entry.order.id }}>
+      Order of {Time.format "2006-01-02 15:04" props.entry.order.created}
+    </a>
+    <span class="status">{Order.statusLabel props.entry.order.status}</span>
+    <span class="total">{Text.fromInt props.entry.total}</span>
+  </li>
+
+test "the list shows each order's status and total, newest first" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let tea <- Db.insert Product { name: Text.NonEmpty "Tea", price: Int.NonNegative 250 }
+  let first <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line {
+    order: first,
+    product: tea,
+    quantity: Int.Positive 2,
+  }
+  let _ <- Db.insert Order { owner: me, status: Paid }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    { statuses: Test.texts ".status" page.doc, totals: Test.texts ".total" page.doc }
+      == { statuses: ["Paid", "Open"], totals: ["0", "500"] }
+  )
+}
+
+test "the button creates an empty Open order" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let r <- Test.click (Create {})
+  let orders <-
+    Db.from Order
+      |> Db.where (Order.owner.eq me)
+      |> Db.all
+  Task.succeed (
+    { status: Test.text "#status" r.doc, orders: List.map (\o -> o.status) orders }
+      == { status: Just "Open", orders: [Open] }
+  )
+}

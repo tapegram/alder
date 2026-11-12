@@ -1,0 +1,42 @@
+module Bookings.Index
+
+import Layout
+import Table.Booking
+import Table.Room
+
+route Index = GET "/bookings" { } requires user
+
+type Model = { bookings: List Booking, rooms: List Room }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.owner.eq session.user)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  let rooms <- Db.from Room |> Db.all
+  Query.succeed { bookings: bookings, rooms: rooms }
+}
+
+roomName : List Room -> Room.RoomId -> Text
+roomName rooms id = match List.find (\r -> r.id == id) rooms {
+  Just r -> r.name,
+  Nothing -> "",
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="My bookings">
+    <h1>My bookings</h1>
+    <ul id="mine">
+      {for b in model.bookings ->
+        <li>
+          <a href={Bookings.Show.Show { id: b.id }}><span class="room">{roomName model.rooms b.room}</span></a>
+          {" "}
+          <span class="from">{Date.toText b.from}</span>
+        </li>}
+    </ul>
+    <nav><a href={Rooms.Index.Index {}}>All rooms</a></nav>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>

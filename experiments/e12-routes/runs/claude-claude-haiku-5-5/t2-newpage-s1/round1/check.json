@@ -1,0 +1,1 @@
+{"code": "W0001", "severity": "warning", "file": "app/Todos/Index.alder", "line": 4, "col": 1, "endLine": 4, "endCol": 15, "message": "import `Profile` is unused"}

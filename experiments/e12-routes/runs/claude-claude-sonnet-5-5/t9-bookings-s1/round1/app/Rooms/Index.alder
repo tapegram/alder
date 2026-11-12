@@ -1,0 +1,66 @@
+module Rooms.Index
+
+import Layout
+import Table.Booking
+import Table.Room
+import Table.User
+
+route Index = GET "/rooms" { } requires user
+
+type Model = { today: Date, rooms: List Room, bookings: List Booking }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let today <- Date.today
+  let rooms <-
+    Db.from Room
+      |> Db.orderBy Room.name.asc
+      |> Db.all
+  let bookings <- Db.from Booking |> Db.all
+  Query.succeed { today: today, rooms: rooms, bookings: bookings }
+}
+
+freeDate : Model -> Room -> Text
+freeDate model r =
+  Date.toText (Booking.nextFree model.today (List.filter (\b -> b.room == r.id) model.bookings))
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Rooms">
+    <h1>Rooms</h1>
+    <ul id="rooms">
+      {for r in model.rooms ->
+        <li>
+          <a class="name" href={Rooms.Show.Show { id: r.id }}>{r.name}</a>
+          <span class="free">{freeDate model r}</span>
+        </li>}
+    </ul>
+    <nav>
+      <a href={Bookings.Index.Index {}}>My bookings</a>
+    </nav>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "rooms list their next free date" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let a <- Db.insert Room { name: Text.NonEmpty "Alpha" }
+  let _ <- Db.insert Room { name: Text.NonEmpty "Beta" }
+  let _ <- Db.insert Booking { room: a, owner: me, from: Booking.day 100, to: Booking.day 103 }
+  let _ <- Db.insert Booking { room: a, owner: me, from: Booking.day 103, to: Booking.day 105 }
+  let _ <- Test.setClock (Time.fromDate (Booking.day 100))
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    {
+      names: Test.texts "#rooms .name" page.doc,
+      free: Test.texts "#rooms .free" page.doc,
+    } == {
+      names: ["Alpha", "Beta"],
+      free: [Date.toText (Booking.day 105), Date.toText (Booking.day 100)],
+    }
+  )
+}

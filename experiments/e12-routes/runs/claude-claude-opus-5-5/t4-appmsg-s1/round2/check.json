@@ -1,0 +1,2 @@
+{"code": "W0003", "severity": "warning", "file": "app/Notes/Index.alder", "line": 35, "col": 7, "endLine": 39, "endCol": 14, "message": "form field `body` has no `<Errors field=\"body\">` and the form no `<Errors form />`: its decoding errors would not be shown"}
+{"code": "W0003", "severity": "warning", "file": "app/Notes/Show.alder", "line": 55, "col": 7, "endLine": 59, "endCol": 14, "message": "form field `body` has no `<Errors field=\"body\">` and the form no `<Errors form />`: its decoding errors would not be shown"}

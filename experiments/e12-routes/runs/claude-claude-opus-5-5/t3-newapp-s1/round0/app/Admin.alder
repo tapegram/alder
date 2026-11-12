@@ -1,0 +1,134 @@
+module Admin
+
+import Layout
+import Table.Post
+import Table.User
+
+route Dashboard = GET   "/admin"            { }                              requires user
+route Create    = POST  "/admin/posts"      { }                form NewPost requires user
+route Toggle    = PATCH "/admin/posts/{id}" { id: Post.PostId }              requires user
+
+type Model = { posts: List Post }
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Post.Slug,
+  body: Text.NonEmpty,
+  published: Bool = False,
+}
+
+Dashboard.load : Dashboard.Params -> Session -> Query Model
+Dashboard.load params session = {
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let taken <-
+    Db.from Post
+      |> Db.where (Post.slug.eq p.form.slug)
+      |> Db.count
+  if taken > 0 then
+    Task.succeed (Response.invalid "A post with that slug already exists.")
+  else {
+    let _ <- Db.insert Post {
+      title: p.form.title,
+      slug: p.form.slug,
+      body: p.form.body,
+      published: p.form.published,
+      author: session.user,
+    }
+    Task.succeed (Response.redirect (Dashboard {}) |> Response.success "Post created")
+  }
+}
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let _ <- Db.update Post p.id (\x -> { x | published: not x.published })
+  Task.succeed Response.refresh
+}
+
+Dashboard.view : Model -> Session -> Html
+Dashboard.view model session =
+  <Layout.Page title="Admin">
+    <h1>Admin</h1>
+    <al-card>
+      <form submit={Create}>
+        <Errors form />
+        <al-input field="title" label="Title" />
+        <al-input field="slug" label="Slug" help="lowercase letters, digits and hyphens" />
+        <al-textarea field="body" label="Body" />
+        <al-checkbox field="published" label="Published" />
+        <al-button type="submit">Create post</al-button>
+      </form>
+    </al-card>
+    <ul id="admin-posts">
+      {for post in model.posts ->
+        <li id={"post-" ++ post.id}>
+          <a href={Posts.Show.Show { slug: post.slug }}>{post.title}</a>
+          {if post.published then <al-badge>Published</al-badge> else <al-badge variant="outline">Draft</al-badge>}
+          <al-button variant="secondary" size="sm" click={Toggle { id: post.id }}>
+            {if post.published then "Unpublish" else "Publish"}
+          </al-button>
+        </li>}
+    </ul>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "a visitor is sent to log in from the admin" = {
+  let visitor <- Test.open (Dashboard {})
+  Task.succeed (visitor.answer == Redirected (Auth.Login.Login {}))
+}
+
+test "creating a post through the form" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Dashboard {})
+  let r <- Test.submit (Create {}) {
+    title: Text.NonEmpty "First",
+    slug: Post.Slug "first",
+    body: Text.NonEmpty "Hello world.",
+    published: True,
+  }
+  let posts <- Db.from Post |> Db.all
+  Task.succeed (
+    {
+      answer: r.answer,
+      posts: List.map (\x -> { title: x.title, published: x.published }) posts,
+    } == {
+      answer: Redirected (Dashboard {}),
+      posts: [{ title: Text.NonEmpty "First", published: True }],
+    }
+  )
+}
+
+test "toggling publishes a draft" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Post {
+    title: Text.NonEmpty "Draft",
+    slug: Post.Slug "draft",
+    body: "Not yet.",
+    published: False,
+    author: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Dashboard {})
+  let r <- Test.click (Toggle { id: id })
+  let after <- Db.get Post id
+  Task.succeed (
+    { answer: r.answer, published: Maybe.map (\x -> x.published) after }
+      == { answer: Refreshed, published: Just True }
+  )
+}

@@ -1,0 +1,14 @@
+module Table.Ticket
+
+type TicketId = brand Text
+
+-- A ticket that is still open is `Pending`; closing it makes it `Closed`.
+type Status = Pending | Closed
+
+-- Tickets are added outside the app, straight into the database.
+table Ticket {
+  id: TicketId @id,
+  title: Text.NonEmpty,
+  status: Status = Pending,
+  created: Time @created,
+}

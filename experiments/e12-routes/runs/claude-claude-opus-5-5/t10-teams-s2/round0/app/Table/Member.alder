@@ -1,0 +1,31 @@
+module Table.Member
+
+import Table.Team
+import Table.User
+
+type MemberId = brand Text
+
+-- One row per member who is not the owner: the owner has no `Member` row.
+table Member {
+  id: MemberId @id,
+  team: Team.TeamId @ref Team,
+  user: User.UserId @ref User,
+}
+
+-- Whether the user owns the team or is one of its members.
+canSee : User.UserId -> Team.TeamId -> Query Bool
+canSee user id = {
+  let found <- Db.get Team id
+  let n <-
+    Db.from Member
+      |> Db.where (Member.team.eq id)
+      |> Db.where (Member.user.eq user)
+      |> Db.count
+  Query.succeed (Maybe.map (\t -> t.owner) found == Just user || n > 0)
+}
+
+join : Team.TeamId -> User.UserId -> Task Unit
+join team user = {
+  let _ <- Db.insert Member { team: team, user: user }
+  Task.succeed ()
+}

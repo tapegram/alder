@@ -1,0 +1,123 @@
+module Desk
+
+import Layout
+import Table.Post
+import Table.User
+
+route Desk   = GET   "/admin"             { }                    requires user
+route Create = POST  "/admin/posts"       { } form NewPost       requires user
+route Toggle = PATCH "/admin/posts/{id}"  { id: Post.PostId }    requires user
+
+type Model = { posts: List Post }
+
+form NewPost = {
+  title: Text.NonEmpty,
+  slug: Post.Slug,
+  body: Text.NonEmpty,
+  published: Bool = False,
+}
+
+Desk.load : Desk.Params -> Session -> Query Model
+Desk.load params session = {
+  let posts <-
+    Db.mine Post
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let taken <-
+    Db.from Post
+      |> Db.where (Post.slug.eq p.form.slug)
+      |> Db.count
+  if taken > 0 then
+    Task.succeed (Response.invalid "A post with that slug already exists.")
+  else {
+    let _ <- Db.insertMine Post {
+      title: p.form.title,
+      slug: p.form.slug,
+      body: p.form.body,
+      published: p.form.published,
+    }
+    Task.succeed (Response.redirect (Desk {}))
+  }
+}
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let _ <- Db.updateMine Post p.id (\x -> { x | published: not x.published })
+  Task.succeed Response.refresh
+}
+
+Desk.view : Model -> Session -> Html
+Desk.view model session =
+  <Layout.Page title="Admin">
+    <h1>Posts</h1>
+    <ul id="posts">
+      {for post in model.posts ->
+        <li id={"post-" ++ post.id}>
+          <a href={Posts.Show.Show { slug: post.slug }}>{post.title}</a>
+          <span class="state">{if post.published then "published" else "draft"}</span>
+          <button click={Toggle { id: post.id }}>
+            {if post.published then "Unpublish" else "Publish"}
+          </button>
+        </li>}
+    </ul>
+    <h2>New post</h2>
+    <form submit={Create}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Input field="slug" label="Slug" />
+      <Textarea field="body" label="Body" />
+      <Input field="published" label="Published" />
+      <button>Create</button>
+    </form>
+    <p><a href={Posts.Index.Index {}}>View blog</a></p>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "toggling publishes a draft" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Post {
+    title: Text.NonEmpty "Draft",
+    slug: Post.Slug "draft",
+    body: Text.NonEmpty "Not yet.",
+    published: False,
+    author: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Desk {})
+  let r <- Test.click (Toggle { id: id })
+  let after <- Db.get Post id
+  Task.succeed (
+    { answer: r.answer, published: Maybe.map (\x -> x.published) after }
+      == { answer: Refreshed, published: Just True }
+  )
+}
+
+test "creating a post through the admin" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Desk {})
+  let r <- Test.submit (Create {}) {
+    title: Text.NonEmpty "Hello",
+    slug: Post.Slug "hello",
+    body: Text.NonEmpty "Hi there.",
+    published: True,
+  }
+  let page <- Test.get (Desk {})
+  Task.succeed (
+    { answer: r.answer, titles: Test.texts "#posts li a" page.doc }
+      == { answer: Redirected (Desk {}), titles: ["Hello"] }
+  )
+}

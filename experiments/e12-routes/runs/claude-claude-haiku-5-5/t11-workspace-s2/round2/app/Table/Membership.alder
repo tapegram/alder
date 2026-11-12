@@ -1,0 +1,32 @@
+module Table.Membership
+
+import Table.Org
+import Table.User
+
+type MembershipId = brand Text
+
+-- One row per member of an org. The session's `via Membership` checks it when an org is opened.
+table Membership {
+  id: MembershipId @id,
+  user: User.UserId @ref User,
+  org: Org.OrgId @ref Org,
+}
+
+-- Whether the user is still a member of the org. The routes that depend on it read it again on
+-- every request, so a member removed from the org loses access at once (book 06, "Partitions").
+isMember : User.UserId -> Org.OrgId -> Query Bool
+isMember user org = {
+  let n <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq user)
+      |> Db.where (Membership.org.eq org)
+      |> Db.count
+  Query.succeed (n > 0)
+}
+
+-- A request by someone who is no longer a member is a 404, as a row that is not theirs.
+memberOnly : User.UserId -> Org.OrgId -> Query Unit
+memberOnly user org = {
+  let member <- isMember user org
+  if member then Query.succeed () else Query.notFound
+}

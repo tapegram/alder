@@ -1,0 +1,25 @@
+module Table.Contact
+
+import Table.User
+
+type ContactId = brand Text
+
+table Contact {
+  id: ContactId @id,
+  name: Text.NonEmpty,
+  email: Text.Email,
+  owner: User.UserId @ref User @owner,
+}
+
+matchesQuery : Text -> Contact -> Bool
+matchesQuery q contact =
+  q == "" || Text.contains (Text.toLower q) (Text.toLower contact.name)
+
+test "an empty query matches every contact" =
+  matchesQuery "" { id: ContactId "a", name: Text.NonEmpty "Ann", email: Text.Email "ann@example.com", owner: User.UserId "u" }
+
+test "the query ignores case" =
+  matchesQuery "AN" { id: ContactId "a", name: Text.NonEmpty "Ann", email: Text.Email "ann@example.com", owner: User.UserId "u" }
+
+test "a query that is not in the name does not match" =
+  not (matchesQuery "bob" { id: ContactId "a", name: Text.NonEmpty "Ann", email: Text.Email "ann@example.com", owner: User.UserId "u" })

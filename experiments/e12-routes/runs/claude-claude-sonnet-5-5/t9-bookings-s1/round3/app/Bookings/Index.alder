@@ -1,0 +1,75 @@
+module Bookings.Index
+
+import Layout
+import Table.Booking
+import Table.Room
+import Table.User
+
+route Index = GET "/bookings" { } requires user
+
+type Model = { bookings: List Booking, rooms: List Room }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.owner.eq session.user)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  let rooms <- Db.from Room |> Db.all
+  Query.succeed { bookings: bookings, rooms: rooms }
+}
+
+roomName : List Room -> Booking -> Text
+roomName rooms b = {
+  let found = List.find (\r -> r.id == b.room) rooms
+  Maybe.withDefault "" (Maybe.map (\r -> Text.trim r.name) found)
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="My bookings">
+    <h1>My bookings</h1>
+    <ul id="mine">
+      {for b in model.bookings ->
+        <li>
+          <a href={Bookings.Show.Show { id: b.id }}>
+            <span class="room">{roomName model.rooms b}</span>
+          </a>
+          <span class="from">{Date.toText b.from}</span>
+        </li>}
+    </ul>
+    <nav>
+      <a href={Rooms.Index.Index {}}>Rooms</a>
+    </nav>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "only my bookings are listed, by from date" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let other <- Db.insert User {
+    email: Text.Email "other@example.com",
+    name: Text.NonEmpty "Other",
+    passwordHash: "",
+  }
+  let a <- Db.insert Room { name: Text.NonEmpty "Alpha" }
+  let b <- Db.insert Room { name: Text.NonEmpty "Beta" }
+  let _ <- Db.insert Booking { room: b, owner: me, from: Booking.day 200, to: Booking.day 201 }
+  let _ <- Db.insert Booking { room: a, owner: me, from: Booking.day 100, to: Booking.day 101 }
+  let _ <- Db.insert Booking { room: a, owner: other, from: Booking.day 150, to: Booking.day 151 }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    {
+      rooms: Test.texts "#mine .room" page.doc,
+      froms: Test.texts "#mine .from" page.doc,
+    } == {
+      rooms: ["Alpha", "Beta"],
+      froms: [Date.toText (Booking.day 100), Date.toText (Booking.day 200)],
+    }
+  )
+}

@@ -1,0 +1,2 @@
+{"code": "E0002", "severity": "error", "file": "app/Notes/Index.alder", "line": 27, "col": 36, "endLine": 27, "endCol": 53, "message": "inside `Notes.Index`, its own names are written unqualified: `Index`", "fix": {"line": 27, "col": 36, "endLine": 27, "endCol": 53, "replace": "Index"}}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Show.alder", "line": 111, "col": 69, "endLine": 111, "endCol": 74, "message": "`Light` is a constructor of `Theme.Theme`; import `Theme`", "fix": {"line": 6, "col": 1, "endLine": 6, "endCol": 1, "replace": "import Theme\n"}}

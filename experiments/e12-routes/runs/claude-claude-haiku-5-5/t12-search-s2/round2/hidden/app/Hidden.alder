@@ -1,0 +1,61 @@
+module Hidden
+
+-- E12 hidden acceptance tests for T12 (search contacts as you type), new in E12. They follow
+-- chapter 6's `Search` pattern: the page is opened, then `Test.input` asks for
+-- `Contacts.Index.Results { q }` as the field `q` would, and the answer is patched into the
+-- page's `#results`. They use only the names the task's Names block fixes; the model never sees
+-- them. Every query matches names in their own case, so they hold whatever case rule a solution
+-- keeps, and they count or compare single matches, so they fix no order.
+
+import Table.User
+import Table.Contact
+
+test "typing asks for the matching contacts only" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Grace Hopper", email: Text.Email "grace@example.com", owner: me }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Ada Lovelace", email: Text.Email "ada@example.com", owner: me }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Alan Turing", email: Text.Email "alan@example.com", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Contacts.Index.Find {})
+  let love <- Test.input (Contacts.Index.Results { q: "Love" })
+  let tur <- Test.input (Contacts.Index.Results { q: "Tur" })
+  let none <- Test.input (Contacts.Index.Results { q: "Zebra" })
+  Task.succeed ({ love: Test.texts "#results li" love.doc, tur: Test.texts "#results li" tur.doc, none: Test.count "#results li" none.doc } == { love: ["Ada Lovelace"], tur: ["Alan Turing"], none: 0 })
+}
+
+test "an empty query lists every contact" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Grace Hopper", email: Text.Email "grace@example.com", owner: me }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Ada Lovelace", email: Text.Email "ada@example.com", owner: me }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Alan Turing", email: Text.Email "alan@example.com", owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.open (Contacts.Index.Find {})
+  let _ <- Test.input (Contacts.Index.Results { q: "Love" })
+  let cleared <- Test.input (Contacts.Index.Results { q: "" })
+  Task.succeed ({ answer: page.answer, page: Test.count "#results li" page.doc, cleared: Test.count "#results li" cleared.doc } == { answer: Shown, page: 3, cleared: 3 })
+}
+
+test "another user's contacts never appear" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Ada Lovelace", email: Text.Email "ada@example.com", owner: me }
+  let _ <- Db.insert Contact { name: Text.NonEmpty "Ada Byron", email: Text.Email "byron@example.com", owner: other }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Contacts.Index.Find {})
+  let typed <- Test.input (Contacts.Index.Results { q: "Ada" })
+  let theirs <- Test.input (Contacts.Index.Results { q: "Byron" })
+  let opened <- Test.open (Contacts.Index.Find { q: "Byron" })
+  Task.succeed ({ page: Test.texts "#results li" page.doc, typed: Test.texts "#results li" typed.doc, theirs: Test.count "#results li" theirs.doc, opened: Test.count "#results li" opened.doc } == { page: ["Ada Lovelace"], typed: ["Ada Lovelace"], theirs: 0, opened: 0 })
+}
+
+test "the form adds a contact" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Contacts.Index.Find {})
+  let added <- Test.submit (Contacts.Index.Add {}) { name: Text.NonEmpty "Zoe Smith", email: Text.Email "zoe@example.com" }
+  let mine <- Db.from Contact |> Db.where (Contact.owner.eq me) |> Db.all
+  let _ <- Test.login { user: Just other }
+  let theirs <- Test.open (Contacts.Index.Find {})
+  Task.succeed ({ answer: added.answer, names: Test.texts "#results li" added.doc, mine: List.map (\c -> { name: c.name, email: c.email }) mine, theirs: Test.count "#results li" theirs.doc } == { answer: Redirected (Contacts.Index.Find {}), names: ["Zoe Smith"], mine: [{ name: Text.NonEmpty "Zoe Smith", email: Text.Email "zoe@example.com" }], theirs: 0 })
+}

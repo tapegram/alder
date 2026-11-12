@@ -1,0 +1,5 @@
+{"code": "W0001", "severity": "warning", "file": "app/App.alder", "line": 4, "col": 1, "endLine": 4, "endCol": 24, "message": "import `Table.Membership` is unused"}
+{"code": "W0001", "severity": "warning", "file": "app/App.alder", "line": 6, "col": 1, "endLine": 6, "endCol": 21, "message": "import `Table.Project` is unused"}
+{"code": "W0001", "severity": "warning", "file": "app/App.alder", "line": 7, "col": 1, "endLine": 7, "endCol": 18, "message": "import `Table.Todo` is unused"}
+{"code": "E0002", "severity": "error", "file": "app/Projects/Show.alder", "line": 60, "col": 36, "endLine": 60, "endCol": 54, "message": "inside `Projects.Show`, its own names are written unqualified: `Show`", "fix": {"line": 60, "col": 36, "endLine": 60, "endCol": 54, "replace": "Show"}}
+{"code": "E0002", "severity": "error", "file": "app/Projects/Show.alder", "line": 70, "col": 38, "endLine": 70, "endCol": 56, "message": "inside `Projects.Show`, its own names are written unqualified: `Show`", "fix": {"line": 70, "col": 38, "endLine": 70, "endCol": 56, "replace": "Show"}}

@@ -1,0 +1,220 @@
+module Contacts.Index
+
+import Layout
+import Table.Contact
+import Table.User
+
+route Find    = GET  "/contacts"         { q: Text = "" }                 requires user
+route Results = GET  "/contacts/results" { q: Text = "" }                 requires user
+route Add     = POST "/contacts"         { }              form NewContact requires user
+
+type Model = { q: Text, contacts: List Contact }
+
+form NewContact = { name: Text.NonEmpty, email: Text.Email }
+
+-- The signed-in user's contacts whose name contains `q`, ignoring case; "" matches them all.
+matching : Text -> Select Contact
+matching q =
+  Db.mine Contact
+    |> Db.where (Contact.name.contains q)
+    |> Db.orderBy Contact.name.asc
+
+resultList : List Contact -> Html
+resultList contacts = <ul id="results">{for c in contacts -> <li>{c.name}</li>}</ul>
+
+Find.load : Find.Params -> Session -> Query Model
+Find.load params session = {
+  let contacts <- Db.all (matching params.q)
+  Query.succeed { q: params.q, contacts: contacts }
+}
+
+Find.view : Model -> Session -> Html
+Find.view model session =
+  <Layout.Page title="Contacts">
+    <h1>Contacts</h1>
+    <input
+      type="search"
+      name="q"
+      placeholder="Search by name"
+      value={model.q}
+      input={Results { q: model.q }}
+    />
+    {resultList model.contacts}
+    <al-card>
+      <form submit={Add}>
+        <Errors form />
+        <al-input field="name" label="Name" />
+        <al-input field="email" label="Email" />
+        <al-button type="submit">Add</al-button>
+      </form>
+    </al-card>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+Results.load : Results.Params -> Session -> Query (List Contact)
+Results.load params session = Db.all (matching params.q)
+
+Results.view : List Contact -> Session -> Html
+Results.view contacts session = resultList contacts
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insertMine Contact { name: p.form.name, email: p.form.email }
+  Task.succeed (Response.redirect (Find {}))
+}
+
+test "typing a query lists only the matching contacts" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Contact {
+    name: Text.NonEmpty "Alice Smith",
+    email: Text.Email "alice@example.com",
+    owner: me,
+  }
+  let _ <- Db.insert Contact {
+    name: Text.NonEmpty "Bob Jones",
+    email: Text.Email "bob@example.com",
+    owner: me,
+  }
+  let _ <- Db.insert Contact {
+    name: Text.NonEmpty "Malia Brown",
+    email: Text.Email "malia@example.com",
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Find {})
+  let r <- Test.input (Results { q: "ALI" })
+  Task.succeed (Test.texts "#results li" r.doc == ["Alice Smith", "Malia Brown"])
+}
+
+test "the page opened with a query lists only its matches" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Contact {
+    name: Text.NonEmpty "Alice Smith",
+    email: Text.Email "alice@example.com",
+    owner: me,
+  }
+  let _ <- Db.insert Contact {
+    name: Text.NonEmpty "Bob Jones",
+    email: Text.Email "bob@example.com",
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Find { q: "bob" })
+  Task.succeed (Test.texts "#results li" page.doc == ["Bob Jones"])
+}
+
+test "an empty query lists every contact" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Contact {
+    name: Text.NonEmpty "Bob Jones",
+    email: Text.Email "bob@example.com",
+    owner: me,
+  }
+  let _ <- Db.insert Contact {
+    name: Text.NonEmpty "Alice Smith",
+    email: Text.Email "alice@example.com",
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Find {})
+  let typed <- Test.input (Results { q: "bo" })
+  let cleared <- Test.input (Results { q: "" })
+  Task.succeed (
+    {
+      page: Test.texts "#results li" page.doc,
+      typed: Test.texts "#results li" typed.doc,
+      cleared: Test.texts "#results li" cleared.doc,
+    } == {
+      page: ["Alice Smith", "Bob Jones"],
+      typed: ["Bob Jones"],
+      cleared: ["Alice Smith", "Bob Jones"],
+    }
+  )
+}
+
+test "another user's contacts never appear" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let other <- Db.insert User {
+    email: Text.Email "other@example.com",
+    name: Text.NonEmpty "Other",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Contact {
+    name: Text.NonEmpty "Alice Smith",
+    email: Text.Email "alice@example.com",
+    owner: me,
+  }
+  let _ <- Db.insert Contact {
+    name: Text.NonEmpty "Eve Adams",
+    email: Text.Email "eve@example.com",
+    owner: other,
+  }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Find {})
+  let typed <- Test.input (Results { q: "e" })
+  let searched <- Test.get (Find { q: "Eve" })
+  Task.succeed (
+    {
+      page: Test.texts "#results li" page.doc,
+      typed: Test.texts "#results li" typed.doc,
+      searched: Test.texts "#results li" searched.doc,
+    } == {
+      page: ["Alice Smith"],
+      typed: ["Alice Smith"],
+      searched: [],
+    }
+  )
+}
+
+test "the form adds a contact" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Find {})
+  let r <- Test.submit (Add {}) {
+    name: Text.NonEmpty "Carol White",
+    email: Text.Email "carol@example.com",
+  }
+  let rows <- Db.from Contact |> Db.all
+  Task.succeed (
+    {
+      answer: r.answer,
+      listed: Test.texts "#results li" r.doc,
+      rows: List.map (\c -> { name: c.name, email: c.email, owner: c.owner }) rows,
+    } == {
+      answer: Redirected (Find {}),
+      listed: ["Carol White"],
+      rows: [
+        {
+          name: Text.NonEmpty "Carol White",
+          email: Text.Email "carol@example.com",
+          owner: me,
+        },
+      ],
+    }
+  )
+}
+
+test "a visitor is sent to log in" = {
+  let visitor <- Test.open (Find {})
+  Task.succeed (visitor.answer == Redirected (Auth.Login.Login {}))
+}

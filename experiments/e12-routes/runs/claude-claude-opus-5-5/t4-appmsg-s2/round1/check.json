@@ -1,0 +1,2 @@
+{"code": "E0002", "severity": "error", "file": "app/Notes/Show.alder", "line": 115, "col": 124, "endLine": 115, "endCol": 129, "message": "`Light` is a constructor of `Theme.Theme`; import `Theme`", "fix": {"line": 6, "col": 1, "endLine": 6, "endCol": 1, "replace": "import Theme\n"}}
+{"code": "E0002", "severity": "error", "file": "app/Notes/Show.alder", "line": 116, "col": 75, "endLine": 116, "endCol": 80, "message": "`Light` is a constructor of `Theme.Theme`; import `Theme`"}

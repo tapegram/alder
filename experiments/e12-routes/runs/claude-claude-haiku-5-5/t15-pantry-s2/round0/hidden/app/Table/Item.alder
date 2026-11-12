@@ -1,0 +1,9 @@
+module Table.Item
+
+type ItemId = brand Text
+
+table Item {
+  id: ItemId @id,
+  name: Text.NonEmpty @unique,
+  quantity: Int,
+}

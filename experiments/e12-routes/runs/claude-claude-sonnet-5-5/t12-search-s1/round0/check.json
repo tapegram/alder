@@ -1,0 +1,1 @@
+{"code": "E0002", "severity": "error", "file": "app/Contacts/Index.alder", "line": 34, "col": 36, "endLine": 34, "endCol": 55, "message": "inside `Contacts.Index`, its own names are written unqualified: `Find`", "fix": {"line": 34, "col": 36, "endLine": 34, "endCol": 55, "replace": "Find"}}

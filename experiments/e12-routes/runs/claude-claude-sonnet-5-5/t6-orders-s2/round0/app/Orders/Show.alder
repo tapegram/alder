@@ -1,0 +1,165 @@
+module Orders.Show
+
+import Layout
+import Line
+import Order
+import Product
+import User
+
+route Show    = GET {- order -} "/orders/{id}"           { id: Order.OrderId }                                  requires user
+route AddLine = POST "/orders/{id}/lines"                { id: Order.OrderId, product: Product.ProductId } form NewLine requires user
+route Pay     = PUT "/orders/{id}/paid"                  { id: Order.OrderId }                                  requires user
+route Cancel  = PUT "/orders/{id}/cancelled"             { id: Order.OrderId }                                  requires user
+
+type Model = {
+  order: Order,
+  lines: List Line,
+  products: List Product,
+  total: Int,
+}
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let order <- Order.visible session.user params.id
+  let lines <-
+    Db.from Line
+      |> Db.where (Line.order.eq params.id)
+      |> Db.all
+  let products <- Db.from Product |> Db.all
+  Query.succeed {
+    order: order,
+    lines: lines,
+    products: products,
+    total: Line.total products lines,
+  }
+}
+
+form NewLine = { quantity: Int.Positive }
+
+AddLine.update : AddLine.Params -> Session -> Task Response
+AddLine.update p session = {
+  let order <- Order.visible session.user p.id
+  let product <- Db.get Product p.product
+  let usable = Maybe.map (\x -> x.active) product == Just True
+  if order.status != Open then
+    Task.succeed (Response.invalid "This order is not open.")
+  else if not usable then
+    Task.succeed (Response.invalid "That product is not available.")
+  else {
+    let _ <- Db.insert Line { order: p.id, product: p.product, quantity: p.form.quantity }
+    Task.succeed (Response.redirect (Show { id: p.id }))
+  }
+}
+
+settle : Order.Status -> Order.OrderId -> User.UserId -> Task Response
+settle next id user = {
+  let order <- Order.visible user id
+  if order.status == Open then {
+    let _ <- Db.update Order id (\o -> { o | status: next })
+    Task.succeed (Response.redirect (Show { id: id }))
+  } else Task.succeed (Response.redirect (Show { id: id }))
+}
+
+Pay.update : Pay.Params -> Session -> Task Response
+Pay.update p session = settle Paid p.id session.user
+
+Cancel.update : Cancel.Params -> Session -> Task Response
+Cancel.update p session = settle Cancelled p.id session.user
+
+Actions : { order: Order, products: List Product } -> Html
+Actions props =
+  <section id="actions">
+    <al-button click={Pay { id: props.order.id }}>Mark paid</al-button>
+    <al-button variant="destructive" click={Cancel { id: props.order.id }}>Cancel order</al-button>
+    {for p in List.filter (\x -> x.active) props.products ->
+      <form submit={AddLine { id: props.order.id, product: p.id }}>
+        <h3>{p.name}</h3>
+        <Errors form />
+        <al-input field="quantity" label="Quantity" />
+        <al-button type="submit">Add</al-button>
+      </form>}
+  </section>
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title="Order">
+    <h1>Order</h1>
+    <p>Status: <span id="status">{Order.statusLabel model.order.status}</span></p>
+    <p>Total: <span id="total">{Text.fromInt model.total}</span></p>
+    <ul id="lines">
+      {for l in model.lines ->
+        <li>{Line.productName model.products l} x {Text.fromInt l.quantity} = {Text.fromInt (Line.lineTotal model.products l)}</li>}
+    </ul>
+    {if model.order.status == Open then <Actions order={model.order} products={model.products} /> else Html.none}
+    <a href={Orders.Index.Index {}}>Back</a>
+  </Layout.Page>
+
+test "an open order's total adds its lines" = {
+  let me <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 250 }
+  let ink <- Db.insert Product { name: Text.NonEmpty "Ink", price: Int.NonNegative 100 }
+  let oid <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: oid, product: pen, quantity: Int.Positive 2 }
+  let _ <- Db.insert Line { order: oid, product: ink, quantity: Int.Positive 3 }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Show { id: oid })
+  Task.succeed (
+    { status: Test.text "#status" page.doc, total: Test.text "#total" page.doc }
+      == { status: Just "Open", total: Just "800" }
+  )
+}
+
+test "adding a line to a paid order is refused" = {
+  let me <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 250 }
+  let oid <- Db.insert Order { owner: me, status: Paid }
+  let r <- Test.run (AddLine.update { id: oid, product: pen, form: { quantity: Int.Positive 1 } } { user: me })
+  let n <- Db.from Line |> Db.count
+  Task.succeed (
+    { value: r.value, lines: n }
+      == { value: Ok (Response.invalid "This order is not open."), lines: 0 }
+  )
+}
+
+test "a staff user cannot open another user's order" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let oid <- Db.insert Order { owner: ann }
+  let _ <- Test.login { user: Just bob }
+  let r <- Test.open (Show { id: oid })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a manager can open another user's order" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let mia <- Db.insert User {
+    email: Text.Email "mia@example.com",
+    name: Text.NonEmpty "Mia",
+    passwordHash: "",
+    role: Manager,
+  }
+  let oid <- Db.insert Order { owner: ann }
+  let _ <- Test.login { user: Just mia }
+  let r <- Test.open (Show { id: oid })
+  Task.succeed (r.answer == Shown)
+}

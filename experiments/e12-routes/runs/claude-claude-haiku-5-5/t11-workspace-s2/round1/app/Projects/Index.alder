@@ -1,0 +1,83 @@
+module Projects.Index
+
+import Layout
+import Table.Membership
+import Table.Org
+import Table.Project
+import Table.User
+
+route Index  = GET  "/projects" { }                requires user, org
+route Create = POST "/projects" { } form NewProject requires user, org
+
+type Model = { org: Maybe Org, projects: List Project }
+
+form NewProject = { name: Text.NonEmpty }
+
+-- The org's name and its projects. A user who is no longer a member gets a 404 (book 06).
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let org <- Db.get Org session.org
+  let projects <-
+    Db.scoped Project
+      |> Db.orderBy Project.name.asc
+      |> Db.all
+  Query.succeed { org: org, projects: projects }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Projects">
+    {match model.org {
+      Just o -> <h1 id="org">{o.name}</h1>,
+      Nothing -> Html.none,
+    }}
+    <al-card>
+      <form submit={Create}>
+        <al-input field="name" label="New project" />
+        <al-button type="submit">Add project</al-button>
+      </form>
+    </al-card>
+    <ul id="projects">
+      {for p in model.projects ->
+        <li><a class="name" href={Projects.Show.Show { id: p.id }}>{p.name}</a></li>}
+    </ul>
+    <a href={Orgs.Index.Index {}}>Switch org</a>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let id <- Db.insertScoped Project { name: p.form.name }
+  Task.succeed (Response.redirect (Projects.Show.Show { id: id }))
+}
+
+test "a user with no org is sent to choose one" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me, org: Nothing }
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Orgs.Index.Index {}))
+}
+
+test "a member sees only their org's projects" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: me, org: acme }
+  let _ <- Db.insert Membership { user: me, org: globex }
+  let _ <- Test.login { user: Just me, org: Just globex }
+  let _ <- Db.insertScoped Project { name: Text.NonEmpty "Website" }
+  let _ <- Test.login { user: Just me, org: Just acme }
+  let _ <- Db.insertScoped Project { name: Text.NonEmpty "Launch" }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.texts "#projects .name" page.doc == ["Launch"])
+}

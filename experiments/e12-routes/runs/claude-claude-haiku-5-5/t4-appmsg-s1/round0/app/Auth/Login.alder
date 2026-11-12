@@ -1,0 +1,71 @@
+module Auth.Login
+
+import Layout
+import Theme
+import User
+
+capability Password {
+  verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
+}
+
+fake Password {
+  verify args = {
+    let found <-
+      Db.from User
+        |> Db.where (User.email.eq args.email)
+        |> Db.first
+    Task.succeed (Maybe.map (\u -> u.id) found)
+  }
+}
+
+route Login  = GET  "/login"   { }
+route Submit = POST "/session" { } form Credentials
+
+type Model = { theme: Theme.Theme }
+
+Login.load : Login.Params -> Session -> Query Model
+Login.load params session = Query.succeed { theme: session.theme }
+
+form Credentials = { email: Text.Email, password: Text.Secret }
+
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = {
+  let found <- Password.verify { email: p.form.email, password: p.form.password }
+  match found {
+    Just id -> {
+      let _ <- Session.put (\s -> { s | user: Just id })
+      Task.succeed (Response.redirect (Notes.Index.Index {}))
+    },
+    Nothing -> Task.succeed (Response.invalid "Email or password is incorrect."),
+  }
+}
+
+Login.view : Model -> Session -> Html
+Login.view model session =
+  <Layout.Page title="Log in" theme={model.theme} body={model.theme}>
+    <h1>Log in</h1>
+
+    <al-button id="theme" variant="outline" click={App.SwitchTheme}>
+      {if model.theme == Light then "Switch to dark" else "Switch to light"}
+    </al-button>
+
+    <al-card>
+      <form submit={Submit}>
+        <Errors form />
+        <al-input field="email" label="Email" />
+        <al-input field="password" label="Password" />
+        <al-button type="submit">Log in</al-button>
+      </form>
+    </al-card>
+  </Layout.Page>
+
+test "the theme flips" = {
+  let _ <- Test.login { user: Nothing, theme: Light }
+  let _ <- Test.get (Login {})
+  let r <- Test.click App.SwitchTheme
+  let page <- Test.get (Login {})
+  Task.succeed (
+    { answer: r.answer, theme: r.session.theme, body: Test.attr "class" "body" page.doc }
+      == { answer: Refreshed, theme: Dark, body: Just "dark" }
+  )
+}

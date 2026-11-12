@@ -1,0 +1,6 @@
+{"code": "E0001", "severity": "error", "file": "app/Feed/Index.alder", "line": 20, "col": 6, "endLine": 20, "endCol": 7, "message": "expected string literal, got `:`"}
+{"code": "E0001", "severity": "error", "file": "app/Feed/Index.alder", "line": 21, "col": 1, "endLine": 21, "endCol": 5, "message": "in page parameters: expected `,` or closing brace"}
+{"code": "E0001", "severity": "error", "file": "app/Feed/Index.alder", "line": 83, "col": 7, "endLine": 83, "endCol": 8, "message": "expected `)`, got `(`"}
+{"code": "E0001", "severity": "error", "file": "app/Feed/Index.alder", "line": 85, "col": 3, "endLine": 85, "endCol": 4, "message": "expected `}`, got `)`"}
+{"code": "E0001", "severity": "error", "file": "app/Feed/Index.alder", "line": 107, "col": 7, "endLine": 107, "endCol": 8, "message": "expected `)`, got `(`"}
+{"code": "E0001", "severity": "error", "file": "app/Feed/Index.alder", "line": 109, "col": 3, "endLine": 109, "endCol": 4, "message": "expected `}`, got `)`"}

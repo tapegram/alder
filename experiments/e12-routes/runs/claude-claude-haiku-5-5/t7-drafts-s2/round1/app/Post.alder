@@ -1,0 +1,33 @@
+module Post
+
+import User
+
+type PostId = brand Text
+type Slug = brand Text where (\s -> isSlug s)
+
+-- published is False for a draft: a draft is listed on its author's dashboard only, and its page is
+-- a 404 for anyone else (visibleTo).
+table Post {
+  id: PostId @id,
+  slug: Slug @unique,
+  title: Text.NonEmpty,
+  body: Text,
+  author: User.UserId @ref User,
+  created: Time @created,
+  published: Bool = False,
+}
+
+bySlug : Slug -> Query (Maybe Post)
+bySlug slug = Db.from Post |> Db.where (Post.slug.eq slug) |> Db.first
+
+-- visibleTo is whether a viewer may open the post's page: anyone once it is published; before
+-- that, only its author.
+visibleTo : Post -> Maybe User.UserId -> Bool
+visibleTo post viewer = post.published || viewer == Just post.author
+
+-- isSlug is the rule a Slug keeps: lowercase letters, digits and hyphens, at least one.
+isSlug : Text -> Bool
+isSlug s = Text.matches "^[a-z0-9-]+$" s
+
+test "a slug is lowercase letters, digits and hyphens" =
+  List.map isSlug ["hello-world", "post-2", "Hello", "a b", "", "x/y"] == [True, True, False, False, False, False]

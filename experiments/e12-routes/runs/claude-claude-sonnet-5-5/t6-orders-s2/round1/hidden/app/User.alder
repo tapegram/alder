@@ -1,0 +1,27 @@
+module User
+
+type UserId = brand Text
+
+type Role = Staff | Manager
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  role: Role = Staff,
+  created: Time @created,
+}
+
+-- The role is read from the row on each use, so a demotion applies at once.
+isManager : UserId -> Query Bool
+isManager id = {
+  let me <- Db.get User id
+  Query.succeed (Maybe.map (\u -> u.role) me == Just Manager)
+}
+
+managerOnly : UserId -> Query Unit
+managerOnly id = {
+  let ok <- isManager id
+  if ok then Query.succeed () else Query.notFound
+}

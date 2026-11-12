@@ -1,0 +1,69 @@
+module Auth.Login
+
+import Layout
+import Table.User
+
+capability Password {
+  verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
+}
+
+fake Password {
+  verify args = {
+    let found <-
+      Db.from User
+        |> Db.where (User.email.eq args.email)
+        |> Db.first
+    Task.succeed (Maybe.map (\u -> u.id) found)
+  }
+}
+
+route Login  = GET  "/login"   { }
+route Submit = POST "/session" { } form Credentials
+
+type Model = { }
+
+Login.load : Login.Params -> Session -> Query Model
+Login.load params session = Query.succeed {}
+
+form Credentials = { email: Text.Email, password: Text.Secret }
+
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = {
+  let found <- Password.verify { email: p.form.email, password: p.form.password }
+  match found {
+    Just id -> {
+      let _ <- Session.put (\s -> { s | user: Just id })
+      Task.succeed (Response.redirect (Contacts.Index.Find {}))
+    },
+    Nothing -> Task.succeed (Response.invalid "Email or password is incorrect."),
+  }
+}
+
+Login.view : Model -> Session -> Html
+Login.view model session =
+  <Layout.Page title="Log in">
+    <h1>Log in</h1>
+    <al-card>
+      <form submit={Submit}>
+        <Errors form />
+        <al-input field="email" label="Email" />
+        <al-input field="password" label="Password" />
+        <al-button type="submit">Log in</al-button>
+      </form>
+    </al-card>
+  </Layout.Page>
+
+test "logging in goes to the contacts" = {
+  let _ <- Test.fake Password
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.get (Login {})
+  let r <- Test.submit Submit { email: Text.Email "me@example.com", password: Text.Secret "secret" }
+  Task.succeed (
+    { answer: r.answer, user: r.session.user }
+      == { answer: Redirected (Contacts.Index.Find {}), user: Just me }
+  )
+}

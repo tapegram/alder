@@ -1,0 +1,80 @@
+module Notes.Index
+
+import Layout
+import Note
+import User
+
+route Index = GET  "/"      { }              requires user
+route Add   = POST "/notes" { } form NewNote requires user
+
+type Model = { notes: List Note }
+
+form NewNote = { title: Text.NonEmpty, body: Text }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let notes <-
+    Db.mine Note
+      |> Db.orderBy Note.created.desc
+      |> Db.all
+  Query.succeed { notes: notes }
+}
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insertMine Note { title: p.form.title, body: p.form.body }
+  Task.succeed (Response.redirect (Notes.Index.Index {}))
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Notes" theme={session.theme}>
+    <h1>Notes</h1>
+    <form submit={Add}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <button>Add</button>
+    </form>
+    <ul id="notes">
+      {for n in model.notes ->
+        <li><a class="title" href={Notes.Show.Show { id: n.id }}>{n.title}</a></li>}
+    </ul>
+  </Layout.Page>
+
+test "the list is newest first and only mine" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let other <- Db.insert User {
+    email: Text.Email "other@example.com",
+    name: Text.NonEmpty "Other",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Note { title: Text.NonEmpty "First", body: "", owner: me }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Second", body: "", owner: me }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Theirs", body: "", owner: other }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.texts "#notes a.title" page.doc == ["Second", "First"])
+}
+
+test "adding a note through the page" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let added <- Test.submit (Add {}) { title: Text.NonEmpty "Milk", body: "2 litres" }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    { answer: added.answer, titles: Test.texts "#notes a.title" page.doc }
+      == { answer: Redirected (Index {}), titles: ["Milk"] }
+  )
+}

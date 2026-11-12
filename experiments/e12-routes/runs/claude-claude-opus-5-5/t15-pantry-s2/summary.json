@@ -1,0 +1,300 @@
+{
+ "model": "claude-claude-opus-5-5",
+ "task": "t15-pantry",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "hidden": "experiments/e12-routes/hidden",
+  "condition": "files",
+  "sample": "s2"
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 4,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 44.5,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.309 (Claude Code)",
+   "model": "claude-opus-5-5",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 5,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Pantry.Index",
+      "name": "renaming to another item's name is refused and stores nothing",
+      "file": "app/Pantry/Index.alder",
+      "line": 83,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"name already taken\" }], status: 422, name: Just \"Flour\" }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"name already taken\" }], status: 422, name: Just \"Flour\" }",
+      "trace": [
+       "Db.insert Item",
+       "Db.insert Item",
+       "Test.get Pantry.Index.Index",
+       "Db.all Item",
+       "Test.submit NewName",
+       "Db.all Item",
+       "Db.count Item",
+       "Db.all Item",
+       "Db.get Item"
+      ],
+      "ms": 14.774
+     },
+     {
+      "module": "Pantry.Index",
+      "name": "renaming to a free name is stored",
+      "file": "app/Pantry/Index.alder",
+      "line": 102,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: Redirected /pantry, name: Just \"Rice\", names: [\"Rice\", \"Sugar\"] }",
+      "right": "{ answer: Redirected /pantry, name: Just \"Rice\", names: [\"Rice\", \"Sugar\"] }",
+      "trace": [
+       "Db.insert Item",
+       "Db.insert Item",
+       "Test.get Pantry.Index.Index",
+       "Db.all Item",
+       "Test.submit NewName",
+       "Db.all Item",
+       "Db.count Item",
+       "Db.update Item",
+       "Db.all Item",
+       "Db.get Item"
+      ],
+      "ms": 0.545
+     },
+     {
+      "module": "Pantry.Index",
+      "name": "renaming an item to its own name is stored",
+      "file": "app/Pantry/Index.alder",
+      "line": 121,
+      "col": 1,
+      "ok": true,
+      "left": "Redirected /pantry",
+      "right": "Redirected /pantry",
+      "trace": [
+       "Db.insert Item",
+       "Test.get Pantry.Index.Index",
+       "Db.all Item",
+       "Test.submit NewName",
+       "Db.all Item",
+       "Db.count Item",
+       "Db.update Item",
+       "Db.all Item"
+      ],
+      "ms": 0.486
+     },
+     {
+      "module": "Pantry.Index",
+      "name": "adding one renders the item's row with the new quantity",
+      "file": "app/Pantry/Index.alder",
+      "line": 128,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: Rendered /pantry/items/pH3Pb-ZazNN91KoKK09k, quantities: [\"3\", \"1\"], stored: Just 3 }",
+      "right": "{ answer: Rendered /pantry/items/pH3Pb-ZazNN91KoKK09k, quantities: [\"3\", \"1\"], stored: Just 3 }",
+      "trace": [
+       "Db.insert Item",
+       "Db.insert Item",
+       "Test.get Pantry.Index.Index",
+       "Db.all Item",
+       "Test.click Pantry.Index.Bump",
+       "Db.update Item",
+       "Db.get Item",
+       "Db.get Item"
+      ],
+      "ms": 0.357
+     },
+     {
+      "module": "Pantry.Index",
+      "name": "removing an item drops it from the page and shows the toast",
+      "file": "app/Pantry/Index.alder",
+      "line": 147,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: Refreshed, notices: [\"Removed\"], names: [\"Sugar\"], gone: True }",
+      "right": "{ answer: Refreshed, notices: [\"Removed\"], names: [\"Sugar\"], gone: True }",
+      "trace": [
+       "Db.insert Item",
+       "Db.insert Item",
+       "Test.get Pantry.Index.Index",
+       "Db.all Item",
+       "Test.click Pantry.Index.Remove",
+       "Db.all Item",
+       "Db.delete Item",
+       "Db.all Item",
+       "Db.get Item"
+      ],
+      "ms": 0.381
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 1,
+    "killed": 14,
+    "survived": 0,
+    "suppressed": 0,
+    "skipped": 5,
+    "survivors": []
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "claude-opus-5-5",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "mutation": {
+  "score": 1,
+  "killed": 14,
+  "survived": 0,
+  "suppressed": 0,
+  "skipped": 5,
+  "survivors": []
+ },
+ "hidden": {
+  "passed": 4,
+  "failed": 0,
+  "results": [
+   {
+    "module": "Hidden",
+    "name": "renaming to a taken name is rejected and changes nothing",
+    "file": "app/Hidden.alder",
+    "line": 12,
+    "col": 1,
+    "ok": true,
+    "left": "{ rejected: True, status: 422, stored: Just \"Beans\", named: 1, shown: Just \"Beans\", items: 2 }",
+    "right": "{ rejected: True, status: 422, stored: Just \"Beans\", named: 1, shown: Just \"Beans\", items: 2 }",
+    "trace": [
+     "Db.insert Item",
+     "Db.insert Item",
+     "Test.get Pantry.Index.Index",
+     "Db.all Item",
+     "Test.submit NewName",
+     "Db.all Item",
+     "Db.count Item",
+     "Db.all Item",
+     "Db.get Item",
+     "Db.count Item"
+    ],
+    "ms": 12.488
+   },
+   {
+    "module": "Hidden",
+    "name": "renaming to a free name redirects to the pantry",
+    "file": "app/Hidden.alder",
+    "line": 26,
+    "col": 1,
+    "ok": true,
+    "left": "{ answer: Redirected /pantry, url: \"/pantry\", stored: Just \"Brown rice\", renamed: Just \"Brown rice\", other: Just \"Beans\" }",
+    "right": "{ answer: Redirected /pantry, url: \"/pantry\", stored: Just \"Brown rice\", renamed: Just \"Brown rice\", other: Just \"Beans\" }",
+    "trace": [
+     "Db.insert Item",
+     "Db.insert Item",
+     "Test.get Pantry.Index.Index",
+     "Db.all Item",
+     "Test.submit NewName",
+     "Db.all Item",
+     "Db.count Item",
+     "Db.update Item",
+     "Db.all Item",
+     "Db.get Item"
+    ],
+    "ms": 0.736
+   },
+   {
+    "module": "Hidden",
+    "name": "bump adds one and renders the row",
+    "file": "app/Hidden.alder",
+    "line": 35,
+    "col": 1,
+    "ok": true,
+    "left": "{ answer: Rendered /pantry/items/X885mw3VXkJlKR-NpFzT, quantity: Just \"3\", other: Just \"5\", stored: Just 3 }",
+    "right": "{ answer: Rendered /pantry/items/X885mw3VXkJlKR-NpFzT, quantity: Just \"3\", other: Just \"5\", stored: Just 3 }",
+    "trace": [
+     "Db.insert Item",
+     "Db.insert Item",
+     "Test.get Pantry.Index.Index",
+     "Db.all Item",
+     "Test.click Pantry.Index.Bump",
+     "Db.update Item",
+     "Db.get Item",
+     "Db.get Item"
+    ],
+    "ms": 0.492
+   },
+   {
+    "module": "Hidden",
+    "name": "remove refreshes and drops the item",
+    "file": "app/Hidden.alder",
+    "line": 44,
+    "col": 1,
+    "ok": true,
+    "left": "{ answer: Refreshed, notices: [\"Removed\"], gone: False, items: 1, names: [\"Beans\"], stored: 1 }",
+    "right": "{ answer: Refreshed, notices: [\"Removed\"], gone: False, items: 1, names: [\"Beans\"], stored: 1 }",
+    "trace": [
+     "Db.insert Item",
+     "Db.insert Item",
+     "Test.get Pantry.Index.Index",
+     "Db.all Item",
+     "Test.click Pantry.Index.Remove",
+     "Db.all Item",
+     "Db.delete Item",
+     "Db.all Item",
+     "Db.count Item"
+    ],
+    "ms": 0.494
+   }
+  ],
+  "exit": 0
+ },
+ "hidden_pass": "4/4",
+ "names": {
+  "ok": true,
+  "matches": [
+   "table Item",
+   "session",
+   "page Pantry.Index /pantry",
+   "route Pantry.Index.Bump (POST /pantry/items/{id}/quantity)",
+   "route Pantry.Index.Index (GET /pantry)",
+   "route Pantry.Index.Remove (DELETE /pantry/items/{id})",
+   "route Pantry.Index.Rename (PUT /pantry/items/{id})",
+   "route Pantry.Index.Row (GET /pantry/items/{id})",
+   "form Pantry.Index.NewName"
+  ],
+  "mismatches": []
+ }
+}

@@ -1,0 +1,277 @@
+{
+ "model": "claude-claude-sonnet-5-5",
+ "task": "t14-board",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "hidden": "experiments/e12-routes/hidden",
+  "condition": "files",
+  "sample": "s2"
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 4,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 25.8,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.309 (Claude Code)",
+   "model": "claude-sonnet-5-5",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 3,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Board",
+      "name": "the badge counts pending tickets, again after an add and a close",
+      "file": "app/Board.alder",
+      "line": 62,
+      "col": 1,
+      "ok": true,
+      "left": "{ first: Just \"2\", second: Just \"3\", third: Just \"2\" }",
+      "right": "{ first: Just \"2\", second: Just \"3\", third: Just \"2\" }",
+      "trace": [
+       "Db.insert Ticket",
+       "Db.insert Ticket",
+       "Test.get Board.Board",
+       "Db.all Ticket",
+       "Test.load Board.Open",
+       "Db.count Ticket",
+       "Db.insert Ticket",
+       "Test.load Board.Open",
+       "Db.count Ticket",
+       "Test.click Board.Close",
+       "Db.all Ticket",
+       "Db.update Ticket",
+       "Db.all Ticket",
+       "Test.load Board.Open",
+       "Db.count Ticket"
+      ],
+      "ms": 13.353
+     },
+     {
+      "module": "Board",
+      "name": "recent lists the five newest of six, newest first",
+      "file": "app/Board.alder",
+      "line": 84,
+      "col": 1,
+      "ok": true,
+      "left": "[\"T6\", \"T5\", \"T4\", \"T3\", \"T2\"]",
+      "right": "[\"T6\", \"T5\", \"T4\", \"T3\", \"T2\"]",
+      "trace": [
+       "Db.insert Ticket",
+       "Db.insert Ticket",
+       "Db.insert Ticket",
+       "Db.insert Ticket",
+       "Db.insert Ticket",
+       "Db.insert Ticket",
+       "Test.get Board.Board",
+       "Db.all Ticket",
+       "Test.load Board.Recent",
+       "Db.all Ticket"
+      ],
+      "ms": 0.653
+     },
+     {
+      "module": "Board",
+      "name": "closing a ticket through its button refreshes the board",
+      "file": "app/Board.alder",
+      "line": 96,
+      "col": 1,
+      "ok": true,
+      "left": "{ before: 2, answer: Refreshed, status: Just Closed, pending: 1 }",
+      "right": "{ before: 2, answer: Refreshed, status: Just Closed, pending: 1 }",
+      "trace": [
+       "Db.insert Ticket",
+       "Db.insert Ticket",
+       "Test.get Board.Board",
+       "Db.all Ticket",
+       "Test.click Board.Close",
+       "Db.all Ticket",
+       "Db.update Ticket",
+       "Db.all Ticket",
+       "Db.get Ticket"
+      ],
+      "ms": 0.527
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.8571428571428571,
+    "killed": 6,
+    "survived": 1,
+    "suppressed": 1,
+    "skipped": 1,
+    "survivors": [
+     {
+      "module": "Board",
+      "file": "app/Board.alder",
+      "decl": "Board.load",
+      "line": 15,
+      "col": 8,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Ticket.created.desc",
+      "after": "Db.orderBy Ticket.created.asc"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "claude-sonnet-5-5",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "mutation": {
+  "score": 0.8571428571428571,
+  "killed": 6,
+  "survived": 1,
+  "suppressed": 1,
+  "skipped": 1,
+  "survivors": [
+   {
+    "module": "Board",
+    "file": "app/Board.alder",
+    "decl": "Board.load",
+    "line": 15,
+    "col": 8,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Ticket.created.desc",
+    "after": "Db.orderBy Ticket.created.asc"
+   }
+  ]
+ },
+ "hidden": {
+  "passed": 3,
+  "failed": 0,
+  "results": [
+   {
+    "module": "Hidden",
+    "name": "the badge counts open tickets, again after an insert and after a close",
+    "file": "app/Hidden.alder",
+    "line": 13,
+    "col": 1,
+    "ok": true,
+    "left": "{ first: Just \"2\", inserted: Just \"3\", closed: Just \"2\" }",
+    "right": "{ first: Just \"2\", inserted: Just \"3\", closed: Just \"2\" }",
+    "trace": [
+     "Db.insert Ticket",
+     "Test.advance 1000ms",
+     "Db.insert Ticket",
+     "Test.advance 1000ms",
+     "Db.insert Ticket",
+     "Test.get Board.Board",
+     "Db.all Ticket",
+     "Test.load Board.Open",
+     "Db.count Ticket",
+     "Db.insert Ticket",
+     "Test.load Board.Open",
+     "Db.count Ticket",
+     "Db.update Ticket",
+     "Test.load Board.Open",
+     "Db.count Ticket"
+    ],
+    "ms": 15.735
+   },
+   {
+    "module": "Hidden",
+    "name": "recent lists the five newest of six, newest first",
+    "file": "app/Hidden.alder",
+    "line": 28,
+    "col": 1,
+    "ok": true,
+    "left": "[\"Six\", \"Five\", \"Four\", \"Three\", \"Two\"]",
+    "right": "[\"Six\", \"Five\", \"Four\", \"Three\", \"Two\"]",
+    "trace": [
+     "Db.insert Ticket",
+     "Test.advance 1000ms",
+     "Db.insert Ticket",
+     "Test.advance 1000ms",
+     "Db.insert Ticket",
+     "Test.advance 1000ms",
+     "Db.insert Ticket",
+     "Test.advance 1000ms",
+     "Db.insert Ticket",
+     "Test.advance 1000ms",
+     "Db.insert Ticket",
+     "Test.get Board.Board",
+     "Db.all Ticket",
+     "Test.load Board.Recent",
+     "Db.all Ticket"
+    ],
+    "ms": 0.63
+   },
+   {
+    "module": "Hidden",
+    "name": "closing a ticket refreshes the board",
+    "file": "app/Hidden.alder",
+    "line": 45,
+    "col": 1,
+    "ok": true,
+    "left": "{ answer: Refreshed, a: Just Closed, b: Just Pending, open: Just \"1\" }",
+    "right": "{ answer: Refreshed, a: Just Closed, b: Just Pending, open: Just \"1\" }",
+    "trace": [
+     "Db.insert Ticket",
+     "Test.advance 1000ms",
+     "Db.insert Ticket",
+     "Test.get Board.Board",
+     "Db.all Ticket",
+     "Test.click Board.Close",
+     "Db.all Ticket",
+     "Db.update Ticket",
+     "Db.all Ticket",
+     "Test.load Board.Open",
+     "Db.count Ticket",
+     "Db.get Ticket",
+     "Db.get Ticket"
+    ],
+    "ms": 0.602
+   }
+  ],
+  "exit": 0
+ },
+ "hidden_pass": "3/3",
+ "names": {
+  "ok": true,
+  "matches": [
+   "table Ticket",
+   "session",
+   "page Board /board",
+   "route Board.Board (GET /board)",
+   "route Board.Close (PUT /tickets/{id}/closed)",
+   "route Board.Open (GET /board/open)",
+   "route Board.Recent (GET /board/recent)"
+  ],
+  "mismatches": []
+ }
+}

@@ -1,0 +1,137 @@
+module Orgs.Index
+
+import Layout
+import Table.Membership
+import Table.Org
+import Table.User
+
+route Index  = GET  "/orgs"                { }                  requires user
+route Open   = POST "/orgs/{org}/open"     { org: Org.OrgId }   requires user
+route Create = POST "/orgs"                { } form NewOrg      requires user
+
+type Model = { orgs: List Org }
+
+form NewOrg = { name: Text.NonEmpty }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let memberships <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq session.user)
+      |> Db.all
+  let ids = List.map (\m -> m.org) memberships
+  let orgs <-
+    Db.from Org
+      |> Db.where (Org.id.in ids)
+      |> Db.orderBy Org.name.asc
+      |> Db.all
+  Query.succeed { orgs: orgs }
+}
+
+-- The session refuses an org the user is no member of: `Session.put` fails the task.
+Open.update : Open.Params -> Session -> Task Response
+Open.update p session = {
+  let _ <- Session.put (\s -> { s | org: Just p.org })
+  Task.succeed (Response.redirect (Projects.Index.Index {}))
+}
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let id <- Db.insert Org { name: p.form.name }
+  let _ <- Db.insert Membership { user: session.user, org: id }
+  let _ <- Session.put (\s -> { s | org: Just id })
+  Task.succeed (Response.redirect (Projects.Index.Index {}))
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Orgs">
+    <h1>Your orgs</h1>
+    <ul id="orgs">
+      {for o in model.orgs ->
+        <li>
+          <span class="name">{o.name}</span>
+          <button click={Open { org: o.id }}>Open</button>
+        </li>}
+    </ul>
+    <al-card>
+      <form submit={Create}>
+        <Errors form />
+        <al-input field="name" label="New org" />
+        <al-button type="submit">Create</al-button>
+      </form>
+    </al-card>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "the orgs listed are the user's own, ordered by name" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let zeta <- Db.insert Org { name: Text.NonEmpty "Zeta" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member ann zeta
+  let _ <- Test.member ann acme
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.texts "#orgs .name" page.doc == ["Acme", "Zeta"])
+}
+
+test "a user cannot open an org they are not a member of" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member ann acme
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let r <- Test.run (Open.update { org: globex } { user: ann, org: Nothing })
+  Task.succeed (Result.toMaybe r.value == Nothing)
+}
+
+test "opening an org the user belongs to" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Test.member ann acme
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let _ <- Test.get (Index {})
+  let r <- Test.click (Open { org: acme })
+  Task.succeed (
+    { answer: r.answer, org: r.session.org, name: Test.text "#org" r.doc }
+      == { answer: Redirected (Projects.Index.Index {}), org: Just acme, name: Just "Acme" }
+  )
+}
+
+test "creating an org makes its creator a member and opens it" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Create {}) { name: Text.NonEmpty "Newco" }
+  let n <- Db.from Membership |> Db.count
+  Task.succeed (
+    {
+      answer: r.answer,
+      opened: r.session.org != Nothing,
+      members: n,
+      org: Test.text "#org" r.doc,
+    } == {
+      answer: Redirected (Projects.Index.Index {}),
+      opened: True,
+      members: 1,
+      org: Just "Newco",
+    }
+  )
+}

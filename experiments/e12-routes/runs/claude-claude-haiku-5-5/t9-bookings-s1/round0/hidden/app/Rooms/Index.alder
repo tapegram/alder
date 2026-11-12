@@ -1,0 +1,69 @@
+module Rooms.Index
+
+import Layout
+import Table.Booking
+import Table.Room
+import Table.User
+
+route Index = GET "/rooms" { } requires user
+
+type Row = { room: Room, free: Date }
+type Model = { rows: List Row }
+
+-- A room with its next free day, given every booking and today.
+rowOf : Date -> List Booking -> Room -> Row
+rowOf today bookings room = {
+  room: room,
+  free: Booking.nextFree (List.filter (\(b : Booking) -> b.room == room.id) bookings) today,
+}
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let today <- Date.today
+  let rooms <-
+    Db.from Room
+      |> Db.orderBy Room.name.asc
+      |> Db.all
+  let bookings <- Db.from Booking |> Db.all
+  Query.succeed { rows: List.map (rowOf today bookings) rooms }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Rooms">
+    <h1>Rooms</h1>
+    <ul id="rooms">
+      {for row in model.rows ->
+        <li>
+          <a class="name" href={Rooms.Show.Show { id: row.room.id }}>{row.room.name}</a>
+          <span class="free">{Date.toText row.free}</span>
+        </li>}
+    </ul>
+    <p><a href={Bookings.Index.Index {}}>Your bookings</a></p>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+test "the next free date skips back-to-back bookings" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let _ <- Db.insert Booking {
+    room: room,
+    owner: me,
+    from: Booking.dateOf "2026-03-01",
+    to: Booking.dateOf "2026-03-03",
+  }
+  let _ <- Db.insert Booking {
+    room: room,
+    owner: me,
+    from: Booking.dateOf "2026-03-03",
+    to: Booking.dateOf "2026-03-05",
+  }
+  let _ <- Test.setClock (Time.fromDate (Booking.dateOf "2026-03-01"))
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.text ".free" page.doc == Just "2026-03-05")
+}

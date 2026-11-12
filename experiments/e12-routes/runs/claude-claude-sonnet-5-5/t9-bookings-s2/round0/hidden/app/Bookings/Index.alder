@@ -1,0 +1,42 @@
+module Bookings.Index
+
+import Layout
+import Table.Booking
+import Table.Room
+
+route Index = GET "/bookings" { } requires user
+
+type Row = { booking: Booking, roomName: Text }
+
+type Model = { rows: List Row }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.owner.eq session.user)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  let rooms <- Db.from Room |> Db.all
+  Query.succeed {
+    rows: List.map (\b -> {
+      booking: b,
+      roomName: Maybe.withDefault "" (Maybe.map (\r -> Text.trim r.name) (List.find (\r -> r.id == b.room) rooms)),
+    }) bookings,
+  }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="My bookings">
+    <h1>My bookings</h1>
+    <ul id="mine">
+      {for row in model.rows ->
+        <li>
+          <a href={Bookings.Show.Show { id: row.booking.id }}>
+            <span class="room">{row.roomName}</span>
+            <span class="from">{Date.toText row.booking.from}</span>
+          </a>
+        </li>}
+    </ul>
+  </Layout.Page>

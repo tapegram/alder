@@ -1,0 +1,339 @@
+{
+ "model": "claude-claude-sonnet-5-5",
+ "task": "t15-pantry",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "hidden": "experiments/e12-routes/hidden",
+  "condition": "files",
+  "sample": "s1"
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 4,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 27.9,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.309 (Claude Code)",
+   "model": "claude-sonnet-5-5",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 5,
+    "failed": 0,
+    "results": [
+     {
+      "module": "Pantry.Index",
+      "name": "renaming to another item's name is refused",
+      "file": "app/Pantry/Index.alder",
+      "line": 77,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"name already taken\" }], name: Just \"bread\" }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"name already taken\" }], name: Just \"bread\" }",
+      "trace": [
+       "Db.insert Item",
+       "Db.insert Item",
+       "Test.get Pantry.Index.Index",
+       "Db.all Item",
+       "Test.submit NewName",
+       "Db.all Item",
+       "Db.all Item",
+       "Db.all Item",
+       "Db.get Item"
+      ],
+      "ms": 12.844
+     },
+     {
+      "module": "Pantry.Index",
+      "name": "renaming to a free name is stored",
+      "file": "app/Pantry/Index.alder",
+      "line": 92,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: Redirected /pantry, name: Just \"rye\" }",
+      "right": "{ answer: Redirected /pantry, name: Just \"rye\" }",
+      "trace": [
+       "Db.insert Item",
+       "Test.get Pantry.Index.Index",
+       "Db.all Item",
+       "Test.submit NewName",
+       "Db.all Item",
+       "Db.all Item",
+       "Db.update Item",
+       "Db.all Item",
+       "Db.get Item"
+      ],
+      "ms": 0.678
+     },
+     {
+      "module": "Pantry.Index",
+      "name": "renaming an item to its own name is allowed",
+      "file": "app/Pantry/Index.alder",
+      "line": 103,
+      "col": 1,
+      "ok": true,
+      "left": "Redirected /pantry",
+      "right": "Redirected /pantry",
+      "trace": [
+       "Db.insert Item",
+       "Test.get Pantry.Index.Index",
+       "Db.all Item",
+       "Test.submit NewName",
+       "Db.all Item",
+       "Db.all Item",
+       "Db.update Item",
+       "Db.all Item"
+      ],
+      "ms": 0.54
+     },
+     {
+      "module": "Pantry.Index",
+      "name": "adding one renders the row with the new quantity",
+      "file": "app/Pantry/Index.alder",
+      "line": 110,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: Rendered /pantry/items/-B-Gu19qHcgbvidKZJ5K, quantity: Just \"2\" }",
+      "right": "{ answer: Rendered /pantry/items/-B-Gu19qHcgbvidKZJ5K, quantity: Just \"2\" }",
+      "trace": [
+       "Db.insert Item",
+       "Test.get Pantry.Index.Index",
+       "Db.all Item",
+       "Test.click Pantry.Index.Bump",
+       "Db.update Item",
+       "Db.get Item"
+      ],
+      "ms": 0.429
+     },
+     {
+      "module": "Pantry.Index",
+      "name": "removing an item drops it and shows a toast",
+      "file": "app/Pantry/Index.alder",
+      "line": 120,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: Refreshed, gone: True, names: [\"bread\"], notices: [\"Removed\"] }",
+      "right": "{ answer: Refreshed, gone: True, names: [\"bread\"], notices: [\"Removed\"] }",
+      "trace": [
+       "Db.insert Item",
+       "Db.insert Item",
+       "Test.get Pantry.Index.Index",
+       "Db.all Item",
+       "Test.click Pantry.Index.Remove",
+       "Db.all Item",
+       "Db.delete Item",
+       "Db.all Item",
+       "Db.get Item"
+      ],
+      "ms": 0.534
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.8461538461538461,
+    "killed": 11,
+    "survived": 2,
+    "suppressed": 0,
+    "skipped": 5,
+    "survivors": [
+     {
+      "module": "Pantry.Index",
+      "file": "app/Pantry/Index.alder",
+      "decl": "Index.load",
+      "line": 17,
+      "col": 8,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Item.name.asc",
+      "after": "Db.orderBy Item.name.desc"
+     },
+     {
+      "module": "Pantry.Index",
+      "file": "app/Pantry/Index.alder",
+      "decl": "Rename.update",
+      "line": 54,
+      "col": 10,
+      "kind": "where dropped",
+      "before": "Db.where (Item.name.eq p.form.name)",
+      "after": "the condition dropped"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "claude-sonnet-5-5",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "mutation": {
+  "score": 0.8461538461538461,
+  "killed": 11,
+  "survived": 2,
+  "suppressed": 0,
+  "skipped": 5,
+  "survivors": [
+   {
+    "module": "Pantry.Index",
+    "file": "app/Pantry/Index.alder",
+    "decl": "Index.load",
+    "line": 17,
+    "col": 8,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Item.name.asc",
+    "after": "Db.orderBy Item.name.desc"
+   },
+   {
+    "module": "Pantry.Index",
+    "file": "app/Pantry/Index.alder",
+    "decl": "Rename.update",
+    "line": 54,
+    "col": 10,
+    "kind": "where dropped",
+    "before": "Db.where (Item.name.eq p.form.name)",
+    "after": "the condition dropped"
+   }
+  ]
+ },
+ "hidden": {
+  "passed": 4,
+  "failed": 0,
+  "results": [
+   {
+    "module": "Hidden",
+    "name": "renaming to a taken name is rejected and changes nothing",
+    "file": "app/Hidden.alder",
+    "line": 12,
+    "col": 1,
+    "ok": true,
+    "left": "{ rejected: True, status: 422, stored: Just \"Beans\", named: 1, shown: Just \"Beans\", items: 2 }",
+    "right": "{ rejected: True, status: 422, stored: Just \"Beans\", named: 1, shown: Just \"Beans\", items: 2 }",
+    "trace": [
+     "Db.insert Item",
+     "Db.insert Item",
+     "Test.get Pantry.Index.Index",
+     "Db.all Item",
+     "Test.submit NewName",
+     "Db.all Item",
+     "Db.all Item",
+     "Db.all Item",
+     "Db.get Item",
+     "Db.count Item"
+    ],
+    "ms": 14.971
+   },
+   {
+    "module": "Hidden",
+    "name": "renaming to a free name redirects to the pantry",
+    "file": "app/Hidden.alder",
+    "line": 26,
+    "col": 1,
+    "ok": true,
+    "left": "{ answer: Redirected /pantry, url: \"/pantry\", stored: Just \"Brown rice\", renamed: Just \"Brown rice\", other: Just \"Beans\" }",
+    "right": "{ answer: Redirected /pantry, url: \"/pantry\", stored: Just \"Brown rice\", renamed: Just \"Brown rice\", other: Just \"Beans\" }",
+    "trace": [
+     "Db.insert Item",
+     "Db.insert Item",
+     "Test.get Pantry.Index.Index",
+     "Db.all Item",
+     "Test.submit NewName",
+     "Db.all Item",
+     "Db.all Item",
+     "Db.update Item",
+     "Db.all Item",
+     "Db.get Item"
+    ],
+    "ms": 0.908
+   },
+   {
+    "module": "Hidden",
+    "name": "bump adds one and renders the row",
+    "file": "app/Hidden.alder",
+    "line": 35,
+    "col": 1,
+    "ok": true,
+    "left": "{ answer: Rendered /pantry/items/ADyIWZsOGM3qGW9QIkAG, quantity: Just \"3\", other: Just \"5\", stored: Just 3 }",
+    "right": "{ answer: Rendered /pantry/items/ADyIWZsOGM3qGW9QIkAG, quantity: Just \"3\", other: Just \"5\", stored: Just 3 }",
+    "trace": [
+     "Db.insert Item",
+     "Db.insert Item",
+     "Test.get Pantry.Index.Index",
+     "Db.all Item",
+     "Test.click Pantry.Index.Bump",
+     "Db.update Item",
+     "Db.get Item",
+     "Db.get Item"
+    ],
+    "ms": 0.656
+   },
+   {
+    "module": "Hidden",
+    "name": "remove refreshes and drops the item",
+    "file": "app/Hidden.alder",
+    "line": 44,
+    "col": 1,
+    "ok": true,
+    "left": "{ answer: Refreshed, notices: [\"Removed\"], gone: False, items: 1, names: [\"Beans\"], stored: 1 }",
+    "right": "{ answer: Refreshed, notices: [\"Removed\"], gone: False, items: 1, names: [\"Beans\"], stored: 1 }",
+    "trace": [
+     "Db.insert Item",
+     "Db.insert Item",
+     "Test.get Pantry.Index.Index",
+     "Db.all Item",
+     "Test.click Pantry.Index.Remove",
+     "Db.all Item",
+     "Db.delete Item",
+     "Db.all Item",
+     "Db.count Item"
+    ],
+    "ms": 0.565
+   }
+  ],
+  "exit": 0
+ },
+ "hidden_pass": "4/4",
+ "names": {
+  "ok": true,
+  "matches": [
+   "table Item",
+   "session",
+   "page Pantry.Index /pantry",
+   "route Pantry.Index.Bump (PATCH /pantry/items/{id}/quantity)",
+   "route Pantry.Index.Index (GET /pantry)",
+   "route Pantry.Index.Remove (DELETE /pantry/items/{id})",
+   "route Pantry.Index.Rename (PUT /pantry/items/{id})",
+   "route Pantry.Index.Row (GET /pantry/items/{id})",
+   "form Pantry.Index.NewName"
+  ],
+  "mismatches": []
+ }
+}

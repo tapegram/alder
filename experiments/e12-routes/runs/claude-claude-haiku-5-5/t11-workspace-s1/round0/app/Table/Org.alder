@@ -1,0 +1,14 @@
+module Table.Org
+
+type OrgId = brand Text
+
+table Org {
+  id: OrgId @id,
+  name: Text.NonEmpty,
+}
+
+nameOf : Maybe Org -> Text
+nameOf org = match org {
+  Just o -> o.name,
+  Nothing -> "",
+}

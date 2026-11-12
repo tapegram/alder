@@ -1,0 +1,2 @@
+{"code": "E0201", "severity": "error", "file": "app/App.alder", "line": 7, "col": 3, "endLine": 10, "endCol": 17, "message": "module `Layout` is not imported", "fix": {"line": 2, "col": 1, "endLine": 2, "endCol": 1, "replace": "import Layout\n"}}
+{"code": "E0002", "severity": "error", "file": "app/Feed/Index.alder", "line": 68, "col": 36, "endLine": 68, "endCol": 52, "message": "inside `Feed.Index`, its own names are written unqualified: `Index`", "fix": {"line": 68, "col": 36, "endLine": 68, "endCol": 52, "replace": "Index"}}

@@ -1,0 +1,41 @@
+module App
+
+import Layout
+import User
+
+session { user: Maybe User.UserId }
+
+login = Auth.Login.Login
+
+route Logout = DELETE "/session" { }
+
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
+}
+
+error : Error -> Html
+error err =
+  <Layout.Page title="Error">
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html
+notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
+
+test "logout goes to log in and clears the user" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Orders.Index.Index {})
+  let out <- Test.click Logout
+  Task.succeed (
+    { out: out.answer, user: out.session.user }
+      == { out: Redirected (Auth.Login.Login {}), user: Nothing }
+  )
+}

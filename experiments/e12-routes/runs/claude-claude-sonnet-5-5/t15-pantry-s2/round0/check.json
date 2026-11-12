@@ -1,0 +1,2 @@
+{"code": "E0002", "severity": "error", "file": "app/Pantry/Index.alder", "line": 61, "col": 38, "endLine": 61, "endCol": 56, "message": "inside `Pantry.Index`, its own names are written unqualified: `Index`", "fix": {"line": 61, "col": 38, "endLine": 61, "endCol": 56, "replace": "Index"}}
+{"code": "E0002", "severity": "error", "file": "app/Pantry/Index.alder", "line": 68, "col": 34, "endLine": 68, "endCol": 50, "message": "inside `Pantry.Index`, its own names are written unqualified: `Row`", "fix": {"line": 68, "col": 34, "endLine": 68, "endCol": 50, "replace": "Row"}}

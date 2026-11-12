@@ -1,0 +1,31 @@
+module Table.Membership
+
+import Table.Org
+import Table.User
+
+type MembershipId = brand Text
+
+-- One row per member of an org. `via Membership` in App's session reads these rows.
+table Membership {
+  id: MembershipId @id,
+  user: User.UserId @ref User,
+  org: Org.OrgId @ref Org,
+}
+
+isMember : User.UserId -> Org.OrgId -> Query Bool
+isMember user org = {
+  let n <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq user)
+      |> Db.where (Membership.org.eq org)
+      |> Db.count
+  Query.succeed (n > 0)
+}
+
+-- Stops the request with 404 when the user is not a member of the org. The pages call it on
+-- every request: the session keeps the org, so membership is read again each time.
+memberOnly : User.UserId -> Org.OrgId -> Query Unit
+memberOnly user org = {
+  let member <- isMember user org
+  if member then Query.succeed () else Query.notFound
+}

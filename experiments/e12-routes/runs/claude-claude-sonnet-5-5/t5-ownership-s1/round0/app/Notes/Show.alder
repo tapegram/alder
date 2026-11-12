@@ -1,0 +1,57 @@
+module Notes.Show
+
+import Layout
+import Note
+import User
+
+route Show = GET "/notes/{id}" { id: Note.NoteId } requires user
+
+type Model = { note: Note }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <-
+    Db.from Note
+      |> Db.where (Note.id.eq params.id)
+      |> Db.where (Note.owner.eq session.user)
+      |> Db.first
+  match found {
+    Just n -> Query.succeed { note: n },
+    Nothing -> Query.notFound,
+  }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title={model.note.title}>
+    <h1 id="title">{model.note.title}</h1>
+    <p id="body">{model.note.body}</p>
+    <al-button variant="ghost" href={Notes.Index.Index {}}>Back</al-button>
+  </Layout.Page>
+
+test "the owner sees the note" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "text", owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Show { id: id })
+  Task.succeed (
+    { title: Test.text "#title" page.doc, body: Test.text "#body" page.doc }
+      == { title: Just "Mine", body: Just "text" }
+  )
+}
+
+test "another user's note is not found" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "text", owner: me }
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.open (Show { id: id })
+  Task.succeed (r.answer == PageMissing)
+}

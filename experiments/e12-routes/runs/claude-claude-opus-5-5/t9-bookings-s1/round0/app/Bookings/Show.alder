@@ -1,0 +1,168 @@
+module Bookings.Show
+
+import Layout
+import Table.Booking
+import Table.Room
+import Table.User
+
+route Show   = GET    "/bookings/{id}" { id: Booking.BookingId } requires user
+route Cancel = DELETE "/bookings/{id}" { id: Booking.BookingId } requires user
+
+type Model = { booking: Booking, room: Text, cancellable: Bool }
+
+-- Another user's booking is answered as a missing one: not found.
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <- Db.get Booking params.id
+  match found {
+    Just b -> if b.owner == session.user then details b else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+details : Booking -> Query Model
+details b = {
+  let room <- Db.get Room b.room
+  let today <- Date.today
+  Query.succeed {
+    booking: b,
+    room: Room.nameOf (Maybe.toList room) b.room,
+    cancellable: today < b.from,
+  }
+}
+
+-- No `load` runs before a write: the owner and the date are checked again here, so a Cancel
+-- from a page loaded before the booking began is refused and the booking stays.
+Cancel.update : Cancel.Params -> Session -> Task Response
+Cancel.update p session = {
+  let found <- Db.get Booking p.id
+  let today <- Date.today
+  match found {
+    Just b -> cancel today session.user b,
+    Nothing -> Task.notFound,
+  }
+}
+
+cancel : Date -> User.UserId -> Booking -> Task Response
+cancel today user b =
+  if b.owner != user then Task.notFound
+  else if today < b.from then {
+    let _ <- Db.delete Booking b.id
+    Task.succeed (Response.redirect (Bookings.Index.Index {}))
+  } else {
+    Task.succeed (
+      Response.refresh |> Response.error "This booking has begun: it can no longer be cancelled."
+    )
+  }
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title="Booking">
+    {Layout.nav}
+    <h1 id="room">{model.room}</h1>
+    <p>From <span id="from">{Date.toText model.booking.from}</span></p>
+    <p>To <span id="to">{Date.toText model.booking.to}</span></p>
+    {if model.cancellable then
+      <button id="cancel" click={Cancel { id: model.booking.id }}>Cancel</button>
+    else Html.none}
+    <a href={Bookings.Index.Index {}}>My bookings</a>
+  </Layout.Page>
+
+test "the owner cancels a booking before its from date" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let oak <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let id <- Db.insert Booking {
+    room: oak,
+    owner: me,
+    from: Date.addDays 2 today,
+    to: Date.addDays 4 today,
+  }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Show { id: id })
+  let r <- Test.click (Cancel { id: id })
+  let after <- Db.get Booking id
+  Task.succeed (
+    {
+      room: Test.text "#room" page.doc,
+      answer: r.answer,
+      gone: after == Nothing,
+    } == {
+      room: Just "Oak",
+      answer: Redirected (Bookings.Index.Index {}),
+      gone: True,
+    }
+  )
+}
+
+-- 1772582400000 is 2026-03-04T00:00:00Z.
+test "a booking whose from date is today cannot be cancelled" = {
+  let _ <- Test.setClock (Time.fromMillis 1772582400000)
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let oak <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let started <- Db.insert Booking {
+    room: oak,
+    owner: me,
+    from: today,
+    to: Date.addDays 1 today,
+  }
+  let tomorrow <- Db.insert Booking {
+    room: oak,
+    owner: me,
+    from: Date.addDays 1 today,
+    to: Date.addDays 2 today,
+  }
+  let _ <- Test.login { user: Just me }
+  let startedPage <- Test.get (Show { id: started })
+  let early <- Test.get (Show { id: tomorrow })
+  let _ <- Test.advance (24 * 60 * 60 * 1000)
+  let r <- Test.click (Cancel { id: tomorrow })
+  let kept <- Db.get Booking tomorrow
+  let again <- Test.get (Show { id: tomorrow })
+  Task.succeed (
+    {
+      startedButton: Test.has "#cancel" startedPage.doc,
+      earlyButton: Test.has "#cancel" early.doc,
+      answer: r.answer,
+      kept: Maybe.isJust kept,
+      laterButton: Test.has "#cancel" again.doc,
+    } == {
+      startedButton: False,
+      earlyButton: True,
+      answer: Refreshed,
+      kept: True,
+      laterButton: False,
+    }
+  )
+}
+
+test "someone else's booking is not found" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let oak <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let today <- Date.today
+  let id <- Db.insert Booking {
+    room: oak,
+    owner: me,
+    from: Date.addDays 2 today,
+    to: Date.addDays 3 today,
+  }
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let page <- Test.open (Show { id: id })
+  let after <- Db.get Booking id
+  Task.succeed (
+    { answer: page.answer, kept: Maybe.isJust after } == { answer: PageMissing, kept: True }
+  )
+}

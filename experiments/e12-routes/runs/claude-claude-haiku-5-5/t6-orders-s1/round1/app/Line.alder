@@ -1,0 +1,37 @@
+module Line
+
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+-- The price of one line: its quantity times the product's price, in cents.
+priceOf : List Product -> Line -> Int
+priceOf products line =
+  match List.find (\p -> p.id == line.product) products {
+    Just p -> p.price * line.quantity,
+    Nothing -> 0,
+  }
+
+-- The name of a line's product, for the page.
+productName : List Product -> Line -> Text
+productName products line =
+  match List.find (\p -> p.id == line.product) products {
+    Just p -> "{p.name}",
+    Nothing -> "?",
+  }
+
+-- The total in cents of the lines that belong to one order.
+totalOf : List Product -> List Line -> Order.OrderId -> Int
+totalOf products lines order =
+  lines
+    |> List.filter (\l -> l.order == order)
+    |> List.map (priceOf products)
+    |> List.sum

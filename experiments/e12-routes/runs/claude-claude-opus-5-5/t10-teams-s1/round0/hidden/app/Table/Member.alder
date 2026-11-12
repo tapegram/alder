@@ -1,0 +1,34 @@
+module Table.Member
+
+import Table.Team
+import Table.User
+
+type MemberId = brand Text
+
+table Member {
+  id: MemberId @id,
+  team: Team.TeamId @ref Team,
+  user: User.UserId @ref User,
+}
+
+-- The owner and the members may see a team.
+canSee : Team -> User.UserId -> Query Bool
+canSee team user =
+  if team.owner == user then Query.succeed True
+  else {
+    let n <-
+      Db.from Member
+        |> Db.where (Member.team.eq team.id)
+        |> Db.where (Member.user.eq user)
+        |> Db.count
+    Query.succeed (n > 0)
+  }
+
+isIn : Team.TeamId -> User.UserId -> Query Bool
+isIn id user = {
+  let found <- Db.get Team id
+  match found {
+    Just team -> canSee team user,
+    Nothing -> Query.succeed False,
+  }
+}

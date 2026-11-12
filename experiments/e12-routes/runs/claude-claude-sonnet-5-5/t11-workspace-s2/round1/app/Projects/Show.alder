@@ -1,0 +1,131 @@
+module Projects.Show
+
+import Layout
+import Table.Membership
+import Table.Org
+import Table.Project
+import Table.Todo
+import Table.User
+
+route Show   = GET   "/projects/{id}"                 { id: Project.ProjectId }                         requires user, org
+route Add    = POST  "/projects/{id}/todos"           { id: Project.ProjectId } form NewTodo            requires user, org
+route Toggle = PATCH "/projects/{id}/todos/{todo}"    { id: Project.ProjectId, todo: Todo.TodoId }      requires user, org
+
+type Model = { project: Project, todos: List Todo }
+
+form NewTodo = { title: Text.NonEmpty }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let project <- Db.getScoped Project params.id
+  let todos <-
+    Db.scoped Todo
+      |> Db.where (Todo.project.eq params.id)
+      |> Db.orderBy Todo.title.asc
+      |> Db.all
+  Query.succeed { project: project, todos: todos }
+}
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let _ <- Db.getScoped Project p.id
+  let _ <- Db.insertScoped Todo { title: p.form.title, project: p.id }
+  Task.succeed (Response.redirect (Show { id: p.id }))
+}
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let todo <- Db.getScoped Todo p.todo
+  if todo.project == p.id then {
+    let _ <- Db.updateScoped Todo p.todo (\t -> { t | done: not t.done })
+    Task.succeed (Response.redirect (Show { id: p.id }))
+  } else
+    Task.notFound
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title={model.project.name}>
+    <h1 id="name">{model.project.name}</h1>
+    <ul id="todos">
+      {for t in model.todos ->
+        <li class={if t.done then "done" else ""}>
+          <span class="title">{t.title}</span>
+          <al-button size="sm" click={Toggle { id: model.project.id, todo: t.id }}>
+            {if t.done then "Open again" else "Done"}
+          </al-button>
+        </li>}
+    </ul>
+    <al-card>
+      <form submit={Add { id: model.project.id }}>
+        <al-input field="title" label="New to-do" />
+        <al-button type="submit">Add</al-button>
+      </form>
+    </al-card>
+    <a href={Projects.Index.Index {}}>Projects</a>
+  </Layout.Page>
+
+test "a project of another org is not found" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let secret <- Db.insert Project { name: Text.NonEmpty "Secret", org: globex }
+  let _ <- Test.member ann acme
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let r <- Test.open (Show { id: secret })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a member removed from the org loses the project page at once" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let pr <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let m <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let before <- Test.open (Show { id: pr })
+  let _ <- Db.delete Membership m
+  let after <- Test.open (Show { id: pr })
+  Task.succeed (
+    { before: before.answer, after: after.answer } == { before: Shown, after: PageMissing }
+  )
+}
+
+test "adding and toggling a to-do" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let pr <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let t <- Db.insert Todo { title: Text.NonEmpty "Write", project: pr, org: acme }
+  let _ <- Test.member ann acme
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Test.get (Show { id: pr })
+  let added <- Test.submit (Add { id: pr }) { title: Text.NonEmpty "Ship" }
+  let toggled <- Test.click (Toggle { id: pr, todo: t })
+  Task.succeed (
+    {
+      added: added.answer,
+      toggled: toggled.answer,
+      titles: Test.texts "#todos .title" toggled.doc,
+      done: Test.count "li.done" toggled.doc,
+    } == {
+      added: Redirected (Show { id: pr }),
+      toggled: Redirected (Show { id: pr }),
+      titles: ["Ship", "Write"],
+      done: 1,
+    }
+  )
+}

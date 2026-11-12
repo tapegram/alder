@@ -1,0 +1,3 @@
+{"code": "E0001", "severity": "error", "file": "app/Admin.alder", "line": 72, "col": 31, "endLine": 72, "endCol": 32, "message": "in the definition of `Publish.update`: expected `}`, got `,`; the last expression of a block is its result and takes no `,`"}
+{"code": "E0001", "severity": "error", "file": "app/Posts/Show.alder", "line": 36, "col": 28, "endLine": 36, "endCol": 29, "message": "in the definition of `Show.load`: expected `}`, got `,`; the last expression of a block is its result and takes no `,`"}
+{"code": "E0001", "severity": "error", "file": "app/Posts/Show.alder", "line": 55, "col": 27, "endLine": 55, "endCol": 28, "message": "in the definition of `AddComment.update`: expected `}`, got `,`; the last expression of a block is its result and takes no `,`"}

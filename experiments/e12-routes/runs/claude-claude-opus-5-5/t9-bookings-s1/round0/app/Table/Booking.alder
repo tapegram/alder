@@ -1,0 +1,22 @@
+module Table.Booking
+
+import Table.Room
+import Table.User
+
+type BookingId = brand Text
+
+-- A booking holds its room from `from` up to, but not including, `to`.
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- The first date, `today` or later, that none of `bookings` holds.
+nextFree : Date -> List Booking -> Date
+nextFree today bookings =
+  bookings
+    |> List.sortBy (\b -> Date.diffDays Date.epoch b.from)
+    |> List.foldl (\b d -> if b.from <= d && d < b.to then b.to else d) today

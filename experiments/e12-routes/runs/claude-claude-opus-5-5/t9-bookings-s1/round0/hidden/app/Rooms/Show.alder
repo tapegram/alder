@@ -1,0 +1,139 @@
+module Rooms.Show
+
+import Layout
+import Table.Booking
+import Table.Room
+import Table.User
+
+route Show = GET  "/rooms/{id}"          { id: Room.RoomId }                 requires user
+route Book = POST "/rooms/{id}/bookings" { id: Room.RoomId } form NewBooking requires user
+
+type Model = { room: Room, bookings: List Booking }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <- Db.get Room params.id
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.room.eq params.id)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  match found {
+    Just room -> Query.succeed { room: room, bookings: bookings },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewBooking = { from: Date, to: Date }
+
+overlapMessage : Text
+overlapMessage = "The room is already booked on some of those dates."
+
+orderMessage : Text
+orderMessage = "The end date must be after the start date."
+
+-- Decide first, then write: a refused booking stores nothing.
+Book.update : Book.Params -> Session -> Task Response
+Book.update p session =
+  if p.form.to <= p.form.from then
+    Task.succeed (Response.invalid orderMessage)
+  else {
+    let clashes <-
+      Db.from Booking
+        |> Db.where (Booking.room.eq p.id)
+        |> Db.where (Booking.from.lt p.form.to)
+        |> Db.where (Booking.to.gt p.form.from)
+        |> Db.count
+    if clashes > 0 then
+      Task.succeed (Response.invalid overlapMessage)
+    else {
+      let _ <- Db.insert Booking {
+        room: p.id,
+        owner: session.user,
+        from: p.form.from,
+        to: p.form.to,
+      }
+      Task.succeed (Response.redirect (Show { id: p.id }))
+    }
+  }
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title={model.room.name}>
+    {Layout.nav}
+    <h1 id="name">{model.room.name}</h1>
+    <ul id="bookings">
+      {for b in model.bookings ->
+        <li>
+          <span class="from">{Date.toText b.from}</span>
+          {" to "}
+          <span class="to">{Date.toText b.to}</span>
+        </li>}
+    </ul>
+    <al-card>
+      <form submit={Book { id: model.room.id }}>
+        <Errors form />
+        <al-input field="from" label="From" />
+        <al-input field="to" label="To" />
+        <al-button type="submit">Book</al-button>
+      </form>
+    </al-card>
+  </Layout.Page>
+
+test "an overlapping booking is refused, a back-to-back one is stored" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let oak <- Db.insert Room { name: Text.NonEmpty "Oak" }
+  let elm <- Db.insert Room { name: Text.NonEmpty "Elm" }
+  let today <- Date.today
+  let _ <- Db.insert Booking {
+    room: oak,
+    owner: me,
+    from: Date.addDays 1 today,
+    to: Date.addDays 3 today,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: oak })
+  let overlapping <- Test.submit (Book { id: oak }) {
+    from: Date.addDays 2 today,
+    to: Date.addDays 4 today,
+  }
+  let backwards <- Test.submit (Book { id: oak }) {
+    from: Date.addDays 6 today,
+    to: Date.addDays 6 today,
+  }
+  let afterRefusals <- Db.from Booking |> Db.count
+  let adjacent <- Test.submit (Book { id: oak }) {
+    from: Date.addDays 3 today,
+    to: Date.addDays 5 today,
+  }
+  let _ <- Test.get (Show { id: elm })
+  let other <- Test.submit (Book { id: elm }) {
+    from: Date.addDays 2 today,
+    to: Date.addDays 4 today,
+  }
+  let total <- Db.from Booking |> Db.count
+  let page <- Test.get (Show { id: oak })
+  Task.succeed (
+    {
+      overlapping: overlapping.answer,
+      backwards: backwards.answer,
+      afterRefusals: afterRefusals,
+      adjacent: adjacent.answer,
+      other: other.answer,
+      total: total,
+      froms: Test.texts "#bookings .from" page.doc,
+    } == {
+      overlapping: FormRejected [{ field: "", message: overlapMessage }],
+      backwards: FormRejected [{ field: "", message: orderMessage }],
+      afterRefusals: 1,
+      adjacent: Redirected (Show { id: oak }),
+      other: Redirected (Show { id: elm }),
+      total: 3,
+      froms: [Date.toText (Date.addDays 1 today), Date.toText (Date.addDays 3 today)],
+    }
+  )
+}

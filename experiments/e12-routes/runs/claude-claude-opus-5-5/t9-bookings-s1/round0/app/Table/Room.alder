@@ -1,0 +1,12 @@
+module Table.Room
+
+type RoomId = brand Text
+
+table Room { id: RoomId @id, name: Text.NonEmpty }
+
+-- The name of the room with that id among `rooms`, or "" when it is not there.
+nameOf : List Room -> RoomId -> Text
+nameOf rooms id = match List.find (\r -> r.id == id) rooms {
+  Just r -> r.name,
+  Nothing -> "",
+}

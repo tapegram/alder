@@ -1,0 +1,2 @@
+{"code": "E0028", "severity": "error", "file": "app/Feed/Index.alder", "line": 42, "col": 9, "endLine": 42, "endCol": 32, "message": "`<al-input field=\"text\">` already shows the errors of `text`; remove `<Errors field=\"text\" />`"}
+{"code": "E0011", "severity": "error", "file": "app/Feed/Index.alder", "line": 71, "col": 38, "endLine": 71, "endCol": 51, "message": "brand constructor `NonEmpty` can only be used in module `Text` or inside a `test`"}

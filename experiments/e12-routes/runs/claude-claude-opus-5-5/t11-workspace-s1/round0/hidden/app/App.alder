@@ -1,0 +1,52 @@
+module App
+
+import Layout
+import Table.Membership
+import Table.Org
+import Table.Project
+import Table.Todo
+import Table.User
+
+-- `org` is the org the user works in now. `via Membership`: a `Session.put` of an org the
+-- user is no member of fails its Task, whatever the request said (book 06, "Partitions").
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership }
+
+login = Auth.Login.Login
+
+choose org = Orgs.Index.Index
+
+-- Each org's projects and to-dos live in a database of the org's own.
+silo org { Project, Todo }
+
+route Logout = DELETE "/session" { }
+
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing, org: Nothing })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
+}
+
+error : Error -> Html
+error err =
+  <Layout.Page title="Error">
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html
+notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
+
+maintenance : Html
+maintenance =
+  <Layout.Page title="Maintenance">
+    <h1>Down for maintenance</h1>
+    <p>Please try again soon.</p>
+  </Layout.Page>
+
+test "Logout clears the user and goes to log in" = {
+  let r <- Test.run (Logout.update {} { user: Just (User.UserId "me"), org: Nothing })
+  Task.succeed (
+    { value: r.value, trace: r.trace }
+      == { value: Ok (Response.redirect (Auth.Login.Login {})), trace: ["Session.put"] }
+  )
+}

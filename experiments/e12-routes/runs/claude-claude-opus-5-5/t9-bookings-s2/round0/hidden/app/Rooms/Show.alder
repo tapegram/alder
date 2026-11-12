@@ -1,0 +1,169 @@
+module Rooms.Show
+
+import Layout
+import Table.Booking
+import Table.Room
+import Table.User
+
+route Show = GET  "/rooms/{id}"          { id: Room.RoomId }                 requires user
+route Book = POST "/rooms/{id}/bookings" { id: Room.RoomId } form NewBooking requires user
+
+type Model = { room: Room, bookings: List Booking }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <- Db.get Room params.id
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.room.eq params.id)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  match found {
+    Just room -> Query.succeed { room: room, bookings: bookings },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewBooking = { from: Date, to: Date }
+
+-- Two bookings of one room overlap when each starts before the other ends. The checks come
+-- before the insert, so a refused booking stores nothing.
+Book.update : Book.Params -> Session -> Task Response
+Book.update p session = {
+  let found <- Db.get Room p.id
+  let clashes <-
+    Db.from Booking
+      |> Db.where (Booking.room.eq p.id)
+      |> Db.where (Booking.from.lt p.form.to)
+      |> Db.where (Booking.to.gt p.form.from)
+      |> Db.count
+  match found {
+    Nothing -> Task.notFound,
+    Just _ ->
+      if p.form.to <= p.form.from then
+        Task.succeed (Response.invalid "The end date must be after the start date.")
+      else if clashes > 0 then
+        Task.succeed (Response.invalid "The room is already booked on some of those dates.")
+      else {
+        let _ <- Db.insert Booking {
+          room: p.id,
+          owner: session.user,
+          from: p.form.from,
+          to: p.form.to,
+        }
+        Task.succeed (Response.redirect (Show { id: p.id }))
+      },
+  }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title={model.room.name}>
+    <h1 id="name">{model.room.name}</h1>
+    <ul id="bookings">
+      {for b in model.bookings ->
+        <li><span class="from">{Date.toText b.from}</span> to <span class="to">{Date.toText b.to}</span></li>}
+    </ul>
+    <al-card>
+      <form submit={Book { id: model.room.id }}>
+        <Errors form />
+        <al-input field="from" label="From" />
+        <al-input field="to" label="To" />
+        <al-button type="submit">Book</al-button>
+      </form>
+    </al-card>
+    <nav><a href={Rooms.Index.Index {}}>All rooms</a></nav>
+  </Layout.Page>
+
+test "an overlapping booking is refused, one from the other's end date is stored" = {
+  let _ <- Test.setClock (Time.fromMillis 1772582400000)
+  let today <- Date.today
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let _ <- Db.insert Booking {
+    room: room,
+    owner: me,
+    from: Date.addDays 1 today,
+    to: Date.addDays 3 today,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: room })
+  let clash <- Test.submit (Book { id: room }) {
+    from: Date.addDays 2 today,
+    to: Date.addDays 4 today,
+  }
+  let afterClash <- Db.from Booking |> Db.count
+  let next <- Test.submit (Book { id: room }) {
+    from: Date.addDays 3 today,
+    to: Date.addDays 5 today,
+  }
+  let page <- Test.get (Show { id: room })
+  Task.succeed (
+    {
+      clash: clash.answer,
+      afterClash: afterClash,
+      next: next.answer,
+      froms: Test.texts "#bookings .from" page.doc,
+    } == {
+      clash: FormRejected [{ field: "", message: "The room is already booked on some of those dates." }],
+      afterClash: 1,
+      next: Redirected (Show { id: room }),
+      froms: [Date.toText (Date.addDays 1 today), Date.toText (Date.addDays 3 today)],
+    }
+  )
+}
+
+test "bookings of different rooms never conflict" = {
+  let _ <- Test.setClock (Time.fromMillis 1772582400000)
+  let today <- Date.today
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let green <- Db.insert Room { name: Text.NonEmpty "Green" }
+  let _ <- Db.insert Booking {
+    room: blue,
+    owner: me,
+    from: Date.addDays 1 today,
+    to: Date.addDays 3 today,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: green })
+  let r <- Test.submit (Book { id: green }) {
+    from: Date.addDays 1 today,
+    to: Date.addDays 3 today,
+  }
+  let n <- Db.from Booking |> Db.count
+  Task.succeed ({ answer: r.answer, n: n } == { answer: Redirected (Show { id: green }), n: 2 })
+}
+
+test "a booking whose end is not after its start is refused" = {
+  let _ <- Test.setClock (Time.fromMillis 1772582400000)
+  let today <- Date.today
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: room })
+  let r <- Test.submit (Book { id: room }) {
+    from: Date.addDays 2 today,
+    to: Date.addDays 2 today,
+  }
+  let n <- Db.from Booking |> Db.count
+  Task.succeed (
+    { answer: r.answer, n: n }
+      == {
+        answer: FormRejected [{ field: "", message: "The end date must be after the start date." }],
+        n: 0,
+      }
+  )
+}

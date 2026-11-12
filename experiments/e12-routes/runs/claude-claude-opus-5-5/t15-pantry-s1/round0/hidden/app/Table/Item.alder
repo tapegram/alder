@@ -1,0 +1,10 @@
+module Table.Item
+
+type ItemId = brand Text
+
+-- Items are added outside the app; the pantry page renames, bumps and removes them.
+table Item {
+  id: ItemId @id,
+  name: Text.NonEmpty @unique,
+  quantity: Int,
+}

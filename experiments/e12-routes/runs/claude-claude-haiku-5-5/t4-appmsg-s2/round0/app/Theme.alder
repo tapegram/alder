@@ -1,0 +1,12 @@
+module Theme
+
+type Theme = Light | Dark
+
+toggle : Theme -> Theme
+toggle theme = match theme {
+  Light -> Dark,
+  Dark -> Light,
+}
+
+test "toggle flips the theme both ways" =
+  toggle (toggle Light) == Light && toggle Light == Dark

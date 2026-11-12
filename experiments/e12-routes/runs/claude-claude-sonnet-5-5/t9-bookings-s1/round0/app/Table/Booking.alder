@@ -1,0 +1,48 @@
+module Table.Booking
+
+import Table.Room
+import Table.User
+
+type BookingId = brand Text
+
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- A date counted from the epoch: a small helper for building dates.
+day : Int -> Date
+day n = Date.addDays n Date.epoch
+
+-- The first date, today or later, that none of the bookings holds.
+-- A booking holds its `from` date up to, but not including, its `to` date.
+nextFree : Date -> List Booking -> Date
+nextFree today bookings =
+  bookings
+    |> List.sortByText (\(b : Booking) -> Date.toText b.from)
+    |> List.foldl (\(b : Booking) (c : Date) -> if b.from <= c && c < b.to then b.to else c) today
+
+mk : Int -> Int -> Booking
+mk a b = {
+  id: BookingId "x",
+  room: Room.RoomId "r",
+  owner: User.UserId "u",
+  from: day a,
+  to: day b,
+}
+
+test "next free date skips back-to-back bookings" =
+  {
+    skipped: nextFree (day 100) [mk 100 103, mk 103 105, mk 110 112],
+    past: nextFree (day 100) [mk 90 100],
+    later: nextFree (day 100) [mk 101 103],
+    none: nextFree (day 100) [],
+  } == {
+    skipped: day 105,
+    past: day 100,
+    later: day 100,
+    none: day 100,
+  }

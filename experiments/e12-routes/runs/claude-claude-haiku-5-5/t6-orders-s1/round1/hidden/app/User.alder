@@ -1,0 +1,33 @@
+module User
+
+type UserId = brand Text
+
+type Role = Staff | Manager
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  role: Role = Staff,
+  created: Time @created,
+}
+
+-- The session holds only the user, so a role check reads the user's row again on each request.
+isManager : UserId -> Query Bool
+isManager id = {
+  let found <- Db.get User id
+  Query.succeed (Maybe.map (\u -> u.role) found == Just Manager)
+}
+
+requireManager : UserId -> Query Unit
+requireManager id = {
+  let manager <- isManager id
+  if manager then Query.succeed () else Query.notFound
+}
+
+requireManagerTask : UserId -> Task Unit
+requireManagerTask id = {
+  let manager <- isManager id
+  if manager then Task.succeed () else Task.notFound
+}

@@ -1,0 +1,28 @@
+module User
+
+type UserId = brand Text
+
+type Role = Staff | Manager
+
+table User {
+  id: UserId @id,
+  email: Text.Email @unique,
+  name: Text.NonEmpty,
+  passwordHash: Text,
+  role: Role = Staff,
+  created: Time @created,
+}
+
+-- Whether the user is a Manager. A user with no row is not.
+isManager : UserId -> Query Bool
+isManager id = {
+  let found <- Db.get User id
+  Query.succeed (Maybe.map (\u -> u.role == Manager) found ?? False)
+}
+
+-- Lets a Manager on; anyone else is answered as not found.
+managerOnly : UserId -> Query Unit
+managerOnly id = {
+  let manager <- isManager id
+  if manager then Query.succeed () else Query.notFound
+}

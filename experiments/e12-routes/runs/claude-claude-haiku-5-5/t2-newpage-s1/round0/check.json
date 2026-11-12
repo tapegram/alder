@@ -1,0 +1,2 @@
+{"code": "E0028", "severity": "error", "file": "app/Profile.alder", "line": 49, "col": 9, "endLine": 49, "endCol": 32, "message": "`<al-input field=\"name\">` already shows the errors of `name`; remove `<Errors field=\"name\" />`"}
+{"code": "E0002", "severity": "error", "file": "app/Todos/Index.alder", "line": 68, "col": 14, "endLine": 68, "endCol": 31, "message": "unknown `Profile.Show.Show`"}

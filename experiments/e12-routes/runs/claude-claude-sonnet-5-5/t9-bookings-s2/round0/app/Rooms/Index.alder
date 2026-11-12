@@ -1,0 +1,58 @@
+module Rooms.Index
+
+import Layout
+import Table.Booking
+import Table.Room
+import Table.User
+
+route Index = GET "/rooms" { } requires user
+
+type Row = { room: Room, free: Date }
+
+type Model = { rows: List Row }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let rooms <-
+    Db.from Room
+      |> Db.orderBy Room.name.asc
+      |> Db.all
+  let bookings <- Db.from Booking |> Db.all
+  let today <- Date.today
+  Query.succeed {
+    rows: List.map (\r -> { room: r, free: Booking.nextFree today (List.filter (\b -> b.room == r.id) bookings) }) rooms,
+  }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Rooms">
+    <h1>Rooms</h1>
+    <ul id="rooms">
+      {for row in model.rows ->
+        <li>
+          <a class="name" href={Rooms.Show.Show { id: row.room.id }}>{row.room.name}</a>
+          <span class="free">{Date.toText row.free}</span>
+        </li>}
+    </ul>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "rooms are listed with their next free date" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let a <- Db.insert Room { name: Text.NonEmpty "A" }
+  let _ <- Db.insert Room { name: Text.NonEmpty "B" }
+  let _ <- Db.insert Booking { room: a, owner: me, from: Booking.day "2026-03-01", to: Booking.day "2026-03-03" }
+  let _ <- Db.insert Booking { room: a, owner: me, from: Booking.day "2026-03-03", to: Booking.day "2026-03-05" }
+  let _ <- Test.setClock (Time.fromDate (Booking.day "2026-03-01"))
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    { names: Test.texts ".name" page.doc, free: Test.texts ".free" page.doc }
+      == { names: ["A", "B"], free: ["2026-03-05", "2026-03-01"] }
+  )
+}

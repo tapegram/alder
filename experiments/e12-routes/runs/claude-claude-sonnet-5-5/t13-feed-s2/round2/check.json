@@ -1,0 +1,1 @@
+{"code": "E0011", "severity": "error", "file": "app/Feed/Index.alder", "line": 80, "col": 60, "endLine": 80, "endCol": 73, "message": "brand constructor `NonEmpty` can only be used in module `Text` or inside a `test`"}

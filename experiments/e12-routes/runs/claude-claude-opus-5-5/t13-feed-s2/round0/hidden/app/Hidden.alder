@@ -1,0 +1,50 @@
+module Hidden
+
+-- E12 hidden acceptance tests for T13 (an infinite-scroll feed), new in E12 and written after
+-- chapter 6's `Feed` (book/06-routes.md, "Infinite scroll"). They use only the names the task's
+-- Names block fixes; the model never sees them. The cursor is fixed as `More { after: Int }`, the
+-- number of entries already shown (gate-notes.md, T13): `Test.intersect` matches the sentinel by
+-- path only, but the test must write a value of `More`'s params type (`Feed.Index.More { after:
+-- 10 }`) that type-checks against the model's route. The clock is set and advanced a second
+-- before each insert, so every entry's `created` differs: entry n is the n-th oldest.
+
+import Table.Entry
+
+-- Inserts the texts in order, oldest first, a second apart (the clock set, then advanced before
+-- each insert), so every entry's `created` differs. The texts are made in the tests: a brand
+-- constructor is only allowed inside a `test`.
+insertAll : List Text.NonEmpty -> Task (List Entry.EntryId)
+insertAll texts = {
+  let _ <- Test.setClock (Time.fromMillis 1772582400000)
+  Task.all (List.map (\t -> {
+    let _ <- Test.advance 1000
+    Db.insert Entry { text: t }
+  }) texts)
+}
+
+test "two scrolls show all 25 entries and no sentinel" = {
+  let _ <- insertAll (List.map (\i -> Text.NonEmpty ("Entry " ++ Text.fromInt i)) (List.range 1 25))
+  let _ <- Test.get (Feed.Index.Index {})
+  let _ <- Test.intersect (Feed.Index.More { after: 10 })
+  let r <- Test.intersect (Feed.Index.More { after: 20 })
+  Task.succeed ({ rows: Test.count "li" r.doc, sentinel: Test.has "[data-on-intersect__once]" r.doc } == { rows: 25, sentinel: False })
+}
+
+-- Newest first across the three pages: each entry once, none missing, none out of place.
+test "no entry repeats" = {
+  let _ <- insertAll (List.map (\i -> Text.NonEmpty ("Entry " ++ Text.fromInt i)) (List.range 1 25))
+  let first <- Test.get (Feed.Index.Index {})
+  let _ <- Test.intersect (Feed.Index.More { after: 10 })
+  let r <- Test.intersect (Feed.Index.More { after: 20 })
+  let want = List.map (\i -> "Entry " ++ Text.fromInt (26 - i)) (List.range 1 25)
+  Task.succeed ({ first: Test.texts "li" first.doc, all: Test.texts "li" r.doc } == { first: List.take 10 want, all: want })
+}
+
+test "posting an entry puts it first" = {
+  let _ <- insertAll (List.map (\i -> Text.NonEmpty ("Entry " ++ Text.fromInt i)) (List.range 1 12))
+  let _ <- Test.advance 1000
+  let _ <- Test.get (Feed.Index.Index {})
+  let r <- Test.submit (Feed.Index.Post {}) { text: Text.NonEmpty "Newest" }
+  let stored <- Db.from Entry |> Db.count
+  Task.succeed ({ answer: r.answer, first: List.head (Test.texts "li" r.doc), rows: Test.count "li" r.doc, stored: stored } == { answer: Redirected (Feed.Index.Index {}), first: Just "Newest", rows: 10, stored: 13 })
+}

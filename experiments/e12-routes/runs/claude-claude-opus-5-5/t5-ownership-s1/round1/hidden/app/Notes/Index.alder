@@ -1,0 +1,196 @@
+module Notes.Index
+
+import Layout
+import Note
+import User
+
+route Index  = GET    "/"           { }                       requires user
+route Add    = POST   "/notes"      { }          form NewNote requires user
+route Delete = DELETE "/notes/{id}" { id: Note.NoteId }       requires user
+
+type Model = { notes: List Note }
+
+form NewNote = { title: Text.NonEmpty, body: Text }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let notes <-
+    Db.from Note
+      |> Db.where (Note.owner.eq session.user)
+      |> Db.orderBy Note.created.desc
+      |> Db.all
+  Query.succeed { notes: notes }
+}
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+  Task.succeed (Response.redirect (Index {}))
+}
+
+-- The id comes from the request: only the owner's note is deleted; another user's note, like
+-- a missing one, is a 404 and nothing changes.
+Delete.update : Delete.Params -> Session -> Task Response
+Delete.update p session = {
+  let found <- Db.get Note p.id
+  match found {
+    Just n -> if Note.ownedBy session.user n then {
+      let _ <- Db.delete Note n.id
+      Task.succeed (Response.redirect (Index {}))
+    } else {
+      Task.notFound
+    },
+    Nothing -> Task.notFound,
+  }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Notes">
+    <h1>Notes</h1>
+    <al-card>
+      <form submit={Add}>
+        <al-input field="title" label="Title" />
+        <al-textarea field="body" label="Body" />
+        <al-button type="submit">Add</al-button>
+      </form>
+    </al-card>
+    <ul id="notes">
+      {for n in model.notes -> <Item note={n} />}
+    </ul>
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+Item : { note: Note } -> Html
+Item props =
+  <li>
+    <a class="title" href={Notes.Show.Show { id: props.note.id }}>{props.note.title}</a>
+    <al-button variant="ghost" size="sm" click={Delete { id: props.note.id }}>Delete</al-button>
+  </li>
+
+test "the owner can delete a note" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note {
+    title: Text.NonEmpty "Milk",
+    body: "buy milk",
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let r <- Test.click (Delete { id: id })
+  let after <- Db.get Note id
+  Task.succeed (
+    { answer: r.answer, note: Maybe.map (\n -> n.title) after }
+      == { answer: Redirected (Index {}), note: Nothing }
+  )
+}
+
+test "deleting another user's note is not found" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let other <- Db.insert User {
+    email: Text.Email "other@example.com",
+    name: Text.NonEmpty "Other",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note {
+    title: Text.NonEmpty "Milk",
+    body: "buy milk",
+    owner: me,
+  }
+  let _ <- Test.login { user: Just other }
+  let r <- Test.run (Delete.update { id: id } { user: other })
+  let after <- Db.get Note id
+  Task.succeed (
+    { value: r.value, note: Maybe.map (\n -> n.title) after }
+      == { value: Err "not found", note: Just (Text.NonEmpty "Milk") }
+  )
+}
+
+test "deleting a missing note is not found" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note {
+    title: Text.NonEmpty "Milk",
+    body: "buy milk",
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.run (Delete.update { id: Note.NoteId "missing" } { user: me })
+  let n <- Db.from Note |> Db.count
+  Task.succeed ({ value: r.value, count: n } == { value: Err "not found", count: 1 })
+}
+
+test "a stranger's click on my note's Delete is not found" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note {
+    title: Text.NonEmpty "Milk",
+    body: "buy milk",
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.click (Delete { id: id })
+  let after <- Db.get Note id
+  Task.succeed (
+    { answer: r.answer, note: Maybe.map (\n -> n.title) after }
+      == { answer: PageMissing, note: Just (Text.NonEmpty "Milk") }
+  )
+}
+
+test "the list shows only my notes" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let other <- Db.insert User {
+    email: Text.Email "other@example.com",
+    name: Text.NonEmpty "Other",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Note {
+    title: Text.NonEmpty "Mine",
+    body: "",
+    owner: me,
+  }
+  let _ <- Db.insert Note {
+    title: Text.NonEmpty "Theirs",
+    body: "",
+    owner: other,
+  }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.texts "#notes a.title" page.doc == ["Mine"])
+}
+
+test "adding a note through the page" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let added <- Test.submit (Add {}) { title: Text.NonEmpty "Milk", body: "buy milk" }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    { answer: added.answer, titles: Test.texts "#notes a.title" page.doc }
+      == { answer: Redirected (Index {}), titles: ["Milk"] }
+  )
+}

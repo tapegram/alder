@@ -1,0 +1,76 @@
+module Notes.Show
+
+import Layout
+import Note
+import User
+
+route Show = GET "/notes/{id}" { id: Note.NoteId } requires user
+
+type Model = { note: Note }
+
+-- Another user's note, like a missing one, is a 404.
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <- Db.get Note params.id
+  match found {
+    Just n -> if Note.ownedBy session.user n then Query.succeed { note: n } else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title={model.note.title}>
+    <h1 id="title">{model.note.title}</h1>
+    <p id="body">{model.note.body}</p>
+    <a href={Notes.Index.Index {}}>Back</a>
+  </Layout.Page>
+
+test "the owner sees the note" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "Buy milk", owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Show { id: id })
+  Task.succeed (
+    { title: Test.text "#title" page.doc, body: Test.text "#body" page.doc }
+      == { title: Just "Milk", body: Just "Buy milk" }
+  )
+}
+
+test "another user's note is not found" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "", owner: me }
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.open (Show { id: id })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a missing note is not found" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Show { id: Note.NoteId "missing" })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a visitor is sent to log in from a note" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note { title: Text.NonEmpty "Milk", body: "", owner: me }
+  let r <- Test.open (Show { id: id })
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
+}

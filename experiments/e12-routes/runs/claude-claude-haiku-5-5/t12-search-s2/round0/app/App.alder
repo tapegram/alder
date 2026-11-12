@@ -1,0 +1,25 @@
+module App
+
+import Table.User
+
+session { user: Maybe User.UserId }
+
+login = Auth.Login.Login
+
+route Logout = DELETE "/session" { }
+
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
+}
+
+error : Error -> Html
+error err =
+  <Layout.Page title="Error">
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html
+notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>

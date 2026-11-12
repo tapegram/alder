@@ -1,0 +1,132 @@
+module Profile
+
+import Layout
+import Table.Todo
+import Table.User
+
+route Show   = GET "/profile" { } requires user
+route Rename = PUT "/profile" { } form RenameForm requires user
+
+type Model = {
+  name: Text.NonEmpty,
+  email: Text.Email,
+  total: Int,
+  doneCount: Int,
+}
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <- Db.get User session.user
+  let total <- Db.mine Todo |> Db.count
+  let doneCount <- Db.mine Todo |> Db.where (Todo.done.eq True) |> Db.count
+  match found {
+    Just u -> Query.succeed { name: u.name, email: u.email, total: total, doneCount: doneCount },
+    Nothing -> Query.notFound,
+  }
+}
+
+form RenameForm = { name: Text.NonEmpty }
+
+Rename.update : Rename.Params -> Session -> Task Response
+Rename.update p session = {
+  let _ <- Db.update User session.user (\u -> { u | name: p.form.name })
+  Task.succeed (Response.redirect (Show {}))
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title="Profile">
+    <h1>Profile</h1>
+
+    <al-card>
+      <p>Email: {model.email}</p>
+      <p id="counts">{Text.fromInt model.total} todos, {Text.fromInt model.doneCount} done</p>
+    </al-card>
+
+    <al-card>
+      <form submit={Rename {}}>
+        <al-input field="name" label="Name" value={model.name} />
+        <Errors field="name" />
+        <al-button type="submit">Save</al-button>
+      </form>
+    </al-card>
+
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+    <a href={Todos.Index.Index {}}>Back to the todos</a>
+  </Layout.Page>
+
+-- The counts are this user's only: another user's todo is not in them.
+test "the page counts only the user's todos" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let other <- Db.insert User {
+    email: Text.Email "other@example.com",
+    name: Text.NonEmpty "Other",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Bread",
+    done: True,
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Eggs",
+    done: True,
+    due: Nothing,
+    owner: other,
+  }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Show {})
+  Task.succeed (
+    { total: page.model.total, done: page.model.doneCount } == { total: 2, done: 1 }
+  )
+}
+
+test "renaming changes the name" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show {})
+  let r <- Test.submit (Rename {}) { name: Text.NonEmpty "Ann" }
+  let after <- Db.get User me
+  Task.succeed (
+    { answer: r.answer, name: Maybe.map (\u -> u.name) after }
+      == { answer: Redirected (Show {}), name: Just (Text.NonEmpty "Ann") }
+  )
+}
+
+test "renaming to an empty name is refused" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show {})
+  let r <- Test.submitRaw (Rename {}) [{ name: "name", value: "" }]
+  let after <- Db.get User me
+  Task.succeed (
+    { answer: r.answer, name: Maybe.map (\u -> u.name) after }
+      == {
+        answer: FormRejected [{ field: "name", message: "must not be empty" }],
+        name: Just (Text.NonEmpty "Me"),
+      }
+  )
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Show {})
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
+}

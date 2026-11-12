@@ -1,0 +1,116 @@
+module Projects.Index
+
+import Layout
+import Table.Membership
+import Table.Org
+import Table.Project
+import Table.User
+
+route Index  = GET  "/projects" { }                    requires user, org
+route Create = POST "/projects" { } form NewProject    requires user, org
+
+type Model = { org: Text, projects: List Project }
+
+form NewProject = { name: Text.NonEmpty }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let found <- Db.get Org session.org
+  match found {
+    Nothing -> Query.notFound,
+    Just o -> {
+      let projects <-
+        Db.scoped Project
+          |> Db.orderBy Project.name.asc
+          |> Db.all
+      Query.succeed { org: o.name, projects: projects }
+    },
+  }
+}
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let id <- Db.insertScoped Project { name: p.form.name }
+  Task.succeed (Response.redirect (Projects.Show.Show { id: id }))
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Projects">
+    <h1 id="org">{model.org}</h1>
+    <ul id="projects">
+      {for pr in model.projects ->
+        <li><a class="name" href={Projects.Show.Show { id: pr.id }}>{pr.name}</a></li>}
+    </ul>
+    <al-card>
+      <form submit={Create}>
+        <al-input field="name" label="New project" />
+        <al-button type="submit">Create</al-button>
+      </form>
+    </al-card>
+    <a href={Orgs.Index.Index {}}>Orgs</a>
+  </Layout.Page>
+
+test "a member sees only their org's projects" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Secret", org: globex }
+  let _ <- Test.member ann acme
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    { org: Test.text "#org" page.doc, names: Test.texts "#projects .name" page.doc }
+      == { org: Just "Acme", names: ["Rocket"] }
+  )
+}
+
+test "a member removed from the org loses access at once" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let m <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let before <- Test.open (Index {})
+  let _ <- Db.delete Membership m
+  let after <- Test.open (Index {})
+  Task.succeed (
+    { before: before.answer, after: after.answer } == { before: Shown, after: PageMissing }
+  )
+}
+
+test "a user without an org is sent to the orgs" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Orgs.Index.Index {}))
+}
+
+test "creating a project goes to its page" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Test.member ann acme
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Create {}) { name: Text.NonEmpty "Rocket" }
+  Task.succeed (Test.text "#name" r.doc == Just "Rocket")
+}

@@ -1,0 +1,57 @@
+module Products.Index
+
+import Layout
+import Product
+import User
+
+route Index  = GET  "/products"          { } requires user, role Manager
+route Add    = POST "/products"          { } form NewProduct requires user, role Manager
+route Toggle = POST "/products/{id}/toggle" { id: Product.ProductId } requires user, role Manager
+
+form NewProduct = { name: Text.NonEmpty, price: Int.NonNegative }
+
+type Model = { products: List Product }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let products <- Db.from Product |> Db.orderBy Product.name.asc |> Db.all
+  Query.succeed { products: products }
+}
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insert Product { name: p.form.name, price: p.form.price }
+  Task.succeed (Response.redirect (Products.Index.Index {}))
+}
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let found <- Db.get Product p.id
+  match found {
+    Just prod -> {
+      let _ <- Db.update Product p.id (\x -> { x | active: not x.active })
+      Task.succeed (Response.redirect (Products.Index.Index {}))
+    },
+    Nothing -> Task.notFound,
+  }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Products">
+    <h1>Products</h1>
+    <ul id="products">
+      {for p in model.products ->
+        <li>
+          <span class="name">{p.name}</span>
+          <span>{Text.fromInt p.price}</span>
+          <al-button click={Toggle { id: p.id }}>{if p.active then "Deactivate" else "Activate"}</al-button>
+        </li>}
+    </ul>
+    <form submit={Add}>
+      <al-input field="name" label="Name" />
+      <al-input field="price" label="Price (cents)" />
+      <al-button type="submit">Add product</al-button>
+    </form>
+    <a href={Orders.Index.Index {}}>Orders</a>
+  </Layout.Page>

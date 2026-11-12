@@ -1,0 +1,28 @@
+module Table.Invite
+
+import Table.Team
+import Table.User
+
+type InviteId = brand Text
+
+type Status = Pending | Accepted | Declined
+
+-- An invite is for an email, and waits until it is accepted or declined.
+table Invite {
+  id: InviteId @id,
+  team: Team.TeamId @ref Team,
+  email: Text.Email,
+  status: Status = Pending,
+}
+
+-- The invite with that id, when it is still waiting and is for the user's email; otherwise nothing.
+waitingFor : User.UserId -> InviteId -> Query (Maybe Invite)
+waitingFor user id = {
+  let found <- Db.get Invite id
+  let me <- Db.get User user
+  let email = Maybe.map (\u -> u.email) me
+  match found {
+    Nothing -> Query.succeed Nothing,
+    Just inv -> Query.succeed (if inv.status == Pending && Just inv.email == email then Just inv else Nothing),
+  }
+}

@@ -1,0 +1,44 @@
+module Table.Post
+
+import Table.User
+
+type PostId = brand Text
+
+type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
+
+-- `author` is the table's `@owner`: the admin reads and writes only the signed-in author's posts.
+table Post {
+  id: PostId @id,
+  title: Text.NonEmpty,
+  slug: Slug @unique,
+  body: Text.NonEmpty,
+  published: Bool = False,
+  author: User.UserId @ref User @owner,
+  created: Time @created,
+}
+
+-- A published post is anyone's to read; a draft only its author's.
+visibleTo : Maybe User.UserId -> Post -> Bool
+visibleTo user post = post.published || user == Just post.author
+
+test "a draft is visible only to its author" =
+  {
+    reader: visibleTo Nothing {
+      id: PostId "p",
+      title: Text.NonEmpty "Draft",
+      slug: Slug "draft",
+      body: Text.NonEmpty "Not yet.",
+      published: False,
+      author: User.UserId "u",
+      created: Time.epoch,
+    },
+    author: visibleTo (Just (User.UserId "u")) {
+      id: PostId "p",
+      title: Text.NonEmpty "Draft",
+      slug: Slug "draft",
+      body: Text.NonEmpty "Not yet.",
+      published: False,
+      author: User.UserId "u",
+      created: Time.epoch,
+    },
+  } == { reader: False, author: True }

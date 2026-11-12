@@ -1,0 +1,34 @@
+module App
+
+import Layout
+import Table.Org
+import Table.User
+
+-- The user, and the org they work in now. `via Membership`: the server refuses an org the user is
+-- not a member of (book 06, "Partitions"). `choose`: a user without an org is sent to pick one.
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership }
+
+login = Auth.Login.Login
+
+choose org = Orgs.Index.Index
+
+-- Each org's projects and to-dos live in a database of the org's own.
+silo org { Project, Todo }
+
+route Logout = DELETE "/session" { }
+
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing, org: Nothing })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
+}
+
+error : Error -> Html
+error err =
+  <Layout.Page title="Error">
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html
+notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>

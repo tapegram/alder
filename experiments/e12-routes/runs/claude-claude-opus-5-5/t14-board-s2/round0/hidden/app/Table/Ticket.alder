@@ -1,0 +1,12 @@
+module Table.Ticket
+
+type TicketId = brand Text
+
+type Status = Pending | Closed
+
+table Ticket {
+  id: TicketId @id,
+  title: Text.NonEmpty,
+  status: Status = Pending,
+  created: Time @created,
+}

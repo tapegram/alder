@@ -1,0 +1,55 @@
+module Hidden
+
+-- E12 hidden acceptance tests for T14 (a board filled in by `load` and polled with `every`), new
+-- in E12. They follow chapter 6's `Dashboard` pattern: the board is opened with `Test.get`, then
+-- `Test.load` asks for `Board.Recent {}` or `Board.Open {}` as the page's elements would, and the
+-- answer is patched into the page by `id`. Polling is `Test.load` again on the page as patched,
+-- so a badge whose view dropped its `load` would fail the second step. Tickets are inserted with
+-- `Test.advance` between them so `created` differs. They use only the names the task's Names
+-- block fixes (the status is `Pending | Closed`: `Open` is the route); the model never sees them.
+
+import Table.Ticket
+
+test "the badge counts open tickets, again after an insert and after a close" = {
+  let a <- Db.insert Ticket { title: Text.NonEmpty "Printer jam" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "VPN down" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Old laptop", status: Closed }
+  let _ <- Test.get (Board.Board {})
+  let first <- Test.load (Board.Open {})
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Coffee machine" }
+  let inserted <- Test.load (Board.Open {})
+  let _ <- Db.update Ticket a (\t -> { t | status: Closed })
+  let closed <- Test.load (Board.Open {})
+  Task.succeed ({ first: Test.text "#open" first.doc, inserted: Test.text "#open" inserted.doc, closed: Test.text "#open" closed.doc } == { first: Just "2", inserted: Just "3", closed: Just "2" })
+}
+
+test "recent lists the five newest of six, newest first" = {
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "One" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Two" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Three" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Four" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Five" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Six" }
+  let _ <- Test.get (Board.Board {})
+  let r <- Test.load (Board.Recent {})
+  Task.succeed (Test.texts "#recent li" r.doc == ["Six", "Five", "Four", "Three", "Two"])
+}
+
+test "closing a ticket refreshes the board" = {
+  let a <- Db.insert Ticket { title: Text.NonEmpty "Printer jam" }
+  let _ <- Test.advance 1000
+  let b <- Db.insert Ticket { title: Text.NonEmpty "VPN down" }
+  let _ <- Test.get (Board.Board {})
+  let r <- Test.click (Board.Close { id: a })
+  let badge <- Test.load (Board.Open {})
+  let ta <- Db.get Ticket a
+  let tb <- Db.get Ticket b
+  Task.succeed ({ answer: r.answer, a: Maybe.map (\t -> t.status) ta, b: Maybe.map (\t -> t.status) tb, open: Test.text "#open" badge.doc } == { answer: Refreshed, a: Just Closed, b: Just Pending, open: Just "1" })
+}

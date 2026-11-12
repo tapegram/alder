@@ -1,0 +1,793 @@
+{
+ "model": "claude-claude-haiku-5-5",
+ "task": "t3-newapp",
+ "retries": 5,
+ "base": null,
+ "harness": {
+  "build": true,
+  "retries": 5,
+  "test": true,
+  "mutate": true,
+  "condition": "files",
+  "sample": "s1"
+ },
+ "error": null,
+ "rounds": [
+  {
+   "n": 0,
+   "files": 9,
+   "exit": 1,
+   "errors": 8,
+   "warnings": 0,
+   "codes": {
+    "E0002": 5,
+    "E0201": 1,
+    "E0011": 2
+   },
+   "rejected": [],
+   "seconds": 122.3,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.309 (Claude Code)",
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "n": 1,
+   "files": 9,
+   "exit": 1,
+   "errors": 1,
+   "warnings": 0,
+   "codes": {
+    "E0011": 1
+   },
+   "rejected": [],
+   "seconds": 57.9,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.309 (Claude Code)",
+   "model": "claude-haiku-5-5"
+  },
+  {
+   "n": 2,
+   "files": 9,
+   "exit": 0,
+   "errors": 0,
+   "warnings": 0,
+   "codes": {},
+   "rejected": [],
+   "seconds": 35.9,
+   "tokens": null,
+   "stderr": "",
+   "claude_version": "2.1.309 (Claude Code)",
+   "model": "claude-haiku-5-5",
+   "build": {
+    "ok": true,
+    "exit": 0,
+    "stderr": ""
+   },
+   "tests": {
+    "passed": 11,
+    "failed": 0,
+    "results": [
+     {
+      "module": "App",
+      "name": "Logout clears the user and goes home",
+      "file": "app/App.alder",
+      "line": 28,
+      "col": 1,
+      "ok": true,
+      "left": "{ value: Ok (Response.redirect (Home.Index /)), trace: [\"Session.put\"] }",
+      "right": "{ value: Ok (Response.redirect (Home.Index /)), trace: [\"Session.put\"] }",
+      "trace": [
+       "Test.run",
+       "Session.put"
+      ],
+      "ms": 3.019
+     },
+     {
+      "module": "Auth.Login",
+      "name": "an unknown email is rejected",
+      "file": "app/Auth/Login.alder",
+      "line": 61,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "right": "{ answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }",
+      "trace": [
+       "Test.fake Password",
+       "Test.get Auth.Login.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User"
+      ],
+      "ms": 8.942
+     },
+     {
+      "module": "Auth.Login",
+      "name": "logging in through the form",
+      "file": "app/Auth/Login.alder",
+      "line": 77,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: Redirected /, user: Just \"fK9kSU00l72Vzad5wNEe\" }",
+      "right": "{ answer: Redirected /, user: Just \"fK9kSU00l72Vzad5wNEe\" }",
+      "trace": [
+       "Test.fake Password",
+       "Db.insert User",
+       "Test.get Auth.Login.Login",
+       "Test.submit Credentials",
+       "Password.verify",
+       "Db.first User",
+       "Db.get User",
+       "Session.put",
+       "Db.all Post"
+      ],
+      "ms": 0.772
+     },
+     {
+      "module": "Table.Post",
+      "name": "a draft is visible to its author only",
+      "file": "app/Table/Post.alder",
+      "line": 39,
+      "col": 1,
+      "ok": true,
+      "trace": [],
+      "ms": 0.001
+     },
+     {
+      "module": "Home",
+      "name": "the front page lists only published posts, newest first",
+      "file": "app/Home.alder",
+      "line": 32,
+      "col": 1,
+      "ok": true,
+      "left": "[\"New\", \"Old\"]",
+      "right": "[\"New\", \"Old\"]",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Db.insert Post",
+       "Test.get Home.Index",
+       "Db.all Post"
+      ],
+      "ms": 0.577
+     },
+     {
+      "module": "Reading",
+      "name": "an unpublished post is not found for a reader",
+      "file": "app/Reading.alder",
+      "line": 68,
+      "col": 1,
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.open Reading.Show",
+       "Db.first Post"
+      ],
+      "ms": 0.371
+     },
+     {
+      "module": "Reading",
+      "name": "the author sees their own draft",
+      "file": "app/Reading.alder",
+      "line": 84,
+      "col": 1,
+      "ok": true,
+      "left": "Shown",
+      "right": "Shown",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.login",
+       "Test.open Reading.Show",
+       "Db.first Post",
+       "Db.all Comment"
+      ],
+      "ms": 0.383
+     },
+     {
+      "module": "Reading",
+      "name": "a comment with an empty author is refused",
+      "file": "app/Reading.alder",
+      "line": 101,
+      "col": 1,
+      "ok": true,
+      "left": "{ refused: True, comments: 0, status: 422 }",
+      "right": "{ refused: True, comments: 0, status: 422 }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.get Reading.Show",
+       "Db.first Post",
+       "Db.all Comment",
+       "Test.submitRaw NewComment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.first Post",
+       "Db.all Comment",
+       "Db.count Comment"
+      ],
+      "ms": 0.554
+     },
+     {
+      "module": "Writing",
+      "name": "a visitor is sent to log in for the desk",
+      "file": "app/Writing.alder",
+      "line": 73,
+      "col": 1,
+      "ok": true,
+      "left": "Redirected /login",
+      "right": "Redirected /login",
+      "trace": [
+       "Test.open Writing.Desk"
+      ],
+      "ms": 0.3
+     },
+     {
+      "module": "Writing",
+      "name": "a reader cannot open the desk",
+      "file": "app/Writing.alder",
+      "line": 78,
+      "col": 1,
+      "ok": true,
+      "left": "PageMissing",
+      "right": "PageMissing",
+      "trace": [
+       "Db.insert User",
+       "Test.login",
+       "Test.open Writing.Desk"
+      ],
+      "ms": 0.304
+     },
+     {
+      "module": "Writing",
+      "name": "publishing a draft shows it on the front page",
+      "file": "app/Writing.alder",
+      "line": 89,
+      "col": 1,
+      "ok": true,
+      "left": "{ answer: Refreshed, front: [\"Draft\"] }",
+      "right": "{ answer: Refreshed, front: [\"Draft\"] }",
+      "trace": [
+       "Db.insert User",
+       "Db.insert Post",
+       "Test.login",
+       "Test.get Writing.Desk",
+       "Db.all Post",
+       "Test.click Writing.Publish",
+       "Db.all Post",
+       "Db.update Post",
+       "Db.all Post",
+       "Test.get Home.Index",
+       "Db.all Post"
+      ],
+      "ms": 0.59
+     }
+    ],
+    "exit": 0
+   },
+   "mutation": {
+    "score": 0.4418604651162791,
+    "killed": 19,
+    "survived": 24,
+    "suppressed": 1,
+    "skipped": 10,
+    "survivors": [
+     {
+      "module": "App",
+      "file": "app/App.alder",
+      "decl": "Logout.update",
+      "line": 14,
+      "col": 31,
+      "kind": "update field dropped",
+      "before": "{ s | user: Nothing, role: Reader }",
+      "after": "{ s | role: Reader }"
+     },
+     {
+      "module": "App",
+      "file": "app/App.alder",
+      "decl": "Logout.update",
+      "line": 14,
+      "col": 31,
+      "kind": "update field dropped",
+      "before": "{ s | user: Nothing, role: Reader }",
+      "after": "{ s | user: Nothing }"
+     },
+     {
+      "module": "Auth.Login",
+      "file": "app/Auth/Login.alder",
+      "decl": "Submit.update",
+      "line": 40,
+      "col": 35,
+      "kind": "update field dropped",
+      "before": "{ s | user: Just id, role: role }",
+      "after": "{ s | user: Just id }"
+     },
+     {
+      "module": "Table.Post",
+      "file": "app/Table/Post.alder",
+      "decl": "Post",
+      "line": 19,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "author @ref User @restrict",
+      "after": "author @ref User @cascade"
+     },
+     {
+      "module": "Table.Comment",
+      "file": "app/Table/Comment.alder",
+      "decl": "Comment",
+      "line": 10,
+      "col": 3,
+      "kind": "cascade \u2194 restrict",
+      "before": "post @ref Post @cascade",
+      "after": "post @ref Post @restrict"
+     },
+     {
+      "module": "Reading",
+      "file": "app/Reading.alder",
+      "decl": "loadVisible",
+      "line": 21,
+      "col": 12,
+      "kind": "where dropped",
+      "before": "Db.where (Comment.post.eq post.id)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Reading",
+      "file": "app/Reading.alder",
+      "decl": "loadVisible",
+      "line": 22,
+      "col": 12,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Comment.created.asc",
+      "after": "Db.orderBy Comment.created.desc"
+     },
+     {
+      "module": "Reading",
+      "file": "app/Reading.alder",
+      "decl": "Show.load",
+      "line": 29,
+      "col": 32,
+      "kind": "where dropped",
+      "before": "Db.where (Post.slug.eq params.slug)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Reading",
+      "file": "app/Reading.alder",
+      "decl": "Reply.update",
+      "line": 58,
+      "col": 32,
+      "kind": "where dropped",
+      "before": "Db.where (Post.slug.eq p.slug)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Reading",
+      "file": "app/Reading.alder",
+      "decl": "Reply.update",
+      "line": 61,
+      "col": 18,
+      "kind": "guard dropped",
+      "before": "if Table.Post.visibleTo session.user post then \u2026 else Task.notFound",
+      "after": "the notFound arm dropped"
+     },
+     {
+      "module": "Reading",
+      "file": "app/Reading.alder",
+      "decl": "Reply.update",
+      "line": 61,
+      "col": 18,
+      "kind": "condition negated",
+      "before": "if Table.Post.visibleTo session.user post",
+      "after": "if not (Table.Post.visibleTo session.user post)"
+     },
+     {
+      "module": "Reading",
+      "file": "app/Reading.alder",
+      "decl": "Reply.update",
+      "line": 62,
+      "col": 7,
+      "kind": "write replaced",
+      "before": "let _ <- Db.insert Comment {\u2026}",
+      "after": "let _ <- Task.succeed (Table.Comment.CommentId \"mutant\")"
+     },
+     {
+      "module": "Reading",
+      "file": "app/Reading.alder",
+      "decl": "Reply.update",
+      "line": 63,
+      "col": 21,
+      "kind": "redirect \u2192 refresh",
+      "before": "Response.redirect (Show { slug: p.slug })",
+      "after": "Response.refresh"
+     },
+     {
+      "module": "Writing",
+      "file": "app/Writing.alder",
+      "decl": "Create",
+      "line": 8,
+      "col": 60,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = Table.User.UserId \"mutant\")"
+     },
+     {
+      "module": "Writing",
+      "file": "app/Writing.alder",
+      "decl": "Create",
+      "line": 8,
+      "col": 75,
+      "kind": "role dropped",
+      "before": "requires user, role Author",
+      "after": "requires user"
+     },
+     {
+      "module": "Writing",
+      "file": "app/Writing.alder",
+      "decl": "Publish",
+      "line": 9,
+      "col": 63,
+      "kind": "requires dropped",
+      "before": "requires user",
+      "after": "served without user (user = Table.User.UserId \"mutant\")"
+     },
+     {
+      "module": "Writing",
+      "file": "app/Writing.alder",
+      "decl": "Publish",
+      "line": 9,
+      "col": 78,
+      "kind": "role dropped",
+      "before": "requires user, role Author",
+      "after": "requires user"
+     },
+     {
+      "module": "Writing",
+      "file": "app/Writing.alder",
+      "decl": "Desk.load",
+      "line": 18,
+      "col": 32,
+      "kind": "orderBy reversed",
+      "before": "Db.orderBy Post.created.desc",
+      "after": "Db.orderBy Post.created.asc"
+     },
+     {
+      "module": "Writing",
+      "file": "app/Writing.alder",
+      "decl": "Create.update",
+      "line": 24,
+      "col": 32,
+      "kind": "where dropped",
+      "before": "Db.where (Post.slug.eq p.form.slug)",
+      "after": "the condition dropped"
+     },
+     {
+      "module": "Writing",
+      "file": "app/Writing.alder",
+      "decl": "Create.update",
+      "line": 25,
+      "col": 3,
+      "kind": "condition negated",
+      "before": "if taken > 0",
+      "after": "if not (taken > 0)"
+     },
+     {
+      "module": "Writing",
+      "file": "app/Writing.alder",
+      "decl": "Create.update",
+      "line": 25,
+      "col": 6,
+      "kind": "operator flipped",
+      "before": "taken > 0",
+      "after": "taken >= 0"
+     },
+     {
+      "module": "Writing",
+      "file": "app/Writing.alder",
+      "decl": "Create.update",
+      "line": 26,
+      "col": 19,
+      "kind": "invalid \u2192 refresh",
+      "before": "Response.invalid \"A post with that slug already exists.\"",
+      "after": "Response.refresh"
+     },
+     {
+      "module": "Writing",
+      "file": "app/Writing.alder",
+      "decl": "Create.update",
+      "line": 28,
+      "col": 5,
+      "kind": "write replaced",
+      "before": "let _ <- Db.insert Post {\u2026}",
+      "after": "let _ <- Task.succeed (Table.Post.PostId \"mutant\")"
+     },
+     {
+      "module": "Writing",
+      "file": "app/Writing.alder",
+      "decl": "Create.update",
+      "line": 34,
+      "col": 19,
+      "kind": "redirect \u2192 refresh",
+      "before": "Response.redirect (Desk {})",
+      "after": "Response.refresh"
+     }
+    ]
+   }
+  }
+ ],
+ "final_pass": true,
+ "outcome": "pass",
+ "claude_argv": [
+  "claude",
+  "-p",
+  "--model",
+  "claude-haiku-5-5",
+  "--output-format",
+  "text",
+  "--system-prompt",
+  "<system prompt>",
+  "--no-session-persistence",
+  "--setting-sources",
+  "",
+  "--strict-mcp-config",
+  "--tools",
+  "",
+  "--disable-slash-commands"
+ ],
+ "mutation": {
+  "score": 0.4418604651162791,
+  "killed": 19,
+  "survived": 24,
+  "suppressed": 1,
+  "skipped": 10,
+  "survivors": [
+   {
+    "module": "App",
+    "file": "app/App.alder",
+    "decl": "Logout.update",
+    "line": 14,
+    "col": 31,
+    "kind": "update field dropped",
+    "before": "{ s | user: Nothing, role: Reader }",
+    "after": "{ s | role: Reader }"
+   },
+   {
+    "module": "App",
+    "file": "app/App.alder",
+    "decl": "Logout.update",
+    "line": 14,
+    "col": 31,
+    "kind": "update field dropped",
+    "before": "{ s | user: Nothing, role: Reader }",
+    "after": "{ s | user: Nothing }"
+   },
+   {
+    "module": "Auth.Login",
+    "file": "app/Auth/Login.alder",
+    "decl": "Submit.update",
+    "line": 40,
+    "col": 35,
+    "kind": "update field dropped",
+    "before": "{ s | user: Just id, role: role }",
+    "after": "{ s | user: Just id }"
+   },
+   {
+    "module": "Table.Post",
+    "file": "app/Table/Post.alder",
+    "decl": "Post",
+    "line": 19,
+    "col": 3,
+    "kind": "cascade \u2194 restrict",
+    "before": "author @ref User @restrict",
+    "after": "author @ref User @cascade"
+   },
+   {
+    "module": "Table.Comment",
+    "file": "app/Table/Comment.alder",
+    "decl": "Comment",
+    "line": 10,
+    "col": 3,
+    "kind": "cascade \u2194 restrict",
+    "before": "post @ref Post @cascade",
+    "after": "post @ref Post @restrict"
+   },
+   {
+    "module": "Reading",
+    "file": "app/Reading.alder",
+    "decl": "loadVisible",
+    "line": 21,
+    "col": 12,
+    "kind": "where dropped",
+    "before": "Db.where (Comment.post.eq post.id)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Reading",
+    "file": "app/Reading.alder",
+    "decl": "loadVisible",
+    "line": 22,
+    "col": 12,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Comment.created.asc",
+    "after": "Db.orderBy Comment.created.desc"
+   },
+   {
+    "module": "Reading",
+    "file": "app/Reading.alder",
+    "decl": "Show.load",
+    "line": 29,
+    "col": 32,
+    "kind": "where dropped",
+    "before": "Db.where (Post.slug.eq params.slug)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Reading",
+    "file": "app/Reading.alder",
+    "decl": "Reply.update",
+    "line": 58,
+    "col": 32,
+    "kind": "where dropped",
+    "before": "Db.where (Post.slug.eq p.slug)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Reading",
+    "file": "app/Reading.alder",
+    "decl": "Reply.update",
+    "line": 61,
+    "col": 18,
+    "kind": "guard dropped",
+    "before": "if Table.Post.visibleTo session.user post then \u2026 else Task.notFound",
+    "after": "the notFound arm dropped"
+   },
+   {
+    "module": "Reading",
+    "file": "app/Reading.alder",
+    "decl": "Reply.update",
+    "line": 61,
+    "col": 18,
+    "kind": "condition negated",
+    "before": "if Table.Post.visibleTo session.user post",
+    "after": "if not (Table.Post.visibleTo session.user post)"
+   },
+   {
+    "module": "Reading",
+    "file": "app/Reading.alder",
+    "decl": "Reply.update",
+    "line": 62,
+    "col": 7,
+    "kind": "write replaced",
+    "before": "let _ <- Db.insert Comment {\u2026}",
+    "after": "let _ <- Task.succeed (Table.Comment.CommentId \"mutant\")"
+   },
+   {
+    "module": "Reading",
+    "file": "app/Reading.alder",
+    "decl": "Reply.update",
+    "line": 63,
+    "col": 21,
+    "kind": "redirect \u2192 refresh",
+    "before": "Response.redirect (Show { slug: p.slug })",
+    "after": "Response.refresh"
+   },
+   {
+    "module": "Writing",
+    "file": "app/Writing.alder",
+    "decl": "Create",
+    "line": 8,
+    "col": 60,
+    "kind": "requires dropped",
+    "before": "requires user",
+    "after": "served without user (user = Table.User.UserId \"mutant\")"
+   },
+   {
+    "module": "Writing",
+    "file": "app/Writing.alder",
+    "decl": "Create",
+    "line": 8,
+    "col": 75,
+    "kind": "role dropped",
+    "before": "requires user, role Author",
+    "after": "requires user"
+   },
+   {
+    "module": "Writing",
+    "file": "app/Writing.alder",
+    "decl": "Publish",
+    "line": 9,
+    "col": 63,
+    "kind": "requires dropped",
+    "before": "requires user",
+    "after": "served without user (user = Table.User.UserId \"mutant\")"
+   },
+   {
+    "module": "Writing",
+    "file": "app/Writing.alder",
+    "decl": "Publish",
+    "line": 9,
+    "col": 78,
+    "kind": "role dropped",
+    "before": "requires user, role Author",
+    "after": "requires user"
+   },
+   {
+    "module": "Writing",
+    "file": "app/Writing.alder",
+    "decl": "Desk.load",
+    "line": 18,
+    "col": 32,
+    "kind": "orderBy reversed",
+    "before": "Db.orderBy Post.created.desc",
+    "after": "Db.orderBy Post.created.asc"
+   },
+   {
+    "module": "Writing",
+    "file": "app/Writing.alder",
+    "decl": "Create.update",
+    "line": 24,
+    "col": 32,
+    "kind": "where dropped",
+    "before": "Db.where (Post.slug.eq p.form.slug)",
+    "after": "the condition dropped"
+   },
+   {
+    "module": "Writing",
+    "file": "app/Writing.alder",
+    "decl": "Create.update",
+    "line": 25,
+    "col": 3,
+    "kind": "condition negated",
+    "before": "if taken > 0",
+    "after": "if not (taken > 0)"
+   },
+   {
+    "module": "Writing",
+    "file": "app/Writing.alder",
+    "decl": "Create.update",
+    "line": 25,
+    "col": 6,
+    "kind": "operator flipped",
+    "before": "taken > 0",
+    "after": "taken >= 0"
+   },
+   {
+    "module": "Writing",
+    "file": "app/Writing.alder",
+    "decl": "Create.update",
+    "line": 26,
+    "col": 19,
+    "kind": "invalid \u2192 refresh",
+    "before": "Response.invalid \"A post with that slug already exists.\"",
+    "after": "Response.refresh"
+   },
+   {
+    "module": "Writing",
+    "file": "app/Writing.alder",
+    "decl": "Create.update",
+    "line": 28,
+    "col": 5,
+    "kind": "write replaced",
+    "before": "let _ <- Db.insert Post {\u2026}",
+    "after": "let _ <- Task.succeed (Table.Post.PostId \"mutant\")"
+   },
+   {
+    "module": "Writing",
+    "file": "app/Writing.alder",
+    "decl": "Create.update",
+    "line": 34,
+    "col": 19,
+    "kind": "redirect \u2192 refresh",
+    "before": "Response.redirect (Desk {})",
+    "after": "Response.refresh"
+   }
+  ]
+ },
+ "names": null
+}

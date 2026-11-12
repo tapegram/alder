@@ -1,0 +1,50 @@
+module Table.Booking
+
+import Table.Room
+import Table.User
+
+type BookingId = brand Text
+
+-- A booking holds its room from `from` up to, but not including, `to`.
+table Booking {
+  id: BookingId @id,
+  room: Room.RoomId @ref Room,
+  owner: User.UserId @ref User,
+  from: Date,
+  to: Date,
+}
+
+-- The bookings of `room` that hold a day of [start, stop).
+clashes : Room.RoomId -> Date -> Date -> Select Booking
+clashes room start stop =
+  Db.from Booking
+    |> Db.where (Booking.room.eq room)
+    |> Db.where (Booking.from.lt stop)
+    |> Db.where (Booking.to.gt start)
+
+-- The booking holds `day` when it starts on or before it and ends after it: then the first day
+-- free of it is its `to`.
+holdsDay : Booking -> Date -> Date
+holdsDay b day = if b.from <= day && day < b.to then b.to else day
+
+-- The first day, from `start` on, that none of the bookings holds. The bookings of one room do
+-- not overlap, so walking them in order of `from` finds it in one pass.
+nextFree : Date -> List Booking -> Date
+nextFree start bookings =
+  bookings
+    |> List.sortByText (\b -> Date.toText b.from)
+    |> List.foldl holdsDay start
+
+dayOf : Int -> Date
+dayOf n = Date.addDays n Date.epoch
+
+test "back-to-back bookings are one stretch" =
+  nextFree (dayOf 1) [
+    { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: dayOf 0, to: dayOf 2 },
+    { id: BookingId "b", room: Room.RoomId "r", owner: User.UserId "u", from: dayOf 2, to: dayOf 5 },
+  ] == dayOf 5
+
+test "a free day before the first booking is the day asked" =
+  nextFree (dayOf 0) [
+    { id: BookingId "a", room: Room.RoomId "r", owner: User.UserId "u", from: dayOf 2, to: dayOf 4 },
+  ] == dayOf 0

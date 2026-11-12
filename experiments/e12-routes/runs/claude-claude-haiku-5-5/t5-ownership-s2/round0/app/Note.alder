@@ -1,0 +1,28 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  title: Text.NonEmpty,
+  body: Text,
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+test "a note's title is kept" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note {
+    title: Text.NonEmpty "Milk",
+    body: "",
+    owner: me,
+  }
+  let after <- Db.get Note id
+  Task.succeed (Maybe.map (\n -> n.title) after == Just (Text.NonEmpty "Milk"))
+}

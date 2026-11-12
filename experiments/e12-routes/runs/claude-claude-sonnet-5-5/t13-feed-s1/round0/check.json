@@ -1,0 +1,2 @@
+{"code": "E0001", "severity": "error", "file": "app/Feed/Index.alder", "line": 19, "col": 6, "endLine": 19, "endCol": 7, "message": "expected string literal, got `:`"}
+{"code": "E0001", "severity": "error", "file": "app/Feed/Index.alder", "line": 20, "col": 1, "endLine": 20, "endCol": 5, "message": "in page parameters: expected `,` or closing brace"}

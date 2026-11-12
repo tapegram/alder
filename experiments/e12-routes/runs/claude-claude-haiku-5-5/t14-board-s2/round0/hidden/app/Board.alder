@@ -1,0 +1,116 @@
+module Board
+
+import Layout
+import Table.Ticket
+
+route Board  = GET   "/board"            { }
+route Recent = GET   "/board/recent"     { }
+route Open   = GET   "/board/open"       { }
+route Close  = PATCH "/tickets/{id}"     { id: Ticket.TicketId }
+
+type Model = { tickets: List Ticket }
+
+Board.load : Board.Params -> Session -> Query Model
+Board.load params session = {
+  let tickets <-
+    Db.from Ticket
+      |> Db.where (Ticket.status.eq Pending)
+      |> Db.orderBy Ticket.created.desc
+      |> Db.all
+  Query.succeed { tickets: tickets }
+}
+
+Board.view : Model -> Session -> Html
+Board.view model session =
+  <Layout.Page title="Support board">
+    <h1>Support board</h1>
+    <p>Pending: <span id="open" load={Open {}} every="10s">…</span></p>
+    <section id="recent" load={Recent {}}>Loading…</section>
+    <ul id="pending">
+      {for t in model.tickets ->
+        <li>
+          <span>{t.title}</span>
+          <al-button variant="secondary" size="sm" click={Close { id: t.id }}>Close</al-button>
+        </li>}
+    </ul>
+  </Layout.Page>
+
+Recent.load : Recent.Params -> Session -> Query (List Ticket)
+Recent.load params session =
+  Db.from Ticket
+    |> Db.orderBy Ticket.created.desc
+    |> Db.limit 5
+    |> Db.all
+
+Recent.view : List Ticket -> Session -> Html
+Recent.view tickets session =
+  <section id="recent">{for t in tickets -> <li>{t.title}</li>}</section>
+
+Open.load : Open.Params -> Session -> Query Int
+Open.load params session =
+  Db.from Ticket
+    |> Db.where (Ticket.status.eq Pending)
+    |> Db.count
+
+Open.view : Int -> Session -> Html
+Open.view n session = <span id="open" load={Open {}} every="10s">{Text.fromInt n}</span>
+
+Close.update : Close.Params -> Session -> Task Response
+Close.update p session = {
+  let _ <- Db.update Ticket p.id (\t -> { t | status: Closed })
+  Task.succeed Response.refresh
+}
+
+test "the badge counts the pending tickets" = {
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Printer jam" }
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "VPN down" }
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Old request", status: Closed }
+  let _ <- Test.get (Board {})
+  let first <- Test.load (Open {})
+  let c <- Db.insert Ticket { title: Text.NonEmpty "Login loop" }
+  let _ <- Test.get (Board {})
+  let second <- Test.load (Open {})
+  let _ <- Test.click (Close { id: c })
+  let third <- Test.load (Open {})
+  Task.succeed (
+    {
+      first: Test.text "#open" first.doc,
+      second: Test.text "#open" second.doc,
+      third: Test.text "#open" third.doc,
+    } == {
+      first: Just "2",
+      second: Just "3",
+      third: Just "2",
+    }
+  )
+}
+
+test "recent lists the five newest of six, newest first" = {
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "t1" }
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "t2" }
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "t3" }
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "t4" }
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "t5" }
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "t6" }
+  let _ <- Test.get (Board {})
+  let r <- Test.load (Recent {})
+  Task.succeed (Test.texts "#recent li" r.doc == ["t6", "t5", "t4", "t3", "t2"])
+}
+
+test "closing a ticket refreshes the board and closes it" = {
+  let t <- Db.insert Ticket { title: Text.NonEmpty "VPN down" }
+  let _ <- Test.get (Board {})
+  let r <- Test.click (Close { id: t })
+  let after <- Db.get Ticket t
+  Task.succeed (
+    {
+      answer: r.answer,
+      status: Maybe.map (\x -> x.status) after,
+      pending: Test.count "#pending li" r.doc,
+    } == {
+      answer: Refreshed,
+      status: Just Closed,
+      pending: 0,
+    }
+  )
+}

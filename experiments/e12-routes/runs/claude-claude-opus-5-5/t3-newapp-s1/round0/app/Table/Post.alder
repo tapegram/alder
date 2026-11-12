@@ -1,0 +1,17 @@
+module Table.Post
+
+import Table.User
+
+type PostId = brand Text
+
+type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
+
+table Post {
+  id: PostId @id,
+  title: Text.NonEmpty,
+  slug: Slug @unique,
+  body: Text,
+  published: Bool = False,
+  author: User.UserId @ref User,
+  created: Time @created,
+}

@@ -1,0 +1,196 @@
+--- file: app/App.alder ---
+module App
+
+import Layout
+
+session { }
+
+error : Error -> Html
+error err =
+  <Layout.Page title="Error">
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html
+notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
+
+--- file: app/Feed/Index.alder ---
+module Feed.Index
+
+import Layout
+import Table.Entry
+
+route Index = GET "/feed" { }
+route More  = GET "/feed/more" { after: Int }
+route Post  = POST "/feed" { } form NewEntry
+
+form NewEntry = { text: Text.NonEmpty }
+
+type Model = { shown: Int, total: Int, entries: List Entry }
+
+pageSize : Int
+pageSize = 10
+
+-- The entries after the first `skip`, newest first, at most `pageSize` of them.
+entriesAfter : Int -> Query (List Entry)
+entriesAfter skip =
+  Db.from Entry
+    |> Db.orderBy Entry.created.desc
+    |> Db.offset skip
+    |> Db.limit pageSize
+    |> Db.all
+
+-- The element that asks for the entries after `shown`, or nothing when no entry follows.
+sentinel : Int -> Int -> Html
+sentinel shown total =
+  if shown < total then <div id={"more-" ++ Text.fromInt shown} intersect={More { after: shown }}></div>
+  else Html.none
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let entries <- entriesAfter 0
+  let total <- Db.from Entry |> Db.count
+  Query.succeed { shown: List.length entries, total: total, entries: entries }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Feed">
+    <form submit={Post}>
+      <al-input field="text" label="What happened?" />
+      <al-button type="submit">Post</al-button>
+    </form>
+    <ul id="entries">
+      {for e in model.entries -> <li>{e.text}</li>}
+    </ul>
+    {sentinel model.shown model.total}
+  </Layout.Page>
+
+More.load : More.Params -> Session -> Query Model
+More.load params session = {
+  let entries <- entriesAfter params.after
+  let total <- Db.from Entry |> Db.count
+  Query.succeed { shown: params.after + List.length entries, total: total, entries: entries }
+}
+
+More.view : Model -> Session -> Html
+More.view model session =
+  <div id={"more-" ++ Text.fromInt (model.shown - List.length model.entries)}>
+    {for e in model.entries -> <li>{e.text}</li>}
+    {sentinel model.shown model.total}
+  </div>
+
+Post.update : Post.Params -> Session -> Task Response
+Post.update p session = {
+  let _ <- Db.insert Entry { text: p.form.text }
+  Task.succeed (Response.redirect (Index {}))
+}
+
+test "scrolling twice through 25 entries shows all 25, newest first, with no sentinel" = {
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e01" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e02" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e03" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e04" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e05" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e06" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e07" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e08" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e09" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e10" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e11" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e12" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e13" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e14" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e15" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e16" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e17" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e18" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e19" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e20" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e21" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e22" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e23" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e24" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e25" }
+  let first <- Test.get (Index {})
+  let second <- Test.intersect (More { after: 10 })
+  let third <- Test.intersect (More { after: 20 })
+  Task.succeed (
+    {
+      first: Test.count "li" first.doc,
+      texts: Test.texts "li" third.doc,
+      sentinel: Test.has "[data-on-intersect__once]" third.doc,
+    } == {
+      first: 10,
+      texts: [
+        "e25", "e24", "e23", "e22", "e21", "e20", "e19", "e18", "e17", "e16",
+        "e15", "e14", "e13", "e12", "e11", "e10", "e09", "e08", "e07", "e06",
+        "e05", "e04", "e03", "e02", "e01",
+      ],
+      sentinel: False,
+    }
+  )
+}
+
+test "a feed of exactly ten entries has no sentinel" = {
+  let _ <- Db.insert Entry { text: Text.NonEmpty "a" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "b" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "c" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "d" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "e" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "f" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "g" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "h" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "i" }
+  let _ <- Db.insert Entry { text: Text.NonEmpty "j" }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    { items: Test.count "li" page.doc, sentinel: Test.has "[data-on-intersect__once]" page.doc }
+      == { items: 10, sentinel: False }
+  )
+}
+
+test "posting an entry puts it first" = {
+  let _ <- Db.insert Entry { text: Text.NonEmpty "old" }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Post {}) { text: Text.NonEmpty "new" }
+  let page <- Test.get (Index {})
+  Task.succeed (
+    {
+      answer: r.answer,
+      texts: Test.texts "#entries li" page.doc,
+    } == {
+      answer: Redirected (Index {}),
+      texts: ["new", "old"],
+    }
+  )
+}
+
+--- file: app/Layout.alder ---
+module Layout
+
+Page : { title: Text, children: List Html } -> Html
+Page props =
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>{props.title}</title>
+      <link rel="stylesheet" href={Url.external "/static/al/al.css"} />
+      <script type="module" src="/static/al/al.js"></script>
+    </head>
+    <body>
+      <al-page width="narrow"><main><al-stack gap="lg">{props.children}</al-stack></main></al-page>
+    </body>
+  </html>
+
+--- file: app/Table/Entry.alder ---
+module Table.Entry
+
+type EntryId = brand Text
+
+table Entry {
+  id: EntryId @id,
+  text: Text.NonEmpty,
+  created: Time @created,
+}

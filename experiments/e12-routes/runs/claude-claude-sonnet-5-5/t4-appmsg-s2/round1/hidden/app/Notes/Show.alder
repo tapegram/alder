@@ -1,0 +1,119 @@
+module Notes.Show
+
+import Layout
+import Note
+import User
+
+route Show   = GET    "/notes/{id}" { id: Note.NoteId }               requires user
+route Save   = PUT    "/notes/{id}" { id: Note.NoteId } form EditNote requires user
+route Delete = DELETE "/notes/{id}" { id: Note.NoteId }               requires user
+
+type Model = { note: Note }
+
+form EditNote = { title: Text.NonEmpty, body: Text }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let note <- Db.getMine Note params.id
+  Query.succeed { note: note }
+}
+
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session = {
+  let _ <- Db.updateMine Note p.id (\n -> { n | title: p.form.title, body: p.form.body })
+  Task.succeed (Response.redirect (Show { id: p.id }))
+}
+
+Delete.update : Delete.Params -> Session -> Task Response
+Delete.update p session = {
+  let _ <- Db.deleteMine Note p.id
+  Task.succeed (Response.redirect (Notes.Index.Index {}))
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title={model.note.title} theme={session.theme}>
+    <h1 id="title">{model.note.title}</h1>
+    <p id="body">{model.note.body}</p>
+    <form submit={Save { id: model.note.id }}>
+      <Errors form />
+      <Input field="title" label="Title" value={model.note.title} />
+      <Errors field="title" />
+      <Textarea field="body" label="Body" value={model.note.body} />
+      <Errors field="body" />
+      <button>Save</button>
+    </form>
+    <button click={Delete { id: model.note.id }}>Delete</button>
+    <a href={Notes.Index.Index {}}>Back</a>
+  </Layout.Page>
+
+test "another user's note is not found" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note { title: Text.NonEmpty "Secret", body: "hidden", owner: me }
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let r <- Test.open (Show { id: id })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a stranger cannot save or delete my note" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note { title: Text.NonEmpty "Secret", body: "hidden", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let saved <- Test.submit (Save { id: id }) { title: Text.NonEmpty "Hacked", body: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let deleted <- Test.click (Delete { id: id })
+  let after <- Db.get Note id
+  Task.succeed (
+    {
+      saved: saved.answer,
+      deleted: deleted.answer,
+      note: Maybe.map (\n -> { title: n.title, body: n.body }) after,
+    } == {
+      saved: PageMissing,
+      deleted: PageMissing,
+      note: Just { title: Text.NonEmpty "Secret", body: "hidden" },
+    }
+  )
+}
+
+test "the owner edits and deletes a note" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Note { title: Text.NonEmpty "Old", body: "old body", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let saved <- Test.submit (Save { id: id }) { title: Text.NonEmpty "New", body: "new body" }
+  let page <- Test.get (Show { id: id })
+  let deleted <- Test.click (Delete { id: id })
+  let after <- Db.get Note id
+  Task.succeed (
+    {
+      saved: saved.answer,
+      title: Test.text "#title" page.doc,
+      body: Test.text "#body" page.doc,
+      deleted: deleted.answer,
+      gone: Maybe.map (\n -> n.title) after,
+    } == {
+      saved: Redirected (Show { id: id }),
+      title: Just "New",
+      body: Just "new body",
+      deleted: Redirected (Notes.Index.Index {}),
+      gone: Nothing,
+    }
+  )
+}

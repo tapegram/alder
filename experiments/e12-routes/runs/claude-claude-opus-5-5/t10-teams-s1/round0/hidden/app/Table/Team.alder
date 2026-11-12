@@ -1,0 +1,21 @@
+module Table.Team
+
+import Table.User
+
+type TeamId = brand Text
+
+table Team {
+  id: TeamId @id,
+  name: Text.NonEmpty,
+  owner: User.UserId @ref User,
+}
+
+-- The team, when the user is its owner; anyone else (or a missing team) is not found.
+ownerOnly : TeamId -> User.UserId -> Query Team
+ownerOnly id user = {
+  let found <- Db.get Team id
+  match found {
+    Just team -> if team.owner == user then Query.succeed team else Query.notFound,
+    Nothing -> Query.notFound,
+  }
+}

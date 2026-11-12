@@ -1,0 +1,64 @@
+module Posts.Index
+
+import Layout
+import Table.Post
+import Table.User
+
+route Index = GET "/" { }
+
+type Model = { posts: List Post }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let posts <-
+    Db.from Post
+      |> Db.where (Post.published.eq True)
+      |> Db.orderBy Post.created.desc
+      |> Db.all
+  Query.succeed { posts: posts }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Blog">
+    <h1>Blog</h1>
+    <ul id="posts">
+      {for post in model.posts ->
+        <li>
+          <a href={Posts.Show.Show { slug: post.slug }}>{post.title}</a>
+          <span class="date">{Time.format "Jan 2, 2006" post.created}</span>
+        </li>}
+    </ul>
+    {if List.isEmpty model.posts then <p>No posts yet.</p> else Html.none}
+  </Layout.Page>
+
+test "the front page lists only published posts, newest first" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "Old",
+    slug: Post.Slug "old",
+    body: "The first post.",
+    published: True,
+    author: me,
+  }
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "Draft",
+    slug: Post.Slug "draft",
+    body: "Not yet.",
+    published: False,
+    author: me,
+  }
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "New",
+    slug: Post.Slug "new",
+    body: "The latest post.",
+    published: True,
+    author: me,
+  }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.texts "#posts a" page.doc == ["New", "Old"])
+}

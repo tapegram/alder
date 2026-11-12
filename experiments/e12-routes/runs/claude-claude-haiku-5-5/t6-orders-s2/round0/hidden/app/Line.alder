@@ -1,0 +1,58 @@
+module Line
+
+import Order
+import Product
+import User
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+type LineRow = { name: Text, quantity: Int.Positive, cents: Int }
+
+-- A line's cost in cents: its quantity times its product's price (0 when the product is gone).
+costOf : Line -> Query Int
+costOf line = {
+  let product <- Db.get Product line.product
+  Query.succeed (Maybe.map (\p -> line.quantity * p.price) product ?? 0)
+}
+
+-- The order's total in cents: the sum of the costs of its lines.
+total : Order.OrderId -> Query Int
+total id = {
+  let lines <- Db.from Line |> Db.where (Line.order.eq id) |> Db.all
+  let costs <- Query.all (List.map costOf lines)
+  Query.succeed (List.sum costs)
+}
+
+-- A line as its order's page shows it.
+rowOf : Line -> Query LineRow
+rowOf line = {
+  let product <- Db.get Product line.product
+  let cost <- costOf line
+  Query.succeed {
+    name: Maybe.map (\p -> Text.trim p.name) product ?? "",
+    quantity: line.quantity,
+    cents: cost,
+  }
+}
+
+test "an open order's total is the sum of its lines" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let order <- Db.insert Order { owner: me }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let mug <- Db.insert Product { name: Text.NonEmpty "Mug", price: Int.NonNegative 700 }
+  let _ <- Db.insert Line { order: order, product: pen, quantity: Int.Positive 2 }
+  let _ <- Db.insert Line { order: order, product: mug, quantity: Int.Positive 1 }
+  let amount <- total order
+  Task.succeed (amount == 1000)
+}

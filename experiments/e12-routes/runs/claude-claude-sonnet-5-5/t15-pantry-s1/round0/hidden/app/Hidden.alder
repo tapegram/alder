@@ -1,0 +1,51 @@
+module Hidden
+
+-- E12 hidden acceptance tests for T15 (a pantry with per-row write routes), new in E12 and
+-- written after chapter 6's `Row`/`Toggle` (book/06-routes.md, "Routes" and "`Response`") and
+-- chapter 10's `Test.click`/`Test.submit`. They use only the names the task's Names block fixes;
+-- the model never sees them. Items are added outside the app (the tests insert them), as T9's
+-- rooms. A row is found by its fixed id, `item-` and the item's id, so no test depends on the
+-- order the items are listed in.
+
+import Table.Item
+
+test "renaming to a taken name is rejected and changes nothing" = {
+  let rice <- Db.insert Item { name: Text.NonEmpty "Rice", quantity: 2 }
+  let beans <- Db.insert Item { name: Text.NonEmpty "Beans", quantity: 5 }
+  let _ <- Test.get (Pantry.Index.Index {})
+  let r <- Test.submit (Pantry.Index.Rename { id: beans }) { name: Text.NonEmpty "Rice" }
+  let stored <- Db.get Item beans
+  let named <- Db.from Item |> Db.where (Item.name.eq (Text.NonEmpty "Rice")) |> Db.count
+  let rejected = match r.answer {
+    FormRejected _ -> True,
+    _ -> False,
+  }
+  Task.succeed ({ rejected: rejected, status: r.status, stored: Maybe.map (\i -> i.name) stored, named: named, shown: Test.text ("#item-" ++ beans ++ " .name") r.doc, items: Test.count "#items > li" r.doc } == { rejected: True, status: 422, stored: Just (Text.NonEmpty "Beans"), named: 1, shown: Just "Beans", items: 2 })
+}
+
+test "renaming to a free name redirects to the pantry" = {
+  let rice <- Db.insert Item { name: Text.NonEmpty "Rice", quantity: 2 }
+  let beans <- Db.insert Item { name: Text.NonEmpty "Beans", quantity: 5 }
+  let _ <- Test.get (Pantry.Index.Index {})
+  let r <- Test.submit (Pantry.Index.Rename { id: rice }) { name: Text.NonEmpty "Brown rice" }
+  let stored <- Db.get Item rice
+  Task.succeed ({ answer: r.answer, url: r.url, stored: Maybe.map (\i -> i.name) stored, renamed: Test.text ("#item-" ++ rice ++ " .name") r.doc, other: Test.text ("#item-" ++ beans ++ " .name") r.doc } == { answer: Redirected (Pantry.Index.Index {}), url: "/pantry", stored: Just (Text.NonEmpty "Brown rice"), renamed: Just "Brown rice", other: Just "Beans" })
+}
+
+test "bump adds one and renders the row" = {
+  let rice <- Db.insert Item { name: Text.NonEmpty "Rice", quantity: 2 }
+  let beans <- Db.insert Item { name: Text.NonEmpty "Beans", quantity: 5 }
+  let _ <- Test.get (Pantry.Index.Index {})
+  let r <- Test.click (Pantry.Index.Bump { id: rice })
+  let stored <- Db.get Item rice
+  Task.succeed ({ answer: r.answer, quantity: Test.text ("#item-" ++ rice ++ " .quantity") r.doc, other: Test.text ("#item-" ++ beans ++ " .quantity") r.doc, stored: Maybe.map (\i -> i.quantity) stored } == { answer: Rendered (Pantry.Index.Row { id: rice }), quantity: Just "3", other: Just "5", stored: Just 3 })
+}
+
+test "remove refreshes and drops the item" = {
+  let rice <- Db.insert Item { name: Text.NonEmpty "Rice", quantity: 2 }
+  let beans <- Db.insert Item { name: Text.NonEmpty "Beans", quantity: 5 }
+  let _ <- Test.get (Pantry.Index.Index {})
+  let r <- Test.click (Pantry.Index.Remove { id: rice })
+  let stored <- Db.from Item |> Db.count
+  Task.succeed ({ answer: r.answer, notices: r.notices, gone: Test.has ("#item-" ++ rice) r.doc, items: Test.count "#items > li" r.doc, names: Test.texts "#items .name" r.doc, stored: stored } == { answer: Refreshed, notices: ["Removed"], gone: False, items: 1, names: ["Beans"], stored: 1 })
+}

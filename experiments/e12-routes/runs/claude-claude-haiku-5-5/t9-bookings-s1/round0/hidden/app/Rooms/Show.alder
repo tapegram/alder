@@ -1,0 +1,115 @@
+module Rooms.Show
+
+import Layout
+import Table.Booking
+import Table.Room
+import Table.User
+
+route Show = GET  "/rooms/{id}"          { id: Room.RoomId } requires user
+route Book = POST "/rooms/{id}/bookings" { id: Room.RoomId } form NewBooking requires user
+
+type Model = { room: Room, bookings: List Booking }
+
+form NewBooking = { from: Date, to: Date }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <- Db.get Room params.id
+  let bookings <-
+    Db.from Booking
+      |> Db.where (Booking.room.eq params.id)
+      |> Db.orderBy Booking.from.asc
+      |> Db.all
+  match found {
+    Just room -> Query.succeed { room: room, bookings: bookings },
+    Nothing -> Query.notFound,
+  }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title={model.room.name}>
+    <h1 id="name">{model.room.name}</h1>
+    <ul id="bookings">
+      {for b in model.bookings ->
+        <li>
+          <span class="from">{Date.toText b.from}</span> to <span class="to">{Date.toText b.to}</span>
+        </li>}
+    </ul>
+    <al-card>
+      <form submit={Book { id: model.room.id }}>
+        <Errors form />
+        <al-input field="from" label="From" />
+        <al-input field="to" label="To" />
+        <al-button type="submit">Book</al-button>
+      </form>
+    </al-card>
+    <p><a href={Rooms.Index.Index {}}>All rooms</a></p>
+  </Layout.Page>
+
+Book.update : Book.Params -> Session -> Task Response
+Book.update p session = {
+  let existing <-
+    Db.from Booking
+      |> Db.where (Booking.room.eq p.id)
+      |> Db.all
+  let clash = List.any (Booking.clashes p.form.from p.form.to) existing
+  if p.form.to <= p.form.from then Task.succeed (Response.invalid "A booking must end after it starts.") else if clash then Task.succeed (Response.invalid "That room is already booked for those days.") else {
+    let _ <- Db.insert Booking {
+      room: p.id,
+      owner: session.user,
+      from: p.form.from,
+      to: p.form.to,
+    }
+    Task.succeed (Response.redirect (Show { id: p.id }))
+  }
+}
+
+test "an overlapping booking is refused and not stored" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let _ <- Db.insert Booking {
+    room: room,
+    owner: me,
+    from: Booking.dateOf "2026-03-01",
+    to: Booking.dateOf "2026-03-03",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: room })
+  let r <- Test.submit (Book { id: room }) { from: Booking.dateOf "2026-03-02", to: Booking.dateOf "2026-03-04" }
+  let n <- Db.from Booking |> Db.count
+  Task.succeed (
+    { answer: r.answer, bookings: n }
+      == {
+        answer: FormRejected [{ field: "", message: "That room is already booked for those days." }],
+        bookings: 1,
+      }
+  )
+}
+
+test "a booking that starts on the other's last day is stored" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let _ <- Db.insert Booking {
+    room: room,
+    owner: me,
+    from: Booking.dateOf "2026-03-01",
+    to: Booking.dateOf "2026-03-03",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: room })
+  let r <- Test.submit (Book { id: room }) { from: Booking.dateOf "2026-03-03", to: Booking.dateOf "2026-03-05" }
+  let n <- Db.from Booking |> Db.count
+  Task.succeed (
+    { answer: r.answer, bookings: n }
+      == { answer: Redirected (Show { id: room }), bookings: 2 }
+  )
+}
