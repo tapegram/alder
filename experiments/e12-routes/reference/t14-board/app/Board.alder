@@ -1,0 +1,117 @@
+module Board
+
+import Layout
+import Table.Ticket
+
+-- The board shows at once; the recent tickets and the open count are filled in after it shows,
+-- and the count is asked for again every ten seconds.
+route Board  = GET  "/board"        { }
+route Recent = GET  "/board/recent" { }
+route Open   = GET  "/board/open"   { }
+route Close  = POST "/board/tickets/{id}/close" { id: Ticket.TicketId }
+
+Board.load : Board.Params -> Session -> Query (List Ticket)
+Board.load params session =
+  Db.from Ticket
+    |> Db.where (Ticket.status.eq Pending)
+    |> Db.orderBy Ticket.created.asc
+    |> Db.all
+
+Board.view : List Ticket -> Session -> Html
+Board.view open session =
+  <Layout.Page title="Board">
+    <h1>Board</h1>
+    <p>Open tickets: <span id="open" load={Open {}} every="10s">…</span></p>
+    <h2>Recent</h2>
+    <section id="recent" load={Recent {}}>Loading…</section>
+    <h2>Open</h2>
+    <al-stack gap="sm">
+      {for t in open ->
+        <al-card>
+          <p>{t.title}</p>
+          <al-button variant="outline" click={Close { id: t.id }}>Close</al-button>
+        </al-card>}
+    </al-stack>
+  </Layout.Page>
+
+Recent.load : Recent.Params -> Session -> Query (List Ticket)
+Recent.load params session = Db.from Ticket |> Db.orderBy Ticket.created.desc |> Db.limit 5 |> Db.all
+
+Recent.view : List Ticket -> Session -> Html
+Recent.view tickets session =
+  <section id="recent"><ul>{for t in tickets -> <li>{t.title}</li>}</ul></section>
+
+Open.load : Open.Params -> Session -> Query Int
+Open.load params session = Db.from Ticket |> Db.where (Ticket.status.eq Pending) |> Db.count
+
+-- The badge renders its own `load` and `every` again, so the timer keeps running after a patch.
+Open.view : Int -> Session -> Html
+Open.view n session = <span id="open" load={Open {}} every="10s">{Text.fromInt n}</span>
+
+Close.update : Close.Params -> Session -> Task Response
+Close.update params session = {
+  let _ <- Db.update Ticket params.id (\t -> { t | status: Closed })
+  Task.succeed Response.refresh
+}
+
+test "the badge counts pending tickets, again after an insert and after a close" = {
+  let a <- Db.insert Ticket { title: Text.NonEmpty "Printer jam" }
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Old laptop", status: Closed }
+  let _ <- Test.get (Board {})
+  let first <- Test.load (Open {})
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "VPN down" }
+  let polled <- Test.load (Open {})
+  let _ <- Db.update Ticket a (\t -> { t | status: Closed })
+  let again <- Test.load (Open {})
+  Task.succeed ({ first: Test.text "#open" first.doc, polled: Test.text "#open" polled.doc, again: Test.text "#open" again.doc } == { first: Just "1", polled: Just "2", again: Just "1" })
+}
+
+test "the badge keeps polling every ten seconds" = {
+  let _ <- Test.get (Board {})
+  let r <- Test.load (Open {})
+  Task.succeed (Maybe.isJust (Test.attr "data-on-interval__duration.10s" "#open" r.doc))
+}
+
+test "recent lists the five newest of six, newest first, closed ones too" = {
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "One" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Two" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Three", status: Closed }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Four" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Five" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Six" }
+  let page <- Test.get (Board {})
+  let r <- Test.load (Recent {})
+  Task.succeed ({ before: Test.count "#recent li" page.doc, after: Test.texts "#recent li" r.doc } == { before: 0, after: ["Six", "Five", "Four", "Three", "Two"] })
+}
+
+test "recent with no tickets lists nothing" = {
+  let _ <- Test.get (Board {})
+  let r <- Test.load (Recent {})
+  Task.succeed ({ items: Test.count "#recent li" r.doc, section: Test.has "#recent" r.doc } == { items: 0, section: True })
+}
+
+test "the board lists the pending tickets only" = {
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Printer jam" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Old laptop", status: Closed }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "VPN down" }
+  let page <- Test.get (Board {})
+  Task.succeed (Test.texts "al-card p" page.doc == ["Printer jam", "VPN down"])
+}
+
+test "closing a ticket refreshes the board and closes only that one" = {
+  let a <- Db.insert Ticket { title: Text.NonEmpty "Printer jam" }
+  let _ <- Test.advance 1000
+  let b <- Db.insert Ticket { title: Text.NonEmpty "VPN down" }
+  let _ <- Test.get (Board {})
+  let r <- Test.click (Close { id: a })
+  let ta <- Db.get Ticket a
+  let tb <- Db.get Ticket b
+  Task.succeed ({ answer: r.answer, listed: Test.texts "al-card p" r.doc, a: Maybe.map (\t -> t.status) ta, b: Maybe.map (\t -> t.status) tb } == { answer: Refreshed, listed: ["VPN down"], a: Just Closed, b: Just Pending })
+}

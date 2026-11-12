@@ -1,0 +1,30 @@
+module Table.Ticket
+
+type TicketId = brand Text
+
+-- `Pending` is a ticket still open; it cannot be `Open`, the name of Board's badge route.
+type Status = Pending | Closed
+
+table Ticket {
+  id: TicketId @id,
+  title: Text.NonEmpty,
+  status: Status = Pending,
+  created: Time @created,
+}
+
+isPending : Ticket -> Bool
+isPending t = match t.status {
+  Pending -> True,
+  Closed -> False,
+}
+
+test "isPending is true only for a pending ticket" = {
+  let p = { id: TicketId "p", title: Text.NonEmpty "A", status: Pending, created: Time.fromMillis 0 }
+  Task.succeed ([isPending p, isPending { p | status: Closed }] == [True, False])
+}
+
+test "a ticket is added pending" = {
+  let id <- Db.insert Ticket { title: Text.NonEmpty "Printer jam" }
+  let t <- Db.get Ticket id
+  Task.succeed (Maybe.map isPending t == Just True)
+}

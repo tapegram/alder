@@ -113,3 +113,29 @@
 - **No language refusal changed the text.** Hidden 3/3 on both solutions, names `ok`. Probes: a
   `More` whose offset is one short fails "two scrolls…" and "no entry repeats"; an
   oldest-first feed fails "no entry repeats" and "posting an entry puts it first".
+
+## T14 (Task 13)
+
+- **The constructor is renamed (the gate rule): `type Status = Pending | Closed`.** With the
+  plan's names, `type Status = Open | Closed` in `Table.Ticket` and `route Open` in `Board`, the
+  checker refuses the route: `app/Board.alder:10:7: error[E0044]: route `Open` is named like the
+  constructor `Open` (of `Table.Ticket.Status`): `Open { … }` cannot mean both; rename the
+  route`. The route's name is the plan's (and chapter 6's `Dashboard`), so the constructor
+  changes, as ruled: the text's Names block has `Pending | Closed` and
+  `status: Status = Pending`, and says in one sentence why it is not `Open`. The hidden tests
+  read `Pending` and `Closed`.
+- **What the text adds to fix what the hidden tests read** (and where it departs from chapter
+  6's `Dashboard`, it says so): `Recent`'s view uses `<li>` (the chapter's uses `<p>`), the
+  title as each `<li>`'s whole text, no other `<li>` (no empty-state one), newest first, closed
+  tickets included; `Open`'s view repeats `load={Open {}} every="10s"` on its root (as the
+  chapter does; ten seconds, not thirty) and its whole text is the count in digits; the
+  close buttons are on the page as `Board` renders it (not inside `#recent`/`#open`), so
+  `Test.click (Board.Close { id })` finds them after a plain `Test.get`. No users: `App` has
+  `session { }`, no `login`, no routes; tickets are added outside the app (as T9's rooms).
+- **The polling step bites.** With `Open.view` reduced to `<span id="open">`, the hidden "the
+  badge counts …" fails (checked by hand on a copy of the reference), as the spec intends.
+- **Mutation.** Reference 7/7 at once. The alt first left `Board.load:21 orderBy reversed`
+  alive (its pending list's order, the alt's own choice); its test "only pending tickets have a
+  close button, newest first" now fixes that order. Both score 1.000, no `SURVIVORS.md`.
+- **verify.sh** has no expected count for `t14-board` yet (added in a later task); the hidden
+  module has 3 tests.

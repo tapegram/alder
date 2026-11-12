@@ -1,0 +1,127 @@
+module Board
+
+import Table.Ticket
+import Layout
+
+route Board = GET "/board" { }
+
+-- The two slow parts, each asked for by its element once the board has shown.
+route Recent = GET "/board/recent" { }
+route Open = GET "/board/open" { }
+
+-- A ticket's state changes, so its button sends a PATCH.
+route Close = PATCH "/tickets/{id}" { id: Ticket.TicketId }
+
+-- The badge: rendered by the board and by Open alike, so the patch keeps its timer.
+badge : Text -> Html
+badge text = <span id="open" class="badge" load={Open {}} every="10s">{text}</span>
+
+Board.load : Board.Params -> Session -> Query (List Ticket)
+Board.load p session = {
+  let all <- Db.from Ticket |> Db.orderBy Ticket.created.desc |> Db.all
+  Query.succeed (List.filter Ticket.isPending all)
+}
+
+Board.view : List Ticket -> Session -> Html
+Board.view pending session =
+  <Layout.Page title="Support board">
+    <header>
+      <h1>Support board</h1>
+      <p>Pending {badge "–"}</p>
+    </header>
+    <section id="recent" load={Recent {}}>
+      <p>Loading the newest tickets…</p>
+    </section>
+    <table id="pending">
+      <tbody>
+        {for t in pending ->
+          <tr>
+            <td class="title">{t.title}</td>
+            <td><button click={Close { id: t.id }}>Close</button></td>
+          </tr>}
+      </tbody>
+    </table>
+  </Layout.Page>
+
+Recent.load : Recent.Params -> Session -> Query (List Ticket)
+Recent.load p session = {
+  let all <- Db.from Ticket |> Db.orderBy Ticket.created.desc |> Db.all
+  Query.succeed (List.take 5 all)
+}
+
+Recent.view : List Ticket -> Session -> Html
+Recent.view tickets session =
+  <section id="recent">
+    <h2>Newest</h2>
+    <ol>{for t in tickets -> <li><span class="title">{t.title}</span></li>}</ol>
+  </section>
+
+Open.load : Open.Params -> Session -> Query Int
+Open.load p session = {
+  let all <- Db.from Ticket |> Db.all
+  Query.succeed (List.length (List.filter Ticket.isPending all))
+}
+
+Open.view : Int -> Session -> Html
+Open.view n session = badge (Text.fromInt n)
+
+Close.update : Close.Params -> Session -> Task Response
+Close.update p session = {
+  let _ <- Db.update Ticket p.id (\t -> { t | status: Closed })
+  Task.succeed Response.refresh
+}
+
+test "the count follows inserts and closes" = {
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "A" }
+  let b <- Db.insert Ticket { title: Text.NonEmpty "B" }
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "Z", status: Closed }
+  let _ <- Test.get (Board {})
+  let one <- Test.load (Open {})
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "C" }
+  let two <- Test.load (Open {})
+  let _ <- Db.update Ticket b (\t -> { t | status: Closed })
+  let three <- Test.load (Open {})
+  Task.succeed ([Test.text "#open" one.doc, Test.text "#open" two.doc, Test.text "#open" three.doc] == [Just "2", Just "3", Just "2"])
+}
+
+test "the badge polls every ten seconds after its answer" = {
+  let _ <- Test.get (Board {})
+  let r <- Test.load (Open {})
+  Task.succeed (Test.attr "data-on-interval__duration.10s" "#open" r.doc != Nothing)
+}
+
+test "the newest five, newest first, whatever their status" = {
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "t1" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "t2", status: Closed }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "t3" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "t4" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "t5" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "t6" }
+  let _ <- Test.get (Board {})
+  let r <- Test.load (Recent {})
+  Task.succeed (Test.texts "#recent li" r.doc == ["t6", "t5", "t4", "t3", "t2"])
+}
+
+test "only pending tickets have a close button, newest first" = {
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "A" }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "B", status: Closed }
+  let _ <- Test.advance 1000
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "C" }
+  let page <- Test.get (Board {})
+  Task.succeed ({ titles: Test.texts "#pending .title" page.doc, buttons: Test.count "#pending button" page.doc } == { titles: ["C", "A"], buttons: 2 })
+}
+
+test "a close refreshes the board without the ticket" = {
+  let a <- Db.insert Ticket { title: Text.NonEmpty "A" }
+  let _ <- Db.insert Ticket { title: Text.NonEmpty "B" }
+  let _ <- Test.get (Board {})
+  let r <- Test.click (Close { id: a })
+  let after <- Db.get Ticket a
+  Task.succeed ({ answer: r.answer, titles: Test.texts "#pending .title" r.doc, closed: Maybe.map Ticket.isPending after } == { answer: Refreshed, titles: ["B"], closed: Just False })
+}

@@ -1,0 +1,20 @@
+module Table.Ticket
+
+type TicketId = brand Text
+
+type Status = Pending | Closed
+
+-- A ticket is added Pending (open: the default) by whoever runs the board's database; the board's only
+-- write is closing one.
+table Ticket {
+  id: TicketId @id,
+  title: Text.NonEmpty,
+  status: Status = Pending,
+  created: Time @created,
+}
+
+test "a new ticket is pending" = {
+  let id <- Db.insert Ticket { title: Text.NonEmpty "Printer jam" }
+  let t <- Db.get Ticket id
+  Task.succeed (Maybe.map (\x -> x.status) t == Just Pending)
+}

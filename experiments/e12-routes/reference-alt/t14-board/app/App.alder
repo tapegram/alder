@@ -1,0 +1,18 @@
+module App
+
+import Layout
+
+-- No users: the board is open to anyone, so the session carries nothing.
+session { }
+
+notFound : Html
+notFound =
+  <Layout.Page title="Not found">
+    <h1>Not found</h1>
+  </Layout.Page>
+
+error : Error -> Html
+error err =
+  <Layout.Page title="Error">
+    <h1>Something went wrong</h1>
+  </Layout.Page>
