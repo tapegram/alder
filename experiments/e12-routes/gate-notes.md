@@ -91,9 +91,11 @@
 
 - **The cursor is `More { after: Int }`, the number of entries already shown (user's ruling).**
   The spec's T13 bullet left the cursor's type to the model (`More { before: … }`, an `Int`
-  offset or a key). But `Test.intersect r` finds the element on the held page that requests
-  exactly `r`, so a hidden test must construct the very route value the page's sentinel asks
-  for, which it cannot do for a type it does not know. Under the spec's rule for "a behaviour …
+  offset or a key). `Test.intersect r` matches the page's sentinel by `r`'s path only (book 10:
+  the query is not compared), but the hidden test must still write a value of `More`'s params
+  type, `Feed.Index.More { after: 10 }`, and that value has to type-check against the model's
+  route; a test cannot be written for a parameter whose name and type it does not know. Under
+  the spec's rule for "a behaviour …
   the test cannot set up", the Names block fixes `route More = GET "/feed/more" { after: Int }`
   and says the first sentinel asks for `More { after: 10 }`, as chapter 6's `Feed` does. The
   alternative (drop the scroll test, record the cursor choice as a signal only) was declined:
@@ -101,6 +103,11 @@
   model's choice, so a keyset cursor (robust to entries posted between scrolls) is not
   observable in E12; offset paging, which the fixed cursor implies, repeats an entry when one is
   posted between scrolls, so no hidden test posts between scrolls.
+- **Known blind spot (tests not changed).** Since `Test.intersect` compares only the path, the
+  hidden tests fetch `More { after: 10 }` and `{ after: 20 }` themselves: a sentinel that
+  requests a wrong `after` (say `More { after: 0 }`) still passes, as long as `More` answers
+  correctly for the values the test sends. The text fixes what the sentinel asks for; the hidden
+  tests do not check it.
 - **Brand constructors only inside a `test`.** The hidden module's helper `insertAll` takes the
   texts as `Text.NonEmpty` values made in each test (`Text.NonEmpty (…)` in a top-level helper is
   E0011); the clock is set, then advanced a second before each insert, so `created` differs.

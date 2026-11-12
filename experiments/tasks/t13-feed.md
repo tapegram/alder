@@ -28,7 +28,10 @@ further tables or fields.
   where `after` is the number of entries already shown: it answers the
   entries after the first `after` (the next ten, newest first, each an
   `<li>` as on `/feed`), then the next sentinel, which asks for `More`
-  with the new number shown; none after the last entry. The first page's
+  with the new number shown; none after the last entry. As in chapter 6,
+  `More`'s answer replaces the sentinel that asked for it: its root
+  element carries that sentinel's `id`, so each sentinel's `id` is
+  different. The first page's
   sentinel asks for `More { after: 10 }`. The sentinel is an element with
   `intersect=` (chapter 6, "Infinite scroll"), not an `<li>`, and is the
   only element with `intersect=`. Neither `/feed` nor `More`'s answer has
