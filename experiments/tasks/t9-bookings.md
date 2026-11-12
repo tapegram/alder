@@ -34,47 +34,49 @@ an office:
 The tables are exactly the ones below, with exactly these fields: add no
 further tables or fields.
 
-- `app/User.alder`: module `User`, `type UserId = brand Text`, and
+- `app/Table/User.alder`: module `Table.User`, `type UserId = brand Text`, and
   `table User { id: UserId @id, email: Text.Email @unique, name: Text.NonEmpty, passwordHash: Text, created: Time @created }`.
 - `app/App.alder`: module `App`, with exactly
-  `session { user: Maybe User.UserId }`, `login = Auth.Login`, and
-  `msg Logout`, which answers `Redirect (Auth.Login {})`.
-- `app/Room.alder`: module `Room`, `type RoomId = brand Text`, and
+  `session { user: Maybe User.UserId }`, `login = Auth.Login.Login`, and
+  `route Logout`, which answers `Response.redirect (Auth.Login.Login {})`.
+- `app/Table/Room.alder`: module `Table.Room`, `type RoomId = brand Text`, and
   `table Room { id: RoomId @id, name: Text.NonEmpty }`.
-- `app/Booking.alder`: module `Booking`, `type BookingId = brand Text`, and
+- `app/Table/Booking.alder`: module `Table.Booking`, `type BookingId = brand Text`, and
   `table Booking { id: BookingId @id, room: Room.RoomId @ref Room, owner: User.UserId @ref User, from: Date, to: Date }`.
 - Dates are shown as `YYYY-MM-DD` (`Date.toText`), as the whole text of
   their element.
-- `app/Rooms/Index.alder`: page module `Rooms.Index`,
-  `page "/rooms" { } requires user`. The rooms are listed in an element
+- `app/Rooms/Index.alder`: route module `Rooms.Index`,
+  `route Index = GET "/rooms" { } requires user`. The rooms are listed in an element
   with `id="rooms"`, one `<li>` per room, ordered by name; inside it, an
   element with `class="name"` has the room's name as its whole text (a
   link to the room's page), and one with `class="free"` the room's next
   free date.
-- `app/Rooms/Show.alder`: page module `Rooms.Show`,
-  `page "/rooms/{id}" { id: Room.RoomId } requires user`. The room's name is
+- `app/Rooms/Show.alder`: route module `Rooms.Show`,
+  `route Show = GET "/rooms/{id}" { id: Room.RoomId } requires user`. The room's name is
   the whole text of an element with `id="name"`. Its bookings are listed in
   an element with `id="bookings"`, one `<li>` per booking, ordered by
   `from`; inside it, elements with `class="from"` and `class="to"` have
   the booking's dates. `form NewBooking = { from: Date, to: Date }`, posted
-  by `msg Book form NewBooking`, answers `Redirect (Rooms.Show { id: … })`
-  (the same room) when the booking is stored; the form has
-  `<Errors form />`, where a refused booking's message is shown.
-- `app/Bookings/Index.alder`: page module `Bookings.Index`,
-  `page "/bookings" { } requires user`. The user's bookings are listed in
+  by `route Book { id: Room.RoomId } form NewBooking`, answers
+  `Response.redirect (Rooms.Show.Show { id: … })` (the same room) when the
+  booking is stored; the form has `<Errors form />`, where a refused
+  booking's message is shown.
+- `app/Bookings/Index.alder`: route module `Bookings.Index`,
+  `route Index = GET "/bookings" { } requires user`. The user's bookings are listed in
   an element with `id="mine"`, one `<li>` per booking, ordered by `from`;
   inside it, an element with `class="room"` has the room's name, and one
   with `class="from"` the booking's `from` date.
-- `app/Bookings/Show.alder`: page module `Bookings.Show`,
-  `page "/bookings/{id}" { id: Booking.BookingId } requires user`. The
+- `app/Bookings/Show.alder`: route module `Bookings.Show`,
+  `route Show = GET "/bookings/{id}" { id: Booking.BookingId } requires user`. The
   room's name is the whole text of an element with `id="room"`, the dates
-  of elements with `id="from"` and `id="to"`. `msg Cancel` (no
-  parameters) is sent by a button with `id="cancel"`, shown only while the
+  of elements with `id="from"` and `id="to"`. `route Cancel { id: Booking.BookingId }`
+  is sent by a button with `id="cancel"`, shown only while the
   booking can be cancelled; it deletes the booking and answers
-  `Redirect (Bookings.Index {})`.
-- `app/Auth/Login.alder`: page module `Auth.Login`, `page "/login" { }`, with
-  the `Password` capability, form `Credentials` and `msg Submit` as in the
-  reference; a successful login answers `Redirect (Rooms.Index {})`.
+  `Response.redirect (Bookings.Index.Index {})`.
+- `app/Auth/Login.alder`: route module `Auth.Login`,
+  `route Login = GET "/login" { }`, with the `Password` capability and
+  form `Credentials` as in the reference; a successful login answers
+  `Response.redirect (Rooms.Index.Index {})`.
 
 Also write tests (`test "…" = …`, chapter 10) in the modules they test: a
 booking that overlaps another of the same room is refused and not stored,

@@ -34,49 +34,50 @@ Write a complete new Alder app (not the todo app) where users form teams:
 The tables are exactly the ones below, with exactly these fields: add no
 further tables or fields.
 
-- `app/User.alder`: module `User`, `type UserId = brand Text`, and
+- `app/Table/User.alder`: module `Table.User`, `type UserId = brand Text`, and
   `table User { id: UserId @id, email: Text.Email @unique, name: Text.NonEmpty, passwordHash: Text, created: Time @created }`.
 - `app/App.alder`: module `App`, with exactly
-  `session { user: Maybe User.UserId }`, `login = Auth.Login`, and
-  `msg Logout`, which answers `Redirect (Auth.Login {})`.
-- `app/Team.alder`: module `Team`, `type TeamId = brand Text`, and
+  `session { user: Maybe User.UserId }`, `login = Auth.Login.Login`, and
+  `route Logout`, which answers `Response.redirect (Auth.Login.Login {})`.
+- `app/Table/Team.alder`: module `Table.Team`, `type TeamId = brand Text`, and
   `table Team { id: TeamId @id, name: Text.NonEmpty, owner: User.UserId @ref User }`.
-- `app/Member.alder`: module `Member`, `type MemberId = brand Text`, and
+- `app/Table/Member.alder`: module `Table.Member`, `type MemberId = brand Text`, and
   `table Member { id: MemberId @id, team: Team.TeamId @ref Team, user: User.UserId @ref User }`:
   one row per member who is not the owner (the owner has no `Member` row).
-- `app/Invite.alder`: module `Invite`, `type InviteId = brand Text`,
+- `app/Table/Invite.alder`: module `Table.Invite`, `type InviteId = brand Text`,
   `type Status = Pending | Accepted | Declined`, and
   `table Invite { id: InviteId @id, team: Team.TeamId @ref Team, email: Text.Email, status: Status = Pending }`.
-- `app/Teams/Index.alder`: page module `Teams.Index`,
-  `page "/teams" { } requires user`. The teams are listed in an element
+- `app/Teams/Index.alder`: route module `Teams.Index`,
+  `route Index = GET "/teams" { } requires user`. The teams are listed in an element
   with `id="teams"`, one `<li>` per team, ordered by name; inside it, an
   element with `class="name"` has the team's name as its whole text.
   `form NewTeam = { name: Text.NonEmpty }`, posted by
-  `msg Create form NewTeam`, answers `Redirect (Teams.Show { id: … })`
-  (the new team).
-- `app/Teams/Show.alder`: page module `Teams.Show`,
-  `page "/teams/{id}" { id: Team.TeamId } requires user`. The team's name
+  `route Create form NewTeam`, answers
+  `Response.redirect (Teams.Show.Show { id: … })` (the new team).
+- `app/Teams/Show.alder`: route module `Teams.Show`,
+  `route Show = GET "/teams/{id}" { id: Team.TeamId } requires user`. The team's name
   is the whole text of an element with `id="name"`. The members are listed
   in an element with `id="members"`, one `<li>` per member, the owner first
   and then the others ordered by name; inside it, an element with
   `class="name"` has the user's name as its whole text. The Remove button
   sits inside its member's `<li>`, has `class="remove"`, and sends
-  `msg Remove { user: User.UserId }`.
+  `route Remove { id: Team.TeamId, user: User.UserId }`.
   `form NewInvite = { email: Text.Email }` is posted by
-  `msg SendInvite form NewInvite`.
-  `msg Remove` answers `Redirect (Teams.Show { id: … })` (the same team).
-  `msg SendInvite` answers `Redirect (Teams.Show { id: … })` (the same team).
-- `app/Invites/Index.alder`: page module `Invites.Index`,
-  `page "/invites" { } requires user`. The waiting invites are listed in
+  `route SendInvite { id: Team.TeamId } form NewInvite`.
+  `route Remove` answers `Response.redirect (Teams.Show.Show { id: … })` (the same team).
+  `route SendInvite` answers `Response.redirect (Teams.Show.Show { id: … })` (the same team).
+- `app/Invites/Index.alder`: route module `Invites.Index`,
+  `route Index = GET "/invites" { } requires user`. The waiting invites are listed in
   an element with `id="invites"`, one `<li>` per invite; inside it, an
   element with `class="team"` has the team's name as its whole text.
-  `msg Accept { id: Invite.InviteId }` answers
-  `Redirect (Teams.Show { id: … })` (the invite's team), and
-  `msg Decline { id: Invite.InviteId }` answers
-  `Redirect (Invites.Index {})`.
-- `app/Auth/Login.alder`: page module `Auth.Login`, `page "/login" { }`, with
-  the `Password` capability, form `Credentials` and `msg Submit` as in the
-  reference; a successful login answers `Redirect (Teams.Index {})`.
+  `route Accept { id: Invite.InviteId }` answers
+  `Response.redirect (Teams.Show.Show { id: … })` (the invite's team), and
+  `route Decline { id: Invite.InviteId }` answers
+  `Response.redirect (Invites.Index.Index {})`.
+- `app/Auth/Login.alder`: route module `Auth.Login`,
+  `route Login = GET "/login" { }`, with the `Password` capability and
+  form `Credentials` as in the reference; a successful login answers
+  `Response.redirect (Teams.Index.Index {})`.
 
 Also write tests (`test "…" = …`, chapter 10) in the modules they test: a
 team's page is not found for a user who is not a member; a member cannot

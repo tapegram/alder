@@ -30,52 +30,54 @@ Write a complete new Alder app (not the todo app) where users work in orgs:
 The tables are exactly the ones below, with exactly these fields: add no
 further tables or fields.
 
-- `app/User.alder`: module `User`, `type UserId = brand Text`, and
+- `app/Table/User.alder`: module `Table.User`, `type UserId = brand Text`, and
   `table User { id: UserId @id, email: Text.Email @unique, name: Text.NonEmpty, passwordHash: Text, created: Time @created }`.
 - `app/App.alder`: module `App`, with exactly
   `session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership }`,
-  `login = Auth.Login`, `choose org = Orgs.Index`,
-  `silo org { Project, Todo }`, and `msg Logout`, which answers
-  `Redirect (Auth.Login {})`.
-- `app/Org.alder`: module `Org`, `type OrgId = brand Text`, and
+  `login = Auth.Login.Login`, `choose org = Orgs.Index.Index`,
+  `silo org { Project, Todo }`, and `route Logout`, which answers
+  `Response.redirect (Auth.Login.Login {})`.
+- `app/Table/Org.alder`: module `Table.Org`, `type OrgId = brand Text`, and
   `table Org { id: OrgId @id, name: Text.NonEmpty }`.
-- `app/Membership.alder`: module `Membership`,
+- `app/Table/Membership.alder`: module `Table.Membership`,
   `type MembershipId = brand Text`, and
   `table Membership { id: MembershipId @id, user: User.UserId @ref User, org: Org.OrgId @ref Org }`:
   one row per member of an org.
-- `app/Project.alder`: module `Project`, `type ProjectId = brand Text`, and
+- `app/Table/Project.alder`: module `Table.Project`, `type ProjectId = brand Text`, and
   `table Project { id: ProjectId @id, name: Text.NonEmpty, org: Org.OrgId @ref Org @partition org }`.
-- `app/Todo.alder`: module `Todo`, `type TodoId = brand Text`, and
+- `app/Table/Todo.alder`: module `Table.Todo`, `type TodoId = brand Text`, and
   `table Todo { id: TodoId @id, title: Text.NonEmpty, done: Bool = False, project: Project.ProjectId @ref Project @cascade, org: Org.OrgId @ref Org @partition org }`.
-- `app/Orgs/Index.alder`: page module `Orgs.Index`,
-  `page "/orgs" { } requires user`. The user's orgs are listed in an
+- `app/Orgs/Index.alder`: route module `Orgs.Index`,
+  `route Index = GET "/orgs" { } requires user`. The user's orgs are listed in an
   element with `id="orgs"`, one `<li>` per org, ordered by name; inside
   it, an element with `class="name"` has the org's name as its whole
-  text, and its Open button sends `msg Open { org: Org.OrgId }`, which
-  answers `Redirect (Projects.Index {})`.
+  text, and its Open button sends `route Open { org: Org.OrgId }`, which
+  answers `Response.redirect (Projects.Index.Index {})`.
   `form NewOrg = { name: Text.NonEmpty }`, posted by
-  `msg Create form NewOrg`, answers `Redirect (Projects.Index {})`.
-- `app/Projects/Index.alder`: page module `Projects.Index`,
-  `page "/projects" { } requires user, org`. The org's name is the whole
+  `route Create form NewOrg`, answers `Response.redirect (Projects.Index.Index {})`.
+- `app/Projects/Index.alder`: route module `Projects.Index`,
+  `route Index = GET "/projects" { } requires user, org`. The org's name is the whole
   text of an element with `id="org"`. The projects are listed in an
   element with `id="projects"`, one `<li>` per project, ordered by name;
   inside it, an element with `class="name"` has the project's name as its
   whole text. `form NewProject = { name: Text.NonEmpty }`, posted by
-  `msg Create form NewProject`, answers
-  `Redirect (Projects.Show { id: … })` (the new project).
-- `app/Projects/Show.alder`: page module `Projects.Show`,
-  `page "/projects/{id}" { id: Project.ProjectId } requires user, org`.
+  `route Create form NewProject`, answers
+  `Response.redirect (Projects.Show.Show { id: … })` (the new project).
+- `app/Projects/Show.alder`: route module `Projects.Show`,
+  `route Show = GET "/projects/{id}" { id: Project.ProjectId } requires user, org`.
   The project's name is the whole text of an element with `id="name"`.
   Its to-dos are listed in an element with `id="todos"`, one `<li>` per
   to-do, ordered by title; the `<li>` of a done to-do has the class
   `done`; inside it, an element with `class="title"` has the to-do's title
-  as its whole text, and its button sends `msg Toggle { id: Todo.TodoId }`.
+  as its whole text, and its button sends
+  `route Toggle { id: Project.ProjectId, todo: Todo.TodoId }`.
   `form NewTodo = { title: Text.NonEmpty }` is posted by
-  `msg Add form NewTodo`. `msg Add` and `msg Toggle` each answer
-  `Redirect (Projects.Show { id: … })` (the same project).
-- `app/Auth/Login.alder`: page module `Auth.Login`, `page "/login" { }`, with
-  the `Password` capability, form `Credentials` and `msg Submit` as in the
-  reference; a successful login answers `Redirect (Orgs.Index {})`.
+  `route Add { id: Project.ProjectId } form NewTodo`. `route Add` and `route Toggle` each answer
+  `Response.redirect (Projects.Show.Show { id: … })` (the same project).
+- `app/Auth/Login.alder`: route module `Auth.Login`,
+  `route Login = GET "/login" { }`, with the `Password` capability and
+  form `Credentials` as in the reference; a successful login answers
+  `Response.redirect (Orgs.Index.Index {})`.
 
 Also write tests (`test "…" = …`, chapter 10) in the modules they test: a
 member sees only their org's projects; a user cannot open an org they are
