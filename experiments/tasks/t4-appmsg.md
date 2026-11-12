@@ -24,28 +24,33 @@ further tables or fields.
 - `app/Theme.alder`: module `Theme`, `type Theme = Light | Dark`.
 - `app/App.alder`: module `App`, with exactly
   `session { user: Maybe User.UserId, theme: Theme.Theme = Light }`,
-  `login = Auth.Login`, and two messages: `msg SwitchTheme` (flips the
-  session's theme and answers `Rerender`) and `msg Logout` (sets `user` to
-  `Nothing` and answers `Redirect (Auth.Login {})`).
+  `login = Auth.Login.Login`, and two routes: `route SwitchTheme` (flips
+  the session's theme and answers `Response.refresh`) and `route Logout`
+  (sets `user` to `Nothing` and answers
+  `Response.redirect (Auth.Login.Login {})`).
 - `app/Note.alder`: module `Note`, `type NoteId = brand Text`, and
   `table Note { id: NoteId @id, title: Text.NonEmpty, body: Text, owner: User.UserId @ref User, created: Time @created }`.
-- `app/Notes/Index.alder`: page module `Notes.Index`, `page "/" { } requires user`.
+- `app/Notes/Index.alder`: route module `Notes.Index`,
+  `route Index = GET "/" { } requires user`.
   `form NewNote = { title: Text.NonEmpty, body: Text }`, posted by
-  `msg Add form NewNote`, which answers `Redirect (Notes.Index {})`.
+  `route Add form NewNote`, which answers
+  `Response.redirect (Notes.Index.Index {})`.
   The notes are listed in an element with `id="notes"`, one `<li>` per
   note; each note's link to its page has `class="title"` and the note's
   title as its whole text.
-- `app/Notes/Show.alder`: page module `Notes.Show`,
-  `page "/notes/{id}" { id: Note.NoteId } requires user`. Another user's
-  note, or a missing one, is a 404 (`Query.notFound`). The title is the
-  whole text of an element with `id="title"`, the body of one with
-  `id="body"`. `form EditNote = { title: Text.NonEmpty, body: Text }`,
-  posted by `msg Save form EditNote`, answers
-  `Redirect (Notes.Show { id: … })` (the same note); `msg Delete` (no
-  parameters) answers `Redirect (Notes.Index {})`.
-- `app/Auth/Login.alder`: page module `Auth.Login`, `page "/login" { }`, with
-  the `Password` capability, form `Credentials` and `msg Submit` as in the
-  reference.
+- `app/Notes/Show.alder`: route module `Notes.Show`,
+  `route Show = GET "/notes/{id}" { id: Note.NoteId } requires user`.
+  Another user's note, or a missing one, is a 404 (`Query.notFound`), and
+  so is a `Save` or `Delete` of one (`Task.notFound`): nothing changes.
+  The title is the whole text of an element with `id="title"`, the body of
+  one with `id="body"`. `form EditNote = { title: Text.NonEmpty, body: Text }`,
+  posted by `route Save { id: Note.NoteId } form EditNote`, answers
+  `Response.redirect (Notes.Show.Show { id: … })` (the same note);
+  `route Delete { id: Note.NoteId }` answers
+  `Response.redirect (Notes.Index.Index {})`.
+- `app/Auth/Login.alder`: route module `Auth.Login`,
+  `route Login = GET "/login" { }`, with the `Password` capability and
+  form `Credentials` as in the reference.
 - Every page, `/login` included: the theme button has `id="theme"`, sends
   `App.SwitchTheme`, and its whole text is "Switch to dark" when the theme is
   `Light` and "Switch to light" when it is `Dark`; the "Log out" button sends

@@ -1,0 +1,97 @@
+module Notes.Index
+
+import Note
+import User
+import Theme
+import Layout
+
+route Index = GET  "/"      { }              requires user
+route Add   = POST "/notes" { } form NewNote requires user
+
+type Model = { notes: List Note }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let notes <-
+    Db.from Note
+      |> Db.where (Note.owner.eq session.user)
+      |> Db.orderBy Note.created.desc
+      |> Db.all
+  Query.succeed { notes: notes }
+}
+
+form NewNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insert Note { title: p.form.title, body: p.form.body, owner: session.user }
+  Task.succeed (Response.redirect (Index {}))
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Notes" theme={session.theme}>
+    <h1>Notes</h1>
+
+    <form submit={Add}>
+      <Errors form />
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+      <Textarea field="body" label="Body" />
+      <Errors field="body" />
+      <button>Add note</button>
+    </form>
+
+    <ul id="notes">
+      {for note in model.notes ->
+        <li><a class="title" href={Notes.Show.Show { id: note.id }}>{note.title}</a></li>}
+    </ul>
+  </Layout.Page>
+
+test "the theme flips through the page's button" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let before <- Test.get (Index {})
+  let once <- Test.click App.SwitchTheme
+  let twice <- Test.click App.SwitchTheme
+  Task.succeed ({ before: Test.has "body.dark" before.doc, answer: once.answer, once: once.session.theme, dark: Test.has "body.dark" once.doc, twice: twice.session.theme, light: Test.has "body.dark" twice.doc } == { before: False, answer: Refreshed, once: Dark, dark: True, twice: Light, light: False })
+}
+
+test "adding a note" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit (Add {}) { title: Text.NonEmpty "Milk", body: "" }
+  Task.succeed ({ answer: r.answer, titles: Test.texts "#notes .title" r.doc } == { answer: Redirected (Index {}), titles: ["Milk"] })
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
+}
+
+test "the list shows only the user's notes, newest first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "First", body: "", owner: me }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Theirs", body: "", owner: other }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Second", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.texts "#notes .title" page.doc == ["Second", "First"])
+}
+
+-- The list is still open when the session loses its user: the form's post is sent to log in and
+-- stores nothing.
+test "adding after logging out is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit (Add {}) { title: Text.NonEmpty "Milk", body: "" }
+  let stored <- Db.from Note |> Db.count
+  Task.succeed ({ answer: r.answer, stored: stored } == { answer: Redirected (Auth.Login.Login {}), stored: 0 })
+}

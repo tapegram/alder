@@ -1,0 +1,23 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  title: Text.NonEmpty,
+  body: Text,
+  owner: User.UserId @ref User,
+  created: Time @created,
+}
+
+-- The default rule of a reference, `@restrict`: notes keep their writer.
+test "a writer with notes stays" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "Milk", body: "", owner: me }
+  let r <- Test.run (Db.delete User me)
+  let users <- Db.from User |> Db.count
+  let notes <- Db.from Note |> Db.count
+  Task.succeed (Result.toMaybe r.value == Nothing && users == 1 && notes == 1)
+}

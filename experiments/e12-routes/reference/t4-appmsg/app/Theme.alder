@@ -1,0 +1,20 @@
+module Theme
+
+type Theme = Light | Dark
+
+flip : Theme -> Theme
+flip theme = match theme {
+  Light -> Dark,
+  Dark -> Light,
+}
+
+-- label is the switch button's text: what pressing it does.
+label : Theme -> Text
+label theme = match theme {
+  Light -> "Switch to dark",
+  Dark -> "Switch to light",
+}
+
+test "flip alternates" = flip (flip Light) == Light
+
+test "the label names the other theme" = List.map label [Light, Dark] == ["Switch to dark", "Switch to light"]

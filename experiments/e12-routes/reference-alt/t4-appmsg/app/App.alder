@@ -1,0 +1,46 @@
+module App
+
+import User
+import Theme
+import Layout
+
+session { user: Maybe User.UserId, theme: Theme.Theme = Light }
+
+login = Auth.Login.Login
+
+route SwitchTheme = PATCH  "/theme"   { }
+route Logout      = DELETE "/sign-in" { }
+
+SwitchTheme.update : SwitchTheme.Params -> Session -> Task Response
+SwitchTheme.update p session = {
+  let next = if session.theme == Dark then Light else Dark
+  let _ <- Session.put (\s -> { s | theme: next })
+  Task.succeed Response.refresh
+}
+
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
+}
+
+error : Error -> Html
+error err = <Layout.Shell heading="Something went wrong" theme={Light}><p>Please try again.</p></Layout.Shell>
+
+notFound : Html
+notFound = <Layout.Shell heading="Not found" theme={Light}><p>There is nothing here.</p></Layout.Shell>
+
+test "logging out from a note's page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Auth.Login.Login {})
+  let r <- Test.click Logout
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}) && r.session.user == Nothing)
+}
+
+test "the switch is a refresh of the page it is on, in the other theme" = {
+  let _ <- Test.get (Auth.Login.Login {})
+  let dark <- Test.click SwitchTheme
+  let light <- Test.click SwitchTheme
+  Task.succeed ([dark.answer, light.answer] == [Refreshed, Refreshed] && [dark.session.theme, light.session.theme] == [Dark, Light])
+}

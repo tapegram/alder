@@ -1,0 +1,67 @@
+module Auth.Login
+
+import User
+import Layout
+
+-- Password checking is outside the language: a capability implemented in Go.
+capability Password {
+  verify : { email: Text.Email, password: Text } -> Task (Maybe User.UserId),
+}
+
+-- The test stand-in: any user with a row passes, whatever the password.
+fake Password {
+  verify args = {
+    let user <- Db.from User |> Db.where (User.email.eq args.email) |> Db.first
+    Task.succeed (match user {
+      Just u -> Just u.id,
+      Nothing -> Nothing,
+    })
+  }
+}
+
+route Login  = GET  "/login" { }
+route SignIn = POST "/login" { } form Credentials
+
+type Model = { }
+
+Login.load : Login.Params -> Session -> Query Model
+Login.load params session = Query.succeed { }
+
+form Credentials = {
+  email: Text.Email,
+  password: Text.Secret,
+}
+
+SignIn.update : SignIn.Params -> Session -> Task Response
+SignIn.update p session = {
+  let found <- Password.verify { email: p.form.email, password: p.form.password }
+  match found {
+    Just id -> {
+      let _ <- Session.put (\s -> { s | user: Just id })
+      Task.succeed (Response.redirect (Notes.Index.Index {}))
+    },
+    Nothing -> Task.succeed (Response.invalid "Email or password is incorrect."),
+  }
+}
+
+Login.view : Model -> Session -> Html
+Login.view model session =
+  <Layout.Shell heading="Log in" theme={session.theme}>
+    <form submit={SignIn}>
+      <Errors form />
+      <Input field="email" label="Email" />
+      <Errors field="email" />
+      <Input field="password" label="Password" />
+      <Errors field="password" />
+      <button>Log in</button>
+    </form>
+  </Layout.Shell>
+
+test "a wrong login is refused, a right one signs in" = {
+  let _ <- Test.fake Password
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.get (Login {})
+  let wrong <- Test.submit (SignIn {}) { email: Text.Email "who@example.com", password: Text.Secret "x" }
+  let right <- Test.submit (SignIn {}) { email: Text.Email "me@example.com", password: Text.Secret "x" }
+  Task.succeed (wrong.answer == FormRejected [{ field: "", message: "Email or password is incorrect." }] && wrong.session.user == Nothing && right.answer == Redirected (Notes.Index.Index {}) && right.session.user == Just me)
+}

@@ -1,0 +1,135 @@
+module Notes.Show
+
+import Note
+import User
+import Layout
+
+route Show   = GET    "/notes/{id}" { id: Note.NoteId }                requires user
+route Save   = PATCH  "/notes/{id}" { id: Note.NoteId } form EditNote requires user
+route Delete = DELETE "/notes/{id}" { id: Note.NoteId }                requires user
+
+type Model = { note: Note }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <- Db.from Note |> Db.where (Note.id.eq params.id) |> Db.where (Note.owner.eq session.user) |> Db.first
+  match found {
+    Just note -> Query.succeed { note: note },
+    Nothing -> Query.notFound,
+  }
+}
+
+form EditNote = {
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+-- No `load` runs before a write: each looks the note up among the user's own again.
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session = {
+  let found <- Db.from Note |> Db.where (Note.id.eq p.id) |> Db.where (Note.owner.eq session.user) |> Db.first
+  match found {
+    Nothing -> Task.notFound,
+    Just note -> {
+      let _ <- Db.update Note note.id (\n -> { n | title: p.form.title, body: p.form.body })
+      Task.succeed (Response.redirect (Show { id: note.id }))
+    },
+  }
+}
+
+Delete.update : Delete.Params -> Session -> Task Response
+Delete.update p session = {
+  let found <- Db.from Note |> Db.where (Note.id.eq p.id) |> Db.where (Note.owner.eq session.user) |> Db.first
+  match found {
+    Nothing -> Task.notFound,
+    Just note -> {
+      let _ <- Db.delete Note note.id
+      Task.succeed (Response.redirect (Notes.Index.Index {}))
+    },
+  }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Shell heading="Note" theme={session.theme}>
+    <article>
+      <h2 id="title">{model.note.title}</h2>
+      <div id="body">{model.note.body}</div>
+    </article>
+    <details>
+      <summary>Edit</summary>
+      <form submit={Save { id: model.note.id }}>
+        <Errors form />
+        <Input field="title" label="Title" value={model.note.title} />
+        <Errors field="title" />
+        <Textarea field="body" label="Text" value={model.note.body} />
+        <button>Save changes</button>
+      </form>
+    </details>
+    <form submit={Delete { id: model.note.id }}><button>Delete note</button></form>
+    <p><a href={Notes.Index.Index {}}>Back</a></p>
+  </Layout.Shell>
+
+test "a stranger's note is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "", owner: me }
+  let _ <- Test.login { user: Just (User.UserId "stranger") }
+  let r <- Test.open (Show { id: id })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "the theme flips on a note's page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "", owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let r <- Test.click App.SwitchTheme
+  Task.succeed (Test.has "body.dark" r.doc)
+}
+
+-- The titles of every note, oldest first: what the tests below expect to be left.
+titles : Query (List Text.NonEmpty)
+titles = {
+  let notes <- Db.from Note |> Db.orderBy Note.created.asc |> Db.all
+  Query.succeed (List.map (\n -> n.title) notes)
+}
+
+test "the second of two notes is shown, edited and deleted" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Db.insert Note { title: Text.NonEmpty "One", body: "", owner: me }
+  let two <- Db.insert Note { title: Text.NonEmpty "Two", body: "b", owner: me }
+  let _ <- Test.login { user: Just me }
+  let shown <- Test.get (Show { id: two })
+  let saved <- Test.submit (Save { id: two }) { title: Text.NonEmpty "Deux", body: "zwei" }
+  let edited <- titles
+  let gone <- Test.click (Delete { id: two })
+  let left <- titles
+  Task.succeed (Test.text "#title" shown.doc == Just "Two" && saved.answer == Redirected (Show { id: two }) && Test.text "#title" saved.doc == Just "Deux" && Test.text "#body" saved.doc == Just "zwei" && edited == [Text.NonEmpty "One", Text.NonEmpty "Deux"] && gone.answer == Redirected (Notes.Index.Index {}) && left == [Text.NonEmpty "One"])
+}
+
+-- A page left open while the session changed: logged out, the writes go to log in; as a
+-- stranger, they are a 404. The note is untouched either way.
+test "an open page's writes after the user changed" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Note { title: Text.NonEmpty "Mine", body: "", owner: me }
+  let visit <- Test.open (Show { id: id })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let _ <- Test.login { user: Nothing }
+  let s1 <- Test.submit (Save { id: id }) { title: Text.NonEmpty "X", body: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let _ <- Test.login { user: Nothing }
+  let d1 <- Test.click (Delete { id: id })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let _ <- Test.login { user: Just (User.UserId "stranger") }
+  let s2 <- Test.submit (Save { id: id }) { title: Text.NonEmpty "X", body: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let _ <- Test.login { user: Just (User.UserId "stranger") }
+  let d2 <- Test.click (Delete { id: id })
+  let left <- titles
+  let login = Redirected (Auth.Login.Login {})
+  Task.succeed ([visit.answer, s1.answer, d1.answer] == [login, login, login] && [s2.answer, d2.answer] == [PageMissing, PageMissing] && left == [Text.NonEmpty "Mine"])
+}
