@@ -14,7 +14,7 @@ of the route-era language, after porting the experiment's tasks, hidden tests, r
 ## Design
 
 - 13 tasks: the ported T2-T7 and T9-T11 (the texts, with what changed in each, in `experiments/tasks/README.md`)
-  and four new ones, T12 search, T13 feed, T14 board, T15 pantry. T2 and T3 have no hidden tests; the other
+  and four new ones, T12 search, T13 feed, T14 board, T15 pantry. T2 and T3 have no hidden tests (their cells run without `--hidden`); the other
   eleven do (56 tests on the ported tasks, as E8-E11; 14 on the new).
 - 3 models (`claude:claude-haiku-5-5`, `claude:claude-sonnet-5-5`, `claude:claude-opus-5-5`) × 2 samples
   (`s1`, `s2`) = 78 cells; condition `files` only (no `cli`, no `--feedback`, no `--adapters`); `--retries 5`
@@ -38,11 +38,13 @@ experiments/e12-routes/
   reference-alt/<task>/   a second, differently written solution (T7's is the lossy-migration negative control)
   base/blog-nodrafts/ T7's base app
   alder               the pinned binary (git-ignored)
+  replay_drill.py     replays a recorded drill to rebuild a drill reference
+  test_run_matrix.py  run-matrix.sh's tests
   pin.sh              builds the binary and the prompt from one commit
   verify.sh           the material gate
   run-matrix.sh       the overnight matrix
   prompt-reference.md, sizes.md   the prompt and its size, from pin.sh prompt
-  logs/               one log per model
+  logs/               one log per model, plus matrix.lock and matrix.progress
   runs/<model>/<task>-<sample>/   run_loop.py output (runs/*/raw/ ignored)
   scores.md           from report_loop.py
   findings.md         the write-up (Task 19)
@@ -98,7 +100,7 @@ the pinned commit builds, and that the inputs (tasks, hidden tests, references, 
 Exit codes: 0 complete; 3 stopped for the weekday window (before a cell, or a cell killed at 09:00; print
 the next cell, re-run after 17:00 or on a weekend); 2 preflight failed (or the lock is held); 4 harness error
 (a usage limit, network or auth failure ends the matrix rather than burn the remaining cells).
-`runs/`, `logs/` and `scores.md` are committed at each stop and at the end; they are outputs, not preflight
+`runs/`, `logs/` and `scores.md` are committed by hand at each stop and at the end (Task 18's procedure), not by the script; they are outputs, not preflight
 inputs.
 
 **The tables:**

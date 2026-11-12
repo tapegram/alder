@@ -47,8 +47,9 @@ Orgs.Index`); its own tests score 37 / 37 and the hidden tests pass.
 
 Since E12 (`e12-routes/`, spec `docs/superpowers/specs/2026-11-11-e12-routes-experiment-design.md`) the texts are
 ported to routes (#160: a page is a route module's GET route, a message a write route), and there are thirteen:
-the old wording is in `e8-hidden/tasks/`, `e9-feedback/tasks/` and in this file's history (`git log -p`), and
-those directories keep the texts as they were run. The port changes vocabulary only: a page becomes a module's
+the old wording is in `e8-hidden/tasks/`, `e9-feedback/tasks/` (T5, T6, T7, T9, T10), `e7-prompt-tests/tasks/` (T2, T3)
+and, for T11 (whose only other copy is in git), in `git log -p -- experiments/tasks`; those directories keep the
+texts as they were run. The port changes vocabulary, and the points below: a page becomes a module's
 GET route (named after the module, `Notes.Index.Index`), a message a write route (`route Add form NewNote`),
 `Redirect (X {})` becomes `Response.redirect (X.R {})`, `Rerender` `Response.refresh` (or `render`). Tables,
 fields, session, element ids and classes, behaviours, the tests paragraph and the output paragraph are as they
@@ -62,8 +63,8 @@ What changed beyond vocabulary, text by text (the gate decisions are in `e12-rou
 - **Write routes check again (T4, T6, T7).** A write route runs no `load`, so the check E8/E9's `load` did
   before every message is now each write route's own. T4 and T6 say it in words: a write route on another
   user's record (T4's `Save`/`Delete`, T6's forms and buttons) answers 404, "on its page and for its forms and
-  buttons alike" (E8/E9 had this implicitly, through `load`; neither text names `Task.notFound` or
-  `Task.fail`). T6 also says a Staff user gets 404 from the page and from its form and buttons alike. T4's
+  buttons alike" (E8/E9 had this implicitly, through `load`; T4 names `Task.notFound`, T6
+  names neither it nor `Task.fail`). T6 also says a Staff user gets 404 from the page and from its form and buttons alike. T4's
   `Delete` takes `{ id: Note.NoteId }`.
 - **T6's cut is corrected.** E8's `msg AddLine { product } form NewLine` (a form on a message with
   parameters) could not be built with the E11 commands; it is an ordinary write route now. Because a write
@@ -92,6 +93,6 @@ What changed beyond vocabulary, text by text (the gate decisions are in `e12-rou
   (the shape the reference's chapter 3 teaches); the Names blocks name each table's module and file (`app/Table/Contact.alder`),
   and the names check compares the tables and their columns.
 
-The harness's names check (`run_loop.names_check`) reads the route-era Names blocks (a GET route per module,
-write routes with their parameters and forms) and is recorded in every `summary.json`, not only with `--cli`.
+The harness's names check (`run_loop.names_check`) reads the route-era Names blocks (every named GET route
+checked with its path, write routes with their parameters and forms) and is recorded in every `summary.json`, not only with `--cli`.
 
