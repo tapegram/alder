@@ -47,6 +47,8 @@ expect() {
     t6-orders|t11-workspace) echo 9 ;;
     t7-drafts|t9-bookings) echo 7 ;;
     t10-teams) echo 8 ;;
+    t12-search|t15-pantry) echo 4 ;;
+    t13-feed|t14-board) echo 3 ;;
   esac
 }
 
