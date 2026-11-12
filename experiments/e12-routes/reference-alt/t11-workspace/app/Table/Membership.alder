@@ -1,0 +1,12 @@
+module Table.Membership
+
+import Table.User
+import Table.Org
+
+type MembershipId = brand Text
+
+table Membership {
+  id: MembershipId @id,
+  user: User.UserId @ref User,
+  org: Org.OrgId @ref Org,
+}

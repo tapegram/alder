@@ -1,0 +1,49 @@
+module Access
+
+import Table.User
+import Table.Team
+import Table.Member
+
+-- Where a user stands with a team.
+type Standing = Owns | Belongs | Outside
+
+standing : Team -> List Member -> User.UserId -> Standing
+standing team members user =
+  if team.owner == user then Owns
+  else if List.any (\m -> m.user == user) members then Belongs
+  else Outside
+
+-- A team as one user sees it: the team, its Member rows, and where the user stands.
+type Place = { team: Team, rows: List Member, standing: Standing }
+
+-- place reads the team and its rows for `user`; Nothing when there is no such team. Both the
+-- page's load and its write routes (which run no load) start here.
+place : Team.TeamId -> User.UserId -> Query (Maybe Place)
+place id user = {
+  let found <- Db.get Team id
+  match found {
+    Nothing -> Query.succeed Nothing,
+    Just t -> {
+      let rows <- Db.from Member |> Db.where (Member.team.eq t.id) |> Db.all
+      Query.succeed (Just { team: t, rows: rows, standing: standing t rows user })
+    },
+  }
+}
+
+test "the owner owns, a member belongs, anyone else is outside" = {
+  let team : Team = { id: Team.TeamId "t", name: Text.NonEmpty "Red", owner: User.UserId "ann" }
+  let rows : List Member = [{ id: Member.MemberId "m", team: Team.TeamId "t", user: User.UserId "bob" }]
+  Task.succeed (List.map (standing team rows) [User.UserId "ann", User.UserId "bob", User.UserId "sam"] == [Owns, Belongs, Outside])
+}
+
+test "place reads the team's own rows" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let blue <- Db.insert Team { name: Text.NonEmpty "Blue", owner: ann }
+  let _ <- Db.insert Member { team: blue, user: ann }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let asBob <- place red bob
+  let missing <- place (Team.TeamId "nope") bob
+  Task.succeed ({ rows: Maybe.map (\p -> List.map (\m -> m.user) p.rows) asBob, standing: Maybe.map (\p -> p.standing) asBob, missing: missing == Nothing } == { rows: Just [bob], standing: Just Belongs, missing: True })
+}

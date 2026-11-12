@@ -1,0 +1,98 @@
+module Bookings.Show
+
+import Table.User
+import Table.Room
+import Table.Booking
+import Layout
+
+route Show = GET "/bookings/{id}" { id: Booking.BookingId } requires user
+route Cancel = DELETE "/bookings/{id}" { id: Booking.BookingId } requires user
+
+type Model = { booking: Booking, room: Maybe Room, today: Date }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <- Booking.mine session.user params.id
+  match found {
+    Nothing -> Query.notFound,
+    Just b -> {
+      let room <- Db.get Room b.room
+      let today <- Date.today
+      Query.succeed { booking: b, room: room, today: today }
+    },
+  }
+}
+
+-- The cancel window: until the day before `from`.
+cancellable : Date -> Booking -> Bool
+cancellable today booking = Date.diffDays today booking.from > 0
+
+-- Cancel reads the booking again (a write route runs no load): someone else's is a 404, and so is
+-- one that has started since the page was shown, which has no Cancel button any more.
+Cancel.update : Cancel.Params -> Session -> Task Response
+Cancel.update p session = {
+  let found <- Booking.mine session.user p.id
+  let today <- Date.today
+  match found {
+    Nothing -> Task.notFound,
+    Just b ->
+      if not (cancellable today b) then Task.notFound
+      else {
+        let _ <- Db.delete Booking b.id
+        Task.succeed (Response.redirect (Bookings.Index.Index {}))
+      },
+  }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Shell heading="Booking">
+    <dl>
+      <dt>Room</dt><dd id="room">{Maybe.withDefault "?" (Maybe.map (\r -> r.name) model.room)}</dd>
+      <dt>From</dt><dd id="from">{Date.toText model.booking.from}</dd>
+      <dt>Until</dt><dd id="to">{Date.toText model.booking.to}</dd>
+    </dl>
+    {if cancellable model.today model.booking then
+      <button id="cancel" click={Cancel { id: model.booking.id }}>Cancel this booking</button>
+    else <p>This booking has started.</p>}
+  </Layout.Shell>
+
+test "cancelling: allowed the day before, refused on the day" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let today <- Date.today
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let tomorrow <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 1 today, to: Date.addDays 2 today }
+  let now <- Db.insert Booking { room: blue, owner: me, from: today, to: Date.addDays 1 today }
+  let visitor <- Test.open (Show { id: now })
+  let refused <- Test.run (Cancel.update { id: now } { user: me })
+  let _ <- Test.login { user: Just me }
+  let started <- Test.get (Show { id: now })
+  let page <- Test.get (Show { id: tomorrow })
+  let done <- Test.click (Cancel { id: tomorrow })
+  let left <- Db.from Booking |> Db.all
+  Task.succeed ({ visitor: visitor.answer, refused: refused.value, startedButton: Test.has "#cancel" started.doc, button: Test.has "#cancel" page.doc, room: Test.text "#room" page.doc, done: done.answer, left: List.map (\b -> b.id) left } == { visitor: Redirected (Auth.Login.Login {}), refused: Err "not found", startedButton: False, button: True, room: Just "Blue", done: Redirected (Bookings.Index.Index {}), left: [now] })
+}
+
+-- Cancel from a page held while the booking could still be cancelled: by the owner once it has
+-- started, by a stranger, and after logging out. None deletes it.
+test "a stale, a stranger's or a logged-out Cancel leaves the booking" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let stranger <- Db.insert User { email: Text.Email "x@example.com", name: Text.NonEmpty "X", passwordHash: "" }
+  let today <- Date.today
+  let blue <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let id <- Db.insert Booking { room: blue, owner: me, from: Date.addDays 2 today, to: Date.addDays 3 today }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let _ <- Test.login { user: Nothing }
+  let out <- Test.click (Cancel { id: id })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let _ <- Test.login { user: Just stranger }
+  let other <- Test.click (Cancel { id: id })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let _ <- Db.update Booking id (\b -> { b | from: today })
+  let stale <- Test.click (Cancel { id: id })
+  let left <- Db.from Booking |> Db.count
+  Task.succeed ({ out: out.answer, other: other.answer, stale: stale.answer, left: left } == { out: Redirected (Auth.Login.Login {}), other: PageMissing, stale: PageMissing, left: 1 })
+}

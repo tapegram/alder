@@ -1,0 +1,107 @@
+module Orgs.Index
+
+import Table.User
+import Table.Org
+import Table.Membership
+import Layout
+
+route Index = GET "/orgs" { } requires user
+route Open = POST "/orgs/{org}/open" { org: Org.OrgId } requires user
+route Create = POST "/orgs/new" { } form NewOrg requires user
+
+type Model = { orgs: List Org }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let rows <- Db.from Membership |> Db.where (Membership.user.eq session.user) |> Db.all
+  let orgs <- Db.from Org |> Db.where (Org.id.in (List.map (\m -> m.org) rows)) |> Db.orderBy Org.name.asc |> Db.all
+  Query.succeed { orgs: orgs }
+}
+
+-- The session's org is `via Membership`: the runtime refuses an org the user is no member of,
+-- whatever the request says.
+Open.update : Open.Params -> Session -> Task Response
+Open.update p session = {
+  let _ <- Session.put (\s -> { s | org: Just p.org })
+  Task.succeed (Response.redirect (Projects.Index.Index {}))
+}
+
+form NewOrg = {
+  name: Text.NonEmpty,
+}
+
+-- The org and its first member are written before the org is put in the session, which then
+-- finds the membership.
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let org <- Db.insert Org { name: p.form.name }
+  let _ <- Db.insert Membership { user: session.user, org: org }
+  let _ <- Session.put (\s -> { s | org: Just org })
+  Task.succeed (Response.redirect (Projects.Index.Index {}))
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Shell heading="Orgs">
+    <nav><button click={App.Logout}>Log out</button></nav>
+    <ol id="orgs">
+      {for o in model.orgs ->
+        <li>
+          <strong class="name">{o.name}</strong>
+          <button click={Open { org: o.id }}>Open</button>
+        </li>}
+    </ol>
+    <h2>New org</h2>
+    <form submit={Create}>
+      <Errors form />
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <button>Create</button>
+    </form>
+  </Layout.Shell>
+
+test "my orgs by name; Open and Create put the org in the session" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let zeta <- Db.insert Org { name: Text.NonEmpty "Zeta" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: ann, org: zeta }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Db.insert Membership { user: bob, org: globex }
+  let visitor <- Test.open (Index {})
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let page <- Test.get (Index {})
+  let opened <- Test.click (Open { org: zeta })
+  let _ <- Test.get (Index {})
+  let made <- Test.submit Create { name: Text.NonEmpty "Initech" }
+  let initech <- Db.from Org |> Db.where (Org.name.eq (Text.NonEmpty "Initech")) |> Db.first
+  let id = Maybe.map (\o -> o.id) initech
+  let members <- Db.from Membership |> Db.where (Membership.org.in (Maybe.toList id)) |> Db.all
+  Task.succeed ({ visitor: visitor.answer, names: Test.texts "#orgs .name" page.doc, opened: opened.answer, openedOrg: opened.session.org, made: made.answer, madeOrg: made.session.org == id, members: List.map (\m -> m.user) members } == { visitor: Redirected (Auth.Login.Login {}), names: ["Acme", "Zeta"], opened: Redirected (Projects.Index.Index {}), openedOrg: Just zeta, made: Redirected (Projects.Index.Index {}), madeOrg: True, members: [ann] })
+}
+
+-- A stale page: Bob's orgs page, with its Open for Globex, is held; the cookie is swapped to
+-- Ann's, who is no member of Globex. The server refuses that org: a 404, and no org is kept.
+test "a non-member's Open is refused, and the session keeps no org" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: bob, org: globex }
+  let _ <- Test.login { user: Just bob, org: Nothing }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let r <- Test.click (Open { org: globex })
+  Task.succeed ({ answer: r.answer, org: r.session.org } == { answer: PageMissing, org: Nothing })
+}
+
+test "an org posted after logging out is sent to log in and not made" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let r <- Test.submit Create { name: Text.NonEmpty "Initech" }
+  let orgs <- Db.from Org |> Db.count
+  let members <- Db.from Membership |> Db.count
+  Task.succeed ({ answer: r.answer, orgs: orgs, members: members } == { answer: Redirected (Auth.Login.Login {}), orgs: 0, members: 0 })
+}

@@ -1,0 +1,44 @@
+module Workspace
+
+import Table.User
+import Table.Org
+import Table.Membership
+
+-- The session keeps the org it was given, so every page and write of an org reads the
+-- membership again: a member removed since is turned away at once.
+isMember : User.UserId -> Org.OrgId -> Query Bool
+isMember user org = {
+  let rows <- Db.from Membership |> Db.where (Membership.org.eq org) |> Db.where (Membership.user.eq user) |> Db.all
+  Query.succeed (not (List.isEmpty rows))
+}
+
+-- memberOnly stops the request with a 404 unless the user is a member of the org now.
+memberOnly : User.UserId -> Org.OrgId -> Query Unit
+memberOnly user org = {
+  let member <- isMember user org
+  if member then Query.succeed () else Query.notFound
+}
+
+test "isMember needs a row for that user and that org" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Db.insert Membership { user: bob, org: globex }
+  let a <- isMember ann acme
+  let b <- isMember ann globex
+  let c <- isMember bob acme
+  Task.succeed ([a, b, c] == [True, False, False])
+}
+
+test "users and orgs with members stay" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Test.run (Db.delete User ann)
+  let _ <- Test.run (Db.delete Org acme)
+  let users <- Db.from User |> Db.count
+  let orgs <- Db.from Org |> Db.count
+  Task.succeed ({ users: users, orgs: orgs } == { users: 1, orgs: 1 })
+}

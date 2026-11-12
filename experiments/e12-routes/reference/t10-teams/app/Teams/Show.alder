@@ -310,3 +310,29 @@ test "only the owner changes the team, and the owner cannot leave" = {
     }
   )
 }
+
+-- Added at the E12 gate: Remove runs no load, so its own `requires` is what stops a press from
+-- the owner's page held while the owner logged out.
+test "Remove after logging out is sent to log in" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let _ <- Db.insert Member { team: red, user: bob }
+  let _ <- Test.login { user: Just ann }
+  let _ <- Test.get (Show { id: red })
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.click (Remove { id: red, user: bob })
+  let members <- Db.from Member |> Db.count
+  Task.succeed (
+    { answer: r.answer, members: members }
+      == { answer: Redirected (Auth.Login.Login {}), members: 1 }
+  )
+}

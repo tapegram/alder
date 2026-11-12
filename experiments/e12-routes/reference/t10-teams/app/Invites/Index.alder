@@ -223,3 +223,43 @@ test "an invite not to the user, or not waiting, cannot be answered" = {
     }
   )
 }
+
+-- Added at the E12 gate: Accept and Decline run no load, so their own `requires` is what stops
+-- a press from a page held while the user logged out.
+test "Accept or Decline after logging out is sent to log in" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let team1 <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
+  let invite1 <- Db.insert Invite { team: team1, email: Text.Email "me@example.com" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let accepted <- Test.click (Accept { id: invite1 })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let declined <- Test.click (Decline { id: invite1 })
+  let after <- Db.get Invite invite1
+  let members <- Db.from Member |> Db.count
+  Task.succeed (
+    {
+      accepted: accepted.answer,
+      declined: declined.answer,
+      status: Maybe.map (\i -> i.status) after,
+      members: members,
+    } == {
+      accepted: Redirected (Auth.Login.Login {}),
+      declined: Redirected (Auth.Login.Login {}),
+      status: Just Pending,
+      members: 0,
+    }
+  )
+}

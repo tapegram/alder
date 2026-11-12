@@ -1,0 +1,88 @@
+module Projects.Index
+
+import Table.User
+import Table.Org
+import Table.Membership
+import Table.Project
+import Workspace
+import Layout
+
+route Index = GET "/projects" { } requires user, org
+route Create = POST "/projects/new" { } form NewProject requires user, org
+
+type Model = { org: Maybe Org, projects: List Project }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let _ <- Workspace.memberOnly session.user session.org
+  let org <- Db.from Org |> Db.where (Org.id.eq session.org) |> Db.first
+  let projects <- Db.scoped Project |> Db.orderBy Project.name.asc |> Db.all
+  Query.succeed { org: org, projects: projects }
+}
+
+form NewProject = {
+  name: Text.NonEmpty,
+}
+
+-- A write runs no load: it reads the membership again itself.
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let _ <- Workspace.memberOnly session.user session.org
+  let id <- Db.insertScoped Project { name: p.form.name }
+  Task.succeed (Response.redirect (Projects.Show.Show { id: id }))
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Shell heading="Projects">
+    <p>Org: <b id="org">{Maybe.withDefault "" (Maybe.map (\o -> o.name) model.org)}</b> <a href={Orgs.Index.Index {}}>Switch</a></p>
+    <ol id="projects">
+      {for p in model.projects ->
+        <li><a href={Projects.Show.Show { id: p.id }}><em class="name">{p.name}</em></a></li>}
+    </ol>
+    <h2>New project</h2>
+    <form submit={Create}>
+      <Errors form />
+      <Input field="name" label="Name" />
+      <Errors field="name" />
+      <button>Create</button>
+    </form>
+  </Layout.Shell>
+
+test "the org's projects by name, to its members only" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let row <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Db.insert Membership { user: ann, org: globex }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Apollo", org: acme }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
+  let visitor <- Test.open (Index {})
+  let _ <- Test.login { user: Just ann, org: Nothing }
+  let none <- Test.open (Index {})
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let page <- Test.get (Index {})
+  let _ <- Db.delete Membership row
+  let removed <- Test.open (Index {})
+  Task.succeed ({ visitor: visitor.answer, none: none.answer, org: Test.text "#org" page.doc, names: Test.texts "#projects .name" page.doc, removed: removed.answer } == { visitor: Redirected (Auth.Login.Login {}), none: Redirected (Orgs.Index.Index {}), org: Just "Acme", names: ["Apollo", "Rocket"], removed: PageMissing })
+}
+
+test "a project is made in the session's org; a removed member makes none" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let row <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Db.insert Membership { user: ann, org: globex }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Test.get (Index {})
+  let made <- Test.submit Create { name: Text.NonEmpty "Zephyr" }
+  let zephyr <- Db.scoped Project |> Db.where (Project.name.eq (Text.NonEmpty "Zephyr")) |> Db.first
+  let _ <- Test.get (Index {})
+  let _ <- Db.delete Membership row
+  let refused <- Test.submit Create { name: Text.NonEmpty "Late" }
+  let inAcme <- Db.scoped Project |> Db.count
+  let _ <- Test.login { user: Just ann, org: Just globex }
+  let inGlobex <- Db.scoped Project |> Db.count
+  Task.succeed ({ made: Maybe.map (\p -> Redirected (Projects.Show.Show { id: p.id })) zephyr == Just made.answer, refused: refused.answer, inAcme: inAcme, inGlobex: inGlobex } == { made: True, refused: PageMissing, inAcme: 1, inGlobex: 0 })
+}

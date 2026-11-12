@@ -210,3 +210,34 @@ test "a booking ending where another starts, or of another room, is stored" = {
     }
   )
 }
+
+-- Added at the E12 gate: Book runs no load, so its own `requires` and its room check are all
+-- that stop a post from a page held before the user logged out or the room was deleted.
+test "a booking after logging out, or of a room deleted since, is not stored" = {
+  let today <- Date.today
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: room })
+  let _ <- Test.login { user: Nothing }
+  let out <- Test.submit (Book { id: room }) {
+    from: Date.addDays 1 today,
+    to: Date.addDays 2 today,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: room })
+  let _ <- Db.delete Room room
+  let gone <- Test.submit (Book { id: room }) {
+    from: Date.addDays 1 today,
+    to: Date.addDays 2 today,
+  }
+  let stored <- Db.from Booking |> Db.count
+  Task.succeed (
+    { out: out.answer, gone: gone.answer, stored: stored }
+      == { out: Redirected (Auth.Login.Login {}), gone: PageMissing, stored: 0 }
+  )
+}

@@ -1,0 +1,155 @@
+module Projects.Show
+
+import Table.User
+import Table.Org
+import Table.Membership
+import Table.Project
+import Table.Todo
+import Workspace
+import Layout
+
+route Show = GET "/projects/{id}" { id: Project.ProjectId } requires user, org
+route Add = POST "/projects/{id}/todos" { id: Project.ProjectId } form NewTodo requires user, org
+route Toggle = POST "/projects/{id}/todos/{todo}/toggle" { id: Project.ProjectId, todo: Todo.TodoId } requires user, org
+
+type Model = { project: Project, todos: List Todo }
+
+-- project is the org's project with that id; a 404 for any other (another org's lives in
+-- another database, so it is not found here).
+project : Project.ProjectId -> Query Project
+project id = {
+  let found <- Db.scoped Project |> Db.where (Project.id.eq id) |> Db.first
+  match found {
+    Just p -> Query.succeed p,
+    Nothing -> Query.notFound,
+  }
+}
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let _ <- Workspace.memberOnly session.user session.org
+  let p <- project params.id
+  let todos <- Db.scoped Todo |> Db.where (Todo.project.eq p.id) |> Db.orderBy Todo.title.asc |> Db.all
+  Query.succeed { project: p, todos: todos }
+}
+
+form NewTodo = {
+  title: Text.NonEmpty,
+}
+
+-- The writes run no load: each reads the membership and the project again.
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Workspace.memberOnly session.user session.org
+  let at <- project p.id
+  let _ <- Db.insertScoped Todo { title: p.form.title, project: at.id }
+  Task.succeed (Response.redirect (Show { id: at.id }))
+}
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let _ <- Workspace.memberOnly session.user session.org
+  let found <- Db.scoped Todo |> Db.where (Todo.id.eq p.todo) |> Db.where (Todo.project.eq p.id) |> Db.first
+  match found {
+    Nothing -> Task.notFound,
+    Just t -> {
+      let _ <- Db.updateScoped Todo t.id (\x -> { x | done: not t.done })
+      Task.succeed (Response.redirect (Show { id: p.id }))
+    },
+  }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Shell heading="Project">
+    <h2 id="name">{model.project.name}</h2>
+    <ol id="todos">
+      {for t in model.todos ->
+        <li class={if t.done then "done" else "todo"}>
+          <label class="title">{t.title}</label>
+          <button click={Toggle { id: model.project.id, todo: t.id }}>{if t.done then "Reopen" else "Done"}</button>
+        </li>}
+    </ol>
+    <form submit={Add { id: model.project.id }}>
+      <Errors form />
+      <Input field="title" label="To do" />
+      <Errors field="title" />
+      <button>Add</button>
+    </form>
+    <a href={Projects.Index.Index {}}>All projects</a>
+  </Layout.Shell>
+
+test "a project's to-dos by title; another org's project is not found" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Db.insert Membership { user: ann, org: globex }
+  let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let apollo <- Db.insert Project { name: Text.NonEmpty "Apollo", org: acme }
+  let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Fuel", project: rocket, org: acme }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Countdown", project: rocket, org: acme, done: True }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Moon", project: apollo, org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let page <- Test.get (Show { id: rocket })
+  let theirs <- Test.open (Show { id: widget })
+  Task.succeed ({ name: Test.text "#name" page.doc, titles: Test.texts "#todos .title" page.doc, done: Test.texts "#todos li.done .title" page.doc, theirs: theirs.answer } == { name: Just "Rocket", titles: ["Countdown", "Fuel"], done: ["Countdown"], theirs: PageMissing })
+}
+
+test "adding and toggling to-dos" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let apollo <- Db.insert Project { name: Text.NonEmpty "Apollo", org: acme }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Alpha", project: rocket, org: acme }
+  let fuel <- Db.insert Todo { title: Text.NonEmpty "Fuel", project: rocket, org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Test.get (Show { id: rocket })
+  let added <- Test.submit (Add { id: rocket }) { title: Text.NonEmpty "Countdown" }
+  let done <- Test.click (Toggle { id: rocket, todo: fuel })
+  let afterDone <- Db.get Todo fuel
+  let _ <- Test.click (Toggle { id: rocket, todo: fuel })
+  let afterOpen <- Db.get Todo fuel
+  let wrong <- Test.run (Toggle.update { id: apollo, todo: fuel } { user: ann, org: acme })
+  let afterWrong <- Db.get Todo fuel
+  let rows <- Db.scoped Todo |> Db.where (Todo.project.eq rocket) |> Db.where (Todo.done.eq False) |> Db.orderBy Todo.title.asc |> Db.all
+  Task.succeed ({ added: added.answer, done: done.answer, afterDone: Maybe.map (\t -> t.done) afterDone, afterOpen: Maybe.map (\t -> t.done) afterOpen, wrong: wrong.value, afterWrong: Maybe.map (\t -> t.done) afterWrong, rows: List.map (\t -> t.title) rows } == { added: Redirected (Show { id: rocket }), done: Redirected (Show { id: rocket }), afterDone: Just True, afterOpen: Just False, wrong: Err "not found", afterWrong: Just False, rows: [Text.NonEmpty "Alpha", Text.NonEmpty "Countdown", Text.NonEmpty "Fuel"] })
+}
+
+-- The page is held, then the membership is deleted: the page itself and both writes sent from
+-- it are a 404, and nothing changes.
+test "a member removed from the org loses the project at once" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let row <- Db.insert Membership { user: ann, org: acme }
+  let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let fuel <- Db.insert Todo { title: Text.NonEmpty "Fuel", project: rocket, org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Test.get (Show { id: rocket })
+  let _ <- Db.delete Membership row
+  let toggled <- Test.click (Toggle { id: rocket, todo: fuel })
+  let again <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Test.get (Show { id: rocket })
+  let _ <- Db.delete Membership again
+  let added <- Test.submit (Add { id: rocket }) { title: Text.NonEmpty "Late" }
+  let page <- Test.open (Show { id: rocket })
+  let todos <- Db.scoped Todo |> Db.all
+  Task.succeed ({ added: added.answer, toggled: toggled.answer, page: page.answer, todos: List.map (\t -> { title: t.title, done: t.done }) todos } == { added: PageMissing, toggled: PageMissing, page: PageMissing, todos: [{ title: Text.NonEmpty "Fuel", done: False }] })
+}
+
+-- Deleting a project deletes its to-dos; a to-do added from its page held since is a 404.
+test "a to-do added to a project gone since is not found" = {
+  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Fuel", project: rocket, org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Test.get (Show { id: rocket })
+  let _ <- Db.deleteScoped Project rocket
+  let added <- Test.submit (Add { id: rocket }) { title: Text.NonEmpty "Late" }
+  let todos <- Db.scoped Todo |> Db.count
+  Task.succeed ({ added: added.answer, todos: todos } == { added: PageMissing, todos: 0 })
+}

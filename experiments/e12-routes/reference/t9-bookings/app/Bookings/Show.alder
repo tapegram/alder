@@ -179,3 +179,41 @@ test "a booking of another user is not found" = {
     { answer: r.answer, left: Maybe.isJust after } == { answer: PageMissing, left: True }
   )
 }
+
+-- Added at the E12 gate: Cancel runs no load. Sent from a page held before the user logged out,
+-- it is sent to log in; sent from a page held the day before the booking started, it is refused
+-- (422; the page has no `<Errors form />` to show the message). Neither deletes the booking.
+test "a Cancel after logging out, or after the booking started, leaves it" = {
+  let today <- Date.today
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let room <- Db.insert Room { name: Text.NonEmpty "Blue" }
+  let booking <- Db.insert Booking {
+    room: room,
+    owner: me,
+    from: Date.addDays 1 today,
+    to: Date.addDays 3 today,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: booking })
+  let _ <- Test.login { user: Nothing }
+  let out <- Test.click (Cancel { id: booking })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: booking })
+  let _ <- Db.update Booking booking (\b -> { b | from: today })
+  let stale <- Test.click (Cancel { id: booking })
+  let left <- Db.from Booking |> Db.count
+  Task.succeed (
+    {
+      out: out.answer,
+      stale: match stale.answer {
+        FormRejected _ -> True,
+        _ -> False,
+      },
+      left: left,
+    } == { out: Redirected (Auth.Login.Login {}), stale: True, left: 1 }
+  )
+}
