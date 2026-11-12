@@ -15,12 +15,13 @@ shop:
 - `/orders/{id}` requires login and shows one order with its lines and
   total. While the order is Open: a form adds a line (choose an active
   product, give a quantity), and buttons mark it Paid or Cancelled. Another
-  user's order is 404 — unless the logged-in user is a Manager.
+  user's order is 404 — unless the logged-in user is a Manager — on its
+  page and for its forms and buttons alike.
 - Adding a line to an order that is not Open is refused by the server, even
   when the form comes from a page loaded while the order was still Open.
 - `/products` requires login and a Manager: it lists every product, has a
   form to add one, and a button per product to toggle active. A Staff user
-  gets 404.
+  gets 404, from the page and from its form and buttons alike.
 - `/login` and logout, an `App` module, a `Layout` module and a `User`
   module as in the reference.
 
@@ -32,8 +33,8 @@ further tables or fields.
   `type Role = Staff | Manager`, and
   `table User { id: UserId @id, email: Text.Email @unique, name: Text.NonEmpty, passwordHash: Text, role: Role = Staff, created: Time @created }`.
 - `app/App.alder`: module `App`, with exactly
-  `session { user: Maybe User.UserId }`, `login = Auth.Login`, and
-  `msg Logout`, which answers `Redirect (Auth.Login {})`.
+  `session { user: Maybe User.UserId }`, `login = Auth.Login.Login`, and
+  `route Logout`, which answers `Response.redirect (Auth.Login.Login {})`.
 - `app/Product.alder`: module `Product`, `type ProductId = brand Text`, and
   `table Product { id: ProductId @id, name: Text.NonEmpty, price: Int.NonNegative, active: Bool = True }`.
 - `app/Order.alder`: module `Order`, `type OrderId = brand Text`,
@@ -42,30 +43,33 @@ further tables or fields.
 - `app/Line.alder`: module `Line`, `type LineId = brand Text`, and
   `table Line { id: LineId @id, order: Order.OrderId @ref Order @cascade, product: Product.ProductId @ref Product, quantity: Int.Positive }`.
 - Totals are shown in cents, digits only (`1250`, not `$12.50`).
-- `app/Orders/Index.alder`: page module `Orders.Index`, `page "/" { } requires user`.
-  `msg Create` (no parameters, sent by a button) creates the order and
-  answers `Redirect (Orders.Show { id: … })` (the new order). The orders are
+- `app/Orders/Index.alder`: route module `Orders.Index`,
+  `route Index = GET "/" { } requires user`.
+  `route Create` (no parameters, sent by a button) creates the order and
+  answers `Response.redirect (Orders.Show.Show { id: … })` (the new order).
+  The orders are
   listed in an element with `id="orders"`, one `<li>` per order; inside
   it, an element with `class="status"` has the status (`Open`, `Paid` or
   `Cancelled`) as its whole text, and one with `class="total"` the total.
-- `app/Orders/Show.alder`: page module `Orders.Show`,
-  `page "/orders/{id}" { id: Order.OrderId } requires user`. The status is
-  the whole text of an element with `id="status"`, the total of one with
-  `id="total"`. One form per active product adds a line:
+- `app/Orders/Show.alder`: route module `Orders.Show`,
+  `route Show = GET "/orders/{id}" { id: Order.OrderId } requires user`.
+  The status is the whole text of an element with `id="status"`, the total
+  of one with `id="total"`. One form per active product adds a line:
   `form NewLine = { quantity: Int.Positive }`, posted by
-  `msg AddLine { product: Product.ProductId } form NewLine`; `msg Pay` and
-  `msg Cancel` (no parameters) are buttons. Each of the three answers
-  `Redirect (Orders.Show { id: … })` (the same order). Only an Open order's
-  page shows these forms and buttons.
-- `app/Products/Index.alder`: page module `Products.Index`,
-  `page "/products" { } requires user`. The products are listed in an
+  `route AddLine { id: Order.OrderId, product: Product.ProductId } form NewLine`
+  (`id` is the order's); `route Pay { id: Order.OrderId }` and
+  `route Cancel { id: Order.OrderId }` are buttons. Each of the three
+  answers `Response.redirect (Orders.Show.Show { id: … })` (the same order).
+  Only an Open order's page shows these forms and buttons.
+- `app/Products/Index.alder`: route module `Products.Index`,
+  `route Index = GET "/products" { } requires user`. The products are listed in an
   element with `id="products"`; each product's name is the whole text of an
   element with `class="name"`. `form NewProduct = { name: Text.NonEmpty, price: Int.NonNegative }`,
-  posted by `msg Add form NewProduct`, and `msg Toggle { id: Product.ProductId }`,
-  a button per product, each answer `Redirect (Products.Index {})`.
-- `app/Auth/Login.alder`: page module `Auth.Login`, `page "/login" { }`, with
-  the `Password` capability, form `Credentials` and `msg Submit` as in the
-  reference.
+  posted by `route Add form NewProduct`, and `route Toggle { id: Product.ProductId }`,
+  a button per product, each answer `Response.redirect (Products.Index.Index {})`.
+- `app/Auth/Login.alder`: route module `Auth.Login`,
+  `route Login = GET "/login" { }`, with the `Password` capability and
+  form `Credentials` as in the reference.
 
 Also write tests (`test "…" = …`, chapter 10) in the modules they test: an
 Open order's total over two lines; adding a line to a Paid order is refused;

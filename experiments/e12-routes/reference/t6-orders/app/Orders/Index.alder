@@ -1,0 +1,89 @@
+module Orders.Index
+
+import User
+import Order
+import Line
+import Layout
+
+route Index  = GET  "/"       { } requires user
+route Create = POST "/orders" { } requires user
+
+type Row = { order: Order, total: Int }
+
+type Model = { orders: List Row }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let orders <-
+    Db.from Order
+      |> Db.where (Order.owner.eq session.user)
+      |> Db.orderBy Order.created.desc
+      |> Db.all
+  let rows <- Query.all (List.map row orders)
+  Query.succeed { orders: rows }
+}
+
+row : Order -> Query Row
+row order = {
+  let lines <- Line.priced order.id
+  Query.succeed { order: order, total: Line.total lines }
+}
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let id <- Db.insert Order { owner: session.user }
+  Task.succeed (Response.redirect (Orders.Show.Show { id: id }))
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Orders">
+    <h1>Your orders</h1>
+    <ul id="orders">
+      {for r in model.orders ->
+        <li>
+          <a href={Orders.Show.Show { id: r.order.id }}>Order</a>
+          <span class="status">{Order.statusLabel r.order.status}</span>
+          <span class="total">{Text.fromInt r.total}</span>
+        </li>}
+    </ul>
+    <button click={Create}>New order</button>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "a new order is empty and Open" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let r <- Test.click Create
+  let list <- Test.get (Index {})
+  Task.succeed ({ status: Test.text "#status" r.doc, total: Test.text "#total" r.doc, totals: Test.texts "#orders .total" list.doc } == { status: Just "Open", total: Just "0", totals: ["0"] })
+}
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
+}
+
+test "the list shows only the user's orders, newest first" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other", passwordHash: "" }
+  let _ <- Db.insert Order { owner: me, status: Paid }
+  let _ <- Db.insert Order { owner: me, status: Cancelled }
+  let _ <- Db.insert Order { owner: other }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Index {})
+  Task.succeed (Test.texts "#orders .status" page.doc == ["Cancelled", "Paid"])
+}
+
+-- The list is still open when the session loses its user: New order is sent to log in and
+-- makes nothing.
+test "a new order after logging out is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.click Create
+  let orders <- Db.from Order |> Db.count
+  Task.succeed ({ answer: r.answer, orders: orders } == { answer: Redirected (Auth.Login.Login {}), orders: 0 })
+}

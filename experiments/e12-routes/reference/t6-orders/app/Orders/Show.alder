@@ -1,0 +1,236 @@
+module Orders.Show
+
+import User
+import Order
+import Line
+import Product
+import Layout
+
+route Show    = GET  "/orders/{id}"           { id: Order.OrderId }                                        requires user
+route AddLine = POST "/orders/{id}/lines"     { id: Order.OrderId, product: Product.ProductId } form NewLine requires user
+route Pay     = PUT  "/orders/{id}/paid"      { id: Order.OrderId }                                        requires user
+route Cancel  = PUT  "/orders/{id}/cancelled" { id: Order.OrderId }                                        requires user
+
+type Model = {
+  order: Order,
+  lines: List Line.Priced,
+  products: List Product,
+}
+
+-- visible is the order with that id when the user may see it: the owner sees it, and so does
+-- any Manager. For anyone else it is Nothing, the same answer as an id that was never used.
+visible : Order.OrderId -> User.UserId -> Query (Maybe Order)
+visible id user = {
+  let found <- Db.get Order id
+  let manager <- User.isManager user
+  Query.succeed (match found {
+    Just order -> if order.owner == user || manager then Just order else Nothing,
+    Nothing -> Nothing,
+  })
+}
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <- visible params.id session.user
+  match found {
+    Just order -> {
+      let lines <- Line.priced order.id
+      let products <- Db.from Product |> Db.where (Product.active.eq True) |> Db.all
+      Query.succeed { order: order, lines: lines, products: products }
+    },
+    Nothing -> Query.notFound,
+  }
+}
+
+form NewLine = {
+  quantity: Int.Positive,
+}
+
+-- One form per active product: the order and the product ride in the route. No `load` runs
+-- before a write route, so each one asks `changeable` for the order again: anyone can post any
+-- order's id.
+AddLine.update : AddLine.Params -> Session -> Task Response
+AddLine.update p session = {
+  let order <- changeable p.id session.user
+  let found <- Db.get Product p.product
+  match found {
+    Just product ->
+      if product.active then {
+        let _ <- Db.insert Line { order: order.id, product: product.id, quantity: p.form.quantity }
+        Task.succeed (Response.redirect (Show { id: order.id }))
+      } else Task.notFound,
+    Nothing -> Task.notFound,
+  }
+}
+
+Pay.update : Pay.Params -> Session -> Task Response
+Pay.update p session = setStatus p.id session.user Paid
+
+Cancel.update : Cancel.Params -> Session -> Task Response
+Cancel.update p session = setStatus p.id session.user Cancelled
+
+-- changeable is the order a write may change. One the user may not see is not found. One that
+-- is no longer Open is refused with Task.fail, not Task.notFound: the order is there and the user
+-- may see it; only a stale page or a forged post can ask, since the page offers no form or button
+-- once the order is closed.
+changeable : Order.OrderId -> User.UserId -> Task Order
+changeable id user = {
+  let found <- visible id user
+  match found {
+    Just order -> if order.status == Open then Task.succeed order else Task.fail "the order is not open",
+    Nothing -> Task.notFound,
+  }
+}
+
+setStatus : Order.OrderId -> User.UserId -> Order.Status -> Task Response
+setStatus id user status = {
+  let open <- changeable id user
+  let _ <- Db.update Order open.id (\o -> { o | status: status })
+  Task.succeed (Response.redirect (Show { id: open.id }))
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title="Order">
+    <h1>Order</h1>
+    <p>Status: <span id="status">{Order.statusLabel model.order.status}</span></p>
+    <ul id="lines">
+      {for l in model.lines ->
+        <li>{l.product.name} × {Text.fromInt (Line.cents l.line.quantity)}: {Text.fromInt (Line.amount l)}</li>}
+    </ul>
+    <p>Total (cents): <span id="total">{Text.fromInt (Line.total model.lines)}</span></p>
+    {if model.order.status == Open then
+      <section>
+        {for product in model.products ->
+          <form submit={AddLine { id: model.order.id, product: product.id }}>
+            <Errors form />
+            <Input field="quantity" label={product.name ++ " (" ++ Text.fromInt (Line.cents product.price) ++ " cents)"} />
+            <Errors field="quantity" />
+            <button>Add</button>
+          </form>}
+        <button click={Pay { id: model.order.id }}>Mark paid</button>
+        <button click={Cancel { id: model.order.id }}>Mark cancelled</button>
+      </section>
+    else Html.none}
+    <a href={Orders.Index.Index {}}>All orders</a>
+    <button click={App.Logout}>Log out</button>
+  </Layout.Page>
+
+test "adding a line to a Paid order is refused" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let id <- Db.insert Order { owner: me, status: Paid }
+  let r <- Test.run (AddLine.update { id: id, product: pen, form: { quantity: Int.Positive 1 } } { user: me })
+  let lines <- Db.from Line |> Db.count
+  Task.succeed ({ value: r.value, lines: lines } == { value: Err "the order is not open", lines: 0 })
+}
+
+test "a Staff user opening another user's order is not found; a Manager sees it" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let staff <- Db.insert User { email: Text.Email "staff@example.com", name: Text.NonEmpty "Staff", passwordHash: "" }
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let id <- Db.insert Order { owner: owner }
+  let _ <- Test.login { user: Just staff }
+  let asStaff <- Test.open (Show { id: id })
+  let _ <- Test.login { user: Just boss }
+  let asManager <- Test.open (Show { id: id })
+  Task.succeed ({ staff: asStaff.answer, manager: asManager.answer } == { staff: PageMissing, manager: Shown })
+}
+
+-- The order's forms and buttons check the order again: a Staff user's post for another user's
+-- order is not found and changes nothing; a Manager's goes through.
+test "a Staff user cannot change another user's order; a Manager can" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let staff <- Db.insert User { email: Text.Email "staff@example.com", name: Text.NonEmpty "Staff", passwordHash: "" }
+  let boss <- Db.insert User { email: Text.Email "boss@example.com", name: Text.NonEmpty "Boss", passwordHash: "", role: Manager }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let a <- Db.insert Order { owner: owner }
+  let b <- Db.insert Order { owner: owner }
+  let line <- Test.run (AddLine.update { id: a, product: pen, form: { quantity: Int.Positive 1 } } { user: staff })
+  let pay <- Test.run (Pay.update { id: a } { user: staff })
+  let cancel <- Test.run (Cancel.update { id: a } { user: staff })
+  let lines <- Db.from Line |> Db.count
+  let still <- Db.get Order a
+  let added <- AddLine.update { id: a, product: pen, form: { quantity: Int.Positive 1 } } { user: boss }
+  let paid <- Pay.update { id: a } { user: boss }
+  let cancelled <- Cancel.update { id: b } { user: boss }
+  let afterA <- Db.get Order a
+  let afterB <- Db.get Order b
+  let count <- Db.from Line |> Db.count
+  Task.succeed ({ line: line.value, pay: pay.value, cancel: cancel.value, lines: lines, still: Maybe.map (\o -> o.status) still, added: added, paid: paid, cancelled: cancelled, after: [Maybe.map (\o -> o.status) afterA, Maybe.map (\o -> o.status) afterB], count: count } == { line: Err "not found", pay: Err "not found", cancel: Err "not found", lines: 0, still: Just Open, added: Response.redirect (Show { id: a }), paid: Response.redirect (Show { id: a }), cancelled: Response.redirect (Show { id: b }), after: [Just Paid, Just Cancelled], count: 1 })
+}
+
+test "adding a line through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let id <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let r <- Test.submit (AddLine { id: id, product: pen }) { quantity: Int.Positive 2 }
+  Task.succeed ({ answer: r.answer, total: Test.text "#total" r.doc } == { answer: Redirected (Show { id: id }), total: Just "300" })
+}
+
+test "a visitor is sent to log in from an order" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Order { owner: me }
+  let r <- Test.open (Show { id: id })
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
+}
+
+-- The order's page is still open when the session loses its user: each form and button is sent
+-- to log in and changes nothing.
+test "adding, paying or cancelling after logging out is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let id <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let _ <- Test.login { user: Nothing }
+  let added <- Test.submit (AddLine { id: id, product: pen }) { quantity: Int.Positive 1 }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let _ <- Test.login { user: Nothing }
+  let paid <- Test.click (Pay { id: id })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let _ <- Test.login { user: Nothing }
+  let cancelled <- Test.click (Cancel { id: id })
+  let lines <- Db.from Line |> Db.count
+  let after <- Db.get Order id
+  Task.succeed ({ added: added.answer, paid: paid.answer, cancelled: cancelled.answer, lines: lines, status: Maybe.map (\o -> o.status) after } == { added: Redirected (Auth.Login.Login {}), paid: Redirected (Auth.Login.Login {}), cancelled: Redirected (Auth.Login.Login {}), lines: 0, status: Just Open })
+}
+
+test "a session whose user has no row sees no one's order" = {
+  let owner <- Db.insert User { email: Text.Email "owner@example.com", name: Text.NonEmpty "Owner", passwordHash: "" }
+  let id <- Db.insert Order { owner: owner }
+  let _ <- Test.login { user: Just (User.UserId "ghost") }
+  let r <- Test.open (Show { id: id })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "only active products can be added" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let _ <- Db.insert Product { name: Text.NonEmpty "Old", price: Int.NonNegative 10, active: False }
+  let id <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Show { id: id })
+  let forms = Test.count "input[name=quantity]" page.doc
+  let _ <- Db.update Product pen (\p -> { p | active: False })
+  let r <- Test.submit (AddLine { id: id, product: pen }) { quantity: Int.Positive 1 }
+  let lines <- Db.from Line |> Db.count
+  Task.succeed ({ forms: forms, answer: r.answer, lines: lines } == { forms: 1, answer: PageMissing, lines: 0 })
+}
+
+test "paying and cancelling through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let a <- Db.insert Order { owner: me }
+  let b <- Db.insert Order { owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: a })
+  let paid <- Test.click (Pay { id: a })
+  let _ <- Test.get (Show { id: b })
+  let cancelled <- Test.click (Cancel { id: b })
+  let again <- Test.run (Pay.update { id: b } { user: me })
+  Task.succeed ({ paid: paid.answer, paidStatus: Test.text "#status" paid.doc, cancelled: cancelled.answer, cancelledStatus: Test.text "#status" cancelled.doc, again: again.value } == { paid: Redirected (Show { id: a }), paidStatus: Just "Paid", cancelled: Redirected (Show { id: b }), cancelledStatus: Just "Cancelled", again: Err "the order is not open" })
+}

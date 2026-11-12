@@ -1,0 +1,27 @@
+module App
+
+import User
+import Layout
+
+session { user: Maybe User.UserId }
+
+login = Auth.Login.Login
+
+route Logout = POST "/logout" { }
+
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
+}
+
+error : Error -> Html
+error err = <Layout.Shell heading="Something went wrong"><p>Please try again.</p></Layout.Shell>
+
+notFound : Html
+notFound = <Layout.Shell heading="Not found"><p>There is nothing here.</p></Layout.Shell>
+
+test "Logout empties the session and redirects to the login page" = {
+  let r <- Test.run (Logout.update {} { user: Just (User.UserId "u") })
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Response.redirect (Auth.Login.Login {})), trace: ["Session.put"] })
+}

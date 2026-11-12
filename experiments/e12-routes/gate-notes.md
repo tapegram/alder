@@ -23,3 +23,24 @@
   names `ok`; the alts (different markup, a plain-HTML layout, helpers in their own modules,
   `Auth.Login`'s write route named `Submit`, a started booking's Cancel answered 404 instead of
   422) caught no detail the texts leave open.
+
+## T6 (Task 8)
+
+- **`AddLine` carries the order (ruling).** The plan's corrected cut names
+  `route AddLine { product: Product.ProductId } form NewLine`, but a write route does not know the
+  page it came from (book 6, "The page a write came from") and runs no `load`, so the order it
+  adds to has to ride in the route too. The Names block says
+  `route AddLine { id: Order.OrderId, product: Product.ProductId } form NewLine`, `route Pay { id:
+  Order.OrderId }` and `route Cancel { id: Order.OrderId }` (`id`, as `Show`'s and T4's `Save`'s);
+  the hidden tests send `Orders.Show.AddLine { id, product }`, `Orders.Show.Pay { id }`,
+  `Orders.Show.Cancel { id }`. The cut itself (a form on a parameterised write) is what findings
+  names.
+- **Write routes check again.** No `load` runs before a write route, so the page-era authority
+  (`load` ran before every message) is now each write's own: the text says another user's order
+  is 404 "on its page and for its forms and buttons alike" and a Staff user gets 404 "from the
+  page and from its form and buttons alike", without naming `Task.notFound`/`Task.fail`. No
+  hidden test checks a write's 404 (E9's never did); both solutions test it themselves.
+- **Gate green on the first run**, no hidden test changed: 9/9 on both, scores 54/54 (1.000) on
+  both after the solutions gained tests for the new write-route checks (Staff posts, a page held
+  across a logout). A probe (reference without the Open check) fails exactly the stale-page
+  hidden test.

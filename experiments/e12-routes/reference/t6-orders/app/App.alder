@@ -1,0 +1,37 @@
+module App
+
+import User
+import Layout
+
+session { user: Maybe User.UserId }
+
+login = Auth.Login.Login
+
+-- `/session` is the visitor's sign-in; logging out deletes it.
+route Logout = DELETE "/session" { }
+
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
+}
+
+error : Error -> Html
+error err =
+  <Layout.Page title="Error">
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html
+notFound =
+  <Layout.Page title="Not found">
+    <h1>Not found</h1>
+  </Layout.Page>
+
+-- Every Log out button is on a page that requires a user, so a browser test cannot tell this
+-- redirect from a refresh (book 10, "The logout redirect"): the test calls Logout.update itself.
+test "Logout clears the user and goes to log in" = {
+  let r <- Test.run (Logout.update {} { user: Just (User.UserId "me") })
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Response.redirect (Auth.Login.Login {})), trace: ["Session.put"] })
+}

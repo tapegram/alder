@@ -1,0 +1,25 @@
+module Line
+
+import User
+import Order
+import Product
+
+type LineId = brand Text
+
+table Line {
+  id: LineId @id,
+  order: Order.OrderId @ref Order @cascade,
+  product: Product.ProductId @ref Product,
+  quantity: Int.Positive,
+}
+
+test "an order's lines go with it; a product on a line stays" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let pen <- Db.insert Product { name: Text.NonEmpty "Pen", price: Int.NonNegative 150 }
+  let o <- Db.insert Order { owner: me }
+  let _ <- Db.insert Line { order: o, product: pen, quantity: Int.Positive 2 }
+  let p <- Test.run (Db.delete Product pen)
+  let d <- Test.run (Db.delete Order o)
+  let lines <- Db.from Line |> Db.count
+  Task.succeed ({ product: Result.toMaybe p.value, order: Result.toMaybe d.value, lines: lines } == { product: Nothing, order: Just (), lines: 0 })
+}
