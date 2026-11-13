@@ -139,11 +139,19 @@ func (s *server) uriOf(rel string) string {
 
 // text is rel's current text: the open document's, else the file's on disk ("" when unreadable).
 func (s *server) text(rel string) string {
+	text, _ := s.textVersion(rel)
+	return text
+}
+
+// textVersion is rel's current text and the version it has, both from one read of the open
+// document; for a document that is not open, the file's text on disk and a nil version.
+func (s *server) textVersion(rel string) (string, *int) {
 	if x := s.docs.get(rel); x != nil {
-		return x.Text
+		v := x.Version
+		return x.Text, &v
 	}
 	b, _ := os.ReadFile(filepath.Join(s.rootReal, filepath.FromSlash(rel)))
-	return string(b)
+	return string(b), nil
 }
 
 type textDocumentItem struct {

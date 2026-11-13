@@ -245,11 +245,52 @@ func TestSearch_TypeError(t *testing.T) {
 	}
 }
 
+// TestSearch_FirstBuildErrored: when no build has been without errors (the first has a type
+// error), the index is the standard library's alone: none of the app's declarations, whose types
+// a build with errors may have poisoned.
+func TestSearch_FirstBuildErrored(t *testing.T) {
+	root := blogCopy(t)
+	rel := "app/Posts/Show.alder"
+	b, err := os.ReadFile(filepath.Join(root, rel))
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := string(b) + "\nzorbleCount : Int\nzorbleCount = \"three\"\n"
+	if err := os.WriteFile(filepath.Join(root, rel), []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := start(t, root)
+	c.open(rel, broken)
+	if !hasError(c.diags(rel)) {
+		t.Fatal("the fixture has no type error")
+	}
+	if c.srv.lastClean() != nil || c.srv.lastGood() == nil {
+		t.Fatalf("lastClean %v, lastGood %v: want only an errored build", c.srv.lastClean(), c.srv.lastGood())
+	}
+	r := searchAt(t, c, map[string]any{"query": "split"})
+	if len(r.Results) == 0 || r.Results[0].Module != "Text" || r.Results[0].Name != "split" {
+		t.Errorf("split: %+v", r)
+	}
+	for _, q := range []string{"notFound", "zorbleCount"} {
+		for _, it := range searchAt(t, c, map[string]any{"query": q, "limit": -1}).Results {
+			if it.Source == "app" {
+				t.Errorf("%s: an app declaration of a build with errors: %+v", q, it)
+			}
+		}
+	}
+}
+
 func TestSearch_NeverErrors(t *testing.T) {
 	c := start(t, blogCopy(t))
 	openClean(t, c, "app/Posts/Show.alder")
 	for _, q := range []string{":", ": ", ": ->", ": (List", "Text ->", "-> ->", "Text -> (List", "(List", "List ("} {
 		searchAt(t, c, map[string]any{"query": q})
+	}
+	// empty, all space, and long
+	for _, q := range []string{"", "   \t ", strings.Repeat("Text -> ", 250)} {
+		if r := searchAt(t, c, map[string]any{"query": q}); r.Query != strings.TrimSpace(q) {
+			t.Errorf("query of %d bytes answered as %q", len(q), r.Query)
+		}
 	}
 	// position without a uri, a uri outside the root, a position past the end
 	searchAt(t, c, map[string]any{"position": Position{Line: 3, Character: 2}})
@@ -528,6 +569,37 @@ func TestSearchEdit_Parses(t *testing.T) {
 	wantLine(t, pick(t, c, src, c.at(pickRel, "?f", 1), "Pick", "double", "function", 1), "applied = (double ?a) 1")
 	wantLine(t, pick(t, c, src, c.at(pickRel, "?f", 1), "Pick", "double", "function", 0), "applied = double 1")
 	wantLine(t, pick(t, c, src, c.at(pickRel, "?u", 1), "Prelude", "Nothing", "constructor", 0), `greet = "héllo😀" ++ Nothing`)
+}
+
+// TestSearchEdit_NewHoleToken: on a `?name` the last good build does not have (the program has a
+// parse error since), the pick replaces the token, bare, in wire units past non-ASCII text.
+func TestSearchEdit_NewHoleToken(t *testing.T) {
+	c := pickClient(t, pickSrc, "utf-16")
+	line := `greet2 = "héllo😀" ++ ?fresh`
+	src := pickSrc + "\ngreet2 : Text\n" + line + "\n\nbroken = (\n"
+	c.change(pickRel, src)
+	if !hasError(c.diags(pickRel)) {
+		t.Fatal("the change parses")
+	}
+	l := strings.Count(src[:strings.Index(src, line)], "\n")
+	ch := len(utf16.Encode([]rune(strings.TrimSuffix(line, "?fresh"))))
+	want := Range{Start: Position{l, ch}, End: Position{l, ch + len("?fresh")}}
+	for _, at := range []int{0, 3, len("?fresh")} {
+		we, e := searchEdit(c, pickRel, Position{l, ch + at}, "Text", "trim", "function", 1)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if es := we.DocumentChanges[0].Edits; len(es) != 1 || es[0].Range != want || es[0].NewText != "Text.trim" {
+			t.Fatalf("at +%d: edits %+v, want Text.trim over %+v", at, es, want)
+		}
+		wantLine(t, applyPick(t, c, pickRel, src, utf16Enc, we), `greet2 = "héllo😀" ++ Text.trim`)
+	}
+}
+
+func TestNewHoles_Capped(t *testing.T) {
+	if got := newHoles(nil, 1000); len(got) != maxNewHoles || got[0] != "?a" || got[25] != "?z" {
+		t.Errorf("%d holes: %v", len(got), got)
+	}
 }
 
 func TestSearchEdit_UnknownItem(t *testing.T) {

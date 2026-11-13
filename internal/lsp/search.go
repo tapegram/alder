@@ -142,11 +142,12 @@ type searchEditParams struct {
 // searchEditReq answers alder/searchEdit (params searchEditParams): the edit that writes the
 // picked result (an entry of alder/search's index) at a position of the document. On a typed hole
 // of the last good build it replaces the hole, with Args new holes after the name (the whole in
-// parentheses where the hole is a function or an argument of an application); elsewhere it
-// inserts the name at the position. The name is written as the file writes it: bare for the
-// Prelude and the file's own module, else qualified, with an import line added for an app module
-// the file does not import. An item not in the index, or a position not in the document, is
-// codeInvalidParams.
+// parentheses when there are new holes and the hole is a function or an argument of an
+// application); on a `?name` that build does not have, it replaces that with the bare name;
+// elsewhere it inserts the name at the position. The name is written as the file writes it: bare
+// for the Prelude and the file's own module, else qualified, with an import line added for an app
+// module the file does not import. An item not in the index, or a position not in the document,
+// is codeInvalidParams.
 func searchEditReq(s *server, params json.RawMessage) (any, error) {
 	var p searchEditParams
 	if err := json.Unmarshal(params, &p); err != nil {
@@ -159,12 +160,8 @@ func searchEditReq(s *server, params json.RawMessage) (any, error) {
 	if !s.searchHas(p.Module, p.Name, p.Kind) {
 		return nil, &rpcError{codeInvalidParams, fmt.Sprintf("no %s %s.%s in the search index", p.Kind, p.Module, p.Name)}
 	}
-	var version *int
-	if d := s.docs.get(rel); d != nil {
-		v := d.Version
-		version = &v
-	}
-	cx := s.completionAt(rel, p.Position)
+	src, version := s.textVersion(rel) // one read: the edit's version is that of the text it is built on
+	cx := s.completionIn(rel, src, p.Position)
 	if cx == nil {
 		return nil, &rpcError{codeInvalidParams, fmt.Sprintf("position %d:%d is not in %s", p.Position.Line, p.Position.Character, p.URI)}
 	}
@@ -184,7 +181,9 @@ func searchEditReq(s *server, params json.RawMessage) (any, error) {
 		text = qual + "." + p.Name
 	}
 
-	// where: the hole under the position, else the position itself
+	// where: the hole under the position, else a `?name` the last good build does not have yet
+	// (replaced by the bare name: without its type there are no new holes or parentheses), else
+	// the position itself
 	at := Range{Start: Position{cx.line, cx.col}, End: Position{cx.line, cx.col}}
 	if h := cx.holeAt(); h != nil && h.Span.Start.Line == h.Span.End.Line {
 		at = Range{Start: Position{h.Span.Start.Line - 1, h.Span.Start.Col - 1}, End: Position{h.Span.End.Line - 1, h.Span.End.Col - 1}}
@@ -194,6 +193,8 @@ func searchEditReq(s *server, params json.RawMessage) (any, error) {
 				text = "(" + text + ")"
 			}
 		}
+	} else if start, end, ok := holeToken(cx.lines[cx.line], cx.col); ok {
+		at = Range{Start: Position{cx.line, start}, End: Position{cx.line, end}}
 	}
 	edits := []TextEdit{s.enc.wireEdit(cx.lines, TextEdit{Range: at, NewText: text})}
 	if imp != "" {
@@ -233,8 +234,24 @@ func imports(m *syntax.Module, path string) bool {
 	return false
 }
 
-// newHoles is n hole names, ?a, ?b, … (then ?a1, ?b1, …), that no hole in lines uses.
+// holeToken is the byte span of the `?name` token of line that col (a byte column) is in or at
+// the end of; ok is false when there is none.
+func holeToken(line string, col int) (start, end int, ok bool) {
+	for _, m := range reHoleName.FindAllStringIndex(line, -1) {
+		if m[0] <= col && col <= m[1] {
+			return m[0], m[1], true
+		}
+	}
+	return 0, 0, false
+}
+
+// maxNewHoles caps the holes a pick adds after the name.
+const maxNewHoles = 26
+
+// newHoles is n hole names (at most maxNewHoles), ?a, ?b, … (then ?a1, ?b1, …), that no hole in
+// lines uses.
 func newHoles(lines []string, n int) []string {
+	n = min(n, maxNewHoles)
 	used := map[string]bool{}
 	for _, l := range lines {
 		for _, g := range reHoleName.FindAllStringSubmatch(l, -1) {

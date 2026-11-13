@@ -112,7 +112,12 @@ func completionReq(s *server, params json.RawMessage) (any, error) {
 
 // completionAt is the completion at p in rel, nil when p is not in its text.
 func (s *server) completionAt(rel string, p Position) *completion {
-	lines := strings.Split(s.text(rel), "\n")
+	return s.completionIn(rel, s.text(rel), p)
+}
+
+// completionIn is completionAt for text, rel's current text as the caller read it.
+func (s *server) completionIn(rel, text string, p Position) *completion {
+	lines := strings.Split(text, "\n")
 	if p.Line < 0 || p.Line >= len(lines) || p.Character < 0 {
 		return nil
 	}

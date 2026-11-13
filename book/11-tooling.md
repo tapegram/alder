@@ -3183,7 +3183,7 @@ range, 0-based) in place of `file`, `line` and `col`. A name query:
 
 ```text
 -> {"jsonrpc":"2.0","id":7,"method":"alder/search","params":{"query":"lastPage"}}
-<- {"jsonrpc":"2.0","id":7,"result":{"query":"lastPage","mode":"name","note":"","results":[{"name":"lastPage","module":"Posts.Index","kind":"value","signature":"Int","doc":"lastPage bounds `page`, so `(page - 1) * perPage` cannot overflow.","source":"app","uri":"file:///work/blog/app/Posts/Index.alder","range":{"start":{"line":11,"character":0},"end":{"line":11,"character":12}}}]}}
+<- {"jsonrpc":"2.0","id":7,"result":{"query":"lastPage","mode":"name","note":"","results":[{"name":"lastPage","module":"Posts.Index","kind":"value","signature":"Int","doc":"lastPage bounds `page`, so `(page - 1) * perPage` cannot overflow.","source":"app","uri":"file:///work/blog/app/Posts/Index.alder","range":{"start":{"line":23,"character":0},"end":{"line":24,"character":18}}}]}}
 ```
 
 With a `uri` and a `position` on a typed hole and an empty `query`, the server
@@ -3213,14 +3213,17 @@ build insert text. The server decides:
   also adds the import, at its sorted position among the imports, as the
   formatter would place it, with `as Q` when the qualifier is not the path's
   last segment.
-- **The place.** On a typed hole the edit replaces the hole. Elsewhere it
-  inserts the name at the position.
+- **The place.** On a typed hole the edit replaces the hole. On a `?name` the
+  last build does not have yet (typed since, or kept out by an error), it
+  replaces that with the bare name: with no type it adds no holes or
+  parentheses. Elsewhere it inserts the name at the position.
 - **New holes.** On a hole, `args` of `n` adds `n` new holes after the name,
   named `?a`, `?b`, and so on, skipping any name the file already uses for a
-  hole.
-- **Parentheses.** When the hole is the function or an argument of an
-  application, the name and its new holes are wrapped in parentheses: `f ?x`
-  becomes `f (Text.split ?a ?b)`.
+  hole. It adds at most 26.
+- **Parentheses.** When the edit adds new holes and the hole is the function
+  or an argument of an application, the name and its new holes are wrapped in
+  parentheses: `f ?x` becomes `f (Text.split ?a ?b)`. With no new holes the
+  name goes in bare: `f ?x` becomes `f Util.greeting`.
 
 An entry that is not in the index, or a position that is not in the document,
 is an invalid-params error.
