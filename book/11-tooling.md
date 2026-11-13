@@ -585,9 +585,11 @@ its route picker.
 `alder search <query> [--json] [--limit N]` finds a function, a value, a type
 or a union constructor, in the standard library and in your app, when you know
 what it does or what type it has but not what it is called. The query is every
-argument that is not a flag, joined with spaces, so `alder search Text -> Int`
-and `alder search 'Text -> Int'` are the same query. There are three kinds,
-told apart by how the query is written.
+argument that is not a flag, joined with spaces, so `alder search : List Text`
+is the query `: List Text`. Quote a query that contains `->`, or `(` or `)`, as in
+`alder search 'Text -> Int'`: a shell reads an unquoted `>` as a redirect to a
+file, and `(` as the start of a subshell. There are three kinds, told apart by
+how the query is written.
 
 #### Search by name
 
@@ -615,7 +617,7 @@ A query that contains `->` is a type. It finds the declarations whose type
 matches, however the names read.
 
 ```text
-$ alder search Text -> Text -> List Text
+$ alder search 'Text -> Text -> List Text'
 NAME        TYPE                       FROM    DOC
 Text.split  Text -> Text -> List Text  stdlib
 ```
@@ -640,7 +642,7 @@ Each result says how it matches, in the JSON's `match` field (below):
   query written in the other order still finds them:
 
 ```text
-$ alder search List a -> Int -> List a
+$ alder search 'List a -> Int -> List a'
 NAME       TYPE                     FROM    DOC
 List.drop  Int -> List a -> List a  stdlib
 List.take  Int -> List a -> List a  stdlib
