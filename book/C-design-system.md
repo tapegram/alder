@@ -35,7 +35,7 @@ box", explains why):
   styles that box by its tag name and attributes. Every element works
   with JavaScript off.
 
-The version Alder ships is **v0.6.0**: the compiler embeds a copy of
+The version Alder ships is **v0.6.1**: the compiler embeds a copy of
 the library's stylesheet, scripts (`al.js`) and manifest at that tag (`rt/al/VERSION`;
 "Where it lives", below).
 
@@ -214,7 +214,7 @@ It goes through the same copy, check and write as an import, so a theme the chec
 
 ```
 $ alder theme use
-starting themes (alder-ui v0.6.0):
+starting themes (alder-ui v0.6.1):
   zinc        Tools, dashboards, admin — the default, the safe choice.
   brutal      Launch pages, portfolios, anything that should shout.
   catppuccin  Developer-facing apps.
@@ -228,7 +228,7 @@ theme: paper → app/App.alder  (light 32, dark 32, theme-wide 15; replaced the 
 
 With no name the command lists the themes and writes nothing.
 
-With `--json` the list is `{"version":"v0.6.0","presets":[{"name","title","purpose"}]}`, for a script or an agent.
+With `--json` the list is `{"version":"v0.6.1","presets":[{"name","title","purpose"}]}`, for a script or an agent.
 
 With one it replaces the app's whole `theme` declaration, as `alder theme import` does: what was there before is gone, not merged, and `--dry-run` prints the diff without writing.
 
@@ -239,7 +239,7 @@ A name that is not one of the five is refused with the nearest, then the list, a
 ```
 $ alder theme use papr
 alder theme use: no starting theme `papr`; did you mean `paper`?
-starting themes (alder-ui v0.6.0):
+starting themes (alder-ui v0.6.1):
   zinc        Tools, dashboards, admin — the default, the safe choice.
   …
 ```
@@ -382,8 +382,8 @@ $ alder theme import tweakcn.css
 theme: 59 tokens → app/App.alder  (light 32, dark 20, theme-wide 7; replaced the theme that was there)
 15 not placed — paste into static/app.css if you want them:
   :root {
-    --font-serif: Lora, Georgia, serif; /* not a token of alder-ui v0.6.0 */
-    --tracking-normal: 0em; /* not a token of alder-ui v0.6.0 */
+    --font-serif: Lora, Georgia, serif; /* not a token of alder-ui v0.6.1 */
+    --tracking-normal: 0em; /* not a token of alder-ui v0.6.1 */
     …
   }
 
@@ -1439,8 +1439,17 @@ trigger's `title`: that is the version a visitor with the script off gets.
 
 ### `al-devpanel`
 
-The developer bar: a one-line bar sticky along the bottom of the page,
-and with `open` the selected section above it. It is the element
+The developer bar: a one-line bar along the bottom of the window, and
+with `open` the selected section above it. As the body's last child,
+where Alder renders it, the panel is `position: fixed` to the window's
+bottom edge, and the body gets `2.5rem` of bottom padding so the
+collapsed bar does not cover the end of the page; the open panel lies
+over the page, as a browser's devtools do. Fixed rather than sticky:
+a sticky box stays in the page's flow, so on a page shorter than the
+window it sits right after the content, and growing it from its top
+edge pushes its bottom edge down instead. Anywhere else (a page that
+shows the element, as the library's demos do) it stays in the flow,
+sticky to the bottom. It is the element
 Alder's developer mode renders (chapter 11, "Developer mode"), and it is
 in the library so any stack can reuse it. Its content is server-rendered:
 a `<nav>` of tab `<button>`s, each with `aria-controls` naming a
@@ -1544,7 +1553,7 @@ Alder *vendors* it: the compiler's source keeps a copy of one tagged
 release in `rt/al/` (`al.css`, `al.js`, `custom-elements.json`, `VERSION`, a
 `fonts/` directory with the two Geist files and their licence, and the
 licences of the library, of the lucide icons it draws and of the
-Catppuccin palette that the `catppuccin` starting theme uses), at `v0.6.0`,
+Catppuccin palette that the `catppuccin` starting theme uses), at `v0.6.1`,
 and embeds it, so a build never fetches anything.
 
 `scripts/vendor-al.sh
