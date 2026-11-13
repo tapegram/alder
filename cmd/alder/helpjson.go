@@ -121,6 +121,10 @@ var commandTree = []cmdSpec{
 	{Name: "routes", Summary: "list the app's routes, with their methods and paths", Usage: commandUsages["routes"],
 		Args:  []string{"[dir]"},
 		Flags: []flagSpec{{Name: "--json", Summary: "a JSON array of routes with file, line and col"}}},
+	{Name: "search", Summary: "search the standard library and the app by name or by type", Usage: commandUsages["search"],
+		Args: []string{"<query>"},
+		Flags: []flagSpec{{Name: "--json", Summary: "a JSON object: query, mode, note and results"},
+			{Name: "--limit", Value: "N", Summary: "at most N results (default 50)"}}},
 	{Name: "dump", Summary: "print a file's tokens or syntax tree, or an app's IR", Usage: commandUsages["dump"],
 		Args: []string{"<file.alder | dir>"},
 		Flags: []flagSpec{

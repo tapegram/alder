@@ -30,6 +30,8 @@ type Parser struct {
 	// fieldDefault is set while a field's default is parsed: application stops at `as "…"`, so
 	// a wire name written where none is allowed is reported as such.
 	fieldDefault bool
+	// wildcard lets `_` stand for a type (ParseType, for search queries); source files never set it.
+	wildcard bool
 }
 
 func newParser(file string, src []byte, sigMode bool, trace *[]Token) *Parser {
@@ -79,6 +81,25 @@ func ParseExpr(file string, src []byte) (e Expr, diags []diag.Diagnostic, more s
 		more, at = describe(p.tok), p.posOf(p.tok)
 	}
 	return e, p.finish(), more, at
+}
+
+// ParseType parses src as one type, as a search query writes it. With wildcard, `_` is a type
+// (a &TypeVar{Name: "_"}) that matches anything. Input left over after the type is a
+// diagnostic; an empty src returns a nil type and one diagnostic.
+func ParseType(src string, wildcard bool) (Type, []diag.Diagnostic) {
+	p := newParser("query", []byte(src), false, nil)
+	p.wildcard = wildcard
+	p.skipNL()
+	if p.at(EOF) {
+		p.errorAt(p.tok, "expected a type, got nothing")
+		return nil, p.finish()
+	}
+	t := p.parseType()
+	p.skipNL()
+	if !p.at(EOF) {
+		p.errorAt(p.tok, "unexpected "+describe(p.tok)+" after the type")
+	}
+	return t, p.finish()
 }
 
 // StripComments is src, an expression as ParseExpr reads it, without its comments: each `--`
@@ -1107,7 +1128,7 @@ func (p *Parser) parseType() Type {
 	start := p.tok
 	first := p.parseAType()
 	var args []Type
-	for p.at(UIdent) || p.at(LIdent) && !(p.session && p.tok.Text == "via") && !p.atWire() || p.at(LBrace) || p.at(LParen) {
+	for p.at(UIdent) || p.at(LIdent) && !(p.session && p.tok.Text == "via") && !p.atWire() || p.at(LBrace) || p.at(LParen) || p.wildcard && p.at(Underscore) {
 		args = append(args, p.parseAType())
 	}
 	var head Type = first
@@ -1150,6 +1171,11 @@ func (p *Parser) parseAType() Type {
 	case p.at(LIdent):
 		t := p.advance()
 		tv := &TypeVar{Name: t.Text}
+		tv.Span = p.spanTok(t)
+		return tv
+	case p.wildcard && p.at(Underscore):
+		t := p.advance()
+		tv := &TypeVar{Name: "_"}
 		tv.Span = p.spanTok(t)
 		return tv
 	case p.at(LBrace):
