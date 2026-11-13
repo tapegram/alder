@@ -63,6 +63,7 @@ var (
 		"alder/generators":                  generatorsReq,
 		"alder/routes":                      routesReq,
 		"alder/search":                      searchReq,
+		"alder/searchEdit":                  searchEditReq,
 	}
 	slowMethods = map[string]handler{
 		"alder/preview":            previewReq,
