@@ -41,11 +41,12 @@ func (ix *Index) Search(query string, o Options) Response {
 		if r.Mode == "produces" {
 			text = q[1:]
 		}
-		if _, _, note, bad := ix.queryType(text); note != "" || bad {
+		t, u, note, bad := ix.queryType(text)
+		if note != "" || bad {
 			r.Note, r.Bad = note, bad
 			return r
 		}
-		// matching is filled in by the type search
+		hits = ix.searchType(t, u, r.Mode == "produces", o.Source)
 	default:
 		hits = ix.searchName(q, o.Source)
 		if len(hits) == 0 && looksLikeType(ix, q) {
