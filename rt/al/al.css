@@ -1,4 +1,4 @@
-/*! alder-ui v0.6.0 | Apache-2.0 | https://github.com/tapegram/alder-ui
+/*! alder-ui v0.6.1 | Apache-2.0 | https://github.com/tapegram/alder-ui
  * Built by scripts/build.py from tokens.css, base.css, typography.css and components/;
  * do not edit. Geist and Geist Mono (SIL OFL 1.1) load from fonts/ beside this file. */
 
@@ -3752,8 +3752,11 @@ al-tooltip::after {
 
 /*
  * al-devpanel: the developer bar. Collapsed it is a one-line bar along the
- * bottom of the page (sticky); with `open` the section whose tab is selected
- * shows above it. The content is server-rendered markup: a <nav> of tab
+ * bottom of the window; with `open` the section whose tab is selected shows
+ * above it. As the body's last child (where Alder renders it) the panel is
+ * fixed to the window's bottom edge, whatever the page's height, so it grows
+ * upward and the body keeps room for the collapsed bar; anywhere else (a demo,
+ * a docs page) it stays in the flow, sticky to the bottom. The content is server-rendered markup: a <nav> of tab
  * <button>s (aria-controls="<section id>") and the <section>s. al-devpanel.js
  * hides the other sections, re-applies that after DOM patches, and toggles `open`; without it, every section shows
  * when open. Monospace for SQL and other code.
@@ -3783,6 +3786,20 @@ al-devpanel {
   line-height: 1.5;
   box-sizing: border-box;
   margin: 0;
+}
+
+/* docked: fixed rather than sticky, since a sticky panel on a short page sits
+   right after the content and its resize moves its bottom edge, not its top */
+body > al-devpanel {
+  position: fixed;
+  inset-inline: 0;
+  z-index: 40; /* under menus, popovers and dialogs (50) */
+}
+
+/* room for the collapsed bar (one line of tabs), so it does not cover the end
+   of the page; the open panel overlays the page, like browser devtools */
+body:has(> al-devpanel) {
+  padding-block-end: 2.5rem;
 }
 
 al-devpanel *,

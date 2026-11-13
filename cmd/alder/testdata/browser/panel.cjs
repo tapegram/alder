@@ -37,6 +37,8 @@ const VH = 600;
 
     // closed at first: the one-line bar, no handle to drag
     let s = await info();
+    // docked to the window's bottom edge, though /login is shorter than the window (#219)
+    check('closed: docked to the bottom of the window', s.position === 'fixed' && s.bottom === 0, s);
     check('closed: a bar, the handle is not shown', !s.open && !s.min && await page.evaluate(() => getComputedStyle(document.querySelector('al-devpanel > [data-grip]')).display === 'none'), s);
 
     // open with a tab, then resize by dragging the top edge
@@ -50,6 +52,7 @@ const VH = 600;
     await drag(g.y + g.height / 2 - 150);
     s = await info();
     check('drag up 150px: 150px taller', Math.abs(s.h - (h0 + 150)) <= 2, { h0, now: s.h });
+    check('drag up: the bottom edge stays at the window\'s', s.bottom === 0, s.bottom);
     await drag(0);
     s = await info();
     check('drag to the top: clamped to 80% of the viewport', s.h === Math.floor(VH * 0.8) || s.h === Math.round(VH * 0.8), s.h);
