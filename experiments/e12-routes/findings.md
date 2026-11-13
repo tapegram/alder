@@ -371,4 +371,12 @@ not in the reference, is `PUT "/theme"`. That contradiction in the book is a can
 
 ## 10. Issues
 
-*(Task 21: one issue per fix, each citing cells.)*
+Filed on `tapegram/alder` on 2026-11-12, each referencing #208:
+
+- [#221](https://github.com/tapegram/alder/issues/221) Book: ch. 6 contradicts itself on the theme method. The table says `POST`, the example `PUT /theme`; 4 of 6 T4 cells wrote `POST /theme` (§9).
+- [#215](https://github.com/tapegram/alder/issues/215) (commented, not new): a helper named `page` is parsed as the removed declaration and gives E0001. 3 T13 cells (§3). The open parser-cleanup issue already covers the fix.
+- [#222](https://github.com/tapegram/alder/issues/222) Diagnostics: a route named like a constructor is E0044; T14's `Open | Closed` had to be renamed (§4). Whether to improve the message or allow the clash is open.
+- [#223](https://github.com/tapegram/alder/issues/223) Book: "a route value keeps its full path" never says a module writes its own routes unqualified. 48 of the 56 round-0 E0002 (§3).
+- [#224](https://github.com/tapegram/alder/issues/224) E12's own inputs (a ruling, not an Alder fix): full-path redirects in the Names blocks, T7's `Test.fake Password` with no fake in the base, drill tests missing a logged-out `requires` on write routes (§2).
+
+**Not filed:** per-command `--help` printing only the top-level usage. It does not reproduce on current main (39f84c38): `alder new --help`, `alder migrate --help`, `alder edit --help` and `alder check --help` each print their own usage line(s), different from `alder --help`. The remark in §7 was about the pinned run binary or about the help being one line without examples; if wanted, a richer per-command help is a new request, not a bug.
