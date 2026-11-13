@@ -244,6 +244,22 @@ func typeArity(decl types.Type) int {
 	return 0
 }
 
+// ApplyTypeArgs applies declared type decl (a Result.Decls entry) to args, as a type name in a
+// signature reads: the Prelude's `Html` is `Html Route`. ok is false when decl takes a different
+// number of type arguments.
+func ApplyTypeArgs(decl types.Type, args []types.Type) (t types.Type, ok bool) {
+	if len(args) != typeArity(decl) {
+		return nil, false
+	}
+	if c, isCon := decl.(*types.Con); isCon && c.Name == "Html" && c.Module == "" {
+		return &types.App{Con: "Html", Args: []types.Type{types.Route}}, true
+	}
+	return applyArgs(decl, args), true
+}
+
+// TypeArity is the number of type arguments declared type decl takes.
+func TypeArity(decl types.Type) int { return typeArity(decl) }
+
 // applyArgs instantiates a declared type with arguments: unions and generic records get Args (a
 // record also its fields at those arguments); opaque Apps substitute their Params.
 func applyArgs(decl types.Type, args []types.Type) types.Type {
