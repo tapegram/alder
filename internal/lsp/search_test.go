@@ -557,3 +557,109 @@ func TestComplete_ImportTextUnchanged(t *testing.T) {
 		t.Errorf("Admin.Layout: %q", got)
 	}
 }
+
+func symbolsFor(t *testing.T, c *client, query string) []symbolInformation {
+	t.Helper()
+	var out []symbolInformation
+	if e := c.call("workspace/symbol", map[string]any{"query": query}, &out); e != nil {
+		t.Fatalf("workspace/symbol %q: %v", query, e)
+	}
+	return out
+}
+
+func TestSymbol_App(t *testing.T) {
+	c := start(t, blogCopy(t))
+	text := openClean(t, c, "app/App.alder")
+	var got *symbolInformation
+	syms := symbolsFor(t, c, "error")
+	for i := range syms {
+		if syms[i].Name == "error" && syms[i].ContainerName == "App" {
+			got = &syms[i]
+		}
+	}
+	if got == nil {
+		t.Fatalf("no error in %+v", syms)
+	}
+	line := strings.Count(text[:strings.Index(text, "error : Error")], "\n")
+	if got.Kind != 12 || got.ContainerName != "App" || !strings.HasSuffix(got.Location.URI, "/app/App.alder") || got.Location.Range.Start.Line != line {
+		t.Errorf("symbol %+v, want a function of App at line %d", got, line)
+	}
+	for _, s := range symbolsFor(t, c, "split") {
+		if s.Name == "split" && s.ContainerName == "Text" {
+			t.Errorf("a stdlib symbol: %+v", s)
+		}
+	}
+}
+
+func TestSymbol_Empty(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/App.alder")
+	syms := symbolsFor(t, c, "")
+	if len(syms) < 2 {
+		t.Fatalf("symbols %+v", syms)
+	}
+	for _, s := range syms {
+		if !strings.Contains(s.Location.URI, "/app/") {
+			t.Errorf("not under app/: %+v", s)
+		}
+	}
+}
+
+func TestSymbol_TypeLikeQuery(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/App.alder")
+	for _, q := range []string{": Int", "a -> b"} {
+		symbolsFor(t, c, q)
+	}
+}
+
+func TestSymbol_Capability(t *testing.T) {
+	c := start(t, blogCopy(t))
+	caps, _ := c.initResult["capabilities"].(map[string]any)
+	if caps["workspaceSymbolProvider"] != true {
+		t.Errorf("capabilities %v", caps)
+	}
+}
+
+var searchCaps = map[string]any{"experimental": map[string]any{"alderSearch": true}}
+
+func searchActOf(acts []action) *action {
+	for i := range acts {
+		if acts[i].Command != nil && acts[i].Command.Command == "alder.search" {
+			return &acts[i]
+		}
+	}
+	return nil
+}
+
+func TestCodeAction_SearchHole(t *testing.T) {
+	c := fillClient(t, fillRoot(t), &answers{list: []string{"x"}}, searchCaps)
+	acts := actionsAt(t, c, fillRel, c.at(fillRel, "?out", 1))
+	a := searchActOf(acts)
+	if a == nil {
+		t.Fatalf("no search action in %+v", acts)
+	}
+	want := c.at(fillRel, "?out", 0)
+	pos, _ := a.Command.Arguments[0]["position"].(map[string]any)
+	if a.Title != "Search for Task Response" || a.Kind != "quickfix" || a.Command.Arguments[0]["uri"] != c.uri(fillRel) ||
+		pos["line"] != float64(want.Line) || pos["character"] != float64(want.Character) {
+		t.Errorf("action %+v args %+v, want position %+v", a, a.Command.Arguments, want)
+	}
+}
+
+func TestCodeAction_SearchHoleGated(t *testing.T) {
+	c := fillClient(t, fillRoot(t), &answers{list: []string{"x"}}, fullCaps)
+	acts := actionsAt(t, c, fillRel, c.at(fillRel, "?out", 1))
+	if a := searchActOf(acts); a != nil {
+		t.Errorf("a search action for a default client: %+v", a)
+	}
+	if fillAct(t, c) == nil {
+		t.Error("no Fill action")
+	}
+	c2 := fillClient(t, fillRoot(t), &answers{list: []string{"x"}}, searchCaps)
+	for _, a := range actionsAt(t, c2, fillRel, c2.at(fillRel, "?out", 1)) {
+		if a.Command != nil && a.Command.Command == "alder.fill" {
+			t.Errorf("Fill offered without applyEdit: %+v", a)
+		}
+	}
+}

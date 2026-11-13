@@ -63,6 +63,7 @@ var (
 		"alder/generators":                  generatorsReq,
 		"alder/routes":                      routesReq,
 		"alder/search":                      searchReq,
+		"workspace/symbol":                  symbolReq,
 		"alder/searchEdit":                  searchEditReq,
 	}
 	slowMethods = map[string]handler{
@@ -105,6 +106,7 @@ type server struct {
 
 	// the client's capabilities, set by initialize (before any worker reads them)
 	applyEdit, workDoneProgress, showMessageRequest bool
+	searchCmd                                       bool // experimental.alderSearch: the client runs alder.search
 
 	// reader goroutine only
 	initialized bool
@@ -377,6 +379,7 @@ func (s *server) initialize(params json.RawMessage) (any, error) {
 		s.root, s.rootReal = root, real
 	}
 	s.applyEdit = p.Capabilities.Workspace.ApplyEdit
+	s.searchCmd = p.Capabilities.Experimental.AlderSearch
 	s.workDoneProgress = p.Capabilities.Window.WorkDoneProgress
 	if sm := p.Capabilities.Window.ShowMessage; len(sm) > 0 && string(sm) != "null" {
 		s.showMessageRequest = true

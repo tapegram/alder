@@ -10,6 +10,9 @@ import (
 type Options struct {
 	Limit  int    // 0 means 50; negative means no limit
 	Source string // "" for every source, else only entries with this Source
+	// NameOnly takes the query as a name whatever it looks like (a leading `:` or an arrow
+	// does not make it a type query)
+	NameOnly bool
 }
 
 // Hit is one search result.
@@ -34,6 +37,9 @@ const defaultLimit = 50
 func (ix *Index) Search(query string, o Options) Response {
 	q := strings.TrimSpace(query)
 	r := Response{Query: q, Mode: modeOf(q), Results: []Hit{}}
+	if o.NameOnly {
+		r.Mode = "name"
+	}
 	var hits []Hit
 	switch r.Mode {
 	case "produces", "type":

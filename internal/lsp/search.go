@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"alder/internal/diag"
+	"alder/internal/generate"
 	"alder/internal/search"
 	"alder/internal/syntax"
 	"alder/internal/types"
@@ -306,3 +308,91 @@ var (
 	reModuleLine = regexp.MustCompile(`^module\s`)
 	reImportLine = regexp.MustCompile(`^import\s+([A-Za-z0-9_.]+)`)
 )
+
+type symbolParams struct {
+	Query string `json:"query"`
+}
+
+// symbolInformation is an LSP SymbolInformation.
+type symbolInformation struct {
+	Name          string   `json:"name"`
+	Kind          int      `json:"kind"`
+	Location      Location `json:"location"`
+	ContainerName string   `json:"containerName,omitempty"`
+}
+
+// symbolKinds maps a search entry's kind to an LSP SymbolKind number: function 12, value 13,
+// type 23, constructor 22.
+var symbolKinds = map[search.Kind]int{search.Function: 12, search.Value: 13, search.TypeDecl: 23, search.Constructor: 22}
+
+// symbolReq answers workspace/symbol: the app's declarations (not the standard library's) whose
+// names match the query, from the index alder/search reads (searchSnapshot). The query is taken
+// as a name, whatever it looks like; an empty query gives every app declaration, for a picker
+// that filters for itself. Never fails.
+func symbolReq(s *server, params json.RawMessage) (out any, err error) {
+	empty := []symbolInformation{}
+	defer func() {
+		if r := recover(); r != nil {
+			out, err = empty, nil
+		}
+	}()
+	var p symbolParams
+	if len(params) > 0 {
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &rpcError{codeInvalidParams, err.Error()}
+		}
+	}
+	a := s.searchSnapshot()
+	if a == nil {
+		return empty, nil
+	}
+	ix := a.searchIndex()
+	if ix == nil {
+		return empty, nil
+	}
+	var entries []*search.Entry
+	if q := strings.TrimSpace(p.Query); q == "" {
+		for i := range ix.Entries {
+			if ix.Entries[i].Source == "app" {
+				entries = append(entries, &ix.Entries[i])
+			}
+		}
+	} else {
+		for _, h := range ix.Search(q, search.Options{Source: "app", Limit: -1, NameOnly: true}).Results {
+			entries = append(entries, h.Entry)
+		}
+	}
+	res := make([]symbolInformation, 0, len(entries))
+	for _, e := range entries {
+		if e.File == "" {
+			continue
+		}
+		r := s.enc.wireRange(a.lines[e.File], lspRange(e.Line, e.Col, e.EndLine, e.EndCol))
+		res = append(res, symbolInformation{Name: e.Name, Kind: symbolKinds[e.Kind],
+			Location: Location{URI: s.uriOf(e.File), Range: r}, ContainerName: e.Module})
+	}
+	return res, nil
+}
+
+// searchAction is the code action `Search for <type>` on the typed hole at pos (as fillAction
+// finds it): the client command alder.search with the document and the hole's start, which the
+// client runs (it opens its picker on alder/search for that position).
+func (s *server) searchAction(a *analysis, rel string, ctx generate.HereCtx, pos diag.Pos) (codeAction, bool) {
+	for _, h := range generate.HoleIndex(a.prog, a.diags) {
+		if h.File != rel || h.Name != ctx.Hole || !within(h.Span, pos) {
+			continue
+		}
+		var ds []Diagnostic
+		for _, d := range a.diags {
+			if d.Code == "W0002" && d.Span == h.Span {
+				ds = append(ds, s.enc.wireDiagnostic(a.lines[rel], lspDiagnostic(d)))
+			}
+		}
+		at := s.enc.wireRange(a.lines[rel], lspRange(h.Span.Start.Line, h.Span.Start.Col, h.Span.Start.Line, h.Span.Start.Col)).Start
+		title := "Search for " + h.Type
+		return codeAction{Title: title, Kind: "quickfix", Diagnostics: ds,
+			Command: &command{Title: title, Command: "alder.search",
+				Arguments: []any{map[string]any{"uri": s.uriOf(rel), "position": at}}}}, true
+	}
+	return codeAction{}, false
+}
