@@ -588,7 +588,7 @@ what it does or what type it has but not what it is called. The query is every
 argument that is not a flag, joined with spaces, so `alder search : List Text`
 is the query `: List Text`. Quote a query that contains `->`, or `(` or `)`, as in
 `alder search 'Text -> Int'`: a shell reads an unquoted `>` as a redirect to a
-file, and `(` as the start of a subshell. There are three kinds, told apart by
+file, and `(` is a syntax error in bash and zsh. There are three kinds, told apart by
 how the query is written.
 
 #### Search by name
@@ -628,7 +628,7 @@ nothing, and not `Text.length`, because `Text.length` only takes a `Text`. The
 reason is that a variable in a type means "whatever the caller chooses". A query
 `List b -> Maybe b` therefore asks for a function that works for every `b`, and
 finds `List.head` and `List.last`. To say "some type, I do not care which", use
-`_`, the wildcard: `Text -> _` finds every function that takes a `Text`.
+`_`, the wildcard: `Text -> _` finds every one-argument function that takes a `Text`.
 
 Each result says how it matches, in the JSON's `match` field (below):
 

@@ -99,7 +99,7 @@ func TestSearch_Limit(t *testing.T) {
 	if rows := strings.Count(strings.TrimSpace(out), "\n"); code != 0 || rows != 2 {
 		t.Errorf("code %d, %d result rows:\n%s", code, rows, out)
 	}
-	for _, args := range [][]string{{"--limit", "x", "a"}, {"--limit"}} {
+	for _, args := range [][]string{{"--limit", "x", "a"}, {"--limit"}, {"--limit", "0", "a"}, {"--limit", "-1", "a"}} {
 		code, out, errb := runSearch(t, dir, args...)
 		if code != 2 || out != "" || !strings.Contains(errb, searchUsage) {
 			t.Errorf("%v: code %d, stdout %q, stderr %q", args, code, out, errb)
@@ -152,13 +152,7 @@ func TestSearch_InApp(t *testing.T) {
 }
 
 func TestSearch_AppBroken(t *testing.T) {
-	src, err := filepath.Abs("../../testdata/corpus/E0002-own-module")
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := filepath.Join(t.TempDir(), "broken")
-	copyDir(t, src, app)
-	check := func(label string) {
+	check := func(label, app string) {
 		code, out, errb := runSearch(t, app, "--json", "split")
 		if code != 0 {
 			t.Fatalf("%s: code %d, stderr %q", label, code, errb)
@@ -171,11 +165,28 @@ func TestSearch_AppBroken(t *testing.T) {
 			t.Errorf("%s: stderr %q", label, errb)
 		}
 	}
-	check("type error")
-	if err := os.WriteFile(filepath.Join(app, "app", "Bad.alder"), []byte("module Bad\n\nx = = =\n"), 0o644); err != nil {
+	typeErr, err := filepath.Abs("../../testdata/corpus/E0002-own-module")
+	if err != nil {
 		t.Fatal(err)
 	}
-	check("parse error")
+	blog, err := filepath.Abs("../../examples/blog")
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := filepath.Join(t.TempDir(), "broken")
+	copyDir(t, typeErr, broken)
+	check("type error", broken)
+
+	// A clean app plus one file that does not parse, so only the parse failure is in play.
+	clean := filepath.Join(t.TempDir(), "blog")
+	copyDir(t, blog, clean)
+	if code, _, errb := runSearch(t, clean, "--json", "split"); code != 0 || strings.Contains(errb, "does not type-check") {
+		t.Fatalf("clean blog: code %d, stderr %q", code, errb)
+	}
+	if err := os.WriteFile(filepath.Join(clean, "app", "Bad.alder"), []byte("module Bad\n\nx = = =\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	check("parse error", clean)
 }
 
 func TestSearch_HolesAreFine(t *testing.T) {

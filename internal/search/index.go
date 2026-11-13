@@ -81,6 +81,9 @@ func (ix *Index) addModule(m *syntax.Module, source string, res *check.Result) {
 			if d.Route != "" {
 				continue
 			}
+			if source == "stdlib" && m.Name == "Test" && (check.IsTestStep(d.Name) || d.Name == "fake") {
+				continue // special forms the checker handles, not declarations
+			}
 			t, ok := res.Values[m.Name+"."+d.Name]
 			if !ok {
 				continue

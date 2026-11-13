@@ -1,9 +1,13 @@
 package search
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
+	"alder/internal/buildkit"
+	"alder/internal/check"
 	"alder/internal/types"
 )
 
@@ -53,3 +57,50 @@ func TestMatch_DoesNotMutateIndex(t *testing.T) {
 		t.Errorf("first %v\nsecond %v", hitNames(a), hitNames(b))
 	}
 }
+
+func TestStd_NoTestSteps(t *testing.T) {
+	ix := std(t)
+	for _, q := range []string{"Text -> _", ": Task Unit"} {
+		for _, h := range ix.Search(q, Options{Limit: -1}).Results {
+			if h.Entry.Module == "Test" && (check.IsTestStep(h.Entry.Name) || h.Entry.Name == "fake") {
+				t.Errorf("%q found Test.%s", q, h.Entry.Name)
+			}
+		}
+	}
+	for _, n := range []string{"fake", "login", "get", "click", "submit"} {
+		if find(ix, "Test", n, Function) != nil || find(ix, "Test", n, Value) != nil {
+			t.Errorf("Test.%s is indexed", n)
+		}
+	}
+}
+
+func TestMatch_NeverRanksLast(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := "module App\n\nerror : Error -> Html\nerror err = <h1>Something went wrong</h1>\n\nnotFound : Html\nnotFound = <h1>Not found</h1>\n\nboom : Int -> Never\nboom n = boom n\n"
+	if err := os.WriteFile(filepath.Join(dir, "app", "App.alder"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prog, res, bag, errs := buildkit.LoadChecked(dir, nil)
+	if len(errs) > 0 || res == nil || bag.HasErrors() {
+		t.Fatalf("load: %v %v", errs, bag)
+	}
+	ix := Build(prog, res)
+	for _, q := range []string{": List Text", "Int -> Text"} {
+		r := ix.Search(q, Options{Limit: -1})
+		at, _ := hitOf(r, "App.boom")
+		if at < 0 {
+			t.Fatalf("%q: no App.boom", q)
+		}
+		for i, h := range r.Results[at+1:] { // only bare and Never results may follow boom
+			f, ok := h.Entry.Type.(*types.Fun)
+			if !ok || !(isNever(f.Result) || q[0] == ':' && isParam(f.Result)) {
+				t.Errorf("%q: %s.%s : %s sorts after boom (at %d)", q, h.Entry.Module, h.Entry.Name, h.Entry.Signature, at+1+i)
+			}
+		}
+	}
+}
+
+func isParam(t types.Type) bool { _, ok := t.(*types.Param); return ok }

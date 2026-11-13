@@ -174,7 +174,9 @@ the same test hole completion uses (`u.Check(u.Instantiate(t), want)` on a clone
 
 1. For `:` queries, a candidate whose result is a bare type variable (`Maybe.withDefault : a ->
    Maybe a -> a`, `List.foldl`) sorts after every other result, whatever its other keys. It
-   matches every type, so it is kept (it can be the right fill) but always at the very end.
+   matches every type, so it is kept (it can be the right fill) but always at the very end. A
+   result of `Never` (a function that never returns) fits every type too, so it ranks with this
+   bare-result group, in plain type queries as well.
 2. Fewer candidate type variables bound to concrete types: identical up to renaming first. So
    results that mention the query's own types come before generic ones.
 3. Fewer extra leading arguments (`:` queries only).

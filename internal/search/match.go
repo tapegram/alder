@@ -12,7 +12,7 @@ type typeHit struct {
 	bound     int  // the candidate's own variables bound to something other than a variable
 	args      int  // produces mode: leading arguments still to supply
 	reordered bool // type mode: matched with its parameters permuted
-	bare      bool // produces mode: the declared result is a bare type variable
+	bare      bool // the declared result is a bare type variable (produces mode) or Never (either mode)
 }
 
 // searchType answers a type query: q is the query's type and u the unifier holding its
@@ -46,18 +46,22 @@ func (ix *Index) searchType(q types.Type, u *types.Unifier, produces bool, sourc
 				return &types.Fun{Params: f.Params[h.args:], Result: f.Result}
 			})
 			_, h.bare = cf.Result.(*types.Param)
+			h.bare = h.bare || isNever(cf.Result)
 		case produces:
 			h.bound, ok = attempt(u, e.Type, q, nil)
 			_, h.bare = e.Type.(*types.Param)
+			h.bare = h.bare || isNever(e.Type)
 		case !qFun: // a non-function type query is answered by non-functions only
 			if cFun {
 				continue
 			}
 			h.bound, ok = attempt(u, e.Type, q, nil)
+			h.bare = isNever(e.Type)
 		default: // type mode, function query
 			if !cFun || len(cf.Params) != m {
 				continue
 			}
+			h.bare = isNever(cf.Result)
 			h.bound, ok = attempt(u, e.Type, q, nil)
 			if !ok {
 				for _, p := range perms[m] {
@@ -102,6 +106,12 @@ func (ix *Index) searchType(q types.Type, u *types.Unifier, produces bool, sourc
 		hits[i] = Hit{Entry: h.e, Match: match, Args: h.args}
 	}
 	return hits
+}
+
+// isNever reports whether t is Never, which Check lets fit anywhere, so it matches every query.
+func isNever(t types.Type) bool {
+	c, ok := t.(*types.Con)
+	return ok && c.Name == "Never"
 }
 
 // attempt checks the candidate type cand, instantiated and then shaped by shape (when not nil),

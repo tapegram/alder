@@ -63,7 +63,7 @@ func runSearchTo(args []string, stdout, stderr io.Writer) (code int) {
 			if i < len(args) {
 				n, err = strconv.Atoi(args[i])
 			}
-			if i >= len(args) || err != nil {
+			if i >= len(args) || err != nil || n < 1 {
 				fmt.Fprintln(stderr, searchUsage)
 				return 2
 			}
