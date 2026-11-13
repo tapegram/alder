@@ -68,6 +68,8 @@ func main() {
 		os.Exit(runTuiTo(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	case "routes":
 		os.Exit(runRoutesTo(os.Args[2:], os.Stdout, os.Stderr))
+	case "search":
+		os.Exit(runSearchTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "dump":
 		os.Exit(runDumpTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "eval":

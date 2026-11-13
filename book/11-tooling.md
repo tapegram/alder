@@ -117,6 +117,7 @@ usage: alder <command> [arguments]
   run       run the app with live reload
   tui       the terminal UI for alder run (the separate alder-tui program)
   routes    list the app's routes, with their methods and paths
+  search    search the standard library and the app by name or by type
   dump      print a file's tokens or syntax tree, or an app's IR
   eval      evaluate an expression in the app
   scratch   run a scratch file's watches against the app
@@ -578,6 +579,128 @@ are 1-based. `kind` is always `"route"`; an editor plugin written for the
 the request `alder/routes` (below, "Editor support"), with a file URI and a
 0-based range in place of `file`, `line` and `col`; alder.nvim uses it for
 its route picker.
+
+### `alder search`
+
+`alder search <query> [--json] [--limit N]` finds a function, a value, a type
+or a union constructor, in the standard library and in your app, when you know
+what it does or what type it has but not what it is called. The query is every
+argument that is not a flag, joined with spaces, so `alder search Text -> Int`
+and `alder search 'Text -> Int'` are the same query. There are three kinds,
+told apart by how the query is written.
+
+#### Search by name
+
+A query with no `->` and no leading `:` is a name. It is matched loosely against
+the declaration's name and its module, so `split` finds `Text.split`. A query
+that ends in a dot, `Text.`, lists the whole module, in the order the file
+declares it.
+
+```text
+$ alder search split
+NAME        TYPE                       FROM    DOC
+Text.split  Text -> Text -> List Text  stdlib
+```
+
+The columns are the declaration's name (with its module, except for the
+Prelude, whose names such as `Just` and `not` are written bare), its type, where
+it comes from and the first line of its doc comment. `FROM` is `stdlib` or
+`app`. It also says `query` or `task` when the declaration's result is a
+`Query` or a `Task`, so you can see what a function does before you call it. The
+DOC column is blank where the declaration has no doc comment.
+
+#### Search by type
+
+A query that contains `->` is a type. It finds the declarations whose type
+matches, however the names read.
+
+```text
+$ alder search Text -> Text -> List Text
+NAME        TYPE                       FROM    DOC
+Text.split  Text -> Text -> List Text  stdlib
+```
+
+A type variable in a query (`a`, `b`) stands for any one type, and it is strict:
+`a -> b` finds the functions that turn any type into any other, which is almost
+nothing, and not `Text.length`, because `Text.length` only takes a `Text`. The
+reason is that a variable in a type means "whatever the caller chooses". A query
+`List b -> Maybe b` therefore asks for a function that works for every `b`, and
+finds `List.head` and `List.last`. To say "some type, I do not care which", use
+`_`, the wildcard: `Text -> _` finds every function that takes a `Text`.
+
+Each result says how it matches, in the JSON's `match` field (below):
+
+- **`exact`** means the declaration's type is the query's, up to renaming its
+  type variables.
+- **`general`** means the declaration is more general than the query: asked for
+  `List Int -> Int`, you also get `List.length`, which works on any list.
+  Exact matches come first.
+- **`reordered`** means the declaration has the query's arguments in a
+  different order. Alder's functions take the thing they work on last, so a
+  query written in the other order still finds them:
+
+```text
+$ alder search List a -> Int -> List a
+NAME       TYPE                     FROM    DOC
+List.drop  Int -> List a -> List a  stdlib
+List.take  Int -> List a -> List a  stdlib
+```
+
+#### Search by what you want
+
+A query that starts with `:` asks for something that gives you a value of that
+type: a value of it, or a function that returns it once you supply its
+arguments. This is the query to run when you have a hole and know its type.
+
+```text
+$ alder search : Maybe Int
+NAME                TYPE                                      FROM    DOC
+List.maximum        List Int -> Maybe Int                     stdlib
+List.minimum        List Int -> Maybe Int                     stdlib
+Text.toInt          Text -> Maybe Int                         stdlib
+Nothing             Maybe a                                   stdlib
+List.head           List a -> Maybe a                         stdlib
+…
+```
+
+Functions that give exactly `Maybe Int` come first, then the more general ones,
+such as `Nothing` and `List.head`, which can give a `Maybe` of any type. A
+declaration that needs more arguments than you have is listed later; the JSON's
+`args` field says how many leading arguments you still have to supply.
+
+If a query has no `->` and no `:` and finds nothing by name, but would be a type
+(`List Text`), `alder search` says so on the standard error: to search by type,
+start with `:`.
+
+#### Output, flags and exit status
+
+`--limit N` shows at most N results; the default is 50. `--json` prints one
+object, for tools and agents, instead of the table:
+
+```text
+{"query":"Text -> Text -> List Text","mode":"type","note":"","results":[{"name":"split","module":"Text","kind":"function","signature":"Text -> Text -> List Text","doc":"","source":"stdlib","match":"exact"}]}
+```
+
+`mode` says how the query was read: `name`, `type` or `produces` (the `:`
+queries). `note` is a message about the query, or empty. `results` is the list,
+`[]` when nothing matches. In each result `kind` is `function`, `value`, `type`
+or `constructor`; `effect` appears when the result is a `query` or a `task`;
+`match` appears for type queries and `args` for `:` queries, including `0`.
+Results from your app add `file`, `line` and `col`, where the declaration is
+written (relative to the app, 1-based); standard library declarations have no
+file, so they have none of the three.
+
+Inside an app (the working directory or a parent of it holds an `app/`
+directory), `alder search` looks at the standard library and the app. Outside
+an app it looks at the standard library alone. If the app does not type-check,
+the app's declarations are left out, because their types are not known, and a
+line on the standard error says so: run `alder check` to see why. A typed hole
+does not count as a failure; search is most useful while you have one.
+
+Finding nothing is not an error: the exit status is 0 and the standard error
+says `alder search: no results`. The exit status is 2 for a usage error (no
+query, an unknown flag, `--limit` without a number) and for a type query that
+is not a type, such as `Text ->`.
 
 ### `alder build`
 
@@ -3273,6 +3396,7 @@ There is no separate query command; the questions have their commands:
 
 ```
 alder routes [dir] [--json]    every route: method, path, module, name, place ("`alder routes`", above)
+alder search <query>           a declaration by name or by type ("`alder search`", above)
 alder eval '<expr>'            the value and type of an expression, against the app ("`alder eval`", above)
 alder dump <file>              the parsed program, as the compiler reads it
 alder explain <code>           the paragraph for a diagnostic code ("Diagnostic codes", below)

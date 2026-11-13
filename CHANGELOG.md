@@ -3,6 +3,12 @@
 Every release of alder, newest first. "Breaking" lists what stops an app that compiled
 with the previous release, each with what to do.
 
+## Unreleased
+
+### Added
+
+- `alder search <query>`: search the standard library and the app by name, by module (`Text.`) or by type (`Text -> Int`, `: List Text`, `_` as a wildcard), with `--json` (#166).
+
 ## v0.2.0 — 2026-11-11
 
 ### Breaking
