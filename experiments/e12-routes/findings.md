@@ -8,23 +8,25 @@ with E8, E9 and E11's file-mode runs of the same tasks?
 ## In plain words
 
 - **Every program worked in the end.** All 78 runs (13 tasks; Haiku, Sonnet and Opus; two tries each) finished with
-  their own tests passing, and every one of the 420 hidden acceptance tests the models never saw passed. No earlier
-  experiment with mutation testing had a perfect hidden score (E9 193 / 195, E11 135 / 141).
+  their own tests passing, and every one of the 420 hidden acceptance tests the models never saw passed. E8 (160 / 160,
+  without mutation testing) was also perfect on hidden tests; E9 (193 / 195) and E11 (135 / 141) were not.
 - **The first attempt is rougher than before.** Only 40 of 78 first attempts were accepted by `alder check` (51 %),
   against 18 / 20 in E8, 23 / 25 in E9 and 15 / 24 in E11. On E11's own eight tasks: 23 / 48 now against 15 / 24
   then. The models needed more retries: 131 rounds for 78 runs, and three runs needed four rounds, more than E8 and
   E9 ever allowed.
 - **One mistake explains much of that, and our own task texts invite it.** The task texts name routes by their full
   path (`Response.redirect (Notes.Index.Index {})`). The models copy that into the module that declares the route,
-  where Alder requires the short name (`Index {}`). That one error is 48 of the 116 first-attempt errors, in 21 runs;
-  in 13 runs it was the only error. The checker's message names the fix, and every run fixed it in one retry.
+  where Alder requires the short name (`Index {}`). That one error is 48 of the 116 first-attempt errors, in 21 runs
+  (23 cells had a round-0 E0002; 21 were this kind); in 13 runs it was the only error. The checker's message names the fix, and every run fixed it in one retry.
 - **The four new route features were easy.** Live search (`input=`), infinite scroll (`intersect=`), elements that
   load and poll on their own (`load=`, `every=`) and the kinds of `Response` all worked: 24 / 24 runs, 84 / 84 hidden
   tests. The polling task passed on the first try in all six runs.
 - **None of the new route errors (E0045, E0046, E0047) was ever hit.** One old word still trips models: a helper
   named `page` is parsed as the removed `page` declaration (3 runs, all on the feed task).
-- **The tests the models write are about as strong as before** (mutation score mean 0.67; on E11's tasks 0.61
-  against E11's 0.69). Opus writes the strongest tests (0.76), Haiku the weakest (0.59).
+- **The tests the models write are weaker than E11's on the same tasks** (mutation score mean 0.67 over all 13 tasks).
+  On E11's eight tasks, against E11 `files`: Haiku 0.53 against 0.68 (-0.15), Sonnet 0.58 against 0.60, Opus 0.73
+  against 0.80; down for every model, most for Haiku. The book and the language changed together, so the cause
+  cannot be separated. Opus writes the strongest tests (0.76 over all tasks), Haiku the weakest (0.59).
 - **A second try often goes differently.** For the same model and task, the two tries took the same number of rounds
   in only 22 of 39 pairs. One run per cell, as E8–E11 mostly did, would have mis-read a model on many tasks.
 
@@ -61,9 +63,9 @@ same summaries by `report_loop.py`), from `RUN.md` or `sizes.md`, or from an old
 |---|---|---|---|---|---|
 | Cells | 20 | 25 | 24 | **78** | 48 |
 | Cells passing their own tests | 20 / 20 | 25 / 25 | 24 / 24 | **78 / 78** | 48 / 48 |
-| Cells passing in round 0 | 16 / 20 | 21 / 25 | 15 / 24 | **38 / 78** | 21 / 48 |
+| Cells passing in round 0 (clean check and own tests) | 16 / 20 | 21 / 25 | 15 / 24 | **38 / 78** | 21 / 48 |
 | Rounds used by the passing cells (range) | 24 (1–2) | 29 (1–2) | 34 (1–3) | **131 (1–4)** | 83 (1–4) |
-| Round-0 clean checks | 18 / 20 | 23 / 25 | 15 / 24 | **40 / 78** | 23 / 48 |
+| Round-0 clean checks (2 of E12's 40 failed an own test: *Haiku t7 s1*, *Opus t7 s1*) | 18 / 20 | 23 / 25 | 15 / 24 | **40 / 78** | 23 / 48 |
 | Round-0 check errors | 3 | 3 | 19 | **116** | 84 |
 | Hidden tests passed | 160 / 160 | 193 / 195 | 135 / 141 | **420 / 420** | 282 / 282 |
 | Cells passing every hidden test | 20 / 20 | 23 / 25 | 16 / 18 | **66 / 66** | 36 / 36 |
@@ -106,8 +108,10 @@ Reading it:
 - **First attempt: worse, mostly from one pattern (§3).** On E11's tasks, round-0 clean checks fall from 15 / 24
   (63 %) to 23 / 48 (48 %), and round-0 errors per cell rise from 0.8 to 1.75. Haiku is most affected (65 of the 116
   errors), Opus least (19 / 26 clean).
-- **Mutation scores move little and not in one direction.** Haiku 0.59 (E9 0.53, E11 0.68), Sonnet 0.64 (0.52,
-  0.60), Opus 0.76 (0.74, 0.80). The per-task order holds: T2 highest and T6 lowest of the ported tasks in E11 and
+- **Mutation scores are down on the like-for-like tasks.** E12 on E11's eight tasks against E11 `files`: Haiku 0.53
+  against 0.68 (-0.15), Sonnet 0.58 against 0.60, Opus 0.73 against 0.80. The book and the language changed
+  together, so the cause cannot be separated. (All-task means, which include E12's new tasks: Haiku 0.59, Sonnet
+  0.64, Opus 0.76; E9 0.53, 0.52, 0.74 and E11 0.68, 0.60, 0.80 are on their own task subsets.) The per-task order holds: T2 highest and T6 lowest of the ported tasks in E11 and
   E12, T6 lowest in E9 (§2). The mutants are generated from each program by each run's binary, so a score compares
   the test suites of different programs; read it as a trend.
 
@@ -202,7 +206,7 @@ its own names are written unqualified: `Index`" (module and name vary). The mode
 writes it: every Names block that names a redirect or render target writes it with its full path
 (`Response.redirect (Notes.Index.Index {})`, `Response.redirect (Orders.Show.Show { id: … })`,
 `Response.render (Pantry.Index.Row …)`), and the models copy that into the module that declares the route,
-where the checker requires `Index {}`. It occurs in 21 of the 78 cells (Haiku 12, Sonnet 7, Opus 2) across 9
+where the checker requires `Index {}`. It occurs in 21 of the 78 cells (23 had a round-0 E0002; Haiku 12, Sonnet 7, Opus 2) across 9
 tasks, in no T14 cell (T14's text has no redirect), and in 13 cells it was the only round-0 error (*Haiku t4 s1*,
 *t10 s1*, *t10 s2*, *t11 s1*, *t11 s2*; *Sonnet t4 s2*, *t6 s1*, *t7 s1*, *t12 s1*, *t12 s2*, *t15 s2*; *Opus t5
 s1*, *t5 s2*). Every cell fixed it in the next round. The page-era texts could not provoke it: they named a page
@@ -377,6 +381,6 @@ Filed on `tapegram/alder` on 2026-11-12, each referencing #208:
 - [#215](https://github.com/tapegram/alder/issues/215) (commented, not new): a helper named `page` is parsed as the removed declaration and gives E0001. 3 T13 cells (§3). The open parser-cleanup issue already covers the fix.
 - [#222](https://github.com/tapegram/alder/issues/222) Diagnostics: a route named like a constructor is E0044; T14's `Open | Closed` had to be renamed (§4). Whether to improve the message or allow the clash is open.
 - [#223](https://github.com/tapegram/alder/issues/223) Book: "a route value keeps its full path" never says a module writes its own routes unqualified. 48 of the 56 round-0 E0002 (§3).
-- [#224](https://github.com/tapegram/alder/issues/224) E12's own inputs (a ruling, not an Alder fix): full-path redirects in the Names blocks, T7's `Test.fake Password` with no fake in the base, drill tests missing a logged-out `requires` on write routes (§2).
+- [#224](https://github.com/tapegram/alder/issues/224) E12's own inputs (a ruling, not an Alder fix): full-path redirects in the Names blocks, T7's `Test.fake Password` with no fake in the base, drill tests missing a logged-out `requires` on write routes (§2). A comment there adds three more items for the next experiment: the COMMANDS text for `alder new <app>` still says "pages (`--blank` first …)", COMMANDS omits `--file/--type/--example`, and verify.sh:152 overlays T2 on `git archive HEAD examples/todos` rather than `E12_COMMIT`.
 
 **Not filed:** per-command `--help` printing only the top-level usage. It does not reproduce on current main (39f84c38): `alder new --help`, `alder migrate --help`, `alder edit --help` and `alder check --help` each print their own usage line(s), different from `alder --help`. The remark in §7 was about the pinned run binary or about the help being one line without examples; if wanted, a richer per-command help is a new request, not a bug.

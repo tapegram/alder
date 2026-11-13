@@ -220,7 +220,7 @@ below (the hidden test is an input and stays as pinned).
 - **Mutation gap closed by a test.** Both solutions first left `Contact:… cascade ↔ restrict`
   alive; each `Table.Contact` now has "a user with contacts cannot be deleted" (as T5's
   `Note`). Both score 1.000 with no survivors, so neither has a `SURVIVORS.md`.
-- **verify.sh** has no expected count for `t12-search` yet (added in a later task); the hidden
+- The hidden
   module has 4 tests.
 
 ### T13 (Task 12)
@@ -280,7 +280,7 @@ below (the hidden test is an input and stays as pinned).
 - **Mutation.** Reference 7/7 at once. The alt first left `Board.load:21 orderBy reversed`
   alive (its pending list's order, the alt's own choice); its test "only pending tickets have a
   close button, newest first" now fixes that order. Both score 1.000, no `SURVIVORS.md`.
-- **verify.sh** has no expected count for `t14-board` yet (added in a later task); the hidden
+- The hidden
   module has 3 tests.
 
 ### T15 (Task 14)
@@ -309,8 +309,7 @@ below (the hidden test is an input and stays as pinned).
   solutions score 1.000 (14/14, 15/15) with no survivors, so neither has a `SURVIVORS.md`.
 - Hidden 4/4 on both, names `ok`. Probes on the reference: `Bump` answering `refresh` fails
   only "bump adds one…"; `Remove` without the toast fails only "remove refreshes…"; `Rename`
-  without the check fails only "renaming to a taken name…". **verify.sh** has no expected
-  count for `t15-pantry` yet (added later); the hidden module has 4 tests.
+  without the check fails only "renaming to a taken name…". The hidden module has 4 tests.
 
 ## The drill references are not a fresh replay
 
