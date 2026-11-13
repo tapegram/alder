@@ -341,7 +341,33 @@ passed in every pair, and passed every hidden test.
 
 ## 9. "Reasonable but not Alder" signals
 
-*(Task 20: `signals.md` and this section.)*
+**In plain words.** Besides errors, we looked for habits from ordinary web development that Alder does not
+share. Examples are sending a delete as a `POST`, or putting a live-search trigger on a design-system element.
+Such a choice can pass the checker and still be the wrong one for Alder, so these are recorded on their own
+and never counted as errors. We read every round of every run (131 rounds, 934 files). Only one habit
+appeared: a change written as `POST` to a path ending in a verb (`/orders/{id}/pay`, `/orgs/{org}/open`). The
+book asks for the changed part to be named instead (`PUT /orders/{id}/paid`). That happened in 5 routes in 3
+of 78 runs. The checker accepted it, as the book says it will, and it stayed in each final program. None of
+the other habits the design listed occurred, not once. Every route that deletes a row is a `DELETE`, and
+`render` is used only where the task asks for it. No `<al-*>` element carries a trigger attribute, every
+`Response` comes from the book's builders, and the one live search reads a query key, not a path segment.
+The details, with the search behind each zero, are in `signals.md`.
+
+| Signal | Occurrences (cells · rounds) | Checker's answer |
+|---|---|---|
+| A change as `POST` to a verb path (`Pay`, `Cancel`, `Toggle` in *Haiku t6 s1*; `Open` in *Haiku t11 s1*, *Sonnet t11 s1*) | 3 cells · 9 route-rounds | accepted, no diagnostic; names `ok` |
+| A `DELETE` written as `POST` | 0 (all 55 deleting route declarations are `DELETE`) | — |
+| `render` where the rule says `refresh` | 0 (all 7 `render`s are T15's `Bump`, as asked) | — |
+| A trigger attribute on `<al-*>` | 0 (of 1,407 `<al-*>` tags) | — |
+| A `Response` built by hand | 0 | — |
+| A path parameter in an `input=` route | 0 (of 11 `input=`) | — |
+
+No signal coincided with a check error. The only near case is *Haiku t6 s1* r0. There the `POST
+"/products/{id}/toggle"` line also carried E0027, which is about its `requires … role`, not its method; that
+error is counted in §3. One method is not counted as a signal. 4 of 6 T4 cells wrote `SwitchTheme` as
+`POST /theme`, and the prompt tells them to: chapter 6's "What the patterns cost" gives "login, logout,
+theme" as "a `POST`". But the same chapter's `Logout` is `DELETE "/session"`, and its theme example, which is
+not in the reference, is `PUT "/theme"`. That contradiction in the book is a candidate for §10.
 
 ## 10. Issues
 
