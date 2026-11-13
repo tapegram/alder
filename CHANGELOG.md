@@ -8,6 +8,7 @@ with the previous release, each with what to do.
 ### Added
 
 - `alder search <query>`: search the standard library and the app by name, by module (`Text.`) or by type (`Text -> Int`, `: List Text`, `_` as a wildcard), with `--json` (#166).
+- Language server: `alder/search` and `alder/searchEdit` (search by name or type, and the edit for a picked result), `workspace/symbol` for the app's declarations, and a "Search for <type>" action on typed holes for clients that declare `experimental.alderSearch` (#166).
 
 ## v0.2.0 — 2026-11-11
 

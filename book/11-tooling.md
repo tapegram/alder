@@ -3045,6 +3045,8 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   compiler's own message and code. A typed hole (W0002) is shown as a hint,
   not a warning. The buffer's text replaces the file's; everything else is
   read from disk.
+- **Symbols.** `workspace/symbol` lists the app's declarations by name
+  (see "Search in the editor", below).
 - `<leader>at` runs `alder test`; failures land in the quickfix list at their `test` line,
   compile errors as diagnostics. `<leader>aT` runs the test under the cursor (the module's
   tests when none is above it).
@@ -3164,6 +3166,80 @@ array `alder routes --json` prints, from the last build that type-checked, with
 `uri` (a `file://` URI) and `range` (an LSP range, 0-based, over the declaration)
 in place of `file`, `line` and `col`. The other fields are the same (`kind`,
 `method`, `path`, `module`, `name`). The list is empty before the first good build.
+
+### Search in the editor
+
+The server answers `alder search` (above, "`alder search`") for an editor's
+picker, with two custom requests and one standard one. All three read the
+latest build with no errors; typed holes and warnings do not count as errors.
+While the program has an error, the app's results come from that last
+error-free build, so they may lag your buffer. If there has been no error-free
+build yet, only the standard library is searched.
+
+`alder/search` takes `query`, and optionally `uri`, `position` and `limit`
+(the default is 50; a negative number means no limit). It answers the object
+`alder search --json` prints, with `uri` (a `file://` URI) and `range` (an LSP
+range, 0-based) in place of `file`, `line` and `col`. A name query:
+
+```text
+-> {"jsonrpc":"2.0","id":7,"method":"alder/search","params":{"query":"lastPage"}}
+<- {"jsonrpc":"2.0","id":7,"result":{"query":"lastPage","mode":"name","note":"","results":[{"name":"lastPage","module":"Posts.Index","kind":"value","signature":"Int","doc":"lastPage bounds `page`, so `(page - 1) * perPage` cannot overflow.","source":"app","uri":"file:///work/blog/app/Posts/Index.alder","range":{"start":{"line":11,"character":0},"end":{"line":11,"character":12}}}]}}
+```
+
+With a `uri` and a `position` on a typed hole and an empty `query`, the server
+searches for what the hole needs: it uses `: ` and the hole's type, and returns
+that text as `query`, so the picker can show it and the user can edit it. For
+the hole `?parts`, of type `List Text`:
+
+```text
+-> {"jsonrpc":"2.0","id":8,"method":"alder/search","params":{"query":"","uri":"file:///work/blog/app/Posts/Index.alder","position":{"line":20,"character":14}}}
+<- {"jsonrpc":"2.0","id":8,"result":{"query":": List Text","mode":"produces","note":"","results":[{"name":"split","module":"Text","kind":"function","signature":"Text -> Text -> List Text","doc":"","source":"stdlib","args":2}]}}
+```
+
+A query never makes the request fail: text that is not a query gives an empty
+`results` and a `note`. Only params that are not the right shape are an error.
+
+`alder/searchEdit` turns the result the user picked into an edit. Its params
+are `uri`, `position`, and the result's `module`, `name` and `kind`, and, for
+a hole, `args`: the `args` of a `:` result, how many arguments the picked
+function takes before it produces the hole's type. It answers a workspace
+edit, built against the current text of the document, so the client does not
+build insert text. The server decides:
+
+- **The qualifier.** The name is written as the file would write it: bare for
+  the Prelude and for the file's own module, else qualified (`Text.split`). An
+  app module the file imports keeps the qualifier the file uses for it.
+- **The import line.** For an app module the file does not import, the edit
+  also adds the import, at its sorted position among the imports, as the
+  formatter would place it, with `as Q` when the qualifier is not the path's
+  last segment.
+- **The place.** On a typed hole the edit replaces the hole. Elsewhere it
+  inserts the name at the position.
+- **New holes.** On a hole, `args` of `n` adds `n` new holes after the name,
+  named `?a`, `?b`, and so on, skipping any name the file already uses for a
+  hole.
+- **Parentheses.** When the hole is the function or an argument of an
+  application, the name and its new holes are wrapped in parentheses: `f ?x`
+  becomes `f (Text.split ?a ?b)`.
+
+An entry that is not in the index, or a position that is not in the document,
+is an invalid-params error.
+
+`workspace/symbol` lists the app's declarations, not the standard library's:
+an editor's symbol picker is for jumping around your own code, and the
+standard library has no file to jump to. The query is always read as a name,
+whatever it looks like, and an empty query lists every declaration of the app,
+for a client that filters for itself. Each symbol has the declaration's
+`location` and the module as `containerName`.
+
+A client that can open a picker says so when it starts, with the capability
+`experimental.alderSearch: true`. On a typed hole the code-action menu then
+offers `Search for List Text` (the hole's type), whose command is
+`alder.search` with one argument, `{"uri": ..., "position": ...}`: the document
+and the start of the hole. The server does not run it; the client must handle
+the command by opening its picker on `alder/search` for that position and, on
+a pick, sending `alder/searchEdit`. Without the capability the action is not
+offered.
 
 ### Generators in the editor
 
@@ -3390,7 +3466,8 @@ type, and `alder fill` fills one, with an expression you give it or, with
 `--ai`, one a model writes (above, "The generators"). In an editor, hover
 on a hole shows the type it must have, completion on it lists the names in
 scope, those whose type fits first, and the code action `Fill ?name with
-AI` fills it (above, "Generators in the editor").
+AI` fills it (above, "Generators in the editor"). `alder/search` finds what
+fits a hole's type ("Search in the editor", above).
 
 ## Asking questions of the program
 
