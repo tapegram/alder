@@ -62,6 +62,7 @@ var (
 		"textDocument/selectionRange":       selectionRangeReq,
 		"alder/generators":                  generatorsReq,
 		"alder/routes":                      routesReq,
+		"alder/search":                      searchReq,
 	}
 	slowMethods = map[string]handler{
 		"alder/preview":            previewReq,
@@ -86,6 +87,7 @@ type server struct {
 
 	docs      docs                     // the open documents
 	cur, good atomic.Pointer[analysis] // current(), lastGood()
+	clean     atomic.Pointer[analysis] // lastClean()
 	tokens    chan struct{}            // schedule's: one place, a rebuild pending
 	stop      chan struct{}            // closed when serve returns: stops the analysis and the poller
 	bg        sync.WaitGroup           // the analysis goroutine, the poller and the scratch runs
