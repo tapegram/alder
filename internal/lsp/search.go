@@ -378,21 +378,13 @@ func symbolReq(s *server, params json.RawMessage) (out any, err error) {
 // finds it): the client command alder.search with the document and the hole's start, which the
 // client runs (it opens its picker on alder/search for that position).
 func (s *server) searchAction(a *analysis, rel string, ctx generate.HereCtx, pos diag.Pos) (codeAction, bool) {
-	for _, h := range generate.HoleIndex(a.prog, a.diags) {
-		if h.File != rel || h.Name != ctx.Hole || !within(h.Span, pos) {
-			continue
-		}
-		var ds []Diagnostic
-		for _, d := range a.diags {
-			if d.Code == "W0002" && d.Span == h.Span {
-				ds = append(ds, s.enc.wireDiagnostic(a.lines[rel], lspDiagnostic(d)))
-			}
-		}
-		at := s.enc.wireRange(a.lines[rel], lspRange(h.Span.Start.Line, h.Span.Start.Col, h.Span.Start.Line, h.Span.Start.Col)).Start
-		title := "Search for " + h.Type
-		return codeAction{Title: title, Kind: "quickfix", Diagnostics: ds,
-			Command: &command{Title: title, Command: "alder.search",
-				Arguments: []any{map[string]any{"uri": s.uriOf(rel), "position": at}}}}, true
+	h, ds, ok := s.holeHere(a, rel, ctx, pos)
+	if !ok {
+		return codeAction{}, false
 	}
-	return codeAction{}, false
+	at := s.enc.wireRange(a.lines[rel], lspRange(h.Span.Start.Line, h.Span.Start.Col, h.Span.Start.Line, h.Span.Start.Col)).Start
+	title := "Search for " + h.Type
+	return codeAction{Title: title, Kind: "quickfix", Diagnostics: ds,
+		Command: &command{Title: title, Command: "alder.search",
+			Arguments: []any{map[string]any{"uri": s.uriOf(rel), "position": at}}}}, true
 }

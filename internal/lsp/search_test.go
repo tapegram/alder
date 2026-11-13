@@ -595,8 +595,14 @@ func TestSymbol_Empty(t *testing.T) {
 	c := start(t, blogCopy(t))
 	openClean(t, c, "app/App.alder")
 	syms := symbolsFor(t, c, "")
-	if len(syms) < 2 {
-		t.Fatalf("symbols %+v", syms)
+	want := 0
+	for _, e := range c.srv.searchSnapshot().searchIndex().Entries {
+		if e.Source == "app" {
+			want++
+		}
+	}
+	if len(syms) < 2 || len(syms) != want {
+		t.Fatalf("%d symbols, want the %d app entries: %+v", len(syms), want, syms)
 	}
 	for _, s := range syms {
 		if !strings.Contains(s.Location.URI, "/app/") {
@@ -609,7 +615,9 @@ func TestSymbol_TypeLikeQuery(t *testing.T) {
 	c := start(t, blogCopy(t))
 	openClean(t, c, "app/App.alder")
 	for _, q := range []string{": Int", "a -> b"} {
-		symbolsFor(t, c, q)
+		if syms := symbolsFor(t, c, q); len(syms) != 0 {
+			t.Errorf("%q taken as a type query: %+v", q, syms)
+		}
 	}
 }
 
