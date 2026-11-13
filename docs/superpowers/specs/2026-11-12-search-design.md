@@ -295,7 +295,7 @@ These are checked against the real stdlib and are the test of "good". The builde
 | `List a -> Int -> List a` | `List.take`, `List.drop`, as `reordered` | |
 | `a -> b` | nothing in `List` or `Text` | `Text.length` |
 | `Text -> _` | one-argument functions that take a `Text`, in any module: `Text.length`, `Text.toInt`, `Text.toBytes` | `Text.fromInt`, `Text.split` |
-| `: Maybe Int` | in this order: `Text.toInt`, `List.maximum`, `List.minimum` (exact, `args` 1); then `Nothing`, `Just`, `List.head` (general); `Maybe.withDefault` last | |
+| `: Maybe Int` | `Text.toInt`, `List.maximum`, `List.minimum` (exact, `args` 1, in tie-break order) before `Nothing`, `Just`, `List.head` (general); `Maybe.withDefault` last | |
 | `: List Text` | in this order: `Text.lines` and `Text.words` (`args` 1), `Text.split` (`args` 2), then generic `List a` functions such as `List.reverse`; `List.foldl` last | |
 
 ## Rollout
