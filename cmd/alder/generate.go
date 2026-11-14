@@ -68,9 +68,9 @@ type genJSON struct {
 	Error       string                `json:"error,omitempty"`
 	// Next is the command to run next (`alder new table`'s `next:` line), "" for none.
 	Next string `json:"next,omitempty"`
-	// Skipped and UpToDate are `alder regen admin`'s: the pages it did not recreate (deleted;
+	// Skipped and UpToDate are `alder regen`'s: the pages it did not recreate (deleted;
 	// --all writes them), and whether it had nothing to do.
-	Skipped  any   `json:"skipped,omitempty"` // regen admin: *[]string; theme import: *int (the at-rules skipped)
+	Skipped  any   `json:"skipped,omitempty"` // regen: *[]string; theme import: *int (the at-rules skipped)
 	UpToDate *bool `json:"upToDate,omitempty"`
 	// Imports are `alder fill`'s: the modules it imported for the expression.
 	Imports *[]string `json:"imports,omitempty"`
@@ -372,7 +372,7 @@ func presetListJSON() any {
 	}{theme.Version(), ps}
 }
 
-// specExtra adds a Spec's own JSON fields (regen admin's skipped and upToDate); nil for others.
+// specExtra adds a Spec's own JSON fields (regen's skipped and upToDate); nil for others.
 func specExtra(s *generate.Spec, res *generate.Result) func(*genJSON) {
 	if s.ID == "theme import" || s.ID == "theme use" {
 		return themeImportExtra(res)

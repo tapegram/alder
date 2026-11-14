@@ -361,6 +361,18 @@ func TestResource_RegenKeylessGainsOwner(t *testing.T) {
 	if s := string(b); !strings.Contains(s, "requires user") || !strings.Contains(s, "Db.getMine Tag") {
 		t.Errorf("Tags/Edit.alder is not in the scoped family:\n%s", s)
 	}
+	// reads too: the keyless header recorded no --read, so Show (its `load` region) and Index's
+	// route are the owner's now. Index's own query (`Index.load`, outside the regions) is the
+	// author's, and stays as it was written.
+	for f, want := range map[string]string{"Index.alder": "requires user", "Show.alder": "Db.getMine Tag"} {
+		b, err := os.ReadFile(filepath.Join(dir, "app", "Tags", f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s := string(b); !strings.Contains(s, want) || !strings.Contains(s, "requires user") || strings.Contains(s, "-- unscoped: `--read") {
+			t.Errorf("Tags/%s does not read by its owner (%s):\n%s", f, want, s)
+		}
+	}
 }
 
 // TestResource_RegenWarns: a regen prints the warnings `new resource` printed (a keyless table's).
@@ -373,5 +385,25 @@ func TestResource_RegenWarns(t *testing.T) {
 	code, out, errs := alderIn(t, dir, "", "regen", "resource")
 	if code != 0 || out != "nothing to do: the resource is up to date\n" || !strings.HasPrefix(errs, "alder regen resource: warning: `Tag` has no `@owner`") {
 		t.Errorf("regen of a keyless resource: exit %d\n%s%s", code, out, errs)
+	}
+}
+
+// TestRegenHelp: `regen resource --help` and `help regen resource` print the resource's usage,
+// `regen admin --help` the admin's, and bare `regen` both.
+func TestRegenHelp(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"regen", "resource", "--help"}, newRegenResourceUsage},
+		{[]string{"help", "regen", "resource"}, newRegenResourceUsage},
+		{[]string{"regen", "admin", "--help"}, regenAdminUsage},
+		{[]string{"help", "regen"}, regenUsage},
+	} {
+		var out bytes.Buffer
+		if !helpTo(c.args, &out) || out.String() != c.want+"\n" {
+			t.Errorf("%v printed %q, want %q", c.args, out.String(), c.want)
+		}
 	}
 }

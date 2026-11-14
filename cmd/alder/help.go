@@ -106,6 +106,12 @@ func helpTo(args []string, w io.Writer) bool {
 			return true
 		}
 	}
+	if cmd == "regen" && len(args) > 1 {
+		if u, ok := regenGeneratorUsages[args[1]]; ok {
+			fmt.Fprintln(w, u)
+			return true
+		}
+	}
 	if u, ok := commandUsages[cmd]; ok {
 		fmt.Fprintln(w, u)
 		if cmd == "test" {
