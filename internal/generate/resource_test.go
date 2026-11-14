@@ -193,3 +193,13 @@ func TestNewResource_Owner(t *testing.T) {
 		t.Errorf("a clash: %v", err)
 	}
 }
+
+// TestNewResource_Interim: until the keyless, partitioned and create-from-fields resources land
+// (#194 Task 8), a table with no `@owner` is refused, nothing written.
+func TestNewResource_Interim(t *testing.T) {
+	p := loadResourceFixture(t, "fixture")
+	edits, _, err := NewResource(p, ResourceOptions{Table: "Tag"})
+	if !isRefusal(err) || !strings.Contains(err.Error(), "writes the pages of an `@owner` table so far") || edits != nil {
+		t.Errorf("a keyless table: %v, %d edits", err, len(edits))
+	}
+}

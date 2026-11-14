@@ -59,6 +59,7 @@ type access struct {
 
 	insert, update, remove string // "Db.insert"|"Db.insertMine"|"Db.insertScoped", likewise update/delete
 	ownerOnly              string // "" | "session.user == row.<owner>" | "session.user == Just row.<owner>"
+	readNote               string // "" | the `-- unscoped:` comment above Index's and Show's reads of every user's rows of an owned table
 	perPage                int    // 25 admin, 20 resource
 
 	role string   // the role the tests sign in with ("Admin"; "" for none): the gate tests try the session's others
@@ -68,6 +69,13 @@ type access struct {
 // scoped is whether the pages write with the scoped calls (insertMine, insertScoped): their
 // unscoped reads, which may reach rows out of the user's scope, each carry a comment saying why.
 func (a access) scoped() bool { return a.insert != "Db.insert" }
+
+// ownerTest is ownerOnly of the row expression row ("model.row"): the test of the links to the
+// writes, which render for the row's owner only.
+func (a access) ownerTest(row string) string { return strings.Replace(a.ownerOnly, "row.", row+".", 1) }
+
+// hidingNote is the comment above an ownerOnly test in a view.
+const hidingNote = "-- hiding is not guarding: Save and Destroy require the owner (updateMine, deleteMine)"
 
 // maybeGet is whether get loads a Maybe (Db.get), which the code matches on, rather than the
 // row itself (getMine, getScoped: a row out of reach stops the route with a 404).
@@ -738,9 +746,13 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 -- for a page past it), in the order asked for. The search text is cut to 200 characters (Text.slice):
 -- a text over 10,000 bytes would fail the query (chapter 8, "Search").
 `, t.Name, t.Name, order)
+	readNote := ""
+	if g.a.readNote != "" {
+		readNote = "  " + g.a.readNote + "\n"
+	}
 	b.WriteString(g.load("Index", fmt.Sprintf(`  let q = Text.slice 0 200 params.q
   let f = chosen params
-  let count <- %s %s |> Db.where (Db.and [search q, filtered (filters f)]) |> Db.count
+%s  let count <- %s %s |> Db.where (Db.and [search q, filtered (filters f)]) |> Db.count
   let pages = Int.max 1 ((count + perPage - 1) / perPage)
   let page = Int.clamp { min: 1, max: pages } params.page
   let rows <-
@@ -761,8 +773,12 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
     page: page,
     pages: pages,
     count: count,
-  }`, g.a.sel, t.Name, g.a.sel, t.Name, keyInit)))
+  }`, readNote, g.a.sel, t.Name, g.a.sel, t.Name, keyInit)))
 	b.WriteString(g.regionAt("", "labels", wrapAll(g.labels(at, mod, imports))) + "\n\n")
+	newLink := fmt.Sprintf("<al-button href={%s {}}>New %s</al-button>", at.route("New"), at.noun)
+	if g.a.ownerOnly != "" && g.a.readRequires == "" { // a visitor sees the list: the link is for a signed-in user
+		newLink = "-- hiding is not guarding: Create requires a signed-in user (insertMine)\n      {if session.user != Nothing then " + newLink + " else Html.none}"
+	}
 	b.WriteString(viewHead("Index"))
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n", open, at.title)
 	fmt.Fprintf(&b, `    <al-stack direction="row" gap="sm">
@@ -787,7 +803,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
           <al-button type="submit" variant="secondary">Search</al-button>
         </al-stack>
       </form>
-      <al-button href={%s {}}>New %s</al-button>
+      %s
     </al-stack>
 
     <p id="count">{if model.count == 1 then "1 row" else Text.fromInt model.count ++ " rows"}</p>
@@ -813,7 +829,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
       {if model.page < model.pages then <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
-`, at.action(""), quote(g.wire(mod, "q")), quote(g.wire(mod, "sort")), quote(g.wire(mod, "dir")), at.route("New"), at.noun, g.regionAt("            ", "headers", headers), g.regionAt("              ", "cells", cells), g.bulkForms(at))
+`, at.action(""), quote(g.wire(mod, "q")), quote(g.wire(mod, "sort")), quote(g.wire(mod, "dir")), newLink, g.regionAt("            ", "headers", headers), g.regionAt("              ", "cells", cells), g.bulkForms(at))
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	// the tests
@@ -843,13 +859,39 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 	lhs, rhs = append(lhs, checks[0]...), append(rhs, checks[1]...)
 	tests = append(tests, TestData{Name: quote(name), Lines: tb.lines,
 		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
-	if g.owned(at) { // another user's row is not listed, nor counted
+	if g.owned(at) && mine { // another user's row is not listed, nor counted
 		tb = g.tb(mod, imports, true)
 		row := tb.insertRow(t, "", nil, false)
 		g.othersRow(tb, at)
 		tb.let("let page <- Test.get (Index {})")
 		tests = append(tests, TestData{Name: quote("does not show another user's rows"), Lines: tb.lines,
 			Result: fmt.Sprintf("{ rows: %s, count: Test.text \"#count\" page.doc } == { rows: [%s], count: Just \"1 row\" }", ids("page"), row)})
+	}
+	if g.owned(at) && !mine { // --read signed-in|all: another user's row is listed and counted too
+		tb = g.tb(mod, imports, true)
+		tb.insertRow(t, "", nil, false)
+		other := g.othersRow(tb, at)
+		tb.let("let page <- Test.get (Index {})")
+		tests = append(tests, TestData{Name: quote("shows every user's rows"), Lines: tb.lines,
+			Result: fmt.Sprintf("{ other: List.member %s (%s), count: Test.text \"#count\" page.doc } == { other: True, count: Just \"%d rows\" }", other, ids("page"), len(tb.visible(t, false)))})
+	}
+	if g.owned(at) && g.a.ownerOnly != "" && g.a.readRequires == "" { // --read all: a visitor sees the list, and no link to a write
+		tb = g.tb(mod, imports, false)
+		tb.insertRow(t, "", nil, false)
+		tb.let("let r <- Test.open (Index {})")
+		count := "1 row"
+		if n := len(tb.visible(t, false)); n != 1 {
+			count = fmt.Sprintf("%d rows", n)
+		}
+		tests = append(tests, TestData{Name: quote("a visitor sees the list"), Lines: tb.lines,
+			Result: fmt.Sprintf("{ answer: r.answer, count: Test.text \"#count\" r.doc } == { answer: Shown, count: Just %s }", quote(count))})
+		tb = g.tb(mod, imports, false)
+		tb.let("let visitor <- Test.open (Index {})")
+		tb.login(g.a.role)
+		tb.let("let user <- Test.open (Index {})")
+		newText := quote("New " + at.noun)
+		tests = append(tests, TestData{Name: quote("a visitor sees no New, Edit or Delete"), Lines: tb.lines,
+			Result: fmt.Sprintf("{ visitor: List.member %s (Test.texts \"al-button\" visitor.doc), user: List.member %s (Test.texts \"al-button\" user.doc) } == { visitor: False, user: True }", newText, newText)})
 	}
 
 	// sorting: a column whose order is the reverse of the rows' (and of every other column's)
@@ -1127,6 +1169,9 @@ func (g *crudGen) show(at *crudTable) {
 	pl := g.deletePlan(at, imports, "params.id")
 	loads := g.a.found(g.a.get, t, "params.id", pl.loads, []string{"let labels <- labelsOf [row]",
 		"Query.succeed { " + strings.Join(append([]string{"row: row", "labels: labels"}, pl.fields...), ", ") + " }"}, "Query.notFound")
+	if g.a.readNote != "" {
+		loads = append([]string{g.a.readNote}, loads...)
+	}
 	var b strings.Builder
 	b.WriteString(g.regionAt("", "routes", []string{routeLine("Show", "GET", at.path+"/{id}", g.keepWires(mod, at.params(mod, imports, []string{"id: " + types.StringIn(t.IDType, mod)})), "", g.requires(at, false))}) + "\n\n")
 	b.WriteString("-- The row, the labels of the rows it refers to, and (for the delete dialog) how many rows of\n-- each table refer to it.\n")
@@ -1136,25 +1181,28 @@ func (g *crudGen) show(at *crudTable) {
 	b.WriteString(g.regionAt("", "blockers", pl.block) + "\n\n")
 	b.WriteString(viewHead("Show"))
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n      <dl id=\"fields\">\n%s\n      </dl>\n", open, title, g.regionAt("        ", "fields", fields))
-	fmt.Fprintf(&b, `      <div slot="actions">
-        <al-button href={%s { id: model.row.%s }}>Edit</al-button>
-        <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
-      </div>
-    </al-card>
-    <al-dialog id="delete-dialog" heading="Delete this %s?" dismissible>
-      <dl>
+	actions := fmt.Sprintf(`<div slot="actions">
+  <al-button href={%s { id: model.row.%s }}>Edit</al-button>
+  <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
+</div>`, at.route("Edit"), t.IDField)
+	dialog := fmt.Sprintf(`<al-dialog id="delete-dialog" heading="Delete this %s?" dismissible>
+  <dl>
 %s
-      </dl>
-      <form id="delete" submit={%s { id: model.row.%s }}>
-        <al-alert variant="destructive"><Errors form /></al-alert>
-        `+pl.button+`
-      </form>
-      <div slot="actions">
-        <a href={%s { id: model.row.%s }}>See the details</a>
-      </div>
-    </al-dialog>
-    <a href={%s {}}>All %s</a>
-`, at.route("Edit"), t.IDField, at.noun, g.regionAt("        ", "counts", pl.counts), at.destroy(), t.IDField, at.route("Delete"), t.IDField, at.route("Index"), Plural(at.noun))
+  </dl>
+  <form id="delete" submit={%s { id: model.row.%s }}>
+    <al-alert variant="destructive"><Errors form /></al-alert>
+    `+pl.button+`
+  </form>
+  <div slot="actions">
+    <a href={%s { id: model.row.%s }}>See the details</a>
+  </div>
+</al-dialog>`, at.noun, g.regionAt("    ", "counts", pl.counts), at.destroy(), t.IDField, at.route("Delete"), t.IDField)
+	if g.a.ownerOnly != "" { // the links to the writes, for the row's owner only
+		test := g.a.ownerTest("model.row")
+		actions = hidingNote + "\n{if " + test + " then\n" + indent(actions, "  ") + "\nelse\n  Html.none}"
+		dialog = hidingNote + "\n{if " + test + " then\n" + indent(dialog, "  ") + "\nelse\n  Html.none}"
+	}
+	fmt.Fprintf(&b, "%s\n    </al-card>\n%s\n    <a href={%s {}}>All %s</a>\n", indent(actions, "      "), indent(dialog, "    "), at.route("Index"), Plural(at.noun))
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	var tests []TestData
@@ -1175,8 +1223,30 @@ func (g *crudGen) show(at *crudTable) {
 	tests = append(tests, TestData{Name: quote("the page shows the row"), Lines: tb.lines, Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
 	tests = append(tests, g.deleteTests(at, mod, "Show", imports, pl)...)
 	tests = append(tests, g.missingTest(at, mod, "Show", imports))
-	if g.owned(at) {
+	if g.owned(at) && g.a.ownerOnly == "" {
 		tests = append(tests, g.othersMissing(at, mod, "Show", "another user's row is not found", imports))
+	}
+	// the links to the writes: for the row's owner only (Edit, Save, Delete and Destroy are a 404
+	// to anyone else, as their own tests assert)
+	buttons := func(tb *testBuilder, row, name, want string, dialog int) TestData {
+		tb.let("let r <- Test.open (%s)", pageLit("Show", []string{"id: " + row}))
+		return TestData{Name: quote(name), Lines: tb.lines,
+			Result: fmt.Sprintf("{ answer: r.answer, buttons: Test.texts \"al-card al-button\" r.doc, dialog: Test.count \"#delete-dialog\" r.doc } == { answer: Shown, buttons: [%s], dialog: %d }", want, dialog)}
+	}
+	if g.owned(at) && g.a.ownerOnly != "" {
+		tb = g.tb(mod, imports, true)
+		tests = append(tests, buttons(tb, g.othersRow(tb, at), "shows another user's row without Edit or Delete", "", 0))
+		tb = g.tb(mod, imports, true)
+		tests = append(tests, buttons(tb, tb.insertRow(t, "", nil, false), "shows my row with Edit and Delete", `"Edit", "Delete"`, 1))
+	}
+	if g.owned(at) && g.a.ownerOnly != "" && g.a.readRequires == "" { // --read all
+		tb = g.tb(mod, imports, false)
+		row := tb.insertRow(t, "", nil, false)
+		tb.let("let r <- Test.open (%s)", pageLit("Show", []string{"id: " + row}))
+		tests = append(tests, TestData{Name: quote("a visitor sees the row"), Lines: tb.lines,
+			Result: fmt.Sprintf("{ answer: r.answer, fields: Test.count \"#fields dd\" r.doc } == { answer: Shown, fields: %d }", len(shown(t, true)))})
+		tb = g.tb(mod, imports, false)
+		tests = append(tests, buttons(tb, tb.insertRow(t, "", nil, false), "a visitor sees no New, Edit or Delete", "", 0))
 	}
 	tests = append(tests, g.pageGates(at, mod, imports, false, func(tb *testBuilder) string {
 		return pageLit("Show", []string{"id: " + tb.insertRow(t, "", nil, false)})
@@ -1935,7 +2005,11 @@ func (g *crudGen) edit(at *crudTable) {
 	}
 	tests = append(tests, g.missingTest(at, mod, "Edit", imports))
 	if g.owned(at) {
-		tests = append(tests, g.othersMissing(at, mod, "Edit", "another user's row: the edit page is not found", imports))
+		name := "another user's row: the edit page is not found"
+		if g.a.ownerOnly != "" { // --read signed-in|all: Show shows it, Edit does not
+			name = "another user's edit page is not found"
+		}
+		tests = append(tests, g.othersMissing(at, mod, "Edit", name, imports))
 	}
 	tests = append(tests, g.pageGates(at, mod, imports, true, func(tb *testBuilder) string {
 		return pageLit("Edit", []string{"id: " + tb.insertRow(t, "", nil, false)})

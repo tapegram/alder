@@ -21,43 +21,66 @@ var resourceWrites = []string{"Db.get ", "Db.update ", "Db.delete ", "Db.insert 
 
 // TestResource_NoUnscopedWrites (Review Focus 1): every line of a generated module of an owned
 // table that names an unscoped get, update, delete or insert is a test's line (in the region
-// `tests`) or follows a `-- unscoped:` comment.
+// `tests`) or follows a `-- unscoped:` comment; under `--read signed-in` and `--read all` the
+// one such line is Show's read (Index's is a `Db.from`), and the write pages still load with
+// getMine.
 func TestResource_NoUnscopedWrites(t *testing.T) {
 	t.Parallel()
-	dir := genApp(t, "fixture")
-	if code, out, errs := alderIn(t, dir, "", "new", "resource", "Post"); code != 0 {
-		t.Fatalf("alder new resource Post: exit %d\n%s%s", code, out, errs)
-	}
-	files, err := filepath.Glob(filepath.Join(dir, "app", "Posts", "*.alder"))
-	if err != nil || len(files) != 5 {
-		t.Fatalf("app/Posts/: %v, %v", files, err)
-	}
-	for _, f := range files {
-		b, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		inTests, prev := false, ""
-		for i, l := range strings.Split(string(b), "\n") {
-			s := strings.TrimSpace(l)
-			switch {
-			case s == "-- @resource begin tests":
-				inTests = true
-			case inTests && s == "-- @resource end":
-				inTests = false
+	for _, read := range []string{"owner", "signed-in", "all"} {
+		t.Run(read, func(t *testing.T) {
+			t.Parallel()
+			dir := genApp(t, "fixture")
+			if code, out, errs := alderIn(t, dir, "", "new", "resource", "Post", "--read", read); code != 0 {
+				t.Fatalf("alder new resource Post --read %s: exit %d\n%s%s", read, code, out, errs)
 			}
-			for _, w := range resourceWrites {
-				if strings.Contains(l, w) && !inTests && !strings.HasPrefix(prev, "-- unscoped:") {
-					t.Errorf("%s:%d: %q outside the tests with no `-- unscoped:` comment: %s", filepath.Base(f), i+1, strings.TrimSpace(w), s)
+			files, err := filepath.Glob(filepath.Join(dir, "app", "Posts", "*.alder"))
+			if err != nil || len(files) != 5 {
+				t.Fatalf("app/Posts/: %v, %v", files, err)
+			}
+			for _, f := range files {
+				b, err := os.ReadFile(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				inTests, prev, excused := false, "", 0
+				for i, l := range strings.Split(string(b), "\n") {
+					s := strings.TrimSpace(l)
+					switch {
+					case s == "-- @resource begin tests":
+						inTests = true
+					case inTests && s == "-- @resource end":
+						inTests = false
+					}
+					for _, w := range resourceWrites {
+						if !strings.Contains(l, w) || inTests {
+							continue
+						}
+						if !strings.HasPrefix(prev, "-- unscoped:") {
+							t.Errorf("%s:%d: %q outside the tests with no `-- unscoped:` comment: %s", filepath.Base(f), i+1, strings.TrimSpace(w), s)
+						}
+						excused++
+					}
+					prev = s
+				}
+				// the only unscoped get, update, delete or insert a page makes is Show's read
+				// under --read signed-in|all
+				want := 0
+				if filepath.Base(f) == "Show.alder" && read != "owner" {
+					want = 1
+				}
+				if excused != want {
+					t.Errorf("%s: %d unscoped gets and writes outside the tests, want %d", filepath.Base(f), excused, want)
+				}
+				if base := filepath.Base(f); (base == "Edit.alder" || base == "Delete.alder") && !strings.Contains(string(b), "Db.getMine Post") {
+					t.Errorf("%s does not load with getMine", base)
 				}
 			}
-			prev = s
-		}
+		})
 	}
 }
 
 // TestResource_Mutate: the generated tests kill the mutants of the resource's code (and of the
-// fixture's own), as the admin's do.
+// fixture's own), as the admin's do, under each `--read`.
 func TestResource_Mutate(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
@@ -65,23 +88,28 @@ func TestResource_Mutate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs every mutant of the fixture's resource")
 	}
-	dir := genApp(t, "fixture")
-	if code, out, errs := alderIn(t, dir, "", "new", "resource", "Post"); code != 0 {
-		t.Fatalf("alder new resource Post: exit %d\n%s%s", code, out, errs)
-	}
-	var out, errb bytes.Buffer
-	code := runTestTo(withBuildDir(t, []string{dir, "--mutate"}), &out, &errb)
-	m := scoreRe.FindStringSubmatch(out.String())
-	if code != 0 || m == nil {
-		t.Fatalf("alder test --mutate: exit %d\n%s%s", code, out.String(), errb.String())
-	}
-	t.Logf("the fixture with its Post resource: %s", m[0])
-	_, survivors, _ := strings.Cut(out.String(), "survived:\n")
-	if survivors != "" {
-		t.Logf("survivors:\n%s", survivors)
-	}
-	if m[4] < "0.95" {
-		t.Errorf("score %s < 0.95; survivors:\n%s", m[4], survivors)
+	for _, read := range []string{"owner", "signed-in", "all"} {
+		t.Run(read, func(t *testing.T) {
+			t.Parallel()
+			dir := genApp(t, "fixture")
+			if code, out, errs := alderIn(t, dir, "", "new", "resource", "Post", "--read", read); code != 0 {
+				t.Fatalf("alder new resource Post --read %s: exit %d\n%s%s", read, code, out, errs)
+			}
+			var out, errb bytes.Buffer
+			code := runTestTo(withBuildDir(t, []string{dir, "--mutate"}), &out, &errb)
+			m := scoreRe.FindStringSubmatch(out.String())
+			if code != 0 || m == nil {
+				t.Fatalf("alder test --mutate: exit %d\n%s%s", code, out.String(), errb.String())
+			}
+			t.Logf("the fixture with its Post resource, --read %s: %s", read, m[0])
+			_, survivors, _ := strings.Cut(out.String(), "survived:\n")
+			if survivors != "" {
+				t.Logf("survivors:\n%s", survivors)
+			}
+			if m[4] < "0.95" {
+				t.Errorf("score %s < 0.95; survivors:\n%s", m[4], survivors)
+			}
+		})
 	}
 }
 

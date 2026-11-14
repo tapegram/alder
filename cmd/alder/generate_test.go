@@ -244,6 +244,9 @@ var genCases = []genCase{
 	{name: "fixture-edit-drop", base: "fixture", args: []string{"edit", "table", "Tag", "drop-field", "created"}, test: true},
 	{name: "fixture-admin", base: "fixture", args: []string{"new", "admin"}, test: true},
 	{name: "fixture-resource", base: "fixture", args: []string{"new", "resource", "Post"}, test: true},
+	// #194: reads wider than writes: Show shows another user's post, Edit/Save/Delete/Destroy 404
+	{name: "fixture-resource-read-signed-in", base: "fixture", args: []string{"new", "resource", "Post", "--read", "signed-in"}, test: true},
+	{name: "fixture-resource-read-all", base: "fixture", args: []string{"new", "resource", "Post", "--read", "all"}, test: true},
 	// #194: refusals, one sentence each, nothing written
 	{name: "resource-no-table", base: "fixture", args: []string{"new", "resource", "Nope"}, code: 1},
 	{name: "resource-fields-existing", base: "fixture", args: []string{"new", "resource", "Post", "title:Text"}, code: 1},
