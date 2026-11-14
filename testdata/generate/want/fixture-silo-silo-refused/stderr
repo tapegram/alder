@@ -1,0 +1,1 @@
+alder new silo: `Membership` is not partitioned by `org`: mark its column `org` `@partition org` (`org: Org.OrgId @ref Org @partition org`), then run this again

@@ -1,0 +1,1 @@
+alder new resource: `app/Posts/` exists: `alder regen resource Post` updates it; to generate another, choose another `--module`

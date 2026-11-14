@@ -158,6 +158,26 @@ func golden(t *testing.T, name, stdout string, files map[string]string) {
 	}
 }
 
+// goldenStderr is a refusal's message: the golden file `stderr` of the case (with -update, written
+// beside the stdout).
+func goldenStderr(t *testing.T, name, stderr string) {
+	t.Helper()
+	p := filepath.Join("../../testdata/generate/want", name, "stderr")
+	if *updateGenerate {
+		if err := os.WriteFile(p, []byte(stderr), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf("%v (run with -update to write the golden files)", err)
+	}
+	if stderr != string(want) {
+		t.Errorf("stderr:\n%s\nwant (%s):\n%s", stderr, p, want)
+	}
+}
+
 // genCase is one generator run: on a copy of base, the command args; its exit code; then,
 // unless the command breaks code on purpose (breaks: `alder edit table`'s to-do list), `alder
 // check` passes; and with test, the holes are filled (fills: address and expression, in order;
@@ -224,6 +244,17 @@ var genCases = []genCase{
 	{name: "fixture-edit-drop", base: "fixture", args: []string{"edit", "table", "Tag", "drop-field", "created"}, test: true},
 	{name: "fixture-admin", base: "fixture", args: []string{"new", "admin"}, test: true},
 	{name: "fixture-resource", base: "fixture", args: []string{"new", "resource", "Post"}, test: true},
+	// #194: refusals, one sentence each, nothing written
+	{name: "resource-no-table", base: "fixture", args: []string{"new", "resource", "Nope"}, code: 1},
+	{name: "resource-fields-existing", base: "fixture", args: []string{"new", "resource", "Post", "title:Text"}, code: 1},
+	{name: "resource-silo", base: "fixture-silo", args: []string{"new", "resource", "Issue"}, code: 1},
+	{name: "resource-clash", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post"}}, args: []string{"new", "resource", "Post", "--module", "MyPosts"}, code: 1},
+	{name: "resource-no-user", base: "scaffold", pre: [][]string{{"new", "table", "Note", "title:Text.NonEmpty"}}, args: []string{"new", "resource", "Note", "--requires", "user"}, code: 1},
+	{name: "resource-bad-path", base: "fixture", args: []string{"new", "resource", "Post", "--path", "posts"}, code: 1},
+	{name: "resource-read-owner-keyless", base: "fixture", args: []string{"new", "resource", "Tag", "--read", "owner"}, code: 1},
+	{name: "resource-read-all-partition", base: "fixture-silo", args: []string{"new", "resource", "Activity", "--read", "all"}, code: 1},
+	{name: "resource-user-ref", base: "fixture", args: []string{"new", "resource", "Comment"}, code: 1},
+	{name: "resource-exists", base: "fixture", pre: [][]string{{"new", "resource", "Post"}}, args: []string{"new", "resource", "Post"}, code: 1},
 	{name: "fixture-silo-admin", base: "fixture-silo", args: []string{"new", "admin"}, test: true},
 
 	// M15: partitions and silos
@@ -301,6 +332,9 @@ func TestGenerate(t *testing.T) {
 				t.Fatalf("alder %s: exit %d, want %d\nstdout:\n%s\nstderr:\n%s", strings.Join(c.args, " "), code, c.code, out, errs)
 			}
 			golden(t, c.name, out, changedFiles(before, appFiles(t, dir)))
+			if c.code != 0 {
+				goldenStderr(t, c.name, errs)
+			}
 			if c.breaks {
 				return
 			}

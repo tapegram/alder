@@ -1,0 +1,1 @@
+alder new resource: there is no table `Nope`: give its fields to create it (`alder new resource Nope title:Text`) or make it first with `alder new table`

@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -96,5 +99,51 @@ func TestResource_HelpJSON(t *testing.T) {
 	usage := "usage: alder new resource <Table> [<field>:<Type>…] [--read owner|signed-in|all] [--requires user|<key>[,…]] [--module <M>] [--path /p] [--dir app] [--json] [--dry-run]"
 	if !strings.Contains(out.String(), `"usage":"`+usage+`"`) {
 		t.Errorf("help --json does not give `new resource` the usage %q", usage)
+	}
+}
+
+// TestResource_DryRunJSON: --dry-run writes nothing and lists the five files in full; --json is
+// the report's one object, with no command to run next (the resource is complete).
+func TestResource_DryRunJSON(t *testing.T) {
+	t.Parallel()
+	dir := genApp(t, "fixture")
+	before := appFiles(t, dir)
+	code, out, errs := alderIn(t, dir, "", "new", "resource", "Post", "--dry-run")
+	if code != 0 || errs != "" || !strings.HasSuffix(out, "dry run: nothing written\n") {
+		t.Fatalf("--dry-run: exit %d\n%s%s", code, out, errs)
+	}
+	for _, f := range []string{"Index", "Show", "New", "Edit", "Delete"} {
+		p := "app/Posts/" + f + ".alder"
+		if !strings.Contains(out, "would write "+p+"\n") || !strings.Contains(out, "--- /dev/null\n+++ b/"+p+"\n") {
+			t.Errorf("--dry-run does not list %s in full:\n%s", p, out)
+		}
+	}
+	if ch := changedFiles(before, appFiles(t, dir)); len(ch) != 0 {
+		t.Errorf("--dry-run wrote %v", slices.Sorted(maps.Keys(ch)))
+	}
+	code, out, errs = alderIn(t, dir, "", "new", "resource", "Post", "--json")
+	if code != 0 {
+		t.Fatalf("--json: exit %d\n%s%s", code, out, errs)
+	}
+	var rep map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatalf("--json: %v\n%s", err, out)
+	}
+	// the report is the generators' shared one: migration, error and next are left out when empty
+	// (a resource makes no migration and has no command to run next)
+	for _, k := range []string{"files", "diff", "diagnostics", "holes", "written"} {
+		if _, ok := rep[k]; !ok {
+			t.Errorf("--json has no %q: %s", k, out)
+		}
+	}
+	for k := range rep {
+		if !slices.Contains([]string{"files", "diff", "diagnostics", "holes", "migration", "written", "error", "next"}, k) {
+			t.Errorf("--json has the unexpected key %q: %s", k, out)
+		}
+	}
+	for _, k := range []string{"migration", "error", "next"} {
+		if v, ok := rep[k]; ok && string(v) != `""` && string(v) != "[]" && string(v) != "null" {
+			t.Errorf("%s = %s, want empty: %s", k, v, out)
+		}
 	}
 }

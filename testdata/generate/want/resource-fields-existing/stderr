@@ -1,0 +1,1 @@
+alder new resource: `Post` exists: change it with `alder edit table Post add-field …`, then `alder new resource Post`
