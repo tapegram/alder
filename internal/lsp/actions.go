@@ -148,6 +148,11 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 			out = append(out, act)
 		}
 	}
+	if ctx.Hole != "" && s.searchCmd { // the client runs alder.search itself
+		if act, ok := s.searchAction(a, rel, ctx, pos); ok {
+			out = append(out, act)
+		}
+	}
 	for _, spec := range generate.Specs() {
 		if spec.Here == nil {
 			continue

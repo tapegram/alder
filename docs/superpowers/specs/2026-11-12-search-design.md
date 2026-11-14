@@ -238,8 +238,9 @@ alder search <query> [--json] [--limit N]
     resolved print as `_`.
   - The response is the CLI's JSON object, with a URI and an LSP range in place of file, line and
     column (as `alder/routes` does).
-  - It reads the last good build, as `alder/routes` does, so it is empty before the first good
-    build and may be slightly stale while the program has errors.
+  - It reads the latest build with no errors (typed holes and warnings are fine). While the
+    program has an error, app results come from that last error-free build; if there has been
+    none yet, only the standard library is searched.
 - **Edits are computed by the server, at pick time (my call).** A second request takes the
   picked result and the document position and returns a workspace edit, built against the
   current document. Plugins never build insert text. The edit:

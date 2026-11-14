@@ -87,6 +87,9 @@ type initializeParams struct {
 			WorkDoneProgress bool            `json:"workDoneProgress"`
 			ShowMessage      json.RawMessage `json:"showMessage"` // present: the client answers window/showMessageRequest
 		} `json:"window"`
+		Experimental struct {
+			AlderSearch bool `json:"alderSearch"` // the client runs alder.search
+		} `json:"experimental"`
 		General struct {
 			PositionEncodings []string `json:"positionEncodings"`
 		} `json:"general"`
@@ -125,6 +128,7 @@ func capabilities(enc posEncoding) map[string]any {
 		"semanticTokensProvider":     semanticTokensProvider(),
 		"foldingRangeProvider":       true,
 		"selectionRangeProvider":     true,
+		"workspaceSymbolProvider":    true,
 		"experimental":               map[string]any{"alderScratch": true},
 	}
 }

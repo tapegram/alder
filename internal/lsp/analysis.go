@@ -5,23 +5,52 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"alder/internal/buildkit"
 	"alder/internal/check"
 	"alder/internal/diag"
 	"alder/internal/names"
+	"alder/internal/search"
 	"alder/internal/watch"
 )
 
 // analysis is one build of the app with the open documents overlaid: an immutable snapshot
-// (Ruling R7), read by any goroutine.
+// (Ruling R7), read by any goroutine. Only its search index is filled in later, once
+// (searchIndex).
 type analysis struct {
 	prog     *names.Program
 	res      *check.Result // nil after a parse failure
+	errored  bool          // the compiler reported errors (schema drift aside)
 	diags    []diag.Diagnostic
 	versions map[string]int      // the doc versions it was built from
 	lines    map[string][]string // the text of every module it was built from, by rel
+
+	searchOnce sync.Once
+	searchIx   *search.Index // searchIndex's
+}
+
+// searchIndex is the snapshot's search index, built on first use: the standard library and the
+// app's declarations; the standard library's alone when the build has errors, since a build with
+// errors gives the poison type to what it could not check, and type search fits that to
+// anything. nil without a checked program, or when building the index fails.
+func (a *analysis) searchIndex() *search.Index {
+	a.searchOnce.Do(func() {
+		defer func() {
+			if r := recover(); r != nil {
+				a.searchIx = nil
+			}
+		}()
+		switch {
+		case a.res == nil:
+		case a.errored:
+			a.searchIx, _ = search.Std()
+		default:
+			a.searchIx = search.Build(a.prog, a.res)
+		}
+	})
+	return a.searchIx
 }
 
 // initializedNote starts the analysis goroutine and, when Options.Poll is set, the disk poller,
@@ -118,8 +147,9 @@ func (s *server) rebuild() {
 		fmt.Fprintf(s.o.Log, "alder lsp: %v\n", ioErrs[0])
 		return
 	}
+	errored := bag.HasErrors() // before schema drift, which does not make the program's types wrong
 	buildkit.AddSchemaDrift(s.rootReal, prog, res, bag)
-	a := &analysis{prog: prog, res: res, diags: bag.Items, versions: vers, lines: map[string][]string{}}
+	a := &analysis{prog: prog, res: res, errored: errored, diags: bag.Items, versions: vers, lines: map[string][]string{}}
 	for _, m := range prog.Modules {
 		a.lines[m.File] = m.Lines
 	}
@@ -129,6 +159,9 @@ func (s *server) rebuild() {
 	s.cur.Store(a)
 	if res != nil {
 		s.good.Store(a)
+		if !errored {
+			s.clean.Store(a)
+		}
 	}
 	s.publish(a)
 }
@@ -138,6 +171,10 @@ func (s *server) current() *analysis { return s.cur.Load() }
 
 // lastGood is the latest analysis that type-checked (res != nil); nil before the first.
 func (s *server) lastGood() *analysis { return s.good.Load() }
+
+// lastClean is the latest analysis that type-checked without errors (warnings, typed holes among
+// them, allowed); nil before the first.
+func (s *server) lastClean() *analysis { return s.clean.Load() }
 
 // fresh reports whether a's view of rel still holds at line (1-based, as the compiler counts):
 // lines 1..line-1 are unchanged since a was built, and line too when inclusive (Ruling R11).

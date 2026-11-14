@@ -112,7 +112,12 @@ func completionReq(s *server, params json.RawMessage) (any, error) {
 
 // completionAt is the completion at p in rel, nil when p is not in its text.
 func (s *server) completionAt(rel string, p Position) *completion {
-	lines := strings.Split(s.text(rel), "\n")
+	return s.completionIn(rel, s.text(rel), p)
+}
+
+// completionIn is completionAt for text, rel's current text as the caller read it.
+func (s *server) completionIn(rel, text string, p Position) *completion {
+	lines := strings.Split(text, "\n")
 	if p.Line < 0 || p.Line >= len(lines) || p.Character < 0 {
 		return nil
 	}
@@ -183,22 +188,24 @@ func (cx *completion) imports() ([]completionItem, bool) {
 	return out, true
 }
 
-// importText is what accepting module path in an import completion inserts: the path, and
-// `as Q` when the path's canonical qualifier among this module's imports is not its last
-// segment (design rule 4). A standard-library module, or one with no usable qualifier, is
-// inserted as it is.
-func (cx *completion) importText(path string) string {
-	isStd := func(n string) bool { return cx.a.prog.Std[n] != nil }
+// importText is what accepting module path in an import completion inserts (importClause).
+func (cx *completion) importText(path string) string { return importClause(cx.a.prog, cx.m, path) }
+
+// importClause is what follows "import " for path in module m: the path, with " as Q" when
+// the path's canonical qualifier among m's imports is not its last segment (design rule 4). A
+// standard-library module, or one with no usable qualifier, is written as it is.
+func importClause(prog *names.Program, m *syntax.Module, path string) string {
+	isStd := func(n string) bool { return prog.Std[n] != nil }
 	if isStd(path) {
 		return path
 	}
 	paths := []string{path}
-	for _, im := range cx.m.Imports {
+	for _, im := range m.Imports {
 		if !isStd(im.Module) {
 			paths = append(paths, im.Module)
 		}
 	}
-	quals, _ := names.CanonicalQualifiers(cx.m.Name, paths, names.Taken(cx.m, isStd))
+	quals, _ := names.CanonicalQualifiers(m.Name, paths, names.Taken(m, isStd))
 	if q := quals[path]; q != "" && names.NeedsAlias(path, q) {
 		return path + " as " + q
 	}

@@ -27,25 +27,34 @@ type fillArgs struct {
 // analysis a (the last good build, whose lines down to pos are unchanged): attached to the
 // hole's W0002, carrying the alder.fill command. ok is false when a has no such hole.
 func (s *server) fillAction(a *analysis, rel string, ctx generate.HereCtx, pos diag.Pos) (codeAction, bool) {
+	h, ds, ok := s.holeHere(a, rel, ctx, pos)
+	if !ok {
+		return codeAction{}, false
+	}
+	arg := fillArgs{URI: s.uriOf(rel), Address: h.Address(), Hole: h.Name, Type: h.Type}
+	if v, open := a.versions[rel]; open {
+		arg.Version = &v
+	}
+	title := fmt.Sprintf("Fill ?%s with AI (%s)", h.Name, h.Type)
+	return codeAction{Title: title, Kind: "quickfix", Diagnostics: ds,
+		Command: &command{Title: title, Command: "alder.fill", Arguments: []any{arg}}}, true
+}
+
+// holeHere is the hole ctx names at pos in rel, from analysis a, with its W0002 diagnostics in
+// wire units; ok is false when a has no such hole.
+func (s *server) holeHere(a *analysis, rel string, ctx generate.HereCtx, pos diag.Pos) (h generate.Hole, ds []Diagnostic, ok bool) {
 	for _, h := range generate.HoleIndex(a.prog, a.diags) {
 		if h.File != rel || h.Name != ctx.Hole || !within(h.Span, pos) {
 			continue
 		}
-		var ds []Diagnostic
 		for _, d := range a.diags {
 			if d.Code == "W0002" && d.Span == h.Span {
 				ds = append(ds, s.enc.wireDiagnostic(a.lines[rel], lspDiagnostic(d)))
 			}
 		}
-		arg := fillArgs{URI: s.uriOf(rel), Address: h.Address(), Hole: h.Name, Type: h.Type}
-		if v, open := a.versions[rel]; open {
-			arg.Version = &v
-		}
-		title := fmt.Sprintf("Fill ?%s with AI (%s)", h.Name, h.Type)
-		return codeAction{Title: title, Kind: "quickfix", Diagnostics: ds,
-			Command: &command{Title: title, Command: "alder.fill", Arguments: []any{arg}}}, true
+		return h, ds, true
 	}
-	return codeAction{}, false
+	return generate.Hole{}, nil, false
 }
 
 // fillCommand runs alder.fill: it validates the argument, refuses a second fill while one runs
