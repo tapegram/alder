@@ -3202,9 +3202,21 @@ A query never makes the request fail: text that is not a query gives an empty
 `alder/searchEdit` turns the result the user picked into an edit. Its params
 are `uri`, `position`, and the result's `module`, `name` and `kind`, and, for
 a hole, `args`: the `args` of a `:` result, how many arguments the picked
-function takes before it produces the hole's type. It answers a workspace
-edit, built against the current text of the document, so the client does not
-build insert text. The server decides:
+function takes before it produces the hole's type. A client sends a result's
+`args` whenever it has one; away from a hole the server ignores it. It answers
+an object with two fields: `edit`, a workspace edit built against the current
+text of the document, so the client does not build insert text, and `cursor`,
+where the client puts the cursor. `cursor` is a position in the document after
+the edit is applied (an added import line included), in the position encoding
+the client and server agreed on. It is the `?` of the first new hole when the
+edit adds holes, else the end of the inserted name.
+
+```text
+-> {"jsonrpc":"2.0","id":9,"method":"alder/searchEdit","params":{"uri":"file:///work/blog/app/Posts/Index.alder","position":{"line":20,"character":14},"module":"Text","name":"split","kind":"function","args":2}}
+<- {"jsonrpc":"2.0","id":9,"result":{"edit":{"documentChanges":[{"textDocument":{"uri":"file:///work/blog/app/Posts/Index.alder","version":3},"edits":[{"range":{"start":{"line":20,"character":14},"end":{"line":20,"character":20}},"newText":"Text.split ?a ?b"}]}]},"cursor":{"line":20,"character":25}}}
+```
+
+The server decides:
 
 - **The qualifier.** The name is written as the file would write it: bare for
   the Prelude and for the file's own module, else qualified (`Text.split`). An
@@ -3431,6 +3443,7 @@ in `opts.keys`, and with which-key, `<leader>a` is the group "alder":
 | `<leader>ac` | the open buffers' diagnostics into the quickfix list |
 | `<leader>ae` | `alder explain` for the diagnostic under the cursor |
 | `<leader>ar` | `alder run` |
+| `<leader>af` | the search picker: find a function or value by name or type and write it at the cursor |
 
 `<leader>ag` (or `:AlderGenerate [id]`) opens the generator modal: a search
 over all the generators, those that apply at the cursor first, then the chosen

@@ -130,6 +130,12 @@ func (s *server) holeQuery(rel string, p Position) (query string, ok bool) {
 	return ": " + types.String(cx.a.res.U.Apply(t)), true
 }
 
+// searchEditResult is alder/searchEdit's answer.
+type searchEditResult struct {
+	Edit   *workspaceEdit `json:"edit"`
+	Cursor Position       `json:"cursor"`
+}
+
 type searchEditParams struct {
 	URI      string   `json:"uri"`
 	Position Position `json:"position"`
@@ -148,6 +154,10 @@ type searchEditParams struct {
 // for the Prelude and the file's own module, else qualified, with an import line added for an app
 // module the file does not import. An item not in the index, or a position not in the document,
 // is codeInvalidParams.
+//
+// The answer is a searchEditResult: the edit and the cursor, a position in the document after the
+// edit (the import line included), in the negotiated encoding. The cursor is the `?` of the first
+// new hole when there are new holes, else the end of the written name.
 func searchEditReq(s *server, params json.RawMessage) (any, error) {
 	var p searchEditParams
 	if err := json.Unmarshal(params, &p); err != nil {
@@ -185,10 +195,12 @@ func searchEditReq(s *server, params json.RawMessage) (any, error) {
 	// (replaced by the bare name: without its type there are no new holes or parentheses), else
 	// the position itself
 	at := Range{Start: Position{cx.line, cx.col}, End: Position{cx.line, cx.col}}
+	newHole := false
 	if h := cx.holeAt(); h != nil && h.Span.Start.Line == h.Span.End.Line {
 		at = Range{Start: Position{h.Span.Start.Line - 1, h.Span.Start.Col - 1}, End: Position{h.Span.End.Line - 1, h.Span.End.Col - 1}}
 		if p.Args > 0 {
 			text += " " + strings.Join(newHoles(cx.lines, p.Args), " ")
+			newHole = true
 			if inApp(cx.m, h) {
 				text = "(" + text + ")"
 			}
@@ -197,13 +209,26 @@ func searchEditReq(s *server, params json.RawMessage) (any, error) {
 		at = Range{Start: Position{cx.line, start}, End: Position{cx.line, end}}
 	}
 	edits := []TextEdit{s.enc.wireEdit(cx.lines, TextEdit{Range: at, NewText: text})}
+
+	// cursor: in the edited document, at the first new hole's `?` or after the name; the line
+	// moves down by the lines of an import added above it
+	curCol, curLine := len(text), at.Start.Line
+	if newHole {
+		curCol = strings.Index(text, "?")
+	}
 	if imp != "" {
 		line, newText := importEdit(cx.lines, p.Module, imp)
 		pos := Position{line, 0}
 		edits = append([]TextEdit{{Range: Range{Start: pos, End: pos}, NewText: newText}}, edits...)
+		if line <= at.Start.Line {
+			curLine += strings.Count(newText, "\n")
+		}
 	}
-	return &workspaceEdit{DocumentChanges: []textDocumentEdit{{
-		TextDocument: versionedDocument{URI: s.uriOf(rel), Version: version}, Edits: edits}}}, nil
+	old := cx.lines[at.Start.Line]
+	newLine := old[:at.Start.Character] + text + old[at.End.Character:]
+	cursor := Position{curLine, s.enc.toWire(newLine, at.Start.Character+curCol)}
+	return &searchEditResult{Edit: &workspaceEdit{DocumentChanges: []textDocumentEdit{{
+		TextDocument: versionedDocument{URI: s.uriOf(rel), Version: version}, Edits: edits}}}, Cursor: cursor}, nil
 }
 
 // searchHas reports whether alder/search's index (searchSnapshot) has the entry.
