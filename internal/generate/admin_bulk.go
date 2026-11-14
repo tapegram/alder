@@ -12,7 +12,7 @@ import (
 // @restrict below a @cascade, or a tree of the table's own (a stop node), which the page's query
 // of the rows' direct referrers does not follow (a @cascade below a @cascade is the database's
 // to follow, and is no reason); and a set for each Bool or union column its form edits.
-func (g *adminGen) bulkInfo(at *adminTable) {
+func (g *crudGen) bulkInfo(at *crudTable) {
 	at.bulkDel = true
 	for _, n := range walk(g.closure(at)) {
 		if n.stop || (n.parent != nil && n.col.OnDelete == "restrict") {
@@ -29,9 +29,9 @@ func (g *adminGen) bulkInfo(at *adminTable) {
 	}
 }
 
-func (at *adminTable) hasBulk() bool { return at.bulkDel || len(at.bulkSet) > 0 }
+func (at *crudTable) hasBulk() bool { return at.bulkDel || len(at.bulkSet) > 0 }
 
-func (at *adminTable) idColumn() *Column {
+func (at *crudTable) idColumn() *Column {
 	for _, c := range at.t.Columns {
 		if c.ID {
 			return c
@@ -44,7 +44,7 @@ func (at *adminTable) idColumn() *Column {
 // do to each (the rows that keep one from being deleted are listed and left), and a form for
 // each action, each a POST route taking the same ids, which answers the page again (refresh)
 // with a toast.
-func (g *adminGen) bulk(at *adminTable) {
+func (g *crudGen) bulk(at *crudTable) {
 	if !at.hasBulk() {
 		return
 	}
@@ -296,7 +296,7 @@ const bulkTooMany = `"Choose at most " ++ Text.fromInt maxRows ++ " rows at a ti
 
 // bulkForms are the list's two ways to the bulk page: the rows chosen (the checkboxes name this
 // form), and every row on the page (a form of its own, no script needed).
-func (g *adminGen) bulkForms(at *adminTable) string {
+func (g *crudGen) bulkForms(at *crudTable) string {
 	if !at.hasBulk() {
 		return ""
 	}
@@ -317,7 +317,7 @@ func (g *adminGen) bulkForms(at *adminTable) string {
 // 200 rows its select holds them all, past that it holds 50 and the search narrows them (Edit
 // keeps the row's own value too: ownFirstTest), the search route answers the page at the text, and a value
 // outside the rendered options (a crafted request) is refused with the field error.
-func (g *adminGen) findTests(at *adminTable, mod string, imports *importSet, edit bool) []TestData {
+func (g *crudGen) findTests(at *crudTable, mod string, imports *importSet, edit bool) []TestData {
 	var tests []TestData
 	get := "New"
 	if edit {
@@ -407,7 +407,7 @@ func (g *adminGen) findTests(at *adminTable, mod string, imports *importSet, edi
 // ownFirstTest is the Edit page's test of a long table behind reference c whose row's own value
 // sorts after the 50 the select holds (its label is "zz-…", every other row's matches the empty
 // search): the select offers it first and once, and saving the row as it is keeps it.
-func (g *adminGen) ownFirstTest(at *adminTable, mod string, imports *importSet, c *Column) TestData {
+func (g *crudGen) ownFirstTest(at *crudTable, mod string, imports *importSet, c *Column) TestData {
 	rt := g.p.TableNamed(c.Ref)
 	tb := g.tb(mod, imports, true)
 	l := rt.Label()

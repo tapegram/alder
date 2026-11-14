@@ -24,7 +24,7 @@ import (
 type adminSilo struct {
 	key    string
 	kt     *Table          // the key's table (Org)
-	tables []*adminTable   // its tables, in the admin's order
+	tables []*crudTable    // its tables, in the admin's order
 	picker string          // the picker's module: "Admin.Orgs.Pick"
 	dash   string          // the dashboard of one value: "Admin.Orgs.Dashboard"
 	path   string          // the picker's path: "/admin/orgs"
@@ -35,7 +35,7 @@ type adminSilo struct {
 
 // silos are the app's silos whose key is a table's id, by key, sorted; each siloed adminTable
 // gets its silo and its path under the key.
-func (g *adminGen) silos() {
+func (g *crudGen) silos() {
 	var keys []string
 	for k := range g.p.Silos {
 		keys = append(keys, k)
@@ -80,7 +80,7 @@ func joinAnd(words []string) string {
 }
 
 // siloOf is the silo whose table's route module mod is, nil for another module.
-func (g *adminGen) siloOf(mod string) *adminSilo {
+func (g *crudGen) siloOf(mod string) *adminSilo {
 	for _, s := range g.silo {
 		if s.mods[mod] {
 			return s
@@ -96,7 +96,7 @@ func (s *adminSilo) keyType(mod string, imports *importSet) string {
 }
 
 // params are a route's parameters: the silo's key first, for a siloed table's route.
-func (at *adminTable) params(mod string, imports *importSet, params []string) []string {
+func (at *crudTable) params(mod string, imports *importSet, params []string) []string {
 	if at.silo == nil {
 		return params
 	}
@@ -105,7 +105,7 @@ func (at *adminTable) params(mod string, imports *importSet, params []string) []
 
 // requires is the `route` line's clause of the table's routes: the role, and for a siloed table
 // the key from the parameter.
-func (at *adminTable) requires() string {
+func (at *crudTable) requires() string {
 	if at.silo == nil {
 		return adminRequires
 	}
@@ -114,7 +114,7 @@ func (at *adminTable) requires() string {
 
 // action is a GET form's `action` attribute to the table's path with suffix: the text, or for a
 // siloed table the text built around the key's value (a form's action is text, not a route value).
-func (at *adminTable) action(suffix string) string {
+func (at *crudTable) action(suffix string) string {
 	if at.silo == nil {
 		return quote(at.path + suffix)
 	}
@@ -125,7 +125,7 @@ func (at *adminTable) action(suffix string) string {
 // actionAt is a GET form's `action` attribute to the table's path with suffix, whose `{id}` is
 // the text id (an expression), and for a siloed table whose key is the session's value: the
 // text, or the text built around those values.
-func (at *adminTable) actionAt(suffix, id string) string {
+func (at *crudTable) actionAt(suffix, id string) string {
 	vals := map[string]string{"id": id}
 	if at.silo != nil {
 		vals[at.silo.key] = "session." + at.silo.key
@@ -202,7 +202,7 @@ func (s *adminSilo) siloLits(text, expr string, own []string) string {
 
 // testsIn renders the generated tests of module mod (testsText): in a siloed table's module,
 // every route value of the silo's tables takes the test's key row.
-func (g *adminGen) testsIn(mod string, tests []TestData) string {
+func (g *crudGen) testsIn(mod string, tests []TestData) string {
 	if s := g.siloOf(mod); s != nil {
 		for i := range tests {
 			for j := range tests[i].Lines {
@@ -216,7 +216,7 @@ func (g *adminGen) testsIn(mod string, tests []TestData) string {
 
 // siloCode is body (a file's code, before its tests) with the silo's route values taking the
 // key from the narrowed session: the route's parameter.
-func (g *adminGen) siloCode(mod, body string) string {
+func (g *crudGen) siloCode(mod, body string) string {
 	s := g.siloOf(mod)
 	if s == nil {
 		return body
@@ -233,7 +233,7 @@ func (g *adminGen) siloCode(mod, body string) string {
 // dashboard of one value), the key's row is inserted first, and an Admin is signed in as a
 // member of it when member is set (the test's own reads go to its database), else with the key
 // unset (only the pages, which take it from their parameter, read the silo).
-func (g *adminGen) tbIn(mod string, imports *importSet, admin bool, s *adminSilo, member bool) *testBuilder {
+func (g *crudGen) tbIn(mod string, imports *importSet, admin bool, s *adminSilo, member bool) *testBuilder {
 	tb := newTestBuilder(g.p, mod, imports)
 	if s != nil {
 		tb.silo = &siloCtx{key: s.key, table: s.kt, member: member, admin: true}
@@ -268,7 +268,7 @@ func (tb *testBuilder) inOtherKey(other string, f func()) {
 // ---- the picker and the dashboard of one value
 
 // picker is the page that lists the key's table, each row linking to its dashboard.
-func (g *adminGen) picker(s *adminSilo) {
+func (g *crudGen) picker(s *adminSilo) {
 	mod := s.picker
 	g.names[mod] = []string{"Pick"}
 	imports := newImports(mod, g.p.Std)
@@ -320,7 +320,7 @@ func (g *adminGen) picker(s *adminSilo) {
 
 // siloDashboard is the dashboard of one value of the key: each siloed table's count and newest
 // rows, read from that value's database when the page is opened.
-func (g *adminGen) siloDashboard(s *adminSilo) {
+func (g *crudGen) siloDashboard(s *adminSilo) {
 	mod := s.dash
 	g.names[mod] = []string{"Dashboard"}
 	imports := newImports(mod, g.p.Std)
@@ -407,7 +407,7 @@ func (g *adminGen) siloDashboard(s *adminSilo) {
 // cardChecks are a dashboard test's comparisons of at's card (its count, total, and its newest
 // rows, numbered after before) on page, the left and right sides' fields; show is the page
 // value of a row's Show page.
-func (g *adminGen) cardChecks(tb *testBuilder, at *adminTable, key string, before, total int, show func(row string) string) ([]string, []string) {
+func (g *crudGen) cardChecks(tb *testBuilder, at *crudTable, key string, before, total int, show func(row string) string) ([]string, []string) {
 	t := at.t
 	lhs := []string{fmt.Sprintf("count: Test.text \"#%s al-badge\" page.doc", key)}
 	rhs := []string{fmt.Sprintf("count: Just %s", quote(fmt.Sprint(total)))}
@@ -433,7 +433,7 @@ func (g *adminGen) cardChecks(tb *testBuilder, at *adminTable, key string, befor
 // siloTests are the tests of a siloed table's list (and its bulk page) that the Admin need not be
 // a member: signed in without the key, the page of one value lists that value's rows only, and a
 // bulk action given another value's ids changes nothing there.
-func (g *adminGen) siloListTest(at *adminTable, mod string, imports *importSet) TestData {
+func (g *crudGen) siloListTest(at *crudTable, mod string, imports *importSet) TestData {
 	s, t := at.silo, at.t
 	tb := g.tbIn(mod, imports, true, s, false)
 	mine := tb.insertRow(t, "", nil, false)
@@ -449,7 +449,7 @@ func (g *adminGen) siloListTest(at *adminTable, mod string, imports *importSet) 
 
 // siloBulkTest is the test that the bulk page of one value acts on that value's rows only:
 // another value's ids are not found there, and its rows are left.
-func (g *adminGen) siloBulkTest(at *adminTable, mod string, imports *importSet) TestData {
+func (g *crudGen) siloBulkTest(at *crudTable, mod string, imports *importSet) TestData {
 	s, t := at.silo, at.t
 	tb := g.tbIn(mod, imports, true, s, false)
 	mine := tb.insertRow(t, "", nil, false)

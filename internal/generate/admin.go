@@ -253,7 +253,7 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 
 // AdminFiles is every file of the admin, by path, and the paths in the order they are written.
 func AdminFiles(p *Program, o AdminOptions) (map[string]string, []string) {
-	g := &adminGen{p: p, o: o, files: map[string]string{}, names: map[string][]string{}, role: p.RoleColumn()}
+	g := &crudGen{p: p, o: o, files: map[string]string{}, names: map[string][]string{}, role: p.RoleColumn()}
 	for _, t := range p.Tables {
 		g.tables = append(g.tables, g.table(t))
 	}
@@ -278,11 +278,11 @@ func AdminFiles(p *Program, o AdminOptions) (map[string]string, []string) {
 	return g.files, g.order
 }
 
-type adminGen struct {
+type crudGen struct {
 	p      *Program
 	o      AdminOptions
 	role   *Column // the user table's role column, which every route's adminOnly reads again; nil for none
-	tables []*adminTable
+	tables []*crudTable
 	silo   []*adminSilo        // the app's silos (admin_silo.go)
 	names  map[string][]string // each module's routes, by name: its code writes them bare
 	files  map[string]string
@@ -290,7 +290,7 @@ type adminGen struct {
 }
 
 // adminTable is a table as the admin shows it.
-type adminTable struct {
+type crudTable struct {
 	t         *Table
 	mod       string // the module prefix of its pages: "Admin.Posts"
 	path      string // "/admin/post"
@@ -317,8 +317,8 @@ type referrer struct {
 	field string // the Delete page's model field counting them: "comments"
 }
 
-func (g *adminGen) table(t *Table) *adminTable {
-	at := &adminTable{t: t, mod: adminTableModule(g.o, t), path: g.o.Path + "/" + strings.ToLower(t.Name),
+func (g *crudGen) table(t *Table) *crudTable {
+	at := &crudTable{t: t, mod: adminTableModule(g.o, t), path: g.o.Path + "/" + strings.ToLower(t.Name),
 		plural: Plural(LowerFirst(t.Name)), noun: strings.ToLower(Humanize(t.Name)), label: t.Label()}
 	at.title = UpperFirst(Plural(at.noun))
 	for _, c := range t.Columns {
@@ -347,7 +347,7 @@ func (g *adminGen) table(t *Table) *adminTable {
 
 // referrersOf are the columns that refer to t, named after their table (and their column,
 // when the table refers to t twice).
-func (g *adminGen) referrersOf(t *Table) []*referrer {
+func (g *crudGen) referrersOf(t *Table) []*referrer {
 	count := map[string]int{}
 	var refs []*referrer
 	for _, other := range g.p.Tables {
@@ -393,13 +393,13 @@ type node struct {
 // deletes can reach a @restrict: a node to stop at (node.stop). Only a table can refer to
 // itself: a cycle through two tables would be an import cycle (E0006), as a `@ref` names a table
 // its module imports.
-func (g *adminGen) selfStop(t *Table, col *Column) bool {
+func (g *crudGen) selfStop(t *Table, col *Column) bool {
 	return col.OnDelete == "cascade" && g.p.TableNamed(col.Ref) == t && g.restrictReach(t)
 }
 
 // restrictReach reports whether deleting a row of t can meet a @restrict reference: one to t, or
 // to a table whose rows a @cascade from t deletes, at any depth.
-func (g *adminGen) restrictReach(t *Table) bool {
+func (g *crudGen) restrictReach(t *Table) bool {
 	seen := map[*Table]bool{t: true}
 	for queue := []*Table{t}; len(queue) > 0; queue = queue[1:] {
 		for _, r := range g.referrersOf(queue[0]) {
@@ -423,7 +423,7 @@ func (g *adminGen) restrictReach(t *Table) bool {
 // is a `@restrict` or leads to one. A column is not followed twice on one path, so a cycle (a
 // table that refers to itself) is followed once round: the tree is bounded by the schema. A
 // table's `@restrict` reference to itself, under a cascade of that table, is left out.
-func (g *adminGen) closure(at *adminTable) []*node {
+func (g *crudGen) closure(at *crudTable) []*node {
 	var nodes []*node
 	for _, r := range at.referrer {
 		n := &node{t: r.t, col: r.col, field: r.field, stop: g.selfStop(r.t, r.col)}
@@ -436,7 +436,7 @@ func (g *adminGen) closure(at *adminTable) []*node {
 }
 
 // expand adds node n's kids: when n is a @cascade, the references to its table not on path.
-func (g *adminGen) expand(n *node, path map[*Column]bool) {
+func (g *crudGen) expand(n *node, path map[*Column]bool) {
 	if n.col.OnDelete != "cascade" {
 		return
 	}
@@ -504,7 +504,7 @@ func eqID(t *Table, c *Column, expr string) string {
 }
 
 // file adds a generated file: the header, the module line, the imports region, then body.
-func (g *adminGen) file(module string, imports *importSet, body string) {
+func (g *crudGen) file(module string, imports *importSet, body string) {
 	var b strings.Builder
 	// no version: the same app gives the same files from every build, so an admin committed
 	// with one build is replayed byte for byte by another
@@ -552,14 +552,14 @@ func regionAt(ind, name string, lines []string) string {
 // the role, a user whose row says Admin now); any other gets a 404. The session's role is the one
 // read at login, which lasts until logout or the cookie's 30 days (chapter 6, "Rules"); every
 // write route's `update` begins the same way (update).
-func (g *adminGen) load(r, body string) string {
+func (g *crudGen) load(r, body string) string {
 	return r + ".load : " + r + ".Params -> Session -> Query Model\n" + r + ".load params session = {\n  let _ <- " + g.o.Module +
 		".Layout.adminOnly session.user\n" + body + "\n}\n\n"
 }
 
 // update is write route r's `update`, with body its statements (indented two spaces), run only
 // for a user the layout's adminOnly lets in, as load; any other gets a 404.
-func (g *adminGen) update(r, body string) string {
+func (g *crudGen) update(r, body string) string {
 	return r + ".update : " + r + ".Params -> Session -> Task Response\n" + r + ".update params session = {\n  let _ <- " + g.o.Module +
 		".Layout.adminOnly session.user\n" + body + "\n}\n\n"
 }
@@ -595,7 +595,7 @@ func routeLine(name, method, path string, params []string, form, req string) str
 // wire is the query key the GET route of module page reads parameter name from: its wire name
 // when the route, as the app has it now, declares one (`q: Text = "" as "Q"`, #55), else the
 // name. A GET form to the route names its inputs by it.
-func (g *adminGen) wire(page, name string) string {
+func (g *crudGen) wire(page, name string) string {
 	var params []*Param
 	if r := g.p.RouteModule(page); r != nil {
 		params = r.Params
@@ -610,7 +610,7 @@ func (g *adminGen) wire(page, name string) string {
 
 // wireSel is a selector's value for an input named by g.wire: the name, or the wire name quoted
 // (a wire name may hold `.` or `~`, which a bare selector value may not).
-func (g *adminGen) wireSel(page, name string) string {
+func (g *crudGen) wireSel(page, name string) string {
 	if w := g.wire(page, name); w != name {
 		return "'" + w + "'"
 	}
@@ -619,7 +619,7 @@ func (g *adminGen) wireSel(page, name string) string {
 
 // keepWires adds to each of page's parameters ("q: Text = \"\"") the wire name its GET route, as
 // the app has it now, gives it: a regenerated `route` line keeps an `as "Key"` the author added.
-func (g *adminGen) keepWires(page string, params []string) []string {
+func (g *crudGen) keepWires(page string, params []string) []string {
 	out := make([]string, len(params))
 	for i, par := range params {
 		out[i] = par
@@ -633,15 +633,15 @@ func (g *adminGen) keepWires(page string, params []string) []string {
 }
 
 // page is the route module of table at's page kind ("Index", "Show", …).
-func (at *adminTable) page(kind string) string { return at.mod + "." + kind }
+func (at *crudTable) page(kind string) string { return at.mod + "." + kind }
 
 // route is the GET route of table at's page kind as another module writes it:
 // `Admin.Posts.Show.Show`.
-func (at *adminTable) route(kind string) string { return routeOf(at.page(kind)) }
+func (at *crudTable) route(kind string) string { return routeOf(at.page(kind)) }
 
 // own is a route of the module being written, with no parameters but a siloed table's key: its
 // name, or `name {}` (siloLits gives it the key), in parentheses when paren is set.
-func (at *adminTable) own(name string, paren bool) string {
+func (at *crudTable) own(name string, paren bool) string {
 	if at.silo == nil {
 		return name
 	}
@@ -652,14 +652,14 @@ func (at *adminTable) own(name string, paren bool) string {
 }
 
 // layoutOpen is the root element of an admin page's view.
-func (g *adminGen) layoutOpen(title string, imports *importSet) (string, string) {
+func (g *crudGen) layoutOpen(title string, imports *importSet) (string, string) {
 	imports.add(g.o.Module + ".Layout")
 	return "<" + g.o.Module + ".Layout.Page title=" + quote(title) + ">", "</" + g.o.Module + ".Layout.Page>"
 }
 
 // ---- the layout and the dashboard
 
-func (g *adminGen) layout() {
+func (g *crudGen) layout() {
 	mod := g.o.Module + ".Layout"
 	imports := newImports(mod, g.p.Std)
 	var nav []string
@@ -723,7 +723,7 @@ adminOnly id = {
 	g.file(mod, imports, b.String())
 }
 
-func (g *adminGen) dashboard() {
+func (g *crudGen) dashboard() {
 	mod := g.o.Module + ".Index"
 	g.names[mod] = []string{"Index"}
 	imports := newImports(mod, g.p.Std)
@@ -777,7 +777,7 @@ func (g *adminGen) dashboard() {
 
 	// the tests
 	var tests []TestData
-	card := func(at *adminTable, key, name string, show func(row string) string) {
+	card := func(at *crudTable, key, name string, show func(row string) string) {
 		t := at.t
 		tb := g.tb(mod, imports, true)
 		before := tb.counts[t.Module]
@@ -816,7 +816,7 @@ func (g *adminGen) dashboard() {
 }
 
 // adminOf is table t as the admin shows it.
-func (g *adminGen) adminOf(t *Table) *adminTable {
+func (g *crudGen) adminOf(t *Table) *crudTable {
 	for _, at := range g.tables {
 		if at.t == t {
 			return at
@@ -829,7 +829,7 @@ func (g *adminGen) adminOf(t *Table) *adminTable {
 const recentRows = 5
 
 // tb starts a test's builder in module mod, signed in as an Admin when admin is set.
-func (g *adminGen) tb(mod string, imports *importSet, admin bool) *testBuilder {
+func (g *crudGen) tb(mod string, imports *importSet, admin bool) *testBuilder {
 	if s := g.siloOf(mod); s != nil { // a siloed table's page: the Admin a member, for the test's own reads
 		return g.tbIn(mod, imports, admin, s, true)
 	}
@@ -847,7 +847,7 @@ func (g *adminGen) tb(mod string, imports *importSet, admin bool) *testBuilder {
 
 // gateTests are the tests of who may not see an admin page: a visitor is sent to log in, and
 // a signed-in user whose role is not Admin gets a 404. pageOf is the route value a test opens.
-func (g *adminGen) gateTests(mod string, imports *importSet, pageOf func(tb *testBuilder) string) []TestData {
+func (g *crudGen) gateTests(mod string, imports *importSet, pageOf func(tb *testBuilder) string) []TestData {
 	var tests []TestData
 	if g.p.Login != "" {
 		tb := g.tb(mod, imports, false)
@@ -896,7 +896,7 @@ func (g *adminGen) gateTests(mod string, imports *importSet, pageOf func(tb *tes
 // Nothing is written. build inserts the rows and returns the page to open, the step that sends
 // the write, and check, which reads what must not have changed (the left and right sides'
 // fields).
-func (g *adminGen) writeGate(mod string, imports *importSet, what string, refs bool, build func(tb *testBuilder) (get, send string, check func() (string, string))) []TestData {
+func (g *crudGen) writeGate(mod string, imports *importSet, what string, refs bool, build func(tb *testBuilder) (get, send string, check func() (string, string))) []TestData {
 	var tests []TestData
 	refused := func(name, answer string, change func(tb *testBuilder)) {
 		tb := g.tb(mod, imports, true)
@@ -944,7 +944,7 @@ func (g *adminGen) writeGate(mod string, imports *importSet, what string, refs b
 }
 
 // otherRole is the session's first role but Admin, "" for none.
-func (g *adminGen) otherRole() string {
+func (g *crudGen) otherRole() string {
 	for _, c := range g.p.Session.Role.Ctors {
 		if c != "Admin" {
 			return c
@@ -969,7 +969,7 @@ func testsText(tests []TestData) string {
 // the referenced row's admin page, labelled by that row's label (model.labels, from the
 // page's region `labels`) or, when its table has none, its id; the others as the list pages
 // show them.
-func (g *adminGen) adminCell(c *Column, row string, imports *importSet) string {
+func (g *crudGen) adminCell(c *Column, row string, imports *importSet) string {
 	if c.Ref != "" {
 		if rt := g.p.TableNamed(c.Ref); rt != nil {
 			show := routeOf(adminTableModule(g.o, rt) + ".Show")
@@ -1001,7 +1001,7 @@ func labelFunc(c *Column) string { return c.Name + "Label" }
 
 // labelled are the columns of at's table whose cells show the label of the row they refer to:
 // its references to a table whose rows have a label other than their id.
-func (g *adminGen) labelled(at *adminTable) []*Column {
+func (g *crudGen) labelled(at *crudTable) []*Column {
 	var out []*Column
 	for _, c := range at.t.Columns {
 		if rt := g.p.TableNamed(c.Ref); c.Ref != "" && rt != nil && !rt.Label().ID && !c.Secret() && !(at.t.Silo != "" && c.Name == at.t.PartCol) {
@@ -1014,7 +1014,7 @@ func (g *adminGen) labelled(at *adminTable) []*Column {
 // labels is the region `labels` of at's list and show pages: the type Labels, the rows its
 // references name (a field per column, as optionsField), labelsOf reading them for the rows a
 // page shows (`.in` their ids), and a function per column naming a row by its label.
-func (g *adminGen) labels(at *adminTable, mod string, imports *importSet) []string {
+func (g *crudGen) labels(at *crudTable, mod string, imports *importSet) []string {
 	t := at.t
 	cols := g.labelled(at)
 	var fields, loads, inits, funcs []string
@@ -1059,7 +1059,7 @@ func (g *adminGen) labels(at *adminTable, mod string, imports *importSet) []stri
 //
 // selfParents inserts, for each labelled reference of at's table to itself (a `Maybe`, a tree),
 // a parent row, and returns the overrides that make a row its child, with labelChecks' parents.
-func (g *adminGen) selfParents(tb *testBuilder, at *adminTable) (map[string]string, map[*Column][2]string) {
+func (g *crudGen) selfParents(tb *testBuilder, at *crudTable) (map[string]string, map[*Column][2]string) {
 	over, parents := map[string]string{}, map[*Column][2]string{}
 	for _, c := range g.labelled(at) {
 		if g.p.TableNamed(c.Ref) == at.t && c.Maybe {
@@ -1070,7 +1070,7 @@ func (g *adminGen) selfParents(tb *testBuilder, at *adminTable) (map[string]stri
 	}
 	return over, parents
 }
-func (g *adminGen) labelChecks(tb *testBuilder, at *adminTable, model string, parents map[*Column][2]string) [2][]string {
+func (g *crudGen) labelChecks(tb *testBuilder, at *crudTable, model string, parents map[*Column][2]string) [2][]string {
 	var out [2][]string
 	for _, c := range g.labelled(at) {
 		rt := g.p.TableNamed(c.Ref)
@@ -1108,7 +1108,7 @@ func (g *adminGen) labelChecks(tb *testBuilder, at *adminTable, model string, pa
 	return out
 }
 
-func (g *adminGen) index(at *adminTable) {
+func (g *crudGen) index(at *crudTable) {
 	t := at.t
 	mod := at.page("Index")
 	g.names[mod] = []string{"Index"}
@@ -1429,7 +1429,7 @@ func filterOptions(c *Column) []filterOption {
 // filters is the region `filters` of at's list: the type Filters (the option each filter has
 // chosen), chosen (them, from the page's parameters), filters (each filter with its options) and
 // listAt (a link to the list that keeps them).
-func (g *adminGen) filters(at *adminTable, mod string, cols []*Column, imports *importSet) []string {
+func (g *crudGen) filters(at *crudTable, mod string, cols []*Column, imports *importSet) []string {
 	t := at.t
 	var fields, from, keep []string
 	for _, c := range cols {
@@ -1501,7 +1501,7 @@ func (g *adminGen) filters(at *adminTable, mod string, cols []*Column, imports *
 // filterTests are the tests of the list's filters: for its first Bool column and its first union
 // column, a row the option chosen selects is listed and counted, another is not, and the select
 // shows the option chosen.
-func (g *adminGen) filterTests(at *adminTable, mod string, imports *importSet, cols []*Column) []TestData {
+func (g *crudGen) filterTests(at *crudTable, mod string, imports *importSet, cols []*Column) []TestData {
 	var tests []TestData
 	for _, union := range []bool{false, true} {
 		for _, c := range cols {
@@ -1519,7 +1519,7 @@ func (g *adminGen) filterTests(at *adminTable, mod string, imports *importSet, c
 // the test chooses, the second with another's; the first is listed and the second not, and the
 // select shows the option chosen. A Bool's filter is chosen both ways (yes, then no); a union's
 // at its last constructor (the first is the other row's).
-func (g *adminGen) filterTest(at *adminTable, mod string, imports *importSet, c *Column) TestData {
+func (g *crudGen) filterTest(at *crudTable, mod string, imports *importSet, c *Column) TestData {
 	t := at.t
 	tb := g.tb(mod, imports, true)
 	opts := filterOptions(c)
@@ -1577,7 +1577,7 @@ func sortedSample(others []string, first, second string) ([]string, []string) {
 	return up, down
 }
 
-func (g *adminGen) show(at *adminTable) {
+func (g *crudGen) show(at *crudTable) {
 	t := at.t
 	mod := at.page("Show")
 	g.names[mod] = []string{"Show"}
@@ -1653,10 +1653,10 @@ func (g *adminGen) show(at *adminTable) {
 }
 
 // destroy is the Delete page's Destroy route, as another module writes it.
-func (at *adminTable) destroy() string { return at.page("Delete") + ".Destroy" }
+func (at *crudTable) destroy() string { return at.page("Delete") + ".Destroy" }
 
 // missingTest is the test that GET route r of module mod, for a row that does not exist, is a 404.
-func (g *adminGen) missingTest(at *adminTable, mod, r string, imports *importSet) TestData {
+func (g *crudGen) missingTest(at *crudTable, mod, r string, imports *importSet) TestData {
 	tb := g.tb(mod, imports, true)
 	missing := tb.brandCtor(at.t.IDType.(*types.Brand)) + " " + quote("missing")
 	tb.let("let r <- Test.open (%s)", pageLit(r, []string{"id: " + missing}))
@@ -1664,11 +1664,11 @@ func (g *adminGen) missingTest(at *adminTable, mod, r string, imports *importSet
 }
 
 // formName is the name of the form of a table's New and Edit pages: "PostForm".
-func (at *adminTable) formName() string { return at.t.Name + "Form" }
+func (at *crudTable) formName() string { return at.t.Name + "Form" }
 
 // formRoute is the write route a test of at's New page posts the form to (Create), or of its Edit
 // page for the row target (Save), as the test's Test.submit names it.
-func (at *adminTable) formRoute(edit bool, target string) string {
+func (at *crudTable) formRoute(edit bool, target string) string {
 	if edit {
 		return "(Save { id: " + target + " })"
 	}
@@ -1685,14 +1685,14 @@ func findParam(c *Column) string  { return "find" + UpperFirst(c.Name) }
 
 // finds reports whether the select of reference c can be a search: the label of the table it
 // refers to is text the database can search.
-func (g *adminGen) finds(c *Column) bool {
+func (g *crudGen) finds(c *Column) bool {
 	rt := g.p.TableNamed(c.Ref)
 	l := rt.Label()
 	return !l.ID && l.Kind == KindText && !l.Maybe && !l.Secret()
 }
 
 // findParams are the route parameters that narrow at's long selects.
-func (g *adminGen) findParams(at *adminTable) []string {
+func (g *crudGen) findParams(at *crudTable) []string {
 	var out []string
 	for _, c := range at.refs {
 		if g.finds(c) {
@@ -1708,7 +1708,7 @@ func (g *adminGen) findParams(at *adminTable) []string {
 // page's address and the page loads again at it. The action is written out: after a refused
 // write without JavaScript the address bar holds the write's path (`/admin/post`), and a form
 // with no action would go there.
-func (g *adminGen) finders(at *adminTable, mod, action string) (view []string) {
+func (g *crudGen) finders(at *crudTable, mod, action string) (view []string) {
 	for _, c := range at.refs {
 		if !g.finds(c) {
 			continue
@@ -1721,7 +1721,7 @@ func (g *adminGen) finders(at *adminTable, mod, action string) (view []string) {
 
 // formParts are the regions a New or Edit page shares: the model's option fields, their loads,
 // the form's declaration, its inputs (edit: with the row's values).
-func (g *adminGen) formParts(at *adminTable, mod string, imports *importSet, edit bool) (model, loads, form, inputs []string) {
+func (g *crudGen) formParts(at *crudTable, mod string, imports *importSet, edit bool) (model, loads, form, inputs []string) {
 	for _, c := range at.refs {
 		rt := g.p.TableNamed(c.Ref)
 		imports.add(rt.Module)
@@ -1797,7 +1797,7 @@ func (g *adminGen) formParts(at *adminTable, mod string, imports *importSet, edi
 	return
 }
 
-func (g *adminGen) newPage(at *adminTable) {
+func (g *crudGen) newPage(at *crudTable) {
 	t := at.t
 	mod := at.page("New")
 	g.names[mod] = []string{"New", "Create"}
@@ -1935,7 +1935,7 @@ func (g *adminGen) newPage(at *adminTable) {
 // select did not offer (a request crafted by hand): the field error "must be one of the
 // options" (chapter 5), and nothing written. The other fields are sent valid: a reference the
 // first option's id, read from the page.
-func (g *adminGen) notOffered(at *adminTable, mod string, imports *importSet, edit bool) []TestData {
+func (g *crudGen) notOffered(at *crudTable, mod string, imports *importSet, edit bool) []TestData {
 	var tests []TestData
 	for _, c := range at.refs {
 		tb := g.tb(mod, imports, true)
@@ -1980,7 +1980,7 @@ func (g *adminGen) notOffered(at *adminTable, mod string, imports *importSet, ed
 }
 
 // uniques are the columns of at's forms that are `@unique`.
-func (at *adminTable) uniques() []*Column {
+func (at *crudTable) uniques() []*Column {
 	var out []*Column
 	for _, c := range at.editable {
 		if c.Unique {
@@ -1991,7 +1991,7 @@ func (at *adminTable) uniques() []*Column {
 }
 
 // takenText is the refusal of a form whose `@unique` column c holds a value another row has.
-func takenText(at *adminTable, c *Column) string {
+func takenText(at *crudTable, c *Column) string {
 	return UpperFirst(article(at.noun)) + " with this " + strings.ToLower(Humanize(c.Name)) + " exists."
 }
 
@@ -1999,7 +1999,7 @@ func takenText(at *adminTable, c *Column) string {
 // column of at's form by a count of the rows that already hold the submitted value (other than
 // the row self, on an Edit page): such a value answers `Response.invalid`, which the form shows, where the
 // database would refuse the write with an error (a 500).
-func (g *adminGen) unique(at *adminTable, self string, write []string) []string {
+func (g *crudGen) unique(at *crudTable, self string, write []string) []string {
 	// answers Response.invalid, which the form shows
 	cols := at.uniques()
 	if len(cols) == 0 {
@@ -2035,7 +2035,7 @@ func (g *adminGen) unique(at *adminTable, self string, write []string) []string 
 
 // uniqueTests are the tests that a New (or Edit) page refuses a value of a `@unique` column
 // that another row holds: the form's error, and nothing written.
-func (g *adminGen) uniqueTests(at *adminTable, mod string, imports *importSet, edit bool) []TestData {
+func (g *crudGen) uniqueTests(at *crudTable, mod string, imports *importSet, edit bool) []TestData {
 	var tests []TestData
 	t := at.t
 	for _, c := range at.uniques() {
@@ -2095,7 +2095,7 @@ func valueOf(values []string, name string) string {
 // one the memo keeps, so the row a test inserted before refers to it), and returns the
 // comparisons that each select offers them, in label order (after an empty option for a
 // Maybe): the left and right sides' fields.
-func (g *adminGen) optionRows(tb *testBuilder, at *adminTable) [2][]string {
+func (g *crudGen) optionRows(tb *testBuilder, at *crudTable) [2][]string {
 	var out [2][]string
 	for _, c := range at.refs {
 		rt := g.p.TableNamed(c.Ref)
@@ -2122,7 +2122,7 @@ func (g *adminGen) optionRows(tb *testBuilder, at *adminTable) [2][]string {
 
 // submitValue is the value a test submits for column c of at's form: a sample (the n-th), a
 // reference's newest row, a union's last constructor, True for a Bool.
-func (g *adminGen) submitValue(tb *testBuilder, at *adminTable, c *Column, n int) string {
+func (g *crudGen) submitValue(tb *testBuilder, at *crudTable, c *Column, n int) string {
 	switch {
 	case c.Ref != "" && g.p.TableNamed(c.Ref) != nil:
 		rows := tb.rows[g.p.TableNamed(c.Ref).Module]
@@ -2150,7 +2150,7 @@ func (g *adminGen) submitValue(tb *testBuilder, at *adminTable, c *Column, n int
 	return tb.sample(c.Type, c.Name, n)
 }
 
-func (g *adminGen) edit(at *adminTable) {
+func (g *crudGen) edit(at *crudTable) {
 	t := at.t
 	mod := at.page("Edit")
 	g.names[mod] = []string{"Edit", "Save"}
@@ -2266,7 +2266,7 @@ func (g *adminGen) edit(at *adminTable) {
 
 // ownRole is the role column of the user table at, which its Edit page refuses to change on the
 // signed-in user's own row; nil for another table, or a role the form does not edit.
-func (g *adminGen) ownRole(at *adminTable) *Column {
+func (g *crudGen) ownRole(at *crudTable) *Column {
 	if !g.isUserTable(at) || g.role == nil || !slices.Contains(at.editable, g.role) {
 		return nil
 	}
@@ -2276,7 +2276,7 @@ func (g *adminGen) ownRole(at *adminTable) *Column {
 // ownRoleTests are the tests of the Edit page's guard on the signed-in user's own role (Review
 // Focus 4 of M13): an Admin changing it is refused and nothing is written; an Admin saving their
 // own row with the role unchanged, and an Admin demoting another Admin, are not refused.
-func (g *adminGen) ownRoleTests(at *adminTable, mod string, imports *importSet, role *Column) []TestData {
+func (g *crudGen) ownRoleTests(at *crudTable, mod string, imports *importSet, role *Column) []TestData {
 	t := at.t
 	other := ""
 	for _, ct := range role.Ctors {
@@ -2341,7 +2341,7 @@ func (g *adminGen) ownRoleTests(at *adminTable, mod string, imports *importSet, 
 // changedValue is a value for column c of the row a test inserted (the n-1-th sample) that
 // differs from the one it has: the n-th sample, the newest row of a reference, another
 // constructor, the other Bool, `Just` for a Maybe.
-func (g *adminGen) changedValue(tb *testBuilder, at *adminTable, c *Column, n int) string {
+func (g *crudGen) changedValue(tb *testBuilder, at *crudTable, c *Column, n int) string {
 	switch {
 	case c.Kind == KindBool && !c.Maybe:
 		if c.HasDefault && c.Default == "True" {
@@ -2393,7 +2393,7 @@ type delPlan struct {
 	own                                         bool
 }
 
-func (g *adminGen) deletePlan(at *adminTable, imports *importSet, id string) *delPlan {
+func (g *crudGen) deletePlan(at *crudTable, imports *importSet, id string) *delPlan {
 	t := at.t
 	var model, loads, counts, blockers, children []string
 	var fields []string
@@ -2505,7 +2505,7 @@ func (g *adminGen) deletePlan(at *adminTable, imports *importSet, id string) *de
 		button: button, nodes: nodes, chains: chains, blockers: blockers, children: children, own: own}
 }
 
-func (g *adminGen) delete(at *adminTable) {
+func (g *crudGen) delete(at *crudTable) {
 	t := at.t
 	mod := at.page("Delete")
 	g.names[mod] = []string{"Delete", "Destroy"}
@@ -2572,7 +2572,7 @@ func (g *adminGen) delete(at *adminTable) {
 // Delete page, or the Show page's dialog): a row nothing refers to is deleted, the rows that go
 // with it are counted, each @restrict reference (and one down a @cascade) refuses, a row with
 // children is refused, and the signed-in user's own row is.
-func (g *adminGen) deleteTests(at *adminTable, mod, get string, imports *importSet, pl *delPlan) []TestData {
+func (g *crudGen) deleteTests(at *crudTable, mod, get string, imports *importSet, pl *delPlan) []TestData {
 	t := at.t
 	destroy := at.destroy()
 	if get == "Delete" {
@@ -2738,14 +2738,14 @@ const (
 
 // isUserTable reports whether at is the table of the session's user: its admin guards the
 // signed-in user's own row.
-func (g *adminGen) isUserTable(at *adminTable) bool {
+func (g *crudGen) isUserTable(at *crudTable) bool {
 	s := g.p.Session
 	return s != nil && s.User != nil && s.UserTable != "" && g.p.TableNamed(s.UserTable) == at.t
 }
 
 // isMe is the condition that the row whose id is expr is the signed-in user's (`requires user`
 // makes session.user the user's id, not a Maybe).
-func (g *adminGen) isMe(expr string) string { return "session.user == " + expr }
+func (g *crudGen) isMe(expr string) string { return "session.user == " + expr }
 
 // childrenText is the Delete page's refusal of a row with children (node.stop).
 const childrenText = "Delete its children first."
@@ -2791,7 +2791,7 @@ func article(noun string) string {
 }
 
 // rejectText is the Delete page's refusal.
-func rejectText(at *adminTable) string {
+func rejectText(at *crudTable) string {
 	return "This " + at.noun + " cannot be deleted while other rows refer to it."
 }
 
@@ -2805,7 +2805,7 @@ func maybeJust(c *Column, v string) string {
 
 // referrers inserts one row of every table that refers to at's table, referring to row, and
 // down the closure one row of every table that refers to those.
-func (g *adminGen) referrers(tb *testBuilder, at *adminTable, row string) {
+func (g *crudGen) referrers(tb *testBuilder, at *crudTable, row string) {
 	var insert func(n *node, row string)
 	insert = func(n *node, row string) {
 		if len(n.kids) == 0 {
