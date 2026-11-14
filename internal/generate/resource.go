@@ -201,8 +201,7 @@ func NewResource(p *Program, o ResourceOptions) ([]Edit, []string, error) {
 		{"Delete", "Destroy", "DELETE", o.Path + "/{id}"},
 	} {
 		if have := routeClash(p, r.method, r.path, ""); have != nil {
-			mod := o.Module + "." + r.kind
-			return nil, nil, clashRefusal(have, mod, mod+"."+r.name, r.method, r.path, false)
+			return nil, nil, resourceClashRefusal(have, r.method, r.path)
 		}
 	}
 	files, order := ResourceFiles(p, o)

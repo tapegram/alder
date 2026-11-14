@@ -189,7 +189,7 @@ func TestNewResource_Owner(t *testing.T) {
 
 	p.Routes = append(p.Routes, &Route{Module: "Feed", Name: "Feed", Method: "PUT", Path: "/posts/{postId}"})
 	_, _, err = NewResource(p, ResourceOptions{Table: "Post"})
-	if !isRefusal(err) || !strings.Contains(err.Error(), "routes `Feed.Feed` and `Posts.Edit.Save` both answer PUT /posts/{id}") {
+	if !isRefusal(err) || !strings.Contains(err.Error(), "`PUT /posts/{id}` is already answered by `Feed.Feed`") {
 		t.Errorf("a clash: %v", err)
 	}
 }

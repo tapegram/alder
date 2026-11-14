@@ -1,1 +1,1 @@
-alder new resource: routes `Posts.Index.Index` and `MyPosts.Index.Index` both answer GET /posts; give the new route its own resource with `--path` (and `--method` for what happens to it); or, to send `Posts.Index.Index` itself, write it into `MyPosts.Index`'s `view` by hand: it is a route of `Posts.Index`
+alder new resource: `GET /posts` is already answered by `Posts.Index.Index`: give the resource another `--path` (or `--module`)
