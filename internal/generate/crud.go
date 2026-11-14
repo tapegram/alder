@@ -74,6 +74,10 @@ func (a access) scoped() bool { return a.insert != "Db.insert" }
 // writes, which render for the row's owner only.
 func (a access) ownerTest(row string) string { return strings.Replace(a.ownerOnly, "row.", row+".", 1) }
 
+// visitorReads is whether a visitor reads the pages (`--read all` on an owned table): Index and
+// Show require nothing, and show the links to the writes to the owner only.
+func (a access) visitorReads() bool { return a.ownerOnly != "" && a.readRequires == "" }
+
 // hidingNote is the comment above an ownerOnly test in a view.
 const hidingNote = "-- hiding is not guarding: Save and Destroy require the owner (updateMine, deleteMine)"
 
@@ -297,6 +301,54 @@ func secretValue(c *Column) (string, bool) {
 	return "", false
 }
 
+// labelOf is the column naming a row of rt on these pages: rt.Label(), but a resource's pages
+// (no role) never name a user by an email (spec anti-goal: no list of every user's email on a
+// user-facing page): the user table's userLabel, else its id, and the columns referring to users
+// are then left off the pages (hidden).
+func (g *crudGen) labelOf(rt *Table) *Column {
+	if !g.usersPrivate(rt) {
+		return rt.Label()
+	}
+	if l := userLabel(rt); l != nil {
+		return l
+	}
+	return rt.Column(rt.IDField)
+}
+
+// usersPrivate is whether rt is the session's user table on pages that are not the admin's.
+func (g *crudGen) usersPrivate(rt *Table) bool {
+	return g.a.role == "" && rt != nil && g.p.Session != nil && rt.Name == g.p.Session.UserTable
+}
+
+// hidden is whether column c is left off these pages: a reference to users, on a resource's
+// pages, when no column but an email names a user (userLabel).
+func (g *crudGen) hidden(c *Column) bool {
+	rt := g.p.TableNamed(c.Ref)
+	return c.Ref != "" && g.usersPrivate(rt) && userLabel(rt) == nil
+}
+
+// userLabel is the column a resource's pages name a user by: the user table's first Text column
+// that is not an id, a reference, a secret, nor an email (`Text.Email`, or a name holding
+// "email"); nil when it has none.
+func userLabel(ut *Table) *Column {
+	for _, c := range ut.Columns {
+		if c.Kind != KindText || c.Maybe || c.ID || c.Ref != "" || c.Secret() {
+			continue
+		}
+		t, _ := unMaybe(c.Type)
+		if b, ok := t.(*types.Brand); ok && b.Module == "Text" && b.Name == "Email" || strings.Contains(strings.ToLower(c.Name), "email") {
+			continue
+		}
+		return c
+	}
+	return nil
+}
+
+// shownOf are the columns of t these pages show: shown's, but the hidden ones.
+func (g *crudGen) shownOf(t *Table, id bool) []*Column {
+	return slices.DeleteFunc(shown(t, id), g.hidden)
+}
+
 // shown are the columns of t the admin shows: all but its secrets (Column.Secret), and but the
 // id unless id is set.
 func shown(t *Table, id bool) []*Column {
@@ -462,7 +514,7 @@ func (g *crudGen) refCell(c *Column, row string, imports *importSet) string {
 		if rt := g.p.TableNamed(c.Ref); rt != nil {
 			show := g.showPage(rt)
 			text := func(id string) string {
-				if rt.Label().ID {
+				if g.labelOf(rt).ID {
 					return id
 				}
 				return labelFunc(c) + " model.labels " + id
@@ -528,7 +580,7 @@ func labelFunc(c *Column) string { return c.Name + "Label" }
 func (g *crudGen) labelled(at *crudTable) []*Column {
 	var out []*Column
 	for _, c := range at.t.Columns {
-		if rt := g.p.TableNamed(c.Ref); c.Ref != "" && rt != nil && !rt.Label().ID && !c.Secret() && !(at.t.Silo != "" && c.Name == at.t.PartCol) {
+		if rt := g.p.TableNamed(c.Ref); c.Ref != "" && rt != nil && !g.labelOf(rt).ID && !c.Secret() && !(at.t.Silo != "" && c.Name == at.t.PartCol) {
 			out = append(out, c)
 		}
 	}
@@ -562,7 +614,7 @@ func (g *crudGen) labels(at *crudTable, mod string, imports *importSet) []string
 			fmt.Sprintf("-- %s is the label of the %s id names (the id itself if it names none).", labelFunc(c), noun),
 			fmt.Sprintf("%s : Labels -> %s -> Text", labelFunc(c), types.StringIn(rt.IDType, mod)),
 			fmt.Sprintf("%s labels id = match List.find (\\r -> r.%s == id) labels.%s {", labelFunc(c), rt.IDField, optionsField(c)),
-			"  Just r -> "+textOf(rt.Label(), "r."+rt.Label().Name)+",",
+			"  Just r -> "+textOf(g.labelOf(rt), "r."+g.labelOf(rt).Name)+",",
 			"  Nothing -> id,",
 			"}")
 	}
@@ -616,7 +668,7 @@ func (g *crudGen) labelChecks(tb *testBuilder, at *crudTable, model string, pare
 		}
 		first, firstID := "", ""
 		if len(tb.rows[rt.Module]) > 0 {
-			first, firstID = rawText(rt.Label(), 1), tb.rows[rt.Module][0].v
+			first, firstID = rawText(g.labelOf(rt), 1), tb.rows[rt.Module][0].v
 		}
 		extra := tb.insertRow(rt, "", nil, false)
 		n := 1
@@ -625,7 +677,7 @@ func (g *crudGen) labelChecks(tb *testBuilder, at *crudTable, model string, pare
 			all := tb.fresh(optionsField(c) + "All")
 			tb.let("let %s <- Db.from %s |> Db.all", all, rt.Name)
 			out[0] = append(out[0], fmt.Sprintf("%s: %s { %s.labels | %s: %s } %s", labelFunc(c), labelFunc(c), model, optionsField(c), all, extra))
-			out[1] = append(out[1], labelFunc(c)+": "+quote(rawText(rt.Label(), tb.counts[rt.Module])))
+			out[1] = append(out[1], labelFunc(c)+": "+quote(rawText(g.labelOf(rt), tb.counts[rt.Module])))
 		}
 		out[0] = append(out[0], fmt.Sprintf("%s: List.length %s.labels.%s", optionsField(c), model, optionsField(c)))
 		out[1] = append(out[1], fmt.Sprintf("%s: %d", optionsField(c), n))
@@ -667,7 +719,7 @@ func (g *crudGen) index(at *crudTable) {
 		search[2] = "search q = Db.and []"
 	}
 	// sort: every column but the id and the secrets
-	cols := shown(t, false)
+	cols := g.shownOf(t, false)
 	sorts := []string{
 		"-- sorts are the columns the list sorts by, by name.",
 		"sorts : List { name: Text, asc: Order " + t.Name + ", desc: Order " + t.Name + " }",
@@ -776,7 +828,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
   }`, readNote, g.a.sel, t.Name, g.a.sel, t.Name, keyInit)))
 	b.WriteString(g.regionAt("", "labels", wrapAll(g.labels(at, mod, imports))) + "\n\n")
 	newLink := fmt.Sprintf("<al-button href={%s {}}>New %s</al-button>", at.route("New"), at.noun)
-	if g.a.ownerOnly != "" && g.a.readRequires == "" { // a visitor sees the list: the link is for a signed-in user
+	if g.a.visitorReads() { // a visitor sees the list: the link is for a signed-in user
 		newLink = "-- hiding is not guarding: Create requires a signed-in user (insertMine)\n      {if session.user != Nothing then " + newLink + " else Html.none}"
 	}
 	b.WriteString(viewHead("Index"))
@@ -875,7 +927,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 		tests = append(tests, TestData{Name: quote("shows every user's rows"), Lines: tb.lines,
 			Result: fmt.Sprintf("{ other: List.member %s (%s), count: Test.text \"#count\" page.doc } == { other: True, count: Just \"%d rows\" }", other, ids("page"), len(tb.visible(t, false)))})
 	}
-	if g.owned(at) && g.a.ownerOnly != "" && g.a.readRequires == "" { // --read all: a visitor sees the list, and no link to a write
+	if g.owned(at) && g.a.visitorReads() { // --read all: a visitor sees the list, and no link to a write
 		tb = g.tb(mod, imports, false)
 		tb.insertRow(t, "", nil, false)
 		tb.let("let r <- Test.open (Index {})")
@@ -1161,7 +1213,7 @@ func (g *crudGen) show(at *crudTable) {
 	title := UpperFirst(at.noun)
 	open, close := g.layoutOpen(title, imports)
 	var fields []string
-	for _, c := range shown(t, true) {
+	for _, c := range g.shownOf(t, true) {
 		fields = append(fields, "<dt>"+Humanize(c.Name)+"</dt>", "<dd>"+g.refCell(c, "model.row", imports)+"</dd>")
 	}
 	// the delete dialog: the Delete page's counts, and a form posting its Destroy route; the
@@ -1212,7 +1264,7 @@ func (g *crudGen) show(at *crudTable) {
 	k := tb.counts[t.Module]
 	checks := g.labelChecks(tb, at, "page.model", parents)
 	tb.let("let r <- Test.open (%s)", pageLit("Show", []string{"id: " + row}))
-	lhs, rhs := []string{"answer: r.answer", "fields: Test.count \"#fields dd\" r.doc"}, []string{"answer: Shown", fmt.Sprintf("fields: %d", len(shown(t, true)))}
+	lhs, rhs := []string{"answer: r.answer", "fields: Test.count \"#fields dd\" r.doc"}, []string{"answer: Shown", fmt.Sprintf("fields: %d", len(g.shownOf(t, true)))}
 	if !at.label.ID {
 		lhs[1], rhs[1] = fmt.Sprintf("%s: List.member %s (Test.texts \"#fields dd\" r.doc)", at.label.Name, quote(rawText(at.label, k))), at.label.Name+": True"
 	}
@@ -1239,12 +1291,12 @@ func (g *crudGen) show(at *crudTable) {
 		tb = g.tb(mod, imports, true)
 		tests = append(tests, buttons(tb, tb.insertRow(t, "", nil, false), "shows my row with Edit and Delete", `"Edit", "Delete"`, 1))
 	}
-	if g.owned(at) && g.a.ownerOnly != "" && g.a.readRequires == "" { // --read all
+	if g.owned(at) && g.a.visitorReads() { // --read all
 		tb = g.tb(mod, imports, false)
 		row := tb.insertRow(t, "", nil, false)
 		tb.let("let r <- Test.open (%s)", pageLit("Show", []string{"id: " + row}))
 		tests = append(tests, TestData{Name: quote("a visitor sees the row"), Lines: tb.lines,
-			Result: fmt.Sprintf("{ answer: r.answer, fields: Test.count \"#fields dd\" r.doc } == { answer: Shown, fields: %d }", len(shown(t, true)))})
+			Result: fmt.Sprintf("{ answer: r.answer, fields: Test.count \"#fields dd\" r.doc } == { answer: Shown, fields: %d }", len(g.shownOf(t, true)))})
 		tb = g.tb(mod, imports, false)
 		tests = append(tests, buttons(tb, tb.insertRow(t, "", nil, false), "a visitor sees no New, Edit or Delete", "", 0))
 	}
@@ -1363,7 +1415,7 @@ func findParam(c *Column) string { return "find" + UpperFirst(c.Name) }
 // refers to is text the database can search.
 func (g *crudGen) finds(c *Column) bool {
 	rt := g.p.TableNamed(c.Ref)
-	l := rt.Label()
+	l := g.labelOf(rt)
 	return !l.ID && l.Kind == KindText && !l.Maybe && !l.Secret()
 }
 
@@ -1407,7 +1459,7 @@ func (g *crudGen) formParts(at *crudTable, mod string, imports *importSet, edit 
 			loads = append(loads, why)
 		}
 		sel := from
-		if l := rt.Label(); !l.ID {
+		if l := g.labelOf(rt); !l.ID {
 			sel += " |> Db.orderBy " + rt.Name + "." + l.Name + ".asc"
 		}
 		if !g.finds(c) {
@@ -1420,7 +1472,7 @@ func (g *crudGen) formParts(at *crudTable, mod string, imports *importSet, edit 
 		// the rows a submitted value is checked against are the ones rendered
 		model = append(model, totalField(c)+": Int,", findParam(c)+": Text,")
 		q, n := findParam(c), optionsField(c)
-		where := rt.Name + "." + rt.Label().Name + ".contains " + q
+		where := rt.Name + "." + g.labelOf(rt).Name + ".contains " + q
 		if !edit {
 			loads = append(loads,
 				fmt.Sprintf("let %s = Text.slice 0 200 params.%s", q, q),
@@ -1455,7 +1507,7 @@ func (g *crudGen) formParts(at *crudTable, mod string, imports *importSet, edit 
 		case c.Ref != "" && g.p.TableNamed(c.Ref) != nil:
 			rt := g.p.TableNamed(c.Ref)
 			tag = "al-select"
-			attrs += fmt.Sprintf(" options={List.map (\\r -> { value: r.%s, label: r.%s }) model.%s}", rt.IDField, rt.Label().Name, optionsField(c))
+			attrs += fmt.Sprintf(" options={List.map (\\r -> { value: r.%s, label: r.%s }) model.%s}", rt.IDField, g.labelOf(rt).Name, optionsField(c))
 		case c.Kind == KindUnion:
 			tag = "al-select"
 		case c.Kind == KindBool:
@@ -1836,9 +1888,9 @@ func (g *crudGen) optionRows(tb *testBuilder, at *crudTable) [2][]string {
 			labels = append(labels, `""`)
 		}
 		for i := range tb.rows[rt.Module] {
-			labels = append(labels, quote(rawText(rt.Label(), i+1)))
+			labels = append(labels, quote(rawText(g.labelOf(rt), i+1)))
 		}
-		if rt.Label().ID {
+		if g.labelOf(rt).ID {
 			out[0] = append(out[0], fmt.Sprintf("%s: Test.count \"select[name=%s] option\" page.doc", optionsField(c), c.Name))
 			out[1] = append(out[1], fmt.Sprintf("%s: %d", optionsField(c), len(labels)))
 			continue

@@ -222,5 +222,23 @@ func NewResource(p *Program, o ResourceOptions) ([]Edit, []string, error) {
 	for _, path := range order {
 		edits = append(edits, Edit{Path: path, Create: true, Body: files[path]})
 	}
-	return edits, nil, nil
+	// the pages never name a user by an email (crudGen.labelOf): with nothing else to name one
+	// by, a column referring to users is left off them
+	var notes []string
+	if ut := userTable(p); ut != nil && userLabel(ut) == nil {
+		for _, c := range t.Columns {
+			if c.Ref == ut.Name {
+				notes = append(notes, "`"+c.Name+"` refers to users, whom only an email names: it was left off the list and the page; add a column such as `name: Text` to `"+ut.Name+"` to show it")
+			}
+		}
+	}
+	return edits, notes, nil
+}
+
+// userTable is the session's user table, nil when the app has none.
+func userTable(p *Program) *Table {
+	if p.Session == nil || p.Session.User == nil {
+		return nil
+	}
+	return p.TableNamed(p.Session.UserTable)
 }

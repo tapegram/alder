@@ -203,3 +203,41 @@ func TestNewResource_Interim(t *testing.T) {
 		t.Errorf("a keyless table: %v, %d edits", err, len(edits))
 	}
 }
+
+// TestNewResource_NoEmails: a resource's pages name a user by a column that is not an email
+// (the fixture's `name`), under every `--read`; with none, the column referring to users is
+// left off Index and Show, and a warning says so.
+func TestNewResource_NoEmails(t *testing.T) {
+	for _, read := range []string{"owner", "signed-in", "all"} {
+		p := loadResourceFixture(t, "fixture")
+		edits, notes, err := NewResource(p, ResourceOptions{Table: "Post", Read: read})
+		if err != nil || len(notes) != 0 {
+			t.Fatalf("--read %s: %v, %v", read, err, notes)
+		}
+		for _, e := range edits {
+			if strings.Contains(e.Body, "r.email") {
+				t.Errorf("--read %s: %s names a user by the email", read, e.Path)
+			}
+			if (strings.HasSuffix(e.Path, "Index.alder") || strings.HasSuffix(e.Path, "Show.alder")) && !strings.Contains(e.Body, "Just r -> r.name") {
+				t.Errorf("--read %s: %s does not name the author by the name", read, e.Path)
+			}
+		}
+	}
+
+	p := loadResourceFixture(t, "fixture")
+	u := p.TableNamed("User")
+	u.Columns = slices.DeleteFunc(u.Columns, func(c *Column) bool { return c.Name == "name" })
+	edits, notes, err := NewResource(p, ResourceOptions{Table: "Post", Read: "all"})
+	want := "`author` refers to users, whom only an email names: it was left off the list and the page; add a column such as `name: Text` to `User` to show it"
+	if err != nil || !slices.Equal(notes, []string{want}) {
+		t.Fatalf("no name: %v, %q", err, notes)
+	}
+	for _, e := range edits {
+		if strings.Contains(e.Body, "r.email") {
+			t.Errorf("no name: %s names a user by the email", e.Path)
+		}
+		if (strings.HasSuffix(e.Path, "Index.alder") || strings.HasSuffix(e.Path, "Show.alder")) && (strings.Contains(e.Body, "authorLabel") || strings.Contains(e.Body, "<dt>Author</dt>") || strings.Contains(e.Body, `name: "author"`)) {
+			t.Errorf("no name: %s shows the author", e.Path)
+		}
+	}
+}

@@ -67,7 +67,7 @@ labelsOf rows = {
 -- authorLabel is the label of the user id names (the id itself if it names none).
 authorLabel : Labels -> User.UserId -> Text
 authorLabel labels id = match List.find (\r -> r.id == id) labels.authors {
-  Just r -> r.email,
+  Just r -> r.name,
   Nothing -> id,
 }
 -- @resource end
@@ -172,7 +172,7 @@ test "the page shows the row" = {
       answer: Shown,
       title: True,
       authors: 1,
-      authorLabel: "email-1@example.com",
+      authorLabel: "name-1",
     }
   )
 }
