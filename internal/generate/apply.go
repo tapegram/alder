@@ -18,7 +18,7 @@ import (
 
 // Edit is one change a generator makes to the app: a file it creates (Create, with its Body), a
 // file it rewrites (Body, the whole new text), or the owned regions of a file it regenerates
-// (Replace: each region's new body, by name; ReplaceRegions applies them), or a file it removes
+// (Replace: each region's new body, by name, of the Marker's regions), or a file it removes
 // (Delete: `alder remove`). Path is relative to the app and slash-separated
 // ("app/Posts/Index.alder").
 type Edit struct {
@@ -26,12 +26,22 @@ type Edit struct {
 	Create  bool
 	Body    string
 	Replace []Region
+	Marker  string // the regions' marker: "@admin" (the default) or "@resource"
 	Delete  bool
 	// Guard, when set, picks the declaration the edit changes (the session, a table): an error
 	// located there (in the file as written, formatted) refuses the edit even under
 	// Options.WriteDespiteErrors, whose to-do list is for breakage in other code; so does a file in
 	// which no declaration matches.
 	Guard func(syntax.Decl) bool
+}
+
+// replaceEdit is src with the regions of e.Replace rewritten, among those of e's marker.
+func replaceEdit(src string, e Edit) (string, error) {
+	marker := e.Marker
+	if marker == "" {
+		marker = "@admin"
+	}
+	return RegionsFor(marker).ReplaceAll(src, e.Replace)
 }
 
 // Region is the new body of one owned region of a file (Task 2's `-- @admin begin <name>` …
@@ -147,7 +157,7 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 			if err != nil {
 				return nil, Refusef("`%s` does not exist: nothing to regenerate", e.Path)
 			}
-			src, err := ReplaceRegions(string(b), e.Replace)
+			src, err := replaceEdit(string(b), e)
 			if err != nil {
 				return nil, Refusef("`%s`: %v", e.Path, err)
 			}

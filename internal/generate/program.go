@@ -227,14 +227,14 @@ func LoadWithErrors(dir string) (*Program, error) { return load(dir, true) }
 // schema edit (a field renamed or dropped, a page deleted that another links to) breaks them
 // there; what regen writes is then checked as usual (Apply), so an error it does not fix still
 // refuses. Errors anywhere else refuse, as Load's do.
-func LoadExcept(dir, under string) (*Program, error) {
+func LoadExcept(dir string, under ...string) (*Program, error) {
 	p, err := load(dir, true)
 	if err != nil {
 		return nil, err
 	}
 	var errs []diag.Diagnostic
 	for _, d := range p.Diags {
-		if d.Severity == "error" && !strings.HasPrefix(d.Span.File, under+"/") {
+		if d.Severity == "error" && !slices.ContainsFunc(under, func(u string) bool { return strings.HasPrefix(d.Span.File, u+"/") }) {
 			errs = append(errs, d)
 		}
 	}

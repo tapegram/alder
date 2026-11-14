@@ -1,0 +1,37 @@
+edited app/Table/Post.alder
+wrote migrations/0002_add_summary.sql
+  rebuild table Post: Post.summary: new column filled with ''
+edited migrations/schema.json
+--- a/app/Table/Post.alder
++++ b/app/Table/Post.alder
+@@ -17,18 +17,27 @@
+   author: User.UserId @ref User @owner,
+   created: Time @created,
+   updated: Time @updated,
++  summary: Text = "",
+ }
+ 
+ test "a new post is a draft" = {
+   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+-  let id <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
++  let id <- Db.insert Post {
++    title: Text.NonEmpty "Hello",
++    body: "",
++    author: me,
++  }
+   let post <- Db.get Post id
+   Task.succeed (Maybe.map (\p -> p.status) post == Just Draft)
+ }
+ 
+ test "an author with posts cannot be deleted" = {
+   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+-  let _ <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
++  let _ <- Db.insert Post {
++    title: Text.NonEmpty "Hello",
++    body: "",
++    author: me,
++  }
+   let r <- Test.run (Db.delete User me)
+   let posts <- Db.from Post |> Db.count
+   Task.succeed ({ deleted: Result.toMaybe r.value, posts: posts } == { deleted: Nothing, posts: 1 })
+next: alder regen resource Post

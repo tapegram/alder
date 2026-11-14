@@ -260,6 +260,8 @@ var genCases = []genCase{
 	// #194: the table made first (a multi-word name: module BlogPosts, path /blog-posts); a
 	// non-owner user reference is left out of the form, with a notice
 	{name: "fixture-resource-create", base: "fixture", args: []string{"new", "resource", "BlogPost", "title:Text", "body:Text", "owner:User.UserId@ref=User@owner", "reviewer:Maybe User.UserId@ref=User", "post:Maybe Post.PostId@ref=Post"}, test: true, stderr: true},
+	// #194: edit table points at the regen that brings the resource along
+	{name: "fixture-resource-edit-next", base: "fixture", pre: [][]string{{"new", "resource", "Post"}}, args: []string{"edit", "table", "Post", "add-field", `summary:Text=""`}},
 	// #194: refusals, one sentence each, nothing written
 	{name: "resource-no-table", base: "fixture", args: []string{"new", "resource", "Nope"}, code: 1},
 	{name: "resource-fields-existing", base: "fixture", args: []string{"new", "resource", "Post", "title:Text"}, code: 1},

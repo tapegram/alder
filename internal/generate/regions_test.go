@@ -39,7 +39,7 @@ func TestRegions_Replace(t *testing.T) {
 		t.Errorf("filled:\n%s", got)
 	}
 	// several at once, the text outside untouched
-	got, err = ReplaceRegions(regionSrc, []Region{{"empty", "z"}, {"columns", "  q"}})
+	got, err = Regions.ReplaceAll(regionSrc, []Region{{"empty", "z"}, {"columns", "  q"}})
 	if err != nil || !strings.Contains(got, "-- the author's comment\ntitle : Text\ntitle = \"Posts\"\n\n  -- @admin begin columns\n  q\n  -- @admin end\n\nx = 1\n-- @admin begin empty\nz\n-- @admin end\n") {
 		t.Errorf("both: %v\n%s", err, got)
 	}

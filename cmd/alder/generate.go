@@ -377,7 +377,7 @@ func specExtra(s *generate.Spec, res *generate.Result) func(*genJSON) {
 	if s.ID == "theme import" || s.ID == "theme use" {
 		return themeImportExtra(res)
 	}
-	if s.ID != "regen admin" {
+	if s.ID != "regen admin" && s.ID != "regen resource" {
 		return nil
 	}
 	skipped, upToDate := []string{}, false

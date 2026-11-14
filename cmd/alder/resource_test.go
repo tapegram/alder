@@ -227,3 +227,151 @@ func TestResource_DryRunJSON(t *testing.T) {
 		}
 	}
 }
+
+// TestResource_Regen (Review Focus 3): the author's edits survive a regen; a region whose
+// markers were deleted is not re-added; a deleted file is skipped unless --all; a file without
+// the header is refused.
+func TestResource_Regen(t *testing.T) {
+	t.Parallel()
+	dir := genApp(t, "fixture")
+	if code, out, errs := alderIn(t, dir, "", "new", "resource", "Post"); code != 0 {
+		t.Fatalf("new resource: exit %d\n%s%s", code, out, errs)
+	}
+	if code, out, errs := alderIn(t, dir, "", "regen", "resource"); code != 0 || out != "nothing to do: the resource is up to date\n" {
+		t.Fatalf("regen right after: exit %d\n%s%s", code, out, errs)
+	}
+	read := func(f string) string {
+		b, err := os.ReadFile(filepath.Join(dir, "app", "Posts", f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	write := func(f, s string) {
+		if err := os.WriteFile(filepath.Join(dir, "app", "Posts", f), []byte(s), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	show := read("Show.alder")
+	write("Show.alder", show+"\n-- the author's own line\n")
+	idx := read("Index.alder")
+	i := strings.Index(idx, "-- @resource begin search")
+	j := strings.Index(idx[i:], "-- @resource end")
+	if i < 0 || j < 0 {
+		t.Fatalf("Index.alder has no search region:\n%s", idx)
+	}
+	// the author takes the region over: its text stays (the list's code uses it), its markers go
+	write("Index.alder", idx[:i]+strings.TrimPrefix(idx[i:i+j], strings.SplitN(idx[i:], "\n", 2)[0]+"\n")+idx[i+j+len("-- @resource end\n"):])
+	if code, out, errs := alderIn(t, dir, "", "edit", "table", "Post", "add-field", `summary:Text=""`); code != 0 {
+		t.Fatalf("edit table: exit %d\n%s%s", code, out, errs)
+	}
+	if code, out, errs := alderIn(t, dir, "", "regen", "resource", "Post"); code != 0 {
+		t.Fatalf("regen: exit %d\n%s%s", code, out, errs)
+	}
+	for _, f := range []string{"New.alder", "Edit.alder", "Show.alder"} {
+		if !strings.Contains(read(f), "summary") {
+			t.Errorf("%s did not gain summary", f)
+		}
+	}
+	if !strings.Contains(read("Show.alder"), "-- the author's own line\n") {
+		t.Errorf("Show.alder lost the author's line")
+	}
+	if strings.Contains(read("Index.alder"), "@resource begin search") {
+		t.Errorf("regen re-added the deleted search region")
+	}
+	if err := os.Remove(filepath.Join(dir, "app", "Posts", "Delete.alder")); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errs := alderIn(t, dir, "", "regen", "resource")
+	if code != 0 || !strings.Contains(out, "not recreated app/Posts/Delete.alder (deleted; --all writes it again)\n") {
+		t.Fatalf("regen with Delete.alder gone: exit %d\n%s%s", code, out, errs)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "app", "Posts", "Delete.alder")); err == nil {
+		t.Errorf("regen recreated Delete.alder without --all")
+	}
+	if code, out, errs := alderIn(t, dir, "", "regen", "resource", "--all"); code != 0 {
+		t.Fatalf("regen --all: exit %d\n%s%s", code, out, errs)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "app", "Posts", "Delete.alder")); err != nil {
+		t.Errorf("regen --all did not recreate Delete.alder")
+	}
+	// no header: refused, with the options to pass
+	for _, f := range []string{"Index.alder", "Show.alder", "New.alder", "Edit.alder", "Delete.alder"} {
+		src := read(f)
+		write(f, src[strings.Index(src, "\n")+1:])
+	}
+	code, out, errs = alderIn(t, dir, "", "regen", "resource", "Post")
+	want := "alder regen resource: `app/Posts/Index.alder` has no `alder new resource` header; pass the table and its options: `alder regen resource Post --module Posts --path /posts`\n"
+	if code != 1 || errs != want {
+		t.Errorf("headerless regen: exit %d\n%s%s\nwant %q", code, out, errs, want)
+	}
+}
+
+// TestResource_RegenKeylessGainsOwner: a keyless table's resource switches to the scoped family
+// when the table gains an `@owner` column (its header recorded no --requires).
+func TestResource_RegenKeylessGainsOwner(t *testing.T) {
+	t.Parallel()
+	dir := genApp(t, "fixture")
+	if code, out, errs := alderIn(t, dir, "", "new", "resource", "Tag"); code != 0 {
+		t.Fatalf("new resource: exit %d\n%s%s", code, out, errs)
+	}
+	// the author adds the owner by hand (a migration cannot fill a required reference), and
+	// migrates over the keyless pages' errors by setting them aside: the app has no data
+	tags := filepath.Join(dir, "app", "Tags")
+	kept := appFiles(t, tags)
+	if err := os.RemoveAll(tags); err != nil {
+		t.Fatal(err)
+	}
+	tag := filepath.Join(dir, "app", "Table", "Tag.alder")
+	b, err := os.ReadFile(tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned := strings.Replace(string(b), "  created: Time @created,\n", "  owner: User.UserId @ref User @owner,\n  created: Time @created,\n", 1)
+	if owned == string(b) {
+		t.Fatal("Tag.alder has no created column to put the owner before")
+	}
+	owned = strings.Replace(owned, `Db.insert Tag { name: Text.NonEmpty "news", post: post }`, `Db.insert Tag { name: Text.NonEmpty "news", post: post, owner: me }`, 1)
+	if err := os.WriteFile(tag, []byte(owned), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// the fixture holds no data: its migrations start over, with the owner in the first
+	if err := os.RemoveAll(filepath.Join(dir, "migrations")); err != nil {
+		t.Fatal(err)
+	}
+	var mout, merr bytes.Buffer
+	if code := runMigrateTo([]string{dir}, &mout, &merr); code != 0 {
+		t.Fatalf("alder migrate: exit %d\n%s%s", code, mout.String(), merr.String())
+	}
+	for name, src := range kept {
+		if err := os.MkdirAll(tags, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(tags, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if code, out, errs := alderIn(t, dir, "", "regen", "resource", "Tag"); code != 0 {
+		t.Fatalf("regen: exit %d\n%s%s", code, out, errs)
+	}
+	b, err = os.ReadFile(filepath.Join(dir, "app", "Tags", "Edit.alder"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := string(b); !strings.Contains(s, "requires user") || !strings.Contains(s, "Db.getMine Tag") {
+		t.Errorf("Tags/Edit.alder is not in the scoped family:\n%s", s)
+	}
+}
+
+// TestResource_RegenWarns: a regen prints the warnings `new resource` printed (a keyless table's).
+func TestResource_RegenWarns(t *testing.T) {
+	t.Parallel()
+	dir := genApp(t, "fixture")
+	if code, out, errs := alderIn(t, dir, "", "new", "resource", "Tag"); code != 0 {
+		t.Fatalf("new resource: exit %d\n%s%s", code, out, errs)
+	}
+	code, out, errs := alderIn(t, dir, "", "regen", "resource")
+	if code != 0 || out != "nothing to do: the resource is up to date\n" || !strings.HasPrefix(errs, "alder regen resource: warning: `Tag` has no `@owner`") {
+		t.Errorf("regen of a keyless resource: exit %d\n%s%s", code, out, errs)
+	}
+}
