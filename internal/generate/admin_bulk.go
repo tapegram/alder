@@ -87,12 +87,12 @@ func (g *crudGen) bulk(at *crudTable) {
 
 	path := at.path + "/bulk"
 	params := at.params(mod, imports, []string{"ids: List " + idT})
-	routes := []string{routeLine("Bulk", "GET", path, g.keepWires(mod, params), "", at.requires())}
+	routes := []string{routeLine("Bulk", "GET", path, g.keepWires(mod, params), "", at.siloed(adminRequires))}
 	var forms []string // the actions' forms and updates
 	var views []string
 	action := func(name, method, where, form, verb, ok string, body []string) {
 		g.names[mod] = append(g.names[mod], name)
-		routes = append(routes, routeLine(name, method, where, params, form, at.requires()))
+		routes = append(routes, routeLine(name, method, where, params, form, at.siloed(adminRequires)))
 		upd := append([]string{"let model <- selected params.ids", "if tooMany model then", "  Task.succeed (Response.invalid (" + bulkTooMany + "))", "else {"}, indentAll(body, "  ")...)
 		upd = append(upd, "  Task.succeed (Response.refresh |> Response.success ("+quote(verb+" ")+" ++ "+ok+"))", "}")
 		forms = append(forms, strings.Split(strings.TrimSuffix(g.update(name, strings.Join(indentAll(upd, "  "), "\n")), "\n"), "\n")...)
@@ -127,12 +127,12 @@ func (g *crudGen) bulk(at *crudTable) {
 	}
 
 	var b strings.Builder
-	b.WriteString(regionAt("", "routes", routes) + "\n\n")
+	b.WriteString(g.regionAt("", "routes", routes) + "\n\n")
 	fmt.Fprintf(&b, "-- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep\n-- from being deleted, how many ids the page was given, and the ids, which each action takes.\ntype Model = { rows: List %s, held: List %s, chosen: Int, ids: List %s }\n\n", t.Name, idT, idT)
 	fmt.Fprintf(&b, "-- maxRows is how many rows one action takes: a page of the list. More are refused.\nmaxRows : Int\nmaxRows = %d\n\n", bulkMax)
 	b.WriteString("-- tooMany says whether the page was given more ids than an action takes.\ntooMany : Model -> Bool\ntooMany model = model.chosen > maxRows\n\n")
 	b.WriteString("-- selected is the rows of ids: the page shows them, and each action reads them again.\n")
-	fmt.Fprintf(&b, "selected : List %s -> Query Model\nselected ids = {\n%s\n}\n\n", idT, regionAt("  ", "load", wrapAll(loads)))
+	fmt.Fprintf(&b, "selected : List %s -> Query Model\nselected ids = {\n%s\n}\n\n", idT, g.regionAt("  ", "load", wrapAll(loads)))
 	b.WriteString(g.load("Bulk", "  selected params.ids"))
 	cond := "List.member row." + id + " model.held"
 	sig := "refused : Model -> " + t.Name + " -> Bool\nrefused model row = "
@@ -150,12 +150,12 @@ func (g *crudGen) bulk(at *crudTable) {
 	}
 	upd := append([]string{"-- Each action reads the rows again and answers with the page again and a toast; none takes",
 		"-- more than maxRows rows.", ""}, forms...)
-	b.WriteString(regionAt("", "bulk", upd) + "\n\n")
+	b.WriteString(g.regionAt("", "bulk", upd) + "\n\n")
 
 	label := textOf(at.label, "row."+at.label.Name)
 	b.WriteString(viewHead("Bulk"))
 	fmt.Fprintf(&b, "  %s\n    <h1>{Text.fromInt (List.length model.rows)} selected</h1>\n\n    <al-card>\n      {if tooMany model then <al-alert id=\"too-many\" variant=\"warning\">{%s}</al-alert> else Html.none}\n      <ul id=\"selected\">\n        {for row in model.rows ->\n          <li>{%s}%s</li>}\n      </ul>\n%s\n    </al-card>\n    <a href={%s {}}>Back to the list</a>\n",
-		open, bulkTooMany, label, kept, regionAt("      ", "actions", views), at.route("Index"))
+		open, bulkTooMany, label, kept, g.regionAt("      ", "actions", views), at.route("Index"))
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	var tests []TestData

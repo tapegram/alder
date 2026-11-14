@@ -103,13 +103,21 @@ func (at *crudTable) params(mod string, imports *importSet, params []string) []s
 	return append([]string{at.silo.key + ": " + at.silo.keyType(mod, imports)}, params...)
 }
 
-// requires is the `route` line's clause of the table's routes: the role, and for a siloed table
-// the key from the parameter.
-func (at *crudTable) requires() string {
-	if at.silo == nil {
-		return adminRequires
+// requires is the `route` line's clause of the table's routes under access a: its read clause
+// (Index, Show) or, for write, its write clause, and for a siloed table the key from the parameter.
+func (at *crudTable) requires(a access, write bool) string {
+	if write {
+		return at.siloed(a.writeRequires)
 	}
-	return adminRequires + ", silo " + at.silo.key
+	return at.siloed(a.readRequires)
+}
+
+// siloed is the requires clause req with, for a siloed table, the key from the parameter.
+func (at *crudTable) siloed(req string) string {
+	if at.silo == nil {
+		return req
+	}
+	return req + ", silo " + at.silo.key
 }
 
 // action is a GET form's `action` attribute to the table's path with suffix: the text, or for a
@@ -211,7 +219,7 @@ func (g *crudGen) testsIn(mod string, tests []TestData) string {
 			tests[i].Result = s.siloLits(tests[i].Result, s.key, g.names[mod])
 		}
 	}
-	return testsText(tests)
+	return g.testsText(tests)
 }
 
 // siloCode is body (a file's code, before its tests) with the silo's route values taking the
@@ -221,10 +229,11 @@ func (g *crudGen) siloCode(mod, body string) string {
 	if s == nil {
 		return body
 	}
-	code, tests, ok := strings.Cut(body, RegionBegin+"tests\n")
+	begin := regionBegin(g.a.marker) + "tests\n"
+	code, tests, ok := strings.Cut(body, begin)
 	code = s.siloLits(code, "session."+s.key, g.names[mod])
 	if ok {
-		return code + RegionBegin + "tests\n" + tests
+		return code + begin + tests
 	}
 	return code
 }
@@ -280,11 +289,11 @@ func (g *crudGen) picker(s *adminSilo) {
 	label := kt.Label()
 	sel := "Db.from " + kt.Name + " |> Db.orderBy " + kt.Name + "." + label.Name + ".asc"
 	var b strings.Builder
-	b.WriteString(regionAt("", "routes", []string{routeLine("Pick", "GET", s.path, nil, "", adminRequires)}) + "\n\n")
+	b.WriteString(g.regionAt("", "routes", []string{routeLine("Pick", "GET", s.path, nil, "", adminRequires)}) + "\n\n")
 	fmt.Fprintf(&b, "-- The %s: %s live in a database per %s (`silo %s`), so they are\n", Plural(noun), strings.ToLower(s.title), s.key, s.key)
 	fmt.Fprintf(&b, "-- listed one %s at a time, from its dashboard.\n", s.key)
 	fmt.Fprintf(&b, "type Model = { rows: List %s }\n\n", kt.Name)
-	b.WriteString(g.load("Pick", regionAt("  ", "load", wrapAll([]string{"let rows <- " + sel + " |> Db.all", "Query.succeed { rows: rows }"}))))
+	b.WriteString(g.load("Pick", g.regionAt("  ", "load", wrapAll([]string{"let rows <- " + sel + " |> Db.all", "Query.succeed { rows: rows }"}))))
 	b.WriteString(viewHead("Pick"))
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n", open, UpperFirst(title))
 	fmt.Fprintf(&b, "    <p>%s live in a database per %s: choose one.</p>\n", s.title, s.key)
@@ -314,7 +323,7 @@ func (g *crudGen) picker(s *adminSilo) {
 				kt.IDField, Plural(s.key), strings.Join(want, ", "), quote(rawText(label, k+1)))})
 	}
 	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return "Pick {}" })...)
-	b.WriteString(testsText(tests))
+	b.WriteString(g.testsText(tests))
 	g.file(mod, imports, b.String())
 }
 
@@ -350,13 +359,13 @@ func (g *crudGen) siloDashboard(s *adminSilo) {
 	body = append(body, "    ] }", "  },", "  Nothing -> Query.notFound,", "}")
 
 	var b strings.Builder
-	b.WriteString(regionAt("", "routes", []string{routeLine("Dashboard", "GET", s.path+"/{"+s.key+"}", []string{s.key + ": " + keyT}, "", adminRequires+", silo "+s.key)}) + "\n\n")
+	b.WriteString(g.regionAt("", "routes", []string{routeLine("Dashboard", "GET", s.path+"/{"+s.key+"}", []string{s.key + ": " + keyT}, "", adminRequires+", silo "+s.key)}) + "\n\n")
 	fmt.Fprintf(&b, "-- The %s of the page's parameter: each table in `silo %s`, counted in its database. The role\n", strings.ToLower(Humanize(kt.Name)), s.key)
 	fmt.Fprintf(&b, "-- check guards the page (`silo %s` takes the %s from the parameter): an Admin need not be a member.\n", s.key, s.key)
 	b.WriteString("type Card = { key: Text, title: Text, href: Route, count: Int, rows: List { label: Text, href: Route } }\n\n")
 	b.WriteString("type Model = { name: Text, cards: List Card }\n\n")
 	b.WriteString("-- recent is how many of a table's newest rows its card lists.\nrecent : Int\nrecent = 5\n\n")
-	b.WriteString(g.load("Dashboard", regionAt("  ", "cards", wrapAll(body))))
+	b.WriteString(g.load("Dashboard", g.regionAt("  ", "cards", wrapAll(body))))
 	b.WriteString(viewHead("Dashboard"))
 	fmt.Fprintf(&b, "  %s\n    <h1>{model.name}</h1>\n\n", open)
 	b.WriteString(`    <al-stack gap="md">
@@ -400,7 +409,7 @@ func (g *crudGen) siloDashboard(s *adminSilo) {
 	tb.let("let r <- Test.open (Dashboard { %s: %s })", s.key, missing)
 	tests = append(tests, TestData{Name: quote("a missing " + s.key + " is not found"), Lines: tb.lines, Result: "r.answer == PageMissing"})
 	tests = append(tests, g.gateTests(mod, imports, pageOf)...)
-	b.WriteString(testsText(tests))
+	b.WriteString(g.testsText(tests))
 	g.file(mod, imports, b.String())
 }
 
