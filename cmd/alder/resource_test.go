@@ -361,10 +361,8 @@ func TestResource_RegenKeylessGainsOwner(t *testing.T) {
 	if s := string(b); !strings.Contains(s, "requires user") || !strings.Contains(s, "Db.getMine Tag") {
 		t.Errorf("Tags/Edit.alder is not in the scoped family:\n%s", s)
 	}
-	// reads too: the keyless header recorded no --read, so Show (its `load` region) and Index's
-	// route are the owner's now. Index's own query (`Index.load`, outside the regions) is the
-	// author's, and stays as it was written.
-	for f, want := range map[string]string{"Index.alder": "requires user", "Show.alder": "Db.getMine Tag"} {
+	// reads too: the keyless header recorded no --read, so Index and Show are the owner's now
+	for f, want := range map[string]string{"Index.alder": "Db.mine Tag", "Show.alder": "Db.getMine Tag"} {
 		b, err := os.ReadFile(filepath.Join(dir, "app", "Tags", f))
 		if err != nil {
 			t.Fatal(err)

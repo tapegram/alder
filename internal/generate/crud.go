@@ -813,7 +813,13 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 	if g.a.readNote != "" {
 		readNote = "  " + g.a.readNote + "\n"
 	}
-	b.WriteString(g.load("Index", fmt.Sprintf(`  let q = Text.slice 0 200 params.q
+	indexLoad := func(body string) string { // a resource's query is regenerated, so that it follows the table's owner
+		if g.a.marker == "@resource" {
+			return g.regionAt("", "load", strings.Split(body, "\n"))
+		}
+		return body
+	}
+	b.WriteString(g.load("Index", indexLoad(fmt.Sprintf(`  let q = Text.slice 0 200 params.q
   let f = chosen params
 %s  let count <- %s %s |> Db.where (Db.and [search q, filtered (filters f)]) |> Db.count
   let pages = Int.max 1 ((count + perPage - 1) / perPage)
@@ -836,7 +842,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
     page: page,
     pages: pages,
     count: count,
-  }`, readNote, g.a.sel, t.Name, g.a.sel, t.Name, keyInit)))
+  }`, readNote, g.a.sel, t.Name, g.a.sel, t.Name, keyInit))))
 	b.WriteString(g.regionAt("", "labels", wrapAll(g.labels(at, mod, imports))) + "\n\n")
 	newLink := fmt.Sprintf("<al-button href={%s {}}>New %s</al-button>", at.route("New"), at.noun)
 	if g.a.visitorReads() { // a visitor sees the list: the link is for a signed-in user
