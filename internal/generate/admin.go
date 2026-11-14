@@ -70,30 +70,50 @@ func adminCheck(p *Program, o AdminOptions) (AdminOptions, error) {
 	if o.Path == "" {
 		o.Path = "/admin"
 	}
-	if !IsModuleName(o.Module) {
-		return o, Refusef("`--module %s` is not a module name: write capitalised names joined by dots, such as `Admin`", o.Module)
-	}
-	if !strings.HasPrefix(o.Path, "/") {
-		return o, Refusef("`--path %s` must begin with `/`, such as `/admin`", o.Path)
-	}
-	o.Path = strings.TrimSuffix(o.Path, "/")
-	if o.Path == "" || strings.ContainsAny(o.Path, "{}: ?#") {
-		return o, Refusef("`--path %s` is not a path without parameters, such as `/admin`", o.Path)
-	}
-	if why := check.PagePathProblem(o.Path); why != "" {
-		return o, Refusef("`--path %s` is not a page path: it %s; %s", o.Path, why, check.PagePathRule)
+	var err error
+	if o.Module, o.Path, err = pageOptionsCheck(o.Module, o.Path, "Admin", "/admin"); err != nil {
+		return o, err
 	}
 	if len(p.Tables) == 0 {
 		return o, Refusef("this app has no tables: the admin has nothing to show (`alder new table` makes one)")
 	}
 	for _, t := range p.Tables {
-		for _, c := range t.Columns {
-			if _, ok := secretValue(c); c.Secret() && c.Required() && c.Kind != KindTime && !ok {
-				return o, Refusef("`%s.%s` is a secret, which the admin never shows or writes, and an insert must name it: give it a default (`= …`) or make it `Maybe`", t.Name, c.Name)
-			}
+		if err := secretRefusal(t); err != nil {
+			return o, err
 		}
 	}
 	return o, nil
+}
+
+// pageOptionsCheck refuses a `--module` that is not a module name and a `--path` that is not a
+// page path without parameters, and returns the path without its trailing slash; modEg and
+// pathEg are the examples its sentences give.
+func pageOptionsCheck(module, path, modEg, pathEg string) (string, string, error) {
+	if !IsModuleName(module) {
+		return module, path, Refusef("`--module %s` is not a module name: write capitalised names joined by dots, such as `%s`", module, modEg)
+	}
+	if !strings.HasPrefix(path, "/") {
+		return module, path, Refusef("`--path %s` must begin with `/`, such as `%s`", path, pathEg)
+	}
+	path = strings.TrimSuffix(path, "/")
+	if path == "" || strings.ContainsAny(path, "{}: ?#") {
+		return module, path, Refusef("`--path %s` is not a path without parameters, such as `%s`", path, pathEg)
+	}
+	if why := check.PagePathProblem(path); why != "" {
+		return module, path, Refusef("`--path %s` is not a page path: it %s; %s", path, why, check.PagePathRule)
+	}
+	return module, path, nil
+}
+
+// secretRefusal refuses a table with a required secret column an insert must name and nothing
+// gives: generated pages never show or write it.
+func secretRefusal(t *Table) error {
+	for _, c := range t.Columns {
+		if _, ok := secretValue(c); c.Secret() && c.Required() && c.Kind != KindTime && !ok {
+			return Refusef("`%s.%s` is a secret, which the admin never shows or writes, and an insert must name it: give it a default (`= …`) or make it `Maybe`", t.Name, c.Name)
+		}
+	}
+	return nil
 }
 
 // adminDir is the directory of the admin's modules: "app/Admin".
