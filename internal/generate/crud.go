@@ -1526,6 +1526,9 @@ func (g *crudGen) newPage(at *crudTable) {
 	}
 	tests = append(tests, TestData{Name: quote(name), Lines: tb.lines,
 		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
+	if g.a.role == "" { // not the admin's (its goldens predate it)
+		tests = append(tests, g.emptyTest(at, mod, imports)...)
+	}
 	tests = append(tests, g.uniqueTests(at, mod, imports, false)...)
 	tests = append(tests, g.notOffered(at, mod, imports, false)...)
 	tests = append(tests, g.findTests(at, mod, imports, false)...)
@@ -1547,6 +1550,41 @@ func (g *crudGen) newPage(at *crudTable) {
 	tests = append(tests, g.pageGates(at, mod, imports, true, func(*testBuilder) string { return "New {}" })...)
 	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
+}
+
+// emptyTest is the test that the New page refuses its first required field that may not be
+// empty (emptyMessage), sent empty with the other fields valid: the field's error, and nothing
+// written (the rows the list reads, counted). None when no field may not be empty.
+func (g *crudGen) emptyTest(at *crudTable, mod string, imports *importSet) []TestData {
+	var c *Column
+	for _, d := range at.editable {
+		if msg := emptyMessage(d.Type); msg != "" && c == nil {
+			c = d
+		}
+	}
+	if c == nil {
+		return nil
+	}
+	tb := g.tb(mod, imports, true)
+	g.optionRows(tb, at)
+	tb.let("let page <- Test.get (New {})")
+	var raw []string
+	for _, d := range at.editable {
+		v := quote(rawSample(d.Type))
+		switch {
+		case d == c:
+			v = `""`
+		case d.Ref != "" && g.p.TableNamed(d.Ref) != nil && !d.Maybe:
+			v = d.Name + "Id"
+			tb.let("let %s = Maybe.withDefault \"\" (Test.attr \"value\" \"select[name=%s] option\" page.doc)", v, d.Name)
+		}
+		raw = append(raw, fmt.Sprintf("{ name: %s, value: %s }", quote(d.Name), v))
+	}
+	tb.let("let r <- Test.submitRaw %s [%s]", at.own("Create", true), strings.Join(raw, ", "))
+	tb.let("let rows <- %s %s |> Db.count", g.a.sel, at.t.Name)
+	return []TestData{{Name: quote("an empty " + strings.ToLower(Humanize(c.Name)) + " is rejected"), Lines: tb.lines,
+		Result: fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: %s, message: %s }], rows: %d }",
+			quote(c.Name), quote(emptyMessage(c.Type)), tb.counts[at.t.Module])}}
 }
 
 // notOffered are the tests that a New (or Edit) page refuses, for each reference, a row id its
