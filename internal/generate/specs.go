@@ -220,6 +220,36 @@ func newSpecs() []*Spec {
 			},
 		},
 		{
+			ID: "new resource", Summary: "list, show, new, edit and delete routes for a table, scoped to its owner",
+			Args: []Field{
+				{Name: "table", Kind: ArgModule, Required: true, Value: "<Table>", Help: "the table whose rows the routes list, show, create, edit and delete", Example: "Post"},
+				{Name: "fields", Kind: ArgFieldList, Variadic: true, Table: true, Value: "<field>:<Type>…", Help: "to create the table first: its columns as name:Type words, as `alder new table` takes them", Example: "title:Text body:Text"},
+			},
+			Flags: []Field{
+				{Name: "read", Kind: ArgChoice, Choices: []string{"owner", "signed-in", "all"}, Value: "owner|signed-in|all", Summary: "who may read the list and each row: its owner (the default for an `@owner` table), any signed-in user, or anyone; writes stay the owner's", Example: "all"},
+				{Name: "requires", Kind: ArgText, Value: "user|<key>[,…]", Summary: "the session fields the routes require (default: the table's key)", Example: "user"},
+				{Name: "module", Kind: ArgModule, Value: "<M>", Summary: "the routes' module prefix (default: the table's plural, Posts)", Example: "Posts"},
+				{Name: "path", Kind: ArgRoute, Value: "/p", Summary: "the routes' path (default: the table's collection, /posts)", Example: "/posts"},
+			},
+			Run: func(s Sets, app App, dry bool) (*Result, error) {
+				fields, err := fieldList(s.All("fields"), true)
+				if err != nil {
+					return nil, err
+				}
+				o := ResourceOptions{Table: s.One("table"), Fields: fields, Read: s.One("read"), Requires: s.One("requires"), Module: s.One("module"), Path: s.One("path")}
+				var warnings []string
+				res, err := runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) {
+					edits, w, err := NewResource(p, o)
+					warnings = w
+					return edits, err
+				})
+				if res != nil {
+					res.Warnings = append(res.Warnings, warnings...)
+				}
+				return res, err
+			},
+		},
+		{
 			ID: "new auth", Summary: "sign-in, sign-out and the user table",
 			Flags: []Field{
 				{Name: "users", Kind: ArgTable, Value: "User", Summary: "the user table", Example: "User"},

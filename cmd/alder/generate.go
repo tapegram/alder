@@ -273,6 +273,8 @@ const newTableUsage = "usage: alder new table <Name> <field>:<Type>[=default][@a
 
 const newAdminUsage = "usage: alder new admin [--module Admin] [--path /admin] [--dir app] [--json] [--dry-run]"
 
+const newResourceUsage = "usage: alder new resource <Table> [<field>:<Type>…] [--read owner|signed-in|all] [--requires user|<key>[,…]] [--module <M>] [--path /p] [--dir app] [--json] [--dry-run]"
+
 const newFormUsage = "usage: alder new form <Route module> <Name> <field>:<Type>[=default] … [--into T] [--hole] [--msg <Route>] [--method POST|PUT|PATCH|DELETE] [--path /path] [--dir app] [--json] [--dry-run]"
 
 const newActionUsage = "usage: alder new action <Route module> <Name> [<field>:<Type> …] [--in-for <binder>] [--when <Bool expression>] [--id <id>] [--method POST|PUT|PATCH|DELETE] [--path /path] [--dir app] [--json] [--dry-run]"
@@ -292,7 +294,7 @@ const newSiloUsage = "usage: alder new silo <key> <Table> … [--empty] [--dir a
 // specUsage is each generator's usage line (the text `--help` prints and an argument error shows).
 var specUsage = map[string]string{
 	"new route": newRouteUsage, "new table": newTableUsage, "new form": newFormUsage, "new action": newActionUsage,
-	"new capability": newCapabilityUsage, "new admin": newAdminUsage, "new auth": newAuthUsage,
+	"new capability": newCapabilityUsage, "new admin": newAdminUsage, "new resource": newResourceUsage, "new auth": newAuthUsage,
 	"new type": newTypeUsage, "new decl": newDeclUsage, "new test": newTestUsage, "new silo": newSiloUsage,
 }
 

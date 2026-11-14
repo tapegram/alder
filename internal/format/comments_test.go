@@ -154,10 +154,12 @@ func TestAttach_InsideSignatureLeadsDeclaration(t *testing.T) {
 	wantTexts(t, "leading x", texts(a.leading, m.Decls[0]), "-- c")
 }
 
-// A region's end marker stays with the item before it.
+// A region's end marker, the admin's or a resource's, stays with the item before it.
 func TestAttach_RegionEndFollowsItem(t *testing.T) {
-	m := parse(t, "module M\n\nq : Int\nq = 1\n-- @admin end\nr : Int\nr = 2\n")
-	a := attach(m)
-	wantTexts(t, "after q", texts(a.after, m.Decls[0]), "-- @admin end")
-	wantTexts(t, "leading r", texts(a.leading, m.Decls[1]))
+	for _, end := range []string{"-- @admin end", "-- @resource end"} {
+		m := parse(t, "module M\n\nq : Int\nq = 1\n"+end+"\nr : Int\nr = 2\n")
+		a := attach(m)
+		wantTexts(t, "after q", texts(a.after, m.Decls[0]), end)
+		wantTexts(t, "leading r", texts(a.leading, m.Decls[1]))
+	}
 }

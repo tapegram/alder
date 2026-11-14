@@ -60,7 +60,14 @@ type access struct {
 	insert, update, remove string // "Db.insert"|"Db.insertMine"|"Db.insertScoped", likewise update/delete
 	ownerOnly              string // "" | "session.user == row.<owner>" | "session.user == Just row.<owner>"
 	perPage                int    // 25 admin, 20 resource
+
+	role string   // the role the tests sign in with ("Admin"; "" for none): the gate tests try the session's others
+	keys []string // the session fields the routes require ("user", "org"): a reference's select is scoped by them
 }
+
+// scoped is whether the pages write with the scoped calls (insertMine, insertScoped): their
+// unscoped reads, which may reach rows out of the user's scope, each carry a comment saying why.
+func (a access) scoped() bool { return a.insert != "Db.insert" }
 
 // maybeGet is whether get loads a Maybe (Db.get), which the code matches on, rather than the
 // row itself (getMine, getScoped: a row out of reach stops the route with a 404).
@@ -82,8 +89,46 @@ func (a access) found(get string, t *Table, idExpr string, between, body []strin
 	return append(out, "  },", "  Nothing -> "+notFound+",", "}")
 }
 
-func (g *crudGen) table(t *Table) *crudTable {
-	at := &crudTable{t: t, mod: adminTableModule(g.o, t), path: g.o.Path + "/" + strings.ToLower(t.Name),
+// load is GET route r's `load`, with body its statements (indented two spaces), after the
+// access's gate (the admin's adminOnly: a user it does not let in gets a 404; gated).
+func (g *crudGen) load(r, body string) string {
+	return r + ".load : " + r + ".Params -> Session -> Query Model\n" + r + ".load params session = {\n" + g.gated(body) + "\n}\n\n"
+}
+
+// update is write route r's `update`, with body its statements (indented two spaces), after the
+// access's gate, as load.
+func (g *crudGen) update(r, body string) string {
+	return r + ".update : " + r + ".Params -> Session -> Task Response\n" + r + ".update params session = {\n" + g.gated(body) + "\n}\n\n"
+}
+
+// gated is body (statements indented two spaces) after the access's gate, when it has one: the
+// admin's `let _ <- Admin.Layout.adminOnly session.user` (isAdmin, the layout's region `access`:
+// when the user table holds the role, a user whose row says Admin now; the session's role is the
+// one read at login, which lasts until logout or the cookie's 30 days, chapter 6, "Rules"). A
+// resource has none: its routes' `requires` and the scoped calls are its guard.
+func (g *crudGen) gated(body string) string {
+	if g.a.gate == "" {
+		return body
+	}
+	return "  " + g.a.gate + "\n" + body
+}
+
+// referrer is a column that refers to a table: what deleting a row of that table does to the
+// rows holding it.
+type referrer struct {
+	t     *Table
+	col   *Column
+	field string // the Delete page's model field counting them: "comments"
+}
+
+// filterOption is an option of column c's filter: its value in the address, its label, and the
+// value of the column it selects.
+type filterOption struct{ value, label, col string }
+
+// table is t as its pages show it, their modules under mod ("Admin.Posts", "Posts") and their
+// paths under path ("/admin/post", "/posts").
+func (g *crudGen) table(t *Table, mod, path string) *crudTable {
+	at := &crudTable{t: t, mod: mod, path: path,
 		plural: Plural(LowerFirst(t.Name)), noun: strings.ToLower(Humanize(t.Name)), label: t.Label()}
 	at.title = UpperFirst(Plural(at.noun))
 	for _, c := range t.Columns {
@@ -400,19 +445,25 @@ func (g *crudGen) testsText(tests []TestData) string {
 	return "\n" + regionBegin(g.a.marker) + "tests\n" + wrap(strings.Join(parts, "\n\n")) + "\n" + regionEnd(g.a.marker) + "\n"
 }
 
-// adminCell is the markup showing column c of row (an expression): a reference as a link to
-// the referenced row's admin page, labelled by that row's label (model.labels, from the
-// page's region `labels`) or, when its table has none, its id; the others as the list pages
-// show them.
-func (g *crudGen) adminCell(c *Column, row string, imports *importSet) string {
+// refCell is the markup showing column c of row (an expression): a reference by the referenced
+// row's label (model.labels, from the page's region `labels`) or, when its table has none, its
+// id, as a link to the row's page when these pages show its table (showPage); the others as the
+// list pages show them.
+func (g *crudGen) refCell(c *Column, row string, imports *importSet) string {
 	if c.Ref != "" {
 		if rt := g.p.TableNamed(c.Ref); rt != nil {
-			show := routeOf(adminTableModule(g.o, rt) + ".Show")
+			show := g.showPage(rt)
 			text := func(id string) string {
 				if rt.Label().ID {
 					return id
 				}
 				return labelFunc(c) + " model.labels " + id
+			}
+			if show == "" { // no page of these shows the row: its label, unlinked
+				if c.Maybe {
+					return "{match " + row + "." + c.Name + " { Just v -> " + text("v") + ", Nothing -> \"\" }}"
+				}
+				return "{" + text(row+"."+c.Name) + "}"
 			}
 			if c.Maybe {
 				return "{match " + row + "." + c.Name + " { Just v -> <a href={" + show + " { id: v }}>{" + text("v") + "}</a>, Nothing -> Html.none }}"
@@ -421,6 +472,36 @@ func (g *crudGen) adminCell(c *Column, row string, imports *importSet) string {
 		}
 	}
 	return cell(c, row+"."+c.Name, imports)
+}
+
+// showPage is the GET route of the page showing a row of t, as another module writes it: the
+// Show page of t among the tables these pages show (every table, for the admin:
+// `Admin.Users.Show.Show`), "" for a table they do not show.
+func (g *crudGen) showPage(t *Table) string {
+	for _, at := range g.tables {
+		if at.t == t {
+			return at.route("Show")
+		}
+	}
+	return ""
+}
+
+// refSelect is how these pages read the rows of rt, a table one of their references refers to:
+// `Db.mine Rt` when rt is owned and the routes require `user`, `Db.scoped Rt` when it is
+// partitioned by another key they require, else `Db.from Rt`, with (on pages that write with the
+// scoped calls) the comment saying why that read is unscoped.
+func (g *crudGen) refSelect(rt *Table) (sel, comment string) {
+	switch {
+	case rt.PartKey == "user" && slices.Contains(g.a.keys, "user"):
+		return "Db.mine " + rt.Name, ""
+	case rt.PartKey != "" && slices.Contains(g.a.keys, rt.PartKey):
+		return "Db.scoped " + rt.Name, ""
+	case !g.a.scoped():
+		return "Db.from " + rt.Name, ""
+	case rt.PartKey != "":
+		return "Db.from " + rt.Name, "-- every " + rt.PartKey + "'s rows: these routes do not require `" + rt.PartKey + "`"
+	}
+	return "Db.from " + rt.Name, "-- every user's rows: " + rt.Name + " has no owner"
 }
 
 // paren is expr in parentheses when it is more than a name.
@@ -462,7 +543,11 @@ func (g *crudGen) labels(at *crudTable, mod string, imports *importSet) []string
 		if c.Maybe {
 			ids = "List.filterMap (\\row -> row." + c.Name + ") rows"
 		}
-		loads = append(loads, fmt.Sprintf("  let %s <- Db.from %s |> Db.where (%s.%s.in (%s)) |> Db.all", optionsField(c), rt.Name, rt.Name, rt.IDField, ids))
+		sel, why := g.refSelect(rt)
+		if why != "" {
+			loads = append(loads, "  "+why)
+		}
+		loads = append(loads, fmt.Sprintf("  let %s <- %s |> Db.where (%s.%s.in (%s)) |> Db.all", optionsField(c), sel, rt.Name, rt.IDField, ids))
 		inits = append(inits, optionsField(c)+": "+optionsField(c))
 		noun := strings.ToLower(Humanize(rt.Name))
 		funcs = append(funcs, "",
@@ -592,7 +677,7 @@ func (g *crudGen) index(at *crudTable) {
 	}
 	for _, c := range shown {
 		headers = append(headers, fmt.Sprintf("<th><a href={listAt model %s (toggle model %s) 1}>%s</a></th>", quote(c.Name), quote(c.Name), Humanize(c.Name)))
-		cellText := g.adminCell(c, "row", imports)
+		cellText := g.refCell(c, "row", imports)
 		if c == at.label {
 			cellText = "<a href={" + at.route("Show") + " { id: row." + t.IDField + " }}>{" + textOf(c, "row."+c.Name) + "}</a>"
 		}
@@ -611,7 +696,7 @@ func (g *crudGen) index(at *crudTable) {
 	params = append(params, "sort: Text = "+quote(order), "dir: Text = \"desc\"", "page: Int = 1")
 
 	var b strings.Builder
-	b.WriteString(g.regionAt("", "routes", []string{routeLine("Index", "GET", at.path, g.keepWires(mod, at.params(mod, imports, params)), "", at.requires(g.a, false))}) + "\n\n")
+	b.WriteString(g.regionAt("", "routes", []string{routeLine("Index", "GET", at.path, g.keepWires(mod, at.params(mod, imports, params)), "", g.requires(at, false))}) + "\n\n")
 	keyField, keyInit := "", ""
 	if at.silo != nil { // the key, for the links listAt makes (it has the model, not the session)
 		keyField = "  " + at.silo.key + ": " + at.silo.keyType(mod, imports) + ",\n"
@@ -735,17 +820,22 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 	var tests []TestData
 	ids := func(v string) string { return "List.map (\\row -> row." + t.IDField + ") " + v + ".model.rows" }
 
+	mine := g.a.sel != "Db.from" // the list reads the signed-in user's rows only
 	tb := g.tb(mod, imports, true)
 	tb.insert(t, true)
 	over, parents := g.selfParents(tb, at)
 	tb.insertRow(t, "", over, true)
 	checks := g.labelChecks(tb, at, "page.model", parents)
 	tb.let("let page <- Test.get (Index {})")
-	lhs, rhs := []string{"rows: " + ids("page")}, []string{"rows: [" + strings.Join(tb.visible(t, false), ", ") + "]"}
-	name := "the list shows every row, newest first"
+	lhs, rhs := []string{"rows: " + ids("page")}, []string{"rows: [" + strings.Join(tb.visible(t, mine), ", ") + "]"}
+	every, newest := "the list shows every row", ", newest first"
+	if mine {
+		every, newest = "shows my rows", " newest first"
+	}
+	name := every + newest
 	if t.Created == "" {
-		lhs, rhs = []string{"rows: List.length page.model.rows"}, []string{fmt.Sprintf("rows: %d", len(tb.visible(t, false)))}
-		name = "the list shows every row"
+		lhs, rhs = []string{"rows: List.length page.model.rows"}, []string{fmt.Sprintf("rows: %d", len(tb.visible(t, mine)))}
+		name = every
 	}
 	if len(checks[0]) > 0 {
 		name += ", and the labels of the rows they refer to"
@@ -753,6 +843,14 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 	lhs, rhs = append(lhs, checks[0]...), append(rhs, checks[1]...)
 	tests = append(tests, TestData{Name: quote(name), Lines: tb.lines,
 		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
+	if g.owned(at) { // another user's row is not listed, nor counted
+		tb = g.tb(mod, imports, true)
+		row := tb.insertRow(t, "", nil, false)
+		g.othersRow(tb, at)
+		tb.let("let page <- Test.get (Index {})")
+		tests = append(tests, TestData{Name: quote("does not show another user's rows"), Lines: tb.lines,
+			Result: fmt.Sprintf("{ rows: %s, count: Test.text \"#count\" page.doc } == { rows: [%s], count: Just \"1 row\" }", ids("page"), row)})
+	}
 
 	// sorting: a column whose order is the reverse of the rows' (and of every other column's)
 	if sc := sortColumn(t); sc != nil {
@@ -762,7 +860,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 		second := tb.insertRow(t, "", map[string]string{sc.Name: tb.sample(sc.Type, sc.Name, k+1)}, true)
 		tb.let("let up <- Test.get (%s)", pageLit("Index", []string{"sort: " + quote(sc.Name), "dir: \"asc\""}))
 		tb.let("let down <- Test.get (%s)", pageLit("Index", []string{"sort: " + quote(sc.Name)}))
-		others := slices.DeleteFunc(slices.Clone(tb.visible(t, false)), func(v string) bool { return v == first || v == second })
+		others := slices.DeleteFunc(slices.Clone(tb.visible(t, mine)), func(v string) bool { return v == first || v == second })
 		// ascending: second (sample k+1) then first (k+2), the rows inserted before around them
 		up := []string{second, first}
 		down := []string{first, second}
@@ -807,21 +905,23 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 	tests = append(tests, TestData{Name: quote("a search text of 20,000 characters is cut to 200"), Lines: tb.lines,
 		Result: "{ q: Text.length page.model.q, rows: List.length page.model.rows } == { q: 200, rows: 0 }"})
 
-	// 25 rows a page
+	// perPage rows a page
+	per := g.a.perPage
 	tb = g.tb(mod, imports, true)
-	tb.bulkInsert(t, 26, "")
-	total := len(tb.visible(t, false)) + tb.bulk[t.Module]
+	tb.bulkInsert(t, per+1, "")
+	total := len(tb.visible(t, mine)) + tb.bulk[t.Module]
 	tb.let("let first <- Test.get (Index {})")
 	tb.let("let second <- Test.get (%s)", pageLit("Index", []string{"page: 2"}))
 	tb.let("let past <- Test.get (%s)", pageLit("Index", []string{"page: 9"}))
-	tests = append(tests, TestData{Name: quote("the list has 25 rows a page, and a page past the last is the last"), Lines: tb.lines,
-		Result: fmt.Sprintf("{ first: List.length first.model.rows, second: List.length second.model.rows, past: { page: past.model.page, rows: List.length past.model.rows }, count: Test.text \"#count\" first.doc, pages: Test.texts \"al-pagination span\" first.doc } == { first: 25, second: %d, past: { page: %d, rows: %d }, count: Just \"%d rows\", pages: [\"Previous\", \"Page 1 of %d\"] }",
-			total-25, (total+24)/25, total-25, total, (total+24)/25)})
+	pages := (total + per - 1) / per
+	tests = append(tests, TestData{Name: quote(fmt.Sprintf("the list has %d rows a page, and a page past the last is the last", per)), Lines: tb.lines,
+		Result: fmt.Sprintf("{ first: List.length first.model.rows, second: List.length second.model.rows, past: { page: past.model.page, rows: List.length past.model.rows }, count: Test.text \"#count\" first.doc, pages: Test.texts \"al-pagination span\" first.doc } == { first: %d, second: %d, past: { page: %d, rows: %d }, count: Just \"%d rows\", pages: [\"Previous\", \"Page 1 of %d\"] }",
+			per, total-per, pages, total-per, total, pages)})
 
 	if at.silo != nil {
 		tests = append(tests, g.siloListTest(at, mod, imports))
 	}
-	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return "Index {}" })...)
+	tests = append(tests, g.pageGates(at, mod, imports, false, func(*testBuilder) string { return "Index {}" })...)
 	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
 }
@@ -1020,7 +1120,7 @@ func (g *crudGen) show(at *crudTable) {
 	open, close := g.layoutOpen(title, imports)
 	var fields []string
 	for _, c := range shown(t, true) {
-		fields = append(fields, "<dt>"+Humanize(c.Name)+"</dt>", "<dd>"+g.adminCell(c, "model.row", imports)+"</dd>")
+		fields = append(fields, "<dt>"+Humanize(c.Name)+"</dt>", "<dd>"+g.refCell(c, "model.row", imports)+"</dd>")
 	}
 	// the delete dialog: the Delete page's counts, and a form posting its Destroy route; the
 	// Delete page stays, for the details and for a browser that cannot open the dialog
@@ -1028,7 +1128,7 @@ func (g *crudGen) show(at *crudTable) {
 	loads := g.a.found(g.a.get, t, "params.id", pl.loads, []string{"let labels <- labelsOf [row]",
 		"Query.succeed { " + strings.Join(append([]string{"row: row", "labels: labels"}, pl.fields...), ", ") + " }"}, "Query.notFound")
 	var b strings.Builder
-	b.WriteString(g.regionAt("", "routes", []string{routeLine("Show", "GET", at.path+"/{id}", g.keepWires(mod, at.params(mod, imports, []string{"id: " + types.StringIn(t.IDType, mod)})), "", at.requires(g.a, false))}) + "\n\n")
+	b.WriteString(g.regionAt("", "routes", []string{routeLine("Show", "GET", at.path+"/{id}", g.keepWires(mod, at.params(mod, imports, []string{"id: " + types.StringIn(t.IDType, mod)})), "", g.requires(at, false))}) + "\n\n")
 	b.WriteString("-- The row, the labels of the rows it refers to, and (for the delete dialog) how many rows of\n-- each table refer to it.\n")
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n  labels: Labels,\n" + g.regionAt("  ", "model", pl.model) + "\n}\n\n")
 	b.WriteString(g.load("Show", g.regionAt("  ", "load", wrapAll(loads))))
@@ -1075,11 +1175,42 @@ func (g *crudGen) show(at *crudTable) {
 	tests = append(tests, TestData{Name: quote("the page shows the row"), Lines: tb.lines, Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
 	tests = append(tests, g.deleteTests(at, mod, "Show", imports, pl)...)
 	tests = append(tests, g.missingTest(at, mod, "Show", imports))
-	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
+	if g.owned(at) {
+		tests = append(tests, g.othersMissing(at, mod, "Show", "another user's row is not found", imports))
+	}
+	tests = append(tests, g.pageGates(at, mod, imports, false, func(tb *testBuilder) string {
 		return pageLit("Show", []string{"id: " + tb.insertRow(t, "", nil, false)})
 	})...)
 	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
+}
+
+// pageGates are the tests of who may not open a page of at (write: a page of its writes): the
+// admin's gateTests; for a page without a role, a visitor is sent to log in when its route
+// requires `user`. pageOf is the route value a test opens.
+func (g *crudGen) pageGates(at *crudTable, mod string, imports *importSet, write bool, pageOf func(tb *testBuilder) string) []TestData {
+	if g.a.role != "" {
+		return g.gateTests(mod, imports, pageOf)
+	}
+	if g.p.Login == "" || !requiresUser(g.requires(at, write)) {
+		return nil
+	}
+	return []TestData{g.visitorTest(mod, imports, pageOf)}
+}
+
+// visitorTest is the test that a visitor opening the page pageOf gives is sent to log in.
+func (g *crudGen) visitorTest(mod string, imports *importSet, pageOf func(tb *testBuilder) string) TestData {
+	tb := g.tb(mod, imports, false)
+	page := pageOf(tb)
+	tb.let("let r <- Test.open (%s)", page)
+	return TestData{Name: quote("a visitor is sent to log in"), Lines: tb.lines, Result: "r.answer == Redirected (" + pageLit(g.p.Login, nil) + ")"}
+}
+
+// requiresUser reports whether a `route` line's clause req (" requires user, role Admin")
+// requires a signed-in user.
+func requiresUser(req string) bool {
+	keys, ok := strings.CutPrefix(strings.TrimSpace(req), "requires ")
+	return ok && slices.Contains(strings.Split(keys, ", "), "user")
 }
 
 // destroy is the Delete page's Destroy route, as another module writes it.
@@ -1091,6 +1222,50 @@ func (g *crudGen) missingTest(at *crudTable, mod, r string, imports *importSet) 
 	missing := tb.brandCtor(at.t.IDType.(*types.Brand)) + " " + quote("missing")
 	tb.let("let r <- Test.open (%s)", pageLit(r, []string{"id: " + missing}))
 	return TestData{Name: quote("a missing row is not found"), Lines: tb.lines, Result: "r.answer == PageMissing"}
+}
+
+// owned is whether at's pages reach the signed-in user's rows of an `@owner` table only
+// (getMine): another user's row is a missing one, which their tests assert.
+func (g *crudGen) owned(at *crudTable) bool { return at.t.Owner != "" && g.a.writeGet == "Db.getMine" }
+
+// othersRow inserts a row of at's table that another user owns, and returns its variable.
+func (g *crudGen) othersRow(tb *testBuilder, at *crudTable) string {
+	return tb.insertRow(at.t, "", map[string]string{at.t.Owner: tb.otherUser()}, false)
+}
+
+// othersMissing is the test, named name, that GET route r of module mod is a 404 for another
+// user's row.
+func (g *crudGen) othersMissing(at *crudTable, mod, r, name string, imports *importSet) TestData {
+	tb := g.tb(mod, imports, true)
+	row := g.othersRow(tb, at)
+	tb.let("let r <- Test.open (%s)", pageLit(r, []string{"id: " + row}))
+	return TestData{Name: quote(name), Lines: tb.lines, Result: "r.answer == PageMissing"}
+}
+
+// othersWrite is the test, named name, that a write to another user's row is refused and
+// changes nothing: the row's owner opens the page holding the form, then the signed-in user
+// sends it (a write route runs no load: its own scoped call is the guard, a 404). build, as
+// writeGate's, for the row target, gives the page, the step that sends the write and the check.
+// A form whose selects are of at's references (refs) is refused before that, 400, when one
+// offers an owned table's rows (Db.mine): the options the owner's page offered are not the
+// sender's (Plan call 11).
+func (g *crudGen) othersWrite(at *crudTable, mod string, imports *importSet, name string, refs bool, build func(tb *testBuilder, target string) (get, send string, check func() (string, string))) TestData {
+	tb := g.tb(mod, imports, true)
+	other := tb.otherUser()
+	target := g.othersRow(tb, at)
+	get, send, check := build(tb, target)
+	tb.loginAs(other, g.a.role)
+	tb.let("let _ <- Test.get (%s)", get)
+	tb.login(g.a.role)
+	tb.let("let r <- %s", send)
+	l, r := check()
+	answer := "PageMissing"
+	for _, c := range at.refs {
+		if sel, _ := g.refSelect(g.p.TableNamed(c.Ref)); refs && !strings.HasPrefix(sel, "Db.from ") {
+			answer = `RequestFailed "400 bad request"`
+		}
+	}
+	return TestData{Name: quote(name), Lines: tb.lines, Result: "{ answer: r.answer, " + l + " } == { answer: " + answer + ", " + r + " }"}
 }
 
 // formName is the name of the form of a table's New and Edit pages: "PostForm".
@@ -1157,7 +1332,11 @@ func (g *crudGen) formParts(at *crudTable, mod string, imports *importSet, edit 
 		rt := g.p.TableNamed(c.Ref)
 		imports.add(rt.Module)
 		model = append(model, optionsField(c)+": List "+rt.Name+",")
-		sel := "Db.from " + rt.Name
+		from, why := g.refSelect(rt)
+		if why != "" {
+			loads = append(loads, why)
+		}
+		sel := from
 		if l := rt.Label(); !l.ID {
 			sel += " |> Db.orderBy " + rt.Name + "." + l.Name + ".asc"
 		}
@@ -1175,7 +1354,7 @@ func (g *crudGen) formParts(at *crudTable, mod string, imports *importSet, edit 
 		if !edit {
 			loads = append(loads,
 				fmt.Sprintf("let %s = Text.slice 0 200 params.%s", q, q),
-				fmt.Sprintf("let %s <- Db.from %s |> Db.count", totalField(c), rt.Name),
+				fmt.Sprintf("let %s <- %s |> Db.count", totalField(c), from),
 				fmt.Sprintf("let %s <- %s |> Db.where (if %s > 200 then %s else Db.and []) |> Db.limit (if %s > 200 then 50 else 200) |> Db.all", n, sel, totalField(c), where, totalField(c)))
 			continue
 		}
@@ -1188,8 +1367,8 @@ func (g *crudGen) formParts(at *crudTable, mod string, imports *importSet, edit 
 		own, found := n+"Own", n+"Found"
 		loads = append(loads,
 			fmt.Sprintf("let %s = Text.slice 0 200 params.%s", q, q),
-			fmt.Sprintf("let %s <- Db.from %s |> Db.count", totalField(c), rt.Name),
-			fmt.Sprintf("let %s <- if %s > 200 then Db.from %s |> Db.where (%s) |> Db.all else Query.succeed []", own, totalField(c), rt.Name, cur),
+			fmt.Sprintf("let %s <- %s |> Db.count", totalField(c), from),
+			fmt.Sprintf("let %s <- if %s > 200 then %s |> Db.where (%s) |> Db.all else Query.succeed []", own, totalField(c), from, cur),
 			fmt.Sprintf("let %s <- %s |> Db.where (if %s > 200 then Db.and [%s, %s] else Db.and []) |> Db.limit (if %s > 200 then 50 else 200) |> Db.all", found, sel, totalField(c), where, other, totalField(c)),
 			fmt.Sprintf("let %s = %s ++ %s", n, own, found))
 	}
@@ -1282,8 +1461,8 @@ func (g *crudGen) newPage(at *crudTable) {
 	path := at.path + "/new"
 	finder := g.finders(at, mod, at.actionAt("/new", ""))
 	routes := []string{
-		routeLine("New", "GET", path, g.keepWires(mod, at.params(mod, imports, g.findParams(at))), "", at.requires(g.a, true)),
-		routeLine("Create", "POST", at.path, at.params(mod, imports, nil), at.formName(), at.requires(g.a, true)),
+		routeLine("New", "GET", path, g.keepWires(mod, at.params(mod, imports, g.findParams(at))), "", g.requires(at, true)),
+		routeLine("Create", "POST", at.path, at.params(mod, imports, nil), at.formName(), g.requires(at, true)),
 	}
 	b.WriteString(g.regionAt("", "routes", routes) + "\n\n")
 	b.WriteString("type Model = {\n" + g.regionAt("  ", "model", model) + "\n}\n\n")
@@ -1319,6 +1498,10 @@ func (g *crudGen) newPage(at *crudTable) {
 		got = append(got, c.Name+": row."+c.Name)
 		want = append(want, c.Name+": "+v)
 	}
+	if g.owned(at) { // insertMine: the signed-in user's
+		got = append(got, t.Owner+": row."+t.Owner)
+		want = append(want, t.Owner+": "+tb.user())
+	}
 	tb.let("let page <- Test.get (New {})")
 	tb.let("let r <- Test.submit %s { %s }", at.own("Create", true), strings.Join(values, ", "))
 	sel := "Db.from " + t.Name
@@ -1334,10 +1517,14 @@ func (g *crudGen) newPage(at *crudTable) {
 		"rows: List.map (\\row -> { " + strings.Join(got, ", ") + " }) rows"}
 	rhs := []string{"answers: [r.answer]", "rows: [{ " + strings.Join(want, ", ") + " }]"}
 	lhs, rhs = append(lhs, optLines[0]...), append(rhs, optLines[1]...)
-	if len(at.editable)+len(at.secrets) == 0 {
+	if len(got) == 0 {
 		lhs, rhs = lhs[:1], rhs[:1]
 	}
-	tests = append(tests, TestData{Name: quote("creating " + article(at.noun) + " adds it, with the values submitted"), Lines: tb.lines,
+	name := "creating " + article(at.noun) + " adds it, with the values submitted"
+	if g.owned(at) {
+		name = "creating adds a row that is mine"
+	}
+	tests = append(tests, TestData{Name: quote(name), Lines: tb.lines,
 		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
 	tests = append(tests, g.uniqueTests(at, mod, imports, false)...)
 	tests = append(tests, g.notOffered(at, mod, imports, false)...)
@@ -1357,7 +1544,7 @@ func (g *crudGen) newPage(at *crudTable) {
 			return "rows: rows", fmt.Sprintf("rows: %d", k)
 		}
 	})...)
-	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return "New {}" })...)
+	tests = append(tests, g.pageGates(at, mod, imports, true, func(*testBuilder) string { return "New {}" })...)
 	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
 }
@@ -1449,6 +1636,9 @@ func (g *crudGen) unique(at *crudTable, self string, write []string) []string {
 		cond := conds[0]
 		if len(conds) > 1 {
 			cond = "Db.and [" + strings.Join(conds, ", ") + "]"
+		}
+		if g.a.scoped() {
+			out = append(out, "-- unscoped: @unique holds across every user's rows")
 		}
 		out = append(out, fmt.Sprintf("let %sTaken <- Db.from %s |> Db.where (%s) |> Db.count", c.Name, t.Name, cond))
 	}
@@ -1604,9 +1794,17 @@ func (g *crudGen) edit(at *crudTable) {
 	for _, c := range at.editable {
 		sets = append(sets, c.Name+": params.form."+c.Name)
 	}
-	upd := fmt.Sprintf("let _ <- %s %s row.%s (\\r -> { r | %s })", g.a.update, t.Name, t.IDField, strings.Join(sets, ", "))
+	// Save loads the row first when it must match on it (Db.get) or read it (the user table's own
+	// role); else the scoped update alone finds it, a row out of reach being not found
+	role := g.ownRole(at)
+	direct := !g.a.maybeGet(g.a.writeGet) && role == nil
+	id := "row." + t.IDField
+	if direct {
+		id = "params.id"
+	}
+	upd := fmt.Sprintf("let _ <- %s %s %s (\\r -> { r | %s })", g.a.update, t.Name, id, strings.Join(sets, ", "))
 	if len(sets) == 0 {
-		upd = fmt.Sprintf("let _ <- %s %s row.%s (\\r -> r)", g.a.update, t.Name, t.IDField)
+		upd = fmt.Sprintf("let _ <- %s %s %s (\\r -> r)", g.a.update, t.Name, id)
 	}
 
 	var b strings.Builder
@@ -1614,8 +1812,8 @@ func (g *crudGen) edit(at *crudTable) {
 	idParam := "id: " + types.StringIn(t.IDType, mod)
 	finder := g.finders(at, mod, at.actionAt("/{id}/edit", textOf(at.idColumn(), "model.row."+t.IDField)))
 	routes := []string{
-		routeLine("Edit", "GET", path, g.keepWires(mod, at.params(mod, imports, append([]string{idParam}, g.findParams(at)...))), "", at.requires(g.a, true)),
-		routeLine("Save", "PUT", at.path+"/{id}", at.params(mod, imports, []string{idParam}), at.formName(), at.requires(g.a, true)),
+		routeLine("Edit", "GET", path, g.keepWires(mod, at.params(mod, imports, append([]string{idParam}, g.findParams(at)...))), "", g.requires(at, true)),
+		routeLine("Save", "PUT", at.path+"/{id}", at.params(mod, imports, []string{idParam}), at.formName(), g.requires(at, true)),
 	}
 	b.WriteString(g.regionAt("", "routes", routes) + "\n\n")
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + g.regionAt("  ", "model", model) + "\n}\n\n")
@@ -1624,8 +1822,7 @@ func (g *crudGen) edit(at *crudTable) {
 	// the searches are GET forms with nothing to declare; the region stays empty so that regen
 	// clears an older admin's search routes' forms and updates
 	b.WriteString(g.regionAt("", "search", nil) + "\n\n")
-	save := g.unique(at, "row."+t.IDField, []string{upd, fmt.Sprintf("Task.succeed (Response.redirect (%s { id: row.%s }))", at.route("Show"), t.IDField)})
-	role := g.ownRole(at)
+	save := g.unique(at, id, []string{upd, fmt.Sprintf("Task.succeed (Response.redirect (%s { id: %s }))", at.route("Show"), id)})
 	if role != nil { // the signed-in user's own role is not changed: an Admin would lock themselves out
 		save = append([]string{
 			fmt.Sprintf("if %s && params.form.%s != row.%s then", g.isMe("row."+t.IDField), role.Name, role.Name),
@@ -1633,8 +1830,15 @@ func (g *crudGen) edit(at *crudTable) {
 			"else {",
 		}, append(indentAll(save, "  "), "}")...)
 	}
-	b.WriteString("-- Save writes the form over the row (a row deleted since is not found) and goes to its page.\n")
-	saved := g.a.found(g.a.writeGet, t, "params.id", nil, []string{g.regionAt("", "update", wrapAll(save))}, "Task.notFound")
+	if direct {
+		b.WriteString("-- Save writes the form over the row (another user's, or one deleted since, is not found) and goes\n-- to its page.\n")
+	} else {
+		b.WriteString("-- Save writes the form over the row (a row deleted since is not found) and goes to its page.\n")
+	}
+	saved := []string{g.regionAt("", "update", wrapAll(save))}
+	if !direct {
+		saved = g.a.found(g.a.writeGet, t, "params.id", nil, saved, "Task.notFound")
+	}
 	b.WriteString(g.update("Save", indent(strings.Join(saved, "\n"), "  ")))
 	b.WriteString(viewHead("Edit"))
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n%s\n      <form submit={Save { id: model.row.%s }}>\n%s\n", open, UpperFirst(title), g.regionAt("      ", "finder", finder), t.IDField, g.regionAt("        ", "inputs", inputs))
@@ -1672,8 +1876,7 @@ func (g *crudGen) edit(at *crudTable) {
 	}
 	tests = append(tests, g.notOffered(at, mod, imports, true)...)
 	tests = append(tests, g.findTests(at, mod, imports, true)...)
-	tests = append(tests, g.writeGate(mod, imports, "save "+article(at.noun), len(at.refs) > 0, func(tb *testBuilder) (string, string, func() (string, string)) {
-		target := tb.insertRow(t, "", nil, false)
+	saveAs := func(tb *testBuilder, target string) (string, string, func() (string, string)) {
 		g.optionRows(tb, at)
 		k := tb.counts[t.Module]
 		var values []string
@@ -1685,9 +1888,18 @@ func (g *crudGen) edit(at *crudTable) {
 			tb.let("let after <- Db.get %s %s", t.Name, target)
 			return "row: after", "row: before"
 		}
+	}
+	tests = append(tests, g.writeGate(mod, imports, "save "+article(at.noun), len(at.refs) > 0, func(tb *testBuilder) (string, string, func() (string, string)) {
+		return saveAs(tb, tb.insertRow(t, "", nil, false))
 	})...)
+	if g.owned(at) {
+		tests = append(tests, g.othersWrite(at, mod, imports, "another user cannot save it", true, saveAs))
+	}
 	tests = append(tests, g.missingTest(at, mod, "Edit", imports))
-	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
+	if g.owned(at) {
+		tests = append(tests, g.othersMissing(at, mod, "Edit", "another user's row: the edit page is not found", imports))
+	}
+	tests = append(tests, g.pageGates(at, mod, imports, true, func(tb *testBuilder) string {
 		return pageLit("Edit", []string{"id: " + tb.insertRow(t, "", nil, false)})
 	})...)
 	b.WriteString(g.testsIn(mod, tests))
@@ -1767,6 +1979,9 @@ func (g *crudGen) deletePlan(at *crudTable, imports *importSet, id string) *delP
 			cond = fmt.Sprintf("%s.%s.in (%s)", n.t.Name, n.col.Name, ids)
 		}
 		sel := fmt.Sprintf("Db.from %s |> Db.where (%s)", n.t.Name, cond)
+		if g.a.scoped() {
+			loads = append(loads, "-- unscoped: a row of "+n.t.Name+" that refers to it may be another user's")
+		}
 		if len(n.kids) == 0 {
 			loads = append(loads, fmt.Sprintf("let %s <- %s |> Db.count", n.field, sel))
 			fields = append(fields, n.field+": "+n.field)
@@ -1876,7 +2091,8 @@ func (g *crudGen) delete(at *crudTable) {
 	succeed := "Query.succeed { " + strings.Join(append([]string{"row: row"}, pl.fields...), ", ") + " }"
 	loads := g.a.found(g.a.writeGet, t, "id", pl.loads, []string{succeed}, "Query.notFound")
 	if g.a.maybeGet(g.a.writeGet) { // found's lines up to `match found {`, then the arm on one line, as the admin has always written it
-		loads = append(loads[:len(loads)-5], "  Just row -> "+succeed+",", "  Nothing -> Query.notFound,", "}")
+		m := slices.Index(loads, "match found {")
+		loads = append(loads[:m+1], "  Just row -> "+succeed+",", "  Nothing -> Query.notFound,", "}")
 	}
 	labelRow := "<p>{" + textOf(at.label, "model.row."+at.label.Name) + "}</p>"
 
@@ -1884,8 +2100,8 @@ func (g *crudGen) delete(at *crudTable) {
 	path := at.path + "/{id}/delete"
 	params := at.params(mod, imports, []string{"id: " + idT})
 	b.WriteString(g.regionAt("", "routes", []string{
-		routeLine("Delete", "GET", path, g.keepWires(mod, params), "", at.requires(g.a, true)),
-		routeLine("Destroy", "DELETE", at.path+"/{id}", params, "Confirm", at.requires(g.a, true)),
+		routeLine("Delete", "GET", path, g.keepWires(mod, params), "", g.requires(at, true)),
+		routeLine("Destroy", "DELETE", at.path+"/{id}", params, "Confirm", g.requires(at, true)),
 	}) + "\n\n")
 	b.WriteString("-- The row, and how many rows of each table refer to it.\n")
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + g.regionAt("  ", "model", pl.model) + "\n}\n\n")
@@ -1912,15 +2128,23 @@ func (g *crudGen) delete(at *crudTable) {
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	tests := g.deleteTests(at, mod, "Delete", imports, pl)
-	tests = append(tests, g.writeGate(mod, imports, "delete "+article(at.noun), false, func(tb *testBuilder) (string, string, func() (string, string)) {
-		target := tb.insertRow(t, "", nil, false)
+	destroy := func(tb *testBuilder, target string) (string, string, func() (string, string)) {
 		return pageLit("Delete", []string{"id: " + target}), fmt.Sprintf("Test.submit (Destroy { id: %s }) { }", target), func() (string, string) {
 			tb.let("let kept <- Db.get %s %s", t.Name, target)
 			return "kept: Maybe.map (\\row -> row." + t.IDField + ") kept", "kept: Just " + target
 		}
+	}
+	tests = append(tests, g.writeGate(mod, imports, "delete "+article(at.noun), false, func(tb *testBuilder) (string, string, func() (string, string)) {
+		return destroy(tb, tb.insertRow(t, "", nil, false))
 	})...)
+	if g.owned(at) {
+		tests = append(tests, g.othersWrite(at, mod, imports, "another user cannot delete it", false, destroy))
+	}
 	tests = append(tests, g.missingTest(at, mod, "Delete", imports))
-	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
+	if g.owned(at) {
+		tests = append(tests, g.othersMissing(at, mod, "Delete", "another user's row is not found", imports))
+	}
+	tests = append(tests, g.pageGates(at, mod, imports, true, func(tb *testBuilder) string {
 		return pageLit("Delete", []string{"id: " + tb.insertRow(t, "", nil, false)})
 	})...)
 	b.WriteString(g.testsIn(mod, tests))

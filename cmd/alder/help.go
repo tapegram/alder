@@ -44,7 +44,7 @@ var commandUsages = map[string]string{
 
 var newGeneratorUsages = map[string]string{
 	"route": newRouteUsage, "table": newTableUsage, "form": newFormUsage, "action": newActionUsage,
-	"capability": newCapabilityUsage, "admin": newAdminUsage, "auth": newAuthUsage,
+	"capability": newCapabilityUsage, "admin": newAdminUsage, "resource": newResourceUsage, "auth": newAuthUsage,
 	"type": newTypeUsage, "decl": newDeclUsage, "test": newTestUsage, "silo": newSiloUsage,
 }
 

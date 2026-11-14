@@ -103,13 +103,13 @@ func (at *crudTable) params(mod string, imports *importSet, params []string) []s
 	return append([]string{at.silo.key + ": " + at.silo.keyType(mod, imports)}, params...)
 }
 
-// requires is the `route` line's clause of the table's routes under access a: its read clause
-// (Index, Show) or, for write, its write clause, and for a siloed table the key from the parameter.
-func (at *crudTable) requires(a access, write bool) string {
+// requires is the `route` line's clause of table at's routes: the access's read clause (Index,
+// Show) or, for write, its write clause, and for a siloed table the key from the parameter.
+func (g *crudGen) requires(at *crudTable, write bool) string {
 	if write {
-		return at.siloed(a.writeRequires)
+		return at.siloed(g.a.writeRequires)
 	}
-	return at.siloed(a.readRequires)
+	return at.siloed(g.a.readRequires)
 }
 
 // siloed is the requires clause req with, for a siloed table, the key from the parameter.

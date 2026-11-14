@@ -137,7 +137,12 @@ func (b *testBuilder) login(role string) {
 	if b.me == "" && b.meRole == "" {
 		b.meRole = role
 	}
-	me := b.user()
+	b.loginAs(b.user(), role)
+}
+
+// loginAs signs in the user whose id is me (a variable: the signed-in user's, or otherUser's),
+// with role when it is not "".
+func (b *testBuilder) loginAs(me, role string) {
 	fields := []string{"user: Just " + me}
 	for _, f := range b.p.Session.Fields { // a `Maybe` without a default (an `org`) is written: Nothing
 		if _, isMaybe := unMaybe(f.Type); !isMaybe || f.HasDefault || f.Name == "user" || f.Name == "role" {

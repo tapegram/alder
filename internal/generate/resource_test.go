@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -128,5 +130,66 @@ func TestResourceCheck_NoSessionUser(t *testing.T) {
 func TestResourceDir(t *testing.T) {
 	if ResourceDir("Mine.Posts") != "app/Mine/Posts" {
 		t.Error(ResourceDir("Mine.Posts"))
+	}
+}
+
+// TestResource_Command: the header's command records the options regen needs, `--read` always
+// and `--requires` only when it was given.
+func TestResource_Command(t *testing.T) {
+	p := loadResourceFixture(t, "fixture")
+	for _, c := range []struct {
+		in   ResourceOptions
+		want string
+	}{
+		{ResourceOptions{Table: "Post"}, "alder new resource Post --module Posts --path /posts --read owner"},
+		{ResourceOptions{Table: "Post", Requires: "user", Read: "all", Module: "Mine.Posts", Path: "/my/posts"}, "alder new resource Post --module Mine.Posts --path /my/posts --read all --requires user"},
+	} {
+		o, _, _, err := resourceCheck(p, c.in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := o.command(); got != c.want {
+			t.Errorf("command = %q, want %q", got, c.want)
+		}
+	}
+}
+
+// TestNewResource_Owner: Post's five files, every write scoped to its owner (Review Focus 1),
+// the owner left out of the form; and a route that answers one of their methods and paths is
+// refused before anything is written.
+func TestNewResource_Owner(t *testing.T) {
+	p := loadResourceFixture(t, "fixture")
+	edits, notes, err := NewResource(p, ResourceOptions{Table: "Post"})
+	if err != nil || len(notes) != 0 {
+		t.Fatalf("NewResource: %v, %v", err, notes)
+	}
+	var paths []string
+	body := map[string]string{}
+	for _, e := range edits {
+		paths = append(paths, e.Path)
+		body[e.Path] = e.Body
+	}
+	if want := []string{"app/Posts/Index.alder", "app/Posts/Show.alder", "app/Posts/New.alder", "app/Posts/Edit.alder", "app/Posts/Delete.alder"}; !slices.Equal(paths, want) {
+		t.Fatalf("paths = %v", paths)
+	}
+	for path, want := range map[string]string{
+		"app/Posts/Index.alder":  "Db.mine Post",
+		"app/Posts/Show.alder":   "let row <- Db.getMine Post params.id",
+		"app/Posts/New.alder":    "let id <- Db.insertMine Post {",
+		"app/Posts/Edit.alder":   "let _ <- Db.updateMine Post params.id",
+		"app/Posts/Delete.alder": "let _ <- Db.deleteMine Post params.id",
+	} {
+		if !strings.Contains(body[path], want) {
+			t.Errorf("%s has no %q", path, want)
+		}
+	}
+	if form, _, _ := RegionsFor("@resource").Body(body["app/Posts/New.alder"], "form"); strings.Contains(form, "author") {
+		t.Errorf("the form edits the owner:\n%s", form)
+	}
+
+	p.Routes = append(p.Routes, &Route{Module: "Feed", Name: "Feed", Method: "PUT", Path: "/posts/{postId}"})
+	_, _, err = NewResource(p, ResourceOptions{Table: "Post"})
+	if !isRefusal(err) || !strings.Contains(err.Error(), "routes `Feed.Feed` and `Posts.Edit.Save` both answer PUT /posts/{id}") {
+		t.Errorf("a clash: %v", err)
 	}
 }

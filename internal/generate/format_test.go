@@ -3,6 +3,7 @@ package generate
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -10,10 +11,17 @@ import (
 )
 
 // TestRegionEnd_SameAsFormat: the formatter keeps an end marker with the item before it by its
-// text, which it holds in a constant of its own (it cannot import this package).
+// text, which it holds in a list of its own (it cannot import this package): the admin's and a
+// resource's.
 func TestRegionEnd_SameAsFormat(t *testing.T) {
-	if format.RegionEnd != RegionEnd {
-		t.Fatalf("format.RegionEnd = %q, generate.RegionEnd = %q", format.RegionEnd, RegionEnd)
+	want := []string{RegionEnd, regionEnd("@admin"), regionEnd("@resource")}
+	for _, w := range want {
+		if !slices.Contains(format.RegionEnds, w) {
+			t.Errorf("format.RegionEnds = %q, without %q", format.RegionEnds, w)
+		}
+	}
+	if len(format.RegionEnds) != 2 {
+		t.Errorf("format.RegionEnds = %q, want the admin's and a resource's", format.RegionEnds)
 	}
 }
 

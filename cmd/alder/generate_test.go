@@ -223,6 +223,7 @@ var genCases = []genCase{
 	{name: "fixture-edit-rename", base: "fixture", args: []string{"edit", "table", "Post", "rename-field", "body", "text"}, breaks: true},
 	{name: "fixture-edit-drop", base: "fixture", args: []string{"edit", "table", "Tag", "drop-field", "created"}, test: true},
 	{name: "fixture-admin", base: "fixture", args: []string{"new", "admin"}, test: true},
+	{name: "fixture-resource", base: "fixture", args: []string{"new", "resource", "Post"}, test: true},
 	{name: "fixture-silo-admin", base: "fixture-silo", args: []string{"new", "admin"}, test: true},
 
 	// M15: partitions and silos
