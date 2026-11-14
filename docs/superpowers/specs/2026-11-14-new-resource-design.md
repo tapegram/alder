@@ -17,7 +17,8 @@ on their own.
 
 Success: after `alder new resource Post` the app has `/posts`, `/posts/new`, `/posts/{id}`,
 `/posts/{id}/edit` and `/posts/{id}/delete`, each user sees and changes only their own rows, another
-user's id is a 404, and `alder test` is green with the cross-user cases covered.
+user's id is a 404, and `alder test` is green with the cross-user cases covered. With
+`--read all` the same command gives a blog: anyone reads, the owner writes.
 
 ## Goals
 
@@ -26,6 +27,8 @@ user's id is a 404, and `alder test` is green with the cross-user cases covered.
 - Ownership is enforced by the scoped calls (`Db.mine`, `Db.getMine`, `Db.insertMine`,
   `Db.updateMine`, `Db.deleteMine`; the `Scoped` family for `@partition k`). No ownership code is
   hand-rolled by the generator; another user's row is a missing row.
+- Reads can be wider than writes: `--read owner|signed-in|all` opens Index and Show to every
+  signed-in user or to everyone, while writes stay the owner's. The blog shape is one flag.
 - Paths follow the REST convention: `GET /posts`, `POST /posts`, `PUT /posts/{id}`,
   `DELETE /posts/{id}`; the route name never appears in the URL.
 - The generator is admin's generator with a different *access*: the page bodies, forms, secret
@@ -103,8 +106,8 @@ user's id is a 404, and `alder test` is green with the cross-user cases covered.
 
 ```
 alder new resource <Table> [<field>:<Type>[=default][@attr…] …]
-                   [--requires user|<key>[,…]] [--module <M>] [--path /p]
-                   [--dir app] [--json] [--dry-run]
+                   [--read owner|signed-in|all] [--requires user|<key>[,…]]
+                   [--module <M>] [--path /p] [--dir app] [--json] [--dry-run]
 alder regen resource [<Table> …] [--all] [--dir app] [--json] [--dry-run]
 ```
 
@@ -118,10 +121,28 @@ alder regen resource [<Table> …] [--all] [--dir app] [--json] [--dry-run]
 - `--module` defaults to `PluralConcern(T)` (`Posts`); dotted names nest (`Mine.Posts` →
   `app/Mine/Posts/`). `--path` defaults to `"/" + names.Collection(T)` (`/posts`) and is checked with
   `check.PagePathRule` like admin's.
-- `--requires` defaults to the table's partition key, through `routeGuard`: `user` for `@owner`,
-  `user, org` for `@partition org` with `via`. For a table with no key it defaults to `user` when the
-  session has a `user` field, else to nothing. An explicit `--requires` that omits the table's key is
-  refused: "`Post` is owned (`@owner`): its pages need `--requires user`".
+- `--read` says who may read (Index and Show); writes are never widened by it.
+  - `owner` (default on an `@owner` table): every read scoped, the design of §3's first row.
+  - `signed-in`: Index and Show `requires user` and read unscoped (`Db.from`, `Db.get` with the
+    not-found arm); every row is visible to every signed-in user.
+  - `all`: Index and Show carry no `requires` and read unscoped; a visitor reads them.
+  - On an `@owner` table the writes stay `requires user` with `insertMine`/`updateMine`/`deleteMine`
+    whatever `--read` says: New, Edit and Delete are the owner's pages, and another user's id on
+    Edit, Save, Delete or Destroy is still a 404.
+  - On a keyless table `--read` means `all` or `signed-in` only; the default is `signed-in` when the
+    session has a `user`, else `all`. `--read owner` is refused: "`Note` has no `@owner` column to
+    read by; add one (`alder edit table Note add-field owner:User.UserId@ref=User@owner`) or use
+    `--read signed-in`".
+  - On a `@partition k` table only `owner` is accepted in v1 **(my call)**: `signed-in` and `all`
+    would read across partitions, which is what `@partition` exists to prevent. The refusal says
+    "rows of `Project` are partitioned by `org` and read within it; `--read` applies to `@owner`
+    tables". A cross-tenant public read is a later question, not a default.
+- `--requires` is the write routes' guard (and Index/Show's under `--read owner|signed-in`). It
+  defaults to the table's partition key, through `routeGuard`: `user` for `@owner`, `user, org` for
+  `@partition org` with `via`. For a table with no key it defaults to `user` when the session has a
+  `user` field, else to nothing. An explicit `--requires` that omits the table's key is refused:
+  "`Post` is owned (`@owner`): its pages need `--requires user`". `--read all` on an `@owner` table
+  with no session `user` is refused the same way, since the writes need one.
 - No `--shared`. The draft had it as the opt-in for a keyless table; with the ruling that a keyless
   table warns and generates, the flag would only silence one stderr line, which is not worth a flag
   **(my call)**. If an unguarded resource on an app that has a session user is ever wanted, that is
@@ -151,6 +172,13 @@ alder regen resource [<Table> …] [--all] [--dir app] [--json] [--dry-run]
 | `Edit.alder` | `Edit = GET "/posts/{id}/edit" { id, <finder params> } requires user`; `Save = PUT "/posts/{id}" { id } form PostForm requires user` | load with `getMine`, inputs filled from `model.row`; `Db.updateMine Post params.id (\r -> { r \| … })` → redirect Show |
 | `Delete.alder` | `Delete = GET "/posts/{id}/delete" { id } requires user`; `Destroy = DELETE "/posts/{id}" { id } form Confirm requires user` | load with `getMine` plus referrer counts; blocked → `Response.invalid`; else `Db.deleteMine Post params.id` → redirect Index `\|> Response.success "Deleted"` |
 
+- Under `--read signed-in` or `all`, Index reads `Db.from Post |> …` and Show reads `Db.get Post
+  params.id` with the `Nothing -> Query.notFound` arm; under `all` the two routes have no
+  `requires`, so `session.user` is a `Maybe` there. Show's Edit link, Delete link and delete dialog
+  render only for the owner: `if session.user == row.author then … else Html.none` (`signed-in`)
+  or `if session.user == Just row.author` (`all`); Index's New link and per-row Edit links follow
+  the same test. Edit, Delete, Create, Save and Destroy are unchanged from the table above, so a
+  non-owner who types `/posts/7/edit` gets a 404 from `getMine`.
 - Layout: the app's `<Layout.Page>`, as `new route` writes; no role check, no `adminOnly`.
 - Index richness is admin's: search over the Text columns, Bool/union filters, sort on every shown
   column, paging. `perPage` is 20 **(my call)**, matching `new route --list` (admin's 25 comes from
@@ -179,16 +207,22 @@ alder regen resource [<Table> …] [--all] [--dir app] [--json] [--dry-run]
 
 ### 3. Ownership scoping
 
-| Table | `requires` | Reads | Writes | Owner in form |
+| Table | `--read` | Index/Show `requires` and reads | Write routes (`requires`, calls) | Owner in form |
 |---|---|---|---|---|
-| `@owner` | `user` | `Db.mine`, `Db.getMine` | `insertMine`, `updateMine`, `deleteMine` | left out |
-| `@partition k` (no silo) | `k` or `user, k` | `Db.scoped`, `getScoped` | `insertScoped`, `updateScoped`, `deleteScoped` | left out |
-| no key | `user` if the session has one, else none | `Db.from`, `Db.get` with a `Nothing -> Query.notFound` arm | `insert`, `update`, `delete` behind the same `match`, `Nothing -> Task.notFound` | n/a |
+| `@owner` | `owner` (default) | `user`; `Db.mine`, `Db.getMine` | `user`; `insertMine`, `updateMine`, `deleteMine` | left out |
+| `@owner` | `signed-in` | `user`; `Db.from`, `Db.get` + not-found arm; Edit/Delete shown to the owner only | same as above | left out |
+| `@owner` | `all` | none; `Db.from`, `Db.get` + not-found arm; New/Edit/Delete shown to the owner only (`session.user == Just row.owner`) | same as above | left out |
+| `@partition k` (no silo) | `owner` only (others refused) | `k` or `user, k`; `Db.scoped`, `getScoped` | same; `insertScoped`, `updateScoped`, `deleteScoped` | left out |
+| no key | `signed-in` (default with a session user) or `all`; `owner` refused | `user` or none; `Db.from`, `Db.get` + not-found arm | `user` if the session has one, else none; `insert`, `update`, `delete` behind the same `match`, `Nothing -> Task.notFound` | n/a |
 | silo | refused | | | |
 
-- **Another user's id is a 404** without a line of generated code: `getMine`, `updateMine` and
-  `deleteMine` say not found, and `mine` does not contain the row. The tests assert it on every
-  member route.
+- **Another user's id is a 404** on every write route without a line of generated code:
+  `getMine`, `updateMine` and `deleteMine` say not found, and under `--read owner` `mine` does not
+  contain the row either. The tests assert it on every member route; under `signed-in`/`all` the
+  read routes show the row and the write routes still 404.
+- **Hiding is not guarding.** The owner test around the Edit/Delete links is presentation; the
+  write routes' `requires user` plus the `Mine` calls are the guard. The generated code says so in
+  a comment above the `if`, so nobody "fixes" the 404 by widening `Save`.
 - **A keyless table warns and generates** (the user's ruling). One warning on stderr, in `--json`
   under the existing warnings channel, naming the field to add:
 
@@ -222,12 +256,16 @@ PR 1 extracts, with no behaviour change, from `admin.go` into `internal/generate
 // access says whose rows a set of pages reach and how a route is guarded.
 type access struct {
     marker   string // "@admin" | "@resource"               (region markers, header)
-    requires string // " requires user, role Admin" | " requires user" | " requires user, org" | ""
     gate     string // "let _ <- Layout.adminOnly session.user" | ""  (first line of load/update)
     layout   string // "Admin.Layout.Page" | "Layout.Page"
-    sel      string // "Db.from" | "Db.mine" | "Db.scoped"
-    get      string // "Db.get" (Maybe, match) | "Db.getMine" | "Db.getScoped" (direct)
+    // reads: Index and Show
+    readRequires string // " requires user, role Admin" | " requires user" | ""
+    sel, get     string // "Db.from"/"Db.get" (Maybe, match) | "Db.mine"/"Db.getMine" | "Db.scoped"/"Db.getScoped"
+    // writes: New/Create, Edit/Save, Delete/Destroy (and their loads)
+    writeRequires string
+    writeGet      string // the row load before Save/Destroy and on Edit/Delete pages
     insert, update, delete string
+    ownerOnly string // "" | "session.user == row.owner" | "session.user == Just row.owner": wraps Edit/Delete/New links
     perPage  int    // admin 25 (bulkMax), resource 20
 }
 type crudTable struct { /* today's adminTable: t, mod, path, plural, title, noun, label,
@@ -259,7 +297,8 @@ Acceptance for PR 1: the `fixture-admin` goldens are byte-identical, `TestAdmin_
   differs; a region whose markers the author removed is never re-added.
 - `alder regen resource [Post …] [--all]`: no table names means every resource in the app. Discovery
   and options come from the header line (`alder new resource Post --module Posts --path /posts
-  [--requires …]`); regen re-runs that option set against the current program, loading with
+  --read owner [--requires …]`; `--read` is always written, so regen never re-derives it); regen
+  re-runs that option set against the current program, loading with
   `LoadExcept` on the resource's directory so its own broken files do not refuse the run, as admin
   does. `--all` recreates deleted files. Output and JSON as `regen admin` (`skipped`, `upToDate`).
   Admin's old-layout refusals do not apply. A file whose header was edited away is refused with the
@@ -317,13 +356,23 @@ In each file's `tests` region, with the mutation gate at or above 0.95 as admin'
   missing row; unique; not offered; visitor.
 - Delete/Destroy: deleting removes the row and redirects to Index; another user's row: not found
   and still there; `@restrict` blocks with the referrer named, `@cascade` counts shown; visitor.
+- `--read signed-in` on an owned table: Index "shows every user's rows"; Show "shows another
+  user's row without Edit or Delete" (`Test.texts` has no Edit/Delete link, the dialog is absent)
+  and "shows my row with Edit and Delete"; Edit "another user's edit page is not found"; Save and
+  Destroy "another user cannot save/delete it" (404, row unchanged, as under `owner`); visitor
+  redirect on Index and Show.
+- `--read all`: the above, plus Index and Show "a visitor sees the list / the row" (`Test.get`
+  signed out is `Shown`) and "a visitor sees no New, Edit or Delete"; the write routes keep "a
+  visitor is sent to log in".
 - Keyless table: the cross-user tests read "any signed-in user sees the row", "any signed-in user
-  can save it", "any signed-in user can delete it".
+  can save it", "any signed-in user can delete it"; under `--read all`, "a visitor sees the row".
 
 CLI tests: `fixture-resource` in `TestGenerate` (base `fixture`, `new resource Post`, `test: true`
 so the generated tests run), `fixture-resource-create` (fields, table and migration),
-`fixture-resource-keyless` (the warning), refusal cases (no table, fields on an existing table,
-silo, clash, no `user` in the session, bad `--path`), `--json` and `--dry-run` shape, regen
+`fixture-resource-keyless` (the warning), `fixture-resource-read-all` (the blog shape, `test:
+true`), refusal cases (no table, fields on an existing table, silo, clash, no `user` in the
+session, bad `--path`, `--read owner` on a keyless table, `--read all` on a partitioned table),
+`--json` and `--dry-run` shape, regen
 up-to-date / skipped / `--all` / header missing, `edit table` → `next:`. Book: a `## A resource:
 alder new resource` section in `book/15-generators.md` after "A page for a row, and a write route",
 an intro bullet, `#### alder new resource` and `#### alder regen resource` in `book/11-tooling.md`,
@@ -334,13 +383,16 @@ and `--edit`/`--search` in their existing sections. Snippets are tested, so ever
 1. **Extract `crudGen`/`access` from admin.** No behaviour change; goldens byte-identical; marker
    parameterised; `found` helper for the two get shapes. Reviewed on Opus: it reshapes a
    2,600-line file.
-2. **`new resource` and `regen resource`**: owner, partition and keyless together; silo refused;
-   the warning; the non-owner user-ref notice; goldens; `edit table`'s `next:`; the book section.
+2. **`new resource` and `regen resource`**: owner, partition and keyless together, with
+   `--read owner|signed-in|all`; silo refused; the warning; the non-owner user-ref notice; goldens;
+   `edit table`'s `next:`; the book section (the blog shape as its second example).
 3. **`new form --edit T`.**
 4. **`new route --list --search`.** (3 and 4 depend on 1 only; either order.)
 5. Follow-ups to file, not build: admin's missing `routeClash` call; admin's singular
    `/admin/<table>` path against rule 2 (add to #216); `--sort` on plain lists; `--under Parent`;
-   siloed resources; `--requires none` if an unguarded resource is ever wanted.
+   siloed resources; `--requires none` if an unguarded resource is ever wanted; `--read` on
+   partitioned tables (a public read across tenants) if a case appears; a draft/published
+   column that narrows `--read all` to published rows (the blog example does this by hand).
 
 ## Left to the builder
 
