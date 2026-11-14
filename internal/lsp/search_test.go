@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -366,8 +367,8 @@ func pickClient(t *testing.T, src string, offered ...string) *client {
 }
 
 // searchEdit sends alder/searchEdit for the result module.name (kind, args) at p in rel.
-func searchEdit(c *client, rel string, p Position, module, name, kind string, args int) (*workspaceEdit, *rpcError) {
-	var out workspaceEdit
+func searchEdit(c *client, rel string, p Position, module, name, kind string, args int) (*searchEditResult, *rpcError) {
+	var out searchEditResult
 	e := c.call("alder/searchEdit", map[string]any{"uri": c.uri(rel), "position": p, "module": module, "name": name, "kind": kind, "args": args}, &out)
 	if e != nil {
 		return nil, e
@@ -402,15 +403,32 @@ func applyPick(t *testing.T, c *client, rel, text string, enc posEncoding, we *w
 // the result parses with no diagnostics (TestSearchEdit_Parses).
 func pick(t *testing.T, c *client, src string, p Position, module, name, kind string, args int) string {
 	t.Helper()
+	got, _ := pickCursor(t, c, src, p, module, name, kind, args)
+	return got
+}
+
+// pickCursor is pick, also giving the cursor the server answers.
+func pickCursor(t *testing.T, c *client, src string, p Position, module, name, kind string, args int) (string, Position) {
+	t.Helper()
 	we, e := searchEdit(c, pickRel, p, module, name, kind, args)
 	if e != nil {
 		t.Fatalf("alder/searchEdit %s.%s: %v", module, name, e)
 	}
-	got := applyPick(t, c, pickRel, src, utf8Enc, we)
+	got := applyPick(t, c, pickRel, src, utf8Enc, we.Edit)
 	if _, ds := syntax.ParseFile(pickRel, []byte(got)); len(ds) > 0 {
 		t.Errorf("%s.%s: the edited text does not parse: %+v\n%s", module, name, ds, got)
 	}
-	return got
+	return got, we.Cursor
+}
+
+// cursorText is the text of the edited document got from cur to the end of its line.
+func cursorText(got string, cur Position, enc posEncoding) string {
+	lines := strings.Split(got, "\n")
+	if cur.Line >= len(lines) {
+		return "<line out of range>"
+	}
+	line := lines[cur.Line]
+	return line[min(enc.fromWire(line, cur.Character), len(line)):]
 }
 
 func wantLine(t *testing.T, got, line string) {
@@ -453,10 +471,102 @@ func TestSearchEdit_InsertAtCursor(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if es := we.DocumentChanges[0].Edits; len(es) != 1 || es[0].NewText != "Text.split" || es[0].Range != (Range{Start: p, End: p}) {
+	if es := we.Edit.DocumentChanges[0].Edits; len(es) != 1 || es[0].NewText != "Text.split" || es[0].Range != (Range{Start: p, End: p}) {
 		t.Errorf("edits %+v, want Text.split inserted at %+v", es, p)
 	}
 	wantLine(t, pick(t, c, src, p, "Text", "split", "function", 2), "sized = List.length Text.split []")
+}
+
+// wantCursor fails the test unless the cursor is on the line starting lineStart (when not empty)
+// of got, with text from it to the end of the line.
+func wantCursor(t *testing.T, got string, cur Position, enc posEncoding, lineStart, text string) {
+	t.Helper()
+	if lineStart != "" {
+		if lines := strings.Split(got, "\n"); cur.Line >= len(lines) || !strings.HasPrefix(lines[cur.Line], lineStart) {
+			t.Errorf("cursor %+v is not on a line starting %q in\n%s", cur, lineStart, got)
+		}
+	}
+	if ct := cursorText(got, cur, enc); ct != text {
+		t.Errorf("cursor %+v: text %q, want %q in\n%s", cur, ct, text, got)
+	}
+}
+
+func TestSearchEdit_CursorOnNewHole(t *testing.T) {
+	c := pickClient(t, pickSrc)
+	got, cur := pickCursor(t, c, pickSrc, c.at(pickRel, "?h", 1), "Text", "split", "function", 2)
+	wantLine(t, got, "fill = Text.split ?a ?b")
+	wantCursor(t, got, cur, utf8Enc, "fill = ", "?a ?b")
+}
+
+func TestSearchEdit_CursorInParens(t *testing.T) {
+	c := pickClient(t, pickSrc)
+	got, cur := pickCursor(t, c, pickSrc, c.at(pickRel, "?k", 0), "Text", "trim", "function", 1)
+	wantLine(t, got, "lengthOf = Text.length (Text.trim ?a)")
+	wantCursor(t, got, cur, utf8Enc, "lengthOf = ", "?a)")
+}
+
+func TestSearchEdit_CursorAfterName(t *testing.T) {
+	src := pickSrc + "\nsized : Int\nsized = List.length  []\n"
+	c := pickClient(t, src)
+	p := c.at(pickRel, "List.length  []", len("List.length "))
+	got, cur := pickCursor(t, c, src, p, "Text", "split", "function", 2)
+	wantLine(t, got, "sized = List.length Text.split []")
+	wantCursor(t, got, cur, utf8Enc, "sized = ", " []")
+
+	got, cur = pickCursor(t, c, src, c.at(pickRel, "?k", 1), "Util", "greeting", "value", 0)
+	wantCursor(t, got, cur, utf8Enc, "lengthOf = ", "")
+}
+
+func TestSearchEdit_CursorAfterImport(t *testing.T) {
+	c := pickClient(t, pickSrc)
+	got, cur := pickCursor(t, c, pickSrc, c.at(pickRel, "?h", 1), "Zeta", "zap", "function", 1)
+	wantLine(t, got, "import Util\nimport Zeta")
+	wantCursor(t, got, cur, utf8Enc, "fill = Zeta.zap ?a", "?a")
+
+	// no imports: the import adds two lines
+	src := "-- picks\nmodule Pick\n\nfill : Int\nfill = ?h\n"
+	c = pickClient(t, src)
+	got, cur = pickCursor(t, c, src, c.at(pickRel, "?h", 1), "Zeta", "zap", "function", 1)
+	wantCursor(t, got, cur, utf8Enc, "fill = Zeta.zap ?a", "?a")
+}
+
+func TestSearchEdit_CursorUTF16(t *testing.T) {
+	c := pickClient(t, pickSrc, "utf-16")
+	line := `greet = "héllo😀" ++ `
+	p := c.at(pickRel, "?u", 1)
+	p.Character = len(utf16.Encode([]rune(line))) + 1
+	we, e := searchEdit(c, pickRel, p, "Text", "trim", "function", 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	got := applyPick(t, c, pickRel, pickSrc, utf16Enc, we.Edit)
+	wantLine(t, got, line+"Text.trim ?a")
+	wantCursor(t, got, we.Cursor, utf16Enc, "greet = ", "?a")
+	if want := len(utf16.Encode([]rune(line + "Text.trim "))); we.Cursor.Character != want {
+		t.Errorf("cursor character %d, want %d (utf-16 units)", we.Cursor.Character, want)
+	}
+}
+
+// TestSearchEdit_ArgsIgnoredOffHole: away from a hole the args change nothing.
+func TestSearchEdit_ArgsIgnoredOffHole(t *testing.T) {
+	src := pickSrc + "\nsized : Int\nsized = List.length  []\n"
+	c := pickClient(t, src)
+	p := c.at(pickRel, "List.length  []", len("List.length "))
+	var first *searchEditResult
+	for _, args := range []int{0, 2, 5} {
+		we, e := searchEdit(c, pickRel, p, "Text", "split", "function", args)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if es := we.Edit.DocumentChanges[0].Edits; len(es) != 1 || es[0].NewText != "Text.split" {
+			t.Fatalf("args %d: edits %+v, want Text.split alone", args, es)
+		}
+		if first == nil {
+			first = we
+		} else if !reflect.DeepEqual(first, we) {
+			t.Errorf("args %d: %+v differs from args 0: %+v", args, we, first)
+		}
+	}
 }
 
 func TestSearchEdit_Prelude(t *testing.T) {
@@ -531,10 +641,10 @@ func TestSearchEdit_UTF16(t *testing.T) {
 	}
 	l := strings.Count(pickSrc[:strings.Index(pickSrc, line)], "\n")
 	want := Range{Start: Position{l, ch}, End: Position{l, ch + 2}}
-	if es := we.DocumentChanges[0].Edits; len(es) != 1 || es[0].Range != want {
+	if es := we.Edit.DocumentChanges[0].Edits; len(es) != 1 || es[0].Range != want {
 		t.Fatalf("edits %+v, want the range %+v of ?u", es, want)
 	}
-	wantLine(t, applyPick(t, c, pickRel, pickSrc, utf16Enc, we), line+"Text.trim ?a")
+	wantLine(t, applyPick(t, c, pickRel, pickSrc, utf16Enc, we.Edit), line+"Text.trim ?a")
 }
 
 func TestSearchEdit_Version(t *testing.T) {
@@ -545,7 +655,7 @@ func TestSearchEdit_Version(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if v := we.DocumentChanges[0].TextDocument.Version; v == nil || *v != 2 {
+	if v := we.Edit.DocumentChanges[0].TextDocument.Version; v == nil || *v != 2 {
 		t.Errorf("version %v, want 2", v)
 	}
 	// Util is not open
@@ -553,10 +663,10 @@ func TestSearchEdit_Version(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if v := we.DocumentChanges[0].TextDocument.Version; v != nil {
+	if v := we.Edit.DocumentChanges[0].TextDocument.Version; v != nil {
 		t.Errorf("version %d for a closed file", *v)
 	}
-	if es := we.DocumentChanges[0].Edits; len(es) != 1 || es[0].NewText != "Text.split" {
+	if es := we.Edit.DocumentChanges[0].Edits; len(es) != 1 || es[0].NewText != "Text.split" {
 		t.Errorf("edits %+v", es)
 	}
 }
@@ -589,10 +699,12 @@ func TestSearchEdit_NewHoleToken(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		if es := we.DocumentChanges[0].Edits; len(es) != 1 || es[0].Range != want || es[0].NewText != "Text.trim" {
+		if es := we.Edit.DocumentChanges[0].Edits; len(es) != 1 || es[0].Range != want || es[0].NewText != "Text.trim" {
 			t.Fatalf("at +%d: edits %+v, want Text.trim over %+v", at, es, want)
 		}
-		wantLine(t, applyPick(t, c, pickRel, src, utf16Enc, we), `greet2 = "héllo😀" ++ Text.trim`)
+		got := applyPick(t, c, pickRel, src, utf16Enc, we.Edit)
+		wantLine(t, got, `greet2 = "héllo😀" ++ Text.trim`)
+		wantCursor(t, got, we.Cursor, utf16Enc, "greet2 = ", "")
 	}
 }
 
