@@ -185,6 +185,24 @@ func (a access) found(get string, t *Table, idExpr string, between, body []strin
 
 ## PR 2: `alder new resource` and `alder regen resource`
 
+**Carried from PR 1's reviews (fold into the named tasks):**
+- Task 5: `internal/format/comments.go:39` hard-codes `-- @admin end` when placing region end
+  markers; make it marker-aware (both `@admin` and `@resource`) so formatted resource files keep
+  their regions. Add the file to Task 5's list.
+- Task 5: `table()` (crud.go) builds module and path from `g.o`/`adminTableModule`, and so do the
+  reference-cell links (`adminTableModule(g.o, …)`); give both a module/path seam. Also replace the
+  Delete page's `loads[:len(loads)-5]` with a cut at the `match found {` line before the resource
+  golden lands.
+- Task 5/7: no non-admin `access` runs through the builders yet (getMine Save body, Delete's
+  non-Maybe branch, empty gate); the resource goldens and tests cover it. `ownerOnly` is unused
+  until Task 7 wires it.
+- Task 9: `internal/generate/apply.go:150` replaces regions through `ReplaceRegions` (admin marker
+  only); give `Edit` a marker and call `RegionsFor(marker).ReplaceAll`. Add a test with a stray
+  marker of the other kind; rename `ReplaceAll`'s loop variable that shadows the receiver.
+- Any task: `load`/`update`/`gated` are shared but still in admin.go and their comments say
+  adminOnly always runs; `requires(a, write)` takes `a` while other builders read `g.a`;
+  `referrer`/`filterOption`/`bulkNotice` live in admin.go though crud.go uses them.
+
 ### Task 4: options, defaults and refusals
 
 **Files:**
