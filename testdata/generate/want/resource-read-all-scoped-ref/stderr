@@ -1,0 +1,1 @@
+alder new resource: `Tag` refers to `Post`, whose rows are each user's: pages a visitor reads cannot show them; use `--read signed-in`

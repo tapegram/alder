@@ -238,7 +238,11 @@ func newSpecs() []*Spec {
 				}
 				o := ResourceOptions{Table: s.One("table"), Fields: fields, Read: s.One("read"), Requires: s.One("requires"), Module: s.One("module"), Path: s.One("path")}
 				var warnings []string
-				res, err := runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) {
+				var opts Options
+				if len(fields) > 0 { // the table is made first: its migration with it
+					opts.Migrate = app.migrate("")
+				}
+				res, err := runEdits(app, dry, opts, nil, func(p *Program) ([]Edit, error) {
 					edits, w, err := NewResource(p, o)
 					warnings = w
 					return edits, err

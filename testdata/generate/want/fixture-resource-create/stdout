@@ -1,0 +1,12 @@
+wrote app/BlogPosts/Delete.alder
+wrote app/BlogPosts/Edit.alder
+wrote app/BlogPosts/Index.alder
+wrote app/BlogPosts/New.alder
+wrote app/BlogPosts/Show.alder
+wrote app/Table/BlogPost.alder
+wrote migrations/0002_create_blog_post.sql
+  create table BlogPost
+  add index on BlogPost.owner
+  add index on BlogPost.post
+  add index on BlogPost.reviewer
+edited migrations/schema.json

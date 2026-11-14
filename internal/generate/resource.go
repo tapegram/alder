@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"alder/internal/names"
+	"alder/internal/types"
 )
 
 // ResourceOptions are the options of `alder new resource` and `alder regen resource`.
@@ -65,7 +66,7 @@ func resourceCheck(p *Program, o ResourceOptions) (ResourceOptions, *Table, []st
 	hasUser := p.Session != nil && p.Session.User != nil
 	if hasUser {
 		for _, c := range t.Columns {
-			if c.Ref != "" && c.Ref == p.Session.UserTable && !c.Owner && c.Name != t.PartCol && c.Required() && !c.HasDefault {
+			if c.Ref != "" && c.Ref == p.Session.UserTable && !c.Owner && c.Name != t.PartCol && c.Required() && !c.Maybe {
 				return o, nil, nil, Refusef("`%s` is required and refers to users: give it a default or make it `Maybe`", c.Name)
 			}
 		}
@@ -84,13 +85,20 @@ func resourceCheck(p *Program, o ResourceOptions) (ResourceOptions, *Table, []st
 			o.Read = "all"
 		}
 	case o.Read == "owner" && !owned && !partitioned:
-		return o, nil, nil, Refusef("`%s` has no `@owner` column to read by; add one (`alder edit table %s add-field owner:User.UserId@ref=User@owner`) or use `--read signed-in`", t.Name, t.Name)
+		return o, nil, nil, Refusef("`%s` has no `@owner` column to read by; add one (`alder edit table %s add-field %s`) or use `--read signed-in`", t.Name, t.Name, ownerField(p))
 	case o.Read != "owner" && partitioned:
 		return o, nil, nil, Refusef("rows of `%s` are partitioned by `%s` and read within it; `--read` applies to `@owner` tables", t.Name, t.PartKey)
 	case o.Read == "all" && owned && !hasUser:
 		return o, nil, nil, Refusef("`%s` is owned (`@owner`): its pages need `--requires user`", t.Name)
 	}
 
+	if o.Read == "all" { // labelsOf reads the rows referred to with Db.mine (Db.scoped), which a visitor's route cannot
+		for _, c := range t.Columns {
+			if rt := p.TableNamed(c.Ref); c.Ref != "" && rt != nil && rt.PartKey != "" {
+				return o, nil, nil, Refusef("`%s` refers to `%s`, whose rows are each %s's: pages a visitor reads cannot show them; use `--read signed-in`", t.Name, rt.Name, rt.PartKey)
+			}
+		}
+	}
 	o.explicitRequires = o.Requires != ""
 	ro := RouteOptions{Requires: o.Requires}
 	if !o.explicitRequires {
@@ -134,7 +142,10 @@ func (o ResourceOptions) command() string {
 // to every route, without a line of ownership code. Under `--read signed-in` or `all`, Index and
 // Show read every user's rows (Db.from, Db.get), with no `requires` under `all`, and show the
 // links to the writes to the owner only; the writes stay the owner's, so another user's row is
-// still a missing one to them.
+// still a missing one to them. A `@partition k` table's pages are scoped to the session's k the
+// same way (Db.scoped, getScoped, insertScoped, updateScoped, deleteScoped): another k's row is
+// a missing one. A keyless table's pages read and write every row (Db.from, Db.get, Db.insert,
+// Db.update, Db.delete), a missing row matched to a 404; NewResource warns of it.
 func resourceAccess(p *Program, t *Table, o ResourceOptions) access {
 	req := ""
 	if o.Requires != "" {
@@ -157,6 +168,20 @@ func resourceAccess(p *Program, t *Table, o ResourceOptions) access {
 		remove:        "Db.deleteMine",
 		perPage:       20,
 		keys:          keys,
+	}
+	switch {
+	case t.Owner == "" && t.PartKey != "":
+		a.sel, a.get, a.writeGet = "Db.scoped", "Db.getScoped", "Db.getScoped"
+		a.insert, a.update, a.remove = "Db.insertScoped", "Db.updateScoped", "Db.deleteScoped"
+		a.scope = t.PartKey
+		return a
+	case t.Owner == "":
+		a.sel, a.get, a.writeGet = "Db.from", "Db.get", "Db.get"
+		a.insert, a.update, a.remove = "Db.insert", "Db.update", "Db.delete"
+		if o.Read == "all" {
+			a.readRequires = ""
+		}
+		return a
 	}
 	if o.Read == "signed-in" || o.Read == "all" {
 		a.sel, a.get = "Db.from", "Db.get"
@@ -181,6 +206,11 @@ func ResourceFiles(p *Program, o ResourceOptions) (map[string]string, []string) 
 	userRef := func(c *Column) bool {
 		return c.Name == t.PartCol || (p.Session != nil && c.Ref != "" && c.Ref == p.Session.UserTable)
 	}
+	for _, c := range at.editable {
+		if userRef(c) && !c.Owner && c.Name != t.PartCol && c.Maybe && !c.HasDefault { // resourceCheck refused it required
+			at.unset = append(at.unset, c)
+		}
+	}
 	at.editable = slices.DeleteFunc(at.editable, userRef)
 	at.refs = slices.DeleteFunc(at.refs, userRef)
 	g.tables = []*crudTable{at}
@@ -200,8 +230,21 @@ func NewResource(p *Program, o ResourceOptions) ([]Edit, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if t == nil || t.Owner == "" {
-		return nil, nil, Refusef("`alder new resource` writes the pages of an `@owner` table so far")
+	if t == nil { // the table first, as `alder new table` makes it; the resource from the program that has it
+		table, err := NewTableWith(p, o.Table, o.Fields, TableOptions{})
+		if err != nil {
+			return nil, nil, err
+		}
+		p2, err := Probe(p.Dir, table)
+		if err != nil {
+			return nil, nil, err
+		}
+		o.Fields = nil
+		pages, notes, err := NewResource(p2, o)
+		if err != nil {
+			return nil, nil, err
+		}
+		return append(table, pages...), notes, nil
 	}
 	for _, r := range []struct{ kind, name, method, path string }{
 		{"Index", "Index", "GET", o.Path},
@@ -222,17 +265,54 @@ func NewResource(p *Program, o ResourceOptions) ([]Edit, []string, error) {
 	for _, path := range order {
 		edits = append(edits, Edit{Path: path, Create: true, Body: files[path]})
 	}
-	// the pages never name a user by an email (crudGen.labelOf): with nothing else to name one
-	// by, a column referring to users is left off them
 	var notes []string
-	if ut := userTable(p); ut != nil && userLabel(ut) == nil {
-		for _, c := range t.Columns {
-			if c.Ref == ut.Name {
-				notes = append(notes, "`"+c.Name+"` refers to users, whom only an email names: it was left off the list and the page; add a column such as `name: Text` to `"+ut.Name+"` to show it")
-			}
+	if t.Owner == "" && t.PartKey == "" {
+		notes = append(notes, keylessWarning(p, t, o))
+	}
+	ut := userTable(p)
+	for _, c := range t.Columns {
+		if ut == nil || c.Ref != ut.Name {
+			continue
+		}
+		// the form never lists the users: a user other than the owner is set by hand
+		if !c.Owner && c.Name != t.PartCol {
+			notes = append(notes, "`"+c.Name+"` refers to users and was left out of the form; add its input by hand")
+		}
+		// the pages never name a user by an email (crudGen.labelOf): with nothing else to name
+		// one by, a column referring to users is left off them
+		if userLabel(ut) == nil {
+			notes = append(notes, "`"+c.Name+"` refers to users, whom only an email names: it was left off the list and the page; add a column such as `name: Text` to `"+ut.Name+"` to show it")
 		}
 	}
 	return edits, notes, nil
+}
+
+// keylessWarning is the warning of the pages of t, a table with no `@owner` and no
+// `@partition` (spec §3): who can read and change every row, and how to scope it.
+func keylessWarning(p *Program, t *Table, o ResourceOptions) string {
+	who, remedy := "every signed-in user can read and change every row", ""
+	switch {
+	case userTable(p) == nil:
+		who, remedy = "any visitor can read and change every row", "alder new auth, then "
+	case o.Read == "all":
+		who = "any visitor can read every row and every signed-in user can change it"
+	}
+	return "`" + t.Name + "` has no `@owner`: " + who + ". To scope it: " + remedy +
+		"alder edit table " + t.Name + " add-field " + ownerField(p) + ", then alder regen resource " + t.Name
+}
+
+// ownerField is the `alder edit table … add-field` word of an `@owner` column referring to the
+// session's user table: `owner:User.UserId@ref=User@owner` (what `alder new auth` makes, when
+// the app has no users yet).
+func ownerField(p *Program) string {
+	users, id := "User", "UserId"
+	if ut := userTable(p); ut != nil {
+		users = ut.Name
+		if b, ok := ut.IDType.(*types.Brand); ok {
+			id = b.Name
+		}
+	}
+	return "owner:" + users + "." + id + "@ref=" + users + "@owner"
 }
 
 // userTable is the session's user table, nil when the app has none.

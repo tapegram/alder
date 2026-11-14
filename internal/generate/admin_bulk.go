@@ -350,6 +350,7 @@ func (g *crudGen) findTests(at *crudTable, mod string, imports *importSet, edit 
 		// exactly 200 rows are all offered
 		tb, at200, _ := start()
 		tb.bulkInsert(rt, 200-tb.counts[rt.Module], "")
+		g.othersOptions(tb, at) // not counted
 		tb.let("let page <- Test.get (%s)", at200())
 		tests = append(tests, TestData{Name: quote("a list of 200 " + pluralOf(rt) + " is offered whole"), Lines: tb.lines,
 			Result: fmt.Sprintf("List.length page.model.%s == 200", optionsField(c))})

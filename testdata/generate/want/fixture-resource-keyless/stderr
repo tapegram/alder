@@ -1,0 +1,1 @@
+alder new resource: warning: `Tag` has no `@owner`: every signed-in user can read and change every row. To scope it: alder edit table Tag add-field owner:User.UserId@ref=User@owner, then alder regen resource Tag

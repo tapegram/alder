@@ -192,6 +192,7 @@ type genCase struct {
 	fills  [][2]string
 	test   bool
 	pre    [][]string // generator commands run before it, to make what it works on
+	stderr bool       // a case that succeeds has a `stderr` golden too: its warnings and notices
 }
 
 var genCases = []genCase{
@@ -247,6 +248,18 @@ var genCases = []genCase{
 	// #194: reads wider than writes: Show shows another user's post, Edit/Save/Delete/Destroy 404
 	{name: "fixture-resource-read-signed-in", base: "fixture", args: []string{"new", "resource", "Post", "--read", "signed-in"}, test: true},
 	{name: "fixture-resource-read-all", base: "fixture", args: []string{"new", "resource", "Post", "--read", "all"}, test: true},
+	// #194: a partitioned table's pages read and write within the session's org (the Scoped family)
+	{name: "fixture-silo-resource", base: "fixture-silo", args: []string{"new", "resource", "Activity"}, test: true, stderr: true},
+	// #194: a keyless table warns and generates; its tests say what its pages do
+	{name: "fixture-resource-keyless", base: "fixture", args: []string{"new", "resource", "Tag"}, test: true, stderr: true},
+	{name: "fixture-resource-keyless-read-all", base: "fixture", pre: [][]string{{"new", "table", "Note", "title:Text.NonEmpty"}}, args: []string{"new", "resource", "Note", "--read", "all"}, test: true, stderr: true},
+	// #194: a visitor's pages cannot read the labels of a table scoped to its users
+	{name: "resource-read-all-scoped-ref", base: "fixture", args: []string{"new", "resource", "Tag", "--read", "all"}, code: 1},
+	// #194: a keyless table in an app with no users: any visitor reads and changes every row
+	{name: "resource-keyless-no-user", base: "scaffold", pre: [][]string{{"new", "table", "Note", "title:Text.NonEmpty"}}, args: []string{"new", "resource", "Note"}, test: true, stderr: true},
+	// #194: the table made first (a multi-word name: module BlogPosts, path /blog-posts); a
+	// non-owner user reference is left out of the form, with a notice
+	{name: "fixture-resource-create", base: "fixture", args: []string{"new", "resource", "BlogPost", "title:Text", "body:Text", "owner:User.UserId@ref=User@owner", "reviewer:Maybe User.UserId@ref=User", "post:Maybe Post.PostId@ref=Post"}, test: true, stderr: true},
 	// #194: refusals, one sentence each, nothing written
 	{name: "resource-no-table", base: "fixture", args: []string{"new", "resource", "Nope"}, code: 1},
 	{name: "resource-fields-existing", base: "fixture", args: []string{"new", "resource", "Post", "title:Text"}, code: 1},
@@ -335,7 +348,7 @@ func TestGenerate(t *testing.T) {
 				t.Fatalf("alder %s: exit %d, want %d\nstdout:\n%s\nstderr:\n%s", strings.Join(c.args, " "), code, c.code, out, errs)
 			}
 			golden(t, c.name, out, changedFiles(before, appFiles(t, dir)))
-			if c.code != 0 {
+			if c.code != 0 || c.stderr {
 				goldenStderr(t, c.name, errs)
 			}
 			if c.breaks {

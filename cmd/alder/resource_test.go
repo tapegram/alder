@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -19,37 +21,59 @@ import (
 // (or, for a count, without a `-- unscoped:` comment saying why).
 var resourceWrites = []string{"Db.get ", "Db.update ", "Db.delete ", "Db.insert "}
 
+// resourceCase is a resource of a fixture the tests below generate: the fixture, the table and
+// `--read`, its module's directory, and the call its Edit and Delete pages load the row with.
+type resourceCase struct {
+	name, base, table, read, dir, load string
+}
+
+var resourceCases = []resourceCase{
+	{"owner", "fixture", "Post", "owner", "Posts", "Db.getMine Post"},
+	{"signed-in", "fixture", "Post", "signed-in", "Posts", "Db.getMine Post"},
+	{"all", "fixture", "Post", "all", "Posts", "Db.getMine Post"},
+	// `@partition org`: every read and write within the session's org
+	{"partitioned", "fixture-silo", "Activity", "owner", "Activities", "Db.getScoped Activity"},
+}
+
 // TestResource_NoUnscopedWrites (Review Focus 1): every line of a generated module of an owned
-// table that names an unscoped get, update, delete or insert is a test's line (in the region
-// `tests`) or follows a `-- unscoped:` comment; under `--read signed-in` and `--read all` the
-// one such line is Show's read (Index's is a `Db.from`), and the write pages still load with
-// getMine.
+// or partitioned table that names an unscoped get, update, delete or insert, or reads the table
+// itself with Db.from, is a test's line (in the region `tests`) or follows a `-- unscoped:`
+// comment; under `--read signed-in` and `--read all` the one such get or write is Show's read
+// (Index's is a `Db.from`), and the write pages still load with getMine (getScoped).
 func TestResource_NoUnscopedWrites(t *testing.T) {
 	t.Parallel()
-	for _, read := range []string{"owner", "signed-in", "all"} {
-		t.Run(read, func(t *testing.T) {
+	for _, c := range resourceCases {
+		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			dir := genApp(t, "fixture")
-			if code, out, errs := alderIn(t, dir, "", "new", "resource", "Post", "--read", read); code != 0 {
-				t.Fatalf("alder new resource Post --read %s: exit %d\n%s%s", read, code, out, errs)
+			dir := genApp(t, c.base)
+			if code, out, errs := alderIn(t, dir, "", "new", "resource", c.table, "--read", c.read); code != 0 {
+				t.Fatalf("alder new resource %s --read %s: exit %d\n%s%s", c.table, c.read, code, out, errs)
 			}
-			files, err := filepath.Glob(filepath.Join(dir, "app", "Posts", "*.alder"))
+			files, err := filepath.Glob(filepath.Join(dir, "app", c.dir, "*.alder"))
 			if err != nil || len(files) != 5 {
-				t.Fatalf("app/Posts/: %v, %v", files, err)
+				t.Fatalf("app/%s/: %v, %v", c.dir, files, err)
 			}
 			for _, f := range files {
 				b, err := os.ReadFile(f)
 				if err != nil {
 					t.Fatal(err)
 				}
-				inTests, prev, excused := false, "", 0
+				from := regexp.MustCompile(`\bDb\.from ` + c.table + `\b`)
+				inTests, prev, stmt, excused := false, "", "", 0 // stmt: the line before the statement l is in
 				for i, l := range strings.Split(string(b), "\n") {
 					s := strings.TrimSpace(l)
+					if strings.HasPrefix(s, "let ") || stmt == "" {
+						stmt = prev
+					}
 					switch {
 					case s == "-- @resource begin tests":
 						inTests = true
 					case inTests && s == "-- @resource end":
 						inTests = false
+					}
+					// under --read owner, the table's own rows are read scoped but for a commented count
+					if c.read == "owner" && from.MatchString(l) && !inTests && !strings.HasPrefix(stmt, "-- unscoped:") {
+						t.Errorf("%s:%d: `Db.from %s` outside the tests with no `-- unscoped:` comment: %s", filepath.Base(f), i+1, c.table, s)
 					}
 					for _, w := range resourceWrites {
 						if !strings.Contains(l, w) || inTests {
@@ -60,27 +84,30 @@ func TestResource_NoUnscopedWrites(t *testing.T) {
 						}
 						excused++
 					}
-					prev = s
+					if s != "" {
+						prev = s
+					}
 				}
 				// the only unscoped get, update, delete or insert a page makes is Show's read
 				// under --read signed-in|all
 				want := 0
-				if filepath.Base(f) == "Show.alder" && read != "owner" {
+				if filepath.Base(f) == "Show.alder" && c.read != "owner" {
 					want = 1
 				}
 				if excused != want {
 					t.Errorf("%s: %d unscoped gets and writes outside the tests, want %d", filepath.Base(f), excused, want)
 				}
-				if base := filepath.Base(f); (base == "Edit.alder" || base == "Delete.alder") && !strings.Contains(string(b), "Db.getMine Post") {
-					t.Errorf("%s does not load with getMine", base)
+				if base := filepath.Base(f); (base == "Edit.alder" || base == "Delete.alder") && !strings.Contains(string(b), c.load) {
+					t.Errorf("%s does not load with %s", base, c.load)
 				}
 			}
 		})
 	}
 }
 
-// TestResource_Mutate: the generated tests kill the mutants of the resource's code (and of the
-// fixture's own), as the admin's do, under each `--read`.
+// TestResource_Mutate: the generated tests kill the mutants of the resource's code, as the
+// admin's do: Post's under each `--read`, Activity's (partitioned) and Tag's (keyless). The score
+// is of the resource's modules' mutants (fixture-silo's own code has survivors of its own).
 func TestResource_Mutate(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
@@ -88,26 +115,51 @@ func TestResource_Mutate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs every mutant of the fixture's resource")
 	}
-	for _, read := range []string{"owner", "signed-in", "all"} {
-		t.Run(read, func(t *testing.T) {
+	cases := append(slices.Clone(resourceCases), resourceCase{"keyless", "fixture", "Tag", "signed-in", "Tags", ""})
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			dir := genApp(t, "fixture")
-			if code, out, errs := alderIn(t, dir, "", "new", "resource", "Post", "--read", read); code != 0 {
-				t.Fatalf("alder new resource Post --read %s: exit %d\n%s%s", read, code, out, errs)
+			dir := genApp(t, c.base)
+			if code, out, errs := alderIn(t, dir, "", "new", "resource", c.table, "--read", c.read); code != 0 {
+				t.Fatalf("alder new resource %s --read %s: exit %d\n%s%s", c.table, c.read, code, out, errs)
 			}
 			var out, errb bytes.Buffer
-			code := runTestTo(withBuildDir(t, []string{dir, "--mutate"}), &out, &errb)
-			m := scoreRe.FindStringSubmatch(out.String())
-			if code != 0 || m == nil {
-				t.Fatalf("alder test --mutate: exit %d\n%s%s", code, out.String(), errb.String())
+			code := runTestTo(withBuildDir(t, []string{dir, "--mutate", "--json"}), &out, &errb)
+			if code != 0 {
+				t.Fatalf("alder test --mutate --json: exit %d\n%s%s", code, out.String(), errb.String())
 			}
-			t.Logf("the fixture with its Post resource, --read %s: %s", read, m[0])
-			_, survivors, _ := strings.Cut(out.String(), "survived:\n")
-			if survivors != "" {
-				t.Logf("survivors:\n%s", survivors)
+			var killed, total int
+			var survivors []string
+			for _, l := range strings.Split(out.String(), "\n") {
+				var ms struct {
+					Mutants []struct {
+						Module, Decl, Kind, Before, After string
+						Line                              int
+						Killed                            bool
+					}
+				}
+				if !strings.HasPrefix(l, `{"mutants":`) || json.Unmarshal([]byte(l), &ms) != nil {
+					continue
+				}
+				for _, m := range ms.Mutants {
+					if !strings.HasPrefix(m.Module, c.dir+".") {
+						continue
+					}
+					total++
+					if m.Killed {
+						killed++
+					} else {
+						survivors = append(survivors, fmt.Sprintf("%s %s:%d %s: %s → %s", m.Module, m.Decl, m.Line, m.Kind, m.Before, m.After))
+					}
+				}
 			}
-			if m[4] < "0.95" {
-				t.Errorf("score %s < 0.95; survivors:\n%s", m[4], survivors)
+			if total == 0 {
+				t.Fatalf("no mutant of app/%s/:\n%s", c.dir, out.String())
+			}
+			score := float64(killed) / float64(total)
+			t.Logf("the %s resource (--read %s): %d mutants, %d killed (score %.2f)\n%s", c.table, c.read, total, killed, score, strings.Join(survivors, "\n"))
+			if score < 0.95 {
+				t.Errorf("score %.2f < 0.95; survivors:\n%s", score, strings.Join(survivors, "\n"))
 			}
 		})
 	}

@@ -90,6 +90,7 @@ func TestResourceCheck_Refusals(t *testing.T) {
 		{"bad module", "fixture", ResourceOptions{Table: "Post", Module: "posts"}, "", "`--module posts` is not a module name: write capitalised names joined by dots, such as `Posts`"},
 		{"bad path", "fixture", ResourceOptions{Table: "Post", Path: "posts"}, "", "`--path posts` must begin with `/`, such as `/posts`"},
 		{"author", "fixture", ResourceOptions{Table: "Comment"}, "", "`author` is required and refers to users: give it a default or make it `Maybe`"},
+		{"read all, scoped ref", "fixture", ResourceOptions{Table: "Tag", Read: "all"}, "", "`Tag` refers to `Post`, whose rows are each user's: pages a visitor reads cannot show them; use `--read signed-in`"},
 	}
 	for _, c := range cases {
 		p := loadResourceFixture(t, c.app)
@@ -121,6 +122,9 @@ func TestResourceCheck_NoSessionUser(t *testing.T) {
 	if !isRefusal(err) {
 		t.Errorf("--requires user: %v", err)
 	}
+	// (without its reference to Post, whose rows are each user's: a visitor's page cannot name them)
+	tag := cp.TableNamed("Tag")
+	tag.Columns = slices.DeleteFunc(tag.Columns, func(c *Column) bool { return c.Name == "post" })
 	got, _, _, err := resourceCheck(&cp, ResourceOptions{Table: "Tag"})
 	if err != nil || got.Read != "all" || got.Requires != "" {
 		t.Errorf("keyless default: %+v %v", got, err)
@@ -194,13 +198,96 @@ func TestNewResource_Owner(t *testing.T) {
 	}
 }
 
-// TestNewResource_Interim: until the keyless, partitioned and create-from-fields resources land
-// (#194 Task 8), a table with no `@owner` is refused, nothing written.
-func TestNewResource_Interim(t *testing.T) {
+// TestNewResource_Partitioned: Activity (`@partition org`) is read and written within the
+// session's org only (the Scoped family), every route requiring `user, org`; the partition
+// column stays out of the form; no warning.
+func TestNewResource_Partitioned(t *testing.T) {
+	p := loadResourceFixture(t, "fixture-silo")
+	edits, notes, err := NewResource(p, ResourceOptions{Table: "Activity"})
+	if err != nil || len(notes) != 0 {
+		t.Fatalf("NewResource: %v, %v", err, notes)
+	}
+	body := map[string]string{}
+	for _, e := range edits {
+		body[e.Path] = e.Body
+	}
+	for path, want := range map[string]string{
+		"app/Activities/Index.alder":  "Db.scoped Activity",
+		"app/Activities/Show.alder":   "let row <- Db.getScoped Activity params.id",
+		"app/Activities/New.alder":    "let id <- Db.insertScoped Activity { text: params.form.text }",
+		"app/Activities/Edit.alder":   "let _ <- Db.updateScoped Activity params.id",
+		"app/Activities/Delete.alder": "let _ <- Db.deleteScoped Activity params.id",
+	} {
+		if !strings.Contains(body[path], want) || !strings.Contains(body[path], "requires user, org") {
+			t.Errorf("%s has no %q or no `requires user, org`", path, want)
+		}
+	}
+	if form, _, _ := RegionsFor("@resource").Body(body["app/Activities/New.alder"], "form"); strings.Contains(form, "org") {
+		t.Errorf("the form edits the partition column:\n%s", form)
+	}
+}
+
+// TestNewResource_Keyless: a table with neither `@owner` nor `@partition` generates, with one
+// warning naming who can read and change its rows and the field that scopes it (spec §3). The
+// variant of an app with no users is the golden `resource-keyless-no-user`'s.
+func TestNewResource_Keyless(t *testing.T) {
+	const remedy = " To scope it: alder edit table Tag add-field owner:User.UserId@ref=User@owner, then alder regen resource Tag"
+	for _, c := range []struct {
+		name, read, want string
+	}{
+		{"signed-in", "", "`Tag` has no `@owner`: every signed-in user can read and change every row." + remedy},
+	} {
+		p := loadResourceFixture(t, "fixture")
+		edits, notes, err := NewResource(p, ResourceOptions{Table: "Tag", Read: c.read})
+		if err != nil || len(edits) != 5 || !slices.Equal(notes, []string{c.want}) {
+			t.Errorf("%s: %v, %d edits, notes %q", c.name, err, len(edits), notes)
+		}
+		for _, e := range edits {
+			if strings.Contains(e.Body, "Mine ") || strings.Contains(e.Body, "Scoped ") {
+				t.Errorf("%s: %s scopes a keyless table's rows", c.name, e.Path)
+			}
+		}
+	}
+}
+
+// TestNewResource_Create: fields given for a table that does not exist make it first, as
+// `alder new table` would, then its pages from the program that has it (Review Focus 2: a
+// multi-word table); a non-owner user reference is left out of the form, with a notice, and
+// its insert writes Nothing.
+func TestNewResource_Create(t *testing.T) {
 	p := loadResourceFixture(t, "fixture")
-	edits, _, err := NewResource(p, ResourceOptions{Table: "Tag"})
-	if !isRefusal(err) || !strings.Contains(err.Error(), "writes the pages of an `@owner` table so far") || edits != nil {
-		t.Errorf("a keyless table: %v, %d edits", err, len(edits))
+	var fields []FieldSpec
+	for _, w := range []string{"title:Text", "owner:User.UserId@ref=User@owner", "reviewer:Maybe User.UserId@ref=User"} {
+		f, err := ParseField(w, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fields = append(fields, f)
+	}
+	edits, notes, err := NewResource(p, ResourceOptions{Table: "BlogPost", Fields: fields})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	body := map[string]string{}
+	for _, e := range edits {
+		paths = append(paths, e.Path)
+		body[e.Path] = e.Body
+	}
+	if want := []string{"app/Table/BlogPost.alder", "app/BlogPosts/Index.alder", "app/BlogPosts/Show.alder", "app/BlogPosts/New.alder", "app/BlogPosts/Edit.alder", "app/BlogPosts/Delete.alder"}; !slices.Equal(paths, want) {
+		t.Fatalf("paths = %v", paths)
+	}
+	if want := []string{"`reviewer` refers to users and was left out of the form; add its input by hand"}; !slices.Equal(notes, want) {
+		t.Errorf("notes = %q", notes)
+	}
+	if !strings.Contains(body["app/BlogPosts/Index.alder"], "`alder new resource BlogPost --module BlogPosts --path /blog-posts --read owner`") {
+		t.Errorf("the header does not record the defaults of the table made")
+	}
+	if !strings.Contains(body["app/BlogPosts/New.alder"], "Db.insertMine BlogPost { title: params.form.title, reviewer: Nothing }") {
+		t.Errorf("the insert does not leave the reviewer out:\n%s", body["app/BlogPosts/New.alder"])
+	}
+	if form, _, _ := RegionsFor("@resource").Body(body["app/BlogPosts/New.alder"], "form"); strings.Contains(form, "reviewer") || strings.Contains(form, "owner") {
+		t.Errorf("the form edits a user reference:\n%s", form)
 	}
 }
 

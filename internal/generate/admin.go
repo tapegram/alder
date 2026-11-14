@@ -517,8 +517,8 @@ func (g *crudGen) tb(mod string, imports *importSet, admin bool) *testBuilder {
 			return g.tbIn(mod, imports, admin, s, false)
 		}
 	}
-	tb := newTestBuilder(g.p, mod, imports)
-	if admin {
+	tb := newTestBuilder(g.p, mod, imports).keyedForKeys(g.a.keys) // a resource's `org`: its rows the session's
+	if admin && g.p.Session != nil && g.p.Session.User != nil {    // an app without users: its tests' visitor is everyone
 		tb.login(g.a.role)
 	}
 	return tb
