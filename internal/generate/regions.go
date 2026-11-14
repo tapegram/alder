@@ -24,6 +24,10 @@ const (
 	RegionEnd   = "-- @admin end"
 )
 
+// regionBegin and regionEnd are the markers' text for marker ("@admin" or "@resource").
+func regionBegin(marker string) string { return "-- " + marker + " begin " }
+func regionEnd(marker string) string   { return "-- " + marker + " end" }
+
 // regionSpan is one region of a file: its name, and the lines (0-based) of its markers.
 type regionSpan struct {
 	name       string
@@ -32,7 +36,8 @@ type regionSpan struct {
 
 // parseRegions finds the regions of src, refusing a marker without its pair, a region begun
 // inside another, a begin marker without a name, and a name used twice.
-func parseRegions(src string) ([]regionSpan, error) {
+func parseRegions(src, marker string) ([]regionSpan, error) {
+	beginMark, endMark := regionBegin(marker), regionEnd(marker)
 	var out []regionSpan
 	open := -1
 	name := ""
@@ -40,10 +45,10 @@ func parseRegions(src string) ([]regionSpan, error) {
 	for i, l := range strings.Split(src, "\n") {
 		t := strings.TrimSpace(l)
 		switch {
-		case strings.HasPrefix(t+" ", RegionBegin) && strings.TrimSpace(strings.TrimPrefix(t+" ", RegionBegin)) == "":
-			return nil, fmt.Errorf("the begin marker at line %d has no region name: write `%s<name>`", i+1, RegionBegin)
-		case strings.HasPrefix(t, RegionBegin):
-			n := strings.TrimSpace(strings.TrimPrefix(t, RegionBegin))
+		case strings.HasPrefix(t+" ", beginMark) && strings.TrimSpace(strings.TrimPrefix(t+" ", beginMark)) == "":
+			return nil, fmt.Errorf("the begin marker at line %d has no region name: write `%s<name>`", i+1, beginMark)
+		case strings.HasPrefix(t, beginMark):
+			n := strings.TrimSpace(strings.TrimPrefix(t, beginMark))
 			if open >= 0 {
 				return nil, fmt.Errorf("region `%s` has no end marker (region `%s` begins at line %d, inside it)", name, n, i+1)
 			}
@@ -52,7 +57,7 @@ func parseRegions(src string) ([]regionSpan, error) {
 			}
 			seen[n] = i + 1
 			open, name = i, n
-		case t == RegionEnd:
+		case t == endMark:
 			if open < 0 {
 				return nil, fmt.Errorf("the end marker at line %d has no begin marker", i+1)
 			}
@@ -68,19 +73,23 @@ func parseRegions(src string) ([]regionSpan, error) {
 
 // Regions is the region machinery, as the spec names it: Regions.Replace(src, name, body),
 // Regions.Names(src), Regions.Check(src), Regions.Body(src, name).
-var Regions regionOps
+var Regions = RegionsFor("@admin")
 
-type regionOps struct{}
+// regionOps is the region machinery for one marker.
+type regionOps struct{ marker string }
+
+// RegionsFor is the region machinery for marker ("@admin" or "@resource").
+func RegionsFor(marker string) regionOps { return regionOps{marker: marker} }
 
 // Check reports a broken marker pair in src (nil when every region is whole).
-func (regionOps) Check(src string) error {
-	_, err := parseRegions(src)
+func (r regionOps) Check(src string) error {
+	_, err := parseRegions(src, r.marker)
 	return err
 }
 
 // Names are the names of src's regions, in order.
-func (regionOps) Names(src string) ([]string, error) {
-	spans, err := parseRegions(src)
+func (r regionOps) Names(src string) ([]string, error) {
+	spans, err := parseRegions(src, r.marker)
 	if err != nil {
 		return nil, err
 	}
@@ -93,8 +102,8 @@ func (regionOps) Names(src string) ([]string, error) {
 
 // Body is the text between the markers of region name in src ("" for an empty region),
 // and whether src has that region.
-func (regionOps) Body(src, name string) (string, bool, error) {
-	spans, err := parseRegions(src)
+func (r regionOps) Body(src, name string) (string, bool, error) {
+	spans, err := parseRegions(src, r.marker)
 	if err != nil {
 		return "", false, err
 	}
@@ -110,15 +119,20 @@ func (regionOps) Body(src, name string) (string, bool, error) {
 // Replace is src with the lines of region name replaced by body (the lines as they are to
 // read, indentation included; "" for none). The markers and every line outside the region stay
 // as they are. A region src does not have is refused.
-func (regionOps) Replace(src, name, body string) (string, error) {
-	return ReplaceRegions(src, []Region{{Name: name, Body: body}})
+func (r regionOps) Replace(src, name, body string) (string, error) {
+	return r.ReplaceAll(src, []Region{{Name: name, Body: body}})
 }
 
-// ReplaceRegions is src with each of regions' bodies in place of its region's lines: the hook
-// Apply calls for an Edit with Replace. Every region named must be in src, once; src's other
-// regions and the text outside them are left alone.
+// ReplaceRegions is ReplaceAll for the admin marker: the hook Apply calls for an Edit with
+// Replace.
 func ReplaceRegions(src string, regions []Region) (string, error) {
-	spans, err := parseRegions(src)
+	return Regions.ReplaceAll(src, regions)
+}
+
+// ReplaceAll is src with each of regions' bodies in place of its region's lines. Every region
+// named must be in src, once; src's other regions and the text outside them are left alone.
+func (r regionOps) ReplaceAll(src string, regions []Region) (string, error) {
+	spans, err := parseRegions(src, r.marker)
 	if err != nil {
 		return "", err
 	}

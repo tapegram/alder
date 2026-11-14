@@ -87,3 +87,21 @@ func TestRegions_Broken(t *testing.T) {
 		t.Errorf("a trailing comment read as a marker: %v", names)
 	}
 }
+
+func TestRegionsFor_Resource(t *testing.T) {
+	src := "-- @resource begin load\nold\n-- @resource end\n-- @admin begin x\nkeep\n-- @admin end\n"
+	res := RegionsFor("@resource")
+	if got, _ := res.Names(src); !slices.Equal(got, []string{"load"}) {
+		t.Fatalf("resource names = %v", got)
+	}
+	if got, _ := Regions.Names(src); !slices.Equal(got, []string{"x"}) {
+		t.Fatalf("admin names = %v", got)
+	}
+	got, err := res.Replace(src, "load", "new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := strings.Replace(src, "old", "new", 1); got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}

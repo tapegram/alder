@@ -12,7 +12,7 @@ import (
 // @restrict below a @cascade, or a tree of the table's own (a stop node), which the page's query
 // of the rows' direct referrers does not follow (a @cascade below a @cascade is the database's
 // to follow, and is no reason); and a set for each Bool or union column its form edits.
-func (g *adminGen) bulkInfo(at *adminTable) {
+func (g *crudGen) bulkInfo(at *crudTable) {
 	at.bulkDel = true
 	for _, n := range walk(g.closure(at)) {
 		if n.stop || (n.parent != nil && n.col.OnDelete == "restrict") {
@@ -29,9 +29,9 @@ func (g *adminGen) bulkInfo(at *adminTable) {
 	}
 }
 
-func (at *adminTable) hasBulk() bool { return at.bulkDel || len(at.bulkSet) > 0 }
+func (at *crudTable) hasBulk() bool { return at.bulkDel || len(at.bulkSet) > 0 }
 
-func (at *adminTable) idColumn() *Column {
+func (at *crudTable) idColumn() *Column {
 	for _, c := range at.t.Columns {
 		if c.ID {
 			return c
@@ -44,7 +44,7 @@ func (at *adminTable) idColumn() *Column {
 // do to each (the rows that keep one from being deleted are listed and left), and a form for
 // each action, each a POST route taking the same ids, which answers the page again (refresh)
 // with a toast.
-func (g *adminGen) bulk(at *adminTable) {
+func (g *crudGen) bulk(at *crudTable) {
 	if !at.hasBulk() {
 		return
 	}
@@ -87,12 +87,12 @@ func (g *adminGen) bulk(at *adminTable) {
 
 	path := at.path + "/bulk"
 	params := at.params(mod, imports, []string{"ids: List " + idT})
-	routes := []string{routeLine("Bulk", "GET", path, g.keepWires(mod, params), "", at.requires())}
+	routes := []string{routeLine("Bulk", "GET", path, g.keepWires(mod, params), "", at.siloed(adminRequires))}
 	var forms []string // the actions' forms and updates
 	var views []string
 	action := func(name, method, where, form, verb, ok string, body []string) {
 		g.names[mod] = append(g.names[mod], name)
-		routes = append(routes, routeLine(name, method, where, params, form, at.requires()))
+		routes = append(routes, routeLine(name, method, where, params, form, at.siloed(adminRequires)))
 		upd := append([]string{"let model <- selected params.ids", "if tooMany model then", "  Task.succeed (Response.invalid (" + bulkTooMany + "))", "else {"}, indentAll(body, "  ")...)
 		upd = append(upd, "  Task.succeed (Response.refresh |> Response.success ("+quote(verb+" ")+" ++ "+ok+"))", "}")
 		forms = append(forms, strings.Split(strings.TrimSuffix(g.update(name, strings.Join(indentAll(upd, "  "), "\n")), "\n"), "\n")...)
@@ -127,12 +127,12 @@ func (g *adminGen) bulk(at *adminTable) {
 	}
 
 	var b strings.Builder
-	b.WriteString(regionAt("", "routes", routes) + "\n\n")
+	b.WriteString(g.regionAt("", "routes", routes) + "\n\n")
 	fmt.Fprintf(&b, "-- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep\n-- from being deleted, how many ids the page was given, and the ids, which each action takes.\ntype Model = { rows: List %s, held: List %s, chosen: Int, ids: List %s }\n\n", t.Name, idT, idT)
 	fmt.Fprintf(&b, "-- maxRows is how many rows one action takes: a page of the list. More are refused.\nmaxRows : Int\nmaxRows = %d\n\n", bulkMax)
 	b.WriteString("-- tooMany says whether the page was given more ids than an action takes.\ntooMany : Model -> Bool\ntooMany model = model.chosen > maxRows\n\n")
 	b.WriteString("-- selected is the rows of ids: the page shows them, and each action reads them again.\n")
-	fmt.Fprintf(&b, "selected : List %s -> Query Model\nselected ids = {\n%s\n}\n\n", idT, regionAt("  ", "load", wrapAll(loads)))
+	fmt.Fprintf(&b, "selected : List %s -> Query Model\nselected ids = {\n%s\n}\n\n", idT, g.regionAt("  ", "load", wrapAll(loads)))
 	b.WriteString(g.load("Bulk", "  selected params.ids"))
 	cond := "List.member row." + id + " model.held"
 	sig := "refused : Model -> " + t.Name + " -> Bool\nrefused model row = "
@@ -150,12 +150,12 @@ func (g *adminGen) bulk(at *adminTable) {
 	}
 	upd := append([]string{"-- Each action reads the rows again and answers with the page again and a toast; none takes",
 		"-- more than maxRows rows.", ""}, forms...)
-	b.WriteString(regionAt("", "bulk", upd) + "\n\n")
+	b.WriteString(g.regionAt("", "bulk", upd) + "\n\n")
 
 	label := textOf(at.label, "row."+at.label.Name)
 	b.WriteString(viewHead("Bulk"))
 	fmt.Fprintf(&b, "  %s\n    <h1>{Text.fromInt (List.length model.rows)} selected</h1>\n\n    <al-card>\n      {if tooMany model then <al-alert id=\"too-many\" variant=\"warning\">{%s}</al-alert> else Html.none}\n      <ul id=\"selected\">\n        {for row in model.rows ->\n          <li>{%s}%s</li>}\n      </ul>\n%s\n    </al-card>\n    <a href={%s {}}>Back to the list</a>\n",
-		open, bulkTooMany, label, kept, regionAt("      ", "actions", views), at.route("Index"))
+		open, bulkTooMany, label, kept, g.regionAt("      ", "actions", views), at.route("Index"))
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	var tests []TestData
@@ -296,7 +296,7 @@ const bulkTooMany = `"Choose at most " ++ Text.fromInt maxRows ++ " rows at a ti
 
 // bulkForms are the list's two ways to the bulk page: the rows chosen (the checkboxes name this
 // form), and every row on the page (a form of its own, no script needed).
-func (g *adminGen) bulkForms(at *adminTable) string {
+func (g *crudGen) bulkForms(at *crudTable) string {
 	if !at.hasBulk() {
 		return ""
 	}
@@ -317,7 +317,7 @@ func (g *adminGen) bulkForms(at *adminTable) string {
 // 200 rows its select holds them all, past that it holds 50 and the search narrows them (Edit
 // keeps the row's own value too: ownFirstTest), the search route answers the page at the text, and a value
 // outside the rendered options (a crafted request) is refused with the field error.
-func (g *adminGen) findTests(at *adminTable, mod string, imports *importSet, edit bool) []TestData {
+func (g *crudGen) findTests(at *crudTable, mod string, imports *importSet, edit bool) []TestData {
 	var tests []TestData
 	get := "New"
 	if edit {
@@ -407,7 +407,7 @@ func (g *adminGen) findTests(at *adminTable, mod string, imports *importSet, edi
 // ownFirstTest is the Edit page's test of a long table behind reference c whose row's own value
 // sorts after the 50 the select holds (its label is "zz-…", every other row's matches the empty
 // search): the select offers it first and once, and saving the row as it is keeps it.
-func (g *adminGen) ownFirstTest(at *adminTable, mod string, imports *importSet, c *Column) TestData {
+func (g *crudGen) ownFirstTest(at *crudTable, mod string, imports *importSet, c *Column) TestData {
 	rt := g.p.TableNamed(c.Ref)
 	tb := g.tb(mod, imports, true)
 	l := rt.Label()
