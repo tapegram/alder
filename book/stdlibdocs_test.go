@@ -25,11 +25,11 @@ import (
 // pendingDocs are the modules not yet documented; TestStdlibDocs_Complete skips them. Each
 // documenting task removes its modules; the last deletes the list.
 var pendingDocs = map[string]bool{
-	"Bool": true, "Bytes": true, "Date": true, "Db": true, "Dict": true, "File": true,
-	"Float": true, "Fuzz": true, "Html": true, "Http": true, "Int": true, "Json": true,
+	"Date": true, "Db": true, "File": true,
+	"Fuzz": true, "Html": true, "Http": true, "Json": true,
 	"Log": true, "Notice": true, "Prelude": true, "Query": true,
 	"Random": true, "Response": true, "Session": true, "Task": true,
-	"Test": true, "Text": true, "Time": true, "Url": true,
+	"Test": true, "Time": true, "Url": true,
 }
 
 // noExample are the values that cannot have an example, each with the reason. Keys are

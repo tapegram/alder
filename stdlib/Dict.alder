@@ -1,24 +1,212 @@
+-- Functions for `Dict`, a collection that looks a value up by its key.
+--
+-- A key may be any value that `==` works on, such as a `Text`, an `Int`, a `List` or a record,
+-- but not a function. Two keys are the same key when they are `==`. A `Dict` remembers the order
+-- in which keys were first added, and `toList`, `keys`, `values`, `map`, `filter` and `foldl` all
+-- follow that order. `==` on two dicts ignores the order. A function never changes its input: it
+-- gives back a new `Dict`.
+--
+-- Book: chapter 9, "Dict"
 module Dict
 
+-- A `Dict` with nothing in it.
+--
+--     Dict.size Dict.empty == 0
+--     Dict.get "a" Dict.empty == Nothing
+--
+-- Book: chapter 9, "Dict"
 empty : Dict k v
+
+-- Builds a `Dict` from a list of keys and values.
+--
+-- The entries go in list order. When a key appears more than once, it keeps its first position
+-- and takes its last value.
+--
+--     Dict.get "b" (Dict.fromList [{ key: "a", value: 1 }, { key: "b", value: 2 }]) == Just 2
+--     Dict.keys (Dict.fromList [{ key: "x", value: 1 }, { key: "y", value: 2 }, { key: "x", value: 3 }]) == ["x", "y"]
+--     Dict.get "x" (Dict.fromList [{ key: "x", value: 1 }, { key: "y", value: 2 }, { key: "x", value: 3 }]) == Just 3
+--     Dict.fromList [] == Dict.empty
+--
+-- Book: chapter 9, "Dict"
 fromList : List { key: k, value: v } -> Dict k v
+
+-- Lists the entries of a `Dict` as records with a `key` and a `value`.
+--
+-- The entries come in the order the keys were first added.
+--
+--     Dict.toList (Dict.singleton "a" 1) == [{ key: "a", value: 1 }]
+--     Dict.toList (Dict.insert "b" 2 (Dict.singleton "a" 1)) == [{ key: "a", value: 1 }, { key: "b", value: 2 }]
+--     Dict.toList Dict.empty == []
+--
+-- Book: chapter 9, "Dict"
 toList : Dict k v -> List { key: k, value: v }
+
+-- Looks up a key, giving `Just` its value or `Nothing` when the key is not there.
+--
+--     Dict.get "a" (Dict.singleton "a" 1) == Just 1
+--     Dict.get "z" (Dict.singleton "a" 1) == Nothing
+--
+-- Book: chapter 9, "Dict"
 get : k -> Dict k v -> Maybe v
+
+-- Binds a key to a value.
+--
+-- A key that is already there keeps its position and gets the new value. A new key goes at the
+-- end.
+--
+--     Dict.get "b" (Dict.insert "b" 2 (Dict.singleton "a" 1)) == Just 2
+--     Dict.keys (Dict.insert "b" 2 (Dict.singleton "a" 1)) == ["a", "b"]
+--     Dict.toList (Dict.insert "a" 9 (Dict.singleton "a" 1)) == [{ key: "a", value: 9 }]
+--
+-- Book: chapter 9, "Dict"
 insert : k -> v -> Dict k v -> Dict k v
+
+-- Takes a key out of a `Dict`.
+--
+-- A key that is not there leaves the `Dict` as it was. The other entries keep their order.
+--
+--     Dict.keys (Dict.remove "a" (Dict.fromList [{ key: "a", value: 1 }, { key: "b", value: 2 }])) == ["b"]
+--     Dict.remove "z" (Dict.singleton "a" 1) == Dict.singleton "a" 1
+--
+-- Book: chapter 9, "Dict"
 remove : k -> Dict k v -> Dict k v
+
+-- Lists the keys of a `Dict`, in the order they were first added.
+--
+--     Dict.keys (Dict.fromList [{ key: "b", value: 1 }, { key: "a", value: 2 }]) == ["b", "a"]
+--     Dict.keys Dict.empty == []
+--
+-- Book: chapter 9, "Dict"
 keys : Dict k v -> List k
+
+-- Lists the values of a `Dict`, in the order their keys were first added.
+--
+-- Two keys with the same value give that value twice.
+--
+--     Dict.values (Dict.fromList [{ key: "b", value: 1 }, { key: "a", value: 2 }]) == [1, 2]
+--     Dict.values (Dict.fromList [{ key: "a", value: 7 }, { key: "b", value: 7 }]) == [7, 7]
+--     Dict.values Dict.empty == []
+--
+-- Book: chapter 9, "Dict"
 values : Dict k v -> List v
+
+-- The number of entries in a `Dict`.
+--
+--     Dict.size (Dict.fromList [{ key: "a", value: 1 }, { key: "b", value: 2 }]) == 2
+--     Dict.size Dict.empty == 0
+--
+-- Book: chapter 9, "Dict"
 size : Dict k v -> Int
+
+-- A `Dict` with one entry.
+--
+--     Dict.toList (Dict.singleton "a" 1) == [{ key: "a", value: 1 }]
+--     Dict.size (Dict.singleton "a" 1) == 1
+--
+-- Book: chapter 9, "Dict"
 singleton : k -> v -> Dict k v
+
+-- Tells whether a `Dict` has no entries.
+--
+--     Dict.isEmpty Dict.empty == True
+--     Dict.isEmpty (Dict.singleton "a" 1) == False
+--
+-- Book: chapter 9, "Dict"
 isEmpty : Dict k v -> Bool
+
+-- Tells whether a key is in a `Dict`.
+--
+--     Dict.member "a" (Dict.singleton "a" 1) == True
+--     Dict.member "z" (Dict.singleton "a" 1) == False
+--
+-- Book: chapter 9, "Dict"
 member : k -> Dict k v -> Bool
--- Just binds the key (position kept, a new key is appended); Nothing removes it.
+
+-- Changes the value of one key with a function.
+--
+-- The function gets `Just` the current value, or `Nothing` when the key is not there. If it
+-- gives `Just` a value, the key is bound to it: an existing key keeps its position and a new key
+-- goes at the end. If it gives `Nothing`, the key is removed, or stays absent.
+--
+--     Dict.get "a" (Dict.update "a" (\m -> Maybe.map (\n -> n + 1) m) (Dict.singleton "a" 1)) == Just 2
+--     Dict.get "b" (Dict.update "b" (\m -> Just 0) (Dict.singleton "a" 1)) == Just 0
+--     Dict.keys (Dict.update "b" (\m -> Just 0) (Dict.singleton "a" 1)) == ["a", "b"]
+--     Dict.member "a" (Dict.update "a" (\m -> Nothing) (Dict.singleton "a" 1)) == False
+--     Dict.size (Dict.update "z" (\m -> Nothing) (Dict.singleton "a" 1)) == 1
+--
+-- Book: chapter 9, "Dict"
 update : k -> (Maybe v -> Maybe v) -> Dict k v -> Dict k v
+
+-- Changes every value with a function that also sees the key.
+--
+-- The keys and their order stay the same.
+--
+--     Dict.toList (Dict.map (\k v -> v * 2) (Dict.fromList [{ key: "a", value: 1 }, { key: "b", value: 2 }])) == [{ key: "a", value: 2 }, { key: "b", value: 4 }]
+--     Dict.values (Dict.map (\k v -> k ++ v) (Dict.singleton "a" "1")) == ["a1"]
+--
+-- Book: chapter 9, "Dict"
 map : (k -> v -> w) -> Dict k v -> Dict k w
+
+-- Keeps the entries for which a function gives `True`.
+--
+-- The function sees the key and the value. The entries that stay keep their order.
+--
+--     Dict.keys (Dict.filter (\k v -> v > 1) (Dict.fromList [{ key: "a", value: 1 }, { key: "b", value: 2 }, { key: "c", value: 3 }])) == ["b", "c"]
+--     Dict.size (Dict.filter (\k v -> False) (Dict.singleton "a" 1)) == 0
+--
+-- Book: chapter 9, "Dict"
 filter : (k -> v -> Bool) -> Dict k v -> Dict k v
+
+-- Folds the entries of a `Dict` into one value, starting from the first key added.
+--
+-- The function gets the key, the value and the result so far, and the second argument is the
+-- starting result. For an empty `Dict` the starting result comes back.
+--
+--     Dict.foldl (\k v acc -> acc + v) 0 (Dict.fromList [{ key: "a", value: 1 }, { key: "b", value: 2 }]) == 3
+--     Dict.foldl (\k v acc -> acc ++ [k]) [] (Dict.fromList [{ key: "b", value: 1 }, { key: "a", value: 2 }]) == ["b", "a"]
+--     Dict.foldl (\k v acc -> acc + v) 0 Dict.empty == 0
+--
+-- Book: chapter 9, "Dict"
 foldl : (k -> v -> b -> b) -> b -> Dict k v -> b
+
+-- Splits a `Dict` in two by a test on each entry.
+--
+-- The `yes` dict has the entries for which the function gives `True` and the `no` dict has the
+-- rest. Both keep the original order.
+--
+--     Dict.keys (Dict.partition (\k v -> v > 1) (Dict.fromList [{ key: "a", value: 1 }, { key: "b", value: 2 }])).yes == ["b"]
+--     Dict.keys (Dict.partition (\k v -> v > 1) (Dict.fromList [{ key: "a", value: 1 }, { key: "b", value: 2 }])).no == ["a"]
+--
+-- Book: chapter 9, "Dict"
 partition : (k -> v -> Bool) -> Dict k v -> { yes: Dict k v, no: Dict k v }
--- Keeps the first dict's values and order; new keys from the second are appended.
+
+-- Combines two dicts, preferring the first.
+--
+-- A key in both dicts keeps the first dict's value and position. The keys only the second dict
+-- has are added at the end, in their order.
+--
+--     Dict.toList (Dict.union (Dict.singleton "a" 1) (Dict.fromList [{ key: "b", value: 2 }, { key: "a", value: 9 }])) == [{ key: "a", value: 1 }, { key: "b", value: 2 }]
+--     Dict.union Dict.empty (Dict.singleton "a" 1) == Dict.singleton "a" 1
+--
+-- Book: chapter 9, "Dict"
 union : Dict k v -> Dict k v -> Dict k v
+
+-- Keeps the entries of the first dict whose key is also in the second.
+--
+-- The values and the order come from the first dict; the values of the second are not used.
+--
+--     Dict.toList (Dict.intersect (Dict.fromList [{ key: "a", value: 1 }, { key: "b", value: 2 }]) (Dict.singleton "b" 9)) == [{ key: "b", value: 2 }]
+--     Dict.intersect (Dict.singleton "a" 1) Dict.empty == Dict.empty
+--
+-- Book: chapter 9, "Dict"
 intersect : Dict k v -> Dict k v -> Dict k v
+
+-- Keeps the entries of the first dict whose key is not in the second.
+--
+-- The values and the order come from the first dict; the values of the second are not used.
+--
+--     Dict.toList (Dict.diff (Dict.fromList [{ key: "a", value: 1 }, { key: "b", value: 2 }]) (Dict.singleton "b" 9)) == [{ key: "a", value: 1 }]
+--     Dict.diff (Dict.singleton "a" 1) Dict.empty == Dict.singleton "a" 1
+--
+-- Book: chapter 9, "Dict"
 diff : Dict k v -> Dict k v -> Dict k v

@@ -1,27 +1,298 @@
+-- Functions for `Float`, a number with a decimal point, and the constants that go with it.
+--
+-- A `Float` is a 64-bit floating-point number, so many decimals such as `0.1` are stored as the
+-- nearest value that fits, and a calculation can be off in the last digit. Compare results
+-- after rounding, not with `==`, unless the values are exact like `0.5` or `2.25`. Division by
+-- zero and other impossible calculations are not failures: they give infinity or `NaN` (not a
+-- number), which `Float.isInfinite` and `Float.isNaN` detect.
+--
+-- Book: chapter 9, "Int, Float"
 module Float
 
+-- Rounds a `Float` to the nearest `Int`.
+--
+-- A value exactly halfway rounds away from zero, so `2.5` gives `3` and `-2.5` gives `-3`.
+-- `NaN`, infinity and numbers too big for an `Int` give a result that depends on the platform.
+--
+--     Float.round 2.4 == 2
+--     Float.round 2.5 == 3
+--     Float.round (-2.5) == -3
+--     Float.round (-2.4) == -2
+--
+-- Book: chapter 9, "Int, Float"
 round : Float -> Int
+
+-- Rounds a `Float` down to the whole number below it.
+--
+-- Down means toward negative infinity, so `-2.5` gives `-3`. `NaN`, infinity and numbers too
+-- big for an `Int` give a result that depends on the platform.
+--
+--     Float.floor 2.9 == 2
+--     Float.floor (-2.1) == -3
+--     Float.floor 3.0 == 3
+--
+-- Book: chapter 9, "Int, Float"
 floor : Float -> Int
+
+-- Rounds a `Float` up to the whole number above it.
+--
+-- Up means toward positive infinity, so `-2.5` gives `-2`. `NaN`, infinity and numbers too big
+-- for an `Int` give a result that depends on the platform.
+--
+--     Float.ceil 2.1 == 3
+--     Float.ceil (-2.9) == -2
+--     Float.ceil 3.0 == 3
+--
+-- Book: chapter 9, "Int, Float"
 ceil : Float -> Int
+
+-- The smaller of two `Float`s.
+--
+-- If either one is `NaN`, the result is `NaN`.
+--
+--     Float.min 0.5 2.25 == 0.5
+--     Float.min (-1.0) 1.0 == -1.0
+--     Float.isNaN (Float.min (Float.sqrt (0.0 - 1.0)) 1.0) == True
+--
+-- Book: chapter 9, "Int, Float"
 min : Float -> Float -> Float
+
+-- The larger of two `Float`s.
+--
+-- If either one is `NaN`, the result is `NaN`.
+--
+--     Float.max 0.5 2.25 == 2.25
+--     Float.max (-1.0) 1.0 == 1.0
+--     Float.isNaN (Float.max (Float.sqrt (0.0 - 1.0)) 1.0) == True
+--
+-- Book: chapter 9, "Int, Float"
 max : Float -> Float -> Float
+
+-- A `Float` without its sign.
+--
+--     Float.abs (-2.25) == 2.25
+--     Float.abs 2.25 == 2.25
+--     Float.abs 0.0 == 0.0
+--
+-- Book: chapter 9, "Int, Float"
 abs : Float -> Float
+
+-- Writes a `Float` as `Text` with a fixed number of decimals.
+--
+-- The text is padded with zeros to exactly that many decimals. It rounds the number as it
+-- prints, halfway cases away from zero, working from the shortest decimal form of the `Float`:
+-- `1.005` gives `"1.01"` with two decimals, even though the stored value is a hair below it. A
+-- negative `decimals` counts as 0. A number that rounds to zero never gets a minus sign. `NaN`
+-- and infinity come out as `"NaN"`, `"+Inf"` and `"-Inf"`.
+--
+--     Float.format { decimals: 2 } 3.14159 == "3.14"
+--     Float.format { decimals: 2 } 1.5 == "1.50"
+--     Float.format { decimals: 2 } 1.005 == "1.01"
+--     Float.format { decimals: 0 } 2.5 == "3"
+--     Float.format { decimals: 1 } (-0.001) == "0.0"
+--     Float.format { decimals: -1 } 7.6 == "8"
+--
+-- Book: chapter 9, "Int, Float"
 format : { decimals: Int } -> Float -> Text
+
+-- The square root of a `Float`.
+--
+-- The root of a negative number is `NaN`, not a failure.
+--
+--     Float.sqrt 9.0 == 3.0
+--     Float.sqrt 0.0 == 0.0
+--     Float.isNaN (Float.sqrt (0.0 - 1.0)) == True
+--
+-- Book: chapter 9, "Int, Float"
 sqrt : Float -> Float
+
+-- Raises `Float.e` to a power.
+--
+-- The result grows very fast: a large enough number gives infinity.
+--
+--     Float.exp 0.0 == 1.0
+--     Float.round (Float.exp 1.0 * 1000.0) == 2718
+--     Float.isInfinite (Float.exp 1000.0) == True
+--
+-- Book: chapter 9, "Int, Float"
 exp : Float -> Float
+
+-- The natural logarithm of a `Float`, which is the logarithm to base `Float.e`.
+--
+-- The log of zero is negative infinity, and the log of a negative number is `NaN`. Neither is a
+-- failure.
+--
+--     Float.log 1.0 == 0.0
+--     Float.round (Float.log Float.e * 100.0) == 100
+--     Float.isInfinite (Float.log 0.0) == True
+--     Float.isNaN (Float.log (0.0 - 1.0)) == True
+--
+-- Book: chapter 9, "Int, Float"
 log : Float -> Float
+
+-- Raises a `Float` to a power.
+--
+-- The first argument is the base and the second is the exponent. Impossible cases, such as a
+-- negative base with a fractional exponent, give `NaN`.
+--
+--     Float.pow 2.0 3.0 == 8.0
+--     Float.pow 2.0 (-1.0) == 0.5
+--     Float.pow 9.0 0.5 == 3.0
+--     Float.pow 5.0 0.0 == 1.0
+--     Float.isNaN (Float.pow (0.0 - 8.0) 0.5) == True
+--
+-- Book: chapter 9, "Int, Float"
 pow : Float -> Float -> Float -- Float.pow base exponent
+
+-- Drops the decimals of a `Float`, rounding toward zero.
+--
+-- Toward zero means `2.9` gives `2` and `-2.9` gives `-2`. `NaN`, infinity and numbers too big
+-- for an `Int` give a result that depends on the platform.
+--
+--     Float.truncate 2.9 == 2
+--     Float.truncate (-2.9) == -2
+--     Float.truncate 5.0 == 5
+--
+-- Book: chapter 9, "Int, Float"
 truncate : Float -> Int -- rounds toward zero
+
+-- Keeps a `Float` between a lowest and a highest value.
+--
+-- It works like `Int.clamp`. A number below `min` gives `min`, otherwise a number above `max`
+-- gives `max`, otherwise the number itself. The check for `min` comes first, so when `min` is
+-- above `max` a number below `min` still gives `min`. `NaN` stays `NaN`.
+--
+--     Float.clamp { min: 0.0, max: 1.0 } 2.25 == 1.0
+--     Float.clamp { min: 0.0, max: 1.0 } (-0.5) == 0.0
+--     Float.clamp { min: 0.0, max: 1.0 } 0.5 == 0.5
+--     Float.clamp { min: 2.0, max: 1.0 } 0.5 == 2.0
+--     Float.isNaN (Float.clamp { min: 0.0, max: 1.0 } (Float.sqrt (0.0 - 1.0))) == True
+--
+-- Book: chapter 9, "Int, Float"
 clamp : { min: Float, max: Float } -> Float -> Float -- like Int.clamp: below min gives min, else above max gives max
+
+-- The number pi, the ratio of a circle's circumference to its diameter.
+--
+--     Float.round (Float.pi * 100.0) == 314
+--     Float.floor Float.pi == 3
+--
+-- Book: chapter 9, "Int, Float"
 pi : Float
+
+-- The number e, the base of natural logarithms, about 2.718.
+--
+--     Float.round (Float.e * 1000.0) == 2718
+--     Float.floor Float.e == 2
+--
+-- Book: chapter 9, "Int, Float"
 e : Float
+
+-- Tells whether a `Float` is `NaN`, short for "not a number".
+--
+-- `NaN` is what an impossible calculation gives, such as the square root of a negative number.
+-- It is not equal to anything, not even to itself, so `==` cannot find it; use this instead.
+--
+--     Float.isNaN (Float.sqrt (0.0 - 1.0)) == True
+--     Float.isNaN 1.5 == False
+--     Float.isNaN (1.0 / 0.0) == False
+--
+-- Book: chapter 9, "Int, Float"
 isNaN : Float -> Bool
+
+-- Tells whether a `Float` is positive or negative infinity.
+--
+-- Dividing a nonzero `Float` by zero gives infinity. `NaN` is not infinite.
+--
+--     Float.isInfinite (1.0 / 0.0) == True
+--     Float.isInfinite (-1.0 / 0.0) == True
+--     Float.isInfinite 1.5 == False
+--     Float.isInfinite (Float.sqrt (0.0 - 1.0)) == False
+--
+-- Book: chapter 9, "Int, Float"
 isInfinite : Float -> Bool
+
+-- The logarithm of a `Float` to a chosen base.
+--
+-- The first argument is the base and the second is the number, so `Float.logBase 2.0 8.0` asks
+-- what power of 2 gives 8. It is computed as a division of natural logarithms, so the answer can
+-- be off in the last digit; round it when you need a whole number. A zero or negative number,
+-- and a base of 1, give infinity or `NaN`, not a failure.
+--
+--     Float.round (Float.logBase 2.0 8.0) == 3
+--     Float.round (Float.logBase 10.0 1000.0) == 3
+--     Float.logBase 2.0 1.0 == 0.0
+--
+-- Book: chapter 9, "Int, Float"
 logBase : Float -> Float -> Float -- Float.logBase base x
+
+-- The sine of an angle given in radians.
+--
+--     Float.sin 0.0 == 0.0
+--     Float.round (Float.sin (Float.pi / 2.0)) == 1
+--
+-- Book: chapter 9, "Int, Float"
 sin : Float -> Float
+
+-- The cosine of an angle given in radians.
+--
+--     Float.cos 0.0 == 1.0
+--     Float.round (Float.cos Float.pi) == -1
+--
+-- Book: chapter 9, "Int, Float"
 cos : Float -> Float
+
+-- The tangent of an angle given in radians.
+--
+--     Float.tan 0.0 == 0.0
+--     Float.round (Float.tan (Float.pi / 4.0) * 100.0) == 100
+--
+-- Book: chapter 9, "Int, Float"
 tan : Float -> Float
+
+-- The angle in radians whose sine is the given number.
+--
+-- The input must be from `-1.0` to `1.0`; anything else gives `NaN`. The result is from `-pi/2`
+-- to `pi/2`.
+--
+--     Float.asin 0.0 == 0.0
+--     Float.round (Float.asin 1.0 * 100.0) == 157
+--     Float.isNaN (Float.asin 2.0) == True
+--
+-- Book: chapter 9, "Int, Float"
 asin : Float -> Float
+
+-- The angle in radians whose cosine is the given number.
+--
+-- The input must be from `-1.0` to `1.0`; anything else gives `NaN`. The result is from `0.0`
+-- to `pi`.
+--
+--     Float.acos 1.0 == 0.0
+--     Float.round (Float.acos 0.0 * 100.0) == 157
+--     Float.isNaN (Float.acos 2.0) == True
+--
+-- Book: chapter 9, "Int, Float"
 acos : Float -> Float
+
+-- The angle in radians whose tangent is the given number.
+--
+-- The result is between `-pi/2` and `pi/2`. Use `Float.atan2` when you have both sides of the
+-- triangle and need the right quarter of the circle.
+--
+--     Float.atan 0.0 == 0.0
+--     Float.round (Float.atan 1.0 * 100.0) == 79
+--
+-- Book: chapter 9, "Int, Float"
 atan : Float -> Float
+
+-- The angle in radians of the point at `x` across and `y` up, measured from the positive x axis.
+--
+-- The first argument is `y` and the second is `x`. Unlike `Float.atan`, it uses both signs to
+-- pick the right quarter of the circle, and the result is from `-pi` to `pi`.
+--
+--     Float.atan2 0.0 1.0 == 0.0
+--     Float.round (Float.atan2 1.0 1.0 * 100.0) == 79
+--     Float.round (Float.atan2 1.0 (-1.0) * 100.0) == 236
+--     Float.round (Float.atan2 (-1.0) (-1.0) * 100.0) == -236
+--
+-- Book: chapter 9, "Int, Float"
 atan2 : Float -> Float -> Float -- Float.atan2 y x

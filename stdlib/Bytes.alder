@@ -1,16 +1,104 @@
+-- Functions for `Bytes`, a body that is not text, such as an image or a download.
+--
+-- Bytes are counted and cut one byte at a time, unlike `Text`, which works in characters. Use
+-- `Text.toBytes` to turn a `Text` into `Bytes`, and `Bytes.toText` to go back. A function never
+-- changes its input: it gives back new `Bytes`.
+--
+-- Book: chapter 9, "File, Bytes"
 module Bytes
 
--- the number of bytes
+-- The number of bytes.
+--
+-- This counts bytes, not characters. A letter with an accent takes more than one byte in UTF-8
+-- text.
+--
+--     Bytes.length (Text.toBytes "hello") == 5
+--     Bytes.length (Text.toBytes "é") == 2
+--     Bytes.length Bytes.empty == 0
+--
+-- Book: chapter 9, "File, Bytes"
 length : Bytes -> Int
--- Just when the bytes are valid UTF-8
+
+-- Reads `Bytes` as `Text`, or `Nothing` when they are not valid UTF-8.
+--
+-- Valid UTF-8 is the text that `Text.toBytes` writes. Bytes that cut a character in half, or
+-- that are not text at all, give `Nothing`. The empty `Bytes` give `Just ""`.
+--
+--     Bytes.toText (Text.toBytes "héllo") == Just "héllo"
+--     Bytes.toText Bytes.empty == Just ""
+--     Bytes.toText (Bytes.fromList [255]) == Nothing
+--
+-- Book: chapter 9, "File, Bytes"
 toText : Bytes -> Maybe Text
+
+-- `Bytes` with nothing in them.
+--
+--     Bytes.length Bytes.empty == 0
+--     Bytes.empty == Bytes.fromList []
+--
+-- Book: chapter 9, "File, Bytes"
 empty : Bytes
+
+-- Tells whether `Bytes` has no bytes at all.
+--
+--     Bytes.isEmpty Bytes.empty == True
+--     Bytes.isEmpty (Bytes.fromList [0]) == False
+--
+-- Book: chapter 9, "File, Bytes"
 isEmpty : Bytes -> Bool
--- same index rules as Text.slice, in bytes
+
+-- Takes the bytes from one position up to, but not including, another.
+--
+-- It follows the rule of `Text.slice`, counting bytes. Positions count from 0. A negative
+-- position counts from the end, so `-1` is the last byte; wrap a negative number in
+-- parentheses. A position past either end is moved to that end, and a start at or after the
+-- end gives empty `Bytes`.
+--
+--     Bytes.toList (Bytes.slice 1 3 (Bytes.fromList [10, 20, 30, 40])) == [20, 30]
+--     Bytes.toList (Bytes.slice (-2) 4 (Bytes.fromList [10, 20, 30, 40])) == [30, 40]
+--     Bytes.toList (Bytes.slice 2 100 (Bytes.fromList [10, 20, 30, 40])) == [30, 40]
+--     Bytes.toList (Bytes.slice 3 1 (Bytes.fromList [10, 20, 30, 40])) == []
+--
+-- Book: chapter 9, "File, Bytes"
 slice : Int -> Int -> Bytes -> Bytes
+
+-- Puts one `Bytes` after another.
+--
+--     Bytes.toList (Bytes.append (Bytes.fromList [1, 2]) (Bytes.fromList [3])) == [1, 2, 3]
+--     Bytes.append Bytes.empty (Bytes.fromList [1]) == Bytes.fromList [1]
+--
+-- Book: chapter 9, "File, Bytes"
 append : Bytes -> Bytes -> Bytes
+
+-- Joins a list of `Bytes` into one, in order.
+--
+-- An empty list gives empty `Bytes`.
+--
+--     Bytes.toList (Bytes.concat [Bytes.fromList [1], Bytes.fromList [2, 3]]) == [1, 2, 3]
+--     Bytes.concat [] == Bytes.empty
+--
+-- Book: chapter 9, "File, Bytes"
 concat : List Bytes -> Bytes
--- each 0..255
+
+-- Lists the bytes as `Int`s.
+--
+-- Each number is from 0 to 255.
+--
+--     Bytes.toList (Bytes.fromList [7, 8, 9]) == [7, 8, 9]
+--     Bytes.toList (Text.toBytes "A") == [65]
+--     Bytes.toList Bytes.empty == []
+--
+-- Book: chapter 9, "File, Bytes"
 toList : Bytes -> List Int
--- the low eight bits of each Int
+
+-- Builds `Bytes` from a list of `Int`s.
+--
+-- Only the low eight bits of each number are kept, so a number outside 0 to 255 wraps around:
+-- `256` becomes `0` and `-1` becomes `255`.
+--
+--     Bytes.toList (Bytes.fromList [1, 2, 3]) == [1, 2, 3]
+--     Bytes.toList (Bytes.fromList [256, 257]) == [0, 1]
+--     Bytes.toList (Bytes.fromList [-1]) == [255]
+--
+-- Book: chapter 9, "File, Bytes"
 fromList : List Int -> Bytes

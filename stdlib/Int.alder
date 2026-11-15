@@ -1,11 +1,100 @@
+-- Functions for `Int`, a whole number, and the refinement types that go with it.
+--
+-- An `Int` is a 64-bit number. Arithmetic that goes past the largest or smallest `Int` wraps
+-- around instead of failing, and so do the functions here that multiply.
+--
+-- Book: chapter 9, "Int, Float"
 module Int
 
+-- An `Int` that is greater than zero.
+--
+-- A value is checked when it is decoded from a form or a route, and is trusted after
+-- that. `Int.Positive 3` makes one from a literal, but applying the brand to an `Int`
+-- is not checked: `Int.Positive 0` is accepted, so the caller must make sure the number is
+-- above zero.
+--
+-- Book: chapter 4, "Refinements"
 type Positive = brand Int where True
+
+-- An `Int` that is zero or greater.
+--
+-- A value is checked when it is decoded from a form or a route, and is trusted after
+-- that. `Int.NonNegative 0` makes one from a literal, but applying the brand to an `Int`
+-- is not checked: `Int.NonNegative (0 - 1)` is accepted, so the caller must make sure the number
+-- is not negative.
+--
+-- Book: chapter 4, "Refinements"
 type NonNegative = brand Int where True
 
+-- Turns an `Int` into a `Float` with the same value.
+--
+-- A very large `Int` may lose its last digits, because a `Float` cannot hold every 64-bit
+-- number exactly.
+--
+--     Int.toFloat 3 == 3.0
+--     Int.toFloat (-2) == -2.0
+--     Int.toFloat 0 == 0.0
+--
+-- Book: chapter 9, "Int, Float"
 toFloat : Int -> Float
+
+-- The smaller of two `Int`s.
+--
+--     Int.min 3 5 == 3
+--     Int.min (-1) 4 == -1
+--     Int.min 2 2 == 2
+--
+-- Book: chapter 9, "Int, Float"
 min : Int -> Int -> Int
+
+-- The larger of two `Int`s.
+--
+--     Int.max 3 5 == 5
+--     Int.max (-1) (-4) == -1
+--     Int.max 2 2 == 2
+--
+-- Book: chapter 9, "Int, Float"
 max : Int -> Int -> Int
+
+-- An `Int` without its sign.
+--
+-- The smallest possible `Int`, `-9223372036854775808`, has no positive twin, so it comes back
+-- unchanged and still negative.
+--
+--     Int.abs (-5) == 5
+--     Int.abs 5 == 5
+--     Int.abs 0 == 0
+--     Int.abs (-9223372036854775808) == -9223372036854775808
+--
+-- Book: chapter 9, "Int, Float"
 abs : Int -> Int
+
+-- Keeps an `Int` between a lowest and a highest value.
+--
+-- A number below `min` gives `min`, otherwise a number above `max` gives `max`, otherwise the
+-- number itself. The check for `min` comes first, so when `min` is above `max` a number below
+-- `min` still gives `min`.
+--
+--     Int.clamp { min: 0, max: 10 } 15 == 10
+--     Int.clamp { min: 0, max: 10 } (-3) == 0
+--     Int.clamp { min: 0, max: 10 } 4 == 4
+--     Int.clamp { min: 5, max: 1 } 3 == 5
+--     Int.clamp { min: 5, max: 1 } 9 == 1
+--
+-- Book: chapter 9, "Int, Float"
 clamp : { min: Int, max: Int } -> Int -> Int
+
+-- Raises an `Int` to a whole-number power.
+--
+-- The first argument is the base and the second is the exponent. A negative exponent gives `0`
+-- and is never a failure. Like `*`, the result wraps around when it does not fit in an `Int`.
+-- Any base to the power `0` is `1`.
+--
+--     Int.pow 2 10 == 1024
+--     Int.pow 5 0 == 1
+--     Int.pow (-2) 3 == -8
+--     Int.pow 2 (-1) == 0
+--     Int.pow 2 64 == 0
+--
+-- Book: chapter 9, "Int, Float"
 pow : Int -> Int -> Int -- Int.pow base exponent; a negative exponent gives 0

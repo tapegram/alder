@@ -1,57 +1,481 @@
+-- Functions for `Text`, a piece of text, and the refinement types and builder that go with it.
+--
+-- A `Text` is a sequence of Unicode code points. Where a function counts or cuts text, it works
+-- in code points, so `"é"` has length 1 whatever the bytes are. A function never changes its
+-- input: it gives back a new `Text`.
+--
+-- Book: chapter 9, "Text"
 module Text
 
+-- A `Text` that is not empty once its whitespace is trimmed.
+--
+-- A value is checked when it is decoded from a form or a route, and is trusted after that.
+-- `Text.NonEmpty "Ada"` makes one from a literal, but applying the brand to a `Text` is not
+-- checked: `Text.NonEmpty ""` is accepted, so the caller must make sure the text is not empty.
+--
+-- Book: chapter 4, "Refinements"
 type NonEmpty = brand Text where True
+
+-- A `Text` that looks like an email address.
+--
+-- It has exactly one `@`, some text on each side of it and no whitespace. It is a check on the
+-- shape only: it does not say that the address exists.
+--
+-- The check runs when a value is decoded from a form or a route, not when the brand is applied
+-- to a `Text`, so the caller must make sure of a `Text.Email` made by hand.
+--
+-- Book: chapter 4, "Refinements"
 type Email = brand Text where True
+
+-- A `Text` that is an absolute URL with a scheme and a host.
+--
+-- `https://example.com/a` passes. `mailto:a@b.com` and `//example.com` do not.
+--
+-- The check runs when a value is decoded from a form or a route, not when the brand is applied
+-- to a `Text`, so the caller must make sure of a `Text.Url` made by hand.
+--
+-- Book: chapter 4, "Refinements"
 type Url = brand Text where True
+
+-- A `Text` that holds a secret, such as a password.
+--
+-- It may not be empty. A form shows a field of this type as a password input, and Alder does
+-- not log the value or echo it back into the form.
+--
+-- The check runs when a value is decoded from a form or a route, not when the brand is applied
+-- to a `Text`, so the caller must make sure of a `Text.Secret` made by hand.
+--
+-- Book: chapter 4, "Refinements"
 type Secret = brand Text where True
 
--- an accumulator for a large Text: each add is O(1) and shares nothing; build copies once
+-- An accumulator for building a large `Text` without copying it at every step.
+--
+-- Adding a piece to a builder costs the same however much has been added, and `Text.build`
+-- copies each byte once. Use it instead of nested `++` or `Text.join` when a page or a file is
+-- large. A builder is a value: adding to it gives a new builder and leaves the old one alone.
+--
+-- Book: chapter 9, "Building a large Text"
 type Builder
 
+-- The number of code points in a `Text`.
+--
+-- This counts characters, not bytes, so a letter like `é` counts once.
+--
+--     Text.length "hello" == 5
+--     Text.length "é" == 1
+--     Text.length "" == 0
 length : Text -> Int
+
+-- Tells whether a `Text` has no characters at all.
+--
+-- A `Text` of only spaces is not empty. Use `Text.trim` first to treat it as empty.
+--
+--     Text.isEmpty "" == True
+--     Text.isEmpty " " == False
+--     Text.isEmpty (Text.trim " ") == True
 isEmpty : Text -> Bool
+
+-- Removes the whitespace at both ends of a `Text`.
+--
+-- Whitespace is spaces, tabs, newlines and the other Unicode space characters. Whitespace in the
+-- middle stays.
+--
+--     Text.trim "  hi  " == "hi"
+--     Text.trim "a b" == "a b"
+--     Text.trim "\n\thi\n" == "hi"
 trim : Text -> Text
+
+-- Turns every letter of a `Text` into its upper case form.
+--
+-- Characters that have no upper case stay as they are.
+--
+--     Text.toUpper "hello, 1" == "HELLO, 1"
+--     Text.toUpper "é" == "É"
 toUpper : Text -> Text
+
+-- Turns every letter of a `Text` into its lower case form.
+--
+-- Characters that have no lower case stay as they are.
+--
+--     Text.toLower "HELLO, 1" == "hello, 1"
+--     Text.toLower "É" == "é"
 toLower : Text -> Text
+
+-- Tells whether a `Text` has another `Text` somewhere inside it.
+--
+-- The needle comes first and the text to search second. The match is exact, so case matters.
+-- The empty needle is in every `Text`.
+--
+--     Text.contains "ell" "hello" == True
+--     Text.contains "ELL" "hello" == False
+--     Text.contains "" "hello" == True
 contains : Text -> Text -> Bool
+
+-- Tells whether a `Text` begins with another `Text`.
+--
+-- The prefix comes first and the text to check second. Every `Text` starts with the empty one.
+--
+--     Text.startsWith "he" "hello" == True
+--     Text.startsWith "lo" "hello" == False
+--     Text.startsWith "" "hello" == True
 startsWith : Text -> Text -> Bool
+
+-- Tells whether a `Text` ends with another `Text`.
+--
+-- The suffix comes first and the text to check second. Every `Text` ends with the empty one.
+--
+--     Text.endsWith "lo" "hello" == True
+--     Text.endsWith "he" "hello" == False
+--     Text.endsWith "" "hello" == True
 endsWith : Text -> Text -> Bool
+
+-- Replaces every occurrence of one `Text` with another.
+--
+-- The order is the text to find, the text to put in its place, then the text to change. A text
+-- with no match comes back unchanged. Replacing the empty `Text` puts the new text between
+-- every character and at both ends.
+--
+--     Text.replace "l" "L" "hello" == "heLLo"
+--     Text.replace "x" "y" "hello" == "hello"
+--     Text.replace "l" "" "hello" == "heo"
+--     Text.replace "" "-" "ab" == "-a-b-"
 replace : Text -> Text -> Text -> Text
+
+-- Cuts a `Text` into a list of pieces at every occurrence of a separator.
+--
+-- The separator comes first. The separator itself is not in any piece, and two separators in a
+-- row give an empty piece between them. A text with no separator comes back as a list of one.
+-- An empty separator cuts the text into single characters.
+--
+--     Text.split ", " "a, b, c" == ["a", "b", "c"]
+--     Text.split "," "a,,b" == ["a", "", "b"]
+--     Text.split "," "abc" == ["abc"]
+--     Text.split "," "" == [""]
+--     Text.split "" "abc" == ["a", "b", "c"]
+--
+-- Book: chapter 9, "Text"
 split : Text -> Text -> List Text
+
+-- Joins a list of `Text` into one, with a separator between each pair.
+--
+-- The separator comes first. An empty list gives the empty `Text`, and a list of one gives that
+-- one piece with no separator. It is the opposite of `Text.split`.
+--
+--     Text.join ", " ["a", "b", "c"] == "a, b, c"
+--     Text.join ", " ["a"] == "a"
+--     Text.join ", " [] == ""
 join : Text -> List Text -> Text
+
+-- Takes the characters from one position up to, but not including, another.
+--
+-- Positions count code points from 0. A negative position counts from the end, so `-1` is the
+-- last character; wrap a negative number in parentheses. A position past either end is moved
+-- to that end, and a start at or after the end gives the empty `Text`.
+--
+--     Text.slice 1 3 "abcdef" == "bc"
+--     Text.slice (-3) (-1) "abcdef" == "de"
+--     Text.slice 2 100 "abcdef" == "cdef"
+--     Text.slice 4 2 "abcdef" == ""
+--
+-- Book: chapter 9, "Length and slices"
 slice : Int -> Int -> Text -> Text
+
+-- Tells whether a regular expression matches anywhere in a `Text`.
+--
+-- The regular expression comes first and is written in RE2 syntax. It matches a part of the
+-- text unless you anchor it: write `^` and `$` to match the whole text. A regular expression
+-- that is not valid matches nothing, and is not an error.
+--
+--     Text.matches "[0-9]+" "room 42" == True
+--     Text.matches "^[0-9]+$" "room 42" == False
+--     Text.matches "^[0-9]+$" "42" == True
+--     Text.matches "(" "anything" == False
+--
+-- Book: chapter 9, "Matching"
 matches : Text -> Text -> Bool
+
+-- Writes an `Int` as a `Text`, in decimal.
+--
+-- A negative number starts with `-`. There are no separators and no padding.
+--
+--     Text.fromInt 42 == "42"
+--     Text.fromInt (-7) == "-7"
+--     Text.fromInt 0 == "0"
 fromInt : Int -> Text
+
+-- Writes a `Float` as a `Text`, in decimal.
+--
+-- It gives the shortest decimal that reads back as the same number, and never uses an exponent,
+-- so a whole number has no `.0`. Infinity is `+Inf` or `-Inf` and not a number is `NaN`.
+--
+--     Text.fromFloat 3.5 == "3.5"
+--     Text.fromFloat 2.0 == "2"
+--     Text.fromFloat (-0.25) == "-0.25"
+--     Text.fromFloat (1.0 / 0.0) == "+Inf"
+--
+-- Book: chapter 9, "Numbers"
 fromFloat : Float -> Text
+
+-- Reads an `Int` from a `Text`, or `Nothing` when it is not one.
+--
+-- The text must be a whole decimal number with an optional `+` or `-` at the start. Spaces, a
+-- decimal point and a number too big for an `Int` all give `Nothing`.
+--
+--     Text.toInt "42" == Just 42
+--     Text.toInt "-7" == Just (-7)
+--     Text.toInt " 42" == Nothing
+--     Text.toInt "4.5" == Nothing
+--     Text.toInt "" == Nothing
+--     Text.toInt "99999999999999999999" == Nothing
+--
+-- Book: chapter 9, "Numbers"
 toInt : Text -> Maybe Int
+
+-- Reads a `Float` from a `Text`, or `Nothing` when it is not one.
+--
+-- A whole number is fine, and so are a decimal point (`"2.5"`, `".5"`, `"5."`), a leading `+` or
+-- `-`, and an exponent (`"1e3"` is 1000.0). It accepts whatever Go's `strconv.ParseFloat`
+-- does, which includes hexadecimal forms such as `"0x1p-2"` and underscores between digits.
+-- Spaces, text that is not a number, `NaN`, infinity and a number too big for a `Float` all
+-- give `Nothing`.
+--
+--     Text.toFloat "2.5" == Just 2.5
+--     Text.toFloat "1e3" == Just 1000.0
+--     Text.toFloat "-2.5" == Just (-2.5)
+--     Text.toFloat ".5" == Just 0.5
+--     Text.toFloat "1e400" == Nothing
+--     Text.toFloat "3" == Just 3.0
+--     Text.toFloat "abc" == Nothing
+--     Text.toFloat " 2.5" == Nothing
+--     Text.toFloat "NaN" == Nothing
+--
+-- Book: chapter 9, "Numbers"
 toFloat : Text -> Maybe Float
--- the text's UTF-8 bytes
+
+-- The UTF-8 bytes of a `Text`.
+--
+-- A character outside plain ASCII takes more than one byte, so the `Bytes` may be longer than
+-- the `Text` is. Use it to send text as a file answer with `File.bytes`, or to pass text to
+-- something that takes `Bytes`.
+--
+--     Bytes.length (Text.toBytes "abc") == 3
+--     Bytes.length (Text.toBytes "é") == 2
+--
+-- Book: chapter 9, "File, Bytes"
 toBytes : Text -> Bytes
+
+-- Adds a pad to the left of a `Text` until it is a number of characters long.
+--
+-- The arguments are the length, the pad and the text. A pad of several characters is repeated
+-- and cut at the outer edge. A text that is already that long, or longer, comes back whole, and
+-- so does any text when the pad is empty.
+--
+--     Text.padLeft 2 "0" "7" == "07"
+--     Text.padLeft 5 "ab" "x" == "ababx"
+--     Text.padLeft 2 "0" "123" == "123"
+--     Text.padLeft 4 "" "x" == "x"
+--
+-- Book: chapter 9, "Padding, lines and offsets"
 padLeft : Int -> Text -> Text -> Text
+
+-- Adds a pad to the right of a `Text` until it is a number of characters long.
+--
+-- The arguments are the length, the pad and the text. A pad of several characters is repeated
+-- and cut at the outer edge. A text that is already that long, or longer, comes back whole, and
+-- so does any text when the pad is empty.
+--
+--     Text.padRight 5 "." "ab" == "ab..."
+--     Text.padRight 5 "ab" "x" == "xabab"
+--     Text.padRight 2 "." "abc" == "abc"
+--     Text.padRight 4 "" "x" == "x"
+--
+-- Book: chapter 9, "Padding, lines and offsets"
 padRight : Int -> Text -> Text -> Text
--- the first n code points
+
+-- The first characters of a `Text`.
+--
+-- It takes that many code points. A count above the length gives the whole text, and a count of
+-- zero or less gives the empty `Text`.
+--
+--     Text.left 2 "hello" == "he"
+--     Text.left 10 "hello" == "hello"
+--     Text.left 0 "hello" == ""
+--     Text.left (-1) "hello" == ""
 left : Int -> Text -> Text
--- the last n code points
+
+-- The last characters of a `Text`.
+--
+-- It takes that many code points. A count above the length gives the whole text, and a count of
+-- zero or less gives the empty `Text`.
+--
+--     Text.right 2 "hello" == "lo"
+--     Text.right 10 "hello" == "hello"
+--     Text.right 0 "hello" == ""
+--     Text.right (-1) "hello" == ""
 right : Int -> Text -> Text
+
+-- Removes the first characters of a `Text` and keeps the rest.
+--
+-- A count above the length gives the empty `Text`, and a count of zero or less changes nothing.
+--
+--     Text.dropLeft 2 "hello" == "llo"
+--     Text.dropLeft 10 "hello" == ""
+--     Text.dropLeft 0 "hello" == "hello"
+--     Text.dropLeft (-1) "hello" == "hello"
 dropLeft : Int -> Text -> Text
+
+-- Removes the last characters of a `Text` and keeps the rest.
+--
+-- A count above the length gives the empty `Text`, and a count of zero or less changes nothing.
+--
+--     Text.dropRight 2 "hello" == "hel"
+--     Text.dropRight 10 "hello" == ""
+--     Text.dropRight 0 "hello" == "hello"
+--     Text.dropRight (-1) "hello" == "hello"
 dropRight : Int -> Text -> Text
+
+-- Writes a `Text` over and over, a number of times.
+--
+-- A count of zero or less gives the empty `Text`. A very large count uses a very large amount
+-- of memory, so do not pass a number you did not choose.
+--
+--     Text.repeat 3 "ab" == "ababab"
+--     Text.repeat 1 "ab" == "ab"
+--     Text.repeat 0 "ab" == ""
+--     Text.repeat (-2) "ab" == ""
 repeat : Int -> Text -> Text
+
+-- Puts the characters of a `Text` in the opposite order.
+--
+-- It reverses code points, not bytes, so a letter like `é` stays whole.
+--
+--     Text.reverse "abc" == "cba"
+--     Text.reverse "é1" == "1é"
+--     Text.reverse "" == ""
 reverse : Text -> Text
+
+-- Removes the whitespace at the start of a `Text`.
+--
+-- Whitespace is spaces, tabs, newlines and the other Unicode space characters. The end is not
+-- touched. `Text.trim` does both ends.
+--
+--     Text.trimLeft "  hi  " == "hi  "
+--     Text.trimLeft "hi" == "hi"
 trimLeft : Text -> Text
+
+-- Removes the whitespace at the end of a `Text`.
+--
+-- Whitespace is spaces, tabs, newlines and the other Unicode space characters. The start is not
+-- touched. `Text.trim` does both ends.
+--
+--     Text.trimRight "  hi  " == "  hi"
+--     Text.trimRight "hi" == "hi"
 trimRight : Text -> Text
+
+-- Joins a list of `Text` into one with nothing between the pieces.
+--
+-- This is `Text.join ""`. An empty list gives the empty `Text`.
+--
+--     Text.concat ["a", "b", "c"] == "abc"
+--     Text.concat [] == ""
 concat : List Text -> Text
+
+-- Cuts a `Text` into its lines.
+--
+-- A line ends at `\n`, and a `\r` just before it is removed, so text from Windows works too. The
+-- empty line after a final newline is dropped, and the empty `Text` has no lines. An empty line
+-- in the middle is kept.
+--
+--     Text.lines "a\nb" == ["a", "b"]
+--     Text.lines "a\nb\n" == ["a", "b"]
+--     Text.lines "a\r\nb" == ["a", "b"]
+--     Text.lines "a\n\nb" == ["a", "", "b"]
+--     Text.lines "" == []
+--
+-- Book: chapter 9, "Padding, lines and offsets"
 lines : Text -> List Text
+
+-- Cuts a `Text` into its words.
+--
+-- Words are separated by any run of whitespace, so the list never holds an empty word, and
+-- spaces at the ends are ignored. A text with no words gives the empty list.
+--
+--     Text.words "hello  big world" == ["hello", "big", "world"]
+--     Text.words "  a\tb\n" == ["a", "b"]
+--     Text.words "   " == []
 words : Text -> List Text
--- Text.indexes needle haystack: every code-point offset, overlaps included
+
+-- Every position in a `Text` where another `Text` starts.
+--
+-- The needle comes first and the text to search second. Positions count code points from 0, in
+-- order. Matches may overlap. An empty needle, or one that is not found, gives the empty list.
+--
+--     Text.indexes "aa" "aaa" == [0, 1]
+--     Text.indexes "b" "abcb" == [1, 3]
+--     Text.indexes "x" "abc" == []
+--     Text.indexes "" "abc" == []
+--
+-- Book: chapter 9, "Padding, lines and offsets"
 indexes : Text -> Text -> List Int
+
+-- The Unicode code point of each character in a `Text`.
+--
+-- Each is a number, such as 97 for `a`. `Text.fromCodePoints` turns the list back into a `Text`.
+--
+--     Text.toCodePoints "aé" == [97, 233]
+--     Text.toCodePoints "" == []
 toCodePoints : Text -> List Int
+
+-- Builds a `Text` from a list of Unicode code points.
+--
+-- A number that is not a character, one that is negative, above 1114111 or in the surrogate
+-- range 55296 to 57343, becomes the replacement character U+FFFD.
+--
+--     Text.fromCodePoints [104, 105] == "hi"
+--     Text.fromCodePoints [] == ""
+--     Text.toCodePoints (Text.fromCodePoints [-1]) == [65533]
 fromCodePoints : List Int -> Text
--- FNV-1a 64 of the UTF-8 bytes, top bit cleared: stable across versions and platforms, never
--- negative, not cryptographic (seeds, buckets, cache keys)
+
+-- A number made from a `Text`, the same on every run, version and platform.
+--
+-- It is FNV-1a (64 bit) of the UTF-8 bytes with the top bit cleared, so it is never negative
+-- and `Text.hash s % n` is a bucket from 0 to n-1. The values are fixed for good, so it is safe
+-- for a seed (see `Random.seed`), a bucket or a cache key. It is not cryptographic: do not use
+-- it for passwords or for anything an attacker may choose.
+--
+--     Text.hash "" == 5472609002491880229
+--     Text.hash "hello" == 2607821981565500683
+--     Text.hash "hello" % 10 == 3
+--
+-- Book: chapter 9, "Hashing"
 hash : Text -> Int
--- the empty Text.Builder
+
+-- A builder with nothing added yet.
+--
+-- Start every `Text.Builder` from this, add pieces with `Text.add` and finish with `Text.build`.
+--
+--     Text.build Text.builder == ""
+--
+-- Book: chapter 9, "Building a large Text"
 builder : Builder
--- Text.add piece b: b with piece after everything added so far
+
+-- Puts a piece of `Text` at the end of a builder.
+--
+-- The piece goes after everything added so far, and nothing is copied. The piece comes first and
+-- the builder last, so it works well with `|>`.
+--
+--     Text.build (Text.builder |> Text.add "a" |> Text.add "b") == "ab"
+--     Text.build (Text.add "" Text.builder) == ""
+--
+-- Book: chapter 9, "Building a large Text"
 add : Text -> Builder -> Builder
--- the Text of everything added, in order
+
+-- The `Text` of everything added to a builder, in the order it was added.
+--
+-- It copies each byte once. A builder can be built more than once, and building does not change
+-- it.
+--
+--     Text.build (Text.add "b" (Text.add "a" Text.builder)) == "ab"
+--
+-- Book: chapter 9, "Building a large Text"
 build : Builder -> Text

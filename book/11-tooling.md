@@ -635,7 +635,7 @@ declares it.
 ```text
 $ alder search split
 NAME        TYPE                       FROM    DOC
-Text.split  Text -> Text -> List Text  stdlib
+Text.split  Text -> Text -> List Text  stdlib  Cuts a `Text` into a list of pieces at every occurrence of a separator.
 ```
 
 The columns are the declaration's name (with its module, except for the
@@ -654,7 +654,7 @@ matches, however the names read.
 ```text
 $ alder search 'Text -> Text -> List Text'
 NAME        TYPE                       FROM    DOC
-Text.split  Text -> Text -> List Text  stdlib
+Text.split  Text -> Text -> List Text  stdlib  Cuts a `Text` into a list of pieces at every occurrence of a separator.
 ```
 
 A type variable in a query (`a`, `b`) stands for any one type, and it is strict:
@@ -694,7 +694,7 @@ $ alder search : Maybe Int
 NAME                TYPE                                      FROM    DOC
 List.maximum        List Int -> Maybe Int                     stdlib  The largest number in a list, if the list has any.
 List.minimum        List Int -> Maybe Int                     stdlib  The smallest number in a list, if the list has any.
-Text.toInt          Text -> Maybe Int                         stdlib
+Text.toInt          Text -> Maybe Int                         stdlib  Reads an `Int` from a `Text`, or `Nothing` when it is not one.
 Nothing             Maybe a                                   stdlib
 List.head           List a -> Maybe a                         stdlib  The first element of a list, if there is one.
 …
@@ -737,10 +737,10 @@ object, for tools and agents, instead of the table. Each result carries the
 doc in three more fields: `summary`, `examples` (an array of the example
 sources) and `book` (the book line, the module's for a standard library
 declaration without its own, or `""`); `--json` ignores `--doc`, since
-it prints them all anyway. The result below is a declaration without a doc:
+it prints them all anyway. The result below is `Text.split`; its `doc` field is the whole comment:
 
 ```text
-{"query":"Text -> Text -> List Text","mode":"type","note":"","results":[{"name":"split","module":"Text","kind":"function","signature":"Text -> Text -> List Text","doc":"","summary":"","examples":[],"book":"","source":"stdlib","match":"exact"}]}
+{"query":"Text -> Text -> List Text","mode":"type","note":"","results":[{"name":"split","module":"Text","kind":"function","signature":"Text -> Text -> List Text","doc":"Cuts a `Text` into a list of pieces at every occurrence of a separator.\n\nThe separator comes first. The separator itself is not in any piece, and two separators in a\nrow give an empty piece between them. A text with no separator comes back as a list of one.\nAn empty separator cuts the text into single characters.\n\n    Text.split \", \" \"a, b, c\" == [\"a\", \"b\", \"c\"]\n    Text.split \",\" \"a,,b\" == [\"a\", \"\", \"b\"]\n    Text.split \",\" \"abc\" == [\"abc\"]\n    Text.split \",\" \"\" == [\"\"]\n    Text.split \"\" \"abc\" == [\"a\", \"b\", \"c\"]\n\nBook: chapter 9, \"Text\"","summary":"Cuts a `Text` into a list of pieces at every occurrence of a separator.","examples":["Text.split \", \" \"a, b, c\" == [\"a\", \"b\", \"c\"]","Text.split \",\" \"a,,b\" == [\"a\", \"\", \"b\"]","Text.split \",\" \"abc\" == [\"abc\"]","Text.split \",\" \"\" == [\"\"]","Text.split \"\" \"abc\" == [\"a\", \"b\", \"c\"]"],"book":"chapter 9, \"Text\"","source":"stdlib","match":"exact"}]}
 ```
 
 `mode` says how the query was read: `name`, `type` or `produces` (the `:`

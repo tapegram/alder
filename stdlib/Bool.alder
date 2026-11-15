@@ -1,3 +1,18 @@
+-- Functions for `Bool`, which is either `True` or `False`.
+--
+-- `not` (in the Prelude), `&&` and `||` cover the logic on a `Bool`, so this module only holds
+-- the conversion to `Text`.
+--
+-- Book: chapter 9, "Bool"
 module Bool
 
+-- Writes a `Bool` as `Text`.
+--
+-- The text is the name of the value, with a capital letter: `"True"` or `"False"`.
+--
+--     Bool.toText True == "True"
+--     Bool.toText False == "False"
+--     Bool.toText (1 < 2) == "True"
+--
+-- Book: chapter 9, "Bool"
 toText : Bool -> Text
