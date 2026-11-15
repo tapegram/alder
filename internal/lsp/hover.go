@@ -236,11 +236,16 @@ func declDoc(a *analysis, ref syntax.Ref) string {
 	if d == nil {
 		return ""
 	}
+	return docAt(a, mod, d.GetSpan().Start.Line)
+}
+
+// docAt is the doc comment above line of mod, rendered as markdown (see declDoc).
+func docAt(a *analysis, mod *syntax.Module, line int) string {
 	book := ""
-	if a.prog.Std[ref.Module] == mod {
+	if a.prog.Std[mod.Name] == mod {
 		book = moduleDoc(mod).Book
 	}
-	return doccomment.Parse(syntax.DocOf(mod.Lines, d.GetSpan().Start.Line)).Markdown(book)
+	return doccomment.Parse(syntax.DocOf(mod.Lines, line)).Markdown(book)
 }
 
 // moduleDoc is the doc comment above mod's `module` line.
