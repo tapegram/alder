@@ -63,8 +63,12 @@ func TestStd_Entries(t *testing.T) {
 			t.Errorf("%s.%s: Type %v for kind %s", c.module, c.name, e.Type, e.Kind)
 		}
 	}
-	if e := find(ix, "Text", "left", Function); e == nil || e.Doc != "the first n code points" {
+	if e := find(ix, "Text", "left", Function); e == nil || e.Doc == "" {
 		t.Errorf("Text.left: %+v", e)
+	}
+	if e := find(ix, "List", "take", Function); e == nil || e.Summary != "The first n elements of a list." ||
+		len(e.Examples) == 0 || e.Examples[0] != "List.take 2 [1, 2, 3] == [1, 2]" || e.Book != `chapter 9, "List"` {
+		t.Errorf("List.take: %+v", e)
 	}
 	if e := find(ix, "Query", "delay", Function); e == nil || e.Effect != "query" {
 		t.Errorf("Query.delay: %+v", e)

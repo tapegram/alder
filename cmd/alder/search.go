@@ -12,11 +12,12 @@ import (
 	"text/tabwriter"
 
 	"alder/internal/buildkit"
+	"alder/internal/doc"
 	"alder/internal/search"
 	"alder/internal/style"
 )
 
-const searchUsage = "usage: alder search <query> [--json] [--limit N]"
+const searchUsage = "usage: alder search <query> [--json] [--limit N] [--doc]"
 
 type searchJSON struct {
 	Query   string          `json:"query"`
@@ -26,21 +27,24 @@ type searchJSON struct {
 }
 
 type searchRowJSON struct {
-	Name      string `json:"name"`
-	Module    string `json:"module"`
-	Kind      string `json:"kind"`
-	Signature string `json:"signature"`
-	Doc       string `json:"doc"`
-	Source    string `json:"source"`
-	Effect    string `json:"effect,omitempty"`
-	Match     string `json:"match,omitempty"`
-	Args      *int   `json:"args,omitempty"` // set in produces mode, including 0
-	File      string `json:"file,omitempty"`
-	Line      int    `json:"line,omitempty"`
-	Col       int    `json:"col,omitempty"`
+	Name      string   `json:"name"`
+	Module    string   `json:"module"`
+	Kind      string   `json:"kind"`
+	Signature string   `json:"signature"`
+	Doc       string   `json:"doc"`
+	Summary   string   `json:"summary"`
+	Examples  []string `json:"examples"`
+	Book      string   `json:"book"`
+	Source    string   `json:"source"`
+	Effect    string   `json:"effect,omitempty"`
+	Match     string   `json:"match,omitempty"`
+	Args      *int     `json:"args,omitempty"` // set in produces mode, including 0
+	File      string   `json:"file,omitempty"`
+	Line      int      `json:"line,omitempty"`
+	Col       int      `json:"col,omitempty"`
 }
 
-// runSearchTo is `alder search <query> [--json] [--limit N]`: the standard library's declarations
+// runSearchTo is `alder search <query> [--json] [--limit N] [--doc]`: the standard library's declarations
 // and, inside an app that type-checks, the app's, found by name or by type. A query never fails;
 // only a usage error or a type query that does not parse exits 2.
 func runSearchTo(args []string, stdout, stderr io.Writer) (code int) {
@@ -51,11 +55,13 @@ func runSearchTo(args []string, stdout, stderr io.Writer) (code int) {
 		}
 	}()
 	var words []string
-	jsonOut, limit := false, 0
+	jsonOut, showDoc, limit := false, false, 0
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {
 		case a == "--json":
 			jsonOut = true
+		case a == "--doc":
+			showDoc = true
 		case a == "--limit":
 			i++
 			n := 0
@@ -101,6 +107,7 @@ func runSearchTo(args []string, stdout, stderr io.Writer) (code int) {
 		for _, h := range resp.Results {
 			e := h.Entry
 			row := searchRowJSON{Name: e.Name, Module: e.Module, Kind: string(e.Kind), Signature: e.Signature, Doc: e.Doc,
+				Summary: e.Summary, Examples: e.Examples, Book: e.Book,
 				Source: e.Source, Effect: e.Effect, Match: h.Match, File: filepath.ToSlash(e.File), Line: e.Line, Col: e.Col}
 			if resp.Mode == "produces" {
 				n := h.Args
@@ -134,8 +141,7 @@ func runSearchTo(args []string, stdout, stderr io.Writer) (code int) {
 		if e.Effect != "" {
 			from += " " + e.Effect
 		}
-		doc, _, _ := strings.Cut(e.Doc, "\n")
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", name, e.Signature, from, doc)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", name, e.Signature, from, e.Summary)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintf(stderr, "alder search: %v\n", err)
@@ -145,7 +151,13 @@ func runSearchTo(args []string, stdout, stderr io.Writer) (code int) {
 	for i, l := range lines {
 		lines[i] = strings.TrimRight(l, " ") // no padding after an empty DOC
 	}
-	fmt.Fprintf(stdout, "%s\n%s\n", style.For(stdout).Bold(lines[0]), strings.Join(lines[1:], "\n"))
+	fmt.Fprintf(stdout, "%s\n", style.For(stdout).Bold(lines[0]))
+	for i, h := range resp.Results {
+		fmt.Fprintln(stdout, lines[i+1])
+		if showDoc {
+			writeDocLines(stdout, h.Entry)
+		}
+	}
 	return 0
 }
 
@@ -168,4 +180,25 @@ func searchIndex(stderr io.Writer) (*search.Index, error) {
 		return search.Std()
 	}
 	return search.Build(prog, res), nil
+}
+
+// writeDocLines prints an entry's details, examples and book line under its row, each line
+// indented four spaces, then a blank line; nothing when the entry has none of them.
+func writeDocLines(w io.Writer, e *search.Entry) {
+	d := doc.Parse(e.Doc)
+	var out []string
+	out = append(out, d.Details...)
+	out = append(out, e.Examples...)
+	if e.Book != "" {
+		out = append(out, "Book: "+e.Book)
+	}
+	if len(out) == 0 {
+		return
+	}
+	for _, block := range out {
+		for _, l := range strings.Split(block, "\n") {
+			fmt.Fprintln(w, strings.TrimRight("    "+l, " "))
+		}
+	}
+	fmt.Fprintln(w)
 }

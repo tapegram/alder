@@ -33,17 +33,20 @@ type searchResult struct {
 // searchItem has searchRowJSON's fields (`alder search --json`) with the declaration's place as a
 // file URI and an LSP range in place of file, line and col; stdlib entries have neither.
 type searchItem struct {
-	Name      string `json:"name"`
-	Module    string `json:"module"`
-	Kind      string `json:"kind"`
-	Signature string `json:"signature"`
-	Doc       string `json:"doc"`
-	Source    string `json:"source"`
-	Effect    string `json:"effect,omitempty"`
-	Match     string `json:"match,omitempty"`
-	Args      *int   `json:"args,omitempty"` // set in produces mode, including 0
-	URI       string `json:"uri,omitempty"`
-	Range     *Range `json:"range,omitempty"`
+	Name      string   `json:"name"`
+	Module    string   `json:"module"`
+	Kind      string   `json:"kind"`
+	Signature string   `json:"signature"`
+	Doc       string   `json:"doc"`
+	Summary   string   `json:"summary"`
+	Examples  []string `json:"examples"`
+	Book      string   `json:"book"`
+	Source    string   `json:"source"`
+	Effect    string   `json:"effect,omitempty"`
+	Match     string   `json:"match,omitempty"`
+	Args      *int     `json:"args,omitempty"` // set in produces mode, including 0
+	URI       string   `json:"uri,omitempty"`
+	Range     *Range   `json:"range,omitempty"`
 }
 
 // searchReq answers alder/search (params searchParams): the standard library's and the app's
@@ -86,6 +89,7 @@ func searchReq(s *server, params json.RawMessage) (out any, err error) {
 	for _, h := range resp.Results {
 		e := h.Entry
 		it := searchItem{Name: e.Name, Module: e.Module, Kind: string(e.Kind), Signature: e.Signature, Doc: e.Doc,
+			Summary: e.Summary, Examples: e.Examples, Book: e.Book,
 			Source: e.Source, Effect: e.Effect, Match: h.Match}
 		if resp.Mode == "produces" {
 			n := h.Args

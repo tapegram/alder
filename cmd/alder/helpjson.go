@@ -124,7 +124,8 @@ var commandTree = []cmdSpec{
 	{Name: "search", Summary: "search the standard library and the app by name or by type", Usage: commandUsages["search"],
 		Args: []string{"<query>"},
 		Flags: []flagSpec{{Name: "--json", Summary: "a JSON object: query, mode, note and results"},
-			{Name: "--limit", Value: "N", Summary: "at most N results (default 50)"}}},
+			{Name: "--limit", Value: "N", Summary: "at most N results (default 50)"},
+			{Name: "--doc", Summary: "under each row, the doc's details, examples and book line (text output only)"}}},
 	{Name: "dump", Summary: "print a file's tokens or syntax tree, or an app's IR", Usage: commandUsages["dump"],
 		Args: []string{"<file.alder | dir>"},
 		Flags: []flagSpec{

@@ -855,3 +855,18 @@ func TestCodeAction_SearchHoleGated(t *testing.T) {
 		}
 	}
 }
+
+func TestSearch_DocFields(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Show.alder")
+	r := searchAt(t, c, map[string]any{"query": "List.take"})
+	for _, it := range r.Results {
+		if it.Module == "List" && it.Name == "take" {
+			if it.Summary != "The first n elements of a list." || len(it.Examples) == 0 || it.Book != `chapter 9, "List"` {
+				t.Errorf("row %+v", it)
+			}
+			return
+		}
+	}
+	t.Errorf("no List.take in %+v", r.Results)
+}
