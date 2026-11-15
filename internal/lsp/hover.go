@@ -229,14 +229,15 @@ func attrLine(at elements.Attr) string {
 
 // declDoc is the doc comment above the declaration of ref, in its app or stdlib module, rendered
 // as markdown: prose, examples in a fenced `alder` block, then the book line. A stdlib
-// declaration with no book line of its own shows its module's; an app one shows none.
+// declaration (value, type or constructor) with no book line of its own shows its module's; an
+// app one shows none.
 func declDoc(a *analysis, ref syntax.Ref) string {
 	mod, d := findDecl(a, ref)
 	if d == nil {
 		return ""
 	}
 	book := ""
-	if ref.Kind == syntax.RefStd {
+	if a.prog.Std[ref.Module] == mod {
 		book = moduleDoc(mod).Book
 	}
 	return doccomment.Parse(syntax.DocOf(mod.Lines, d.GetSpan().Start.Line)).Markdown(book)

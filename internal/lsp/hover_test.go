@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"alder/internal/names"
+	"alder/internal/syntax"
 )
 
 func hover(t *testing.T, c *client, rel string, p Position) string {
@@ -547,5 +550,22 @@ func TestRouteFile_Answers(t *testing.T) {
 	var out any
 	if e := c.call("textDocument/semanticTokens/full", map[string]any{"textDocument": doc}, &out); e != nil {
 		t.Fatalf("semantic tokens: %v", e)
+	}
+}
+
+// TestDeclDoc_StdTypeAndCtorBook: a stdlib type or constructor with no Book line of its own shows
+// its module's, as a function does. No documented stdlib module declares a type yet (Maybe and
+// Result live in the Prelude, which has no Book line), so the module here is made up.
+func TestDeclDoc_StdTypeAndCtorBook(t *testing.T) {
+	src := "-- Optional values.\n--\n-- Book: chapter 9, \"Maybe\"\nmodule Opt\n\n-- A value that may be missing.\ntype Opt a = Some a | None\n"
+	mod, diags := syntax.ParseFile("stdlib/Opt.alder", []byte(src))
+	if len(diags) > 0 {
+		t.Fatal(diags)
+	}
+	a := &analysis{prog: &names.Program{Std: map[string]*syntax.Module{"Opt": mod}}}
+	for _, ref := range []syntax.Ref{{Kind: syntax.RefType, Module: "Opt", Name: "Opt"}, {Kind: syntax.RefCtor, Module: "Opt", Name: "Some"}} {
+		if got := declDoc(a, ref); !strings.Contains(got, `*Book: chapter 9, "Maybe"*`) {
+			t.Errorf("%s: %q", ref.Name, got)
+		}
 	}
 }
