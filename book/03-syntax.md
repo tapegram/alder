@@ -261,6 +261,46 @@ Nor may one take `Doc` or `Answer`, the Prelude's types for tests
 -- A line comment. There are no block comments.
 ```
 
+### Doc comments
+
+A run of `--` lines directly above a declaration, with no blank line between,
+is that declaration's doc comment. Editors and `alder search` show it. It has
+the same syntax as any comment, and a comment written some other way still
+shows up; but a comment in this shape is shown in full, with its examples set
+apart. The standard library is written this way. Here is the doc comment of
+`List.take`, which is a signature in the standard library, so the block is a
+fragment:
+
+```alder fragment
+-- The first n elements of a list.
+--
+-- A list shorter than n comes back whole. An n of zero or less gives the empty list.
+--
+--     List.take 2 [1, 2, 3] == [1, 2]
+--     List.take 5 [1, 2] == [1, 2]
+--     List.take 0 [1, 2] == []
+--
+-- Book: chapter 9, "List"
+take : Int -> List a -> List a
+```
+
+A bare `--` line separates the parts, which come in this order:
+
+1. **The summary**: one sentence on one line, ending in a full stop. Lists
+   (completion, `alder search`) show this line alone, so it must make sense
+   alone.
+2. **Details**, optional: plain paragraphs about the edge cases (an empty list,
+   a number out of range) and anything surprising. `code` in backticks is fine.
+3. **Examples**: lines indented four spaces after the `--`; a line indented
+   further continues the one above. An example is usually `expr == value`. The
+   standard library's own tests evaluate those and fail when one is false.
+   Your own app's examples are shown but not run.
+4. **A book line**, optional: `Book: chapter 9, "List"`, the chapter that
+   teaches the declaration, and the exact text of a heading in it.
+
+A module's doc comment is the comment above its `module` line, in the same
+shape.
+
 ## Declarations
 
 A module is a list of declarations. Order does not matter; a declaration can
