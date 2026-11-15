@@ -259,3 +259,157 @@ func TestRouteForm_MsgAttachRefusesPathAndMethod(t *testing.T) {
 		wantRefusalIs(t, err, want)
 	}
 }
+
+// TestMemberFormPath (#194): an edit form's route answers the row's member path, nested after
+// the page's partition segment when the path binds the table's key.
+func TestMemberFormPath(t *testing.T) {
+	for _, c := range []struct {
+		path  string
+		table *Table
+		want  string
+	}{
+		{"/posts/{id}", &Table{Name: "Post"}, "/posts/{id}"},
+		{"/a/{org}/activity/{id}", &Table{Name: "Activity", PartKey: "org"}, "/a/{org}/activities/{id}"},
+		{"/activity/{id}", &Table{Name: "Activity", PartKey: "org"}, "/activities/{id}"},
+	} {
+		if got := memberFormPath(&Route{Path: c.path}, c.table); got != c.want {
+			t.Errorf("memberFormPath(%s, %s) = %s, want %s", c.path, c.table.Name, got, c.want)
+		}
+	}
+}
+
+// showApp is the fixture with a `--show T` page Mod at path, with requires (or none).
+func showApp(t *testing.T, mod, path, table, requires string) (*Program, string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS(fixture)); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edits, err := NewRoute(p, RouteOptions{Module: mod, Path: path, Show: table, Requires: requires})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Apply(dir, edits, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if p, err = Load(dir); err != nil {
+		t.Fatal(err)
+	}
+	return p, dir
+}
+
+// TestRouteForm_EditKeyless (#194): on a keyless table the edit form's Save loads the row with
+// Db.get, a missing one not found, and writes it with Db.update; a reference is a select whose
+// options (a long table's search too) join the page's Model, load and route.
+func TestRouteForm_EditKeyless(t *testing.T) {
+	p, dir := showApp(t, "Tags.Show", "/tags", "Tag", "user")
+	edits, err := NewForm(p, FormOptions{Page: "Tags.Show", Name: "TagEdit", Edit: "Tag"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := msgBody(t, edits, "app/Tags/Show.alder")
+	for _, want := range []string{
+		`route SaveTagEdit = PUT "/tags/{id}" { id: Tag.TagId } form TagEdit requires user`,
+		`{ id: Tag.TagId, findPost: Text = "" }`,
+		"posts: List Post, postsTotal: Int, findPost: Text",
+		"let postsTotal <- Db.mine Post |> Db.count",
+		"Query.succeed { row: row, posts: posts, postsTotal: postsTotal, findPost: findPost }",
+		"let found <- Db.get Tag params.id",
+		"let _ <- Db.update Tag row.id (\\r -> { r | name: params.form.name, post: params.form.post })",
+		"Nothing -> Task.notFound,",
+		"<form submit={SaveTagEdit { id: model.row.id }}>",
+		`<al-input field="name" label="Name" value={model.row.name} />`,
+		`<form method="get" action={"/tags/" ++ model.row.id}>`,
+		`<al-select field="post" label="Post" options={List.map (\r -> { value: r.id, label: r.title }) model.posts} value={model.row.post} />`,
+	} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %q in:\n%s", want, b)
+		}
+	}
+	if res, err := Apply(dir, edits, Options{DryRun: true}); err != nil {
+		t.Fatalf("Apply: %v\n%s", err, res.RenderText(true))
+	}
+}
+
+// TestRouteForm_EditPathKey (#194): a page whose path binds the table's partition key fills the
+// form's route parameters from the row, with no hole.
+func TestRouteForm_EditPathKey(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS("../../testdata/generate/fixture-silo")); err != nil {
+		t.Fatal(err)
+	}
+	page, err := os.ReadFile("../../testdata/generate/path-key/Board.alder") // a page of one Activity under its org's path segment, by hand: `--show` binds no other path parameter
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "app/Board.alder"), page, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edits, err := NewForm(p, FormOptions{Page: "Board", Name: "Retext", Edit: "Activity"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := msgBody(t, edits, "app/Board.alder")
+	for _, want := range []string{
+		`route SaveRetext = PUT "/a/{org}/activities/{id}" { org: Org.OrgId, id: Activity.ActivityId } form Retext requires user, org`,
+		"<form submit={SaveRetext { org: model.row.org, id: model.row.id }}>",
+		"let _ <- Db.updateScoped Activity params.id",
+		"Response.redirect (Board { org: params.org, id: params.id })",
+	} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %q in:\n%s", want, b)
+		}
+	}
+	if strings.Contains(b, "?save") {
+		t.Errorf("a hole in:\n%s", b)
+	}
+	if res, err := Apply(dir, edits, Options{DryRun: true}); err != nil {
+		t.Fatalf("Apply: %v\n%s", err, res.RenderText(true))
+	}
+}
+
+// TestRouteForm_EditRefusals (#194): what `--edit` refuses, each in one sentence.
+func TestRouteForm_EditRefusals(t *testing.T) {
+	p, _ := showApp(t, "Posts.Show", "/posts", "Post", "")
+	_, err := NewForm(p, FormOptions{Page: "Posts.Show", Name: "PostEdit", Edit: "Post"})
+	wantRefusalIs(t, err, "`Post` is owned (`@owner`): an edit form on it needs a route that `requires user`")
+	_, err = NewForm(p, FormOptions{Page: "Posts.Show", Name: "PostEdit", Edit: "Nope"})
+	wantRefusalIs(t, err, "`--edit Nope`: `Nope` is not a table of this app (its tables: Comment, Post, Tag, User)")
+	p, _ = showApp(t, "Posts.Show", "/posts", "Post", "user")
+	_, err = NewForm(p, FormOptions{Page: "Posts.Show", Name: "PostEdit", Edit: "Post", Fields: formFields(t, "author:User.UserId")})
+	wantRefusalIs(t, err, "`author` is not a column the edit form of `Post` can change (title, body, status, featured)")
+	_, err = NewForm(p, FormOptions{Page: "Posts.Show", Name: "PostEdit", Edit: "Post", Fields: formFields(t, "title:Text")})
+	wantRefusalIs(t, err, "`title` is `Text.NonEmpty` in `Post`, not `Text`")
+	_, err = NewForm(p, FormOptions{Page: "Posts.Show", Name: "PostEdit", Edit: "Comment"})
+	wantRefusalIs(t, err, "`Posts.Show` has no `Comment` row to edit; make its page with `alder new route Posts.Show /… --show Comment`")
+}
+
+// TestRouteForm_EditFields (#194): the given fields are the form's, in their order; the update
+// writes those only.
+func TestRouteForm_EditFields(t *testing.T) {
+	p, dir := showApp(t, "Posts.Show", "/posts", "Post", "user")
+	edits, err := NewForm(p, FormOptions{Page: "Posts.Show", Name: "Retitle", Edit: "Post", Fields: formFields(t, "title:Text.NonEmpty")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := msgBody(t, edits, "app/Posts/Show.alder")
+	for _, want := range []string{
+		"form Retitle = {\n  title: Text.NonEmpty,\n}",
+		"let _ <- Db.updateMine Post params.id (\\r -> { r | title: params.form.title })",
+	} {
+		if !strings.Contains(b, want) {
+			t.Errorf("missing %q in:\n%s", want, b)
+		}
+	}
+	if res, err := Apply(dir, edits, Options{DryRun: true}); err != nil {
+		t.Fatalf("Apply: %v\n%s", err, res.RenderText(true))
+	}
+}

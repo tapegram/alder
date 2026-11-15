@@ -1,0 +1,243 @@
+module Posts.Show
+
+import Layout
+import Table.Post
+import Table.User
+
+route Show         = GET "/posts/{id}" { id: Post.PostId }               requires user
+route SavePostEdit = PUT "/posts/{id}" { id: Post.PostId } form PostEdit requires user
+
+type Model = { row: Post }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let row <- Db.getMine Post params.id
+  Query.succeed { row: row }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title="Post">
+    <h1>Post</h1>
+
+    <al-card>
+      <dl>
+        <dt>Id</dt>
+        <dd>{model.row.id}</dd>
+        <dt>Title</dt>
+        <dd>{model.row.title}</dd>
+        <dt>Body</dt>
+        <dd>{model.row.body}</dd>
+        <dt>Status</dt>
+        <dd>
+          <al-badge>
+            {match model.row.status {
+              Draft -> "Draft",
+              Published -> "Published",
+            }}
+          </al-badge>
+        </dd>
+        <dt>Featured</dt>
+        <dd>
+          {if model.row.featured then
+            <al-badge>Yes</al-badge>
+          else
+            <al-badge variant="secondary">No</al-badge>}
+        </dd>
+        <dt>Author</dt>
+        <dd>{model.row.author}</dd>
+        <dt>Created</dt>
+        <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
+        <dt>Updated</dt>
+        <dd>{Time.format "Jan 2, 2006" model.row.updated}</dd>
+      </dl>
+      <form submit={SavePostEdit { id: model.row.id }}>
+        <al-input field="title" label="Title" value={model.row.title} />
+        <al-textarea field="body" label="Body" value={model.row.body} />
+        <al-select field="status" label="Status" value={model.row.status} />
+        <al-checkbox field="featured" label="Featured" value={model.row.featured} />
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-button type="submit">Post edit</al-button>
+      </form>
+    </al-card>
+  </Layout.Page>
+
+form PostEdit = {
+  title: Text.NonEmpty,
+  body: Text,
+  status: Post.Status,
+  featured: Bool,
+}
+
+-- SavePostEdit writes the form over the row and goes back to the page;
+-- another user's row, or one deleted since, is not found.
+SavePostEdit.update : SavePostEdit.Params -> Session -> Task Response
+SavePostEdit.update params session = {
+  let _ <- Db.updateMine Post params.id (\r -> { r |
+    title: params.form.title,
+    body: params.form.body,
+    status: params.form.status,
+    featured: params.form.featured
+  })
+  Task.succeed (Response.redirect (Show { id: params.id }) |> Response.success "Saved")
+}
+
+test "the page shows the row" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let r <- Test.open (Show { id: post1 })
+  Task.succeed (
+    { answer: r.answer, title: List.member "title-1" (Test.texts "dd" r.doc) }
+      == { answer: Shown, title: True }
+  )
+}
+
+test "a missing row is not found" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Show { id: Post.PostId "missing" })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "another user's row is not found" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me }
+  let other <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: other,
+  }
+  let r <- Test.open (Show { id: post1 })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a visitor is sent to log in" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let r <- Test.open (Show { id: post1 })
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
+}
+
+test "saving PostEdit changes every field" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let page <- Test.get (Show { id: post1 })
+  let r <- Test.submit (SavePostEdit { id: post1 }) {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    status: Published,
+    featured: True,
+  }
+  let after <- Db.get Post post1
+  Task.succeed (
+    {
+      answer: r.answer,
+      notices: r.notices,
+      row: Maybe.map (\row -> {
+        title: row.title,
+        body: row.body,
+        status: row.status,
+        featured: row.featured,
+      }) after,
+    } == {
+      answer: Redirected (Show { id: post1 }),
+      notices: ["Saved"],
+      row: Just {
+        title: Text.NonEmpty "title-2",
+        body: "body-2",
+        status: Published,
+        featured: True,
+      },
+    }
+  )
+}
+
+test "a required field left empty in PostEdit is rejected" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let before <- Db.get Post post1
+  let page <- Test.get (Show { id: post1 })
+  let r <- Test.submitRaw (SavePostEdit { id: post1 }) [
+    { name: "title", value: "" },
+    { name: "body", value: "x" },
+    { name: "status", value: "Draft" },
+    { name: "featured", value: "True" },
+  ]
+  let after <- Db.get Post post1
+  Task.succeed (
+    { answer: r.answer, row: after }
+      == { answer: FormRejected [{ field: "title", message: "must not be empty" }], row: before }
+  )
+}
+
+test "a visitor cannot submit PostEdit" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let before <- Db.get Post post1
+  let _ <- Test.get (Show { id: post1 })
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit (SavePostEdit { id: post1 }) {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    status: Published,
+    featured: True,
+  }
+  let after <- Db.get Post post1
+  Task.succeed (
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login.Login {}), row: before }
+  )
+}
+
+test "PostEdit on another user's row is not found" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me }
+  let other <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: other,
+  }
+  let before <- Db.get Post post1
+  let _ <- Test.login { user: Just other }
+  let _ <- Test.get (Show { id: post1 })
+  let _ <- Test.login { user: Just me }
+  let r <- Test.submit (SavePostEdit { id: post1 }) {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    status: Published,
+    featured: True,
+  }
+  let after <- Db.get Post post1
+  Task.succeed ({ answer: r.answer, row: after } == { answer: PageMissing, row: before })
+}

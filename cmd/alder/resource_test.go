@@ -142,41 +142,184 @@ func TestResource_Mutate(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			dir := resourceApp(t, c)
-			var out, errb bytes.Buffer
-			code := runTestTo(withBuildDir(t, []string{dir, "--mutate", "--json"}), &out, &errb)
-			if code != 0 {
-				t.Fatalf("alder test --mutate --json: exit %d\n%s%s", code, out.String(), errb.String())
-			}
-			var killed, total int
-			var survivors []string
-			for _, l := range strings.Split(out.String(), "\n") {
-				var ms struct {
-					Mutants []struct {
-						Module, Decl, Kind, Before, After string
-						Line                              int
-						Killed                            bool
-					}
-				}
-				if !strings.HasPrefix(l, `{"mutants":`) || json.Unmarshal([]byte(l), &ms) != nil {
-					continue
-				}
-				for _, m := range ms.Mutants {
-					if !strings.HasPrefix(m.Module, c.dir+".") {
-						continue
-					}
-					total++
-					if m.Killed {
-						killed++
-					} else {
-						survivors = append(survivors, fmt.Sprintf("%s %s:%d %s: %s → %s", m.Module, m.Decl, m.Line, m.Kind, m.Before, m.After))
-					}
-				}
-			}
+			total, killed, survivors := moduleMutants(t, dir, c.dir+".")
 			if total == 0 {
-				t.Fatalf("no mutant of app/%s/:\n%s", c.dir, out.String())
+				t.Fatalf("no mutant of app/%s/", c.dir)
 			}
 			score := float64(killed) / float64(total)
 			t.Logf("the %s resource (--read %s): %d mutants, %d killed (score %.2f)\n%s", c.table, c.read, total, killed, score, strings.Join(survivors, "\n"))
+			if score < 0.95 {
+				t.Errorf("score %.2f < 0.95; survivors:\n%s", score, strings.Join(survivors, "\n"))
+			}
+		})
+	}
+}
+
+// moduleMutants runs `alder test --mutate --json` on the app in dir and counts the mutants of
+// the modules whose names start with prefix ("Posts."): how many, how many killed, and a line
+// per survivor.
+func moduleMutants(t *testing.T, dir, prefix string) (total, killed int, survivors []string) {
+	t.Helper()
+	for _, m := range mutantsOf(t, dir, prefix) {
+		total++
+		if m.Killed {
+			killed++
+		} else {
+			survivors = append(survivors, m.String())
+		}
+	}
+	return total, killed, survivors
+}
+
+// mutant is one mutant of `alder test --mutate --json`.
+type mutant struct {
+	Module, Decl, Kind, Before, After string
+	Line                              int
+	Killed                            bool
+}
+
+func (m mutant) String() string {
+	return fmt.Sprintf("%s %s:%d %s: %s → %s", m.Module, m.Decl, m.Line, m.Kind, m.Before, m.After)
+}
+
+// key is the mutant without its line, which an edit above it moves.
+func (m mutant) key() string {
+	return m.Module + " " + m.Decl + " " + m.Kind + ": " + m.Before + " → " + m.After
+}
+
+// mutantsOf runs `alder test --mutate --json` on the app in dir and returns the mutants of the
+// modules whose names start with prefix.
+func mutantsOf(t *testing.T, dir, prefix string) []mutant {
+	t.Helper()
+	var out, errb bytes.Buffer
+	code := runTestTo(withBuildDir(t, []string{dir, "--mutate", "--json"}), &out, &errb)
+	if code != 0 {
+		t.Fatalf("alder test --mutate --json: exit %d\n%s%s", code, out.String(), errb.String())
+	}
+	var all []mutant
+	for _, l := range strings.Split(out.String(), "\n") {
+		var ms struct{ Mutants []mutant }
+		if !strings.HasPrefix(l, `{"mutants":`) || json.Unmarshal([]byte(l), &ms) != nil {
+			continue
+		}
+		for _, m := range ms.Mutants {
+			if strings.HasPrefix(m.Module, prefix) {
+				all = append(all, m)
+			}
+		}
+	}
+	return all
+}
+
+// formEditCases are the edit forms of `alder new form --edit` (#194) the tests below generate:
+// on an `@owner` table (Post: updateMine), a keyless one with a reference and a `@unique` column
+// (Tag: Db.get, then Db.update; a select of posts with its search), a `@partition org` one
+// (Activity: updateScoped), one on a page whose path binds the org (Board, written by hand), and an
+// owned one with a reference (Article: a select of categories, updateMine called directly too).
+var formEditCases = []struct {
+	name, base, page string
+	pre              [][]string
+	file             string // a page written into the app first, from testdata/generate
+	args             []string
+}{
+	{"Post", "fixture", "Posts.Show", [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post", "--requires", "user"}}, "", []string{"new", "form", "Posts.Show", "PostEdit", "--edit", "Post"}},
+	{"Tag", "fixture", "Tags.Show", [][]string{{"new", "route", "Tags.Show", "/tags", "--show", "Tag", "--requires", "user"}}, "", []string{"new", "form", "Tags.Show", "TagEdit", "--edit", "Tag"}},
+	{"Activity", "fixture-silo", "Activities.Show", [][]string{{"new", "route", "Activities.Show", "/activities", "--show", "Activity", "--requires", "user,org"}}, "", []string{"new", "form", "Activities.Show", "ActivityEdit", "--edit", "Activity"}},
+	{"path key", "fixture-silo", "Board", nil, "path-key/Board.alder", []string{"new", "form", "Board", "Retext", "--edit", "Activity"}},
+	{"Article", "fixture", "Articles.Show", [][]string{{"new", "table", "Category", "name:Text.NonEmpty"}, {"new", "table", "Article", "title:Text.NonEmpty", "owner:User.UserId@ref=User@owner", "category:Category.CategoryId@ref=Category"}, {"new", "route", "Articles.Show", "/articles", "--show", "Article", "--requires", "user"}}, "", []string{"new", "form", "Articles.Show", "ArticleEdit", "--edit", "Article"}},
+}
+
+// formEditApp is the app of formEditCases[i], its edit form generated.
+func formEditApp(t *testing.T, i int) string {
+	t.Helper()
+	dir := formEditBase(t, i)
+	if code, out, errs := alderIn(t, dir, "", formEditCases[i].args...); code != 0 {
+		t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(formEditCases[i].args, " "), code, out, errs)
+	}
+	return dir
+}
+
+// formEditBase is the app of formEditCases[i] before its edit form: its page.
+func formEditBase(t *testing.T, i int) string {
+	t.Helper()
+	c := formEditCases[i]
+	dir := genApp(t, c.base)
+	if c.file != "" {
+		b, err := os.ReadFile(filepath.Join("../../testdata/generate", c.file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "app", filepath.Base(c.file)), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range c.pre {
+		if code, out, errs := alderIn(t, dir, "", args...); code != 0 {
+			t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(args, " "), code, out, errs)
+		}
+	}
+	return dir
+}
+
+// TestFormEdit_PathKey: an edit form on a page whose path binds the row's org (`/a/{org}/…`)
+// fills its route's org from the row, and its tests open the page at the org the row lives
+// under: the app checks, with no hole, and `alder test` passes (the goldens cover the others).
+func TestFormEdit_PathKey(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := formEditApp(t, 3)
+	if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || out != "" {
+		t.Fatalf("alder check: exit %d\n%s%s", code, out, errs)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "app", "Board.alder"))
+	if strings.Contains(string(b), "?") || !strings.Contains(string(b), "SaveRetext { org: model.row.org, id: model.row.id }") {
+		t.Errorf("Board:\n%s", b)
+	}
+	code, out, errs := alderIn(t, dir, "", "test")
+	if code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") {
+		t.Fatalf("alder test: exit %d\n%s%s", code, out, errs)
+	}
+}
+
+// TestFormEdit_Mutate: the tests of `alder new form --edit` (#194) kill the mutants of the code
+// it writes, as a resource's do: at least 0.95 of the page module's mutants, but those the page's
+// own tests let survive before the form was added.
+func TestFormEdit_Mutate(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	mutationGate(t)
+	if testing.Short() {
+		t.Skip("runs every mutant of the fixture")
+	}
+	for i, c := range formEditCases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			// the page's own mutants that its own tests leave (`--show`'s, or none by hand) are
+			// not the edit form's to kill
+			before := map[string]bool{}
+			for _, m := range mutantsOf(t, formEditBase(t, i), c.page) {
+				if !m.Killed {
+					before[m.key()] = true
+				}
+			}
+			var total, killed int
+			var survivors []string
+			for _, m := range mutantsOf(t, formEditApp(t, i), c.page) {
+				switch {
+				case before[m.key()]:
+				case m.Killed:
+					total++
+					killed++
+				default:
+					total++
+					survivors = append(survivors, m.String())
+				}
+			}
+			if total == 0 {
+				t.Fatalf("no mutant of %s", c.page)
+			}
+			score := float64(killed) / float64(total)
+			t.Logf("%s: %d mutants, %d killed (score %.2f)\n%s", c.page, total, killed, score, strings.Join(survivors, "\n"))
 			if score < 0.95 {
 				t.Errorf("score %.2f < 0.95; survivors:\n%s", score, strings.Join(survivors, "\n"))
 			}

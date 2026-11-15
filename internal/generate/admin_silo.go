@@ -138,9 +138,14 @@ func (at *crudTable) actionAt(suffix, id string) string {
 	if at.silo != nil {
 		vals[at.silo.key] = "session." + at.silo.key
 	}
+	return pathAction(at.path+suffix, vals)
+}
+
+// pathAction is a GET form's `action` attribute to path, each of whose `{p}` is the text vals[p]
+// (an expression): the text, or the text built around those values.
+func pathAction(rest string, vals map[string]string) string {
 	var parts []string
 	lit := ""
-	rest := at.path + suffix
 	for {
 		before, after, ok := strings.Cut(rest, "{")
 		if !ok {

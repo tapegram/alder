@@ -538,3 +538,14 @@ func pageLit(module string, fields []string) string {
 	}
 	return module + " { " + strings.Join(fields, ", ") + " }"
 }
+
+// ownerOf is the variable of the owner (the partition column's value) of row v of t, as the test
+// inserted it; the session's key row when the test did not name it.
+func (b *testBuilder) ownerOf(t *Table, v string) string {
+	for _, r := range b.rows[t.Module] {
+		if r.v == v && r.owner != "" {
+			return r.owner
+		}
+	}
+	return b.keyRow()
+}

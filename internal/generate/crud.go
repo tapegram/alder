@@ -42,6 +42,21 @@ type crudTable struct {
 	bulkSet   []*Column   // the columns the bulk page sets
 	silo      *adminSilo  // the silo it lives in, nil for a table of the shared store
 	parent    *Column     // unused: the --under seam
+	// form names the form of its New and Edit pages ("" for "<T>Form"); host is the page its Edit
+	// form is on, as the tests reach it (nil for the Edit page): `alder new form --edit` puts the
+	// form on a page of its own
+	form string
+	host *editHost
+}
+
+// editHost is the page an edit form is on, as the tests of a row target (inserted by tb) write
+// it: the page opened (with extra parameters), the write route the form is posted to, the
+// answer after a save, and the write route's update called directly with the form's values.
+type editHost struct {
+	open func(tb *testBuilder, target string, extra ...string) string
+	save func(tb *testBuilder, target string) string
+	back func(tb *testBuilder, target string) string
+	run  func(tb *testBuilder, target, form string) string
 }
 
 // access says whose rows a set of pages reach and how its routes are guarded.
@@ -1540,22 +1555,50 @@ func (g *crudGen) othersSave(at *crudTable, mod string, imports *importSet, who 
 		values = append(values, c.Name+": "+g.changedValue(tb, at, c, k+1))
 	}
 	tb.let("let before <- Db.get %s %s", t.Name, target)
-	tb.let("let r <- Test.run (Save.update { id: %s, form: { %s } } %s)", target, strings.Join(values, ", "), tb.session(g.a.keys, g.a.role))
+	call := fmt.Sprintf("Save.update { id: %s, form: { %s } }", target, strings.Join(values, ", "))
+	if at.host != nil {
+		call = at.host.run(tb, target, strings.Join(values, ", "))
+	}
+	tb.let("let r <- Test.run (%s %s)", call, tb.session(g.a.keys, g.a.role))
 	tb.let("let after <- Db.get %s %s", t.Name, target)
 	return TestData{Name: quote("Save itself does not change another " + who + "'s row"), Lines: tb.lines,
 		Result: fmt.Sprintf(`{ value: r.value, wrote: List.member %s r.trace, row: after } == { value: Err "not found", wrote: True, row: before }`, quote(g.a.update+" "+t.Name))}
 }
 
 // formName is the name of the form of a table's New and Edit pages: "PostForm".
-func (at *crudTable) formName() string { return at.t.Name + "Form" }
+func (at *crudTable) formName() string {
+	if at.form != "" {
+		return at.form
+	}
+	return at.t.Name + "Form"
+}
 
 // formRoute is the write route a test of at's New page posts the form to (Create), or of its Edit
 // page for the row target (Save), as the test's Test.submit names it.
-func (at *crudTable) formRoute(edit bool, target string) string {
-	if edit {
+func (at *crudTable) formRoute(tb *testBuilder, edit bool, target string) string {
+	switch {
+	case edit && at.host != nil:
+		return at.host.save(tb, target)
+	case edit:
 		return "(Save { id: " + target + " })"
 	}
 	return at.own("Create", true)
+}
+
+// editPage is the page a test of at's Edit form opens for the row target, with extra parameters.
+func (at *crudTable) editPage(tb *testBuilder, target string, extra ...string) string {
+	if at.host != nil {
+		return at.host.open(tb, target, extra...)
+	}
+	return pageLit("Edit", append([]string{"id: " + target}, extra...))
+}
+
+// editBack is the answer of a save of the row target from its Edit form: its Show page.
+func (at *crudTable) editBack(tb *testBuilder, target string) string {
+	if at.host != nil {
+		return at.host.back(tb, target)
+	}
+	return fmt.Sprintf("Redirected (%s { id: %s })", at.route("Show"), target)
 }
 
 // optionsField is the model field holding the rows a reference column's select offers.
@@ -1889,7 +1932,7 @@ func (g *crudGen) notOffered(at *crudTable, mod string, imports *importSet, edit
 		target := ""
 		if edit {
 			target = tb.insertRow(at.t, "", nil, false)
-			page = pageLit("Edit", []string{"id: " + target})
+			page = at.editPage(tb, target)
 		}
 		g.optionRows(tb, at)
 		tb.let("let page <- Test.get (%s)", page)
@@ -1905,7 +1948,7 @@ func (g *crudGen) notOffered(at *crudTable, mod string, imports *importSet, edit
 			}
 			raw = append(raw, fmt.Sprintf("{ name: %s, value: %s }", quote(d.Name), v))
 		}
-		tb.let("let r <- Test.submitRaw %s [%s]", at.formRoute(edit, target), strings.Join(raw, ", "))
+		tb.let("let r <- Test.submitRaw %s [%s]", at.formRoute(tb, edit, target), strings.Join(raw, ", "))
 		rejected := fmt.Sprintf("FormRejected [{ field: %s, message: \"must be one of the options\" }]", quote(c.Name))
 		result := ""
 		if edit {
@@ -1993,7 +2036,7 @@ func (g *crudGen) uniqueTests(at *crudTable, mod string, imports *importSet, edi
 		target := ""
 		if edit {
 			target = tb.insertRow(t, "", nil, false)
-			page = pageLit("Edit", []string{"id: " + target})
+			page = at.editPage(tb, target)
 		}
 		g.optionRows(tb, at)
 		taken := g.submitValue(tb, at, c, tb.counts[t.Module]+1)
@@ -2014,7 +2057,7 @@ func (g *crudGen) uniqueTests(at *crudTable, mod string, imports *importSet, edi
 			tb.let("let before <- Db.get %s %s", t.Name, target)
 		}
 		tb.let("let _ <- Test.get (%s)", page)
-		tb.let("let r <- Test.submit %s { %s }", at.formRoute(edit, target), strings.Join(values, ", "))
+		tb.let("let r <- Test.submit %s { %s }", at.formRoute(tb, edit, target), strings.Join(values, ", "))
 		rejected := fmt.Sprintf("FormRejected [{ field: \"\", message: %s }]", quote(takenText(at, c)))
 		col := strings.ToLower(Humanize(c.Name))
 		if edit {
@@ -2188,7 +2231,7 @@ func (g *crudGen) edit(at *crudTable) {
 			want = append(want, c.Name+": "+v)
 		}
 		tb.let("let page <- Test.get (%s)", pageLit("Edit", []string{"id: " + target}))
-		tb.let("let r <- Test.submit %s { %s }", at.formRoute(true, target), strings.Join(values, ", "))
+		tb.let("let r <- Test.submit %s { %s }", at.formRoute(tb, true, target), strings.Join(values, ", "))
 		tb.let("let after <- Db.get %s %s", t.Name, target)
 		lhs := []string{"answer: r.answer", "row: Maybe.map (\\row -> { " + strings.Join(got, ", ") + " }) after"}
 		rhs := []string{fmt.Sprintf("answer: Redirected (%s { id: %s })", at.route("Show"), target), "row: Just { " + strings.Join(want, ", ") + " }"}
@@ -2219,7 +2262,7 @@ func (g *crudGen) edit(at *crudTable) {
 			values = append(values, c.Name+": "+g.changedValue(tb, at, c, k+1))
 		}
 		tb.let("let before <- Db.get %s %s", t.Name, target)
-		return pageLit("Edit", []string{"id: " + target}), fmt.Sprintf("Test.submit %s { %s }", at.formRoute(true, target), strings.Join(values, ", ")), func() (string, string) {
+		return pageLit("Edit", []string{"id: " + target}), fmt.Sprintf("Test.submit %s { %s }", at.formRoute(tb, true, target), strings.Join(values, ", ")), func() (string, string) {
 			tb.let("let after <- Db.get %s %s", t.Name, target)
 			return "row: after", "row: before"
 		}

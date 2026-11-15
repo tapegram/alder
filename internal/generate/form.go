@@ -39,6 +39,9 @@ type FormOptions struct {
 	// the table's collection, else the page's own path).
 	Method string
 	Path   string
+	// Edit is --edit T: on a `--show T` page, a form changing the page's row of table T (its
+	// fields the given ones, else T's editable columns), PUT to the row's member path
+	Edit string
 }
 
 // NewForm generates `alder new form`: newRouteForm's POST route on a route module, refused on

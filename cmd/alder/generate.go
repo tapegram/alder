@@ -275,7 +275,7 @@ const newAdminUsage = "usage: alder new admin [--module Admin] [--path /admin] [
 
 const newResourceUsage = "usage: alder new resource <Table> [<field>:<Type>…] [--read owner|signed-in|all] [--requires user|<key>[,…]] [--module <M>] [--path /p] [--dir app] [--json] [--dry-run]"
 
-const newFormUsage = "usage: alder new form <Route module> <Name> <field>:<Type>[=default] … [--into T] [--hole] [--msg <Route>] [--method POST|PUT|PATCH|DELETE] [--path /path] [--dir app] [--json] [--dry-run]"
+const newFormUsage = "usage: alder new form <Route module> <Name> <field>:<Type>[=default] … [--into T | --hole | --edit T] [--msg <Route>] [--method POST|PUT|PATCH|DELETE] [--path /path] [--dir app] [--json] [--dry-run]"
 
 const newActionUsage = "usage: alder new action <Route module> <Name> [<field>:<Type> …] [--in-for <binder>] [--when <Bool expression>] [--id <id>] [--method POST|PUT|PATCH|DELETE] [--path /path] [--dir app] [--json] [--dry-run]"
 

@@ -676,7 +676,7 @@ func (g *crudGen) ownRoleTests(at *crudTable, mod string, imports *importSet, ro
 	g.optionRows(tb, at)
 	tb.let("let before <- Db.get %s %s", t.Name, me)
 	tb.let("let _ <- Test.get (%s)", pageLit("Edit", []string{"id: " + me}))
-	tb.let("let r <- Test.submit %s { %s }", at.formRoute(true, me), values(tb, other))
+	tb.let("let r <- Test.submit %s { %s }", at.formRoute(tb, true, me), values(tb, other))
 	tb.let("let after <- Db.get %s %s", t.Name, me)
 	tests = append(tests, TestData{Name: quote("an Admin cannot change their own role"), Lines: tb.lines,
 		Result: fmt.Sprintf("{ answer: r.answer, row: after } == { answer: FormRejected [{ field: \"\", message: %s }], row: before }", quote(roleText))})
@@ -686,7 +686,7 @@ func (g *crudGen) ownRoleTests(at *crudTable, mod string, imports *importSet, ro
 	g.optionRows(tb, at)
 	tb.let("let _ <- Test.get (%s)", pageLit("Edit", []string{"id: " + me}))
 	vs := values(tb, "Admin")
-	tb.let("let r <- Test.submit %s { %s }", at.formRoute(true, me), vs)
+	tb.let("let r <- Test.submit %s { %s }", at.formRoute(tb, true, me), vs)
 	tb.let("let after <- Db.get %s %s", t.Name, me)
 	var got, want []string
 	for _, c := range at.editable {
@@ -702,7 +702,7 @@ func (g *crudGen) ownRoleTests(at *crudTable, mod string, imports *importSet, ro
 	admin := tb.insertRow(t, "admin", map[string]string{role.Name: maybeJust(role, "Admin")}, false)
 	g.optionRows(tb, at)
 	tb.let("let _ <- Test.get (%s)", pageLit("Edit", []string{"id: " + admin}))
-	tb.let("let r <- Test.submit %s { %s }", at.formRoute(true, admin), values(tb, other))
+	tb.let("let r <- Test.submit %s { %s }", at.formRoute(tb, true, admin), values(tb, other))
 	tb.let("let after <- Db.get %s %s", t.Name, admin)
 	tests = append(tests, TestData{Name: quote("an Admin demotes another Admin"), Lines: tb.lines,
 		Result: fmt.Sprintf("{ answer: r.answer, %s: Maybe.map (\\row -> row.%s) after } == { answer: Redirected (%s { id: %s }), %s: Just %s }",

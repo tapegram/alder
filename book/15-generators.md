@@ -594,6 +594,17 @@ insert must have. That is the rule:
 - When they fit none, the `update`'s body is a **hole**, `?answer`, of type
   `Task Response`.
 
+### A form that changes a row: `--edit`
+
+`--edit T` makes the other kind of form: one that changes a row instead of
+adding one. It goes on a route that shows one row of `T`, the route
+`--show T` writes (next section): a path with `{id}` and a `Model` of
+`{ row: T }`. With no fields, the form edits every column of `T` a person
+types (not the id, the timestamps, secrets, the owner or the partition, nor
+another reference to users); the fields given choose some of them. A
+reference is a select of the rows it may hold. Its route is `PUT` to the row's own path,
+and `--into` and `--hole` do not apply. The next section shows one.
+
 ## A page for a row, and a write route: `--show` and `alder new action`
 
 A route for one reply:
@@ -607,6 +618,107 @@ Its path is `/replies/{id}`, with `id: Reply.ReplyId`. Its `load` reads
 the row with `Db.get` and answers `Query.notFound` when there is none,
 and its tests check both: the page shows the row's fields, and a missing
 id is `PageMissing`.
+
+An edit form on it, previewed with `--dry-run` (nothing is written):
+
+```text command=guestbook
+$ alder new form Replies.Show ReplyEdit --edit Reply --dry-run
+would edit app/Replies/Show.alder
+--- a/app/Replies/Show.alder
++++ b/app/Replies/Show.alder
+@@ -4,15 +4,49 @@
+ import Table.Entry
+ import Table.Reply
+ 
+-route Show = GET "/replies/{id}" { id: Reply.ReplyId }
++route Show          = GET "/replies/{id}" { id: Reply.ReplyId, findEntry: Text = "" }
++route SaveReplyEdit = PUT "/replies/{id}" { id: Reply.ReplyId } form ReplyEdit
+ 
+-type Model = { row: Reply }
++type Model = {
++  row: Reply,
++  entries: List Entry,
++  entriesTotal: Int,
++  findEntry: Text,
++}
+ 
+ Show.load : Show.Params -> Session -> Query Model
+ Show.load params session = {
+   let found <- Db.get Reply params.id
+   match found {
+-    Just row -> Query.succeed { row: row },
++    Just row -> {
+…
+@@ -42,9 +76,55 @@
+         <dt>Updated</dt>
+         <dd>{Time.format "Jan 2, 2006" model.row.updated}</dd>
+       </dl>
++      {if model.entriesTotal > 200 then
++        <form method="get" action={"/replies/" ++ model.row.id}>
++          <al-input>
++            <label>
++              Find entry <input type="search" name="findEntry" value={model.findEntry} />
++            </label>
++          </al-input>
++          <al-button type="submit" variant="secondary">Find</al-button>
++        </form>
++      else
++        Html.none}
++      <form submit={SaveReplyEdit { id: model.row.id }}>
++        <al-select
++          field="entry"
++          label="Entry"
++          options={List.map (\r -> { value: r.id, label: r.name }) model.entries}
++          value={model.row.entry} />
++        <al-textarea field="message" label="Message" value={model.row.message} />
++        <al-checkbox field="hidden" label="Hidden" value={model.row.hidden} />
++        <al-alert variant="destructive"><Errors form /></al-alert>
++        <al-button type="submit">Reply edit</al-button>
++      </form>
+     </al-card>
+   </Layout.Page>
+ 
++form ReplyEdit = {
++  entry: Entry.EntryId,
++  message: Text.NonEmpty,
++  hidden: Bool,
++}
++
++-- SaveReplyEdit writes the form over the row and goes back to the page;
++-- a row deleted since is not found.
++SaveReplyEdit.update : SaveReplyEdit.Params -> Session -> Task Response
++SaveReplyEdit.update params session = {
++  let found <- Db.get Reply params.id
++  match found {
++    Just row -> {
++      let _ <- Db.update Reply row.id (\r -> { r |
++        entry: params.form.entry,
++        message: params.form.message,
++        hidden: params.form.hidden
++      })
++      Task.succeed (Response.redirect (Show { id: params.id }) |> Response.success "Saved")
++    },
++    Nothing -> Task.notFound,
++  }
++}
++
+…
+dry run: nothing written
+```
+
+`entry`, a reference, is a select of the entries, as on an Edit page that
+`alder new resource` writes: its options join the page's `Model` and its
+`load` (read with the row in hand, so a long table's select keeps the row's
+own entry), and past 200 entries a search, the page's new `findEntry`
+parameter, narrows them. `Reply` has no owner, so `SaveReplyEdit` reads the
+row with `Db.get`, a missing one not found, and writes it with `Db.update`.
+On an `@owner` table the route must `requires user`, and the update is
+`Db.updateMine` alone (`Db.updateScoped` for a `@partition` table): another
+user's row is not found, and the tests check it with one more case. The
+tests elided above save every field, submit an empty `message`, refuse an
+entry the select does not offer and try the long list's search; when the
+route requires a user, a visitor's submission is refused too, the row
+unchanged.
 
 Now a button that deletes the reply. `alder new action` adds a **write
 route** to a route module, and a button that sends it (`alder new msg`, its old

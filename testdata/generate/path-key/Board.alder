@@ -1,0 +1,25 @@
+module Board
+
+import Layout
+import Org
+import Activity
+
+route Board = GET "/a/{org}/activities/{id}" { org: Org.OrgId, id: Activity.ActivityId } requires user, org
+
+type Model = { row: Activity }
+
+Board.load : Board.Params -> Session -> Query Model
+Board.load params session = {
+  let row <- Db.getScoped Activity params.id
+  Query.succeed { row: row }
+}
+
+Board.view : Model -> Session -> Html
+Board.view model session =
+  <Layout.Page title="Activity">
+    <h1>Activity</h1>
+
+    <al-card>
+      <p>{model.row.text}</p>
+    </al-card>
+  </Layout.Page>

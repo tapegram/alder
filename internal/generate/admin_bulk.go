@@ -342,7 +342,7 @@ func (g *crudGen) findTests(at *crudTable, mod string, imports *importSet, edit 
 			g.optionRows(tb, at)
 			return tb, func(extra ...string) string {
 				if edit {
-					extra = append([]string{"id: " + target}, extra...)
+					return at.editPage(tb, target, extra...)
 				}
 				return pageLit(get, extra)
 			}, target
@@ -400,7 +400,7 @@ func (g *crudGen) findTests(at *crudTable, mod string, imports *importSet, edit 
 			}
 			raw = append(raw, fmt.Sprintf("{ name: %s, value: %s }", quote(d.Name), v))
 		}
-		tb.let("let sent <- Test.submitRaw %s [%s]", at.formRoute(false, ""), strings.Join(raw, ", "))
+		tb.let("let sent <- Test.submitRaw %s [%s]", at.formRoute(tb, false, ""), strings.Join(raw, ", "))
 		tb.let("let rows <- Db.from %s |> Db.count", at.t.Name)
 		tests = append(tests, TestData{Name: quote(article(strings.ToLower(Humanize(c.Name))) + " outside the narrowed list is refused"), Lines: tb.lines,
 			Result: fmt.Sprintf("{ answer: sent.answer, rows: rows } == { answer: FormRejected [{ field: %s, message: \"must be one of the options\" }], rows: %d }", quote(c.Name), tb.counts[at.t.Module])})
@@ -430,7 +430,7 @@ func (g *crudGen) othersOwnTests(at *crudTable, mod string, imports *importSet, 
 	theirs := tb.insertRow(rt, "", over, false)
 	target := tb.insertRow(at.t, "", map[string]string{c.Name: maybeJust(c, theirs)}, false)
 	tb.bulkInsert(rt, 201, "")
-	tb.let("let page <- Test.get (%s)", pageLit("Edit", []string{"id: " + target}))
+	tb.let("let page <- Test.get (%s)", at.editPage(tb, target))
 	n := optionsField(c)
 	return []TestData{{Name: quote("another " + who + "'s " + strings.ToLower(Humanize(c.Name)) + " the row refers to is not offered"), Lines: tb.lines,
 		Result: fmt.Sprintf("{ offered: List.length (List.filter (\\o -> o.%s == %s) page.model.%s), shown: List.length page.model.%s } == { offered: 0, shown: 50 }",
@@ -451,11 +451,11 @@ func (g *crudGen) ownFirstTest(at *crudTable, mod string, imports *importSet, c 
 	for _, d := range at.editable {
 		same = append(same, d.Name+": page.model.row."+d.Name)
 	}
-	tb.let("let page <- Test.get (%s)", pageLit("Edit", []string{"id: " + target}))
-	tb.let("let r <- Test.submit %s { %s }", at.formRoute(true, target), strings.Join(same, ", "))
+	tb.let("let page <- Test.get (%s)", at.editPage(tb, target))
+	tb.let("let r <- Test.submit %s { %s }", at.formRoute(tb, true, target), strings.Join(same, ", "))
 	tb.let("let after <- Db.get %s %s", at.t.Name, target)
 	n := optionsField(c)
 	return TestData{Name: quote("the row's own " + strings.ToLower(Humanize(c.Name)) + " is offered first when it sorts past the 50"), Lines: tb.lines,
-		Result: fmt.Sprintf("{ answer: r.answer, kept: Maybe.map (\\row -> row.%s) after, first: Maybe.map (\\o -> o.%s) (List.head page.model.%s), once: List.length (List.filter (\\o -> o.%s == %s) page.model.%s), shown: List.length page.model.%s } == { answer: Redirected (%s { id: %s }), kept: Just %s, first: Just %s, once: 1, shown: 51 }",
-			c.Name, rt.IDField, n, rt.IDField, last, n, n, at.route("Show"), target, paren(maybeJust(c, last)), last)}
+		Result: fmt.Sprintf("{ answer: r.answer, kept: Maybe.map (\\row -> row.%s) after, first: Maybe.map (\\o -> o.%s) (List.head page.model.%s), once: List.length (List.filter (\\o -> o.%s == %s) page.model.%s), shown: List.length page.model.%s } == { answer: %s, kept: Just %s, first: Just %s, once: 1, shown: 51 }",
+			c.Name, rt.IDField, n, rt.IDField, last, n, n, at.editBack(tb, target), paren(maybeJust(c, last)), last)}
 }

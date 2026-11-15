@@ -1,0 +1,1 @@
+alder new form: `Home` has no `Post` row to edit; make its page with `alder new route Home /… --show Post`

@@ -325,6 +325,17 @@ Acceptance for PR 1: the `fixture-admin` goldens are byte-identical, `TestAdmin_
   submit={Save<Name> { id: model.row.id }}>` with `value={model.row.<col>}` inputs (admin's
   `formParts(edit=true)`), and tests "saving changes every field", "a required field left empty is
   rejected" and, when scoped, "another user's row is not found".
+- The test names carry the form's name ("saving PostEdit changes every field", "a required field
+  left empty in PostEdit is rejected", "PostEdit on another user's row is not found"): a module's
+  test names must differ (`addTests` refuses a duplicate), and `--show --requires user` already
+  writes "another user's row is not found", as a second edit form on the page would repeat the
+  others.
+- A reference column is a select, as on the resource's Edit page: its options (`formParts`'s model
+  fields and loads, with the 200-row cap and the `find<Col>` search) join the page's `Model`, its
+  `load` before `Query.succeed { row: row }` and its route's parameters. A path parameter other
+  than `id` is filled from the row when it is the table's partition key (`/a/{org}/…`:
+  `model.row.org`; the tests open the page at the org the row lives under); any other is refused,
+  so the view holds no hole.
 - Path: `formPath` gains a member form, `"/" + names.Collection(T) + "/{id}"`, nested under the
   page's partition segment as rule 3 does for collections. `--method` defaults to `PUT`.
 

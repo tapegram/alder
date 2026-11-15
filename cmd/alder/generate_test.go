@@ -225,6 +225,13 @@ var genCases = []genCase{
 	{name: "form-route-role", base: "fixture", pre: [][]string{{"new", "route", "Tags.Index", "/tags", "--list", "Tag", "--role", "Admin"}}, args: []string{"new", "form", "Tags.Index", "Quick", "name:Text.NonEmpty", "post:Post.PostId"}, test: true},
 	{name: "form-route-show-test", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "form", "Posts.Show", "Reply", "name:Text.NonEmpty", "post:Post.PostId", "--msg", "SendReply"}, test: true},
 	{name: "form-route-show", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "form", "Posts.Show", "Reply", "body:Text", "--hole", "--msg", "SendReply"}},
+	// #194: an edit form on a `--show` page: PUT to the row, the update scoped by the table's owner
+	{name: "fixture-form-edit", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post", "--requires", "user"}}, args: []string{"new", "form", "Posts.Show", "PostEdit", "--edit", "Post"}, test: true},
+	{name: "fixture-form-edit-ref", base: "fixture", pre: [][]string{{"new", "route", "Tags.Show", "/tags", "--show", "Tag", "--requires", "user"}}, args: []string{"new", "form", "Tags.Show", "TagEdit", "--edit", "Tag"}, test: true},
+	{name: "fixture-silo-form-edit", base: "fixture-silo", pre: [][]string{{"new", "route", "Activities.Show", "/activities", "--show", "Activity", "--requires", "user,org"}}, args: []string{"new", "form", "Activities.Show", "ActivityEdit", "--edit", "Activity"}, test: true},
+	{name: "form-edit-no-row", base: "fixture", args: []string{"new", "form", "Home", "PostEdit", "--edit", "Post"}, code: 1},
+	{name: "form-edit-into", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post", "--requires", "user"}}, args: []string{"new", "form", "Posts.Show", "PostEdit", "--edit", "Post", "--into", "Post"}, code: 1},
+	{name: "form-edit-hole", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post", "--requires", "user"}}, args: []string{"new", "form", "Posts.Show", "PostEdit", "--edit", "Post", "--hole"}, code: 1},
 	{name: "msg", base: "scaffold", args: []string{"new", "action", "Home", "Clear", "--method", "DELETE"}, test: true,
 		fills: [][2]string{{"--decl Home.Clear.update", "{\n  let _ <- Log.info \"cleared\"\n  Task.succeed Response.refresh\n}"}}},
 	{name: "capability", base: "scaffold", args: []string{"new", "capability", "Weather", "current", "{ city: Text } -> Query (Maybe Float)"}, test: true,
