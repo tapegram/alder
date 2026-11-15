@@ -129,6 +129,21 @@ test "searching finds matching rows" = {
   Task.succeed (List.map (\row -> row.id) page.model.rows == [entry2])
 }
 
+test "searching counts the matching rows" = {
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Entry {
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+        message: Text.NonEmpty ("message-" ++ Text.fromInt n),
+      }) (List.range 1 21)
+    )
+  let page <- Test.get (Index { q: "name-21" })
+  Task.succeed (
+    { rows: List.length page.model.rows, pages: Test.texts "al-pagination span" page.doc }
+      == { rows: 1, pages: ["Previous", "Page 1 of 1", "Next"] }
+  )
+}
+
 test "a long query is cut" = {
   let long = Text.join "" (List.map (\n -> "z") (List.range 1 20000))
   let page <- Test.get (Index { q: long })

@@ -217,6 +217,9 @@ func NewRoute(p *Program, o RouteOptions) ([]Edit, error) {
 	if o.Form != "" && method == "GET" {
 		return nil, Refusef("--form goes with a write route: a GET route has no form to post (`--method POST --form %s`)", o.Form)
 	}
+	if o.Search != nil && o.List == "" {
+		return nil, Refusef("--search goes with --list T: it adds a search to the list's rows")
+	}
 	if method != "GET" {
 		return newWriteRoute(p, o, route, method)
 	}
@@ -225,9 +228,6 @@ func NewRoute(p *Program, o RouteOptions) ([]Edit, error) {
 	}
 	if o.ContentType != "" && !o.File {
 		return nil, Refusef("--type goes with --file")
-	}
-	if o.Search != nil && o.List == "" {
-		return nil, Refusef("--search goes with --list T: it adds a search to the list's rows")
 	}
 	if o.By != "" && o.Show == "" {
 		return nil, Refusef("--by names the column --show T reads its row by: give --show T too")
@@ -510,6 +510,12 @@ func NewRoute(p *Program, o RouteOptions) ([]Edit, error) {
 				tb.let("let page <- Test.get (%s)", pageLit(route, []string{"q: " + quote(q)}))
 				d.Tests = append(d.Tests, TestData{Name: quote("searching finds matching rows"), Lines: tb.lines,
 					Result: fmt.Sprintf("List.map (\\row -> row.%s) page.model.rows == [%s]", t.IDField, match)})
+				// the page count follows the search: 21 rows are two pages, the one that matches is one
+				tb = listTest()
+				tb.bulkInsert(t, 21, "")
+				tb.let("let page <- Test.get (%s)", pageLit(route, []string{"q: " + quote(rawText(searched[0], 21))}))
+				d.Tests = append(d.Tests, TestData{Name: quote("searching counts the matching rows"), Lines: tb.lines,
+					Result: "{ rows: List.length page.model.rows, pages: Test.texts \"al-pagination span\" page.doc } == { rows: 1, pages: [\"Previous\", \"Page 1 of 1\", \"Next\"] }"})
 			}
 			// a search text too long for the database is cut, not a failure
 			tb = listTest()
@@ -752,7 +758,6 @@ func missingSession(p *Program) string {
 	}
 }
 
-// rawText is the text a sample value of column c shows on a page (testBuilder.sample's).
 // searchColumns are the columns of t a --search lists: those named (each must be a Text column
 // a list can search), or with none named searchCols(t).
 func searchColumns(t *Table, named []string) ([]*Column, error) {
@@ -780,6 +785,7 @@ func searchColumns(t *Table, named []string) ([]*Column, error) {
 	return cols, nil
 }
 
+// rawText is the text a sample value of column c shows on a page (testBuilder.sample's).
 func rawText(c *Column, n int) string {
 	text := strings.ToLower(c.Name) + "-" + fmt.Sprint(n)
 	if c.Brand != nil {

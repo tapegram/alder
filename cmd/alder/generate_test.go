@@ -242,6 +242,8 @@ var genCases = []genCase{
 	{name: "fixture-route-list-search", base: "fixture", args: []string{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--search", "title", "--requires", "user"}, test: true},
 	{name: "route-list-search-not-text", base: "fixture", pre: [][]string{{"edit", "table", "Post", "add-field", "views:Int=0"}}, args: []string{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--search", "views"}, code: 1},
 	{name: "route-list-search-no-column", base: "fixture", args: []string{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--search", "nope"}, code: 1},
+	{name: "route-search-post", base: "scaffold", args: []string{"new", "route", "Like", "/like", "--method", "POST", "--search"}, code: 1},
+	{name: "route-search-file", base: "scaffold", args: []string{"new", "route", "Data", "/data", "--file", "--search", "title"}, code: 1},
 	{name: "route-search-no-list", base: "scaffold", args: []string{"new", "route", "About", "/about", "--search"}, code: 1},
 	{name: "fixture-route-list-mine", base: "fixture", args: []string{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--requires", "user"}, test: true},
 	{name: "fixture-route-show-role", base: "fixture", args: []string{"new", "route", "Users.Show", "/users", "--show", "User", "--role", "Admin"}, test: true},
@@ -768,7 +770,7 @@ var genSequence = []struct {
 	args  []string
 	stdin string
 }{
-	{args: []string{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--requires", "user"}},
+	{args: []string{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--search", "title", "--requires", "user"}},
 	{args: []string{"new", "route", "Posts.Show", "/posts", "--show", "Post", "--requires", "user"}},
 	{args: []string{"new", "route", "Dash", "/dash", "--from", "Post", "Tag", "--requires", "user"}},
 	{args: []string{"new", "route", "Users.Index", "/users", "--list", "User", "--role", "Admin"}},
