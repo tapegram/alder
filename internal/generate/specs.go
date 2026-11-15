@@ -110,6 +110,7 @@ func newSpecs() []*Spec {
 				{Name: "type", Kind: ArgText, Value: "T", Summary: "with --file, the content type (default text/plain)", Example: "text/csv"},
 				{Name: "example", Kind: ArgBool, Default: "true", DefaultUnless: []string{"blank", "file", "list", "show", "from", "param", "method"}, Summary: "a working example — state in a URL parameter, a write route that changes it and a view that uses them — to delete once read"},
 				{Name: "param", Kind: ArgText, Variadic: true, Value: "name:Type", Summary: "a route parameter (repeatable)", Example: "q:Text"},
+				{Name: "search", Kind: ArgText, OptionalValue: true, Value: "[a,b]", Summary: "with --list, a search box over the Text columns a,b (every required Text column when none is named)", Example: "title"},
 				{Name: "requires", Kind: ArgText, Value: "user", Summary: "require a signed-in user", Example: "user"},
 				{Name: "role", Kind: ArgText, Value: "R", Summary: "require role R", Example: "Admin"},
 			},
@@ -117,6 +118,14 @@ func newSpecs() []*Spec {
 				o := RouteOptions{Module: s.One("module"), Path: s.One("path"), Method: s.One("method"), Form: s.One("form"), List: s.One("list"), Show: s.One("show"), From: s.All("from"),
 					Requires: s.One("requires"), Role: s.One("role"), Blank: s.Has("blank"), Example: s.Has("example"), Params: s.All("param"), By: s.One("by"),
 					File: s.Has("file"), ContentType: s.One("type")}
+				if s.Has("search") { // bare: every searchable column; else the named ones
+					o.Search = []string{}
+					for _, c := range strings.Split(s.One("search"), ",") {
+						if c = strings.TrimSpace(c); c != "" {
+							o.Search = append(o.Search, c)
+						}
+					}
+				}
 				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return NewRoute(p, o) })
 			},
 		},

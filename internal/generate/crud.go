@@ -715,6 +715,44 @@ func (g *crudGen) labelChecks(tb *testBuilder, at *crudTable, model string, pare
 	return out
 }
 
+// searchData is the pieces of a list's search: the `search` declaration's lines, the `q` parameter
+// and the line that cuts the text to 200 characters (Text.slice), which the database can search.
+type searchData struct {
+	Decl  []string // the `search` declaration's lines
+	Param string   // `q: Text = ""`
+	Cut   string   // `let q = Text.slice 0 200 params.q`
+}
+
+// searchCols are the columns a list searches by default: the required Text columns of t that are
+// not ids, references or secrets.
+func searchCols(t *Table) []*Column {
+	var cols []*Column
+	for _, c := range t.Columns {
+		if c.Kind == KindText && !c.Maybe && !c.ID && c.Ref == "" && !c.Secret() {
+			cols = append(cols, c)
+		}
+	}
+	return cols
+}
+
+// searchParts is the search of table t over cols: every row has some column containing q.
+func searchParts(t *Table, cols []*Column) searchData {
+	var terms []string
+	for _, c := range cols {
+		terms = append(terms, t.Name+"."+c.Name+".contains q")
+	}
+	decl := []string{
+		"-- search is the rows whose text contains q (every row for \"\").",
+		"search : Text -> Condition " + t.Name,
+		"search q = Db.or [" + strings.Join(terms, ", ") + "]",
+	}
+	if len(terms) == 0 {
+		decl[0] = "-- search is every row: the table has no text to search."
+		decl[2] = "search q = Db.and []"
+	}
+	return searchData{Decl: decl, Param: "q: Text = \"\"", Cut: "let q = Text.slice 0 200 params.q"}
+}
+
 func (g *crudGen) index(at *crudTable) {
 	t := at.t
 	mod := at.page("Index")
@@ -725,25 +763,8 @@ func (g *crudGen) index(at *crudTable) {
 	order := t.OrderColumn()
 
 	// search: every Text column but ids and references
-	var searchCols []*Column
-	for _, c := range t.Columns {
-		if c.Kind == KindText && !c.Maybe && !c.ID && c.Ref == "" && !c.Secret() {
-			searchCols = append(searchCols, c)
-		}
-	}
-	var terms []string
-	for _, c := range searchCols {
-		terms = append(terms, t.Name+"."+c.Name+".contains q")
-	}
-	search := []string{
-		"-- search is the rows whose text contains q (every row for \"\").",
-		"search : Text -> Condition " + t.Name,
-		"search q = Db.or [" + strings.Join(terms, ", ") + "]",
-	}
-	if len(terms) == 0 {
-		search[0] = "-- search is every row: the table has no text to search."
-		search[2] = "search q = Db.and []"
-	}
+	searched := searchCols(t)
+	sp := searchParts(t, searched)
 	// sort: every column but the id and the secrets
 	cols := g.shownOf(t, false)
 	sorts := []string{
@@ -775,7 +796,7 @@ func (g *crudGen) index(at *crudTable) {
 		cells = append([]string{fmt.Sprintf(`<td><input type="checkbox" name=%s form="bulk" value={%s} aria-label={"Choose " ++ %s} /></td>`, quote(g.wire(at.page("Bulk"), "ids")), textOf(at.idColumn(), "row."+t.IDField), paren(textOf(at.label, "row."+at.label.Name)))}, cells...)
 	}
 	filterCols := filterColumns(t)
-	params := []string{"q: Text = \"\""}
+	params := []string{sp.Param}
 	for _, c := range filterCols {
 		params = append(params, c.Name+": Text = \"\"")
 	}
@@ -790,7 +811,7 @@ func (g *crudGen) index(at *crudTable) {
 	}
 	fmt.Fprintf(&b, "type Model = {\n%s  rows: List %s,\n  labels: Labels,\n  q: Text,\n  filters: Filters,\n  sort: Text,\n  dir: Text,\n  page: Int,\n  pages: Int,\n  count: Int,\n}\n\n", keyField, t.Name)
 	b.WriteString(fmt.Sprintf("perPage : Int\nperPage = %d\n\n", g.a.perPage))
-	b.WriteString(g.regionAt("", "search", search) + "\n\n")
+	b.WriteString(g.regionAt("", "search", sp.Decl) + "\n\n")
 	fmt.Fprintf(&b, `-- A Filter is one of the list's selects: the column it filters, the option chosen ("" for any),
 -- and each option's value in the address, its label, and the rows it selects.
 type Filter = {
@@ -834,7 +855,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 		}
 		return body
 	}
-	b.WriteString(g.load("Index", indexLoad(fmt.Sprintf(`  let q = Text.slice 0 200 params.q
+	b.WriteString(g.load("Index", indexLoad(fmt.Sprintf(`  %s
   let f = chosen params
 %s  let count <- %s %s |> Db.where (Db.and [search q, filtered (filters f)]) |> Db.count
   let pages = Int.max 1 ((count + perPage - 1) / perPage)
@@ -857,7 +878,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
     page: page,
     pages: pages,
     count: count,
-  }`, readNote, g.a.sel, t.Name, g.a.sel, t.Name, keyInit))))
+  }`, sp.Cut, readNote, g.a.sel, t.Name, g.a.sel, t.Name, keyInit))))
 	b.WriteString(g.regionAt("", "labels", wrapAll(g.labels(at, mod, imports))) + "\n\n")
 	newLink := fmt.Sprintf("<al-button href={%s {}}>New %s</al-button>", at.route("New"), at.noun)
 	if g.a.visitorReads() { // a visitor sees the list: the link is for a signed-in user
@@ -1012,8 +1033,8 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 	}
 
 	// search
-	if len(searchCols) > 0 {
-		sc := searchCols[0]
+	if len(searched) > 0 {
+		sc := searched[0]
 		tb = g.tb(mod, imports, true)
 		tb.insert(t, true)
 		match := tb.insert(t, true)
