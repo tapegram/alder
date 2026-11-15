@@ -1,0 +1,1 @@
+alder new resource: `--read signed-in` needs a session with a `user` field, and this app's session has none: `alder new auth` adds one, or use `--read all`

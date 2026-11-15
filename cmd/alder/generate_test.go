@@ -256,6 +256,13 @@ var genCases = []genCase{
 	// #194: an owned table referring to a keyless lookup table: another user's Save is refused
 	// by the options check (400), the row unchanged
 	{name: "fixture-resource-lookup-ref", base: "fixture", pre: [][]string{{"new", "table", "Category", "name:Text.NonEmpty"}, {"new", "table", "Article", "title:Text.NonEmpty", "owner:User.UserId@ref=User@owner", "category:Category.CategoryId@ref=Category"}}, args: []string{"new", "resource", "Article"}, test: true, stderr: true},
+	// #194: an owned table referring to a `@partition org` table: its routes require org too,
+	// and its select and labels read the session's org's rows (Db.scoped)
+	{name: "fixture-silo-resource-partitioned-ref", base: "fixture-silo", pre: [][]string{{"new", "table", "Note", "text:Text.NonEmpty", "owner:User.UserId@ref=User@owner", "activity:Activity.ActivityId@ref=Activity"}}, args: []string{"new", "resource", "Note"}, test: true, stderr: true},
+	// #194: an explicit --requires that leaves out the key of a table referred to is refused
+	{name: "resource-partitioned-ref-requires", base: "fixture-silo", pre: [][]string{{"new", "table", "Note", "text:Text.NonEmpty", "owner:User.UserId@ref=User@owner", "activity:Activity.ActivityId@ref=Activity"}}, args: []string{"new", "resource", "Note", "--requires", "user"}, code: 1},
+	// #194: --read signed-in needs a session user
+	{name: "resource-signed-in-no-user", base: "scaffold", pre: [][]string{{"new", "table", "Note", "title:Text.NonEmpty"}}, args: []string{"new", "resource", "Note", "--read", "signed-in"}, code: 1},
 	// #194: a visitor's pages cannot read the labels of a table scoped to its users
 	{name: "resource-read-all-scoped-ref", base: "fixture", args: []string{"new", "resource", "Tag", "--read", "all"}, code: 1},
 	// #194: a keyless table in an app with no users: any visitor reads and changes every row

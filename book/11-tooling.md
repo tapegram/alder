@@ -488,12 +488,12 @@ module of its own is `alder new route <Module> <path> --method POST`.
 **Writes:** the pages of the app's own users for one table, under `app/<Plural>/` (`--module`, default the table's plural; `--path`, default `/<plural>`), each file headed by two comment lines naming the command, with browser tests:
 
 - `Index` (`GET /posts`: search, a filter per `Bool` and union column, sort, 20 to a page), `Show` (`GET /posts/{id}`), `New` and `Create` (`GET /posts/new`, `POST /posts`), `Edit` and `Save` (`GET /posts/{id}/edit`, `PUT /posts/{id}`), `Delete` and `Destroy` (`GET /posts/{id}/delete`, `DELETE /posts/{id}`);
-- every route `requires user` (`--requires` names another rule), but the two read routes under `--read all`;
+- every route `requires user` (`--requires` names another rule), and the key of a table it refers to that is partitioned by one (`org`), but the two read routes under `--read all`;
 - on an `@owner` table, reads are `Db.mine` and `Db.getMine`, and writes `Db.insertMine`, `Db.updateMine` and `Db.deleteMine`, so another user's row is a 404; an unscoped `Db.` call appears only for counts of rows that refer to it, `@unique` counts and the select of a reference to an unowned table, each with a comment saying so;
 - `--read owner` (the default) reads the user's rows; `signed-in` and `all` read every row (`all` lets a visitor read), and the writes stay the owner's;
 - fields after the name create the table first (as `alder new table`, with its migration); one is the `@owner`;
 - a reference to users is labelled by a column that is not an email (`name`), or, when optional, left off the form with a warning;
-- the parts that follow the table are owned regions, between `-- @resource begin <name>` and `-- @resource end`; the header records `--read` and `--requires` only when given.
+- the parts that follow the table are owned regions, between `-- @resource begin <name>` and `-- @resource end`; the header records `--read` and `--requires` only when given (`--requires` as its keys joined by commas).
 
 **Refused** (one sentence, nothing written):
 
@@ -504,7 +504,8 @@ module of its own is `alder new route <Module> <path> --method POST`.
 - `--read owner` on a table with no `@owner`; `--read all` on a partitioned table or a table that refers to an owned or partitioned one;
 - a required reference to users that is not the owner and has no default;
 - a table of a `silo`;
-- `--requires user` in an app whose session has no `user`.
+- `--requires user`, or `--read signed-in`, in an app whose session has no `user`;
+- a `--requires` without the key of a partitioned table it refers to (`` `Note` refers to `Activity`, whose rows are each org's: its pages need `--requires user,org` ``).
 
 A table with no `@owner` is written with a warning: every signed-in user (or, under `--read all`, every visitor for reading) can use every row, and the warning gives the commands that scope it. Chapter 15, "A resource: `alder new resource`".
 

@@ -915,9 +915,11 @@ tests check that `Save` and `Destroy` still answer 404 for another user's id:
       {if session.user == Just model.row.author then
 ```
 
-The header (the first line of each file) records `--read` and `--requires`
+The header (the first two lines of each file) records `--read` and `--requires`
 only when you gave them, so the defaults are worked out from the table again
 each time the resource is regenerated ("After a change to the table", below).
+`--requires` is recorded as its keys joined by commas: `--requires "user, org"`
+is written `--requires user,org`.
 
 `--read all` is refused when the table refers to a table that is owned or
 partitioned, since a visitor would read through the reference what they
@@ -988,6 +990,17 @@ owner, is left off the form with the warning above.
 `alder edit table` changes the table, and its last line says what to run:
 
 <!-- golden: fixture-resource-edit-next/output -->
+A reference to a table partitioned by a key, such as an `@partition org`
+table, picks from the session's org's rows only (`Db.scoped`), so the routes
+require that key too: a `Note` that refers to an `Activity` is written
+`requires user, org` with no flag. A `--requires` that leaves the key out is
+refused, since the select would offer every org's rows:
+
+<!-- golden: resource-partitioned-ref-requires/output -->
+```text
+alder new resource: `Note` refers to `Activity`, whose rows are each org's: its pages need `--requires user,org`
+```
+
 ```text
 edited app/Table/Post.alder
 wrote migrations/0002_add_summary.sql

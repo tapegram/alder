@@ -1,0 +1,1 @@
+alder new resource: `Note` refers to `Activity`, whose rows are each org's: its pages need `--requires user,org`
