@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -146,7 +147,7 @@ func TestSearch_InApp(t *testing.T) {
 		}
 		rows = append(rows, *row)
 	}
-	if rows[0] != rows[1] {
+	if !reflect.DeepEqual(rows[0], rows[1]) {
 		t.Errorf("rows differ: %+v vs %+v", rows[0], rows[1])
 	}
 }
@@ -205,5 +206,52 @@ func TestSearch_HolesAreFine(t *testing.T) {
 	row := findRow(searchJSONOf(t, out), "App", "helper")
 	if row == nil || row.Source != "app" {
 		t.Errorf("row = %+v in %s (stderr %q)", row, out, errb)
+	}
+}
+
+func TestSearch_DocText(t *testing.T) {
+	dir := t.TempDir()
+	code, out, errb := runSearch(t, dir, "List.take", "--limit", "1", "--doc")
+	if code != 0 {
+		t.Fatalf("code %d, stderr %q", code, errb)
+	}
+	lines := strings.Split(out, "\n")
+	if !strings.Contains(lines[1], "The first n elements of a list.") {
+		t.Errorf("row %q", lines[1])
+	}
+	found := false
+	for _, l := range lines[2:] {
+		if l == "    List.take 2 [1, 2, 3] == [1, 2]" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no example line in %q", out)
+	}
+	_, plain, _ := runSearch(t, dir, "List.take", "--limit", "1")
+	for _, l := range strings.Split(plain, "\n") {
+		if strings.HasPrefix(l, "    ") {
+			t.Errorf("indented line without --doc: %q", l)
+		}
+	}
+}
+
+func TestSearch_DocWithJSONAndEmpty(t *testing.T) {
+	dir := t.TempDir()
+	_, a, _ := runSearch(t, dir, "List.take", "--json")
+	_, b, _ := runSearch(t, dir, "List.take", "--json", "--doc")
+	if a != b {
+		t.Errorf("--json --doc differs from --json")
+	}
+	var raw struct{ Results []map[string]any }
+	json.Unmarshal([]byte(a), &raw)
+	for _, k := range []string{"summary", "examples", "book"} {
+		if _, ok := raw.Results[0][k]; !ok {
+			t.Errorf("first result has no %q", k)
+		}
+	}
+	code, out, _ := runSearch(t, dir, "zzzzqq", "--doc")
+	if code != 0 || out != "" {
+		t.Errorf("code %d, stdout %q", code, out)
 	}
 }

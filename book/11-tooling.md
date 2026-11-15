@@ -616,7 +616,7 @@ its route picker.
 
 ### `alder search`
 
-`alder search <query> [--json] [--limit N]` finds a function, a value, a type
+`alder search <query> [--json] [--limit N] [--doc]` finds a function, a value, a type
 or a union constructor, in the standard library and in your app, when you know
 what it does or what type it has but not what it is called. The query is every
 argument that is not a flag, joined with spaces, so `alder search : List Text`
@@ -643,7 +643,8 @@ Prelude, whose names such as `Just` and `not` are written bare), its type, where
 it comes from and the first line of its doc comment. `FROM` is `stdlib` or
 `app`. It also says `query` or `task` when the declaration's result is a
 `Query` or a `Task`, so you can see what a function does before you call it. The
-DOC column is blank where the declaration has no doc comment.
+DOC column is the doc comment's summary, its first sentence (chapter 3,
+"Doc comments"), and is blank where the declaration has no doc comment.
 
 #### Search by type
 
@@ -678,8 +679,8 @@ Each result says how it matches, in the JSON's `match` field (below):
 ```text
 $ alder search 'List a -> Int -> List a'
 NAME       TYPE                     FROM    DOC
-List.drop  Int -> List a -> List a  stdlib
-List.take  Int -> List a -> List a  stdlib
+List.drop  Int -> List a -> List a  stdlib  A list without its first n elements.
+List.take  Int -> List a -> List a  stdlib  The first n elements of a list.
 ```
 
 #### Search by what you want
@@ -691,11 +692,11 @@ arguments. This is the query to run when you have a hole and know its type.
 ```text
 $ alder search : Maybe Int
 NAME                TYPE                                      FROM    DOC
-List.maximum        List Int -> Maybe Int                     stdlib
-List.minimum        List Int -> Maybe Int                     stdlib
+List.maximum        List Int -> Maybe Int                     stdlib  The largest number in a list, if the list has any.
+List.minimum        List Int -> Maybe Int                     stdlib  The smallest number in a list, if the list has any.
 Text.toInt          Text -> Maybe Int                         stdlib
 Nothing             Maybe a                                   stdlib
-List.head           List a -> Maybe a                         stdlib
+List.head           List a -> Maybe a                         stdlib  The first element of a list, if there is one.
 …
 ```
 
@@ -708,13 +709,38 @@ If a query has no `->` and no `:` and finds nothing by name, but would be a type
 (`List Text`), `alder search` says so on the standard error: to search by type,
 start with `:`.
 
+#### Reading the docs
+
+`--doc` prints more of each result's doc comment under its row, indented four
+spaces: the detail paragraphs, the examples, and the book line. A standard
+library declaration with no book line of its own shows its module's, as hover
+does.
+
+```text
+$ alder search List.take --doc
+NAME       TYPE                     FROM    DOC
+List.take  Int -> List a -> List a  stdlib  The first n elements of a list.
+    A list shorter than n comes back whole. An n of zero or less gives the empty list.
+    List.take 2 [1, 2, 3] == [1, 2]
+    List.take 5 [1, 2] == [1, 2]
+    List.take 0 [1, 2] == []
+    Book: chapter 9, "List"
+```
+
+A result with no detail, no example and no book line is just its row, and a
+search that finds nothing prints nothing to the standard output.
+
 #### Output, flags and exit status
 
 `--limit N` shows at most N results; the default is 50. `--json` prints one
-object, for tools and agents, instead of the table:
+object, for tools and agents, instead of the table. Each result carries the
+doc in three more fields: `summary`, `examples` (an array of the example
+sources) and `book` (the book line, the module's for a standard library
+declaration without its own, or `""`); `--json` ignores `--doc`, since
+it prints them all anyway. The result below is a declaration without a doc:
 
 ```text
-{"query":"Text -> Text -> List Text","mode":"type","note":"","results":[{"name":"split","module":"Text","kind":"function","signature":"Text -> Text -> List Text","doc":"","source":"stdlib","match":"exact"}]}
+{"query":"Text -> Text -> List Text","mode":"type","note":"","results":[{"name":"split","module":"Text","kind":"function","signature":"Text -> Text -> List Text","doc":"","summary":"","examples":[],"book":"","source":"stdlib","match":"exact"}]}
 ```
 
 `mode` says how the query was read: `name`, `type` or `produces` (the `:`
@@ -3097,6 +3123,29 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   lastPage bounds `page`, so `(page - 1) * perPage` cannot overflow.
   ```
 
+  A comment written in the doc format (chapter 3, "Doc comments") is shown as
+  Markdown: the summary and details, the examples in a code block, and last
+  the book line in italics. On `List.take`:
+
+  ```text
+  take : Int -> List a -> List a
+
+  The first n elements of a list.
+
+  A list shorter than n comes back whole. An n of zero or less gives the empty list.
+
+  List.take 2 [1, 2, 3] == [1, 2]
+  List.take 5 [1, 2] == [1, 2]
+  List.take 0 [1, 2] == []
+
+  Book: chapter 9, "List"
+  ```
+
+  A standard library declaration with no book line of its own shows its
+  module's, and hover on a module name such as the `List` of `List.take` shows
+  the module's doc. A comment in your app that is not in the format is shown
+  whole, as written, and has no book line.
+
   On a local such as `q` it shows its type, on a hole `?count` the type the
   hole must have, on a module name in an `import` the file and how many
   declarations the module has, and on a standard HTML tag or attribute its
@@ -3140,6 +3189,10 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   standard HTML tags and then the custom elements, alder-ui's `al-*` and the
   app's own, each with its description; after `</` the tag to close; and
   inside a tag its attributes.
+
+  A function or type from a documented module carries its doc comment as the
+  item's documentation, rendered as Markdown as in hover, without the
+  signature, which the item already shows.
 
   A custom element's attributes come with their type and default (`variant`
   shows `"primary" | "secondary" | … = "primary"`); choosing one inserts

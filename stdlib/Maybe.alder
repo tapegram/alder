@@ -1,7 +1,44 @@
+-- Functions for a `Maybe`, a value that may be missing.
+--
+-- A `Maybe` is `Just x` when the value is there and `Nothing` when it is not.
+--
+-- Book: chapter 9, "Maybe"
 module Maybe
 
+-- Applies a function to the value inside a `Just`.
+--
+-- A `Nothing` stays `Nothing` and the function is not called.
+--
+--     Maybe.map (\n -> n + 1) (Just 1) == Just 2
+--     Maybe.map (\n -> n + 1) Nothing == Nothing
 map : (a -> b) -> Maybe a -> Maybe b
+
+-- Applies a function that may itself have no answer to the value inside a `Just`.
+--
+-- The result is `Nothing` if the input is `Nothing` or if the function gives `Nothing`. Unlike
+-- `Maybe.map`, it does not nest one `Maybe` inside another.
+--
+--     Maybe.andThen Text.toInt (Just "42") == Just 42
+--     Maybe.andThen Text.toInt (Just "x") == Nothing
+--     Maybe.andThen Text.toInt Nothing == Nothing
 andThen : (a -> Maybe b) -> Maybe a -> Maybe b
+
+-- The value inside a `Just`, or a fallback when there is `Nothing`.
+--
+-- This is the same as the `??` operator.
+--
+--     Maybe.withDefault 0 (Just 5) == 5
+--     Maybe.withDefault 0 Nothing == 0
 withDefault : a -> Maybe a -> a
+
+-- Tells whether a `Maybe` holds a value.
+--
+--     Maybe.isJust (Just 1) == True
+--     Maybe.isJust Nothing == False
 isJust : Maybe a -> Bool
+
+-- Turns a `Maybe` into a list: one element for `Just`, none for `Nothing`.
+--
+--     Maybe.toList (Just 1) == [1]
+--     Maybe.toList Nothing == []
 toList : Maybe a -> List a

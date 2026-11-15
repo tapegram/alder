@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"alder/internal/diag"
+	"alder/internal/doc"
 	"alder/internal/generate"
 	"alder/internal/syntax"
 	"alder/internal/types"
@@ -267,11 +268,39 @@ var responseType = regexp.MustCompile(`\bResponse\b`)
 var qualifierRe = regexp.MustCompile(`\b([A-Z][A-Za-z0-9]*)\.`)
 
 // coreStd are the standard modules almost every expression reaches for, always in the prompt
-// (together about 6 KB) whether or not the module has written `List.` or `Text.` yet: a model
+// (together about 10 KB) whether or not the module has written `List.` or `Text.` yet: a model
 // that cannot see them leaves a hole instead of folding a list or comparing text.
 var coreStd = []string{"Task", "Prelude", "List", "Maybe", "Result", "Text", "Int", "Float", "Dict", "Bool"}
 
-// stdFiles are the standard library signature files, comments kept, of the core modules
+// summarized is a standard library file's source with every doc comment (the `--` run directly
+// above a declaration or the `module` line) cut to one `-- <summary>` line, or removed when it has
+// no summary, and every other comment, with the blank line after it, removed: the prompt needs
+// what a function is for, not its examples.
+func summarized(src string) string {
+	lines := strings.Split(src, "\n")
+	var out []string
+	for i := 0; i < len(lines); i++ {
+		if !strings.HasPrefix(strings.TrimSpace(lines[i]), "--") {
+			out = append(out, lines[i])
+			continue
+		}
+		j := i
+		for j < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[j]), "--") {
+			j++
+		}
+		if j < len(lines) && strings.TrimSpace(lines[j]) != "" { // a doc comment: its declaration follows
+			if sum := doc.Parse(syntax.DocOf(lines, j+1)).Summary; sum != "" {
+				out = append(out, "-- "+sum)
+			}
+		} else if j < len(lines) { // a loose comment: it and the blank line after it go
+			j++
+		}
+		i = j - 1
+	}
+	return strings.Join(out, "\n")
+}
+
+// stdFiles are the standard library signature files, doc comments cut to their summaries, of the core modules
 // (coreStd) always, of any other module named in the hole's type or in the module's source,
 // Test in a test and Response for a hole whose type has `Response`, each in a fence, in name
 // order.
@@ -306,7 +335,7 @@ func stdFiles(p *generate.Program, m *generate.Module, h generate.Hole) string {
 		if err != nil {
 			continue
 		}
-		fmt.Fprintf(&b, "```alder\n%s\n```\n", strings.TrimRight(string(src), "\n"))
+		fmt.Fprintf(&b, "```alder\n%s\n```\n", strings.TrimRight(summarized(string(src)), "\n"))
 	}
 	return b.String()
 }

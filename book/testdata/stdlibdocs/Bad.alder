@@ -1,0 +1,38 @@
+module Bad
+
+undocumented : Int -> Int
+-- lowercase fragment
+fragment : Int -> Int
+-- No example here.
+noExample : Int -> Int
+-- A false example.
+--
+--     1 + 1 == 3
+wrong : Int -> Int
+-- An ill-typed example, on two lines.
+--
+--     1 +
+--         "a" == 2
+illTyped : Int -> Int
+-- A book line that names no heading.
+--
+--     1 + 1 == 2
+--
+-- Book: chapter 9, "No such heading"
+badBook : Int -> Int
+-- An example that does not parse.
+--
+--     (1 + 1 == 2
+parseError : Int -> Int
+-- A true example after the one that does not parse.
+--
+--     2 + 2 == 4
+afterParse : Int -> Int
+-- An example with a misspelt qualified name.
+--
+--     List.nope [] == 1
+unknownName : Int -> Int
+-- A false example in the same file as the misspelt name.
+--
+--     2 + 2 == 5
+wrongToo : Int -> Int

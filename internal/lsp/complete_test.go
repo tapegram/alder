@@ -412,3 +412,30 @@ func TestComplete_OtherwiseOffersQualifiers(t *testing.T) {
 		}
 	}
 }
+
+func TestComplete_StdDoc(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	p := typing(t, c, "app/Posts/Index.alder", afterQ, "  let z = List.")
+	take, ok := labels(complete(t, c, "app/Posts/Index.alder", p))["take"]
+	if !ok {
+		t.Fatal("no List.take")
+	}
+	if take.Detail != "take : Int -> List a -> List a" {
+		t.Fatalf("take detail: %q", take.Detail)
+	}
+	d := take.Documentation
+	if d == nil || d.Kind != "markdown" || !strings.HasPrefix(d.Value, "The first n elements of a list.") ||
+		!strings.Contains(d.Value, "```alder\n") || strings.Contains(d.Value, "take :") {
+		t.Fatalf("take documentation: %+v", d)
+	}
+
+	p = typing(t, c, "app/Posts/Index.alder", afterQ, "  let y = per")
+	per, ok := labels(complete(t, c, "app/Posts/Index.alder", p))["perPage"]
+	if !ok {
+		t.Fatal("no perPage")
+	}
+	if per.Documentation != nil {
+		t.Fatalf("undocumented app declaration has documentation: %+v", per.Documentation)
+	}
+}

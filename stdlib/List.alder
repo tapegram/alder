@@ -1,44 +1,340 @@
+-- Functions for working with lists: building, slicing, searching, transforming and sorting them.
+--
+-- A list is never changed in place. Every function here gives back a new list and leaves the
+-- one you passed in as it was.
+--
+-- Book: chapter 9, "List"
 module List
 
+-- The number of elements in a list.
+--
+--     List.length [10, 20, 30] == 3
+--     List.length [] == 0
 length : List a -> Int
+
+-- Tells whether a list has no elements.
+--
+--     List.isEmpty [] == True
+--     List.isEmpty [1] == False
 isEmpty : List a -> Bool
+
+-- The first element of a list, if there is one.
+--
+-- An empty list gives `Nothing`.
+--
+--     List.head [1, 2, 3] == Just 1
+--     List.head [] == Nothing
 head : List a -> Maybe a
+
+-- The last element of a list, if there is one.
+--
+-- An empty list gives `Nothing`.
+--
+--     List.last [1, 2, 3] == Just 3
+--     List.last [] == Nothing
 last : List a -> Maybe a
+
+-- The first n elements of a list.
+--
+-- A list shorter than n comes back whole. An n of zero or less gives the empty list.
+--
+--     List.take 2 [1, 2, 3] == [1, 2]
+--     List.take 5 [1, 2] == [1, 2]
+--     List.take 0 [1, 2] == []
+--
+-- Book: chapter 9, "List"
 take : Int -> List a -> List a
+
+-- A list without its first n elements.
+--
+-- An n larger than the list gives the empty list. An n of zero or less gives the list whole.
+-- Like `List.take`, it costs the same however long the list is.
+--
+--     List.drop 1 [1, 2, 3] == [2, 3]
+--     List.drop 5 [1, 2] == []
+--     List.drop 0 [1, 2] == [1, 2]
 drop : Int -> List a -> List a
+
+-- The same elements in the opposite order.
+--
+--     List.reverse [1, 2, 3] == [3, 2, 1]
+--     List.reverse [] == []
 reverse : List a -> List a
+
+-- Applies a function to every element and collects the results, in the same order.
+--
+-- The new list has as many elements as the old one.
+--
+--     List.map (\n -> n * 2) [1, 2, 3] == [2, 4, 6]
+--     List.map (\n -> n * 2) [] == []
 map : (a -> b) -> List a -> List b
+
+-- Keeps the elements for which the test gives `True`, in their original order.
+--
+-- If no element passes, the result is the empty list.
+--
+--     List.filter (\n -> n > 1) [1, 2, 3] == [2, 3]
+--     List.filter (\n -> n > 5) [1, 2, 3] == []
 filter : (a -> Bool) -> List a -> List a
+
+-- Applies a function that may fail to every element and keeps only the values it found.
+--
+-- An element for which the function gives `Nothing` is left out. The results stay in input
+-- order. This is `List.map` and `List.filter` in one pass.
+--
+--     List.filterMap Text.toInt ["1", "x", "3"] == [1, 3]
+--     List.filterMap Text.toInt ["x", "y"] == []
 filterMap : (a -> Maybe b) -> List a -> List b
+
+-- The first element for which the test gives `True`, if there is one.
+--
+-- It gives `Nothing` when no element passes, including for an empty list.
+--
+--     List.find (\n -> n > 1) [1, 2, 3] == Just 2
+--     List.find (\n -> n > 5) [1, 2, 3] == Nothing
 find : (a -> Bool) -> List a -> Maybe a
+
+-- Tells whether at least one element passes the test.
+--
+-- An empty list gives `False`, because no element passes.
+--
+--     List.any (\n -> n > 2) [1, 2, 3] == True
+--     List.any (\n -> n > 5) [1, 2, 3] == False
+--     List.any (\n -> n > 5) [] == False
 any : (a -> Bool) -> List a -> Bool
+
+-- Tells whether every element passes the test.
+--
+-- An empty list gives `True`, because no element fails.
+--
+--     List.all (\n -> n > 0) [1, 2, 3] == True
+--     List.all (\n -> n > 1) [1, 2, 3] == False
+--     List.all (\n -> n > 1) [] == True
 all : (a -> Bool) -> List a -> Bool
+
+-- Tells whether a value is one of the elements of a list.
+--
+-- Elements are compared with `==`, so records and other lists match by their contents.
+--
+--     List.member 2 [1, 2, 3] == True
+--     List.member 5 [1, 2, 3] == False
+--     List.member { id: 1 } [{ id: 1 }, { id: 2 }] == True
 member : a -> List a -> Bool
+
+-- Combines all the elements into one value, working from the left.
+--
+-- The function receives an element and the value built so far, and starts with the second
+-- argument. The order matters when the function is not symmetric. An empty list gives the start
+-- value.
+--
+--     List.foldl (\n acc -> acc + n) 0 [1, 2, 3] == 6
+--     List.foldl (\n acc -> [n] ++ acc) [] [1, 2, 3] == [3, 2, 1]
+--     List.foldl (\n acc -> acc + n) 7 [] == 7
 foldl : (a -> b -> b) -> b -> List a -> b
+
+-- The total of a list of whole numbers.
+--
+-- An empty list gives 0.
+--
+--     List.sum [1, 2, 3] == 6
+--     List.sum [] == 0
 sum : List Int -> Int
+
+-- The total of a list of decimal numbers.
+--
+-- An empty list gives 0.0.
+--
+--     List.sumFloat [1.5, 2.5] == 4.0
+--     List.sumFloat [] == 0.0
 sumFloat : List Float -> Float
+
+-- Sorts a list from smallest to largest by a whole-number key taken from each element.
+--
+-- The sort is stable: elements with equal keys keep the order they had in the input.
+--
+--     List.sortBy (\n -> n) [3, 1, 2] == [1, 2, 3]
+--     List.sortBy (\p -> p.age) [{ name: "b", age: 2 }, { name: "a", age: 1 }, { name: "c", age: 1 }] == [{ name: "a", age: 1 }, { name: "c", age: 1 }, { name: "b", age: 2 }]
 sortBy : (a -> Int) -> List a -> List a
+
+-- Sorts a list alphabetically by a text key taken from each element.
+--
+-- Keys are compared byte by byte, so every capital letter sorts before every lowercase letter.
+-- The sort is stable: elements with equal keys keep the order they had in the input.
+--
+--     List.sortByText (\w -> w) ["pear", "apple", "fig"] == ["apple", "fig", "pear"]
+--     List.sortByText (\w -> w) ["b", "B", "a"] == ["B", "a", "b"]
 sortByText : (a -> Text) -> List a -> List a
+
+-- Pairs every element with its position in the list, counting from zero.
+--
+--     List.indexed ["a", "b"] == [{ index: 0, item: "a" }, { index: 1, item: "b" }]
+--     List.indexed [] == []
 indexed : List a -> List { index: Int, item: a }
+
+-- The whole numbers from one number to another, counting up by one.
+--
+-- Both ends are included. When the first number is larger than the second, the result is the
+-- empty list; `List.range` never counts down.
+--
+--     List.range 1 4 == [1, 2, 3, 4]
+--     List.range 3 3 == [3]
+--     List.range 4 1 == []
 range : Int -> Int -> List Int
+
+-- Joins a list of lists into one list, in order.
+--
+--     List.concat [[1, 2], [3], []] == [1, 2, 3]
+--     List.concat [] == []
 concat : List (List a) -> List a
+
+-- Puts one list after another.
+--
+-- This is the same as the `++` operator.
+--
+--     List.append [1, 2] [3] == [1, 2, 3]
+--     List.append [] [3] == [3]
 append : List a -> List a -> List a
+
+-- Removes repeated elements, keeping the first of each.
+--
+-- Elements are compared with `==`, so records and lists match by their contents. It takes time
+-- in proportion to the length of the list. The one exception is NaN, the Float that
+-- `Float.sqrt (0.0 - 1.0)` gives: `==` says no NaN equals another, but here every NaN counts as
+-- one element, so only the first is kept.
+--
+--     List.unique [1, 2, 1, 3, 2] == [1, 2, 3]
+--     List.unique [{ id: 1 }, { id: 1 }] == [{ id: 1 }]
+--     List.length (List.unique [Float.sqrt (0.0 - 1.0), Float.sqrt (0.0 - 1.0), 1.0]) == 2
 unique : List a -> List a
+
+-- Sorts the elements into groups, one group for each distinct text key.
+--
+-- Inside a group the elements keep their input order, and the keys come in the order they are
+-- first seen. An empty list gives an empty dictionary.
+--
+--     List.groupBy (\w -> Text.left 1 w) ["apple", "avocado", "banana"] == Dict.fromList [{ key: "a", value: ["apple", "avocado"] }, { key: "b", value: ["banana"] }]
+--     Dict.keys (List.groupBy (\w -> Text.left 1 w) ["banana", "apple", "blueberry"]) == ["b", "a"]
+--     List.groupBy (\w -> w) [] == Dict.empty
 groupBy : (a -> Text) -> List a -> Dict Text (List a)
+
+-- Like `List.map`, but the function also receives each element's position, counting from zero.
+--
+--     List.indexedMap (\i x -> i * x) [5, 5, 5] == [0, 5, 10]
+--     List.indexedMap (\i x -> i) [] == []
 indexedMap : (Int -> a -> b) -> List a -> List b
--- map2 and map3 stop at the shortest list
+
+-- Combines two lists element by element with a function.
+--
+-- When the lists have different lengths, the result stops at the shorter one and the extra
+-- elements are ignored.
+--
+--     List.map2 (\a b -> a + b) [1, 2, 3] [10, 20, 30] == [11, 22, 33]
+--     List.map2 (\a b -> a + b) [1, 2, 3] [10] == [11]
 map2 : (a -> b -> c) -> List a -> List b -> List c
+
+-- Combines three lists element by element with a function.
+--
+-- The result stops at the shortest of the three lists.
+--
+--     List.map3 (\a b c -> a + b + c) [1, 2] [10, 20] [100, 200] == [111, 222]
+--     List.map3 (\a b c -> a + b + c) [1, 2] [10, 20] [100] == [111]
 map3 : (a -> b -> c -> d) -> List a -> List b -> List c -> List d
+
+-- Combines all the elements into one value, working from the right.
+--
+-- It is `List.foldl` in the opposite direction: the function receives an element and the value
+-- built so far, but the last element is handled first. An empty list gives the start value.
+--
+--     List.foldr (\n acc -> [n] ++ acc) [] [1, 2, 3] == [1, 2, 3]
+--     List.foldr (\n acc -> acc * 10 + n) 0 [1, 2, 3] == 321
+--     List.foldr (\n acc -> acc + n) 7 [] == 7
 foldr : (a -> b -> b) -> b -> List a -> b
+
+-- Applies a function that gives a list to every element and joins the results into one list.
+--
+-- The joined lists keep their order. Elements for which the function gives the empty list leave
+-- nothing behind.
+--
+--     List.concatMap (\n -> [n, n]) [1, 2] == [1, 1, 2, 2]
+--     List.concatMap (\n -> []) [1, 2] == []
 concatMap : (a -> List b) -> List a -> List b
+
+-- Puts a separator between every two neighbouring elements.
+--
+-- A list with fewer than two elements has no neighbours, so it comes back unchanged.
+--
+--     List.intersperse 0 [1, 2, 3] == [1, 0, 2, 0, 3]
+--     List.intersperse 0 [1] == [1]
+--     List.intersperse 0 [] == []
 intersperse : a -> List a -> List a
--- both halves keep input order
+
+-- Splits a list in two: the elements that pass the test and the elements that do not.
+--
+-- The result is a record with a `yes` field and a `no` field. Both halves keep the input order.
+--
+--     List.partition (\n -> n > 2) [1, 2, 3, 4] == { yes: [3, 4], no: [1, 2] }
+--     List.partition (\n -> n > 2) [] == { yes: [], no: [] }
 partition : (a -> Bool) -> List a -> { yes: List a, no: List a }
+
+-- A list without its first element, if the list has one.
+--
+-- An empty list gives `Nothing`, and a list of one element gives `Just []`. Like `List.drop`, it
+-- costs the same however long the list is.
+--
+--     List.tail [1, 2, 3] == Just [2, 3]
+--     List.tail [1] == Just []
+--     List.tail [] == Nothing
 tail : List a -> Maybe (List a)
+
+-- A list of n copies of one value.
+--
+-- An n of zero or less gives the empty list.
+--
+--     List.repeat 3 "ha" == ["ha", "ha", "ha"]
+--     List.repeat 0 "ha" == []
 repeat : Int -> a -> List a
+
+-- The largest number in a list, if the list has any.
+--
+-- An empty list gives `Nothing`.
+--
+--     List.maximum [3, 9, 2] == Just 9
+--     List.maximum [] == Nothing
 maximum : List Int -> Maybe Int
+
+-- The smallest number in a list, if the list has any.
+--
+-- An empty list gives `Nothing`.
+--
+--     List.minimum [3, 9, 2] == Just 2
+--     List.minimum [] == Nothing
 minimum : List Int -> Maybe Int
+
+-- The largest decimal number in a list, if the list has any.
+--
+-- An empty list gives `Nothing`. A NaN counts as smaller than every other number, so it is the
+-- result only when every element is NaN.
+--
+--     List.maximumFloat [1.5, 9.5, 2.5] == Just 9.5
+--     List.maximumFloat [] == Nothing
+--     List.maximumFloat [Float.sqrt (0.0 - 1.0), 2.5] == Just 2.5
 maximumFloat : List Float -> Maybe Float
+
+-- The smallest decimal number in a list, if the list has any.
+--
+-- An empty list gives `Nothing`. A NaN counts as smaller than every other number, so a list that
+-- contains one has a NaN as its minimum.
+--
+--     List.minimumFloat [1.5, 9.5, 2.5] == Just 1.5
+--     List.minimumFloat [] == Nothing
+--     Maybe.map Float.isNaN (List.minimumFloat [2.5, Float.sqrt (0.0 - 1.0)]) == Just True
 minimumFloat : List Float -> Maybe Float
--- stable; NaN keys sort first
+
+-- Sorts a list from smallest to largest by a decimal-number key taken from each element.
+--
+-- The sort is stable: elements with equal keys keep the order they had in the input. An element
+-- whose key is NaN sorts before all the others.
+--
+--     List.sortByFloat (\p -> p.price) [{ id: 1, price: 2.5 }, { id: 2, price: 1.5 }] == [{ id: 2, price: 1.5 }, { id: 1, price: 2.5 }]
+--     List.map (\p -> p.id) (List.sortByFloat (\p -> p.price) [{ id: 1, price: 2.5 }, { id: 2, price: Float.sqrt (0.0 - 1.0) }]) == [2, 1]
 sortByFloat : (a -> Float) -> List a -> List a

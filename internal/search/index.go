@@ -8,6 +8,7 @@ import (
 
 	"alder/internal/check"
 	"alder/internal/diag"
+	"alder/internal/doc"
 	"alder/internal/names"
 	"alder/internal/syntax"
 	"alder/internal/types"
@@ -29,11 +30,14 @@ type Entry struct {
 	Kind                       Kind
 	Type                       types.Type // nil for Kind TypeDecl
 	Signature                  string
-	Doc                        string
-	Source                     string // "stdlib" or "app"
-	Effect                     string // "", "query" or "task"
-	File                       string // app entries only; root-relative, as syntax.Module.File
-	Line, Col, EndLine, EndCol int    // 1-based, as diag.Span; 0 for stdlib
+	Doc                        string   // the comment as written
+	Summary                    string   // doc.Parse of Doc
+	Examples                   []string // the example sources; never nil
+	Book                       string   // the doc's own Book line, "" when it has none
+	Source                     string   // "stdlib" or "app"
+	Effect                     string   // "", "query" or "task"
+	File                       string   // app entries only; root-relative, as syntax.Module.File
+	Line, Col, EndLine, EndCol int      // 1-based, as diag.Span; 0 for stdlib
 }
 
 // Index is the searchable declarations of a checked program.
@@ -67,9 +71,23 @@ func Build(prog *names.Program, res *check.Result) *Index {
 }
 
 func (ix *Index) addModule(m *syntax.Module, source string, res *check.Result) {
-	// where fills an entry's own position: app entries only.
+	// A stdlib declaration with no book line of its own has its module's, as in hover; an app
+	// declaration has none.
+	moduleBook := ""
+	if source == "stdlib" {
+		moduleBook = doc.Parse(syntax.DocOf(m.Lines, m.Span.Start.Line)).Book
+	}
+	// where fills an entry's doc fields, and its own position: app entries only.
 	where := func(e *Entry, sp diag.Span) {
 		e.Doc = syntax.DocOf(m.Lines, sp.Start.Line)
+		d := doc.Parse(e.Doc)
+		e.Summary, e.Book, e.Examples = d.Summary, d.Book, []string{}
+		if e.Book == "" {
+			e.Book = moduleBook
+		}
+		for _, ex := range d.Examples {
+			e.Examples = append(e.Examples, ex.Source)
+		}
 		if source == "app" {
 			e.File = m.File
 			e.Line, e.Col, e.EndLine, e.EndCol = sp.Start.Line, sp.Start.Col, sp.End.Line, sp.End.Col

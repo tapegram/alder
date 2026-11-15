@@ -80,6 +80,7 @@ func TestPrompt_Contents(t *testing.T) {
 		"module Task\n",
 		"module Db\n",
 		"module Prelude\n",
+		"-- The first n elements of a list.\ntake : Int -> List a -> List a", // a summary, not the whole doc
 		"\nReply with the expression only.\n",
 	} {
 		if !strings.Contains(got, want) {
@@ -94,6 +95,7 @@ func TestPrompt_Contents(t *testing.T) {
 	for _, not := range []string{
 		`<al-page width="narrow">`,       // Layout's body
 		"test \"a new post is a draft\"", // Table.Post's tests
+		"List.take 2 [1, 2, 3]",          // an example in a stdlib doc
 	} {
 		if strings.Contains(got, not) {
 			t.Errorf("the prompt has %q", not)
@@ -190,4 +192,18 @@ func TestPrompt_RouteMember(t *testing.T) {
 			t.Errorf("the card has no %q", want)
 		}
 	}
+}
+
+func TestSummarized(t *testing.T) {
+	src := "-- Lists.\n--\n-- Book: chapter 9, \"List\"\nmodule List\n\n-- Slices\n\n-- The first n elements of a list.\n--\n--     List.take 2 [1, 2, 3] == [1, 2]\ntake : Int -> List a -> List a\ndrop : Int -> List a -> List a\n"
+	want := "-- Lists.\nmodule List\n\n-- The first n elements of a list.\ntake : Int -> List a -> List a\ndrop : Int -> List a -> List a\n"
+	if got := summarized(src); got != want {
+		t.Errorf("summarized:\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestStdFiles_Size(t *testing.T) {
+	dir := holeApp(t, map[string]string{"app/Bare.alder": "module Bare\n\nanswer : Int\nanswer = ?n\n"})
+	p, h := loadHole(t, dir, "Bare.answer", "")
+	t.Logf("stdFiles(coreStd) is %d bytes", len(stdFiles(p, p.Modules[h.Module], h)))
 }

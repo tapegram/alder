@@ -290,8 +290,9 @@ func (cx *completion) routeMembers(mod *syntax.Module, r *syntax.RouteDecl, n in
 // constructors (a union's, a message), each replacing the n bytes before the cursor.
 func (cx *completion) declItems(mod *syntax.Module, n int) []completionItem {
 	var out []completionItem
-	for _, d := range mod.Decls {
-		switch d := d.(type) {
+	for _, decl := range mod.Decls {
+		start := len(out)
+		switch d := decl.(type) {
 		case *syntax.ValueDecl:
 			if d.Route == "" { // a route's members are reached through the route: `Row.view`
 				out = append(out, cx.valueItem(d.Name, cx.a.res.Values[mod.Name+"."+d.Name], n))
@@ -301,15 +302,26 @@ func (cx *completion) declItems(mod *syntax.Module, n int) []completionItem {
 		case *syntax.TypeDecl:
 			out = append(out, cx.item(d.Name, kindClass, "", n))
 			for _, c := range d.Union {
-				out = append(out, cx.ctorItem(mod.Name, c.Name, n))
+				ci := cx.ctorItem(mod.Name, c.Name, n)
+				ci.Documentation = cx.docOf(mod, c.GetSpan().Start.Line)
+				out = append(out, ci)
 			}
 		case *syntax.TableDecl:
 			out = append(out, cx.item(d.Name, kindClass, "", n))
 		case *syntax.FormDecl:
 			out = append(out, cx.item(d.Name, kindClass, "", n))
 		}
+		if start < len(out) { // the declaration's own item is the first it added
+			out[start].Documentation = cx.docOf(mod, decl.GetSpan().Start.Line)
+		}
 	}
 	return out
+}
+
+// docOf is the hover markdown of the declaration at line of mod, without its signature; nil when
+// there is no doc.
+func (cx *completion) docOf(mod *syntax.Module, line int) *markupContent {
+	return markdown(docAt(cx.a, mod, line))
 }
 
 // valueItem is a value or a local of type t (nil: unknown): a function when t is one.

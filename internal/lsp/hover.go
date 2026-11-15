@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"alder/internal/diag"
+	doccomment "alder/internal/doc"
 	"alder/internal/elements"
 	"alder/internal/markup"
 	"alder/internal/scratch"
@@ -88,7 +89,7 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 		case ref.Kind == syntax.RefRoute:
 			if mod, d := findDecl(a, ref); d != nil {
 				if rd, ok := d.(*syntax.RouteDecl); ok {
-					return withDoc("```alder\n"+routeHover(mod, rd)+"\n```", syntax.DocOf(mod.Lines, rd.Span.Start.Line))
+					return withDoc("```alder\n"+routeHover(mod, rd)+"\n```", declDoc(a, ref))
 				}
 			}
 		case ref.Kind == syntax.RefType:
@@ -226,13 +227,30 @@ func attrLine(at elements.Attr) string {
 	return s
 }
 
-// declDoc is the doc comment above the declaration of ref, in its app or stdlib module.
+// declDoc is the doc comment above the declaration of ref, in its app or stdlib module, rendered
+// as markdown: prose, examples in a fenced `alder` block, then the book line. A stdlib
+// declaration (value, type or constructor) with no book line of its own shows its module's; an
+// app one shows none.
 func declDoc(a *analysis, ref syntax.Ref) string {
 	mod, d := findDecl(a, ref)
 	if d == nil {
 		return ""
 	}
-	return syntax.DocOf(mod.Lines, d.GetSpan().Start.Line)
+	return docAt(a, mod, d.GetSpan().Start.Line)
+}
+
+// docAt is the doc comment above line of mod, rendered as markdown (see declDoc).
+func docAt(a *analysis, mod *syntax.Module, line int) string {
+	book := ""
+	if a.prog.Std[mod.Name] == mod {
+		book = moduleDoc(mod).Book
+	}
+	return doccomment.Parse(syntax.DocOf(mod.Lines, line)).Markdown(book)
+}
+
+// moduleDoc is the doc comment above mod's `module` line.
+func moduleDoc(mod *syntax.Module) doccomment.Doc {
+	return doccomment.Parse(syntax.DocOf(mod.Lines, mod.Span.Start.Line))
 }
 
 // helperLine is the hover's note on a test helper (#4), "" for any other value.
@@ -251,14 +269,14 @@ func withDoc(sig, doc string) string {
 	return sig + "\n\n" + doc
 }
 
-// moduleHover is "`Name` · its file · how many declarations": Alder has no export list, so
-// every declaration counts.
+// moduleHover is "`Name` · its file · how many declarations", then the module's doc as its own
+// paragraph: Alder has no export list, so every declaration counts.
 func moduleHover(a *analysis, name string) string {
 	mod := modulePath(a, name)
 	if mod == nil {
 		return ""
 	}
-	return fmt.Sprintf("`%s` · %s · %d declarations", name, mod.File, len(mod.Decls))
+	return withDoc(fmt.Sprintf("`%s` · %s · %d declarations", name, mod.File, len(mod.Decls)), moduleDoc(mod).Markdown(""))
 }
 
 // routeHover is a route's method, path, parameters, form and guard, as `PATCH /todos/{id}/toggle
