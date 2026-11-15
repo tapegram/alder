@@ -222,19 +222,19 @@ func Load(dir string) (*Program, error) { return load(dir, false) }
 // refused. The errors are among the Program's Diags.
 func LoadWithErrors(dir string) (*Program, error) { return load(dir, true) }
 
-// LoadExcept is Load for `alder regen admin`: errors in the files under the directory under
-// (the admin's, "app/Admin") do not refuse the app. Regen rewrites those files' regions, and a
+// LoadExcept is Load for `alder regen`: errors in the files under the directories under
+// (the admin's "app/Admin", a resource's "app/Posts") do not refuse the app. Regen rewrites those files' regions, and a
 // schema edit (a field renamed or dropped, a page deleted that another links to) breaks them
 // there; what regen writes is then checked as usual (Apply), so an error it does not fix still
 // refuses. Errors anywhere else refuse, as Load's do.
-func LoadExcept(dir, under string) (*Program, error) {
+func LoadExcept(dir string, under ...string) (*Program, error) {
 	p, err := load(dir, true)
 	if err != nil {
 		return nil, err
 	}
 	var errs []diag.Diagnostic
 	for _, d := range p.Diags {
-		if d.Severity == "error" && !strings.HasPrefix(d.Span.File, under+"/") {
+		if d.Severity == "error" && !slices.ContainsFunc(under, func(u string) bool { return strings.HasPrefix(d.Span.File, u+"/") }) {
 			errs = append(errs, d)
 		}
 	}

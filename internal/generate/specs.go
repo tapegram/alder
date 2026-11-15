@@ -3,8 +3,11 @@ package generate
 import (
 	"io"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 
+	"alder/internal/names"
 	"alder/internal/theme"
 )
 
@@ -220,6 +223,40 @@ func newSpecs() []*Spec {
 			},
 		},
 		{
+			ID: "new resource", Summary: "list, show, new, edit and delete routes for a table, scoped to its owner",
+			Args: []Field{
+				{Name: "table", Kind: ArgModule, Required: true, Value: "<Table>", Help: "the table whose rows the routes list, show, create, edit and delete", Example: "Post"},
+				{Name: "fields", Kind: ArgFieldList, Variadic: true, Table: true, Value: "<field>:<Type>…", Help: "to create the table first: its columns as name:Type words, as `alder new table` takes them", Example: "title:Text body:Text"},
+			},
+			Flags: []Field{
+				{Name: "read", Kind: ArgChoice, Choices: []string{"owner", "signed-in", "all"}, Value: "owner|signed-in|all", Summary: "who may read the list and each row: its owner (the default for an `@owner` table), any signed-in user, or anyone; writes stay the owner's", Example: "all"},
+				{Name: "requires", Kind: ArgText, Value: "user|<key>[,…]", Summary: "the session fields the routes require (default: the table's key)", Example: "user"},
+				{Name: "module", Kind: ArgModule, Value: "<M>", Summary: "the routes' module prefix (default: the table's plural, Posts)", Example: "Posts"},
+				{Name: "path", Kind: ArgRoute, Value: "/p", Summary: "the routes' path (default: the table's collection, /posts)", Example: "/posts"},
+			},
+			Run: func(s Sets, app App, dry bool) (*Result, error) {
+				fields, err := fieldList(s.All("fields"), true)
+				if err != nil {
+					return nil, err
+				}
+				o := ResourceOptions{Table: s.One("table"), Fields: fields, Read: s.One("read"), Requires: s.One("requires"), Module: s.One("module"), Path: s.One("path")}
+				var warnings []string
+				var opts Options
+				if len(fields) > 0 { // the table is made first: its migration with it
+					opts.Migrate = app.migrate("")
+				}
+				res, err := runEdits(app, dry, opts, nil, func(p *Program) ([]Edit, error) {
+					edits, w, err := NewResource(p, o)
+					warnings = w
+					return edits, err
+				})
+				if res != nil {
+					res.Warnings = append(res.Warnings, warnings...)
+				}
+				return res, err
+			},
+		},
+		{
 			ID: "new auth", Summary: "sign-in, sign-out and the user table",
 			Flags: []Field{
 				{Name: "users", Kind: ArgTable, Value: "User", Summary: "the user table", Example: "User"},
@@ -322,7 +359,11 @@ func editSpecs() []*Spec {
 			Flags: []Field{{Name: "strict", Kind: ArgBool, Summary: "refuse a change that breaks code", Agent: true}},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				o := Options{Migrate: app.migrate(editTableSlug(s)), WriteDespiteErrors: !s.Has("strict")}
-				return runEdits(app, dry, o, nil, func(p *Program) ([]Edit, error) { return EditTable(p, s.One("table"), s.One("op"), s.All("args")) })
+				res, err := runEdits(app, dry, o, nil, func(p *Program) ([]Edit, error) { return EditTable(p, s.One("table"), s.One("op"), s.All("args")) })
+				if res != nil && err == nil { // the resources made over the table are regenerated, not edited by hand
+					res.Next = ResourceNext(app.Dir, s.One("table"))
+				}
+				return res, err
 			},
 		},
 		{
@@ -395,6 +436,67 @@ func removeSpecs() []*Spec {
 	}
 }
 
+// regenEdits is runEdits, except that nothing to change is nothing to check: a resource with a
+// page the author deleted (skipped) does not check until they take the links to it out, and
+// that is no reason to refuse a regen that writes nothing.
+func regenEdits(app App, dry bool, load func(string) (*Program, error), gen func(*Program) ([]Edit, error)) (*Result, error) {
+	p, err := load(app.Dir)
+	if err != nil {
+		return nil, err
+	}
+	edits, err := gen(p)
+	if err != nil {
+		return nil, err
+	}
+	if len(edits) == 0 {
+		return &Result{}, nil
+	}
+	return Apply(app.Dir, edits, Options{DryRun: dry})
+}
+
+// regenResourceTargets are the resources `alder regen resource` updates: those of the tables
+// named (all of the app's when none), from the headers of their files. A table with none is
+// regenerated from the options given (--module, --path), and refused when its files lack the
+// header and no options were given.
+func regenResourceTargets(dir string, tables []string, module, path string) ([]ResourceOptions, error) {
+	have, err := Resources(dir)
+	if err != nil {
+		return nil, err
+	}
+	if len(tables) == 0 {
+		if len(have) == 0 {
+			return nil, Refusef("there is no resource to regenerate: `alder new resource <Table>` generates one")
+		}
+		return have, nil
+	}
+	var out []ResourceOptions
+	for _, table := range tables {
+		var found []ResourceOptions
+		for _, h := range have {
+			if h.Table == table && (module == "" || h.Module == module) {
+				found = append(found, h)
+			}
+		}
+		if len(found) > 0 {
+			out = append(out, found...)
+			continue
+		}
+		o := ResourceOptions{Table: table, Module: module, Path: path}
+		if o.Module == "" {
+			o.Module = PluralConcern(table)
+		}
+		if o.Path == "" {
+			o.Path = "/" + names.Collection(table)
+		}
+		index := ResourceDir(o.Module) + "/Index.alder"
+		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(index))); err == nil && module == "" && path == "" {
+			return nil, Refusef("`%s` has no `alder new resource` header; pass the table and its options: `alder regen resource %s --module %s --path %s`", index, table, o.Module, o.Path)
+		}
+		out = append(out, o)
+	}
+	return out, nil
+}
+
 func regenSpecs() []*Spec {
 	return []*Spec{{
 		ID: "regen admin", Summary: "the admin routes",
@@ -419,6 +521,50 @@ func regenSpecs() []*Spec {
 			})
 			if res != nil {
 				res.Skipped, res.UpToDate = skipped, nothing
+			}
+			return res, err
+		},
+	}, {
+		ID: "regen resource", Summary: "the routes of a resource",
+		Args: []Field{{Name: "tables", Kind: ArgTable, Variadic: true, Value: "<Table>", Help: "the tables whose resources to regenerate (default: every resource of the app)", Example: "Post"}},
+		Flags: []Field{
+			{Name: "module", Kind: ArgModule, Value: "<M>", Summary: "the resource's module prefix, for files without the header", Example: "Posts"},
+			{Name: "path", Kind: ArgRoute, Value: "/p", Summary: "the resource's path, for files without the header", Example: "/posts"},
+			{Name: "all", Kind: ArgBool, Summary: "recreate the resource's routes the author deleted"},
+		},
+		Run: func(s Sets, app App, dry bool) (*Result, error) {
+			targets, err := regenResourceTargets(app.Dir, s.All("tables"), s.One("module"), s.One("path"))
+			if err != nil {
+				return nil, err
+			}
+			var under []string
+			for _, o := range targets {
+				under = append(under, ResourceDir(o.Module))
+			}
+			skipped, nothing := []string{}, false
+			var warnings []string
+			load := func(dir string) (*Program, error) { return LoadExcept(dir, under...) }
+			res, err := regenEdits(app, dry, load, func(p *Program) ([]Edit, error) {
+				var all []Edit
+				for _, o := range targets {
+					edits, sk, err := RegenResource(p, o, s.Has("all"))
+					if err != nil {
+						return nil, err
+					}
+					skipped = append(skipped, sk...)
+					all = append(all, edits...)
+					for _, w := range resourceWarnings(p, o) {
+						if !slices.Contains(warnings, w) {
+							warnings = append(warnings, w)
+						}
+					}
+				}
+				nothing = len(all) == 0
+				return all, nil
+			})
+			if res != nil {
+				res.Skipped, res.UpToDate = skipped, nothing
+				res.Warnings = append(res.Warnings, warnings...)
 			}
 			return res, err
 		},

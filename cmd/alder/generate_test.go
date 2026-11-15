@@ -158,6 +158,26 @@ func golden(t *testing.T, name, stdout string, files map[string]string) {
 	}
 }
 
+// goldenStderr is a refusal's message: the golden file `stderr` of the case (with -update, written
+// beside the stdout).
+func goldenStderr(t *testing.T, name, stderr string) {
+	t.Helper()
+	p := filepath.Join("../../testdata/generate/want", name, "stderr")
+	if *updateGenerate {
+		if err := os.WriteFile(p, []byte(stderr), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf("%v (run with -update to write the golden files)", err)
+	}
+	if stderr != string(want) {
+		t.Errorf("stderr:\n%s\nwant (%s):\n%s", stderr, p, want)
+	}
+}
+
 // genCase is one generator run: on a copy of base, the command args; its exit code; then,
 // unless the command breaks code on purpose (breaks: `alder edit table`'s to-do list), `alder
 // check` passes; and with test, the holes are filled (fills: address and expression, in order;
@@ -172,6 +192,7 @@ type genCase struct {
 	fills  [][2]string
 	test   bool
 	pre    [][]string // generator commands run before it, to make what it works on
+	stderr bool       // a case that succeeds has a `stderr` golden too: its warnings and notices
 }
 
 var genCases = []genCase{
@@ -223,6 +244,45 @@ var genCases = []genCase{
 	{name: "fixture-edit-rename", base: "fixture", args: []string{"edit", "table", "Post", "rename-field", "body", "text"}, breaks: true},
 	{name: "fixture-edit-drop", base: "fixture", args: []string{"edit", "table", "Tag", "drop-field", "created"}, test: true},
 	{name: "fixture-admin", base: "fixture", args: []string{"new", "admin"}, test: true},
+	{name: "fixture-resource", base: "fixture", args: []string{"new", "resource", "Post"}, test: true},
+	// #194: reads wider than writes: Show shows another user's post, Edit/Save/Delete/Destroy 404
+	{name: "fixture-resource-read-signed-in", base: "fixture", args: []string{"new", "resource", "Post", "--read", "signed-in"}, test: true},
+	{name: "fixture-resource-read-all", base: "fixture", args: []string{"new", "resource", "Post", "--read", "all"}, test: true},
+	// #194: a partitioned table's pages read and write within the session's org (the Scoped family)
+	{name: "fixture-silo-resource", base: "fixture-silo", args: []string{"new", "resource", "Activity"}, test: true, stderr: true},
+	// #194: a keyless table warns and generates; its tests say what its pages do
+	{name: "fixture-resource-keyless", base: "fixture", args: []string{"new", "resource", "Tag"}, test: true, stderr: true},
+	{name: "fixture-resource-keyless-read-all", base: "fixture", pre: [][]string{{"new", "table", "Note", "title:Text.NonEmpty"}}, args: []string{"new", "resource", "Note", "--read", "all"}, test: true, stderr: true},
+	// #194: an owned table referring to a keyless lookup table: another user's Save is refused
+	// by the options check (400), the row unchanged
+	{name: "fixture-resource-lookup-ref", base: "fixture", pre: [][]string{{"new", "table", "Category", "name:Text.NonEmpty"}, {"new", "table", "Article", "title:Text.NonEmpty", "owner:User.UserId@ref=User@owner", "category:Category.CategoryId@ref=Category"}}, args: []string{"new", "resource", "Article"}, test: true, stderr: true},
+	// #194: an owned table referring to a `@partition org` table: its routes require org too,
+	// and its select and labels read the session's org's rows (Db.scoped)
+	{name: "fixture-silo-resource-partitioned-ref", base: "fixture-silo", pre: [][]string{{"new", "table", "Note", "text:Text.NonEmpty", "owner:User.UserId@ref=User@owner", "activity:Activity.ActivityId@ref=Activity"}}, args: []string{"new", "resource", "Note"}, test: true, stderr: true},
+	// #194: an explicit --requires that leaves out the key of a table referred to is refused
+	{name: "resource-partitioned-ref-requires", base: "fixture-silo", pre: [][]string{{"new", "table", "Note", "text:Text.NonEmpty", "owner:User.UserId@ref=User@owner", "activity:Activity.ActivityId@ref=Activity"}}, args: []string{"new", "resource", "Note", "--requires", "user"}, code: 1},
+	// #194: --read signed-in needs a session user
+	{name: "resource-signed-in-no-user", base: "scaffold", pre: [][]string{{"new", "table", "Note", "title:Text.NonEmpty"}}, args: []string{"new", "resource", "Note", "--read", "signed-in"}, code: 1},
+	// #194: a visitor's pages cannot read the labels of a table scoped to its users
+	{name: "resource-read-all-scoped-ref", base: "fixture", args: []string{"new", "resource", "Tag", "--read", "all"}, code: 1},
+	// #194: a keyless table in an app with no users: any visitor reads and changes every row
+	{name: "resource-keyless-no-user", base: "scaffold", pre: [][]string{{"new", "table", "Note", "title:Text.NonEmpty"}}, args: []string{"new", "resource", "Note"}, test: true, stderr: true},
+	// #194: the table made first (a multi-word name: module BlogPosts, path /blog-posts); a
+	// non-owner user reference is left out of the form, with a notice
+	{name: "fixture-resource-create", base: "fixture", args: []string{"new", "resource", "BlogPost", "title:Text", "body:Text", "owner:User.UserId@ref=User@owner", "reviewer:Maybe User.UserId@ref=User", "post:Maybe Post.PostId@ref=Post"}, test: true, stderr: true},
+	// #194: edit table points at the regen that brings the resource along
+	{name: "fixture-resource-edit-next", base: "fixture", pre: [][]string{{"new", "resource", "Post"}}, args: []string{"edit", "table", "Post", "add-field", `summary:Text=""`}},
+	// #194: refusals, one sentence each, nothing written
+	{name: "resource-no-table", base: "fixture", args: []string{"new", "resource", "Nope"}, code: 1},
+	{name: "resource-fields-existing", base: "fixture", args: []string{"new", "resource", "Post", "title:Text"}, code: 1},
+	{name: "resource-silo", base: "fixture-silo", args: []string{"new", "resource", "Issue"}, code: 1},
+	{name: "resource-clash", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post"}}, args: []string{"new", "resource", "Post", "--module", "MyPosts"}, code: 1},
+	{name: "resource-no-user", base: "scaffold", pre: [][]string{{"new", "table", "Note", "title:Text.NonEmpty"}}, args: []string{"new", "resource", "Note", "--requires", "user"}, code: 1},
+	{name: "resource-bad-path", base: "fixture", args: []string{"new", "resource", "Post", "--path", "posts"}, code: 1},
+	{name: "resource-read-owner-keyless", base: "fixture", args: []string{"new", "resource", "Tag", "--read", "owner"}, code: 1},
+	{name: "resource-read-all-partition", base: "fixture-silo", args: []string{"new", "resource", "Activity", "--read", "all"}, code: 1},
+	{name: "resource-user-ref", base: "fixture", args: []string{"new", "resource", "Comment"}, code: 1},
+	{name: "resource-exists", base: "fixture", pre: [][]string{{"new", "resource", "Post"}}, args: []string{"new", "resource", "Post"}, code: 1},
 	{name: "fixture-silo-admin", base: "fixture-silo", args: []string{"new", "admin"}, test: true},
 
 	// M15: partitions and silos
@@ -300,6 +360,9 @@ func TestGenerate(t *testing.T) {
 				t.Fatalf("alder %s: exit %d, want %d\nstdout:\n%s\nstderr:\n%s", strings.Join(c.args, " "), code, c.code, out, errs)
 			}
 			golden(t, c.name, out, changedFiles(before, appFiles(t, dir)))
+			if c.code != 0 || c.stderr {
+				goldenStderr(t, c.name, errs)
+			}
 			if c.breaks {
 				return
 			}

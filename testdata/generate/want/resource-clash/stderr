@@ -1,0 +1,1 @@
+alder new resource: `GET /posts` is already answered by `Posts.Index.Index`: give the resource another `--path` (or `--module`)

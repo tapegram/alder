@@ -123,12 +123,6 @@ func (r regionOps) Replace(src, name, body string) (string, error) {
 	return r.ReplaceAll(src, []Region{{Name: name, Body: body}})
 }
 
-// ReplaceRegions is ReplaceAll for the admin marker: the hook Apply calls for an Edit with
-// Replace.
-func ReplaceRegions(src string, regions []Region) (string, error) {
-	return Regions.ReplaceAll(src, regions)
-}
-
 // ReplaceAll is src with each of regions' bodies in place of its region's lines. Every region
 // named must be in src, once; src's other regions and the text outside them are left alone.
 func (r regionOps) ReplaceAll(src string, regions []Region) (string, error) {
@@ -141,12 +135,12 @@ func (r regionOps) ReplaceAll(src string, regions []Region) (string, error) {
 		byName[s.name] = s
 	}
 	bodies := map[int]string{} // begin line → new body
-	for _, r := range regions {
-		s, ok := byName[r.Name]
+	for _, reg := range regions {
+		s, ok := byName[reg.Name]
 		if !ok {
-			return "", fmt.Errorf("there is no region `%s`", r.Name)
+			return "", fmt.Errorf("there is no region `%s`", reg.Name)
 		}
-		bodies[s.begin] = r.Body
+		bodies[s.begin] = reg.Body
 	}
 	lines := strings.Split(src, "\n")
 	var out []string

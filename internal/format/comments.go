@@ -14,8 +14,9 @@ import (
 //     `<-`, `then`, `else`); printed on its own line(s) above it, at its indent;
 //   - trailing: on the line where an item ends; printed after it (and its comma), one space
 //     before, which forces the group around it vertical;
-//   - after: a region's end marker (`-- @admin end`) on its own line stays with the item before
-//     it, printed on the next line, so the region keeps its items and nothing else;
+//   - after: a region's end marker (`-- @admin end`, `-- @resource end`) on its own line stays
+//     with the item before it, printed on the next line, so the region keeps its items and
+//     nothing else;
 //   - dangling: after the last item of a bracketed group (or of the file, or of an element's
 //     attributes or children); printed at the end of the group at the items' indent. Comments
 //     between a signature and its definition dangle on the signature and stay between them.
@@ -34,9 +35,20 @@ type attached struct {
 	after map[any][]syntax.Comment
 }
 
-// RegionEnd is a region's end marker, generate.RegionEnd (internal/generate/regions.go; not
-// imported: the generators import this package, and a test there keeps the two equal).
-const RegionEnd = "-- @admin end"
+// RegionEnds are the regions' end markers, the admin's and a resource's (generate.regionEnd of
+// "@admin" and "@resource", internal/generate/regions.go; not imported: the generators import
+// this package, and a test there keeps them equal).
+var RegionEnds = []string{"-- @admin end", "-- @resource end"}
+
+// regionEnd reports whether comment text is a region's end marker.
+func regionEnd(text string) bool {
+	for _, e := range RegionEnds {
+		if strings.HasPrefix(text, e) {
+			return true
+		}
+	}
+	return false
+}
 
 type place uint8
 
@@ -159,7 +171,7 @@ func (a *attacher) items(group any, start diag.Pos, items []any, end diag.Pos) {
 	// a region's end marker after an item, with no comment leading the next item before it,
 	// stays with the item
 	led := false
-	ends := func() bool { return prev != nil && !led && strings.HasPrefix(a.cs[a.i].Text, RegionEnd) }
+	ends := func() bool { return prev != nil && !led && regionEnd(a.cs[a.i].Text) }
 	for _, it := range items {
 		led = false
 		for a.more(spanOf(it).Start) {

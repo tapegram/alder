@@ -44,7 +44,7 @@ var commandUsages = map[string]string{
 
 var newGeneratorUsages = map[string]string{
 	"route": newRouteUsage, "table": newTableUsage, "form": newFormUsage, "action": newActionUsage,
-	"capability": newCapabilityUsage, "admin": newAdminUsage, "auth": newAuthUsage,
+	"capability": newCapabilityUsage, "admin": newAdminUsage, "resource": newResourceUsage, "auth": newAuthUsage,
 	"type": newTypeUsage, "decl": newDeclUsage, "test": newTestUsage, "silo": newSiloUsage,
 }
 
@@ -103,6 +103,12 @@ func helpTo(args []string, w io.Writer) bool {
 			if kind == "route" {
 				fmt.Fprintln(w, newRouteHelpNote)
 			}
+			return true
+		}
+	}
+	if cmd == "regen" && len(args) > 1 {
+		if u, ok := regenGeneratorUsages[args[1]]; ok {
+			fmt.Fprintln(w, u)
 			return true
 		}
 	}

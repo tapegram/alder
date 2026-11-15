@@ -1,0 +1,1 @@
+alder new resource: `author` is required and refers to users: give it a default or make it `Maybe`

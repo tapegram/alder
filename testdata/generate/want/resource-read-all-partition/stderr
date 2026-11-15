@@ -1,0 +1,1 @@
+alder new resource: rows of `Activity` are partitioned by `org` and read within it; `--read` applies to `@owner` tables

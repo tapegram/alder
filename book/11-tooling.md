@@ -483,6 +483,40 @@ module of its own is `alder new route <Module> <path> --method POST`.
 - A marker without its pair is refused, naming the file and the region.
 - An admin written before the folders were plural (`Admin/Todo/`) is refused too: "admin is in the old layout (Admin/Todo/): folders are plural now (Admin/Todos/). Delete app/Admin and run `alder new admin` again; move any code you added outside `-- @admin` regions first"
 
+#### `alder new resource <Table> [<field>:<Type> …] [--module M] [--path /p] [--read owner|signed-in|all] [--requires user|…]`
+
+**Writes:** the pages of the app's own users for one table, under `app/<Plural>/` (`--module`, default the table's plural; `--path`, default `/<plural>`), each file headed by two comment lines naming the command, with browser tests:
+
+- `Index` (`GET /posts`: search, a filter per `Bool` and union column, sort, 20 to a page), `Show` (`GET /posts/{id}`), `New` and `Create` (`GET /posts/new`, `POST /posts`), `Edit` and `Save` (`GET /posts/{id}/edit`, `PUT /posts/{id}`), `Delete` and `Destroy` (`GET /posts/{id}/delete`, `DELETE /posts/{id}`);
+- every route `requires user` (`--requires` names another rule), and the key of a table it refers to that is partitioned by one (`org`), but the two read routes under `--read all`;
+- on an `@owner` table, reads are `Db.mine` and `Db.getMine`, and writes `Db.insertMine`, `Db.updateMine` and `Db.deleteMine`, so another user's row is a 404; an unscoped `Db.` call appears only for counts of rows that refer to it, `@unique` counts and the select of a reference to an unowned table, each with a comment saying so;
+- `--read owner` (the default) reads the user's rows; `signed-in` and `all` read every row (`all` lets a visitor read), and the writes stay the owner's;
+- fields after the name create the table first (as `alder new table`, with its migration); one is the `@owner`;
+- a reference to users is labelled by a column that is not an email (`name`), or, when optional, left off the form with a warning;
+- the parts that follow the table are owned regions, between `-- @resource begin <name>` and `-- @resource end`; the header records `--read` and `--requires` only when given (`--requires` as its keys joined by commas).
+
+**Refused** (one sentence, nothing written):
+
+- `app/<Module>/` exists (`alder regen resource` updates it);
+- no such table and no fields, or fields for a table that exists;
+- `--path` not beginning with `/`;
+- the path's `GET` is already answered by another route (`` `GET /posts` is already answered by `Posts.Index.Index`: give the resource another `--path` (or `--module`) ``);
+- `--read owner` on a table with no `@owner`; `--read all` on a partitioned table or a table that refers to an owned or partitioned one;
+- a required reference to users that is not the owner and has no default;
+- a table of a `silo`;
+- `--requires user`, or `--read signed-in`, in an app whose session has no `user`;
+- a `--requires` without the key of a partitioned table it refers to (`` `Note` refers to `Activity`, whose rows are each org's: its pages need `--requires user,org` ``).
+
+A table with no `@owner` is written with a warning: every signed-in user (or, under `--read all`, every visitor for reading) can use every row, and the warning says how to scope it: add an `@owner` column to the table and its migration by hand (`alder edit table` cannot add a required reference to a table that has rows), then `alder regen resource`. Chapter 15, "A resource: `alder new resource`".
+
+#### `alder regen resource [<Table> …] [--all] [--module M] [--path /p] [--json] [--dry-run]`
+
+**Writes:** the owned regions of a resource's pages, from the table as it is now (a field added, an `@owner` added): only the lines between the markers change, so what you added outside them stays as it is, byte for byte.
+
+- The options are read from each file's header; `--read` and `--requires` are there only when given, so the others are worked out again from the table (a keyless table that gains `@owner` becomes owner-scoped, reads included).
+- A file you deleted is not written again unless `--all`; a region whose markers you deleted is not added back; a marker without its pair is refused.
+- Errors in the app stop it, since what it writes must check.
+
 A hole stops `alder test` (`alder test: no tests ran (fill the
 hole)`), so after `new action`, `new capability`, and a `new form` whose
 fields fit no table, the order is new, fill, test: `alder fill` each hole

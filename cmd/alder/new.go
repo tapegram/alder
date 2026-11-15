@@ -17,7 +17,7 @@ import (
 )
 
 // newUsage is the usage line of `alder new`.
-const newUsage = "usage: alder new <name> [--bare] [--theme <name>]  (or a path ending in the name: alder new apps/<name>), or alder new route|table|form|action|capability|admin|auth|type|decl|test|silo … (a generator)"
+const newUsage = "usage: alder new <name> [--bare] [--theme <name>]  (or a path ending in the name: alder new apps/<name>), or alder new route|table|form|action|capability|admin|resource|auth|type|decl|test|silo … (a generator)"
 
 // runNewTo is `alder new <dir>`: it writes the scaffold (internal/scaffold, the book's
 // guestbook) into dir, whose last element is the app's name, then runs the migration generator

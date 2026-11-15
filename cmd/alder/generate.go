@@ -68,9 +68,9 @@ type genJSON struct {
 	Error       string                `json:"error,omitempty"`
 	// Next is the command to run next (`alder new table`'s `next:` line), "" for none.
 	Next string `json:"next,omitempty"`
-	// Skipped and UpToDate are `alder regen admin`'s: the pages it did not recreate (deleted;
+	// Skipped and UpToDate are `alder regen`'s: the pages it did not recreate (deleted;
 	// --all writes them), and whether it had nothing to do.
-	Skipped  any   `json:"skipped,omitempty"` // regen admin: *[]string; theme import: *int (the at-rules skipped)
+	Skipped  any   `json:"skipped,omitempty"` // regen: *[]string; theme import: *int (the at-rules skipped)
 	UpToDate *bool `json:"upToDate,omitempty"`
 	// Imports are `alder fill`'s: the modules it imported for the expression.
 	Imports *[]string `json:"imports,omitempty"`
@@ -273,6 +273,8 @@ const newTableUsage = "usage: alder new table <Name> <field>:<Type>[=default][@a
 
 const newAdminUsage = "usage: alder new admin [--module Admin] [--path /admin] [--dir app] [--json] [--dry-run]"
 
+const newResourceUsage = "usage: alder new resource <Table> [<field>:<Type>…] [--read owner|signed-in|all] [--requires user|<key>[,…]] [--module <M>] [--path /p] [--dir app] [--json] [--dry-run]"
+
 const newFormUsage = "usage: alder new form <Route module> <Name> <field>:<Type>[=default] … [--into T] [--hole] [--msg <Route>] [--method POST|PUT|PATCH|DELETE] [--path /path] [--dir app] [--json] [--dry-run]"
 
 const newActionUsage = "usage: alder new action <Route module> <Name> [<field>:<Type> …] [--in-for <binder>] [--when <Bool expression>] [--id <id>] [--method POST|PUT|PATCH|DELETE] [--path /path] [--dir app] [--json] [--dry-run]"
@@ -292,7 +294,7 @@ const newSiloUsage = "usage: alder new silo <key> <Table> … [--empty] [--dir a
 // specUsage is each generator's usage line (the text `--help` prints and an argument error shows).
 var specUsage = map[string]string{
 	"new route": newRouteUsage, "new table": newTableUsage, "new form": newFormUsage, "new action": newActionUsage,
-	"new capability": newCapabilityUsage, "new admin": newAdminUsage, "new auth": newAuthUsage,
+	"new capability": newCapabilityUsage, "new admin": newAdminUsage, "new resource": newResourceUsage, "new auth": newAuthUsage,
 	"new type": newTypeUsage, "new decl": newDeclUsage, "new test": newTestUsage, "new silo": newSiloUsage,
 }
 
@@ -370,12 +372,12 @@ func presetListJSON() any {
 	}{theme.Version(), ps}
 }
 
-// specExtra adds a Spec's own JSON fields (regen admin's skipped and upToDate); nil for others.
+// specExtra adds a Spec's own JSON fields (regen's skipped and upToDate); nil for others.
 func specExtra(s *generate.Spec, res *generate.Result) func(*genJSON) {
 	if s.ID == "theme import" || s.ID == "theme use" {
 		return themeImportExtra(res)
 	}
-	if s.ID != "regen admin" {
+	if s.ID != "regen admin" && s.ID != "regen resource" {
 		return nil
 	}
 	skipped, upToDate := []string{}, false

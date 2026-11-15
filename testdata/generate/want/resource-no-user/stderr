@@ -1,0 +1,1 @@
+alder new resource: `--requires user` needs a session with a `user` field (`session { user: Maybe User.UserId }` in `App`): this app's session has none

@@ -116,3 +116,10 @@ func clashRefusal(have *Route, from, newName, method, path string, form bool) er
 	}
 	return Refusef("%s", msg)
 }
+
+// resourceClashRefusal is clashRefusal for `new resource`, which has neither `--method` nor `--msg`:
+// one sentence naming the route that answers method and path, with `--path` or `--module` as the
+// way out.
+func resourceClashRefusal(have *Route, method, path string) error {
+	return Refusef("`%s %s` is already answered by `%s.%s`: give the resource another `--path` (or `--module`)", method, path, have.Module, have.Name)
+}

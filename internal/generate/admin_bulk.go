@@ -350,6 +350,7 @@ func (g *crudGen) findTests(at *crudTable, mod string, imports *importSet, edit 
 		// exactly 200 rows are all offered
 		tb, at200, _ := start()
 		tb.bulkInsert(rt, 200-tb.counts[rt.Module], "")
+		g.othersOptions(tb, at) // not counted
 		tb.let("let page <- Test.get (%s)", at200())
 		tests = append(tests, TestData{Name: quote("a list of 200 " + pluralOf(rt) + " is offered whole"), Lines: tb.lines,
 			Result: fmt.Sprintf("List.length page.model.%s == 200", optionsField(c))})
@@ -378,6 +379,9 @@ func (g *crudGen) findTests(at *crudTable, mod string, imports *importSet, edit 
 				optionsField(c), totalField(c), found, input, shown, tb.counts[rt.Module], quote(last))})
 		if edit {
 			tests = append(tests, g.ownFirstTest(at, mod, imports, c))
+			if g.a.marker == "@resource" {
+				tests = append(tests, g.othersOwnTests(at, mod, imports, c)...)
+			}
 		}
 		if c.Maybe || edit {
 			continue
@@ -402,6 +406,35 @@ func (g *crudGen) findTests(at *crudTable, mod string, imports *importSet, edit 
 			Result: fmt.Sprintf("{ answer: sent.answer, rows: rows } == { answer: FormRejected [{ field: %s, message: \"must be one of the options\" }], rows: %d }", quote(c.Name), tb.counts[at.t.Module])})
 	}
 	return tests
+}
+
+// othersOwnTests are a resource's Edit page's tests of a long table behind reference c whose
+// rows are each a user's (Db.mine) or a key's (Db.scoped): a row referring to another's (made by
+// hand: no form offers it) is not offered it as its own value, so the select never names a row
+// out of the signed-in user's reach. None for a select over every row.
+func (g *crudGen) othersOwnTests(at *crudTable, mod string, imports *importSet, c *Column) []TestData {
+	rt := g.p.TableNamed(c.Ref)
+	tb := g.tb(mod, imports, true)
+	var who string
+	var over map[string]string
+	switch sel, _ := g.refSelect(rt); {
+	case strings.HasPrefix(sel, "Db.mine "):
+		who, over = "user", map[string]string{rt.Owner: tb.otherUser()}
+	case strings.HasPrefix(sel, "Db.scoped "):
+		who, over = rt.PartKey, map[string]string{rt.PartCol: g.otherKey(tb, rt.PartKey)}
+	default:
+		return nil
+	}
+	l := rt.Label()
+	over[l.Name] = tb.sample(l.Type, "zz", 1)
+	theirs := tb.insertRow(rt, "", over, false)
+	target := tb.insertRow(at.t, "", map[string]string{c.Name: maybeJust(c, theirs)}, false)
+	tb.bulkInsert(rt, 201, "")
+	tb.let("let page <- Test.get (%s)", pageLit("Edit", []string{"id: " + target}))
+	n := optionsField(c)
+	return []TestData{{Name: quote("another " + who + "'s " + strings.ToLower(Humanize(c.Name)) + " the row refers to is not offered"), Lines: tb.lines,
+		Result: fmt.Sprintf("{ offered: List.length (List.filter (\\o -> o.%s == %s) page.model.%s), shown: List.length page.model.%s } == { offered: 0, shown: 50 }",
+			rt.IDField, theirs, n, n)}}
 }
 
 // ownFirstTest is the Edit page's test of a long table behind reference c whose row's own value

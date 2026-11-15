@@ -70,30 +70,51 @@ func adminCheck(p *Program, o AdminOptions) (AdminOptions, error) {
 	if o.Path == "" {
 		o.Path = "/admin"
 	}
-	if !IsModuleName(o.Module) {
-		return o, Refusef("`--module %s` is not a module name: write capitalised names joined by dots, such as `Admin`", o.Module)
-	}
-	if !strings.HasPrefix(o.Path, "/") {
-		return o, Refusef("`--path %s` must begin with `/`, such as `/admin`", o.Path)
-	}
-	o.Path = strings.TrimSuffix(o.Path, "/")
-	if o.Path == "" || strings.ContainsAny(o.Path, "{}: ?#") {
-		return o, Refusef("`--path %s` is not a path without parameters, such as `/admin`", o.Path)
-	}
-	if why := check.PagePathProblem(o.Path); why != "" {
-		return o, Refusef("`--path %s` is not a page path: it %s; %s", o.Path, why, check.PagePathRule)
+	var err error
+	if o.Module, o.Path, err = pageOptionsCheck(o.Module, o.Path, "Admin", "/admin"); err != nil {
+		return o, err
 	}
 	if len(p.Tables) == 0 {
 		return o, Refusef("this app has no tables: the admin has nothing to show (`alder new table` makes one)")
 	}
 	for _, t := range p.Tables {
-		for _, c := range t.Columns {
-			if _, ok := secretValue(c); c.Secret() && c.Required() && c.Kind != KindTime && !ok {
-				return o, Refusef("`%s.%s` is a secret, which the admin never shows or writes, and an insert must name it: give it a default (`= …`) or make it `Maybe`", t.Name, c.Name)
-			}
+		if err := secretRefusal(t, "the admin never shows or writes"); err != nil {
+			return o, err
 		}
 	}
 	return o, nil
+}
+
+// pageOptionsCheck refuses a `--module` that is not a module name and a `--path` that is not a
+// page path without parameters, and returns the path without its trailing slash; modEg and
+// pathEg are the examples its sentences give.
+func pageOptionsCheck(module, path, modEg, pathEg string) (string, string, error) {
+	if !IsModuleName(module) {
+		return module, path, Refusef("`--module %s` is not a module name: write capitalised names joined by dots, such as `%s`", module, modEg)
+	}
+	if !strings.HasPrefix(path, "/") {
+		return module, path, Refusef("`--path %s` must begin with `/`, such as `%s`", path, pathEg)
+	}
+	path = strings.TrimSuffix(path, "/")
+	if path == "" || strings.ContainsAny(path, "{}: ?#") {
+		return module, path, Refusef("`--path %s` is not a path without parameters, such as `%s`", path, pathEg)
+	}
+	if why := check.PagePathProblem(path); why != "" {
+		return module, path, Refusef("`--path %s` is not a page path: it %s; %s", path, why, check.PagePathRule)
+	}
+	return module, path, nil
+}
+
+// secretRefusal refuses a table with a required secret column an insert must name and nothing
+// gives: generated pages never show or write it. never is what says so, after "which": "the
+// admin never shows or writes".
+func secretRefusal(t *Table, never string) error {
+	for _, c := range t.Columns {
+		if _, ok := secretValue(c); c.Secret() && c.Required() && c.Kind != KindTime && !ok {
+			return Refusef("`%s.%s` is a secret, which %s, and an insert must name it: give it a default (`= …`) or make it `Maybe`", t.Name, c.Name, never)
+		}
+	}
+	return nil
 }
 
 // adminDir is the directory of the admin's modules: "app/Admin".
@@ -255,7 +276,7 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 func AdminFiles(p *Program, o AdminOptions) (map[string]string, []string) {
 	g := &crudGen{p: p, o: o, a: adminAccess(o), files: map[string]string{}, names: map[string][]string{}, role: p.RoleColumn()}
 	for _, t := range p.Tables {
-		g.tables = append(g.tables, g.table(t))
+		g.tables = append(g.tables, g.table(t, adminTableModule(o, t), o.Path+"/"+strings.ToLower(t.Name)))
 	}
 	for _, at := range g.tables {
 		g.bulkInfo(at)
@@ -276,37 +297,6 @@ func AdminFiles(p *Program, o AdminOptions) (map[string]string, []string) {
 		g.bulk(at)
 	}
 	return g.files, g.order
-}
-
-// referrer is a column that refers to a table: what deleting a row of that table does to the
-// rows holding it.
-type referrer struct {
-	t     *Table
-	col   *Column
-	field string // the Delete page's model field counting them: "comments"
-}
-
-// load is GET route r's `load`, with body its statements (indented two spaces), run only for a
-// user the layout's adminOnly lets in (isAdmin, its region `access`: when the user table holds
-// the role, a user whose row says Admin now); any other gets a 404. The session's role is the one
-// read at login, which lasts until logout or the cookie's 30 days (chapter 6, "Rules"); every
-// write route's `update` begins the same way (update).
-func (g *crudGen) load(r, body string) string {
-	return r + ".load : " + r + ".Params -> Session -> Query Model\n" + r + ".load params session = {\n" + g.gated(body) + "\n}\n\n"
-}
-
-// update is write route r's `update`, with body its statements (indented two spaces), run only
-// for a user the layout's adminOnly lets in, as load; any other gets a 404.
-func (g *crudGen) update(r, body string) string {
-	return r + ".update : " + r + ".Params -> Session -> Task Response\n" + r + ".update params session = {\n" + g.gated(body) + "\n}\n\n"
-}
-
-// gated is body (statements indented two spaces) after the access's gate, when it has one.
-func (g *crudGen) gated(body string) string {
-	if g.a.gate == "" {
-		return body
-	}
-	return "  " + g.a.gate + "\n" + body
 }
 
 // adminAccess is the admin's access: every row of every table, to a user the layout's
@@ -330,6 +320,7 @@ func adminAccess(o AdminOptions) access {
 		update:        "Db.update",
 		remove:        "Db.delete",
 		perPage:       bulkMax,
+		role:          "Admin",
 	}
 }
 
@@ -516,7 +507,8 @@ func (g *crudGen) adminOf(t *Table) *crudTable {
 // recentRows is the dashboard's `recent`.
 const recentRows = 5
 
-// tb starts a test's builder in module mod, signed in as an Admin when admin is set.
+// tb starts a test's builder in module mod, signed in (as an Admin, for the admin's pages:
+// the access's role) when admin is set.
 func (g *crudGen) tb(mod string, imports *importSet, admin bool) *testBuilder {
 	if s := g.siloOf(mod); s != nil { // a siloed table's page: the Admin a member, for the test's own reads
 		return g.tbIn(mod, imports, admin, s, true)
@@ -526,9 +518,9 @@ func (g *crudGen) tb(mod string, imports *importSet, admin bool) *testBuilder {
 			return g.tbIn(mod, imports, admin, s, false)
 		}
 	}
-	tb := newTestBuilder(g.p, mod, imports)
-	if admin {
-		tb.login("Admin")
+	tb := newTestBuilder(g.p, mod, imports).keyedForKeys(g.a.keys) // a resource's `org`: its rows the session's
+	if admin && g.p.Session != nil && g.p.Session.User != nil {    // an app without users: its tests' visitor is everyone
+		tb.login(g.a.role)
 	}
 	return tb
 }
@@ -538,10 +530,7 @@ func (g *crudGen) tb(mod string, imports *importSet, admin bool) *testBuilder {
 func (g *crudGen) gateTests(mod string, imports *importSet, pageOf func(tb *testBuilder) string) []TestData {
 	var tests []TestData
 	if g.p.Login != "" {
-		tb := g.tb(mod, imports, false)
-		page := pageOf(tb)
-		tb.let("let r <- Test.open (%s)", page)
-		tests = append(tests, TestData{Name: quote("a visitor is sent to log in"), Lines: tb.lines, Result: "r.answer == Redirected (" + pageLit(g.p.Login, nil) + ")"})
+		tests = append(tests, g.visitorTest(mod, imports, pageOf))
 	}
 	for _, role := range g.p.Session.Role.Ctors {
 		if role == "Admin" {
@@ -571,15 +560,16 @@ func (g *crudGen) gateTests(mod string, imports *importSet, pageOf func(tb *test
 }
 
 // writeGate are the tests that a write route guards itself, each sending the write from the page
-// holding its form, opened by an Admin, after the session changed (#187: a write route runs no
-// `load`, so its own `requires` and adminOnly are all that stop it):
+// holding its form, opened by an Admin (by a signed-in user, for a page without a role), after
+// the session changed (#187: a write route runs no `load`, so its own `requires` and adminOnly
+// are all that stop it):
 //   - the session ended (a visitor): its `requires user` sends them to log in;
-//   - the cookie's role is no longer Admin (with a role column, the row still says Admin): its
-//     `role Admin` answers 404, before the form is decoded;
-//   - an Admin demoted since (the cookie still says Admin, the row no longer does; with a role
-//     column only): its update's adminOnly answers 404. A form with a select of a table's rows
-//     (refs) is refused before that, 400: the runtime checks the options against the page it was
-//     posted from (Plan call 11), whose load adminOnly refuses too.
+//   - for the admin, the cookie's role is no longer Admin (with a role column, the row still says
+//     Admin): its `role Admin` answers 404, before the form is decoded;
+//   - for the admin, an Admin demoted since (the cookie still says Admin, the row no longer
+//     does; with a role column only): its update's adminOnly answers 404. A form with a select
+//     of a table's rows (refs) is refused before that, 400: the runtime checks the options
+//     against the page it was posted from (Plan call 11), whose load adminOnly refuses too.
 //
 // Nothing is written. build inserts the rows and returns the page to open, the step that sends
 // the write, and check, which reads what must not have changed (the left and right sides'
@@ -601,8 +591,11 @@ func (g *crudGen) writeGate(mod string, imports *importSet, what string, refs bo
 		tests = append(tests, TestData{Name: quote(name), Lines: tb.lines,
 			Result: "{ answer: r.answer, " + l + " } == { answer: " + answer + ", " + r + " }"})
 	}
-	if g.p.Login != "" {
+	if g.p.Login != "" && requiresUser(g.a.writeRequires) {
 		refused("a visitor cannot "+what, "Redirected ("+pageLit(g.p.Login, nil)+")", func(tb *testBuilder) { tb.logout() })
+	}
+	if g.a.role == "" { // no role to lose: the session's user is the whole guard
+		return tests
 	}
 	if other := g.otherRole(); other != "" {
 		name := article(other) + " cannot " + what
@@ -642,10 +635,6 @@ func (g *crudGen) otherRole() string {
 }
 
 // ---- a table's pages
-
-// filterOption is an option of column c's filter: its value in the address, its label, and the
-// value of the column it selects.
-type filterOption struct{ value, label, col string }
 
 // ownRole is the role column of the user table at, which its Edit page refuses to change on the
 // signed-in user's own row; nil for another table, or a role the form does not edit.
