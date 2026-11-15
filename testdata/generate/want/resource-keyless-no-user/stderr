@@ -1,1 +1,1 @@
-alder new resource: warning: `Note` has no `@owner`: any visitor can read and change every row. To scope it: alder new auth, then alder edit table Note add-field owner:User.UserId@ref=User@owner, then alder regen resource Note
+alder new resource: warning: `Note` has no `@owner`: any visitor can read and change every row. To scope it: `alder new auth`, then add an `@owner` column to `Note` and its migration by hand (`owner: User.UserId @ref User @owner`), then `alder regen resource Note`

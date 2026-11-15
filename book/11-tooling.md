@@ -507,7 +507,7 @@ module of its own is `alder new route <Module> <path> --method POST`.
 - `--requires user`, or `--read signed-in`, in an app whose session has no `user`;
 - a `--requires` without the key of a partitioned table it refers to (`` `Note` refers to `Activity`, whose rows are each org's: its pages need `--requires user,org` ``).
 
-A table with no `@owner` is written with a warning: every signed-in user (or, under `--read all`, every visitor for reading) can use every row, and the warning gives the commands that scope it. Chapter 15, "A resource: `alder new resource`".
+A table with no `@owner` is written with a warning: every signed-in user (or, under `--read all`, every visitor for reading) can use every row, and the warning says how to scope it: add an `@owner` column to the table and its migration by hand (`alder edit table` cannot add a required reference to a table that has rows), then `alder regen resource`. Chapter 15, "A resource: `alder new resource`".
 
 #### `alder regen resource [<Table> …] [--all] [--module M] [--path /p] [--json] [--dry-run]`
 

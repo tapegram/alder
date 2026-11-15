@@ -91,7 +91,7 @@ func resourceCheck(p *Program, o ResourceOptions) (ResourceOptions, *Table, []st
 			o.Read = "all"
 		}
 	case o.Read == "owner" && !owned && !partitioned:
-		return o, nil, nil, Refusef("`%s` has no `@owner` column to read by; add one (`alder edit table %s add-field %s`) or use `--read signed-in`", t.Name, t.Name, ownerField(p))
+		return o, nil, nil, Refusef("`%s` has no `@owner` column to read by; add one to `%s` and its migration by hand (`%s`), or use `--read signed-in`", t.Name, t.Name, ownerColumn(p))
 	case o.Read != "owner" && partitioned:
 		return o, nil, nil, Refusef("rows of `%s` are partitioned by `%s` and read within it; `--read` applies to `@owner` tables", t.Name, t.PartKey)
 	case o.Read == "signed-in" && !hasUser:
@@ -338,18 +338,19 @@ func keylessWarning(p *Program, t *Table, o ResourceOptions) string {
 	who, remedy := "every signed-in user can read and change every row", ""
 	switch {
 	case userTable(p) == nil:
-		who, remedy = "any visitor can read and change every row", "alder new auth, then "
+		who, remedy = "any visitor can read and change every row", "`alder new auth`, then "
 	case o.Read == "all":
 		who = "any visitor can read every row and every signed-in user can change it"
 	}
 	return "`" + t.Name + "` has no `@owner`: " + who + ". To scope it: " + remedy +
-		"alder edit table " + t.Name + " add-field " + ownerField(p) + ", then alder regen resource " + t.Name
+		"add an `@owner` column to `" + t.Name + "` and its migration by hand (`" + ownerColumn(p) + "`), then `alder regen resource " + t.Name + "`"
 }
 
-// ownerField is the `alder edit table … add-field` word of an `@owner` column referring to the
-// session's user table: `owner:User.UserId@ref=User@owner` (what `alder new auth` makes, when
-// the app has no users yet).
-func ownerField(p *Program) string {
+// ownerColumn is the declaration of an `@owner` column referring to the session's user table,
+// as a table writes it: `owner: User.UserId @ref User @owner` (what `alder new auth` makes,
+// when the app has no users yet). `alder edit table … add-field` cannot add it to a table that
+// exists: a new non-null reference has no default to fill the rows with.
+func ownerColumn(p *Program) string {
 	users, id := "User", "UserId"
 	if ut := userTable(p); ut != nil {
 		users = ut.Name
@@ -357,7 +358,7 @@ func ownerField(p *Program) string {
 			id = b.Name
 		}
 	}
-	return "owner:" + users + "." + id + "@ref=" + users + "@owner"
+	return "owner: " + users + "." + id + " @ref " + users + " @owner"
 }
 
 // userTable is the session's user table, nil when the app has none.

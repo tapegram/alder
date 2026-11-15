@@ -84,7 +84,7 @@ func TestResourceCheck_Refusals(t *testing.T) {
 		{"fields on existing", "fixture", ResourceOptions{Table: "Post", Fields: []FieldSpec{{Name: "x", Type: "Text"}}}, "", "`Post` exists: change it with `alder edit table Post add-field …`, then `alder new resource Post`"},
 		{"silo", "fixture-silo", ResourceOptions{Table: "Issue"}, "", "`Issue` lives in the `org` silo: `alder new resource` writes pages over the shared store only (the admin shows siloed tables)"},
 		{"dir exists", "fixture", ResourceOptions{Table: "Post"}, existing, "`app/Posts/` exists: `alder regen resource Post` updates it; to generate another, choose another `--module`"},
-		{"read owner keyless", "fixture", ResourceOptions{Table: "Tag", Read: "owner"}, "", "`Tag` has no `@owner` column to read by; add one (`alder edit table Tag add-field owner:User.UserId@ref=User@owner`) or use `--read signed-in`"},
+		{"read owner keyless", "fixture", ResourceOptions{Table: "Tag", Read: "owner"}, "", "`Tag` has no `@owner` column to read by; add one to `Tag` and its migration by hand (`owner: User.UserId @ref User @owner`), or use `--read signed-in`"},
 		{"read all partitioned", "fixture-silo", ResourceOptions{Table: "Activity", Read: "all"}, "", "rows of `Activity` are partitioned by `org` and read within it; `--read` applies to `@owner` tables"},
 		{"requires without key", "fixture-silo", ResourceOptions{Table: "Activity", Requires: "user"}, "", "`Activity` is partitioned by `org`: its pages need `--requires org`"},
 		{"bad read", "fixture", ResourceOptions{Table: "Post", Read: "x"}, "", "`--read x` is not `owner`, `signed-in` or `all`"},
@@ -249,7 +249,7 @@ func TestNewResource_Partitioned(t *testing.T) {
 // warning naming who can read and change its rows and the field that scopes it (spec §3). The
 // variant of an app with no users is the golden `resource-keyless-no-user`'s.
 func TestNewResource_Keyless(t *testing.T) {
-	const remedy = " To scope it: alder edit table Tag add-field owner:User.UserId@ref=User@owner, then alder regen resource Tag"
+	const remedy = " To scope it: add an `@owner` column to `Tag` and its migration by hand (`owner: User.UserId @ref User @owner`), then `alder regen resource Tag`"
 	for _, c := range []struct {
 		name, read, want string
 	}{

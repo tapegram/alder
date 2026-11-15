@@ -944,16 +944,21 @@ wrote app/Tags/Edit.alder
 wrote app/Tags/Index.alder
 wrote app/Tags/New.alder
 wrote app/Tags/Show.alder
-alder new resource: warning: `Tag` has no `@owner`: every signed-in user can read and change every row. To scope it: alder edit table Tag add-field owner:User.UserId@ref=User@owner, then alder regen resource Tag
+alder new resource: warning: `Tag` has no `@owner`: every signed-in user can read and change every row. To scope it: add an `@owner` column to `Tag` and its migration by hand (`owner: User.UserId @ref User @owner`), then `alder regen resource Tag`
 ```
 
-The warning gives the two commands that fix it. `--read all` on such a table
+The warning says how to scope it. The column goes in by hand, because
+`alder edit table … add-field` cannot add it to a table that has rows: a new
+required reference has no value to fill them with, and an `@owner` cannot be
+a `Maybe`. Once the table and its migration have it, `alder regen resource
+Tag` rewrites the pages in the owner's calls ("After a change to the table",
+below). `--read all` on such a table
 warns that any visitor reads every row and every signed-in user changes it.
 `--read owner` has no column to read by and is refused:
 
 <!-- golden: resource-read-owner-keyless/output -->
 ```text
-alder new resource: `Tag` has no `@owner` column to read by; add one (`alder edit table Tag add-field owner:User.UserId@ref=User@owner`) or use `--read signed-in`
+alder new resource: `Tag` has no `@owner` column to read by; add one to `Tag` and its migration by hand (`owner: User.UserId @ref User @owner`), or use `--read signed-in`
 ```
 
 ### Making the table too
@@ -985,11 +990,6 @@ post". A reference to a table with an owner picks from the user's own rows
 (the `Posts` in the `New` page's form); a reference to users, other than the
 owner, is left off the form with the warning above.
 
-### After a change to the table
-
-`alder edit table` changes the table, and its last line says what to run:
-
-<!-- golden: fixture-resource-edit-next/output -->
 A reference to a table partitioned by a key, such as an `@partition org`
 table, picks from the session's org's rows only (`Db.scoped`), so the routes
 require that key too: a `Note` that refers to an `Activity` is written
@@ -1001,6 +1001,11 @@ refused, since the select would offer every org's rows:
 alder new resource: `Note` refers to `Activity`, whose rows are each org's: its pages need `--requires user,org`
 ```
 
+### After a change to the table
+
+`alder edit table` changes the table, and its last line says what to run:
+
+<!-- golden: fixture-resource-edit-next/output -->
 ```text
 edited app/Table/Post.alder
 wrote migrations/0002_add_summary.sql
