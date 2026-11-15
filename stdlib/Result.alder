@@ -1,7 +1,48 @@
+-- Functions for a `Result`, the outcome of something that can fail.
+--
+-- A `Result` is `Ok x` with the value on success and `Err e` with the reason on failure.
+--
+-- Book: chapter 9, "Result"
 module Result
 
+-- Applies a function to the value inside an `Ok`.
+--
+-- An `Err` stays as it is and the function is not called.
+--
+--     Result.map (\n -> n + 1) (Ok 1) == Ok 2
+--     Result.map (\n -> n + 1) (Err "bad") == Err "bad"
 map : (a -> b) -> Result e a -> Result e b
+
+-- Applies a function to the reason inside an `Err`, for example to rewrite an error message.
+--
+-- An `Ok` stays as it is and the function is not called.
+--
+--     Result.mapErr (\e -> "failed: " ++ e) (Err "bad") == Err "failed: bad"
+--     Result.mapErr (\e -> "failed: " ++ e) (Ok 1) == Ok 1
 mapErr : (e -> f) -> Result e a -> Result f a
+
+-- Applies a function that may itself fail to the value inside an `Ok`.
+--
+-- The result is the first `Err` met, either the input's or the function's. Unlike `Result.map`,
+-- it does not nest one `Result` inside another, so steps that can fail chain one after another.
+--
+--     Result.andThen (\n -> if n > 0 then Ok n else Err "not positive") (Ok 5) == Ok 5
+--     Result.andThen (\n -> if n > 0 then Ok n else Err "not positive") (Ok 0) == Err "not positive"
+--     Result.andThen (\n -> Ok n) (Err "first") == Err "first"
 andThen : (a -> Result e b) -> Result e a -> Result e b
+
+-- The value inside an `Ok`, or a fallback when the result is an `Err`.
+--
+-- The reason in the `Err` is thrown away.
+--
+--     Result.withDefault 0 (Ok 5) == 5
+--     Result.withDefault 0 (Err "bad") == 0
 withDefault : a -> Result e a -> a
+
+-- Turns a `Result` into a `Maybe`, forgetting the reason for a failure.
+--
+-- An `Ok` becomes a `Just` and an `Err` becomes `Nothing`.
+--
+--     Result.toMaybe (Ok 1) == Just 1
+--     Result.toMaybe (Err "bad") == Nothing
 toMaybe : Result e a -> Maybe a

@@ -27,8 +27,8 @@ import (
 var pendingDocs = map[string]bool{
 	"Bool": true, "Bytes": true, "Date": true, "Db": true, "Dict": true, "File": true,
 	"Float": true, "Fuzz": true, "Html": true, "Http": true, "Int": true, "Json": true,
-	"List": true, "Log": true, "Maybe": true, "Notice": true, "Prelude": true, "Query": true,
-	"Random": true, "Response": true, "Result": true, "Session": true, "Task": true,
+	"Log": true, "Notice": true, "Prelude": true, "Query": true,
+	"Random": true, "Response": true, "Session": true, "Task": true,
 	"Test": true, "Text": true, "Time": true, "Url": true,
 }
 
