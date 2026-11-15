@@ -135,6 +135,36 @@ func TestDevPanel_Redirect(t *testing.T) {
 	}
 }
 
+// A route's Text.Secret form fields and path parameters (Route.Secret) are masked by type, not
+// by name: `pin` and `door` say nothing secret, and neither value is shown in Request, the
+// request line, the bar or the curl line (#254).
+func TestDevPanel_SecretByType(t *testing.T) {
+	t.Setenv("ALDER_DEV", "1")
+	routes := []Route{
+		{Method: "POST", Pattern: "/notes/{door}", Secret: []string{"pin", "door"}, Handle: func(rq *Request) Response {
+			return PageResponse(doc("saved"), nil, nil)
+		}},
+	}
+	h := NewRouter(routes, testOpts(func(o *Options) { o.Dev = true }))
+	req := httptest.NewRequest("POST", "/notes/7788", strings.NewReader("q=ann&pin=4321"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	body := serve(h, req).Body.String()
+	panel := body[strings.Index(body, "<al-devpanel"):]
+	for _, s := range []string{
+		"POST /notes/••••", "form pin = ••••", "form q = ann", "param door = ••••",
+		"--data-urlencode &#39;pin=••••&#39; --data-urlencode &#39;q=ann&#39;",
+	} {
+		if !strings.Contains(panel, s) {
+			t.Errorf("missing %q in %s", s, panel)
+		}
+	}
+	for _, s := range []string{"4321", "7788"} {
+		if strings.Contains(panel, s) {
+			t.Errorf("the secret %q is shown: %s", s, panel)
+		}
+	}
+}
+
 // toastRedirect is a write route answering `redirect` to GET /list with a toast of kind k.
 func toastRedirect(k rtpkg.NoticeKind, text string) func(rq *Request) Response {
 	return func(rq *Request) Response {

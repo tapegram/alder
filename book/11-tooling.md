@@ -2513,8 +2513,10 @@ Its tabs:
   puts it on the clipboard. The line carries a placeholder for the session
   cookie (`<your session cookie>`; the real one is the browser's secret), the
   `Datastar-Request` header of a partial update and the form fields as
-  `--data-urlencode`. A field whose name says it holds a password, a secret or
-  a token is shown as `••••`, here, in the curl line and so in History.
+  `--data-urlencode`. A form field or path parameter that is a `Text.Secret`,
+  or whose name says it holds a password, a secret or a token, is shown as
+  `••••`, here, in the curl line and so in History. The session holds no
+  `Text.Secret` (E0048). The SQL tab shows arguments as they are.
 - Trace: the effect steps the request ran, in order, with their time; a
   capability call says whether an adapter or a fake answered it. It is the
   list `alder test` prints for a test.
@@ -2799,6 +2801,14 @@ type, a type argument on `Html`, and an unqualified `load`, `view` or
   that replaced it".
 
 There is no automatic fix: rewrite the module by hand, using chapter 6.
+
+#### E0048 — a `Text.Secret` in the session
+
+A field of App's `session` that is a `Text.Secret`, or a `Maybe Text.Secret`,
+is refused at the field: "session field `pin` holds a `Text.Secret`, but the
+session cookie is signed, not encrypted: the user can read it. Keep the secret
+in a table and store the row's id in the session" (chapter 6, "Signed, not
+encrypted"). There is no automatic fix.
 
 #### E0019 — `migrations/` is behind the app or disagrees with itself
 

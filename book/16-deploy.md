@@ -984,7 +984,8 @@ its secrets replaced by `••••` (the dev panel's mask):
   pair is kept, never dropped, so the line still shows the URL's shape.
 
 - **The value of a route's path parameter** whose name contains one of
-  the words above, whatever the value looks like: for
+  the words above, or whose type is `Text.Secret`, whatever the value
+  looks like: for
   `route Reset = GET "/reset/{token}" { token: Text }` the line shows
   `/reset/••••`.
 

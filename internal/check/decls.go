@@ -689,6 +689,16 @@ func storable(t types.Type) bool {
 	return isScalar(t)
 }
 
+// holdsSecret reports whether t is the stdlib's `Text.Secret` or a `Maybe` of it: what a session
+// field may not hold (E0048). A session field is storable, so it holds nothing deeper.
+func holdsSecret(t types.Type) bool {
+	if inner, ok := maybeOf(t); ok {
+		t = inner
+	}
+	b, ok := t.(*types.Brand)
+	return ok && b.Module == "Text" && b.Name == "Secret"
+}
+
 func formRepresentable(t types.Type) bool {
 	if isCon(t, "Time") {
 		return false
@@ -786,6 +796,9 @@ func (mc *modCtx) defineApp() {
 				ft := mc.typeOf(f.Type, nil)
 				if !formRepresentable(ft) {
 					c.errorf(diag.InvalidDecl, f.Span, "session field `%s` has type `%s`, which cannot be stored in a session", f.Name, mc.ts(ft))
+				}
+				if holdsSecret(ft) {
+					c.errorf(diag.SecretInSession, f.Span, "session field `%s` holds a `Text.Secret`, but the session cookie is signed, not encrypted: the user can read it. Keep the secret in a table and store the row's id in the session", f.Name)
 				}
 				mc.deferDefault(f, ft)
 				rec.Fields = append(rec.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})

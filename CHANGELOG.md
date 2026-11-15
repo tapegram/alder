@@ -5,11 +5,19 @@ with the previous release, each with what to do.
 
 ## Unreleased
 
+### Breaking
+
+- A session field that is a `Text.Secret` (or a `Maybe Text.Secret`) is E0048: the session cookie is signed, not encrypted, so the user can read it. Keep the secret in a table and store the row's id in the session (#254).
+
 ### Added
 
 - `alder search <query>`: search the standard library and the app by name, by module (`Text.`) or by type (`Text -> Int`, `: List Text`, `_` as a wildcard), with `--json` (#166).
 - Language server: `alder/search` and `alder/searchEdit` (search by name or type, and for a picked result the edit and the cursor), `workspace/symbol` for the app's declarations, and a "Search for <type>" action on typed holes for clients that declare `experimental.alderSearch` (#166).
 - Doc comments: a comment above a declaration in the format of a summary sentence, detail paragraphs, examples indented four spaces and a `Book: chapter N, "Heading"` line. Hover shows it with the examples in a code block and the book line, completion items carry it, `alder search` shows the summary in its DOC column, and `alder search --doc` prints the details, examples and book line; `--json` results gain `summary`, `examples` and `book`. `List`, `Maybe`, `Result`, `Text`, `Int`, `Float`, `Bool`, `Dict`, `Bytes`, `Task`, `Query`, `Db`, `Session`, `Notice`, `Response`, `Html`, `Http`, `Url`, `Log`, `Prelude`, `Date`, `Time`, `Random`, `Json`, `File`, `Test` and `Fuzz` are documented: every module and declaration of the standard library has a doc (#119).
+
+### Fixed
+
+- The dev panel and its "Copy as curl" line mask a route's `Text.Secret` form fields and path parameters by type, not only by name (a `pin` field was shown), and a log line masks a `Text.Secret` path parameter. The `Text.Secret` docs now say what is masked and what is not: `Log`, `Json.string`, `++` and a view's text show it in clear (#254).
 
 ## v0.2.0 — 2026-11-11
 

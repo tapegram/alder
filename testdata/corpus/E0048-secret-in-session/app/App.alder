@@ -1,0 +1,13 @@
+module App
+
+-- a Text.Secret in the session is refused, alone or in a Maybe; the cookie is signed, not
+-- encrypted. `user` and `apiKeyId` (an id to look the secret up by) are fine.
+session { user: Maybe Text, apiKeyId: Maybe Int, pin: Text.Secret, token: Maybe Text.Secret }
+
+login = Login.Login
+
+error : Error -> Html
+error err = <h1>Something went wrong</h1>
+
+notFound : Html
+notFound = <h1>Not found</h1>

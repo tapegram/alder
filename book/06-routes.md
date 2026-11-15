@@ -2365,8 +2365,10 @@ A field the cookie lacks, or whose value no longer decodes, gets its default.
 #### Signed, not encrypted
 
 The cookie is **signed, not encrypted**. Anyone holding it can read it, so
-never put a `Text.Secret`, or anything the user must not see, in the
-session. What the signature does is stop anyone from changing it. A cookie
+never put anything the user must not see in the session. A session field
+that is a `Text.Secret` (or a `Maybe Text.Secret`) is a compile error,
+E0048: keep the secret in a table and store the row's id in the session.
+What the signature does is stop anyone from changing it. A cookie
 whose signature doesn't match is ignored, and the request sees the default
 session: every field at its default, so `user` is `Nothing`.
 

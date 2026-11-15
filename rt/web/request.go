@@ -20,7 +20,11 @@ type Route struct {
 	Method  string // "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; a POST is routed by its form's _method (effectiveMethod)
 	Pattern string
 	File    bool // a file page's GET: answered raw; never morphed or followed
-	Handle  func(rq *Request) Response
+	// Secret names the route's Text.Secret path parameters and form fields (generated from their
+	// types): the dev panel and its curl line mask their values, and a log line a path
+	// parameter's, whatever the name (a field named `pin` is not Sensitive).
+	Secret []string
+	Handle func(rq *Request) Response
 }
 
 // Request is what a route handler sees. The router builds a fresh one (and a fresh Env) for
@@ -48,6 +52,8 @@ type Request struct {
 	sessionEnc []byte // the codec's encoding of Session: a response's session equal to it is not stored again
 
 	pattern string // the Pattern of the GET route a shown page's sub-request runs (runShown); "" otherwise
+
+	secret []string // Route.Secret of the route serving the request: the dev panel masks these
 
 	// the router serving the request and its writer: RenderShown runs the shown page's GET route
 	// with them (nil for a Request not built by the router)

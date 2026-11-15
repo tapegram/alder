@@ -183,7 +183,7 @@ func decode__Auth__Login__Credentials(v url.Values) (r Auth__Login__Credentials,
 // are diffed against it); run the update and answer its Response (a failed Task: 500, 404 for
 // Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Auth__Login__Submit() web.Route {
-	return web.Route{Method: "POST", Pattern: "/session", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "POST", Pattern: "/session", Secret: []string{"password"}, Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Auth__Login__Submit__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -628,7 +628,7 @@ func decode__Notes__Index__Prefs(v url.Values) (r Notes__Index__Prefs, errs []we
 // before the update (refresh and invalid are diffed against it); run the update and answer its
 // Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Index__SavePrefs() web.Route {
-	return web.Route{Method: "PUT", Pattern: "/prefs", Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "PUT", Pattern: "/prefs", Secret: []string{"pin"}, Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Index__SavePrefs__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())

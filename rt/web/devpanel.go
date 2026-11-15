@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -106,7 +107,7 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			fmt.Fprintf(&b, "form %s = %s\n", esc(k), esc(strings.Join(masked(k, tw.rq.Form[k]), ",")))
+			fmt.Fprintf(&b, "form %s = %s\n", esc(k), esc(strings.Join(tw.rq.masked(k, tw.rq.Form[k]), ",")))
 		}
 		pk := make([]string, 0, len(tw.rq.Params))
 		for k := range tw.rq.Params {
@@ -114,7 +115,7 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 		}
 		sort.Strings(pk)
 		for _, k := range pk {
-			fmt.Fprintf(&b, "param %s = %s\n", esc(k), esc(strings.Join(masked(k, []string{tw.rq.Params[k]}), "")))
+			fmt.Fprintf(&b, "param %s = %s\n", esc(k), esc(strings.Join(tw.rq.masked(k, []string{tw.rq.Params[k]}), "")))
 		}
 		fmt.Fprintf(&b, "session %s\n", esc(rt.sessionText(tw.rq.Session)))
 	}
@@ -303,12 +304,13 @@ func (rt *router) warnRepeats(tw *tracker) {
 	}
 }
 
-// masked is the values of form field k as the panel shows them: a field whose name says it holds
-// a secret (applog.Sensitive: a password, a token, a key, a code…) is shown as "••••", so the
+// masked is the values of form field (or path parameter) k as the panel shows them: a
+// Text.Secret of the request's route (Route.Secret), or a field whose name says it holds a
+// secret (applog.Sensitive: a password, a token, a key, a code…), is shown as "••••", so the
 // panel, its History and the curl line never carry one. The request's URL is shown masked the
-// way the log masks it (applog.MaskURL).
-func masked(k string, vs []string) []string {
-	if applog.Sensitive(k) {
+// way the log masks it (applog.MaskURL, and the route's hidden path parameters).
+func (rq *Request) masked(k string, vs []string) []string {
+	if applog.Sensitive(k) || slices.Contains(rq.secret, k) {
 		out := make([]string, len(vs))
 		for i := range out {
 			out[i] = applog.Mask
@@ -365,7 +367,7 @@ func curlLine(tw *tracker) string {
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			for _, v := range masked(k, tw.rq.Form[k]) {
+			for _, v := range tw.rq.masked(k, tw.rq.Form[k]) {
 				b.WriteString(" --data-urlencode " + shq(k+"="+v))
 			}
 		}

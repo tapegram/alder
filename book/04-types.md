@@ -189,12 +189,19 @@ The standard library defines common refinements:
 ```alder
 Text.NonEmpty     -- length > 0 after trimming
 Text.Email        -- contains an @ with text on both sides
-Text.Secret       -- non-empty; rendered as a password input, never logged or echoed
+Text.Secret       -- non-empty; a password input, never echoed back
 Int.Positive      -- > 0
 Int.NonNegative   -- >= 0
 ```
 
 These are ordinary brands of `Text` and `Int` and widen the same way.
+
+A `Text.Secret` gets a little more: a form never fills one back in, the dev
+panel and its curl line show `••••` for a route's form fields and path
+parameters of this type, and a session field may not be one (E0048: the
+session cookie is signed, not encrypted). Widening means the rest is up to
+you: `Log.info`, `Json.string`, `++` and a view's text take it as a `Text`
+and show it in clear, so do not pass one to them.
 
 ## Type parameters on records and unions
 

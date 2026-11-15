@@ -189,7 +189,8 @@ or a token. Log ids and outcomes, not the values people typed.
 
 The same goes for tokens in URLs. A reset or magic link carries a token
 the app made with `Random.id`; the log masks it only when its
-parameter's name says it is a secret, so write `route Reset = GET "/reset/{token}" { … }`
+parameter's name says it is a secret (or, for a path parameter, when it
+is a `Text.Secret`), so write `route Reset = GET "/reset/{token}" { … }`
 or `?token=…`, not `/reset/{t}` or `?t=…` (chapter 16, "What is never
 logged").
 

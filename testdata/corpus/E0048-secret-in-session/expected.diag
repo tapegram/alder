@@ -1,0 +1,2 @@
+app/App.alder:5:50 E0048 session field `pin` holds a `Text.Secret`, but the session cookie is signed, not encrypted: the user can read it. Keep the secret in a table and store the row's id in the session
+app/App.alder:5:68 E0048 session field `token` holds a `Text.Secret`, but the session cookie is signed, not encrypted: the user can read it. Keep the secret in a table and store the row's id in the session

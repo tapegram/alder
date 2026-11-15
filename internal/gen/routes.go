@@ -190,7 +190,7 @@ func (g *gen) getRoute(b *strings.Builder, p *ir.Program, r *ir.Route) {
 	}
 	b.WriteString(comment(fmt.Sprintf("%s serves route %s, GET %s: %s", routeFunc(m, r.Name), key, r.Path, steps)))
 	fmt.Fprintf(b, `func %s() web.Route {
-	return web.Route{Method: "GET", Pattern: %s, %sHandle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "GET", Pattern: %s, %s%sHandle: func(rq *web.Request) web.Response {
 		params, errs := %s(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -204,7 +204,7 @@ func (g *gen) getRoute(b *strings.Builder, p *ir.Program, r *ir.Route) {
 	}}
 }
 
-`, routeFunc(m, r.Name), strconv.Quote(r.Path), fileField, decode, loadFunc(key), respond)
+`, routeFunc(m, r.Name), strconv.Quote(r.Path), fileField, secretField(r), decode, loadFunc(key), respond)
 }
 
 // guardFunc is write route r's guard__ function ("guard__Todos__Toggle").
@@ -287,12 +287,12 @@ func (g *gen) writeRoute(b *strings.Builder, p *ir.Program, r *ir.Route, forms m
 	b.WriteString(comment(fmt.Sprintf("%s serves route %s, %s %s: %s.", routeFunc(m, r.Name), rkey, r.Method, r.Path, strings.Join(steps, "; "))))
 
 	fmt.Fprintf(b, `func %s() web.Route {
-	return web.Route{Method: %s, Pattern: %s, Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: %s, Pattern: %s, %sHandle: func(rq *web.Request) web.Response {
 		params, errs := %s(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-`, routeFunc(m, r.Name), strconv.Quote(r.Method), strconv.Quote(r.Path), decode)
+`, routeFunc(m, r.Name), strconv.Quote(r.Method), strconv.Quote(r.Path), secretField(r), decode)
 	if len(r.Requires) > 0 {
 		fmt.Fprintf(b, `		session, stop := %s(rq, params)
 		if stop != nil {
@@ -409,6 +409,36 @@ func routeUpdateFailure(p *ir.Program, hasForm bool) string {
 
 // isSecret reports whether b is the stdlib's Text.Secret.
 func isSecret(b *ir.Brand) bool { return b != nil && b.Module == "Text" && b.Name == "Secret" }
+
+// secretField is the `Secret: […], ` of route r's web.Route: the names of its Text.Secret path
+// parameters and form fields (a Maybe of one too), which the dev panel and its curl line mask
+// whatever they are called; "" when it has none.
+func secretField(r *ir.Route) string {
+	var names []string
+	if r.Params != nil {
+		for _, seg := range strings.Split(r.Path, "/") {
+			if !strings.HasPrefix(seg, "{") || !strings.HasSuffix(seg, "}") {
+				continue
+			}
+			for _, fd := range r.Params.Fields {
+				if fd.Name == seg[1:len(seg)-1] && isSecret(fd.Brand) {
+					names = append(names, strconv.Quote(fd.Name))
+				}
+			}
+		}
+	}
+	if r.Form != nil {
+		for _, fd := range r.Form.Record.Fields {
+			if isSecret(fd.Brand) {
+				names = append(names, strconv.Quote(fd.Name))
+			}
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return "Secret: []string{" + strings.Join(names, ", ") + "}, "
+}
 
 // guarded is what load__M__R (loadFunc) runs for a GET route, and what a write route's
 // guard__M__R runs. key names the function ("Todos.Row" for route Row of module Todos: a module

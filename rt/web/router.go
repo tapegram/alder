@@ -332,9 +332,12 @@ type route struct {
 	segs    []segment
 	file    bool // Route.File
 	handle  func(*Request) Response
-	// hide marks the segments that are a parameter whose name is Sensitive (`/reset/{token}`):
-	// a log line masks their values whatever they look like; nil when there is none
+	// hide marks the segments that are a parameter whose name is Sensitive (`/reset/{token}`)
+	// or that is a Text.Secret (Route.Secret): a log line masks their values whatever they look
+	// like; nil when there is none
 	hide []bool
+	// secret is Route.Secret
+	secret []string
 }
 
 // segment is a literal path segment, or a parameter when param is set.
@@ -393,9 +396,9 @@ func NewRouter(routes []Route, opts Options) http.Handler {
 		if !declarable(r.Method) {
 			panic(fmt.Sprintf("web: route %q: method %q is not GET, POST, PUT, PATCH or DELETE", r.Pattern, r.Method))
 		}
-		ro := route{method: r.Method, pattern: r.Pattern, segs: compile(r.Pattern), file: r.File, handle: r.Handle}
+		ro := route{method: r.Method, pattern: r.Pattern, segs: compile(r.Pattern), file: r.File, handle: r.Handle, secret: r.Secret}
 		for i, s := range ro.segs {
-			if s.param != "" && applog.Sensitive(s.param) {
+			if s.param != "" && (applog.Sensitive(s.param) || slices.Contains(r.Secret, s.param)) {
 				if ro.hide == nil {
 					ro.hide = make([]bool, len(ro.segs))
 				}
@@ -923,6 +926,7 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		Datastar: datastar.IsDatastar(r),
 		Dev:      rt.opts.Dev,
 		Login:    rt.opts.Login,
+		secret:   hit.secret,
 		rt:       rt,
 		w:        w,
 	}

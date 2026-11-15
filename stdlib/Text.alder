@@ -39,8 +39,17 @@ type Url = brand Text where True
 
 -- A `Text` that holds a secret, such as a password.
 --
--- It may not be empty. A form shows a field of this type as a password input, and Alder does
--- not log the value or echo it back into the form.
+-- It may not be empty. A form shows a field of this type as a password input and never fills
+-- it back in, not even when the form comes back with errors. The dev panel and its "Copy as
+-- curl" line show `••••` for a route's form fields and path parameters of this type, and a log
+-- line masks such a path parameter. A session field may not be a `Text.Secret` (E0048): the
+-- session cookie is signed, not encrypted, so the user can read it.
+--
+-- That is all the masking there is. A `Text.Secret` widens to `Text`, so anything that takes a
+-- `Text` shows it in clear: `Log.info` and the other `Log` functions, `Json.string`, `++`, and
+-- text in a view. Do not pass one to them. A query parameter of this type is masked only when
+-- its name says it holds a secret, and the dev panel's SQL tab shows a statement's arguments as
+-- they are.
 --
 -- The check runs when a value is decoded from a form or a route, not when the brand is applied
 -- to a `Text`, so the caller must make sure of a `Text.Secret` made by hand.
