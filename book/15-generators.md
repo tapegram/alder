@@ -452,8 +452,8 @@ could get wrong.
   refused when one is not a `Text` column of `T`. The route gains a
   `q: Text = ""` parameter, cut to 200 characters (a longer text would fail
   the query, chapter 8), a `search q` condition applied to the rows and to
-  their count, a GET form above the table, and two tests: that searching finds
-  the matching rows, and that a long query is cut.
+  their count, a GET form above the table, and three tests: that searching finds
+  the matching rows, that it counts only them, and that a long query is cut.
 
 - **`--role R`** adds `, role R`, and a test that a user of another role
   gets no page: `route Notes = GET "/notes" { } requires user, role Admin`.

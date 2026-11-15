@@ -762,7 +762,11 @@ func missingSession(p *Program) string {
 // a list can search), or with none named searchCols(t).
 func searchColumns(t *Table, named []string) ([]*Column, error) {
 	if len(named) == 0 {
-		return searchCols(t), nil
+		cols := searchCols(t)
+		if len(cols) == 0 {
+			return nil, Refusef("`--search`: `%s` has no Text column to search", t.Name)
+		}
+		return cols, nil
 	}
 	var cols []*Column
 	for _, n := range named {
