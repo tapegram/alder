@@ -621,8 +621,9 @@ gives every county and key its own stream, the same on every run.
 
 #### Steps in the stream
 
-Where a value sits in the stream depends only on the program, never on
-the values drawn:
+Where a draw sits in the stream is fixed by the program, except after
+`andThen` or a `list` whose count was itself drawn, which take as many
+steps as the values drawn decide:
 
 - `intRange`, `floatRange`, `normal`, `uniform` and `weighted` each take
   exactly one step (even `intRange { min: 5, max: 5 }`).
@@ -636,7 +637,8 @@ So adding a draw at the end of a program does not change the draws before it.
 #### The generators
 
 - **`intRange` and `floatRange`** give `min` when `max <= min`; `floatRange`
-  never gives `max` itself.
+  almost never gives `max` itself (rounding can give it, about once in 2^52
+  draws).
 - **`normal`** is one uniform draw through Acklam's inverse of the normal
   distribution (accurate to about 1e-9).
 - **`uniform x xs`** picks evenly from `x` and `xs`, so the list is never

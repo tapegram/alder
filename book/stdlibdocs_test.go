@@ -22,15 +22,6 @@ import (
 // The stdlib doc tests hold every stdlib signature file to the doc format (the spec's "Tests
 // that enforce it") and run every doc example in one batched `alder eval`.
 
-// pendingDocs are the modules not yet documented; TestStdlibDocs_Complete skips them. Each
-// documenting task removes its modules; the last deletes the list.
-var pendingDocs = map[string]bool{
-	"Date": true, "File": true,
-	"Fuzz": true, "Json": true,
-	"Random": true,
-	"Test": true, "Time": true,
-}
-
 // noExample are the values that cannot have an example, each with the reason. Keys are
 // qualified names ("Test.click").
 var noExample = map[string]string{
@@ -44,10 +35,16 @@ var noExample = map[string]string{
 	"Db.updateScoped": scopedReason,
 	"Db.deleteScoped": scopedReason,
 	"Db.insertScoped": scopedReason,
+	"Test.member":     "the example app's session has no `via` field, and `Test.member` is E0003 without one",
+	"Fuzz.forAll":     propertyReason,
+	"Fuzz.forAllTask": propertyReason,
 }
 
 // scopedReason is the noExample reason of the scoped Db operations (Db.mine, Db.scoped, …).
 const scopedReason = "a scoped operation is E0026 outside a route that requires its key; examples are checked outside any route"
+
+// propertyReason is the noExample reason of Fuzz.forAll and Fuzz.forAllTask.
+const propertyReason = "a Property is E0039 anywhere but a test's body; examples are checked outside any test"
 
 // stdlibDecl is one documented thing of a stdlib file: the module itself or a declaration.
 type stdlibDecl struct {
@@ -106,22 +103,15 @@ func stdlibDecls(fsys fs.FS) ([]stdlibDecl, error) {
 }
 
 // stdlibDocProblems lists findings as "stdlib/List.alder:7: List.take: no example".
-func stdlibDocProblems(fsys fs.FS, pending map[string]bool, noExample map[string]string, headingExists func(ref string) bool) []string {
+func stdlibDocProblems(fsys fs.FS, noExample map[string]string, headingExists func(ref string) bool) []string {
 	decls, err := stdlibDecls(fsys)
 	if err != nil {
 		return []string{err.Error()}
 	}
 	var out []string
 	named := map[string]bool{}
-	module := ""
 	for _, d := range decls {
 		named[d.Name] = true
-		if d.Module {
-			module = d.Name
-		}
-		if pending[module] {
-			continue
-		}
 		need := doc.Strict{}
 		switch {
 		case d.Module:
@@ -188,8 +178,8 @@ func bookHeadingExists(ref string) bool {
 
 type docExample struct{ Where, Source string } // Where: "stdlib/List.alder:14"
 
-// stdlibExamples are the examples of every doc of fsys (modules and declarations, pending ones
-// too), in file order, each at its first line.
+// stdlibExamples are the examples of every doc of fsys (modules and declarations), in file
+// order, each at its first line.
 func stdlibExamples(fsys fs.FS) []docExample {
 	decls, err := stdlibDecls(fsys)
 	if err != nil {
@@ -488,7 +478,7 @@ func recordFields(v string, idx []int) map[int]string {
 
 func TestStdlibDocs_FixtureFails(t *testing.T) {
 	fsys := os.DirFS("testdata/stdlibdocs")
-	got := stdlibDocProblems(fsys, nil, nil, bookHeadingExists)
+	got := stdlibDocProblems(fsys, nil, bookHeadingExists)
 	want := []string{
 		"stdlib/Bad.alder:1: Bad: no doc comment",
 		"stdlib/Bad.alder:3: Bad.undocumented: no doc comment",
@@ -523,7 +513,7 @@ func TestStdlibDocs_FixtureFails(t *testing.T) {
 }
 
 func TestStdlibDocs_Complete(t *testing.T) {
-	for _, p := range stdlibDocProblems(stdlib.FS, pendingDocs, noExample, bookHeadingExists) {
+	for _, p := range stdlibDocProblems(stdlib.FS, noExample, bookHeadingExists) {
 		t.Error(p)
 	}
 }

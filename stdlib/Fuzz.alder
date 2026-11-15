@@ -1,45 +1,291 @@
+-- Generators of random values for property tests, and the properties that use them.
+--
+-- A property test runs its body on many values drawn at random (100 unless `alder test --fuzz`
+-- says otherwise) and, when one fails, shrinks it to a simpler failing value. A `Fuzz.Fuzzer`
+-- describes how to draw a value; it is an ordinary value, so a generator can be declared once
+-- with a signature and shared by many tests. A `Fuzz.Property`, made by `Fuzz.forAll` or
+-- `Fuzz.forAllTask`, can only be a test's body.
+--
+-- Book: chapter 9, "Fuzz"
 module Fuzz
 
--- a description of how to draw a value of type a from random choices
+-- A description of how to draw a value of type `a` from random choices.
+--
+-- A `Fuzzer` draws nothing until a property test runs it. Each generator also has a simplest
+-- value, such as 0 for `Fuzz.int`, and a failing value shrinks toward it. Build one with the
+-- generators of this module and combine them with `Fuzz.map`, `Fuzz.map2` and `Fuzz.andThen`.
+--
+-- Book: chapter 9, "Fuzz"
 type Fuzzer a
 
--- a property: what `forAll` makes, and the body of a property test; only a test body can use one
+-- A property: what `Fuzz.forAll` and `Fuzz.forAllTask` make, and the body of a property test.
+--
+-- Only a test's body can be one; anywhere else it is E0039.
+--
+-- Book: chapter 10, "`Fuzz.forAll` and shared `Fuzzer`s"
 type Property
 
--- special form: any : Fuzzer a
--- the generator alder test derives from the type; the explicit form of a derived argument
--- (resolved by the compiler at the use site's type)
+-- `Fuzz.any : Fuzzer a` is a special form, not declared here: the generator that `alder test`
+-- derives from a type, the explicit form of a derived argument. The compiler gives it the
+-- generator of the type the context asks for, so that type must be known where it is written
+-- (E0038 otherwise; inside a test, a type left open is `Int`).
+
+-- A property that holds when a function gives `True` for every value a generator draws.
+--
+-- `Fuzz.forAll gen f` draws a value with `gen` and gives it to `f`, as many times as the test
+-- runs; a value for which `f` gives `False`, or crashes, fails the test and is shrunk. It can
+-- only be a test's body (E0039 anywhere else). For a property over several values, draw a
+-- record with `Fuzz.pair` or `Fuzz.map2`.
+--
+-- Book: chapter 10, "`Fuzz.forAll` and shared `Fuzzer`s"
 forAll : Fuzzer a -> (a -> Bool) -> Property
+
+-- A property whose check is a `Task`, for code that reads or writes the database.
+--
+-- It is `Fuzz.forAll` with a function that gives a `Task Bool`. Every value drawn runs against a
+-- fresh database, clock, capabilities and browser of its own, so no run sees another's writes.
+-- It can only be a test's body (E0039 anywhere else).
+--
+-- Book: chapter 10, "Properties over the database"
 forAllTask : Fuzzer a -> (a -> Task Bool) -> Property
 
+-- A generator that always gives the same value.
+--
+-- It makes no random choice, so there is nothing to shrink.
+--
+--     Fuzz.constant 5
+--     Fuzz.map2 (\n s -> { n: n, s: s }) (Fuzz.constant 0) Fuzz.text
+--
+-- Book: chapter 9, "Fuzz"
 constant : a -> Fuzzer a
+
+-- A generator of `True` and `False`, each as likely.
+--
+-- A failure shrinks toward `False`.
+--
+--     Fuzz.bool
+--
+-- Book: chapter 9, "Fuzz"
 bool : Fuzzer Bool
--- mostly small, sometimes extreme
+
+-- A generator of whole numbers, mostly small and sometimes extreme.
+--
+-- About half the numbers are from 0 to 10, and the rest are larger, up to the whole range of
+-- `Int`; a few are values at the edges where overflow and off-by-one bugs hide, such as the
+-- largest and smallest `Int`, 2^31 and 2^32 and their neighbours, 255 and 256. Each is
+-- negative half the time. A failure shrinks toward 0.
+--
+--     Fuzz.int
+--
+-- Book: chapter 9, "What the generators draw"
 int : Fuzzer Int
+
+-- A generator of whole numbers from `min` to `max`, both included.
+--
+-- It gives `min` every time when `max` is not above `min`. `min` and `max` themselves come up
+-- often, and so do the numbers nearest 0. A failure shrinks toward the number in the range
+-- nearest 0.
+--
+--     Fuzz.intRange { min: 1, max: 6 }
+--     Fuzz.intRange { min: -10, max: 10 }
+--
+-- Book: chapter 9, "Fuzz"
 intRange : { min: Int, max: Int } -> Fuzzer Int
--- finite; 0, -0, tiny, huge included; no NaN/Inf
+
+-- A generator of decimal numbers, always finite: never `NaN` and never infinite.
+--
+-- Most are whole numbers or short decimals, and some are the values that break float code:
+-- `0`, `-0`, numbers as tiny as the smallest one `Float` holds, and numbers as huge as the
+-- largest. A failure shrinks toward 0.
+--
+--     Fuzz.float
+--
+-- Book: chapter 9, "What the generators draw"
 float : Fuzzer Float
+
+-- A generator of decimal numbers from `min` to `max`, both included.
+--
+-- It gives `min` every time when `max` is not above `min`, or when either is `NaN`; an
+-- infinite bound counts as the largest finite `Float`, with its sign. The number in the range
+-- nearest 0 and the ends of the range come up often. A failure shrinks toward the number in
+-- the range nearest 0.
+--
+--     Fuzz.floatRange { min: 0.0, max: 1.0 }
+--
+-- Book: chapter 9, "Fuzz"
 floatRange : { min: Float, max: Float } -> Fuzzer Float
--- mostly short ASCII, sometimes Unicode, sometimes empty
+
+-- A generator of text: mostly short and ASCII, sometimes Unicode, sometimes empty.
+--
+-- About three texts in ten are empty, and most of the rest are a few characters long. About a
+-- quarter of them may hold characters beyond ASCII. Every character is printable or one of
+-- `\n`, `\t` and `\r`, so every value can be written as an Alder literal. A failure shrinks
+-- toward shorter text and toward `a`.
+--
+--     Fuzz.text
+--
+-- Book: chapter 9, "What the generators draw"
 text : Fuzzer Text
--- the length is in code points
+
+-- A generator of text whose length, counted in code points, is from `min` to `max`.
+--
+-- The characters are drawn as `Fuzz.text` draws them. A `min` below 0 counts as 0, and a `max`
+-- below `min` counts as `min`.
+--
+--     Fuzz.textOf { min: 1, max: 20 }
+--
+-- Book: chapter 9, "What the generators draw"
 textOf : { min: Int, max: Int } -> Fuzzer Text
--- one code point
+
+-- A generator of a text that holds one code point.
+--
+-- It is printable or one of `\n`, `\t` and `\r`; about one in five is beyond ASCII.
+--
+--     Fuzz.char
+--
+-- Book: chapter 9, "What the generators draw"
 char : Fuzzer Text
--- size biased small
+
+-- A generator of lists of values from another generator, biased to short lists.
+--
+-- About three lists in ten are empty and most of the rest have a few elements; now and then one
+-- is long. It has no upper bound, so a list of lists can grow until a test case makes more
+-- random choices than `alder test` allows (8192), which fails the test: use `Fuzz.listOf` to
+-- bound the length. A failure shrinks toward a shorter list.
+--
+--     Fuzz.list Fuzz.int
+--
+-- Book: chapter 9, "What the generators draw"
 list : Fuzzer a -> Fuzzer (List a)
+
+-- A generator of lists whose length is from `min` to `max`.
+--
+-- A `min` below 0 counts as 0, and a `max` below `min` counts as `min`.
+--
+--     Fuzz.listOf { min: 1, max: 5 } Fuzz.int
+--     Fuzz.listOf { min: 0, max: 10 } (Fuzz.listOf { min: 0, max: 10 } Fuzz.bool)
+--
+-- Book: chapter 9, "What the generators draw"
 listOf : { min: Int, max: Int } -> Fuzzer a -> Fuzzer (List a)
+
+-- A generator of `Nothing`, or `Just` a value from another generator.
+--
+-- About three in four are `Just`. A failure shrinks toward `Nothing`.
+--
+--     Fuzz.maybe Fuzz.int
+--
+-- Book: chapter 9, "Fuzz"
 maybe : Fuzzer a -> Fuzzer (Maybe a)
+
+-- A generator of `Ok` with a value of the second generator, or `Err` with one of the first.
+--
+-- Each is as likely. A failure shrinks toward `Ok`.
+--
+--     Fuzz.result Fuzz.text Fuzz.int
+--
+-- Book: chapter 9, "Fuzz"
 result : Fuzzer e -> Fuzzer a -> Fuzzer (Result e a)
+
+-- A generator of a record of two values, `first` from one generator and `second` from another.
+--
+-- It is the way to give `Fuzz.forAll` two values at once.
+--
+--     Fuzz.pair Fuzz.int Fuzz.text
+--
+-- Book: chapter 10, "`Fuzz.forAll` and shared `Fuzzer`s"
 pair : Fuzzer a -> Fuzzer b -> Fuzzer { first: a, second: b }
+
+-- A generator of dictionaries, with keys from one generator and values from another.
+--
+-- The entries are drawn as a list of keys and values, as `Fuzz.list` draws, so most
+-- dictionaries are small. A key drawn twice keeps the value drawn last, so a dictionary can
+-- have fewer entries than were drawn. A failure shrinks toward fewer entries.
+--
+--     Fuzz.dict Fuzz.text Fuzz.int
+--
+-- Book: chapter 9, "Fuzz"
 dict : Fuzzer k -> Fuzzer v -> Fuzzer (Dict k v)
+
+-- A generator that draws from one of several generators, each as likely.
+--
+-- A failure shrinks toward the first generator in the list. An empty list fails the test that
+-- draws from it.
+--
+--     Fuzz.oneOf [Fuzz.intRange { min: 0, max: 9 }, Fuzz.constant 100]
+--
+-- Book: chapter 9, "Fuzz"
 oneOf : List (Fuzzer a) -> Fuzzer a
+
+-- A generator that picks one of several values, each as likely.
+--
+-- A failure shrinks toward the first value in the list. An empty list fails the test that
+-- draws from it.
+--
+--     Fuzz.oneOfValues ["draft", "published", "archived"]
+--
+-- Book: chapter 9, "Fuzz"
 oneOfValues : List a -> Fuzzer a
+
+-- A generator that draws from one of several generators, more often the heavier its weight.
+--
+-- A generator of weight 3 is picked three times as often as one of weight 1. A weight of 0 or
+-- less is never picked, and when no weight is above 0 the test that draws from it fails. A
+-- failure shrinks toward the first generator whose weight is above 0.
+--
+--     Fuzz.frequency [{ weight: 9, fuzzer: Fuzz.intRange { min: 0, max: 9 } }, { weight: 1, fuzzer: Fuzz.int }]
+--
+-- Book: chapter 9, "Fuzz"
 frequency : List { weight: Int, fuzzer: Fuzzer a } -> Fuzzer a
+
+-- Changes the values a generator draws with a function.
+--
+-- It shrinks as the generator it is given does.
+--
+--     Fuzz.map (\n -> n * 2) Fuzz.int
+--
+-- Book: chapter 9, "Fuzz"
 map : (a -> b) -> Fuzzer a -> Fuzzer b
+
+-- Combines the values of two generators with a function.
+--
+-- It draws from the first, then from the second, and gives both values to the function.
+--
+--     Fuzz.map2 (\name age -> { name: name, age: age }) Fuzz.text (Fuzz.intRange { min: 0, max: 120 })
+--
+-- Book: chapter 10, "`Fuzz.forAll` and shared `Fuzzer`s"
 map2 : (a -> b -> c) -> Fuzzer a -> Fuzzer b -> Fuzzer c
+
+-- Chooses the next generator from the value an earlier one drew.
+--
+-- It draws from the generator it is given, gives the value to the function, and draws from the
+-- generator the function returns. Use it when how to draw depends on what was drawn, such as a
+-- length and then that many items.
+--
+--     Fuzz.andThen (\n -> Fuzz.listOf { min: n, max: n } Fuzz.bool) (Fuzz.intRange { min: 0, max: 5 })
+--
+-- Book: chapter 9, "Fuzz"
 andThen : (a -> Fuzzer b) -> Fuzzer a -> Fuzzer b
--- subject to the health check
+
+-- Keeps only the values of a generator for which a predicate gives `True`.
+--
+-- A value the predicate rejects is not drawn again: that test case is thrown away and does not
+-- count as a run. The health check fails the test when the predicate rejects more than 90% of
+-- the first 50 cases, so a predicate that rejects most values is better written as a
+-- generator that draws only the values it accepts.
+--
+--     Fuzz.filter (\n -> n != 0) Fuzz.int
+--
+-- Book: chapter 10, "Health checks"
 filter : (a -> Bool) -> Fuzzer a -> Fuzzer a
--- draws a seed; shrinks the seed toward 0, never inside the generator
+
+-- Turns a seeded `Random.Generator` into a generator for property tests.
+--
+-- It draws a random `Random.Seed` and gives the `Random.Generator`'s value at that seed. A
+-- failure shrinks the seed toward `Random.seed 0`, never the value inside, so it shrinks to a
+-- nearby seed and not to the simplest value. A generator written with `Fuzz` shrinks better;
+-- this one is for reusing a generator the app already has.
+--
+--     Fuzz.fromRandom (Random.intRange { min: 1, max: 6 })
+--
+-- Book: chapter 9, "`Fuzz.fromRandom`"
 fromRandom : Random.Generator a -> Fuzzer a

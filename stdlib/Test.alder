@@ -1,57 +1,318 @@
+-- Steps and queries for tests: failing tasks, fakes, the clock, and an in-memory browser.
+--
+-- The steps run a task that may fail (`Test.run`), put a capability's fake in place
+-- (`Test.fake`), set and move the test's clock, and use the app's pages through a browser.
+-- Only a `test` or a test helper may use this module; anywhere else, such as a route's `view`,
+-- a use is E0040. The steps are `Task` values, written with `let x <-` in a test's block. Each
+-- test has its own fresh database, clock, capabilities and browser, and every effect it runs is
+-- recorded on its trace. The queries at the end (`Test.text`, `Test.has` and the others) are
+-- ordinary functions that read a `Doc`, the parsed page a browser step gives.
+--
+-- Book: chapter 9, "Test"
 module Test
 
+-- Runs a task that may fail, and gives what it came to instead of failing the test.
+--
+-- `value` is `Ok` with the task's result, or `Err` with the failure's message when the task
+-- fails: `Task.fail` gives its own text, `Task.notFound` gives "not found", a
+-- `Query.redirect` gives "redirected to" and the URL, and an error from a capability's adapter
+-- gives the capability's name and the error. A task that fails has its database writes undone
+-- and the session put back as it was. `trace` is the steps the task took, without the
+-- `Test.run` step itself. Any other error, such as a browser step that fails, still fails the
+-- test.
+--
+--     Test.run (Task.fail "out of stock")
+--     Test.run (Task.fail "out of stock") |> Task.map (\r -> r.value == Err "out of stock")
+--
+-- Book: chapter 10, "4. `Test.run`: running a task that may fail"
 run : Task a -> Task { value: Result Text a, trace: List Text }
+
+-- The steps the test has taken so far, in order.
+--
+-- Each step is named as the trace shows it, such as `"Db.get Todo"` or `"Session.put"`. The
+-- `Test.trace` step itself is not in the list.
+--
+--     Test.trace |> Task.map (\steps -> List.member "Session.put" steps)
+--
+-- Book: chapter 10, "5. `Test.trace`: the steps so far"
 trace : Task (List Text)
--- special form: the argument is a capability name (one whose module declares a fake)
+
+-- Puts a capability's `fake` in place of its adapter for the rest of the test.
+--
+-- It is a special form, not a function: its argument is the name of a capability whose module
+-- declares a `fake` (`Stripe`, or `Payments.Stripe` through an import), never an expression. So
+-- `Test.fake` cannot be applied to a variable, piped into, or left without its argument. A
+-- capability without a `fake` is E0003. The routes the test's browser requests use the fake
+-- too.
+--
+--     Test.fake Login.Password
+--
+-- Book: chapter 10, "8. Faking a capability"
 fake : Capability -> Task Unit
 
--- The browser steps (special forms, only inside a `test`). Each requests a route the way a browser
--- does, through the app's real routes, inside the test's transaction.
--- special form: the argument is App's session record
+-- The browser steps. Each is a special form, used only inside a `test` or a test helper, and applied directly to
+-- all its arguments, never passed as a value or piped into. Each requests the app's real routes
+-- the way a browser does, inside the test's transaction, and holds the page it ends on.
+
+-- Signs a session into the test's browser and makes it the test's own session.
+--
+-- The argument is `App`'s session record, checked when the test compiles; it is the cookie's
+-- value, so a field with a default may be left out. The browser then sends it with every
+-- request, and the scoped `Db` operations the test itself runs act for that user. A `via` key
+-- in it (`org: Just acme`) needs its membership row first (`Test.member`), as `Session.put`
+-- would. Unlike the other browser steps, it works in an app without an `App` module.
+--
+--     Test.login { user: Just (User.UserId "u1"), role: Member }
+--     Test.login { user: Nothing }
+--
+-- Book: chapter 10, "`Test.login`, `requires`, and the session"
 login : Session -> Task Unit
--- the membership a session field's `via` table records: a row of it for the user and the key's
--- id (`Test.member me org`), so a Test.login or Session.put with that key passes the check
+
+-- Inserts the membership row that makes a user a member of a session key's `via` table.
+--
+-- `Test.member me org` writes a row of the table the session field's `via` names, with its
+-- user column `me` and its key column `org`; every other column is its default, or `Nothing`
+-- for a `Maybe` column. After it, a `Test.login` or a `Session.put` with that key passes the
+-- membership check. An app whose session has no `via` field is E0003, and so is a membership
+-- table with another column that has no default: insert that row with `Db.insert`.
+--
+-- Book: chapter 10, "Two orgs"
 member : u -> k -> Task Unit
--- sets the clock: Time.now, Date.today and @created read t, and the clock stands still from
--- here on (no one-second tick); Test.advance and the virtual waits still move it
+
+-- Sets the test's clock to a time, and stops it there.
+--
+-- From here on `Time.now`, `Date.today` and `@created` read that time, in the test and in the
+-- routes its browser requests, and the clock stands still: the one-second tick of a clock that
+-- was never set stops for the rest of the test. `Test.advance`, `Query.delay` and `Task.sleep`
+-- still move it. A second `Test.setClock` moves it again, backwards too. A failed `Test.run`
+-- does not undo it, and the trace shows it as `Test.setClock` and the time in UTC. A test that
+-- never sets its clock starts at 2026-01-01T00:00:00Z.
+--
+--     Test.setClock (Time.fromMillis 1772582400000)
+--
+-- Book: chapter 10, "Setting the clock"
 setClock : Time -> Task Unit
--- moves the clock forward ms milliseconds (negative is 0); ticking or set, it keeps that state
+
+-- Moves the test's clock a number of milliseconds forward.
+--
+-- A negative number counts as 0: to go back, set the clock again. An advance beyond about 292
+-- years stops there instead of wrapping into the past. A clock that ticks keeps ticking after
+-- it, and a set one stays still. A failed `Test.run` does not undo it, and the trace shows it
+-- as `Test.advance` and the milliseconds (`Test.advance 86400000ms`).
+--
+--     Test.advance (24 * 60 * 60 * 1000)
+--
+-- Book: chapter 10, "Setting the clock"
 advance : Int -> Task Unit
--- Every step's result but fetch's holds `url`, the URL of the page the browser holds after it,
--- and `status`, the code of the step's last response (422 for `Response.invalid`).
--- special form: the argument is a GET route (`Todos.Row { id: id }`); `model` is what the route's
--- `load` gives; the test fails unless the route is shown
+
+-- Requests a GET route's page and fails the test unless the page is shown.
+--
+-- It is a special form: the argument is a GET route written in place with its parameters
+-- (`Todos.Index.Index {}`, `Todos.Show.Show { id: id }`). A redirect, a missing page or an
+-- error fails the test, and a redirect to the login page names the route's `requires`. `model`
+-- is what the route's `load` gave, typed, which must not be a union (use `Test.open` for that
+-- route). A write route is E0045, and a file route is E0003: use `Test.fetch`. `url` is the URL
+-- of the page the browser holds after the step and `status` the code of its last response.
+-- The result also has `notices` and `toasts`, the toasts the answer showed.
+--
+--     Test.get (Todos.Index.Index {})
+--     Test.get (Todos.Index.Index {}) |> Task.map (\page -> List.length page.model.todos)
+--
+-- Book: chapter 10, "`Test.get` and `Test.open`: requesting a page"
 get : Route -> Task { model: model, session: Session, doc: Doc, url: Text, status: Int }
--- special form: the argument is a GET route; the answer says what the request came to
+
+-- Requests a GET route's page and gives what the request came to, whatever it was.
+--
+-- It is a special form: the argument is a GET route written in place, as for `Test.get`. It
+-- follows redirects, up to 10 in a row, and `answer` is `Shown`, `Redirected` with the page it
+-- reached, `PageMissing` or `RequestFailed`; the browser holds the page it ends on. A write
+-- route is E0045, and a file route is E0003. `url` is the URL of the page held after the step
+-- and `status` the code of its last response. The result also has `notices` and `toasts`.
+--
+--     Test.open (Admin.Index.Index {})
+--     Test.open (Admin.Index.Index {}) |> Task.map (\r -> r.answer == Redirected (Auth.Login.Login {}))
+--
+-- Book: chapter 10, "`Test.get` and `Test.open`: requesting a page"
 open : Route -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
--- special form: the argument is a GET route; the raw answer, redirects not followed
+
+-- Requests a GET route once and gives the raw answer.
+--
+-- It is a special form: the argument is a GET route written in place, and it is the step for
+-- a file page. It does not follow a redirect. The result is the response's `status`, its
+-- `contentType`, its `body` as `Bytes`, and every header, sorted by name. The page the browser
+-- holds stays as it was, so the result has no `url` and no `doc`. A write route is E0045.
+--
+--     Test.fetch (Todos.Index.Index {}) |> Task.map (\r -> r.status)
+--
+-- Book: chapter 10, "`Test.fetch`: requesting a file"
 fetch : Route -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }
--- special form: the first argument is a write route with `form F` (`Create`, or `Edit { id: id }`
--- with its parameters), and the second F's record
+
+-- Posts a record through the held page's form for a write route.
+--
+-- It is a special form: the first argument is a write route with `form F`, written in place
+-- with its parameters (`Create`, or `Edit { id: id }`), and the second is `F`'s record, whose
+-- defaults apply. The browser posts it through the page's form for that route, as a user
+-- would. The test fails, with nothing sent, when the page holds no such form, or when a field
+-- the form has no input for has a value that sending nothing would not give. `answer` is what
+-- the request came to (`FormRejected` with `status` 422 after `Response.invalid`), and `url`
+-- the page held after it. The result also has `notices` and `toasts`.
+--
+--     Test.submit (Todos.Index.Submit {}) { title: Text.NonEmpty "Milk", due: Nothing }
+--
+-- Book: chapter 10, "`Test.submit`: posting a form"
 submit : target -> f -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
--- special form: the first argument is as submit's, the second the fields to post as text
+
+-- Posts text fields through the held page's form for a write route, for input the types forbid.
+--
+-- It is a special form: the first argument is as `Test.submit`'s, and the second the fields to
+-- post, each a `name` and a text `value`. A name that is not a field of the route's form, or
+-- that the held form has no input for, fails the test. Otherwise it posts as `Test.submit`
+-- does, with the same result.
+--
+--     Test.submitRaw (Todos.Index.Submit {}) [{ name: "title", value: "" }]
+--
+-- Book: chapter 10, "`Test.submitRaw`: input the types forbid"
 submitRaw : target -> List { name: Text, value: Text } -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
--- special form: the argument is a route without `form` (`Row { id: id }`, a GET route, fetches it
--- and patches the held page; `Toggle { id: id }`, a write route, sends it; `App.Logout`, App's)
+
+-- Presses the held page's button for a route without a form.
+--
+-- It is a special form: the argument is a route written in place with its parameters. A write
+-- route (`Toggle { id: id }`, `App.Logout`) is sent the way the page's control sends it; a GET
+-- route (`Row { id: id }`) is fetched and patched into the held page. The test fails, with
+-- nothing sent, when the held page has no control for that route. A route with a form is
+-- E0045: use `Test.submit`. `answer` is `Rendered`, `Refreshed`, `FormRejected` (with `status`
+-- 422), `Redirected`, `PageMissing` or `RequestFailed`. The result also has `notices` and
+-- `toasts`.
+--
+--     Test.click (Todos.Index.Toggle { id: Todo.TodoId "a" })
+--     Test.click App.Logout
+--
+-- Book: chapter 10, "`Test.click`: pressing a button"
 click : target -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
--- special form: the argument is a GET route (`Stats {}`) the held page's one element requests
--- with `load` (or `every`); fetches it as that element does and patches the held page
+
+-- Fetches a GET route into the held page, as its element with `load` or `every` does.
+--
+-- It is a special form: the argument is a GET route written in place (`Stats {}`). The held
+-- page must have exactly one element that requests the route's path with `load` or `every`;
+-- none, or more than one, fails the test with nothing sent. The browser fires nothing on its
+-- own, so this is how a test says the element appeared, or that its timer ticked. The answer
+-- is patched into the page as the element's fetch is. A write route is E0045.
+--
+--     Test.load (Todos.Show.Show { id: Todo.TodoId "a" })
+--
+-- Book: chapter 6, "Testing them"
 load : target -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
--- special form: as load, for the element that requests the route with `intersect`
+
+-- Fetches a GET route into the held page, as its element with `intersect` does.
+--
+-- It works as `Test.load` does, for the one element that requests the route with `intersect`:
+-- it is how a test says the element scrolled into view.
+--
+--     Test.intersect (Todos.Show.Show { id: Todo.TodoId "a" })
+--
+-- Book: chapter 6, "Testing them"
 intersect : target -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
--- special form: as load, for the field that requests the route with `input`; the route's
--- parameters are what the test wrote (`Results { q: "mil" }`), as if typed
+
+-- Fetches a GET route into the held page, as its field with `input` does after typing.
+--
+-- It works as `Test.load` does, for the one field that requests the route with `input`. The
+-- route's parameters are what the test wrote (`Results { q: "mil" }`), as if the user had
+-- typed them.
+--
+--     Test.input (Admin.Todos.Index.Index { q: "mil" })
+--
+-- Book: chapter 6, "Testing them"
 input : target -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
--- GETs the URL the browser holds and fails unless the body is the one it holds: the check that
--- what the steps patched in is what the page renders
+
+-- Loads the page the browser holds again, and fails the test unless it is the page held.
+--
+-- It sends a plain `GET` of the held URL and compares the body it gets with the body the
+-- browser held, leaving out the toasts (`<al-toasts>`). It is the check that what the steps
+-- patched in is what the page renders. The test fails when the bodies differ, when the page is
+-- not shown again (a redirect, a missing page or an error), or when the browser holds no page
+-- yet. The `answer` is `Refreshed`.
+--
+--     Test.refresh
+--     Test.refresh |> Task.map (\r -> r.answer == Refreshed)
+--
+-- Book: chapter 10, "`Test.refresh`: is the page the one a fresh load would give?"
 refresh : Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
 
--- Queries on a document. The selector (the first argument; `attr`'s second) is a tag, `#id`,
--- `.class`, `[attr]` or `[attr=value]`, combined with spaces or `>`; written as a literal it is
--- checked when the test is (E0023), otherwise one that does not parse matches nothing.
+-- Queries on a document. A selector is a tag, `#id`, `.class`, `[attr]` or `[attr=value]`,
+-- several of those together (`li.done`), combined with spaces or `>`.
+
+-- The text of the first element a selector matches, or `Nothing` when none does.
+--
+-- The text is every piece of text inside the element, with runs of whitespace collapsed to one
+-- space and the ends trimmed. A selector written as a literal is checked when the test
+-- compiles (E0023); any other selector that does not parse matches nothing.
+--
+--     Test.text "h1" (Test.doc (<h1>  Hello,   world </h1>)) == Just "Hello, world"
+--     Test.text "p" (Test.doc (<p>a <b>bold</b> word</p>)) == Just "a bold word"
+--     Test.text "#total" (Test.doc (<p id="total">3 left</p>)) == Just "3 left"
+--     Test.text "h2" (Test.doc (<h1>Hello</h1>)) == Nothing
+--
+-- Book: chapter 10, "Reading the page: queries"
 text : Text -> Doc -> Maybe Text
+
+-- The text of every element a selector matches, in page order.
+--
+-- Each text is as `Test.text` gives it. No match gives the empty list. A selector written as a
+-- literal is checked when the test compiles (E0023); any other selector that does not parse
+-- matches nothing.
+--
+--     Test.texts "li" (Test.doc (<ul><li>Milk</li><li>Eggs</li></ul>)) == ["Milk", "Eggs"]
+--     Test.texts "li" (Test.doc (<p>none</p>)) == []
+--
+-- Book: chapter 10, "Reading the page: queries"
 texts : Text -> Doc -> List Text
+
+-- Whether a selector matches any element of a document.
+--
+-- A selector written as a literal is checked when the test compiles (E0023); any other
+-- selector that does not parse matches nothing, so it gives `False`.
+--
+--     Test.has "li.done" (Test.doc (<ul><li class="done">Milk</li></ul>)) == True
+--     Test.has "ul > li" (Test.doc (<div><ul><li>Milk</li></ul></div>)) == True
+--     Test.has "[data-id=7]" (Test.doc (<li data-id="7">x</li>)) == True
+--     Test.has (Text.trim "[") (Test.doc (<p>x</p>)) == False
+--
+-- Book: chapter 10, "Reading the page: queries"
 has : Text -> Doc -> Bool
+
+-- The number of elements a selector matches.
+--
+-- The element at the top of the document counts too. A selector written as a literal is
+-- checked when the test compiles (E0023); any other selector that does not parse matches
+-- nothing, so it gives 0.
+--
+--     Test.count "li" (Test.doc (<ul><li>Milk</li><li>Eggs</li></ul>)) == 2
+--     Test.count "div" (Test.doc (<div><div>x</div></div>)) == 2
+--
+-- Book: chapter 10, "Reading the page: queries"
 count : Text -> Doc -> Int
+
+-- The value of an attribute on the first element a selector matches.
+--
+-- The attribute's name comes first, then the selector. It gives `Nothing` when nothing
+-- matches or the first match has no such attribute, and `Just ""` for an attribute written
+-- without a value, such as `disabled`. A selector written as a literal is checked when the
+-- test compiles (E0023); any other selector that does not parse matches nothing.
+--
+--     Test.attr "title" "p" (Test.doc (<p title="Note">x</p>)) == Just "Note"
+--     Test.attr "lang" "p" (Test.doc (<p title="Note">x</p>)) == Nothing
+--     Test.attr "disabled" "button" (Test.doc (<button disabled>Go</button>)) == Just ""
+--
+-- Book: chapter 10, "Reading the page: queries"
 attr : Text -> Text -> Doc -> Maybe Text
+
+-- A view rendered to HTML and parsed back, as a document the queries can read.
+--
+-- It is how a test reads a view without a request: the result is compared with `==` and read
+-- with the queries, as a step's `doc` is.
+--
+--     Test.doc (<p>Hi</p>) == Test.doc (<p>Hi</p>)
+--     Test.has "p" (Test.doc (<p>Hi</p>)) == True
+--
+-- Book: chapter 10, "Comparing a page with its view"
 doc : Html -> Doc

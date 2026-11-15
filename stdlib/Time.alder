@@ -1,12 +1,129 @@
+-- Functions for `Time`, an instant on the clock.
+--
+-- A `Time` is one moment, counted in milliseconds from `Time.epoch`, and it has no time zone:
+-- every function that writes it as text or takes a date out of it works in UTC. Two `Time`s
+-- compare with `==` (they are equal when they are the same instant) and with `<` and `>`. Use
+-- `Date` for a calendar day with no time of day.
+--
+-- Book: chapter 9, "Date, Time"
 module Time
 
+-- The current time.
+--
+-- It is a `Query`: bind it with `let now <-`, or map it. In a test it is the test's clock.
+-- Until the test sets it, the clock starts at 2026-01-01T00:00:00Z and moves one second on
+-- each reading. `Test.setClock` sets it and stops that tick, and `Test.advance`, `Task.sleep`
+-- and `Query.delay` move it forward.
+--
+--     Time.now |> Query.map Time.toMillis
+--
+-- Book: chapter 9, "Date, Time"
 now : Query Time
+
+-- The instant 1970-01-01 at 00:00 UTC.
+--
+--     Time.toMillis Time.epoch == 0
+--
+-- Book: chapter 9, "Date, Time"
 epoch : Time
+
+-- The calendar date of a `Time`, in UTC.
+--
+-- The time of day is dropped. A time just before midnight UTC is still the day before, whatever
+-- the local time of the reader is.
+--
+--     Date.toText (Time.toDate Time.epoch) == "1970-01-01"
+--     Date.toText (Time.toDate (Time.fromMillis 86399999)) == "1970-01-01"
+--     Date.toText (Time.toDate (Time.fromMillis 86400000)) == "1970-01-02"
+--
+-- Book: chapter 9, "Date, Time"
 toDate : Time -> Date
+
+-- Writes a `Time` in a layout of your choosing, in UTC.
+--
+-- The layout is written the way Go does it: it is the moment `Mon Jan 2 15:04:05 2006` itself,
+-- cut and changed to show the shape you want. `"2006-01-02 15:04:05"` gives
+-- `1970-01-01 00:00:00` for `Time.epoch`, and `"3:04 PM"` gives a 12-hour clock. The parts of
+-- the layout that are not a part of that moment are copied as they are.
+--
+--     Time.format "2006-01-02 15:04:05" Time.epoch == "1970-01-01 00:00:00"
+--     Time.format "2006-01-02 15:04:05" (Time.fromMillis 90061000) == "1970-01-02 01:01:01"
+--     Time.format "3:04 PM" (Time.fromMillis 46800000) == "1:00 PM"
+--
+-- Book: chapter 9, "Date, Time"
 format : Text -> Time -> Text
+
+-- Says how long ago a `Time` was, in words such as "3 hours ago".
+--
+-- `Time.ago now then` takes the current time first, which you get with `Time.now`, so the
+-- function stays pure. It gives "just now" for less than a minute, and otherwise the largest
+-- whole unit that fits: minutes, hours, days, months (counted as 30 days) or years (counted as
+-- 365 days), with an "s" when the number is more than 1. The fractions are dropped, so 90
+-- minutes is "1 hour ago". When `then` is after `now` it says "in 3 hours" instead.
+--
+--     Time.ago (Time.fromMillis 30000) Time.epoch == "just now"
+--     Time.ago (Time.fromMillis 60000) Time.epoch == "1 minute ago"
+--     Time.ago (Time.fromMillis 5400000) Time.epoch == "1 hour ago"
+--     Time.ago (Time.fromMillis 10800000) Time.epoch == "3 hours ago"
+--     Time.ago (Time.fromMillis 172800000) Time.epoch == "2 days ago"
+--     Time.ago (Time.fromMillis 2592000000) Time.epoch == "1 month ago"
+--     Time.ago (Time.fromMillis 31536000000) Time.epoch == "1 year ago"
+--     Time.ago Time.epoch (Time.fromMillis 10800000) == "in 3 hours"
+--     Time.ago Time.epoch (Time.fromMillis 30000) == "just now"
+--
+-- Book: chapter 9, "Date, Time"
 ago : Time -> Time -> Text
+
+-- The number of milliseconds from `Time.epoch` to a `Time`.
+--
+-- A time before the epoch gives a negative number.
+--
+--     Time.toMillis Time.epoch == 0
+--     Time.toMillis (Time.fromMillis 1500) == 1500
+--     Time.toMillis (Time.fromMillis (-1500)) == -1500
+--
+-- Book: chapter 9, "Date, Time"
 toMillis : Time -> Int
+
+-- The `Time` a number of milliseconds after `Time.epoch`.
+--
+-- A negative number gives a time before the epoch.
+--
+--     Time.toMillis (Time.fromMillis 1500) == 1500
+--     Time.fromMillis 0 == Time.epoch
+--     (Time.epoch < Time.fromMillis 1) == True
+--
+-- Book: chapter 9, "Date, Time"
 fromMillis : Int -> Time
+
+-- Moves a `Time` by a number of milliseconds.
+--
+-- A negative number moves back.
+--
+--     Time.toMillis (Time.addMillis 250 (Time.fromMillis 1000)) == 1250
+--     Time.toMillis (Time.addMillis (-250) (Time.fromMillis 1000)) == 750
+--     Time.addMillis 0 Time.epoch == Time.epoch
+--
+-- Book: chapter 9, "Date, Time"
 addMillis : Int -> Time -> Time
+
+-- The number of milliseconds from the first `Time` to the second.
+--
+-- `Time.diffMillis a b` is `b` minus `a`, so it is negative when `b` comes first. It counts
+-- whole milliseconds. To time a step, read `Time.now` before and after it and give the two
+-- times to `Time.diffMillis`.
+--
+--     Time.diffMillis Time.epoch (Time.fromMillis 1500) == 1500
+--     Time.diffMillis (Time.fromMillis 1500) Time.epoch == -1500
+--     Time.diffMillis Time.epoch Time.epoch == 0
+--
+-- Book: chapter 9, "Date, Time"
 diffMillis : Time -> Time -> Int -- Time.diffMillis a b returns b − a
+
+-- The `Time` at the start of a `Date`: midnight UTC.
+--
+--     Time.toMillis (Time.fromDate Date.epoch) == 0
+--     Time.toMillis (Time.fromDate (Date.addDays 1 Date.epoch)) == 86400000
+--
+-- Book: chapter 9, "Date, Time"
 fromDate : Date -> Time -- midnight UTC

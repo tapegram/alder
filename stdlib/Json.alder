@@ -1,19 +1,128 @@
+-- Functions for `Json.Value`, a JSON document you build and write out.
+--
+-- A JSON answer is a `Json.Value`: build it with the functions of this module and write it with
+-- `Json.encode`, or serve it with `File.json`. Do not build JSON as `Text` by hand: the encoder
+-- escapes what a hand-built string forgets. A list of values is built with `List.map` and
+-- `Json.list`, as in `xs |> List.map Json.int |> Json.list`, and a `Dict Text Json.Value`
+-- becomes an object with `d |> Dict.toList |> Json.object`. Text that is already JSON can be
+-- served with `File.text { contentType: "application/json", body: t }`; there is no way to put
+-- it inside a `Json.Value`, because the encoder never writes text that is not JSON.
+--
+-- Two `Json.Value`s are equal when they encode to the same text, so `Json.int 1` equals
+-- `Json.float 1.0`. A `Json.Value` can be a `Dict` key on the same rule, and it is shown, in
+-- the REPL, in `Log` and in test failures, as its compact JSON.
+--
+-- Book: chapter 9, "Json"
 module Json
 
--- a JSON value: build it with the functions below, write it with encode or File.json
+-- A JSON value: `null`, a boolean, a number, a string, a list or an object.
+--
+-- Build one with the functions of this module and write it with `Json.encode` or `File.json`.
+--
+-- Book: chapter 9, "Json"
 type Value
 
+-- The JSON value `null`.
+--
+--     Json.encode Json.null == "null"
+--
+-- Book: chapter 9, "Json"
 null   : Value
+
+-- A JSON `true` or `false`.
+--
+--     Json.encode (Json.bool True) == "true"
+--     Json.encode (Json.bool False) == "false"
+--
+-- Book: chapter 9, "Json"
 bool   : Bool -> Value
+
+-- A JSON number from an `Int`.
+--
+-- Every digit is written, however large the number is.
+--
+--     Json.encode (Json.int 42) == "42"
+--     Json.encode (Json.int (-7)) == "-7"
+--     Json.encode (Json.int 9007199254740993) == "9007199254740993"
+--
+-- Book: chapter 9, "Json"
 int    : Int -> Value
--- NaN, +Inf and -Inf encode as null
+
+-- A JSON number from a `Float`.
+--
+-- It writes the shortest decimal that reads back as the same number, and never uses an
+-- exponent, so `Json.float 1.0` is `1` and a very large number is written with all its digits.
+-- JSON has no spelling for `NaN` or the infinities, so they are written as `null`: test with
+-- `Float.isNaN` and `Float.isInfinite` first when you want something else.
+--
+--     Json.encode (Json.float 2.5) == "2.5"
+--     Json.encode (Json.float 1.0) == "1"
+--     Json.encode (Json.float 1e21) == "1000000000000000000000"
+--     Json.encode (Json.float (0.0 / 0.0)) == "null"
+--     Json.encode (Json.float (1.0 / 0.0)) == "null"
+--     Json.encode (Json.float (-1.0 / 0.0)) == "null"
+--
+-- Book: chapter 9, "Json"
 float  : Float -> Value
--- escapes quotes, backslashes, control characters and < > & U+2028 U+2029 (safe in a script)
+
+-- A JSON string from a `Text`.
+--
+-- Quotes, backslashes and control characters are escaped. The characters `<`, `>` and `&`, and
+-- the line separators U+2028 and U+2029, are also written as `\u` escapes (`<` is written
+-- `\u003c`). The text means the same to any JSON reader, and the encoded value is safe to put inside a
+-- `<script>` element through `Html.unsafe`: it can neither end the element nor break a
+-- JavaScript string.
+--
+--     Json.encode (Json.string "Ada") == "\"Ada\""
+--     Json.encode (Json.string "a\"b") == "\"a\\\"b\""
+--     Json.encode (Json.string "a\\b") == "\"a\\\\b\""
+--     Json.encode (Json.string "line\nbreak") == "\"line\\nbreak\""
+--     Json.encode (Json.string "<b>&") == "\"\\u003cb\\u003e\\u0026\""
+--     Json.encode (Json.string "é") == "\"é\""
+--
+-- Book: chapter 9, "Json"
 string : Text -> Value
+
+-- A JSON array from a list of values.
+--
+--     Json.encode (Json.list [Json.int 1, Json.string "two", Json.null]) == "[1,\"two\",null]"
+--     Json.encode (Json.list []) == "[]"
+--     Json.encode ([1, 2, 3] |> List.map Json.int |> Json.list) == "[1,2,3]"
+--
+-- Book: chapter 9, "Json"
 list   : List Value -> Value
--- keys in list order; a repeated key keeps its first position and its last value
+
+-- A JSON object from a list of keys and values.
+--
+-- The members are written in the order of the list. When a key is given twice, it keeps the
+-- position of its first appearance and takes the value of its last, as `Dict.insert` would, so
+-- the output never repeats a key.
+--
+--     Json.encode (Json.object [{ key: "name", value: Json.string "Ada" }, { key: "age", value: Json.int 36 }]) == "\{\"name\":\"Ada\",\"age\":36}"
+--     Json.encode (Json.object [{ key: "a", value: Json.int 1 }, { key: "b", value: Json.int 2 }, { key: "a", value: Json.int 3 }]) == "\{\"a\":3,\"b\":2}"
+--     Json.encode (Json.object []) == "\{}"
+--
+-- Book: chapter 9, "Json"
 object : List { key: Text, value: Value } -> Value
--- compact: no whitespace
+
+-- Writes a `Json.Value` as compact JSON text, with no whitespace.
+--
+--     Json.encode (Json.object [{ key: "ok", value: Json.bool True }, { key: "items", value: Json.list [Json.int 1, Json.int 2] }]) == "\{\"ok\":true,\"items\":[1,2]}"
+--
+-- Book: chapter 9, "Json"
 encode : Value -> Text
--- n spaces per level; n <= 0 is encode
+
+-- Writes a `Json.Value` as JSON text with one list item or object member per line.
+--
+-- The number is how many spaces to indent each level, and a key is followed by a colon and a
+-- space. A list or an object with nothing in it stays `[]` or `{}`. A number that is `0` or less
+-- is the same as `Json.encode`.
+--
+--     Json.encodeIndented 2 (Json.object [{ key: "a", value: Json.int 1 }]) == "\{\n  \"a\": 1\n}"
+--     Json.encodeIndented 2 (Json.list [Json.int 1, Json.list [Json.int 2]]) == "[\n  1,\n  [\n    2\n  ]\n]"
+--     Json.encodeIndented 4 (Json.object [{ key: "a", value: Json.list [] }]) == "\{\n    \"a\": []\n}"
+--     Json.encodeIndented 0 (Json.list [Json.int 1, Json.int 2]) == "[1,2]"
+--     Json.encodeIndented (-1) (Json.list [Json.int 1, Json.int 2]) == "[1,2]"
+--
+-- Book: chapter 9, "Json"
 encodeIndented : Int -> Value -> Text

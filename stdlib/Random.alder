@@ -1,33 +1,203 @@
+-- Random numbers and ids: fresh ones from an effect, and repeatable ones from a seed.
+--
+-- `Random.int` and `Random.id` are effects (a `Task`): they give a different value every time
+-- they run. The rest of the module is pure: a `Random.Generator` describes how to draw a value,
+-- and `Random.step` draws it from a `Random.Seed` and gives back the seed for the next draw. The
+-- same seed gives the same values on every run, on every platform and in every version of Alder,
+-- so seeded draws suit test data, simulations and stable buckets, and work in `load`, in `view`
+-- and in any function. None of it is for secrets: use `Random.id` for those.
+--
+-- Book: chapter 9, "Random"
 module Random
 
+-- A random whole number from `min` to `max`, both included.
+--
+-- Every number in the range is equally likely. It gives `min` when `max` is not above `min`. A
+-- different number comes on every run, so it is a `Task`, and the same call in a test is not
+-- repeatable: draw from a `Random.Seed` for a number that must be the same every time. It is
+-- not for secrets.
+--
+--     Random.int { min: 1, max: 6 }
+--
+-- Book: chapter 9, "Random"
 int : { min: Int, max: Int } -> Task Int
+
+-- A new random id, 20 characters long.
+--
+-- It is made of letters, digits, `-` and `_`, so it is safe in a URL, and it comes from the
+-- operating system's secure random source, so it can serve as an unguessable token for a reset
+-- link. A different one comes on every run, so it is a `Task`.
+--
+--     Random.id
+--
+-- Book: chapter 9, "Random"
 id : Task Text
 
 -- Pure, seeded randomness: the same seed gives the same values on every platform and in every
 -- version (SplitMix64; chapter 9, "Random").
 
--- one 64-bit PRNG state
+-- The state of the random number generator: one 64-bit number.
+--
+-- A seed is a value, so drawing from it does not change it; `Random.step` gives back the seed
+-- to use for the next draw. Reusing a seed gives the same draw again. A seed is shown as the
+-- expression that makes it, such as `Random.seed 42` or `Random.seed (-7)`. Make one with
+-- `Random.seed`.
+--
+-- Book: chapter 9, "Random"
 type Seed
--- a description of how to draw an a from a seed
+
+-- A description of how to draw a value of type `a` from a seed.
+--
+-- A `Generator` does nothing until `Random.step` runs it. Build one with `Random.intRange` and
+-- the other generators of this module, and combine them with `Random.map`, `Random.map2`,
+-- `Random.list` and `Random.andThen`.
+--
+-- Book: chapter 9, "Random"
 type Generator a
 
--- every Int is a seed, 0 and negatives included
+-- Makes a `Seed` from a whole number.
+--
+-- Every `Int` is a seed, `0` and the negative ones included, and different numbers give
+-- different seeds. To make one from data, hash it, as in
+-- `Random.seed (Text.hash (Text.join "/" [county, key]))`: every county and key then gets its
+-- own stream of numbers, the same on every run.
+--
+--     Random.seed 42 == Random.seed 42
+--     (Random.seed 0 == Random.seed 1) == False
+--     Random.seed (-1) == Random.seed (-1)
+--
+-- Book: chapter 9, "Random"
 seed : Int -> Seed
+
+-- Draws a value with a `Generator`, from a `Seed`.
+--
+-- It gives a record with the `value` drawn and the `seed` to use for the next draw. Reuse the
+-- same seed and the same value comes out; thread the new seed through to get a stream of
+-- different values. Each of `intRange`, `floatRange`, `normal`, `uniform` and
+-- `weighted` takes one step, and `constant` and `map` take none, so a draw's place in the
+-- stream is fixed by the program, except after `andThen`, or `list` with a count that was itself
+-- drawn, which take as many steps as the values drawn decide. Adding a draw at the end of a
+-- program does not change the draws before it.
+--
+--     Random.step (Random.intRange { min: 1, max: 6 }) (Random.seed 42) == { value: 2, seed: Random.seed (-7046029254386353089) }
+--     (Random.step (Random.intRange { min: 1, max: 6 }) (Random.seed 42)).value == 2
+--
+-- Book: chapter 9, "Random"
 step : Generator a -> Seed -> { value: a, seed: Seed }
--- no step
+
+-- A `Generator` that always gives the same value.
+--
+-- It takes no step: the seed that comes out is the seed that went in.
+--
+--     Random.step (Random.constant 5) (Random.seed 42) == { value: 5, seed: Random.seed 42 }
+--
+-- Book: chapter 9, "Random"
 constant : a -> Generator a
--- min when max <= min
+
+-- A `Generator` of whole numbers from `min` to `max`, both included.
+--
+-- It gives `min` when `max` is not above `min`. It always takes one step, even then.
+--
+--     (Random.step (Random.intRange { min: 1, max: 6 }) (Random.seed 42)).value == 2
+--     (Random.step (Random.intRange { min: -3, max: 3 }) (Random.seed 42)).value == 2
+--     (Random.step (Random.intRange { min: 5, max: 5 }) (Random.seed 42)).value == 5
+--     (Random.step (Random.intRange { min: 3, max: 1 }) (Random.seed 42)).value == 3
+--     (Random.step (Random.intRange { min: 5, max: 5 }) (Random.seed 42)).seed == (Random.step (Random.intRange { min: 1, max: 6 }) (Random.seed 42)).seed
+--
+-- Book: chapter 9, "Random"
 intRange : { min: Int, max: Int } -> Generator Int
--- min when max <= min
+
+-- A `Generator` of decimal numbers from `min` up to, but not including, `max`.
+--
+-- It almost never gives `max` itself: the draw is a little below the top of the range, but the sum is
+-- rounded, so a top draw can round up to exactly `max`, about once in 2^52 draws. It gives `min` when `max` is not above `min`. It always takes
+-- one step.
+--
+--     Float.format { decimals: 4 } (Random.step (Random.floatRange { min: 10.0, max: 20.0 }) (Random.seed 42)).value == "17.4156"
+--     (Random.step (Random.floatRange { min: 5.0, max: 5.0 }) (Random.seed 42)).value == 5.0
+--     (Random.step (Random.floatRange { min: 5.0, max: 1.0 }) (Random.seed 42)).value == 5.0
+--
+-- Book: chapter 9, "Random"
 floatRange : { min: Float, max: Float } -> Generator Float
--- Acklam's inverse normal CDF of one uniform draw
+
+-- A `Generator` of decimal numbers that follow a normal distribution, the bell curve.
+--
+-- Most draws fall near the `mean`, and `sd`, the standard deviation, says how far they spread:
+-- about two draws in three are within one `sd` of the mean. It turns one even draw into a
+-- normal one with Acklam's approximation of the inverse of the normal distribution, accurate to
+-- about 1e-9, and it always takes one step. An `sd` of `0.0` gives the `mean` every time.
+--
+--     Float.format { decimals: 4 } (Random.step (Random.normal { mean: 100.0, sd: 15.0 }) (Random.seed 42)).value == "109.7227"
+--     (Random.step (Random.normal { mean: 10.0, sd: 0.0 }) (Random.seed 42)).value == 10.0
+--
+-- Book: chapter 9, "Random"
 normal : { mean: Float, sd: Float } -> Generator Float
--- Random.uniform first rest
+
+-- A `Generator` that picks one of the values, each equally likely.
+--
+-- It is written `Random.uniform first rest`, the first value and then the others, so that the
+-- list of choices can never be empty. It always takes one step.
+--
+--     (Random.step (Random.uniform "a" ["b", "c"]) (Random.seed 42)).value == "b"
+--     (Random.step (Random.uniform "only" []) (Random.seed 42)).value == "only"
+--
+-- Book: chapter 9, "Random"
 uniform : a -> List a -> Generator a
--- by absolute weight
+
+-- A `Generator` that picks one of the values, more often the heavier its weight.
+--
+-- It is written `Random.weighted first rest`, like `Random.uniform`, with a record of a `weight`
+-- and a `value` for each. A value is picked with a probability in proportion to its weight, so a
+-- value of weight 3.0 comes up three times as often as one of weight 1.0. A negative weight
+-- counts as its absolute value. When every weight is zero the first value is picked. It always
+-- takes one step.
+--
+--     (Random.step (Random.weighted { weight: 1.0, value: "x" } [{ weight: 3.0, value: "y" }]) (Random.seed 42)).value == "y"
+--     (Random.step (Random.weighted { weight: 0.0, value: "x" } [{ weight: 2.0, value: "y" }]) (Random.seed 42)).value == "y"
+--     (Random.step (Random.weighted { weight: -1.0, value: "x" } [{ weight: 0.0, value: "y" }]) (Random.seed 42)).value == "x"
+--     (Random.step (Random.weighted { weight: 0.0, value: "x" } [{ weight: 0.0, value: "y" }]) (Random.seed 42)).value == "x"
+--
+-- Book: chapter 9, "Random"
 weighted : { weight: Float, value: a } -> List { weight: Float, value: a } -> Generator a
--- [] when n <= 0
+
+-- A `Generator` of a list of draws from another `Generator`.
+--
+-- `Random.list n g` draws `n` values from `g` in turn, each from the seed the one before left,
+-- so it takes `n` steps. It gives `[]` and takes no step when `n` is not above 0.
+--
+--     (Random.step (Random.list 5 (Random.intRange { min: 1, max: 6 })) (Random.seed 42)).value == [2, 2, 1, 1, 5]
+--     (Random.step (Random.list 0 (Random.intRange { min: 1, max: 6 })) (Random.seed 42)) == { value: [], seed: Random.seed 42 }
+--     (Random.step (Random.list (-2) (Random.intRange { min: 1, max: 6 })) (Random.seed 42)).value == []
+--
+-- Book: chapter 9, "Random"
 list : Int -> Generator a -> Generator (List a)
+
+-- Changes the values a `Generator` draws with a function.
+--
+-- It takes no step of its own: it takes the steps of the `Generator` it is given.
+--
+--     (Random.step (Random.map (\n -> n * 2) (Random.intRange { min: 1, max: 6 })) (Random.seed 42)).value == 4
+--
+-- Book: chapter 9, "Random"
 map : (a -> b) -> Generator a -> Generator b
+
+-- Combines two `Generator`s with a function.
+--
+-- It runs the first, then the second from the seed the first leaves, and gives both values to
+-- the function, so it takes the steps of both.
+--
+--     (Random.step (Random.map2 (\x y -> [x, y]) (Random.intRange { min: 1, max: 6 }) (Random.intRange { min: 1, max: 6 })) (Random.seed 42)).value == [2, 2]
+--
+-- Book: chapter 9, "Random"
 map2 : (a -> b -> c) -> Generator a -> Generator b -> Generator c
+
+-- Chooses the next `Generator` from the value an earlier one drew.
+--
+-- It runs the first `Generator`, gives its value to the function, and runs the `Generator` the
+-- function returns from the seed the first left, so it takes the steps of both. Use it when how
+-- to draw depends on what was drawn, such as a length and then that many items.
+--
+--     (Random.step (Random.andThen (\n -> Random.list n (Random.intRange { min: 1, max: 6 })) (Random.intRange { min: 1, max: 3 })) (Random.seed 42)).value == [2, 1]
+--
+-- Book: chapter 9, "Random"
 andThen : (a -> Generator b) -> Generator a -> Generator b

@@ -1,17 +1,173 @@
+-- Functions for `Date`, a calendar date such as 2026-10-08.
+--
+-- A `Date` is a year, a month and a day with no time of day and no time zone. Dates compare
+-- with `==`, and `Date.toText` writes one as `YYYY-MM-DD`. Use `Time` for an instant. Where a
+-- function needs a moment, such as `Date.today`, it is in UTC.
+--
+-- Book: chapter 9, "Date, Time"
 module Date
 
+-- The current date, in UTC.
+--
+-- It reads the same clock as `Time.now`, in UTC, with a separate reading each time. It is a `Query`:
+-- bind it with `let today <-`, or map it.
+--
+--     Date.today |> Query.map Date.toText
+--
+-- Book: chapter 9, "Date, Time"
 today : Query Date
+
+-- Reads a `Date` from a `Text` written `YYYY-MM-DD`, or `Nothing` when it is not one.
+--
+-- The year, month and day must all be written in full with two digits for the month and the day.
+-- Any other shape, and a date that does not exist such as February 30, gives `Nothing`.
+--
+--     (Date.fromText "2026-10-08" |> Maybe.map Date.toText) == Just "2026-10-08"
+--     Date.fromText "2026-02-30" == Nothing
+--     Date.fromText "2026-10-8" == Nothing
+--     Date.fromText "10/08/2026" == Nothing
+--     Date.fromText "" == Nothing
+--
+-- Book: chapter 9, "Date, Time"
 fromText : Text -> Maybe Date
+
+-- Writes a `Date` as `YYYY-MM-DD`.
+--
+-- The year has at least four digits, and the month and the day have two, so for the years 0 to
+-- 9999 the text sorts in date order. A year below 0 or above 9999 does not keep that: it gets a
+-- minus sign or a fifth digit, and the text then sorts out of order.
+--
+--     Date.toText Date.epoch == "1970-01-01"
+--     Date.toText (Date.addDays 40 Date.epoch) == "1970-02-10"
+--
+-- Book: chapter 9, "Date, Time"
 toText : Date -> Text
+
+-- Writes a `Date` in a layout of your choosing.
+--
+-- The layout is written the way Go does it: it is the date `Mon Jan 2 15:04:05 2006` itself,
+-- cut and changed to show the shape you want. `"Jan 2, 2006"` gives `Oct 8, 2026`, `"2006-01-02"`
+-- gives `2026-10-08` and `"Monday"` gives the name of the weekday. The parts of the layout that
+-- are not a part of that date are copied as they are. A `Date` has no time of day, so the time
+-- parts of a layout show midnight.
+--
+--     Date.format "Jan 2, 2006" (Date.addDays 40 Date.epoch) == "Feb 10, 1970"
+--     Date.format "Monday" Date.epoch == "Thursday"
+--     Date.format "02/01/06" (Date.addDays 40 Date.epoch) == "10/02/70"
+--
+-- Book: chapter 9, "Date, Time"
 format : Text -> Date -> Text
+
+-- Moves a `Date` by a number of days.
+--
+-- A negative number moves back. The month and the year carry over as they should, and a leap
+-- day counts.
+--
+--     (Date.fromParts { year: 2024, month: 2, day: 28 } |> Maybe.map (Date.addDays 1) |> Maybe.map Date.toText) == Just "2024-02-29"
+--     (Date.addDays 1 Date.epoch |> Date.toText) == "1970-01-02"
+--     (Date.addDays (-1) Date.epoch |> Date.toText) == "1969-12-31"
+--     (Date.addDays 365 Date.epoch |> Date.toText) == "1971-01-01"
+--     Date.addDays 0 Date.epoch == Date.epoch
+--
+-- Book: chapter 9, "Date, Time"
 addDays : Int -> Date -> Date
+
+-- The number of days from the first `Date` to the second.
+--
+-- `Date.diffDays a b` is `b` minus `a`, so it is negative when `b` comes first and `0` for the
+-- same day.
+--
+--     Date.diffDays Date.epoch (Date.addDays 10 Date.epoch) == 10
+--     Date.diffDays (Date.addDays 10 Date.epoch) Date.epoch == -10
+--     Date.diffDays Date.epoch Date.epoch == 0
+--
+-- Book: chapter 9, "Date, Time"
 diffDays : Date -> Date -> Int
+
+-- The year of a `Date`.
+--
+--     Date.year (Date.addDays 365 Date.epoch) == 1971
+--
+-- Book: chapter 9, "Date, Time"
 year : Date -> Int
+
+-- The month of a `Date`, from 1 for January to 12 for December.
+--
+--     Date.month (Date.addDays 40 Date.epoch) == 2
+--
+-- Book: chapter 9, "Date, Time"
 month : Date -> Int
+
+-- The day of the month of a `Date`, from 1.
+--
+--     Date.day (Date.addDays 40 Date.epoch) == 10
+--
+-- Book: chapter 9, "Date, Time"
 day : Date -> Int
+
+-- Makes a `Date` from a year, a month and a day, or `Nothing` for a date that does not exist.
+--
+-- It never rolls over: month 13 is not January of the next year and February 30 is not March 2,
+-- both are `Nothing`.
+--
+--     (Date.fromParts { year: 2026, month: 10, day: 8 } |> Maybe.map Date.toText) == Just "2026-10-08"
+--     (Date.fromParts { year: 2024, month: 2, day: 29 } |> Maybe.map Date.toText) == Just "2024-02-29"
+--     Date.fromParts { year: 2026, month: 2, day: 29 } == Nothing
+--     Date.fromParts { year: 2026, month: 13, day: 1 } == Nothing
+--     Date.fromParts { year: 2026, month: 4, day: 31 } == Nothing
+--     Date.fromParts { year: 2026, month: 1, day: 0 } == Nothing
+--
+-- Book: chapter 9, "Date, Time"
 fromParts : { year: Int, month: Int, day: Int } -> Maybe Date -- Nothing for an impossible date
+
+-- The year, the month and the day of a `Date` as a record.
+--
+--     Date.toParts (Date.addDays 40 Date.epoch) == { year: 1970, month: 2, day: 10 }
+--
+-- Book: chapter 9, "Date, Time"
 toParts : Date -> { year: Int, month: Int, day: Int }
+
+-- The date 1970-01-01, the day that `Time.epoch` falls on.
+--
+--     Date.toText Date.epoch == "1970-01-01"
+--
+-- Book: chapter 9, "Date, Time"
 epoch : Date -- 1970-01-01
+
+-- The day of the week of a `Date`, numbered the ISO way: 1 for Monday up to 7 for Sunday.
+--
+-- Sunday is 7, not 0, so `Date.weekday d >= 6` tells a weekend.
+--
+--     Date.weekday Date.epoch == 4
+--     Date.weekday (Date.addDays 3 Date.epoch) == 7
+--     Date.weekday (Date.addDays 4 Date.epoch) == 1
+--
+-- Book: chapter 9, "Date, Time"
 weekday : Date -> Int -- ISO: 1 = Monday ... 7 = Sunday
+
+-- Moves a `Date` by a number of months.
+--
+-- The day of the month stays the same where the target month is long enough. When the target
+-- month is shorter than the day, the day is clamped to the last day of that
+-- month: one month after January 31 is February 28, or 29 in a leap year. A negative number
+-- moves back. Moving by months is not the same as moving by 30 days.
+--
+--     (Date.fromParts { year: 2026, month: 1, day: 31 } |> Maybe.map (Date.addMonths 1) |> Maybe.map Date.toText) == Just "2026-02-28"
+--     (Date.fromParts { year: 2024, month: 1, day: 31 } |> Maybe.map (Date.addMonths 1) |> Maybe.map Date.toText) == Just "2024-02-29"
+--     (Date.addMonths 13 Date.epoch |> Date.toText) == "1971-02-01"
+--     (Date.addMonths (-1) Date.epoch |> Date.toText) == "1969-12-01"
+--
+-- Book: chapter 9, "Date, Time"
 addMonths : Int -> Date -> Date -- clamps the day to the target month's length
+
+-- Moves a `Date` by a number of years.
+--
+-- It is `Date.addMonths` of twelve times as many months, so February 29 becomes February 28 in
+-- a year that is not a leap year. A negative number moves back.
+--
+--     (Date.fromParts { year: 2024, month: 2, day: 29 } |> Maybe.map (Date.addYears 1) |> Maybe.map Date.toText) == Just "2025-02-28"
+--     (Date.fromParts { year: 2024, month: 2, day: 29 } |> Maybe.map (Date.addYears 4) |> Maybe.map Date.toText) == Just "2028-02-29"
+--     (Date.addYears (-1) Date.epoch |> Date.toText) == "1969-01-01"
+--
+-- Book: chapter 9, "Date, Time"
 addYears : Int -> Date -> Date -- Feb 29 becomes Feb 28 in a non-leap year
