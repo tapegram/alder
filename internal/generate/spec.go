@@ -39,10 +39,14 @@ type Field struct {
 	Name     string // the Sets key; a flag's name without dashes
 	Kind     ArgKind
 	Required bool
-	Variadic bool     // an arg: takes the rest (Required: at least one); a flag: may repeat
-	Greedy   bool     // a flag: takes every following word up to the next starting with "-" or "/" (--from)
-	Table    bool     // ArgFieldList: a table's fields (attributes allowed)
-	Choices  []string // ArgChoice
+	Variadic bool // an arg: takes the rest (Required: at least one); a flag: may repeat
+	// OptionalValue marks a flag that may stand alone or take a value: `--search` or `--search a,b`
+	// (or `--search=a,b`). It takes the next word only when that is a lowercase one, so a module
+	// name or a path after it is still a positional argument; Sets holds "" for the bare flag.
+	OptionalValue bool
+	Greedy        bool     // a flag: takes every following word up to the next starting with "-" or "/" (--from)
+	Table         bool     // ArgFieldList: a table's fields (attributes allowed)
+	Choices       []string // ArgChoice
 	// Default is the editor's starting value when neither the cursor (here) nor the user set
 	// the field: "true" for a bool flag the form should start checked. Only Form applies it;
 	// the CLI's default is always unset, so agents get the minimal result.
@@ -126,9 +130,10 @@ type CLIFlags struct {
 var ErrArity = errors.New("wrong number of arguments")
 
 // ScanArgs splits args. valued names the flags that take a value (`--list T` or `--list=T`);
-// multi, those that take every argument up to the next flag or path (`--from A B`); boolean
+// multi, those that take every argument up to the next flag or path (`--from A B`); optional,
+// those that take a value only given as `--search=a,b` or as a lowercase word next; boolean
 // flags besides --json and --dry-run are in bools. An unknown flag is an error.
-func ScanArgs(args []string, valued, multi, bools []string) (pos []string, flags map[string][]string, cli CLIFlags, err error) {
+func ScanArgs(args []string, valued, multi, optional, bools []string) (pos []string, flags map[string][]string, cli CLIFlags, err error) {
 	cli.Dir = "."
 	flags = map[string][]string{}
 	is := func(set []string, name string) bool {
@@ -166,6 +171,16 @@ func ScanArgs(args []string, valued, multi, bools []string) (pos []string, flags
 			} else {
 				flags[name] = append(flags[name], val)
 			}
+		case is(optional, name):
+			switch {
+			case hasVal:
+				flags[name] = append(flags[name], val)
+			case i+1 < len(args) && args[i+1] != "" && !strings.ContainsAny(args[i+1][:1], "-/") && strings.ToLower(args[i+1][:1]) == args[i+1][:1]:
+				i++
+				flags[name] = append(flags[name], args[i])
+			default:
+				flags[name] = append(flags[name], "")
+			}
 		case is(multi, name):
 			if hasVal {
 				flags[name] = append(flags[name], val)
@@ -187,18 +202,20 @@ func ScanArgs(args []string, valued, multi, bools []string) (pos []string, flags
 
 // ParseArgs parses a generator's command line (the words after its ID) by s.
 func ParseArgs(s *Spec, argv []string) (Sets, CLIFlags, error) {
-	var valued, multi, bools []string
+	var valued, multi, optional, bools []string
 	for _, f := range s.Flags {
 		switch {
 		case f.Kind == ArgBool:
 			bools = append(bools, f.Name)
 		case f.Greedy:
 			multi = append(multi, f.Name)
+		case f.OptionalValue:
+			optional = append(optional, f.Name)
 		default:
 			valued = append(valued, f.Name)
 		}
 	}
-	pos, flags, cli, err := ScanArgs(argv, valued, multi, bools)
+	pos, flags, cli, err := ScanArgs(argv, valued, multi, optional, bools)
 	if err != nil {
 		return nil, cli, err
 	}

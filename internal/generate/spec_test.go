@@ -3,6 +3,7 @@ package generate
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -94,6 +95,30 @@ func TestParseArgsOptionalLeading(t *testing.T) {
 		got, _, err := ParseArgs(spec, c.argv)
 		if !errors.Is(err, c.err) || !reflect.DeepEqual(got, c.want) {
 			t.Errorf("ParseArgs(%v) = %v, %v; want %v, %v", c.argv, got, err, c.want, c.err)
+		}
+	}
+}
+
+// TestScanArgs_OptionalValue: an optional-value flag stands alone, takes `=v`, or takes a
+// lowercase word next; a module name or a path after it stays positional.
+func TestScanArgs_OptionalValue(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		args []string
+		pos  []string
+		want []string
+	}{
+		{[]string{"--search"}, nil, []string{""}},
+		{[]string{"--search", "--list", "T"}, nil, []string{""}},
+		{[]string{"--search", "title,body", "/p"}, []string{"/p"}, []string{"title,body"}},
+		{[]string{"--search=title", "M", "/p"}, []string{"M", "/p"}, []string{"title"}},
+		{[]string{"--search", "M", "/p"}, []string{"M", "/p"}, []string{""}},
+		{[]string{"--search", "/p"}, []string{"/p"}, []string{""}},
+		{[]string{"M"}, []string{"M"}, nil},
+	} {
+		pos, flags, _, err := ScanArgs(c.args, []string{"list"}, nil, []string{"search"}, nil)
+		if err != nil || !slices.Equal(pos, c.pos) || !slices.Equal(flags["search"], c.want) {
+			t.Errorf("%v: pos %v flags %v err %v, want %v %v", c.args, pos, flags["search"], err, c.pos, c.want)
 		}
 	}
 }

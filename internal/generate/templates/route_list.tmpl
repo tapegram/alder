@@ -1,10 +1,12 @@
 [[- template "header" .]]
 
-type Model = { rows: List [[.T]], page: Int, pages: Int }
+type Model = { rows: List [[.T]], [[if .Search]]q: Text, [[end]]page: Int, pages: Int }
 
 perPage : Int
 perPage = 20
-
+[[if .Search]]
+[[range .Search.Decl]][[.]]
+[[end]][[end]]
 -- lastPage bounds `page`, so `(page - 1) * perPage` cannot overflow.
 lastPage : Int
 lastPage = 1000000
@@ -13,21 +15,38 @@ lastPage = 1000000
 [[.Route]].load : [[.Route]].Params -> Session -> Query Model
 [[.Route]].load params session = {
   let page = Int.clamp { min: 1, max: lastPage } params.page
+[[- if .Search]]
+  [[.Search.Cut]]
+[[- end]]
   let rows <-
     [[.Select]]
+[[- if .Search]]
+      |> Db.where (search q)
+[[- end]]
       |> Db.orderBy [[.T]].[[.Order]].desc
       |> Db.limit perPage
       |> Db.offset ((page - 1) * perPage)
       |> Db.all
-  let count <- [[.Select]] |> Db.count
-  Query.succeed { rows: rows, page: page, pages: Int.max 1 ((count + perPage - 1) / perPage) }
+  let count <- [[.Select]][[if .Search]] |> Db.where (search q)[[end]] |> Db.count
+  Query.succeed { rows: rows, [[if .Search]]q: q, [[end]]page: page, pages: Int.max 1 ((count + perPage - 1) / perPage) }
 }
 
 [[.Route]].view : Model -> Session -> Html
 [[.Route]].view model session =
   [[.Open]]
     <h1>[[.Title]]</h1>
-
+[[if .Search]]
+    <form method="get" action="[[.Path]]">
+      <al-stack direction="row" gap="sm">
+        <al-input>
+          <label>Search
+            <input type="search" name="q" value={model.q} />
+          </label>
+        </al-input>
+        <al-button type="submit" variant="secondary">Search</al-button>
+      </al-stack>
+    </form>
+[[end]]
     <al-table>
       <table>
         <thead>
@@ -45,9 +64,9 @@ lastPage = 1000000
     </al-table>
 
     <al-pagination role="navigation" aria-label="Pages">
-      {if model.page > 1 then <a slot="prev" href={[[.Route]] { page: model.page - 1 }} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
+      {if model.page > 1 then <a slot="prev" href={[[.Route]] { [[if .Search]]q: model.q, [[end]]page: model.page - 1 }} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
-      {if model.page < model.pages then <a slot="next" href={[[.Route]] { page: model.page + 1 }} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
+      {if model.page < model.pages then <a slot="next" href={[[.Route]] { [[if .Search]]q: model.q, [[end]]page: model.page + 1 }} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
   [[.Close]]
 [[template "tests" .]]

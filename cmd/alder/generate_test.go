@@ -199,6 +199,7 @@ var genCases = []genCase{
 	{name: "route", base: "scaffold", args: []string{"new", "route", "About", "/about"}, test: true},
 	{name: "route-example", base: "scaffold", args: []string{"new", "route", "About", "/about", "--example"}, test: true},
 	{name: "route-list", base: "scaffold", args: []string{"new", "route", "Entries.Index", "/entries", "--list", "Entry"}, test: true},
+	{name: "route-list-search", base: "scaffold", args: []string{"new", "route", "Entries.Index", "/entries", "--list", "Entry", "--search"}, test: true},
 	{name: "route-show", base: "scaffold", args: []string{"new", "route", "Entries.Show", "/entries", "--show", "Entry"}, test: true},
 	{name: "route-from", base: "scaffold", args: []string{"new", "route", "Dash", "/dash", "--from", "Entry"}, test: true},
 	// #160: a write route, a message on a route module
@@ -238,6 +239,10 @@ var genCases = []genCase{
 		fills: [][2]string{{"Weather.Weather.current", "Query.succeed (Just 21.5)"}}},
 	{name: "edit-add", base: "scaffold", args: []string{"edit", "table", "Entry", "add-field", "note:Maybe Text"}, breaks: true},
 
+	{name: "fixture-route-list-search", base: "fixture", args: []string{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--search", "title", "--requires", "user"}, test: true},
+	{name: "route-list-search-not-text", base: "fixture", pre: [][]string{{"edit", "table", "Post", "add-field", "views:Int=0"}}, args: []string{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--search", "views"}, code: 1},
+	{name: "route-list-search-no-column", base: "fixture", args: []string{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--search", "nope"}, code: 1},
+	{name: "route-search-no-list", base: "scaffold", args: []string{"new", "route", "About", "/about", "--search"}, code: 1},
 	{name: "fixture-route-list-mine", base: "fixture", args: []string{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--requires", "user"}, test: true},
 	{name: "fixture-route-show-role", base: "fixture", args: []string{"new", "route", "Users.Show", "/users", "--show", "User", "--role", "Admin"}, test: true},
 	{name: "fixture-route-from", base: "fixture", args: []string{"new", "route", "Dash", "/dash", "--from", "Post", "Tag", "--requires", "user"}, test: true},

@@ -47,12 +47,13 @@ type RouteData struct {
 	Close    string   // its closing tag
 	Tests    []TestData
 	// the table of --list and --show
-	T      string    // the table's record type as written here: "Post"
-	Select string    // the rows: "Db.from Post", or "Db.mine Post" on a `requires user` page of an `@owner` table
-	Order  string    // the column a list is ordered by, newest first
-	Mine   bool      // --show reads with Db.getMine (or Db.getScoped: Get)
-	Get    string    // Db.getMine or Db.getScoped
-	Cols   []ColData // the columns shown
+	T      string      // the table's record type as written here: "Post"
+	Select string      // the rows: "Db.from Post", or "Db.mine Post" on a `requires user` page of an `@owner` table
+	Order  string      // the column a list is ordered by, newest first
+	Search *searchData // --list --search: the list's search (nil when off)
+	Mine   bool        // --show reads with Db.getMine (or Db.getScoped: Get)
+	Get    string      // Db.getMine or Db.getScoped
+	Cols   []ColData   // the columns shown
 	Lists  []FromList
 	// LoadHole: `load` is the typed hole ?load (a page with path parameters, whose load reads
 	// what they name: the author's)
@@ -122,6 +123,9 @@ type RouteOptions struct {
 	// By is --show T --by <column>: the row is looked up by that `@unique` column of T, whose
 	// value the path's last segment `{<column>}` carries, instead of by its id.
 	By string
+	// Search (--search [a,b]) is a --list route's search by text: nil is off, an empty slice
+	// (the flag with no columns) is searchCols(T), else the named Text columns of T.
+	Search []string
 	// File (--file): a file page, whose `view` returns `File` (File.text with a typed hole for
 	// the body) instead of HTML; ContentType (--type) is the file's, text/plain when empty.
 	File        bool
@@ -221,6 +225,9 @@ func NewRoute(p *Program, o RouteOptions) ([]Edit, error) {
 	}
 	if o.ContentType != "" && !o.File {
 		return nil, Refusef("--type goes with --file")
+	}
+	if o.Search != nil && o.List == "" {
+		return nil, Refusef("--search goes with --list T: it adds a search to the list's rows")
 	}
 	if o.By != "" && o.Show == "" {
 		return nil, Refusef("--by names the column --show T reads its row by: give --show T too")
@@ -435,18 +442,35 @@ func NewRoute(p *Program, o RouteOptions) ([]Edit, error) {
 		}
 		mine := scoped(t)
 		pageOf = func(*testBuilder) string { return pageLit(route, nil) }
+		var searched []*Column
+		if o.Search != nil {
+			if searched, err = searchColumns(t, o.Search); err != nil {
+				return nil, err
+			}
+			tt := *t // the table as this module writes it
+			tt.Name = d.T
+			sp := searchParts(&tt, searched)
+			d.Search = &sp
+			d.Params = "{ " + sp.Param + ", page: Int = 1 }"
+		}
 
 		// the rows, newest first (and, read with Db.mine, not another user's; with Db.scoped,
 		// not another org's)
-		tb := newTest()
-		if mine && t.PartKey != "user" && kt != nil { // another org's row first: a test inserts it before signing in with one
-			tb = newTestBuilder(p, o.Module, imports)
-			tb.silo = &siloCtx{key: key, table: kt, member: true}
-			tb.keyRow()
-			other := tb.insertRow(kt, "other", nil, false)
-			tb.inOtherKey(other, func() { tb.insertRow(t, "_", map[string]string{t.PartCol: other}, false) })
-			tb.login(o.Role)
+		// listTest is a test builder for this list: for a page of an org, the page's org first
+		// and another org's row inserted before signing in with it
+		listTest := func() *testBuilder {
+			tb := newTest()
+			if mine && t.PartKey != "user" && kt != nil { // another org's row first: a test inserts it before signing in with one
+				tb = newTestBuilder(p, o.Module, imports)
+				tb.silo = &siloCtx{key: key, table: kt, member: true}
+				tb.keyRow()
+				other := tb.insertRow(kt, "other", nil, false)
+				tb.inOtherKey(other, func() { tb.insertRow(t, "_", map[string]string{t.PartCol: other}, false) })
+				tb.login(o.Role)
+			}
+			return tb
 		}
+		tb := listTest()
 		tb.insert(t, true)
 		tb.insert(t, true)
 		name := "the list shows the rows, newest first"
@@ -476,6 +500,24 @@ func NewRoute(p *Program, o RouteOptions) ([]Edit, error) {
 		pages := (total + 19) / 20
 		d.Tests = append(d.Tests, TestData{Name: quote("the list has 20 rows a page"), Lines: tb.lines,
 			Result: fmt.Sprintf("{ first: List.length first.model.rows, second: List.length second.model.rows, pages: Test.texts \"al-pagination span\" first.doc } == { first: 20, second: %d, pages: [\"Previous\", \"Page 1 of %d\"] }", min(20, total-20), pages)})
+
+		if d.Search != nil {
+			if len(searched) > 0 { // the second row's text is the query: only that row shows
+				tb = listTest()
+				tb.insert(t, true)
+				match := tb.insert(t, true)
+				q := rawText(searched[0], tb.counts[t.Module])
+				tb.let("let page <- Test.get (%s)", pageLit(route, []string{"q: " + quote(q)}))
+				d.Tests = append(d.Tests, TestData{Name: quote("searching finds matching rows"), Lines: tb.lines,
+					Result: fmt.Sprintf("List.map (\\row -> row.%s) page.model.rows == [%s]", t.IDField, match)})
+			}
+			// a search text too long for the database is cut, not a failure
+			tb = listTest()
+			tb.let("let long = Text.join \"\" (List.map (\\n -> \"z\") (List.range 1 20000))")
+			tb.let("let page <- Test.get (%s)", pageLit(route, []string{"q: long"}))
+			d.Tests = append(d.Tests, TestData{Name: quote("a long query is cut"), Lines: tb.lines,
+				Result: "{ q: Text.length page.model.q, rows: List.length page.model.rows } == { q: 200, rows: 0 }"})
+		}
 	case o.Show != "":
 		t, err := table(o.Show)
 		if err != nil {
@@ -711,6 +753,33 @@ func missingSession(p *Program) string {
 }
 
 // rawText is the text a sample value of column c shows on a page (testBuilder.sample's).
+// searchColumns are the columns of t a --search lists: those named (each must be a Text column
+// a list can search), or with none named searchCols(t).
+func searchColumns(t *Table, named []string) ([]*Column, error) {
+	if len(named) == 0 {
+		return searchCols(t), nil
+	}
+	var cols []*Column
+	for _, n := range named {
+		var col *Column
+		for _, c := range t.Columns {
+			if c.Name == n {
+				col = c
+			}
+		}
+		switch {
+		case col == nil:
+			return nil, Refusef("`--search %s`: `%s` is not a column of `%s`", n, n, t.Name)
+		case col.Kind != KindText:
+			return nil, Refusef("`--search %s`: `%s` is not a Text column of `%s`", n, n, t.Name)
+		case !slices.Contains(searchCols(t), col):
+			return nil, Refusef("`--search %s`: `%s` is not a column a list can search (a required Text column that is not an id, a reference or a secret)", n, n)
+		}
+		cols = append(cols, col)
+	}
+	return cols, nil
+}
+
 func rawText(c *Column, n int) string {
 	text := strings.ToLower(c.Name) + "-" + fmt.Sprint(n)
 	if c.Brand != nil {

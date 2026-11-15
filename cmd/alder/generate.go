@@ -41,7 +41,7 @@ type genArgs struct {
 // `--list=T`); multi, those that take every argument up to the next flag (`--from A B`);
 // boolean flags besides --json and --dry-run are in bools. An unknown flag is an error.
 func parseGenArgs(args []string, valued, multi, bools []string) (genArgs, error) {
-	pos, flags, cli, err := generate.ScanArgs(args, valued, multi, bools)
+	pos, flags, cli, err := generate.ScanArgs(args, valued, multi, nil, bools)
 	return genArgs{dir: cli.Dir, json: cli.JSON, dry: cli.DryRun, pos: pos, flags: flags}, err
 }
 
@@ -267,7 +267,7 @@ func genUsage(stderr io.Writer, usage string, err error) int {
 	return 2
 }
 
-const newRouteUsage = "usage: alder new route [<Module>] <path> [--method GET|POST|PUT|PATCH|DELETE [--form F]] [--list T | --show T [--by <unique column>] | --from T …] [--blank] [--file [--type T]] [--example] [--param <name>:<Type> …] [--requires user] [--role R] [--dir app] [--json] [--dry-run]"
+const newRouteUsage = "usage: alder new route [<Module>] <path> [--method GET|POST|PUT|PATCH|DELETE [--form F]] [--list T [--search [a,b]] | --show T [--by <unique column>] | --from T …] [--blank] [--file [--type T]] [--example] [--param <name>:<Type> …] [--requires user] [--role R] [--dir app] [--json] [--dry-run]"
 
 const newTableUsage = "usage: alder new table <Name> <field>:<Type>[=default][@attr[=arg]…] … [--no-timestamps] [--silo] [--dir app] [--json] [--dry-run]"
 
