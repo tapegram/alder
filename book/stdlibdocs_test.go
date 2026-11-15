@@ -276,18 +276,28 @@ func (b *evalBatch) run(t *testing.T, last string) (evalResult, error) {
 	return res, nil
 }
 
-// runExamples checks every example in one batch and returns the failures. Every example is a
-// `let` (so it is type-checked); the checked equalities are the list the input evaluates. A
-// diagnostic is reported against the example holding its line, and those examples are dropped
-// for one more run, so a false example is still reported beside an ill-typed one. The left
+// maxBatchRuns caps the batch runs of runExamples: the checker reports resolve errors (E0002)
+// without type errors (E0003), so a batch can need a run for each, then one to evaluate.
+const maxBatchRuns = 4
+
+// runExamples checks every example in one batch and returns the failures. An example that does
+// not parse is reported at its own line and left out (in a batch, the parser would blame the
+// next example). Every other example is a `let` (so it is type-checked); the checked
+// equalities are the list the input evaluates. A diagnostic is reported against the example
+// holding its line, and those examples are dropped for another run, until a run drops none, so
+// a false example is still reported beside a misspelt name and an ill-typed one. The left
 // operands of the false ones are then evaluated together, to show what they gave: at most
-// three runs, whatever the number of examples.
+// maxBatchRuns+1 runs, whatever the number of examples.
 func runExamples(t *testing.T, exs []docExample) []string {
 	t.Helper()
 	var fails []string
 	live := make([]bool, len(exs))
-	for i := range live {
+	for i, ex := range exs {
 		live[i] = true
+		if p := parseProblem(ex.Source); p != "" {
+			fails = append(fails, fmt.Sprintf("%s: %s: %s", ex.Where, firstLine(ex.Source), p))
+			live[i] = false
+		}
 	}
 	var results []bool // the value of each checked example, in order
 	var checked []int  // indexes into exs of the checked examples
@@ -338,8 +348,8 @@ func runExamples(t *testing.T, exs []docExample) []string {
 				dropped = dropped || live[idx[k]]
 				live[idx[k]] = false
 			}
-			if dropped && attempt == 1 {
-				continue // once more without them
+			if dropped && attempt < maxBatchRuns {
+				continue // again without them
 			}
 			return fails
 		}
@@ -385,6 +395,18 @@ func runExamples(t *testing.T, exs []docExample) []string {
 		fails = append(fails, fmt.Sprintf("%s: %s: want %s, got %s", exs[i].Where, firstLine(exs[i].Source), eq.right, v))
 	}
 	return fails
+}
+
+// parseProblem is why src does not parse as one expression, or "".
+func parseProblem(src string) string {
+	_, diags, more, _ := syntax.ParseExpr("example", []byte(src))
+	if len(diags) > 0 {
+		return diags[0].Code + " " + diags[0].Message
+	}
+	if more != "" {
+		return "unexpected " + more + " after the example"
+	}
+	return ""
 }
 
 func hasErrors(res evalResult) bool {
@@ -467,13 +489,23 @@ func TestStdlibDocs_FixtureFails(t *testing.T) {
 	}
 	// Review Focus 3: both wrong examples in one run, each at its own first line.
 	fails := strings.Join(runExamples(t, stdlibExamples(fsys)), "\n")
-	for _, w := range []string{"stdlib/Bad.alder:10: 1 + 1 == 3: want 3, got 2", "stdlib/Bad.alder:14: "} {
+	// A parse error is reported at its own example (I-1); a misspelt name (E0002) does not hide
+	// the ill-typed example (E0003) or the false ones (I-2).
+	for _, w := range []string{
+		"stdlib/Bad.alder:10: 1 + 1 == 3: want 3, got 2",
+		"stdlib/Bad.alder:14: 1 +: E0003 ",
+		"stdlib/Bad.alder:25: (1 + 1 == 2: ",
+		"stdlib/Bad.alder:33: List.nope [] == 1: E0002 ",
+		"stdlib/Bad.alder:37: 2 + 2 == 5: want 5, got 4",
+	} {
 		if !strings.Contains(fails, w) {
 			t.Errorf("missing %q in:\n%s", w, fails)
 		}
 	}
-	if strings.Contains(fails, "Bad.alder:19") {
-		t.Errorf("the true example failed:\n%s", fails)
+	for _, w := range []string{"Bad.alder:19", "Bad.alder:29", "examples: "} {
+		if strings.Contains(fails, w) {
+			t.Errorf("unexpected %q in:\n%s", w, fails)
+		}
 	}
 }
 
