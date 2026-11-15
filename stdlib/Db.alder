@@ -1,42 +1,268 @@
+-- Functions for reading and writing the rows of the app's tables.
+--
+-- A table's name is a value of type `Table t` (`Db.get Todo id`), and its columns are values
+-- named `Table.field` with methods that build conditions and orders (`Todo.done.eq False`,
+-- `Todo.created.desc`). Reads are `Query` values and writes are `Task` values. A read builds a
+-- `Select` with `Db.from` and the steps after it, then runs it with `Db.all`, `Db.first` or
+-- `Db.count`. A column must be written in place, not held in a variable, and these functions
+-- need to know their table where they are used: a function of `Table t` that calls them is a
+-- type error, so write one function per table.
+--
+-- Book: chapter 9, "Query, Task, Db, Session, Log, Time, Random, Http"
 module Db
 
+-- Reads the row with an id, giving `Just` the row or `Nothing` when there is none.
+--
+-- A missing row is not a failure. `Db.get` does not look at who is signed in: use
+-- `Db.getMine` for a row that must be the user's.
+--
+--     Db.get Todo (Todo.TodoId "a")
+--
+-- Book: chapter 8, "Reading"
 get : Table t -> Id t -> Query (Maybe t)
+
+-- A `Select` of every row of a table, for the steps after it to narrow and order.
+--
+-- Nothing is read until `Db.all`, `Db.first` or `Db.count` runs the `Select`.
+--
+--     Db.from Todo |> Db.all
+--
+-- Book: chapter 8, "Reading"
 from : Table t -> Select t
+
+-- Keeps only the rows for which a condition holds.
+--
+-- Several `Db.where` steps are combined with "and". Where the step sits in the pipeline does
+-- not change what it means: `Db.limit 10 |> Db.where c` is still up to ten rows for which `c`
+-- holds.
+--
+--     Db.from Todo |> Db.where (Todo.done.eq False) |> Db.where (Todo.title.contains "milk") |> Db.all
+--
+-- Book: chapter 8, "How a `Select` combines"
 where : Condition t -> Select t -> Select t
+
+-- Sorts the rows by a column, with `.asc` or `.desc` on the column.
+--
+-- Orders add up in the order written: the first is the main sort, and a later one breaks its
+-- ties. A column of a union type without payloads sorts in the order its constructors are
+-- declared. A `Maybe` column puts `Nothing` first with `.asc` and last with `.desc`. Without
+-- any `Db.orderBy`, the order of the rows is not defined.
+--
+--     Db.from Todo |> Db.orderBy Todo.done.asc |> Db.orderBy Todo.created.desc |> Db.all
+--
+-- Book: chapter 8, "How a `Select` combines"
 orderBy : Order t -> Select t -> Select t
+
+-- Keeps at most a number of rows.
+--
+-- The last `Db.limit` written wins, and it applies after every condition and order, wherever
+-- it appears. A limit of 0 gives no rows. A negative limit is no limit at all: every row comes
+-- back.
+--
+--     Db.from Todo |> Db.orderBy Todo.created.desc |> Db.limit 10 |> Db.all
+--
+-- Book: chapter 8, "How a `Select` combines"
 limit : Int -> Select t -> Select t
+
+-- Skips a number of rows before the ones that come back, for paging.
+--
+-- The last `Db.offset` written wins, and it applies after every condition and order, wherever
+-- it appears. A negative offset is the same as 0.
+--
+--     Db.from Todo |> Db.orderBy Todo.created.desc |> Db.limit 10 |> Db.offset 20 |> Db.all
+--
+-- Book: chapter 8, "How a `Select` combines"
 offset : Int -> Select t -> Select t
+
+-- Reads every row of a `Select`.
+--
+-- No matching row gives an empty list.
+--
+--     Db.from Todo |> Db.where (Todo.done.eq True) |> Db.all
+--
+-- Book: chapter 8, "Reading"
 all : Select t -> Query (List t)
+
+-- Reads the first row of a `Select`, or `Nothing` when there is none.
+--
+-- A `Select` with `Db.limit 0` gives `Nothing`.
+--
+--     Db.from Todo |> Db.orderBy Todo.created.desc |> Db.first
+--
+-- Book: chapter 8, "How a `Select` combines"
 first : Select t -> Query (Maybe t)
+
+-- Counts the rows of a `Select`.
+--
+-- The count follows the `Select`'s limit and offset: `Db.limit 5` counts at most five rows.
+--
+--     Db.from Todo |> Db.where (Todo.done.eq False) |> Db.count
+--
+-- Book: chapter 8, "Reading"
 count : Select t -> Query Int
+
+-- A condition that holds when every condition of the list holds.
+--
+-- An empty list holds for every row.
+--
+--     Db.from Todo |> Db.where (Db.and [Todo.done.eq False, Todo.due.isJust]) |> Db.all
+--     Db.from Todo |> Db.where (Db.and []) |> Db.all
+--
+-- Book: chapter 8, "Reading"
 and : List (Condition t) -> Condition t
+
+-- A condition that holds when at least one condition of the list holds.
+--
+-- An empty list holds for no row.
+--
+--     Db.from Todo |> Db.where (Db.or [Todo.title.contains "milk", Todo.title.contains "eggs"]) |> Db.all
+--     Db.from Todo |> Db.where (Db.or []) |> Db.all
+--
+-- Book: chapter 8, "Search"
 or : List (Condition t) -> Condition t
+
+-- A condition that holds exactly for the rows the given condition does not.
+--
+-- On a `Maybe` column a condition is never unknown, so `Db.not (Todo.due.isJust)` keeps the
+-- rows with no due date, and the negation of an `.eq (Just d)` keeps them too.
+--
+--     Db.from Todo |> Db.where (Db.not (Todo.title.startsWith "x")) |> Db.all
+--
+-- Book: chapter 8, "`Maybe` columns"
 not : Condition t -> Condition t
+
+-- Inserts a row and gives back its new id.
+--
+-- The row is an `Insert t`: the table's record without its `@id`, `@created` and `@updated`
+-- fields, which are filled in, and in which fields with a default may be left out. The id is a
+-- new random 20-character text. A row that breaks a `@unique` column fails the `Task` with a
+-- message such as "User.email must be unique", and a `@ref` field naming no row fails it with
+-- one such as "Todo.owner: no User with that id"; either way the `Task`'s earlier writes are
+-- rolled back.
+--
+--     Db.insert Todo { title: Text.NonEmpty "Buy milk", due: Nothing, owner: User.UserId "u" }
+--
+-- Book: chapter 8, "Writing"
 insert : Table t -> Insert t -> Task (Id t)
+
+-- Changes the row with an id: reads it, applies the function, and writes the result back.
+--
+-- The `@updated` field is set to the current time. A missing row fails the `Task` (a failure,
+-- not a 404) with "Db.update Todo: no row with id …", and a function that changes the `@id`
+-- field fails it with "Db.update Todo: update may not change the id"; either way nothing is
+-- written. The `@unique` and `@ref` checks of `Db.insert` apply too.
+--
+--     Db.update Todo (Todo.TodoId "a") (\t -> { t | done: True })
+--
+-- Book: chapter 8, "Writing"
 update : Table t -> Id t -> (t -> t) -> Task Unit
+
+-- Deletes the row with an id.
+--
+-- Deleting a row that does not exist is not an error. When other rows refer to it with `@ref`,
+-- their delete rule decides: `@restrict` (the default) fails the `Task`, `@cascade` deletes them
+-- too, and `@setNull` sets their field to `Nothing`.
+--
+--     Db.delete Todo (Todo.TodoId "a")
+--
+-- Book: chapter 8, "Delete rules"
 delete : Table t -> Id t -> Task Unit
+
 -- Scoped operations: a table with an `@owner` column, in a page module whose page `requires user`
 
--- `Db.from t` keeping the session user's rows (`owner = session.user`)
+-- A `Select` of the signed-in user's rows of a table.
+--
+-- It is `Db.from t` keeping the rows whose owner is the session's user. The table needs an
+-- `@owner` column, and the call must be in a route that `requires user`, or in a helper that
+-- only such routes call. The owner condition (`owner = session.user`) is added when the
+-- `Select` runs, for the user of the running request or test, not the `session` argument; with
+-- no signed-in user it fails with "Db.mine Todo: no signed-in user".
+--
+-- Book: chapter 8, "Your own rows"
 mine : Table t -> Select t
--- the row when it exists and is the session user's; otherwise Query.notFound
+
+-- Reads the signed-in user's row with an id.
+--
+-- When the row does not exist or is not the session user's, it stops as `Query.notFound`:
+-- someone else's row is answered as a missing one, with a 404. There is no `Maybe` to match: a
+-- missing row ends the request. It reads in one `SELECT` with `id = ? AND owner = ?`. The rules
+-- of `Db.mine` (an `@owner` column, a route that `requires user`, a signed-in user) apply.
+--
+-- Book: chapter 8, "Your own rows"
 getMine : Table t -> Id t -> Query t
--- one UPDATE with `id = ? AND owner = ?`; no row changed is Task.notFound
+
+-- Changes the signed-in user's row with an id, as `Db.update` does.
+--
+-- It reads the row with `id = ? AND owner = ?`, applies the function, and writes it back with
+-- one UPDATE with `id = ? AND owner = ?`; no row changed is `Task.notFound`, so someone else's
+-- row is a 404 and nothing is written. The owner column is never written: a function that
+-- changes it does not give the row away. A function that changes the `@id` field fails the
+-- `Task`. The rules of `Db.mine` apply.
+--
+-- Book: chapter 8, "Your own rows"
 updateMine : Table t -> Id t -> (t -> t) -> Task Unit
--- one DELETE with `id = ? AND owner = ?`; no row deleted is Task.notFound
+
+-- Deletes the signed-in user's row with an id.
+--
+-- It is one DELETE with `id = ? AND owner = ?`; no row deleted is `Task.notFound`, so a missing
+-- row or someone else's is a 404. The rules of `Db.mine` apply.
+--
+-- Book: chapter 8, "Your own rows"
 deleteMine : Table t -> Id t -> Task Unit
--- the row is `Insert t` without the owner column, written as a record literal in the call; the owner is the session's user
+
+-- Inserts a row owned by the signed-in user and gives back its new id.
+--
+-- The row is `Insert t` without the owner column, written as a record literal in the call; the
+-- owner is the session's user, and giving the owner field is a type error. Otherwise it is
+-- `Db.insert`. The rules of `Db.mine` apply.
+--
+-- Book: chapter 8, "Your own rows"
 insertMine : Table t -> Insert t -> Task (Id t)
+
 -- The generic scoped operations (M15): a table with a `@partition k` column (`@owner` is
 -- `@partition user`), where the session's `k` is narrowed (a page that `requires k`)
 
--- `Db.from t` keeping the rows of the session's partition (`col = session.k`)
+-- A `Select` of the rows of a table in the session's partition.
+--
+-- It is `Db.from t` keeping the rows whose partition column is the session's key
+-- (`col = session.k`). The table needs a `@partition k` column, and the call must be in a
+-- route that `requires k`. The condition is added when the `Select` runs, for the running
+-- request or test; without the key it fails with a message such as "Db.scoped Project: the
+-- session has no org". The `mine` operations are these for the key `user`.
+--
+-- Book: chapter 9, "Scoped operations: partitions"
 scoped : Table t -> Select t
--- the row when it exists and is in the session's partition; otherwise Query.notFound
+
+-- Reads the row with an id in the session's partition.
+--
+-- When the row does not exist or is in another partition, it stops as `Query.notFound`: a row
+-- in another partition is answered as a missing one, with a 404. The rules of `Db.scoped`
+-- apply.
+--
+-- Book: chapter 9, "Scoped operations: partitions"
 getScoped : Table t -> Id t -> Query t
--- one UPDATE with `id = ? AND col = ?`, never writing the partition column; no row changed is Task.notFound
+
+-- Changes the row with an id in the session's partition, as `Db.update` does.
+--
+-- It writes with one UPDATE with `id = ? AND col = ?`, never writing the partition column; no
+-- row changed is `Task.notFound`, so a row in another partition is a 404 and nothing is
+-- written. The rules of `Db.scoped` apply.
+--
+-- Book: chapter 9, "Scoped operations: partitions"
 updateScoped : Table t -> Id t -> (t -> t) -> Task Unit
--- one DELETE with `id = ? AND col = ?`; no row deleted is Task.notFound
+
+-- Deletes the row with an id in the session's partition.
+--
+-- It is one DELETE with `id = ? AND col = ?`; no row deleted is `Task.notFound`, so a missing
+-- row or one in another partition is a 404. The rules of `Db.scoped` apply.
+--
+-- Book: chapter 9, "Scoped operations: partitions"
 deleteScoped : Table t -> Id t -> Task Unit
--- the row is `Insert t` without the partition column, written as a record literal in the call; the column is the session's key
+
+-- Inserts a row in the session's partition and gives back its new id.
+--
+-- The row is `Insert t` without the partition column, written as a record literal in the call;
+-- the column is the session's key. Otherwise it is `Db.insert`. The rules of `Db.scoped` apply.
+--
+-- Book: chapter 9, "Scoped operations: partitions"
 insertScoped : Table t -> Insert t -> Task (Id t)

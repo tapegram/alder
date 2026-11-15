@@ -173,7 +173,7 @@ func TestPrompt_RouteMember(t *testing.T) {
 	if !strings.Contains(got, "Fill the typed hole ?clear in Clear.update of module Notes (app/Notes.alder).\nIt must have type: Task Response\n") {
 		t.Errorf("the prompt does not name the hole's member:\n%s", got)
 	}
-	if !strings.Contains(got, "```alder\nmodule Response\n") {
+	if !strings.Contains(got, "\nmodule Response\n") {
 		t.Errorf("the prompt has no Response signatures for a `Task Response` hole")
 	}
 	scope := got[strings.Index(got, "Names in scope"):]

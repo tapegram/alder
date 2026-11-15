@@ -8,6 +8,7 @@ import (
 
 	"alder/internal/names"
 	"alder/internal/syntax"
+	"alder/stdlib"
 )
 
 func hover(t *testing.T, c *client, rel string, p Position) string {
@@ -554,8 +555,8 @@ func TestRouteFile_Answers(t *testing.T) {
 }
 
 // TestDeclDoc_StdTypeAndCtorBook: a stdlib type or constructor with no Book line of its own shows
-// its module's, as a function does. No documented stdlib module declares a type yet (Maybe and
-// Result live in the Prelude, which has no Book line), so the module here is made up.
+// its module's, as a function does. The made-up module keeps the case small; the Prelude test
+// below runs it on the real file.
 func TestDeclDoc_StdTypeAndCtorBook(t *testing.T) {
 	src := "-- Optional values.\n--\n-- Book: chapter 9, \"Maybe\"\nmodule Opt\n\n-- A value that may be missing.\ntype Opt a = Some a | None\n"
 	mod, diags := syntax.ParseFile("stdlib/Opt.alder", []byte(src))
@@ -566,6 +567,35 @@ func TestDeclDoc_StdTypeAndCtorBook(t *testing.T) {
 	for _, ref := range []syntax.Ref{{Kind: syntax.RefType, Module: "Opt", Name: "Opt"}, {Kind: syntax.RefCtor, Module: "Opt", Name: "Some"}} {
 		if got := declDoc(a, ref); !strings.Contains(got, `*Book: chapter 9, "Maybe"*`) {
 			t.Errorf("%s: %q", ref.Name, got)
+		}
+	}
+}
+
+// TestDeclDoc_PreludeBook: in the real Prelude, `Unit` and `Bool` have no Book line of their own, so
+// hovering the type or the constructor `True` shows the module's; `Maybe` and `Just` show the
+// declaration's own.
+func TestDeclDoc_PreludeBook(t *testing.T) {
+	data, err := stdlib.FS.ReadFile("Prelude.alder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, diags := syntax.ParseSignatures("stdlib/Prelude.alder", data)
+	if len(diags) > 0 {
+		t.Fatal(diags)
+	}
+	a := &analysis{prog: &names.Program{Std: map[string]*syntax.Module{"Prelude": mod}}}
+	for _, c := range []struct {
+		ref  syntax.Ref
+		book string
+	}{
+		{syntax.Ref{Kind: syntax.RefType, Module: "Prelude", Name: "Unit"}, `*Book: chapter 4, "Built-in types"*`},
+		{syntax.Ref{Kind: syntax.RefType, Module: "Prelude", Name: "Bool"}, `*Book: chapter 4, "Built-in types"*`},
+		{syntax.Ref{Kind: syntax.RefCtor, Module: "Prelude", Name: "True"}, `*Book: chapter 4, "Built-in types"*`},
+		{syntax.Ref{Kind: syntax.RefType, Module: "Prelude", Name: "Maybe"}, `*Book: chapter 9, "Maybe"*`},
+		{syntax.Ref{Kind: syntax.RefCtor, Module: "Prelude", Name: "Just"}, `*Book: chapter 9, "Maybe"*`},
+	} {
+		if got := declDoc(a, c.ref); !strings.Contains(got, c.book) {
+			t.Errorf("%s: want %s in %q", c.ref.Name, c.book, got)
 		}
 	}
 }

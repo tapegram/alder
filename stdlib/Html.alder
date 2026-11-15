@@ -1,9 +1,58 @@
+-- Builders for `Html` values that markup does not write, and the render of one to text.
+--
+-- Markup (`<p>…</p>`) is the usual way to make `Html`. These are for a value from `Text`, for
+-- nothing, for nodes with no wrapper, and for the markup of a node. Text is escaped when it is
+-- rendered, except through `Html.unsafe`.
+--
+-- Book: chapter 9, "Html"
 module Html
 
+-- Markup taken as it is, with nothing escaped.
+--
+-- Never use it for text a person typed: a `<script>` in it runs. Only use it for markup the app
+-- itself wrote or has checked.
+--
+--     Html.toText (Html.unsafe "<b>hi</b>") == "<b>hi</b>"
+--
+-- Book: chapter 9, "Html"
 unsafe : Text -> Html
+
+-- An `Html` that renders nothing.
+--
+-- Use it for the branch of a `match` that shows nothing.
+--
+--     Html.toText Html.none == ""
+--
+-- Book: chapter 9, "Html"
 none : Html
+
+-- Text as an `Html` node, escaped when it is rendered.
+--
+-- The characters `<`, `>`, `&`, `"` and `'` come out as their entities, so the text shows as
+-- it was written and never as markup.
+--
+--     Html.toText (Html.text "a < b") == "a &lt; b"
+--     Html.toText (Html.text "<b>") == "&lt;b&gt;"
+--
+-- Book: chapter 9, "Html"
 text : Text -> Html
--- the nodes side by side with no wrapper element (a doctype before <html>)
+
+-- The nodes side by side with no wrapper element (a doctype before <html>).
+--
+-- An empty list renders nothing.
+--
+--     Html.toText (Html.fragment [Html.text "a", Html.text "b"]) == "ab"
+--     Html.toText (Html.fragment []) == ""
+--
+-- Book: chapter 9, "Html"
 fragment : List Html -> Html
--- the markup File.html serves for the node
+
+-- The markup `File.html` serves for the node.
+--
+-- Text in the node is escaped. The links and buttons it holds are not followed, because no page
+-- is running to receive them.
+--
+--     Html.toText (Html.text "x") == "x"
+--
+-- Book: chapter 9, "Html"
 toText : Html -> Text

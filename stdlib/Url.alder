@@ -1,5 +1,37 @@
+-- Links to places outside the app, and a route's full address.
+--
+-- A `Route` is a route name applied to its parameters; these two make one from a `Text` and
+-- turn one into a `Text`.
+--
+-- Book: chapter 9, "Html"
 module Url
 
+-- A link to a URL outside the app, for `href`, `src` or `Response.redirect`.
+--
+-- The URL is kept only when it is an absolute `http:` or `https:` URL, a path of this site
+-- (`/static/app.css`, but not `//host` or `/\host`) or a fragment (`#top`). Anything else
+-- becomes `#`, a link that goes nowhere (a redirect to it is refused with a 500):
+-- `javascript:` and `data:` URLs, other schemes such as `mailto:`, a URL with a leading space,
+-- a relative path, and a URL holding a control character. So a link built from user input can never run script.
+--
+--     Url.external "https://example.com/a" == Url.external "https://example.com/a"
+--     Url.external "javascript:alert(1)" == Url.external "#"
+--     Url.external "//evil.example" == Url.external "#"
+--     Url.external "mailto:a@example.com" == Url.external "#"
+--
+-- Book: chapter 9, "Html"
 external : Text -> Route
 
+-- The route's full URL, with the site's address in front, for a program that is not a browser.
+--
+-- It is the text `href={r}` renders (a defaulted parameter left out, the query encoded) with
+-- the site's public address in front, taken from `ALDER_PUBLIC_URL`. Without it the running
+-- server uses its own listening address, and a test uses `http://localhost:8080`. A route that
+-- is not a path of this site, such as an external URL, a fragment or a `#`, comes back as its
+-- URL, unchanged.
+--
+--     Url.absolute (Todos.Index.Index { filter: Active }) == "http://localhost:8080/?filter=Active"
+--     Url.absolute (Url.external "https://example.com/a") == "https://example.com/a"
+--
+-- Book: chapter 9, "`Url.absolute`"
 absolute : Route -> Text

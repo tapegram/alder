@@ -1,3 +1,22 @@
+-- Changing the session, the record an app keeps for each visitor in a signed cookie.
+--
+-- The app declares the session's fields with `session { … }` in its `App` module. A route's
+-- `load` and `update` get the session as an argument; only `Session.put` changes it.
+--
+-- Book: chapter 9, "Query, Task, Db, Session, Log, Time, Random, Http"
 module Session
 
+-- Changes the session with a function that gets the current session and gives back the new one.
+--
+-- The change belongs to the running `Task`: when the `Task` succeeds it is kept and the cookie
+-- is stored, and when the `Task` fails it is undone like a database write. The scoped `Db`
+-- operations that run after it in the same `Task` act for the session as it now is. A session
+-- field declared `via` a membership table can be set to `Just v` only when that table has a row
+-- for the session's user and `v`; otherwise the `Task` fails with a message such as
+-- "Session.put org: no Membership for this user and org". Setting such a field to `Nothing` is
+-- always allowed, and a session whose `user` becomes `Nothing` has every `via` field cleared.
+--
+--     Session.put (\s -> { s | user: Nothing, role: Member })
+--
+-- Book: chapter 7, "The session is part of the same promise"
 put : (Session -> Session) -> Task Unit

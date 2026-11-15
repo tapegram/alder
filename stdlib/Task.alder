@@ -1,9 +1,83 @@
+-- Functions for `Task`, an effect that may write to the database, the session or a capability.
+--
+-- A `Task` is a description of work, not its result: nothing runs while it is built, and the
+-- runtime runs it when a route's `update` (or a test) hands it over. Steps are chained with
+-- `let x <- e` in a block; there is no `andThen`. A `Query` can be bound with `let x <-` inside
+-- a `Task` block. All the writes of one `Task` run in one transaction: when the `Task` fails,
+-- they are rolled back and its `Session.put` changes are undone. Two tasks cannot be compared
+-- with `==`.
+--
+-- Book: chapter 9, "Query, Task, Db, Session, Log, Time, Random, Http"
 module Task
 
+-- A `Task` that does nothing and gives back the value.
+--
+-- It is how a block ends: the last line of an `update` is usually `Task.succeed` with the
+-- `Response` to send.
+--
+--     Task.succeed (Response.redirect (Todos.Index.Index { filter: All }))
+--     Task.succeed 42
+--
+-- Book: chapter 7, "Building effects"
 succeed : a -> Task a
+
+-- A `Task` that fails with the message.
+--
+-- A failure stops the `Task`: nothing after it runs, every database write it made is rolled
+-- back, its `Session.put` changes are undone, and a route answers with the app's `error` page
+-- (a 500). In `Test.run` the failure is `Err` with the message. There is no way to catch a
+-- failure; a step that may go wrong in an expected way gives a `Result` instead.
+--
+--     Task.fail "the payment was refused"
+--
+-- Book: chapter 7, "A `Task` that fails"
 fail : Text -> Task a
+
+-- A `Task` that fails as "not found", which a route answers with a 404.
+--
+-- It fails the way `Task.fail` does, rolling back the `Task`'s writes and session changes, but
+-- the route answers 404 with the app's `notFound` page instead of the `error` page. Use it when
+-- a request names something that is not there. In `Test.run` it is `Err "not found"`.
+--
+--     \(todo : Maybe Todo) ->
+--       match todo {
+--         Just t -> Db.update Todo t.id (\x -> { x | done: True }),
+--         Nothing -> Task.notFound,
+--       }
+--
+-- Book: chapter 7, "A `Task` that fails"
 notFound : Task a
+
+-- Runs a `Task` and changes its result with a function.
+--
+-- A `Task` that fails stays failed, and the function is not called.
+--
+--     Task.map (\id -> [id]) (Db.insert Todo { title: Text.NonEmpty "Buy milk", due: Nothing, owner: User.UserId "u" })
+--
+-- Book: chapter 7, "Functions on effects"
 map : (a -> b) -> Task a -> Task b
--- wait ms milliseconds (0..60000); in tests the clock moves instead
+
+-- Waits a number of milliseconds, then goes on.
+--
+-- The number is clamped to 0 through 60000 (one minute): a negative number waits not at all, a
+-- larger one a minute. The wait belongs to the request, and a request that is cancelled stops
+-- waiting at once. In tests the clock moves instead: the test's clock jumps forward by the wait
+-- and nothing sleeps. A `Task` keeps its transaction open from its first database step, so a
+-- sleep after a write makes other writers wait too: sleep before writing.
+--
+--     Task.sleep 500
+--
+-- Book: chapter 7, "Waiting: `Query.delay` and `Task.sleep`"
 sleep : Int -> Task Unit
+
+-- Runs the tasks one after another and gives back their results in the same order.
+--
+-- The first one that fails stops it, and the ones after it do not run. An empty list gives
+-- back an empty list. Every element must be a `Task`: a `Query` in the list is a type error, so
+-- bind it with `let x <-` first.
+--
+--     Task.all [Db.delete Todo (Todo.TodoId "a"), Db.delete Todo (Todo.TodoId "b")]
+--     Task.all []
+--
+-- Book: chapter 7, "Functions on effects"
 all : List (Task a) -> Task (List a)

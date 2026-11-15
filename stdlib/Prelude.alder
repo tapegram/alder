@@ -1,42 +1,238 @@
+-- The types every module uses without importing, and `not`.
+--
+-- Most of them are built in and have no constructors you write: a `List`, a `Dict`, a `Query` or a
+-- `Task` is made by functions of its module (`List.take`, `Task.succeed`). `Bool`, `Maybe` and
+-- `Result` are unions with constructors you can use anywhere, unqualified. Their functions live in
+-- the modules of the same name. A type, table, form or union of your own may not take the name of
+-- any of these except `Order`, `Form`, `Table`, `Id`, `Insert`, `Select`, `Condition` and `Column`,
+-- which apps do not write in their own signatures, so they stay free for names such as
+-- `table Order`.
+--
+-- Book: chapter 4, "Built-in types"
 module Prelude
 
+-- A 64-bit whole number, positive, negative or zero.
+--
+-- Its functions are in the `Int` module.
+--
+-- Book: chapter 9, "Int, Float"
 type Int
+
+-- A 64-bit number with a decimal part.
+--
+-- Its functions are in the `Float` module.
+--
+-- Book: chapter 9, "Int, Float"
 type Float
+
+-- A piece of UTF-8 text, such as a name or a sentence.
+--
+-- There is no separate type for a single character. Its functions are in the `Text` module.
+--
+-- Book: chapter 9, "Text"
 type Text
+
+-- The type of `()`, the value that carries nothing, for an effect that gives no answer.
+--
+-- `Task Unit` is a write that succeeds with nothing to report, such as `Db.delete`.
 type Unit
+
+-- A calendar day, with no time of day.
+--
+-- Its functions are in the `Date` module.
+--
+-- Book: chapter 9, "Date, Time"
 type Date
+
+-- An instant in time.
+--
+-- Its functions are in the `Time` module.
+--
+-- Book: chapter 9, "Date, Time"
 type Time
+
+-- A type with no value of its own, which the checker accepts where another type is expected.
+--
+-- The checker lets it stand in for any type, and markup built from it fits any `Html`. You
+-- cannot write `Html Never` yourself, though: that is an error, so write `Html`.
 type Never
+
+-- What went wrong in a request, as the app's `error` page receives it.
+--
+-- The app's `error` must have the type `Error -> Html`, and it renders the page shown when a
+-- request fails.
+--
+-- Book: chapter 6, "The `App` module"
 type Error
--- a request to one of the app's routes: an href, or the target of a redirect
+
+-- A request to one of the app's routes: an href, or the target of a redirect.
+--
+-- A route's name, given its parameters, is a `Route` (`Todos.Index.Index { filter: All }`).
+-- Two routes are equal when they have the same method and the same address.
+--
+-- Book: chapter 9, "Response, Route"
 type Route
--- what a write route's update answers: where to go or what to show, and toasts
+
+-- What a write route's update answers: where to go or what to show, and toasts.
+--
+-- It is built with the functions of the `Response` module (`Response.redirect`,
+-- `Response.render`), and a toast is added to one with `|>`.
+--
+-- Book: chapter 9, "Response, Route"
 type Response
--- a page's answer when its view returns File: a status, a content type, headers and a body, written as given
+
+-- A page's answer when its view returns File: a status, a content type, headers and a body, written as given.
+--
+-- A route whose `view` returns a `File` instead of `Html` is a file page, such as a download or a
+-- JSON document.
+--
+-- Book: chapter 6, "File pages"
 type File
--- a sequence of bytes, such as the body of a File
+
+-- A sequence of bytes, such as the body of a File.
+--
+-- Its functions are in the `Bytes` module.
+--
+-- Book: chapter 9, "File, Bytes"
 type Bytes
+
+-- An ordered collection of values that all have the same type.
+--
+-- A list is written `[1, 2, 3]`, and its functions are in the `List` module.
+--
+-- Book: chapter 9, "List"
 type List a
+
+-- A collection of values looked up by a key.
+--
+-- A `Dict` is built with `Dict.fromList`. A key may be any type that can be compared with `==`.
+--
+-- Book: chapter 9, "Dict"
 type Dict k v
--- markup: elements and text; its links and clicks name routes (it takes no type argument)
+
+-- Markup: elements and text; its links and clicks name routes (it takes no type argument).
+--
+-- A route's `view` and a component return one, and two `Html` values are equal when their markup
+-- is.
+--
+-- Book: chapter 9, "Html"
 type Html
+
+-- A read that gives an `a` when it runs.
+--
+-- A `Query` cannot write, and it can stop with `Query.notFound` or `Query.redirect`. A route's
+-- `load` is one.
+--
+-- Book: chapter 9, "Query, Task, Db, Session, Log, Time, Random, Http"
 type Query a
+
+-- A write, or any step that may fail or wait, giving an `a`.
+--
+-- A route's `update` is one: it ends with a `Response`. It can fail with `Task.fail` and is
+-- stepped through with `let _ <-`.
+--
+-- Book: chapter 9, "Query, Task, Db, Session, Log, Time, Random, Http"
 type Task a
+
+-- A name the Prelude declares for a form's values, which app code does not write, build or receive.
+--
+-- The name is declared but not reserved: an app may still declare its own `Form`. Nothing in the
+-- checker, the generator or the runtime produces a `Form f`. A write route that
+-- names a `form` gets the decoded record in `params.form`, whose type is the form's own record.
+--
+-- Book: chapter 6, "`form`"
 type Form f
+
+-- A table's name used as a value, such as `Todo` in `Db.get Todo id`.
+--
+-- Its functions are in the `Db` module.
+--
+-- Book: chapter 8, "Tables"
 type Table t
+
+-- The id of a row of the table `t`, the type of its `@id` column.
+--
+-- A table's brand (`Todo.TodoId`) is the id of its rows. `Db.insert` gives one back.
+--
+-- Book: chapter 8, "Tables"
 type Id t
+
+-- A new row of the table `t`: its record without `@id`, `@created` and `@updated`.
+--
+-- It is written as a record literal in the call to `Db.insert`.
+--
+-- Book: chapter 8, "Writing"
 type Insert t
+
+-- A read of the rows of the table `t`, built up before it runs.
+--
+-- `Db.from` starts one, and `Db.where` and `Db.orderBy` narrow it.
+--
+-- Book: chapter 8, "How a `Select` combines"
 type Select t
+
+-- A test on one row of the table `t`, built from a column.
+--
+-- It is made by a column's methods (`Todo.done.eq False`) and joined with `Db.and`, `Db.or` and
+-- `Db.not`.
+--
+-- Book: chapter 9, "Column methods"
 type Condition t
+
+-- A sort order on the rows of the table `t`, built from a column.
+--
+-- It is made by `.asc` or `.desc` on a column (`Todo.created.desc`).
+--
+-- Book: chapter 9, "Column methods"
 type Order t
+
+-- A column of the table `t` that holds an `a`, such as `Todo.title`.
+--
+-- A column has methods that build a `Condition` or an `Order`.
+--
+-- Book: chapter 9, "Column methods"
 type Column t a
 
+-- Either `True` or `False`.
+--
+-- `True` and `False` are literals. The logic on a `Bool` is `not`, `&&` and `||`, and `Bool.toText`
+-- writes one as text.
 type Bool = True | False
+
+-- A value that may be missing: `Just x` when it is there, `Nothing` when it is not.
+--
+-- A `Maybe` is how a field or a lookup says it may have no value, and `??` gives a fallback for
+-- `Nothing`. Its functions are in the `Maybe` module.
+--
+-- Book: chapter 9, "Maybe"
 type Maybe a = Just a | Nothing
+
+-- The outcome of something that may fail: `Ok a` when it worked, `Err e` when it did not.
+--
+-- The `e` is what went wrong, and the `a` is the answer. Its functions are in the `Result` module.
+--
+-- Book: chapter 9, "Result"
 type Result e a = Ok a | Err e
 
--- Test types: they exist only inside a `test` (the browser steps of module Test).
+-- Test types
+
+-- A parsed page, the page the browser holds in a test.
+--
+-- It exists only inside a `test`: a type declaration that uses it is an error, and so is a route's
+-- `view`. A `Doc` can be compared with `==`, and the functions that read one are in the `Test`
+-- module.
+--
+-- Book: chapter 9, "The `Doc` and `Answer` types"
 type Doc
+
+-- What a request came to, in a test: the page shown, a redirect, a refusal, a 404 or a failure.
+--
+-- It exists only inside a `test`. `Shown` is a page shown and `Rendered` a route's view patched
+-- into the page. `Refreshed` is a write whose `update` answered `Response.refresh`, and
+-- `Redirected` a redirect to a route. `FormRejected` carries each field's message, and
+-- `PageMissing` is a 404. `RequestFailed` carries the failure's message.
+--
+-- Book: chapter 10, "`Answer`: what a request came to"
 type Answer = Shown
             | Rendered Route
             | Refreshed
@@ -45,4 +241,11 @@ type Answer = Shown
             | PageMissing
             | RequestFailed Text
 
+-- The opposite of a `Bool`: `True` becomes `False` and `False` becomes `True`.
+--
+--     not True == False
+--     not False == True
+--     not (1 > 2) == True
+--
+-- Book: chapter 9, "Bool"
 not : Bool -> Bool

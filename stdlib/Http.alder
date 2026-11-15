@@ -1,6 +1,37 @@
+-- `Task`s that make an HTTP request and give back the body.
+--
+-- A request answers with a `Result`: `Ok` with the body of a 2xx response, and `Err` with an
+-- `Http.HttpError` for any other status or when there is no response. The `Task` itself does not
+-- fail on a bad answer, so a failed request is a value to match on. A request gives up after 10
+-- seconds. A step that is only an HTTP call opens no database transaction.
+--
+-- Book: chapter 9, "Query, Task, Db, Session, Log, Time, Random, Http"
 module Http
 
+-- Why a request did not give a 2xx response: the status and the body (or the error text).
+--
+-- The status is 0 when there was no response at all, such as a refused connection or a timeout. It is
+-- always written qualified, as `Http.HttpError`.
+--
+-- Book: chapter 7, "Building effects"
 type HttpError
 
+-- Sends a GET request and gives the body of the answer.
+--
+-- A 2xx status is `Ok` with the body as text. Any other status is `Err`, with the status and the
+-- body (or the status text when the body is empty). When there is no response, such as a
+-- refused connection or a timeout, it is `Err` with status 0.
+--
+--     Http.get { url: "https://example.com/rates.json" }
+--
+-- Book: chapter 7, "Building effects"
 get : { url: Text } -> Task (Result HttpError Text)
+
+-- Sends a POST request with a text body and gives the body of the answer.
+--
+-- The body is sent as `text/plain; charset=utf-8`. The answer is read as `Http.get` reads it.
+--
+--     Http.post { url: "https://example.com/hook", body: "todo created" }
+--
+-- Book: chapter 7, "Building effects"
 post : { url: Text, body: Text } -> Task (Result HttpError Text)

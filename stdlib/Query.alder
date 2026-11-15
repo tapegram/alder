@@ -1,10 +1,84 @@
+-- Functions for `Query`, an effect that only reads.
+--
+-- A `Query` is what a GET route's `load` gives back. Like a `Task`, it is a description that the
+-- runtime runs, and its steps are chained with `let x <-` in a block. A `Query` cannot write and
+-- has no transaction. It cannot fail either (a missing row is `Nothing`, a database outage is
+-- the app's `error` page), but it can stop with `Query.notFound` or `Query.redirect`. A `Query`
+-- can be bound with `let x <-` in a `Task` block; a `Task` cannot be used in a `Query` block.
+-- Two queries cannot be compared with `==`.
+--
+-- Book: chapter 9, "Query, Task, Db, Session, Log, Time, Random, Http"
 module Query
 
+-- A `Query` that reads nothing and gives back the value.
+--
+-- It is how a `load` block ends, with the page's model.
+--
+--     Query.succeed { open: 3 }
+--
+-- Book: chapter 7, "Building effects"
 succeed : a -> Query a
+
+-- Runs a `Query` and changes its result with a function.
+--
+-- A `Query` that stops (not found, or a redirect) stays stopped, and the function is not
+-- called.
+--
+--     Query.map List.length (Db.from Todo |> Db.all)
+--
+-- Book: chapter 7, "Functions on effects"
 map : (a -> b) -> Query a -> Query b
--- wait ms milliseconds (0..60000); in tests the clock moves instead
+
+-- Waits a number of milliseconds, then goes on.
+--
+-- The number is clamped to 0 through 60000 (one minute): a negative number waits not at all, a
+-- larger one a minute. The wait belongs to the request, and a request that is cancelled stops
+-- waiting at once. In tests the clock moves instead: the test's clock jumps forward by the wait
+-- and nothing sleeps. A `Query` holds no transaction, so waiting in one costs the database
+-- nothing.
+--
+--     Query.delay 2000
+--
+-- Book: chapter 7, "Waiting: `Query.delay` and `Task.sleep`"
 delay : Int -> Query Unit
+
+-- Runs the queries one after another and gives back their results in the same order.
+--
+-- One that stops (not found, or a redirect) stops it, and the ones after it do not run. An empty
+-- list gives back an empty list.
+--
+--     Query.all [Db.count (Db.from Todo), Db.count (Db.from User)]
+--     Query.all []
+--
+-- Book: chapter 7, "Functions on effects"
 all : List (Query a) -> Query (List a)
+
+-- A `Query` that stops, which a route answers with a 404 and the app's `notFound` page.
+--
+-- Nothing after it runs, and the page's `view` is not called. Bound in a `Task` block, it fails
+-- the `Task` the same way `Task.notFound` does, and the `Task`'s writes are rolled back.
+--
+--     \(todo : Maybe Todo) ->
+--       match todo {
+--         Just t -> Query.succeed t.title,
+--         Nothing -> Query.notFound,
+--       }
+--
+-- Book: chapter 9, "Not found and redirect"
 notFound : Query a
--- stop: answer 303 to a page (the same page with other parameters, another page, Url.external)
+
+-- A `Query` that stops and sends the browser to a route with a 303.
+--
+-- The route value can be the same page with other parameters, another page, or `Url.external`.
+-- Nothing after it runs, and the page's `view` is not called: a GET route's `load` uses it to
+-- send the browser on without showing anything. Bound in a `Task` block, it is a failure: the
+-- `Task`'s writes and `Session.put` changes are undone and the request is answered with the 303
+-- (in `Test.run` it is `Err "redirected to …"` with the URL). To write and then go, end the
+-- `Task` with `Response.redirect` instead. A redirect to a URL that is only a fragment, such as
+-- the `"#"` that `Url.external` makes of an unsafe URL, is refused with a 500, since it would
+-- load the same page again.
+--
+--     Query.redirect (Auth.Login.Login {})
+--
+-- Book: chapter 7, "A `Query` that stops"
 redirect : Route -> Query a

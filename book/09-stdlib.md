@@ -435,7 +435,8 @@ them.
   which browsers read as another site);
 - a fragment (`#top`).
 
-Anything else becomes `#`, a link and a redirect that go nowhere:
+Anything else becomes `#`, a link that goes nowhere (a redirect to it is refused with
+a 500):
 
 - `javascript:` and `data:` URLs in any case (`JavaScript:`);
 - other schemes (`mailto:`);

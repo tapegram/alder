@@ -1,17 +1,89 @@
+-- The answers a write route's `update` can give: a redirect, a re-render, a refresh or a refusal, with toasts.
+--
+-- A `Response` is built with these functions, each named after the HTTP it produces, and a
+-- toast is added to one with `|>`. A `Response` can be compared with `==`, and two routes are
+-- equal when they lead to the same address.
+--
+-- Book: chapter 9, "Response, Route"
 module Response
 
+-- Sends the browser to a GET route with a 303.
+--
+-- Use it after creating something, so that a browser refresh does not send the form twice. It
+-- goes to the route even when that is the page the browser is on. The route must be a GET route.
+--
+--     Response.redirect (Todos.Index.Index { filter: Active })
+--
+-- Book: chapter 6, "`Response`"
 redirect : Route -> Response
 
+-- Shows a GET route again in place, as one element with a 200.
+--
+-- The runtime runs the route's `load` and renders its `view`; the element replaces the element
+-- with the same `id` on the page, so the view needs a root element with an `id` or nothing is
+-- patched. Use it for something already on the page, such as a toggled row. The route must be a
+-- GET route.
+--
+--     Response.render (Todos.Index.Index { filter: All })
+--
+-- Book: chapter 6, "`Response`"
 render : Route -> Response
 
+-- Loads the page the browser is on again, and sends the regions of it that changed, with a 200.
+--
+-- Use it when things appear or disappear, or when more than one place changes. It costs what
+-- loading the page costs, twice: the page is rendered before the `update` to know what changed.
+--
+--     Response.refresh
+--
+-- Book: chapter 6, "`Response`"
 refresh : Response
 
+-- Refuses a submission for a reason only `update` can know, with a 422.
+--
+-- It shows the page the browser is on again with the values that were posted, and the text in
+-- the form's `<Errors form />`. It is a successful result: the `Task` that gave it commits, so
+-- its writes and `Session.put` changes are kept.
+--
+--     Response.invalid "That name is already taken"
+--
+-- Book: chapter 6, "`Response`"
 invalid : Text -> Response
 
+-- Adds an `info` toast to a response, for news that is neither good nor bad.
+--
+-- The toast is one more event on the response, shown once after the response is applied, and
+-- the response is otherwise unchanged. Toasts added one after another show in that order.
+--
+--     Response.refresh |> Response.toast "Showing archived posts"
+--
+-- Book: chapter 6, "Notices and in-flight state"
 toast : Text -> Response -> Response
 
+-- Adds a `success` toast to a response, to say that what the person asked for was done.
+--
+-- It is `Response.toast` with the kind `success`.
+--
+--     Response.redirect (Todos.Index.Index { filter: All }) |> Response.success "Saved"
+--
+-- Book: chapter 6, "Notices and in-flight state"
 success : Text -> Response -> Response
 
+-- Adds a `warning` toast to a response, to say that it was done with something to look at.
+--
+-- It is `Response.toast` with the kind `warning`.
+--
+--     Response.refresh |> Response.warning "Saved, but the image was too large and was left out"
+--
+-- Book: chapter 6, "Notices and in-flight state"
 warning : Text -> Response -> Response
 
+-- Adds an `error` toast to a response, to say that it was not done.
+--
+-- It is `Response.toast` with the kind `error`. An error toast stays for ten seconds, the others
+-- five. A form's own problems are better told with `Response.invalid`, next to the form.
+--
+--     Response.refresh |> Response.error "Error: try again"
+--
+-- Book: chapter 6, "Notices and in-flight state"
 error : Text -> Response -> Response

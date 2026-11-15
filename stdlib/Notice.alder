@@ -1,12 +1,44 @@
+-- The old names of the `Response` toast builders, kept as aliases for one release.
+--
+-- Each function is exactly the `Response` function of the same kind (`with` is
+-- `Response.toast`), and each use is the warning W0012. Write the `Response` names instead.
+--
+-- Book: chapter 6, "Notices and in-flight state"
 module Notice
 
--- aliases of the Response builders for one release: `with` is `Response.toast`, the others
--- `Response.success`, `warning` and `error`; each use warns (W0012)
-
+-- Adds a toast to a response, the way a route shows a success message.
+--
+-- It is the old name of `Response.toast`: it adds an `info` toast (news that is neither good nor
+-- bad), and a use of it is W0012. Use `Response.success` to say that something was done.
+--
+--     Response.refresh |> Notice.with "Saved"
+--
+-- Book: chapter 6, "Notices and in-flight state"
 with : Text -> Response -> Response
 
+-- Adds a `success` toast to a response.
+--
+-- It is the old name of `Response.success`, and a use of it is W0012.
+--
+--     Response.refresh |> Notice.success "Saved"
+--
+-- Book: chapter 6, "Notices and in-flight state"
 success : Text -> Response -> Response
 
+-- Adds a `warning` toast to a response.
+--
+-- It is the old name of `Response.warning`, and a use of it is W0012.
+--
+--     Response.refresh |> Notice.warning "Saved, but the due date was left out"
+--
+-- Book: chapter 6, "Notices and in-flight state"
 warning : Text -> Response -> Response
 
+-- Adds an `error` toast to a response.
+--
+-- It is the old name of `Response.error`, and a use of it is W0012.
+--
+--     Response.refresh |> Notice.error "Nothing was saved"
+--
+-- Book: chapter 6, "Notices and in-flight state"
 error : Text -> Response -> Response

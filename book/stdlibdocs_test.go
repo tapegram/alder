@@ -25,16 +25,29 @@ import (
 // pendingDocs are the modules not yet documented; TestStdlibDocs_Complete skips them. Each
 // documenting task removes its modules; the last deletes the list.
 var pendingDocs = map[string]bool{
-	"Date": true, "Db": true, "File": true,
-	"Fuzz": true, "Html": true, "Http": true, "Json": true,
-	"Log": true, "Notice": true, "Prelude": true, "Query": true,
-	"Random": true, "Response": true, "Session": true, "Task": true,
-	"Test": true, "Time": true, "Url": true,
+	"Date": true, "File": true,
+	"Fuzz": true, "Json": true,
+	"Random": true,
+	"Test": true, "Time": true,
 }
 
 // noExample are the values that cannot have an example, each with the reason. Keys are
 // qualified names ("Test.click").
-var noExample = map[string]string{}
+var noExample = map[string]string{
+	"Db.mine":         scopedReason,
+	"Db.getMine":      scopedReason,
+	"Db.updateMine":   scopedReason,
+	"Db.deleteMine":   scopedReason,
+	"Db.insertMine":   scopedReason,
+	"Db.scoped":       scopedReason,
+	"Db.getScoped":    scopedReason,
+	"Db.updateScoped": scopedReason,
+	"Db.deleteScoped": scopedReason,
+	"Db.insertScoped": scopedReason,
+}
+
+// scopedReason is the noExample reason of the scoped Db operations (Db.mine, Db.scoped, …).
+const scopedReason = "a scoped operation is E0026 outside a route that requires its key; examples are checked outside any route"
 
 // stdlibDecl is one documented thing of a stdlib file: the module itself or a declaration.
 type stdlibDecl struct {

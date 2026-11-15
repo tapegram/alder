@@ -1,6 +1,45 @@
+-- `Task`s that write a line to the app's log.
+--
+-- A line goes to the app's logger at its level, and `ALDER_LOG` decides which levels are kept: the
+-- default, `info`, drops `Log.debug`. A text longer than 8 KB is cut and ends with "…". A log
+-- line is kept for a long time and read by people who are not the user, so log ids and
+-- outcomes, never the values people typed.
+--
+-- Book: chapter 9, "Query, Task, Db, Session, Log, Time, Random, Http"
 module Log
 
+-- Writes a line at the `debug` level, the lowest.
+--
+-- It is written only when `ALDER_LOG` is `debug`.
+--
+--     Log.debug "checking the due date"
+--
+-- Book: chapter 7, "Building effects"
 debug : Text -> Task Unit
+
+-- Writes a line at the `info` level, for what normally happens.
+--
+-- It is kept by the default `ALDER_LOG`.
+--
+--     Log.info "todo created"
+--
+-- Book: chapter 7, "Building effects"
 info : Text -> Task Unit
+
+-- Writes a line at the `warn` level, for something that is odd but handled.
+--
+-- It is kept unless `ALDER_LOG` is `error`.
+--
+--     Log.warn "the payment service was slow"
+--
+-- Book: chapter 7, "Building effects"
 warn : Text -> Task Unit
+
+-- Writes a line at the `error` level, for something that went wrong.
+--
+-- It is kept at every `ALDER_LOG` level. Logging does not fail the `Task`.
+--
+--     Log.error "the payment was refused"
+--
+-- Book: chapter 7, "Building effects"
 error : Text -> Task Unit
