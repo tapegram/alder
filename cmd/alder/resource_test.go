@@ -22,17 +22,39 @@ import (
 var resourceWrites = []string{"Db.get ", "Db.update ", "Db.delete ", "Db.insert "}
 
 // resourceCase is a resource of a fixture the tests below generate: the fixture, the table and
-// `--read`, its module's directory, and the call its Edit and Delete pages load the row with.
+// `--read`, its module's directory, and the call its Edit and Delete pages load the row with;
+// pre, the commands that make the table first.
 type resourceCase struct {
 	name, base, table, read, dir, load string
+	pre                                [][]string
 }
 
 var resourceCases = []resourceCase{
-	{"owner", "fixture", "Post", "owner", "Posts", "Db.getMine Post"},
-	{"signed-in", "fixture", "Post", "signed-in", "Posts", "Db.getMine Post"},
-	{"all", "fixture", "Post", "all", "Posts", "Db.getMine Post"},
+	{"owner", "fixture", "Post", "owner", "Posts", "Db.getMine Post", nil},
+	{"signed-in", "fixture", "Post", "signed-in", "Posts", "Db.getMine Post", nil},
+	{"all", "fixture", "Post", "all", "Posts", "Db.getMine Post", nil},
 	// `@partition org`: every read and write within the session's org
-	{"partitioned", "fixture-silo", "Activity", "owner", "Activities", "Db.getScoped Activity"},
+	{"partitioned", "fixture-silo", "Activity", "owner", "Activities", "Db.getScoped Activity", nil},
+	// an owned table referring to a keyless lookup table (its select reads every row)
+	{"lookup-ref", "fixture", "Article", "owner", "Articles", "Db.getMine Article", [][]string{
+		{"new", "table", "Category", "name:Text.NonEmpty"},
+		{"new", "table", "Article", "title:Text.NonEmpty", "owner:User.UserId@ref=User@owner", "category:Category.CategoryId@ref=Category"}}},
+}
+
+// resourceApp is a copy of c's fixture with c's table made (its pre commands) and its resource
+// generated.
+func resourceApp(t *testing.T, c resourceCase) string {
+	t.Helper()
+	dir := genApp(t, c.base)
+	for _, pre := range c.pre {
+		if code, out, errs := alderIn(t, dir, "", pre...); code != 0 {
+			t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(pre, " "), code, out, errs)
+		}
+	}
+	if code, out, errs := alderIn(t, dir, "", "new", "resource", c.table, "--read", c.read); code != 0 {
+		t.Fatalf("alder new resource %s --read %s: exit %d\n%s%s", c.table, c.read, code, out, errs)
+	}
+	return dir
 }
 
 // TestResource_NoUnscopedWrites (Review Focus 1): every line of a generated module of an owned
@@ -45,10 +67,7 @@ func TestResource_NoUnscopedWrites(t *testing.T) {
 	for _, c := range resourceCases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			dir := genApp(t, c.base)
-			if code, out, errs := alderIn(t, dir, "", "new", "resource", c.table, "--read", c.read); code != 0 {
-				t.Fatalf("alder new resource %s --read %s: exit %d\n%s%s", c.table, c.read, code, out, errs)
-			}
+			dir := resourceApp(t, c)
 			files, err := filepath.Glob(filepath.Join(dir, "app", c.dir, "*.alder"))
 			if err != nil || len(files) != 5 {
 				t.Fatalf("app/%s/: %v, %v", c.dir, files, err)
@@ -115,14 +134,11 @@ func TestResource_Mutate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs every mutant of the fixture's resource")
 	}
-	cases := append(slices.Clone(resourceCases), resourceCase{"keyless", "fixture", "Tag", "signed-in", "Tags", ""})
+	cases := append(slices.Clone(resourceCases), resourceCase{"keyless", "fixture", "Tag", "signed-in", "Tags", "", nil})
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			dir := genApp(t, c.base)
-			if code, out, errs := alderIn(t, dir, "", "new", "resource", c.table, "--read", c.read); code != 0 {
-				t.Fatalf("alder new resource %s --read %s: exit %d\n%s%s", c.table, c.read, code, out, errs)
-			}
+			dir := resourceApp(t, c)
 			var out, errb bytes.Buffer
 			code := runTestTo(withBuildDir(t, []string{dir, "--mutate", "--json"}), &out, &errb)
 			if code != 0 {

@@ -2,6 +2,7 @@ package generate
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"alder/internal/types"
@@ -163,6 +164,34 @@ func (b *testBuilder) loginAs(me, role string) {
 		fields = append(fields, "role: "+role)
 	}
 	b.setSession(strings.Join(fields, ", "))
+}
+
+// session is the session record an update of a route requiring keys is called with directly
+// (`Test.run (Save.update params session)`), for the signed-in user: the user and each other key
+// its row (no longer a `Maybe`: the route requires them), every other `Maybe` Nothing, the role
+// role (its first constructor when ""), any other field a sample value.
+func (b *testBuilder) session(keys []string, role string) string {
+	var fields []string
+	for _, f := range b.p.Session.Fields {
+		_, isMaybe := unMaybe(f.Type)
+		switch {
+		case f.Name == "user" && slices.Contains(keys, "user"):
+			fields = append(fields, "user: "+b.user())
+		case b.silo != nil && f.Name == b.silo.key && slices.Contains(keys, f.Name):
+			fields = append(fields, f.Name+": "+b.keyRow())
+		case isMaybe:
+			fields = append(fields, f.Name+": Nothing")
+		case b.p.Session.Role != nil && f == b.p.Session.Role && len(f.Ctors) > 0:
+			if role == "" {
+				role = f.Ctors[0]
+			}
+			b.typeRef(f.Type)
+			fields = append(fields, f.Name+": "+role)
+		default:
+			fields = append(fields, f.Name+": "+b.sample(f.Type, f.Name, 1))
+		}
+	}
+	return "{ " + strings.Join(fields, ", ") + " }"
 }
 
 // logout ends the session (Test.login of a session without a user, every other `Maybe` field

@@ -1497,9 +1497,11 @@ func (g *crudGen) othersMissing(at *crudTable, mod, r, name string, imports *imp
 // the signed-in user, in the row's key), then the signed-in user sends it (in the session's key;
 // a write route runs no load: its own scoped call is the guard, a 404). build, as
 // writeGate's, for the row target, gives the page, the step that sends the write and the check.
-// A form whose selects are of at's references (refs) is refused before that, 400, when one
-// offers an owned table's rows (Db.mine): the options the owner's page offered are not the
-// sender's (Plan call 11).
+// A form with selects (refs, and at has references) is refused before that, 400, whatever the
+// selects read: the runtime checks the options posted against the page the form was posted
+// from, re-rendered in the sender's session (Plan call 11), and that page's own scoped get 404s
+// for another user's (another key's) row, so the write never runs; the row unchanged is still
+// checked. The delete form has no selects: its test reaches the scoped delete itself.
 func (g *crudGen) othersWrite(at *crudTable, mod string, imports *importSet, name string, refs bool, build func(tb *testBuilder, target string) (get, send string, check func() (string, string))) TestData {
 	tb := g.tb(mod, imports, true)
 	target := g.othersRow(tb, at)
@@ -1517,12 +1519,31 @@ func (g *crudGen) othersWrite(at *crudTable, mod string, imports *importSet, nam
 	tb.let("let r <- %s", send)
 	l, r := check()
 	answer := "PageMissing"
-	for _, c := range at.refs {
-		if sel, _ := g.refSelect(g.p.TableNamed(c.Ref)); refs && !strings.HasPrefix(sel, "Db.from ") {
-			answer = `RequestFailed "400 bad request"`
-		}
+	if refs && len(at.refs) > 0 {
+		answer = `RequestFailed "400 bad request"`
 	}
 	return TestData{Name: quote(name), Lines: tb.lines, Result: "{ answer: r.answer, " + l + " } == { answer: " + answer + ", " + r + " }"}
+}
+
+// othersSave is the test that Save's own update, called directly (Test.run), leaves another
+// user's (another key's, who) row unchanged and answers it as not found: through the browser,
+// the options check of a form with selects refuses the post first (othersWrite's 400), so this
+// is the test that reaches the scoped write (updateMine, updateScoped) and pins it.
+func (g *crudGen) othersSave(at *crudTable, mod string, imports *importSet, who string) TestData {
+	t := at.t
+	tb := g.tb(mod, imports, true)
+	target := g.othersRow(tb, at)
+	g.optionRows(tb, at)
+	k := tb.counts[t.Module]
+	var values []string
+	for _, c := range at.editable {
+		values = append(values, c.Name+": "+g.changedValue(tb, at, c, k+1))
+	}
+	tb.let("let before <- Db.get %s %s", t.Name, target)
+	tb.let("let r <- Test.run (Save.update { id: %s, form: { %s } } %s)", target, strings.Join(values, ", "), tb.session(g.a.keys, g.a.role))
+	tb.let("let after <- Db.get %s %s", t.Name, target)
+	return TestData{Name: quote("Save itself does not change another " + who + "'s row"), Lines: tb.lines,
+		Result: fmt.Sprintf(`{ value: r.value, wrote: List.member %s r.trace, row: after } == { value: Err "not found", wrote: True, row: before }`, quote(g.a.update+" "+t.Name))}
 }
 
 // formName is the name of the form of a table's New and Edit pages: "PostForm".
@@ -2211,6 +2232,9 @@ func (g *crudGen) edit(at *crudTable) {
 	}
 	if g.partitioned(at) {
 		tests = append(tests, g.othersWrite(at, mod, imports, "another "+at.t.PartKey+"'s row cannot be saved", true, saveAs))
+	}
+	if who := g.scopedTo(at); who != "" && len(at.refs) > 0 { // the browser's post is refused first (400)
+		tests = append(tests, g.othersSave(at, mod, imports, who))
 	}
 	tests = append(tests, g.missingTest(at, mod, "Edit", imports))
 	if who := g.scopedTo(at); who != "" {

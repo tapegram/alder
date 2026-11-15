@@ -346,6 +346,43 @@ test "the row's own post is offered first when it sorts past the 50" = {
   )
 }
 
+test "another user's post the row refers to is not offered" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me }
+  let other <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "zz-1",
+    body: "body-1",
+    author: other,
+  }
+  let blogPost1 <- Db.insert BlogPost {
+    title: "title-1",
+    body: "body-1",
+    owner: me,
+    reviewer: Nothing,
+    post: Just post1,
+  }
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 2 202)
+    )
+  let page <- Test.get (Edit { id: blogPost1 })
+  Task.succeed (
+    {
+      offered: List.length (List.filter (\o -> o.id == post1) page.model.posts),
+      shown: List.length page.model.posts,
+    }
+      == { offered: 0, shown: 50 }
+  )
+}
+
 test "a visitor cannot save a blog post" = {
   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
   let _ <- Test.login { user: Just me }
@@ -416,6 +453,54 @@ test "another user cannot save it" = {
   let after <- Db.get BlogPost blogPost1
   Task.succeed (
     { answer: r.answer, row: after } == { answer: RequestFailed "400 bad request", row: before }
+  )
+}
+
+test "Save itself does not change another user's row" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me }
+  let other <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+  }
+  let blogPost1 <- Db.insert BlogPost {
+    title: "title-1",
+    body: "body-1",
+    owner: other,
+    reviewer: Nothing,
+    post: Nothing,
+  }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
+  let before <- Db.get BlogPost blogPost1
+  let r <-
+    Test.run (Save.update {
+      id: blogPost1,
+      form: {
+        title: "title-2",
+        body: "body-2",
+        post: Just post2,
+      },
+    } { user: me, role: Reader })
+  let after <- Db.get BlogPost blogPost1
+  Task.succeed (
+    {
+      value: r.value,
+      wrote: List.member "Db.updateMine BlogPost" r.trace,
+      row: after,
+    } == {
+      value: Err "not found",
+      wrote: True,
+      row: before,
+    }
   )
 }
 
