@@ -148,6 +148,76 @@ func TestHover_Qualifier(t *testing.T) {
 	if locs := definitionAt(t, c, "app/Posts/Index.alder", p); len(locs) != 0 {
 		t.Fatalf("stdlib definition %+v", locs)
 	}
+	// a documented module: the line, then its doc
+	c, rel := stdUseCopy(t)
+	got := hover(t, c, rel, c.at(rel, "List.take 2", 0))
+	if !strings.HasPrefix(got, "`List` · stdlib/List.alder") || !strings.Contains(got, "Functions for working with lists: building, slicing, searching, transforming and sorting them.") {
+		t.Fatalf("List qualifier hover %q", got)
+	}
+}
+
+// stdUseCopy is the blog with Posts.Index calling List.take and List.drop, opened.
+func stdUseCopy(t *testing.T) (*client, string) {
+	t.Helper()
+	c := start(t, blogCopy(t))
+	rel := "app/Posts/Index.alder"
+	text := strings.Replace(c.disk(rel), "perPage = 10", "perPage = 10\n\nfirstTwo : List Int\nfirstTwo = List.take 2 [1, 2, 3]\n\nrest : List Int\nrest = List.drop 1 [1, 2, 3]", 1)
+	c.open(rel, text)
+	c.diags(rel)
+	return c, rel
+}
+
+func TestHover_StdDoc(t *testing.T) {
+	c, rel := stdUseCopy(t)
+	got := hover(t, c, rel, c.at(rel, "take 2", 0))
+	sig := strings.Index(got, "```alder\ntake : Int -> List a -> List a\n```")
+	summary := strings.Index(got, "The first n elements of a list.")
+	if sig < 0 || summary < sig || !strings.Contains(got, "```alder\nList.take 2 [1, 2, 3] == [1, 2]") || !strings.Contains(got, `*Book: chapter 9, "List"*`) {
+		t.Fatalf("hover %q", got)
+	}
+}
+
+// TestHover_StdModuleBook: List.drop's doc has no Book line, so it shows its module's.
+func TestHover_StdModuleBook(t *testing.T) {
+	c, rel := stdUseCopy(t)
+	got := hover(t, c, rel, c.at(rel, "drop 1", 0))
+	if !strings.Contains(got, "List.drop 1 [1, 2, 3] == [2, 3]") || !strings.Contains(got, `*Book: chapter 9, "List"*`) {
+		t.Fatalf("hover %q", got)
+	}
+}
+
+// TestHover_AppDocNoBook: an app declaration without a Book line shows none.
+func TestHover_AppDocNoBook(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "lastPage then", 0))
+	if !strings.Contains(got, "lastPage bounds `page`") || strings.Contains(got, "Book:") {
+		t.Fatalf("hover %q", got)
+	}
+}
+
+// TestHover_HelperLineAboveDoc: a documented test helper's note comes before its doc.
+func TestHover_HelperLineAboveDoc(t *testing.T) {
+	c := start(t, helpersCopy(t))
+	openClean(t, c, "app/Helpers.alder")
+	got := hover(t, c, "app/Helpers.alder", c.at("app/Helpers.alder", "fetchText cfg = {", 0))
+	note, doc := strings.Index(got, "test helper (uses "), strings.Index(got, "A test helper: it uses")
+	if note < 0 || doc < note {
+		t.Fatalf("hover %q", got)
+	}
+}
+
+// TestHover_AppExamples: an indented line in an app's doc comment shows as a fenced alder block.
+func TestHover_AppExamples(t *testing.T) {
+	c := start(t, blogCopy(t))
+	rel := "app/Posts/Index.alder"
+	text := strings.Replace(c.disk(rel), "perPage = 10", "perPage = 10\n\n-- Twice a number.\n--\n--     double 2 == 4\ndouble : Int -> Int\ndouble n = n * 2", 1)
+	c.open(rel, text)
+	c.diags(rel)
+	got := hover(t, c, rel, c.at(rel, "double n =", 0))
+	if !strings.Contains(got, "Twice a number.\n\n```alder\ndouble 2 == 4\n```") {
+		t.Fatalf("hover %q", got)
+	}
 }
 
 func TestDefinition_Field(t *testing.T) {
