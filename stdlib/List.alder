@@ -198,10 +198,13 @@ append : List a -> List a -> List a
 -- Removes repeated elements, keeping the first of each.
 --
 -- Elements are compared with `==`, so records and lists match by their contents. It takes time
--- in proportion to the length of the list.
+-- in proportion to the length of the list. The one exception is NaN, the Float that
+-- `Float.sqrt (0.0 - 1.0)` gives: `==` says no NaN equals another, but here every NaN counts as
+-- one element, so only the first is kept.
 --
 --     List.unique [1, 2, 1, 3, 2] == [1, 2, 3]
 --     List.unique [{ id: 1 }, { id: 1 }] == [{ id: 1 }]
+--     List.length (List.unique [Float.sqrt (0.0 - 1.0), Float.sqrt (0.0 - 1.0), 1.0]) == 2
 unique : List a -> List a
 
 -- Sorts the elements into groups, one group for each distinct text key.

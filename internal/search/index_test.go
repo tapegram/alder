@@ -70,6 +70,10 @@ func TestStd_Entries(t *testing.T) {
 		len(e.Examples) == 0 || e.Examples[0] != "List.take 2 [1, 2, 3] == [1, 2]" || e.Book != `chapter 9, "List"` {
 		t.Errorf("List.take: %+v", e)
 	}
+	// No book line of its own: the List module's (I-3).
+	if e := find(ix, "List", "drop", Function); e == nil || strings.Contains(e.Doc, "Book:") || e.Book != `chapter 9, "List"` {
+		t.Errorf("List.drop: %+v", e)
+	}
 	if e := find(ix, "Query", "delay", Function); e == nil || e.Effect != "query" {
 		t.Errorf("Query.delay: %+v", e)
 	}

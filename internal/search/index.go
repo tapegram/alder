@@ -71,11 +71,20 @@ func Build(prog *names.Program, res *check.Result) *Index {
 }
 
 func (ix *Index) addModule(m *syntax.Module, source string, res *check.Result) {
-	// where fills an entry's own position: app entries only.
+	// A stdlib declaration with no book line of its own has its module's, as in hover; an app
+	// declaration has none.
+	moduleBook := ""
+	if source == "stdlib" {
+		moduleBook = doc.Parse(syntax.DocOf(m.Lines, m.Span.Start.Line)).Book
+	}
+	// where fills an entry's doc fields, and its own position: app entries only.
 	where := func(e *Entry, sp diag.Span) {
 		e.Doc = syntax.DocOf(m.Lines, sp.Start.Line)
 		d := doc.Parse(e.Doc)
 		e.Summary, e.Book, e.Examples = d.Summary, d.Book, []string{}
+		if e.Book == "" {
+			e.Book = moduleBook
+		}
 		for _, ex := range d.Examples {
 			e.Examples = append(e.Examples, ex.Source)
 		}

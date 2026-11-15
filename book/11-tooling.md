@@ -712,7 +712,9 @@ start with `:`.
 #### Reading the docs
 
 `--doc` prints more of each result's doc comment under its row, indented four
-spaces: the detail paragraphs, the examples, and the book line.
+spaces: the detail paragraphs, the examples, and the book line. A standard
+library declaration with no book line of its own shows its module's, as hover
+does.
 
 ```text
 $ alder search List.take --doc
@@ -733,7 +735,8 @@ search that finds nothing prints nothing to the standard output.
 `--limit N` shows at most N results; the default is 50. `--json` prints one
 object, for tools and agents, instead of the table. Each result carries the
 doc in three more fields: `summary`, `examples` (an array of the example
-sources) and `book` (the book line, or `""`); `--json` ignores `--doc`, since
+sources) and `book` (the book line, the module's for a standard library
+declaration without its own, or `""`); `--json` ignores `--doc`, since
 it prints them all anyway. The result below is a declaration without a doc:
 
 ```text
@@ -3125,7 +3128,7 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   the book line in italics. On `List.take`:
 
   ```text
-  List.take : Int -> List a -> List a
+  take : Int -> List a -> List a
 
   The first n elements of a list.
 
