@@ -66,7 +66,7 @@ func resourceCheck(p *Program, o ResourceOptions) (ResourceOptions, *Table, []st
 	if _, err := os.Stat(filepath.Join(p.Dir, filepath.FromSlash(dir))); err == nil && !o.regen {
 		return o, nil, nil, Refusef("`%s/` exists: `alder regen resource %s` updates it; to generate another, choose another `--module`", dir, t.Name)
 	}
-	if err := secretRefusal(t); err != nil {
+	if err := secretRefusal(t, "`alder new resource` never shows or writes"); err != nil {
 		return o, nil, nil, err
 	}
 	hasUser := p.Session != nil && p.Session.User != nil

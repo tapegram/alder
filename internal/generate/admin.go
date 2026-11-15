@@ -78,7 +78,7 @@ func adminCheck(p *Program, o AdminOptions) (AdminOptions, error) {
 		return o, Refusef("this app has no tables: the admin has nothing to show (`alder new table` makes one)")
 	}
 	for _, t := range p.Tables {
-		if err := secretRefusal(t); err != nil {
+		if err := secretRefusal(t, "the admin never shows or writes"); err != nil {
 			return o, err
 		}
 	}
@@ -106,11 +106,12 @@ func pageOptionsCheck(module, path, modEg, pathEg string) (string, string, error
 }
 
 // secretRefusal refuses a table with a required secret column an insert must name and nothing
-// gives: generated pages never show or write it.
-func secretRefusal(t *Table) error {
+// gives: generated pages never show or write it. never is what says so, after "which": "the
+// admin never shows or writes".
+func secretRefusal(t *Table, never string) error {
 	for _, c := range t.Columns {
 		if _, ok := secretValue(c); c.Secret() && c.Required() && c.Kind != KindTime && !ok {
-			return Refusef("`%s.%s` is a secret, which the admin never shows or writes, and an insert must name it: give it a default (`= …`) or make it `Maybe`", t.Name, c.Name)
+			return Refusef("`%s.%s` is a secret, which %s, and an insert must name it: give it a default (`= …`) or make it `Maybe`", t.Name, c.Name, never)
 		}
 	}
 	return nil

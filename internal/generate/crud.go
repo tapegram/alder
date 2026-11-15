@@ -1710,7 +1710,11 @@ func (g *crudGen) newPage(at *crudTable) {
 		for _, c := range at.secrets {
 			names = append(names, c.Name)
 		}
-		insert = append(insert, "-- the admin never shows or writes a secret ("+strings.Join(names, ", ")+"): a row starts without one")
+		who := "the admin never shows or writes"
+		if g.a.marker == "@resource" {
+			who = "these pages never show or write"
+		}
+		insert = append(insert, "-- "+who+" a secret ("+strings.Join(names, ", ")+"): a row starts without one")
 	}
 	insert = append(insert, g.unique(at, "", []string{
 		fmt.Sprintf("let id <- %s %s { %s }", g.a.insert, t.Name, strings.Join(inits, ", ")),
