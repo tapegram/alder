@@ -3,6 +3,7 @@ package format
 import (
 	"cmp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"alder/internal/syntax"
@@ -77,6 +78,15 @@ func (p *printer) module(m *syntax.Module) Doc {
 			}
 			i--
 			out = append(out, p.routeLines(run))
+			continue
+		}
+		if _, ok := d.(*syntax.JobDecl); ok {
+			var run []*syntax.JobDecl
+			for ; i < len(decls) && isJob(decls[i]); i++ {
+				run = append(run, decls[i].(*syntax.JobDecl))
+			}
+			i--
+			out = append(out, p.jobLines(run))
 			continue
 		}
 		out = append(out, p.withComments(d, p.decl(d)))
@@ -298,6 +308,51 @@ func (p *printer) routeLines(rs []*syntax.RouteDecl) Doc {
 		}
 		line.WriteString(row[cols])
 		out = append(out, p.lead(r, true), Text(strings.TrimRight(line.String(), " ")), p.trail(r))
+	}
+	return Concat(out...)
+}
+
+func isJob(d syntax.Decl) bool { _, ok := d.(*syntax.JobDecl); return ok }
+
+// jobLines prints a run of adjacent job declarations with their comments, one line each, never
+// wrapped, the `=` aligned: `job NAME = { params }` then the options in the order written. The
+// run is not reordered or gathered; it is the jobs that stand next to each other.
+func (p *printer) jobLines(js []*syntax.JobDecl) Doc {
+	heads := make([]string, len(js))
+	width := 0
+	for i, j := range js {
+		heads[i] = "job " + j.Name
+		width = max(width, len(heads[i]))
+	}
+	var out []Doc
+	for i, j := range js {
+		if i > 0 {
+			out = append(out, HardLine)
+		}
+		params := "{}"
+		if len(j.Params.Fields) > 0 {
+			fs := make([]string, len(j.Params.Fields))
+			for k, f := range j.Params.Fields {
+				fs[k] = Render(p.field(f), 1<<30)
+			}
+			params = "{ " + strings.Join(fs, ", ") + " }"
+		}
+		line := heads[i] + strings.Repeat(" ", width-len(heads[i])) + " = " + params
+		for _, o := range j.Options {
+			switch o.Name {
+			case "every":
+				line += ` every "` + j.Every.Text + `"`
+			case "cron":
+				line += ` cron "` + j.Cron.Text + `"`
+			case "timeout":
+				line += ` timeout "` + j.Timeout.Text + `"`
+			case "retries":
+				line += " retries " + strconv.FormatInt(j.Retries.Value, 10)
+			case "silo":
+				line += " silo " + j.Silo
+			}
+		}
+		out = append(out, p.lead(j, true), Text(line), p.trail(j))
 	}
 	return Concat(out...)
 }

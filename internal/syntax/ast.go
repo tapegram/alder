@@ -164,6 +164,35 @@ type RouteDecl struct {
 	Guard
 }
 
+// JobDecl is `job NAME = { params } [every "…"] [cron "…"] [retries N] [timeout "…"] [silo KEY]`,
+// the options in any order, each at most once. The options are words after the record, not
+// keywords; Options keeps the order they were written in. The literals are as written, unparsed.
+type JobDecl struct {
+	Node
+	Name     string
+	NameSpan diag.Span
+	Params   *RecordType
+	Every    *StringLit // nil when absent
+	Cron     *StringLit
+	Retries  *IntLit
+	Timeout  *StringLit
+	Silo     string // "" when absent
+	Options  []JobOption
+}
+
+// JobOption is one option of a job declaration, by name and place.
+type JobOption struct {
+	Name string
+	Pos  diag.Pos
+}
+
+// StringLit is a string literal in a declaration head: Text is what stands between the quotes, as
+// written.
+type StringLit struct {
+	Node
+	Text string
+}
+
 // SiloDecl is `silo org { Project, Task }` in App (M15): the tables stored in one database per
 // value of the session field Key. Tables are the names as written, TableSpans their places.
 type SiloDecl struct {

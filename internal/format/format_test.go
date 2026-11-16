@@ -234,3 +234,24 @@ func TestFormat_RoutesMoveCommentsWithThem(t *testing.T) {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+func TestFormat_Job(t *testing.T) {
+	block := "module M\n\n" +
+		"job SendWelcome = { user: User.UserId }\n" +
+		"job Digest      = { org: Org.OrgId } silo org\n" +
+		"job Hourly      = {} every \"1h\"\n" +
+		"job Nightly     = {} cron \"0 3 * * *\"\n" +
+		"job Charge      = { invoice: Invoice.InvoiceId } retries 0 timeout \"30s\"\n"
+	if got := string(format(t, "m.alder", []byte(block))); got != block {
+		t.Fatalf("not a fixed point\n--- got:\n%s\n--- want:\n%s", got, block)
+	}
+	got := string(format(t, "m.alder", []byte("module M\n\njob   A={}  retries 2\n")))
+	if want := "module M\n\njob A = {} retries 2\n"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	// options keep their source order
+	got = string(format(t, "m.alder", []byte("module M\n\njob A = {x:Int}   timeout \"5s\"   retries 1\n")))
+	if want := "module M\n\njob A = { x: Int } timeout \"5s\" retries 1\n"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}

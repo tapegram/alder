@@ -15,6 +15,7 @@ const operatorSample = "== != < <= > >= + - * / % ++ && || ?? |> <-"
 var oldKeywords = map[string]string{
 	"page": "the old form of a route: a `page` declaration is E0046 (internal/check/removed.go)",
 	"msg":  "the old form of a write route: a `msg` declaration is E0046 (internal/check/removed.go)",
+	"job":  "a background job (#168): its entry needs a book chapter, which the jobs docs task writes; remove this line then",
 }
 
 // notDocumented are the token kinds that have no entry: names, literals, brackets and

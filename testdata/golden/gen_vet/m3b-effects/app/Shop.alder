@@ -16,8 +16,8 @@ capability Pay {
 
 type Job = { run: Task Int, label: Text }
 
-job : Job
-job = { run: Task.succeed 1, label: "one" }
+current : Job
+current = { run: Task.succeed 1, label: "one" }
 
 runJob : Job -> Task Int
 runJob j = j.run

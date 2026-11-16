@@ -2259,7 +2259,7 @@ func TestShop(t *testing.T) {
 	if cs, err := eff.RunQuery(env, Shop__seenBefore(clock)); err != nil || len(cs) != 0 {
 		t.Errorf("seenBefore = %v, %v", cs, err)
 	}
-	if k, err := eff.Run(env, eff.KTask, Shop__runJob(Shop__job)); err != nil || k != 1 {
+	if k, err := eff.Run(env, eff.KTask, Shop__runJob(Shop__current)); err != nil || k != 1 {
 		t.Errorf("runJob = %d, %v", k, err)
 	}
 	if r := Shop__after(rt.Invalid("no")); r.Kind != rt.RespInvalid || r.Text != "no" || len(r.Events) != 1 || r.Events[0].Toast.Text != "done" ||
