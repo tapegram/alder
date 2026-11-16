@@ -6,6 +6,11 @@
 -- with a signature and shared by many tests. A `Fuzz.Property`, made by `Fuzz.forAll` or
 -- `Fuzz.forAllTask`, can only be a test's body.
 --
+-- `Fuzz.any : Fuzzer a` is a special form, not declared in this file: the generator that
+-- `alder test` derives from a type, the explicit form of a derived argument. The compiler gives
+-- it the generator of the type the context asks for, so that type must be known where it is
+-- written (E0038 otherwise; inside a test, a type left open is `Int`).
+--
 -- Book: chapter 9, "Fuzz"
 module Fuzz
 
@@ -24,11 +29,6 @@ type Fuzzer a
 --
 -- Book: chapter 10, "`Fuzz.forAll` and shared `Fuzzer`s"
 type Property
-
--- `Fuzz.any : Fuzzer a` is a special form, not declared here: the generator that `alder test`
--- derives from a type, the explicit form of a derived argument. The compiler gives it the
--- generator of the type the context asks for, so that type must be known where it is written
--- (E0038 otherwise; inside a test, a type left open is `Int`).
 
 -- A property that holds when a function gives `True` for every value a generator draws.
 --

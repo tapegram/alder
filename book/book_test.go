@@ -1473,6 +1473,7 @@ func TestBook_CommandsFail(t *testing.T) {
 func TestBook_HtmlTakesNoArgument(t *testing.T) {
 	old := regexp.MustCompile(`Html (Never|Msg|[a-z]\b)`)
 	allowed := map[string][]string{
+		"D-stdlib.md":     {"cannot write `Html Never` yourself, though: that is an error, so write `Html`."}, // the doc of Never
 		"05-html.md":      {"It takes no type argument: `Html Msg`, `Html a` and", "`Html Never` are E0046; write `Html`."},
 		"B-pitfalls.md":   {"card) alike. `Html` takes no type argument: `Html Msg`, `Html a` and", "`Html Never` are E0046."},
 		"11-tooling.md":   {"\"Qualified declarations\"), and `Html Msg` becomes `Html`.", "`Reject t` is `Response.invalid t`, and `Html Msg` is `Html`."},

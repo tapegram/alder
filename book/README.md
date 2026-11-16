@@ -31,6 +31,7 @@ changes, this book changes first.
 | [A. Grammar](A-grammar.md) | The formal grammar, including the `route` declaration and qualified names |
 | [B. Common mistakes](B-pitfalls.md) | The errors seen most often in experiments, and the route-name mistakes the compiler catches |
 | [C. The alder-ui design system](C-design-system.md) | The `al-` elements every app can use: linking the stylesheet, tokens and themes, every element's attributes with examples, what the renderer adds; the library's documentation |
+| [D. Standard library reference](D-stdlib.md) | Every standard library declaration with its description and examples, generated from the comments in `stdlib/` |
 
 ### The longer chapters in full
 

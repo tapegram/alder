@@ -37,7 +37,7 @@ none : Html
 -- Book: chapter 9, "Html"
 text : Text -> Html
 
--- The nodes side by side with no wrapper element (a doctype before <html>).
+-- The nodes side by side with no wrapper element (a doctype before `<html>`).
 --
 -- An empty list renders nothing.
 --

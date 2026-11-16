@@ -121,11 +121,31 @@ func (d Doc) Markdown(book string) string {
 	if len(d.paras) == 0 {
 		return ""
 	}
+	blocks := []string{}
+	if body := d.Body("alder"); body != "" {
+		blocks = append(blocks, body)
+	}
+	if d.Book != "" {
+		book = d.Book
+	}
+	if book != "" {
+		blocks = append(blocks, "*Book: "+book+"*")
+	}
+	return strings.Join(blocks, "\n\n")
+}
+
+// Body is Markdown without the book line: the paragraphs in the order written, each run of
+// examples in a fenced block whose info string is info. "" for an empty doc.
+func (d Doc) Body(info string) string {
 	var blocks []string
 	var run []Example
 	flush := func() {
 		if len(run) > 0 {
-			blocks = append(blocks, fenced(run))
+			srcs := make([]string, len(run))
+			for i, e := range run {
+				srcs[i] = e.Source
+			}
+			blocks = append(blocks, Fence(info, strings.Join(srcs, "\n")))
 			run = nil
 		}
 	}
@@ -139,34 +159,23 @@ func (d Doc) Markdown(book string) string {
 		}
 	}
 	flush()
-	if d.Book != "" {
-		book = d.Book
-	}
-	if book != "" {
-		blocks = append(blocks, "*Book: "+book+"*")
-	}
 	return strings.Join(blocks, "\n\n")
 }
 
-// fenced is one `alder` code block holding examples, its fence longer than any run of backticks
-// inside them.
-func fenced(exs []Example) string {
-	srcs := make([]string, len(exs))
-	longest := 0
-	for i, e := range exs {
-		srcs[i] = e.Source
-		n := 0
-		for _, r := range e.Source {
-			if r == '`' {
-				n++
-				longest = max(longest, n)
-			} else {
-				n = 0
-			}
+// Fence is text as a code block with the info string info, its fence longer than any run of
+// backticks inside the text.
+func Fence(info, text string) string {
+	longest, n := 0, 0
+	for _, r := range text {
+		if r == '`' {
+			n++
+			longest = max(longest, n)
+		} else {
+			n = 0
 		}
 	}
 	fence := strings.Repeat("`", max(3, longest+1))
-	return fence + "alder\n" + strings.Join(srcs, "\n") + "\n" + fence
+	return fence + info + "\n" + text + "\n" + fence
 }
 
 var bookRef = regexp.MustCompile(`^(?:(chapter) ([0-9]+)|(appendix) ([A-Z])), "([^"]+)"$`)

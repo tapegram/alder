@@ -1,6 +1,7 @@
 package book
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"alder/internal/csscheck"
 	"alder/internal/elements"
 	"alder/internal/scaffold"
+	"alder/internal/stdref"
 	"alder/rt"
 )
 
@@ -303,4 +305,24 @@ func removedTokensTable(t *testing.T, md string) string {
 		end = len(rest)
 	}
 	return rest[:end]
+}
+
+var update = flag.Bool("update", false, "rewrite book/D-stdlib.md")
+
+// Appendix D is generated from the stdlib's doc comments (internal/stdref).
+func TestAppendixD_Current(t *testing.T) {
+	want, err := stdref.Markdown()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *update {
+		if err := os.WriteFile("D-stdlib.md", []byte(want), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile("D-stdlib.md")
+	if err != nil || string(got) != want {
+		t.Fatal("book/D-stdlib.md is stale: run go test ./book -run TestAppendixD_Current -update")
+	}
 }

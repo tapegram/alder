@@ -1,7 +1,8 @@
 # 9. Standard library
 
-Every module here is always in scope. This is the complete list; a function
-not listed here does not exist.
+Every module here is always in scope. This chapter is the guide to them; the
+complete list is [appendix D](D-stdlib.md), and a function not listed there does
+not exist.
 
 ## List
 
