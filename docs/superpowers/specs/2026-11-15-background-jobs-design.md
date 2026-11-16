@@ -18,9 +18,11 @@ request-scoped wait, not a scheduler".
 After this change a job is a declaration beside the routes, enqueued from `update` with one effect
 step, stored in the app's database in the same transaction as the writes that caused it, run by
 the app's own process, retried with backoff, and visible in the dev panel, the log and the metrics.
-A schedule is the same declaration with `every` or `cron`. Nothing is added to a deploy: no broker,
-no worker service, no second binary. `alder run` runs jobs as it serves; `alder test` runs them
-when the test says so, on the test's clock.
+A schedule is the same declaration with `every` or `cron`. Nothing is added to a deploy by default:
+no broker, no second binary; the app's process runs its jobs. Where the store is shared (Turso),
+one field, `workers: N`, moves the jobs to a worker service of the same image that scales on its
+own. `alder run` runs jobs as it serves; `alder test` runs them when the test says so, on the
+test's clock.
 
 ```alder
 module Signup
@@ -105,8 +107,9 @@ the dev panel's Jobs page. **(my call)**
    enqueued with `Job.enqueue (Name { … })` from any `Task`.
 2. Enqueueing is a write in the enqueuing Task's transaction: a job exists if and only if the
    writes beside it were committed. No outbox to write by hand.
-3. Jobs run in the app's process, in development, in tests and in every deploy target, with no new
-   service, and survive a restart (the queue is the database).
+3. Jobs run in the app's process by default, in development, in tests and in every deploy target,
+   with no new service, and survive a restart (the queue is the database). Where the store is
+   shared, `workers: N` moves them to worker instances of the same image that scale on their own.
 4. A failed attempt is retried with backoff; a job that keeps failing is kept with its error for
    someone to look at and retry.
 5. `every "<duration>"` and `cron "<expr>"` schedules, correct with one process (Ssh, Fly) and with
@@ -127,8 +130,11 @@ the dev panel's Jobs page. **(my call)**
 - Push from a finished job to a page (#165). This design keeps the hook: the worker publishes
   "job finished" on an in-process channel that #165's watched route can subscribe to. Pages wait
   with `load={R} every="2s"` and `Job.status` meanwhile.
-- A separate worker process or image. `ALDER_JOBS=0` lets an instance opt out of running jobs,
-  which is enough to shape a dedicated worker on Render; nothing more.
+- A separate worker *image*. The worker service (§7a) is the same binary started with
+  `--jobs-only`; there is one Dockerfile.
+- Worker machines on Fly or Ssh. Both keep the database in a file on one machine, and a second
+  machine cannot open it; worker machines need a shared store, which today means the Render target
+  and Turso. Fly with Turso (then `workers:` there too) is a follow-up issue.
 - Cancelling a running job from the outside; `Job.cancel` for a queued one is a follow-up.
 - Catching up missed schedule ticks one by one (see "Schedules": at most one late run).
 - An `Env`/secrets module. Jobs read configuration the way routes do: through capabilities.
@@ -139,8 +145,13 @@ the dev panel's Jobs page. **(my call)**
   row and the job's writes are in the same store, the "done" mark is a write *inside the job's
   transaction*; there is no window. When they are not (a siloed app, below), the window exists and
   the book says so.
-- A deploy that needs one more thing. `alder deploy init`'s files do not change; no target gets a
-  worker service; the health check does not gain a dependency.
+- A deploy that needs one more thing *by default*. Without `workers:`, `alder deploy init`'s files
+  do not change, no target gets a service, and the health check gains no dependency. With it, the
+  one more thing is one more service in `render.yaml`, written by `alder deploy init`.
+- A long job that stops the site. A `Task` is one transaction from its first write and SQLite has
+  one writer, so a job that writes early and runs for a minute makes every request's write wait a
+  minute. The runtime cannot forbid it; the book teaches the shape that avoids it (§6a) and the
+  dev panel points at a job that held the lock.
 - A test that sleeps or races. Nothing in the test runtime starts a goroutine for jobs.
 - A silent failure. A dead job is a warn line, a row in the panel, a metric; never only a row.
 - A write lock held across a slow call. A job's transaction begins at its first write, as a
@@ -399,6 +410,30 @@ What the book says, in one paragraph, and what the runtime does:
   0, state queued). A dead schedule tick is retried the same way and does not disturb the next
   tick's row.
 
+### 6a. Long jobs, the write lock, and what Alder code can do in a job
+
+A job's body is a `Task`, run as a route's `update` is: the app is a Go binary, so the pure code
+is compiled Go and the effect spine is the interpreter requests use. For the issue's workloads
+(mail, an AI call, a cleanup, a digest) a job costs what a request costs. Two limits come from the
+transaction model, not from the worker, and the book says both:
+
+- **Write early, run long, and the site waits.** The transaction begins at the first write and
+  ends with the Task; a job that marks a row "started", then calls an AI model for forty seconds,
+  holds SQLite's one write lock for forty seconds, and every request's write waits (`busy_timeout`
+  is 5 s: they fail). The shape: read and call first, write last; and for a batch, **fan out**: one
+  job reads the ids and enqueues one small job per item (`Task.all (List.map (\id -> Job.enqueue
+  (Send { id: id })) ids)`), so each transaction is short and failures retry per item. The runtime
+  helps two ways **(my call)**: the dev panel and the log mark an attempt that held a write
+  transaction for more than 2 s (`held the write lock 41 s: write last, or fan out — book 17`),
+  and the default `timeout "5m"` bounds the damage.
+- **Memory, not streaming.** `Db.all` gives a `List`; a job over a million rows loads them. The
+  fan-out shape covers it (a job pages with `Db.limit`/`Db.offset` and enqueues the next page).
+  A streaming `Db` is not part of this design.
+
+Other things a job cannot do: read a session (§1), `Task.sleep` more than a minute (the existing
+clamp; `enqueueAt` is the way to wait longer), or run on the request's connection (there is none:
+`Response` values have no meaning in a job, and `run` gives `Unit`).
+
 ### 7. Silos, Turso and several instances
 
 - **Row store.** `Job.enqueue` writes the row in the store its Task is bound to: a `requires org`
@@ -424,9 +459,51 @@ What the book says, in one paragraph, and what the runtime does:
   start there, but internal tables are created at open by the runtime, as `_alder_lock` is;
   `alder deploy`'s `--migrate-only` creates it too, so the first build with jobs finds it.
 - **Several instances** (Render `instances: N`): all run workers; claims are atomic; schedule ticks
-  are rows with a unique index, so one instance wins each tick and no leader exists. `ALDER_JOBS=0`
-  on the web instances and a second Render service of the same image with `ALDER_JOBS=8` is the
-  "dedicated worker" shape, documented, not generated.
+  are rows with a unique index, so one instance wins each tick and no leader exists. With
+  `workers:` (§7a) the web instances run none (`ALDER_JOBS=0`) and the worker service runs them
+  all; the claim logic is the same.
+
+### 7a. Worker machines: `workers:` and `--jobs-only`
+
+Where the store is shared, jobs can leave the web process. This is the deploy feature the user
+asked for, and it is one field and one flag:
+
+- **`app --jobs-only`**: the generated `main` opens the store, wires the capabilities, starts the
+  workers and no listener; `SIGTERM` stops it as §3 says (stop claiming, grace, cancel, re-queue).
+  `ALDER_JOBS` defaults to 8 in this mode **(my call)**. On Turso it follows the web build's rule:
+  behind the database, it exits 1 (Render restarts it after `alder deploy` migrates); ahead of it
+  (a newer build migrated), it idles and polls the schema row every 10 s instead of running jobs
+  with stale code, the worker's form of the maintenance page. `/_alder/health` does not exist in
+  this mode; the process being up is its health, which is what Render's worker type checks.
+- **`Render "region" { service, database, instances, workers: 2, plan }`**: `workers` (a whole
+  number ≥ 1; E0030's existing wording style for a bad value) makes `alder deploy init` write a
+  second service in `render.yaml`:
+
+  ```yaml
+    - type: worker
+      name: <app>-worker
+      runtime: docker
+      dockerfilePath: ./Dockerfile
+      dockerCommand: /app --jobs-only
+      autoDeployTrigger: commit
+      envVars: (the web service's, ALDER_ADDR dropped, ALDER_JOBS unset → 8)
+  ```
+
+  and sets `ALDER_JOBS=0` on the web service. `alder deploy` scales the worker service to
+  `workers` as it scales the web one to `instances` (same API call, `Render.Instances`'s
+  precedent), waits for the web health as today, then waits for the worker service's deploy to be
+  live through Render's deploy status (no HTTP to probe); `alder status` lists both services'
+  counts; `alder logs` gains `--worker` to read the worker service's log **(my call)**. Without
+  `workers`, nothing in the Render files changes.
+- **Scaling story, plainly, for the book**: the queue scales as far as the database does. One
+  machine with a file (Ssh, Fly): the app process runs the jobs; a CPU-heavy job competes with
+  requests, and `ALDER_JOBS` is the knob. A shared store (Render + Turso): `workers: N` worker
+  instances, scaled independently of the web ones, failing independently (a worker that runs out
+  of memory restarts without a request noticing), the web instances idle on jobs. Fly with Turso
+  would give the same on Fly; it is filed as a follow-up with this design.
+- **Development**: `alder run` keeps the in-process worker; `--jobs-only` is for deploys. A
+  developer who wants to see the split locally runs `build/<app>/<app> --jobs-only` beside `alder
+  run` with `ALDER_JOBS=0` in the dev server's environment; documented, not a flag of `alder run`.
 - **Two builds at once** (Ssh drain, Render roll, `alder run` swap): both claim; a row's kind
   unknown to one is left to the other; the stopping build re-queues what it was running. The jobs
   schema version in `_alder_meta` lets a newer build add a column while the older still reads
@@ -555,9 +632,10 @@ documents the `job` keyword and its options. CHANGELOG under Added.
   request event), the metrics names if the existing ones suggest another convention.
 - PR split. Suggested, each green on its own: (1) declaration + checker + `Job` module + table +
   enqueue, with `Test.jobs`/`Test.work` so it is testable from the first PR; (2) the worker in
-  `main`, log, metrics, health, shutdown; (3) schedules (cron parser, ticks); (4) silos and the
-  active set, Turso check; (5) dev panel, events, `alder jobs`; (6) generator, book chapter 17,
-  tree-sitter/LSP/langdoc, CHANGELOG.
+  `main`, log, metrics, health, shutdown, the write-lock mark; (3) schedules (cron parser, ticks);
+  (4) silos and the active set, Turso check; (5) `--jobs-only`, `workers:` on the Render target,
+  `alder deploy init`/`deploy`/`status`/`logs --worker`; (6) dev panel, events, `alder jobs`;
+  (7) generator, book chapter 17, tree-sitter/LSP/langdoc, CHANGELOG.
 
 ## Calls to check
 
@@ -592,6 +670,13 @@ The author's decisions a reader would most plausibly overturn, in order:
 16. **`Serve` split into `Open`/`Handler`/`StartJobs`/`Close`** so the worker shares the
     router's store, caps, clock and log.
 17. **`RunOne` as the shared core**; Alder tests cover it, Go tests cover the loop.
+18. **Worker machines as `workers: N` on the Render target** with `app --jobs-only` (same image),
+    `ALDER_JOBS=0` on the web instances; Fly needs Turso first (follow-up). In-process stays the
+    default everywhere, because the one-machine SQLite app cannot have a second machine anyway.
+19. **The write-lock warning** (an attempt that held a write transaction > 2 s is marked in the
+    panel and the log) and the fan-out pattern as the book's answer to batches; no streaming `Db`.
+20. **`--jobs-only` ahead of the database idles** rather than exits; `ALDER_JOBS` defaults to 8
+    there; `alder logs --worker`.
 
 ## Follow-ups to file when this lands
 
@@ -599,4 +684,6 @@ The author's decisions a reader would most plausibly overturn, in order:
 - `Job.cancel`, `enqueueIn`, priorities, a `Job.Id` on the response for a page to poll.
 - alder-tui Jobs screen (`/_dev/jobs.json`).
 - `alder jobs --env <name>` against a deployed target through the deploy adapters.
+- Fly with Turso as a store (then `workers:` on the Fly target too, as Fly process groups).
+- A streaming or paged `Db` read for jobs over large tables, if fan-out proves not enough.
 - `alder secret` (#237) is unrelated but comes up in the same "operate a deployed app" breath.
