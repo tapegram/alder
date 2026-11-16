@@ -175,6 +175,9 @@ func (l *lowerer) ctorRef(x *syntax.CtorRef) Expr {
 			return &RouteRef{Typed: Typed{t}, Route: r}
 		}
 		return l.eta(fn, func(arg Expr) Expr { return &RouteRef{Typed: Typed{fn.Result}, Route: r, Params: arg} })
+	case syntax.RefJob:
+		j := l.jobs[key(x.Ref.Module, x.Ref.Name)]
+		return l.eta(fn, func(arg Expr) Expr { return &JobRef{Typed: Typed{fn.Result}, Job: j, Params: arg} })
 	case syntax.RefCtor:
 		info := l.res.Ctors[key(x.Ref.Module, x.Ref.Name)]
 		if info == nil { // a brand constructor: erased to the identity
@@ -265,6 +268,8 @@ func (l *lowerer) app(fn syntax.Expr, args []syntax.Expr, piped Expr, t types.Ty
 		switch ct.Ref.Kind {
 		case syntax.RefRoute:
 			return &RouteRef{Typed: Typed{t}, Route: l.route(ct.Ref.Module, ct.Ref.Name), Params: lower()[0]}
+		case syntax.RefJob:
+			return &JobRef{Typed: Typed{t}, Job: l.jobs[key(ct.Ref.Module, ct.Ref.Name)], Params: lower()[0]}
 		case syntax.RefCtor:
 			if l.res.Ctors[key(ct.Ref.Module, ct.Ref.Name)] == nil {
 				return lower()[0] // a brand constructor is erased

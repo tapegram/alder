@@ -68,6 +68,7 @@ func (mc *modCtx) checkBodies() {
 		c.resolveFuzzAny(mc.ts, false) // after the declaration: its Fuzz.any uses must be concrete
 	}
 	mc.checkRoutes() // no-op for a module without routes
+	mc.checkJobs()
 	c.resolveFuzzAny(mc.ts, false)
 }
 
@@ -1309,6 +1310,12 @@ func (mc *modCtx) inferCtor(x *syntax.CtorRef, applied bool) types.Type {
 			return types.Route
 		}
 		return &types.Fun{Params: []types.Type{info.Params}, Result: types.Route}
+	case syntax.RefJob:
+		// a job constructor builds a Job from its parameters
+		if info := c.job(x.Ref.Module, x.Ref.Name); info != nil {
+			return &types.Fun{Params: []types.Type{info.Params}, Result: types.Job}
+		}
+		return types.Err
 	case syntax.RefTable:
 		mc.fakeTableUse(c.key(x.Ref.Module, x.Ref.Name), x.Ref.Name, x.Span)
 		if info, ok := c.tables[c.key(x.Ref.Module, x.Ref.Name)]; ok {

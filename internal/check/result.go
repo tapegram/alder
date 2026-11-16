@@ -19,6 +19,7 @@ type Result struct {
 	Tables  map[string]*types.TableInfo      // "Module.Table"
 	Forms   map[string]*types.Record         // "Module.Form"
 	Routes  map[string][]*RouteInfo          // route module name → its routes, in declaration order
+	Jobs    map[string][]*JobInfo            // module name → its jobs, in declaration order
 	Ctors   map[string]*CtorInfo             // "Module.Ctor" → {Union, Arg}
 	Caps    map[string]map[string]types.Type // capability module → name → type
 	Session *types.Record
@@ -124,7 +125,7 @@ func (c *Checker) result() *Result {
 		r.FuzzAny[v] = c.u.Apply(t)
 	}
 	r.Values, r.Decls, r.Tables, r.Forms, r.Caps = c.values, c.types, c.tables, c.forms, c.caps
-	r.Routes, r.Ctors, r.Session, r.U = c.routes, c.ctors, c.session, c.u
+	r.Routes, r.Jobs, r.Ctors, r.Session, r.U = c.routes, c.jobs, c.ctors, c.session, c.u
 	r.Via, r.Silos, r.Choose = c.via, c.silos, c.choose
 	r.Elements = c.elements
 	return r

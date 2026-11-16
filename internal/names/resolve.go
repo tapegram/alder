@@ -10,7 +10,7 @@ import (
 	"alder/internal/syntax"
 )
 
-var preludeTypes = map[string]bool{"Int": true, "Float": true, "Bool": true, "Text": true, "Unit": true, "Date": true, "Time": true, "List": true, "Maybe": true, "Result": true, "Dict": true, "Html": true, "Never": true, "Query": true, "Task": true, "Nav": true, "Error": true, "Form": true, "Table": true, "Id": true, "Insert": true, "Select": true, "Condition": true, "Order": true, "Page": true, "Route": true, "Response": true, "Doc": true, "Answer": true, "File": true, "Bytes": true}
+var preludeTypes = map[string]bool{"Int": true, "Float": true, "Bool": true, "Text": true, "Unit": true, "Date": true, "Time": true, "List": true, "Maybe": true, "Result": true, "Dict": true, "Html": true, "Never": true, "Query": true, "Task": true, "Nav": true, "Error": true, "Form": true, "Table": true, "Id": true, "Insert": true, "Select": true, "Condition": true, "Order": true, "Page": true, "Route": true, "Job": true, "Response": true, "Doc": true, "Answer": true, "File": true, "Bytes": true}
 var generatedTypes = map[string]bool{"Params": true, "Msg": true, "Session": true}
 
 // moduleScope indexes one module's declarations.
@@ -37,6 +37,7 @@ type moduleScope struct {
 	// routes holds the module's route names. Its qualified declarations are in values under
 	// their full names (`Row.view`).
 	routes  map[string]bool
+	jobs    map[string]bool            // the module's job names (#168), qualified like routes
 	columns map[string]map[string]bool // table → field set
 	// imports holds the module's imports by canonical qualifier (design rule 3), whatever alias
 	// is written: the written alias is only checked (E0204), so references keep resolving while
@@ -47,7 +48,7 @@ type moduleScope struct {
 }
 
 func (p *Program) index(m *syntax.Module) *moduleScope {
-	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, forms: map[string]bool{}, ctors: map[string]string{}, brands: map[string]bool{}, tables: map[string]bool{}, fakeTables: map[string]string{}, caps: map[string]bool{}, capEntries: map[string]bool{}, entryCaps: map[string]string{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, routes: map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
+	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, forms: map[string]bool{}, ctors: map[string]string{}, brands: map[string]bool{}, tables: map[string]bool{}, fakeTables: map[string]string{}, caps: map[string]bool{}, capEntries: map[string]bool{}, entryCaps: map[string]string{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, routes: map[string]bool{}, jobs: map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
 	s.quals = p.qualifiers(m)
 	for _, im := range m.Imports {
 		if q := s.quals[im.Module]; q != "" {
@@ -93,6 +94,8 @@ func (p *Program) index(m *syntax.Module) *moduleScope {
 			}
 		case *syntax.RouteDecl:
 			s.routes[d.Name] = true
+		case *syntax.JobDecl:
+			s.jobs[d.Name] = true
 		}
 	}
 	if m.Name == "App" {
@@ -258,7 +261,7 @@ func (r *resolver) module() {
 	for _, d := range r.m.Decls {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
-			if d.Route != "" && !r.ms.routes[d.Route] {
+			if d.Route != "" && !r.ms.routes[d.Route] && !r.ms.jobs[d.Route] {
 				r.noSuchRoute(d)
 			}
 			if d.Sig != nil {
@@ -283,6 +286,8 @@ func (r *resolver) module() {
 			if d.Brand != nil && d.Brand.Check != nil {
 				r.expr(d.Brand.Check, &Scope{names: map[string]bool{}})
 			}
+		case *syntax.JobDecl:
+			r.recordType(d.Params)
 		case *syntax.RouteDecl:
 			r.recordType(d.Params)
 			if d.Form != "" && !r.ms.types[d.Form] {
@@ -1466,6 +1471,10 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 			c.Ref = syntax.Ref{Kind: syntax.RefRoute, Module: r.m.Name, Name: c.Name}
 			return
 		}
+		if r.ms.jobs[c.Name] {
+			c.Ref = syntax.Ref{Kind: syntax.RefJob, Module: r.m.Name, Name: c.Name}
+			return
+		}
 		if r.p.oldPages[c.Name] { // an old page's value (E0046 in its module)
 			c.Ref = syntax.Ref{Kind: syntax.RefPage, Module: c.Name}
 			return
@@ -1503,6 +1512,12 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 		c.Ref = syntax.Ref{Kind: syntax.RefRoute, Module: c.Module, Name: c.Name}
 		return
 	}
+	// another module's job, through its import (`Signup.SendWelcome { user: id }`)
+	if im, ok := r.ms.imports[c.Module]; ok && r.p.Job(im.Module, c.Name) != nil {
+		r.ms.used[im.Module] = true
+		c.Ref = syntax.Ref{Kind: syntax.RefJob, Module: im.Module, Name: c.Name}
+		return
+	}
 	if path, ok := r.routeByQualifier(c.Module, c.Name); ok {
 		r.ms.used[path] = true // one error, not a W0001 besides
 		full := path + "." + c.Name
@@ -1513,7 +1528,7 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 	}
 	if c.Module == r.m.Name { // `Notes.Show.Save` inside Notes.Show
 		_, isCtor := r.ms.ctors[c.Name]
-		r.ownQualified(c.Span, c.Name, isCtor || r.ms.brands[c.Name] || r.ms.tables[c.Name] || r.ms.routes[c.Name], true)
+		r.ownQualified(c.Span, c.Name, isCtor || r.ms.brands[c.Name] || r.ms.tables[c.Name] || r.ms.routes[c.Name] || r.ms.jobs[c.Name], true)
 		return
 	}
 	if r.missing[c.Module] || r.isUnqual(c.Module) { // reported at the import
@@ -1668,14 +1683,14 @@ var routeTypes = map[string]bool{"Params": true, "Session": true}
 func (r *resolver) routeQualifier(mod string) (path, route string, ok bool) {
 	i := strings.LastIndexByte(mod, '.')
 	if i < 0 {
-		return r.m.Name, mod, r.ms.routes[mod]
+		return r.m.Name, mod, r.ms.routes[mod] || r.ms.jobs[mod]
 	}
 	owner, route := mod[:i], mod[i+1:]
 	path = owner
 	if im, ok := r.ms.imports[owner]; ok {
 		path = im.Module
 	}
-	if r.p.Modules[path] == nil || r.p.Route(path, route) == nil {
+	if r.p.Modules[path] == nil || r.p.Route(path, route) == nil && r.p.Job(path, route) == nil {
 		return "", "", false
 	}
 	return path, route, true
@@ -1688,8 +1703,12 @@ func (r *resolver) routeQualifier(mod string) (path, route string, ok bool) {
 func (r *resolver) routeMember(span diag.Span, mod, path, route, name string, set func(syntax.Ref), typ bool) {
 	full := route + "." + name
 	declared := r.p.scopes[path].values[full]
+	noun := "route"
+	if r.p.Job(path, route) != nil {
+		noun = "job"
+	}
 	if typ {
-		declared = routeTypes[name]
+		declared = routeTypes[name] && (noun == "route" || name == "Params") // a job has only `Params`
 	}
 	if i := strings.LastIndexByte(mod, '.'); i >= 0 {
 		switch {
@@ -1704,9 +1723,9 @@ func (r *resolver) routeMember(span diag.Span, mod, path, route, name string, se
 	}
 	switch {
 	case !declared && typ:
-		r.bag.Error(diag.UnknownName, span, "route `%s` of `%s` has no type `%s`", route, path, name)
+		r.bag.Error(diag.UnknownName, span, "%s `%s` of `%s` has no type `%s`", noun, route, path, name)
 	case !declared:
-		r.bag.Error(diag.UnknownName, span, "route `%s` of `%s` has no `%s`", route, path, name)
+		r.bag.Error(diag.UnknownName, span, "%s `%s` of `%s` has no `%s`", noun, route, path, name)
 	case typ:
 		set(syntax.Ref{Kind: syntax.RefType, Module: path, Name: full})
 	default:

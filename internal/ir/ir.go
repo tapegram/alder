@@ -16,7 +16,11 @@
 //   - Nothing here is Go-specific.
 package ir
 
-import "alder/internal/types"
+import (
+	"time"
+
+	"alder/internal/types"
+)
 
 // Program is a whole lowered app.
 type Program struct {
@@ -24,6 +28,7 @@ type Program struct {
 	Tables  []*Table
 	Forms   []*Form
 	Routes  []*Route    // every route, in module order, then declaration order
+	Jobs    []*Job      // every job (#168), in module order, then declaration order
 	Session *RecordType // App's `session` record (empty when App declares none); nil without an App module
 	Caps    []*Capability
 	Fakes   []*Fake  // the `fake` declarations, in module order; test builds only use them
@@ -317,6 +322,22 @@ type Route struct {
 	OptionRoutes               []*Route
 }
 
+// Job is a `job Name = { params } …` declaration (#168) of module Module. Params is the record
+// `Name.Params` in the module's Types; Run is the arm, the Value "Name.run" of the module.
+// Retries, Timeout, Every and Cron are its options with the defaults filled (Retries 4, Timeout
+// 5 min; Every 0 and Cron "" when it has no schedule); SiloParam is the parameter of `silo k`,
+// "" without one.
+type Job struct {
+	Module, Name string
+	Params       *RecordType
+	Run          *Value
+	Retries      int
+	Timeout      time.Duration
+	Every        time.Duration
+	Cron         string
+	SiloParam    string
+}
+
 // Capability is a `capability` declaration: Entries are its functions with their types.
 type Capability struct {
 	Module, Name string
@@ -471,6 +492,13 @@ type List struct {
 type RouteRef struct {
 	Typed
 	Route  *Route
+	Params Expr
+}
+
+// JobRef is a job value (`SendWelcome { user: id }`), of type Job: Job with its Params record.
+type JobRef struct {
+	Typed
+	Job    *Job
 	Params Expr
 }
 

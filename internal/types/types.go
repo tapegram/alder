@@ -89,6 +89,7 @@ var (
 	Never    = &Con{Name: "Never"}
 	Error    = &Con{Name: "Error"}
 	Route    = &Con{Name: "Route"}
+	Job      = &Con{Name: "Job"}
 	Response = &Con{Name: "Response"}
 	File     = &Con{Name: "File"}
 	Bytes    = &Con{Name: "Bytes"}

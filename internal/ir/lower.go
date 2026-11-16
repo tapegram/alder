@@ -56,7 +56,7 @@ func LowerTables(prog *names.Program, res *check.Result) (p *Program, err error)
 func newLowerer(prog *names.Program, res *check.Result) *lowerer {
 	return &lowerer{prog: prog, res: res, out: &Program{},
 		records: map[string]*RecordType{}, unions: map[string]*UnionType{}, values: map[string]*Value{},
-		routes: map[string]*Route{}, routeOf: map[*check.RouteInfo]*Route{}, forms: map[string]*Form{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, fakes: map[*syntax.FakeDecl]*Fake{}, fakesByCap: map[string]*Fake{}, inserts: map[*types.Record]insertOf{}, insertRTs: map[insertOf]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, brands: map[string]*Brand{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
+		routes: map[string]*Route{}, jobs: map[string]*Job{}, routeOf: map[*check.RouteInfo]*Route{}, forms: map[string]*Form{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, fakes: map[*syntax.FakeDecl]*Fake{}, fakesByCap: map[string]*Fake{}, inserts: map[*types.Record]insertOf{}, insertRTs: map[insertOf]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, brands: map[string]*Brand{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
 }
 
 // lowerTests lowers every module's `test` declarations into Module.Tests, marking the `==` each
@@ -135,6 +135,7 @@ type lowerer struct {
 	values  map[string]*Value      // "Module.name"
 	routes  map[string]*Route      // "Module.Route"
 	routeOf map[*check.RouteInfo]*Route
+	jobs    map[string]*Job        // "Module.Job"
 	forms   map[string]*Form       // "Module.Form"
 	tables  map[string]*Table      // "Module.Table"
 	caps    map[string]*Capability // "Module.Capability"
@@ -635,6 +636,16 @@ func (l *lowerer) declareTypes() {
 			l.routeOf[info] = r
 			l.out.Routes = append(l.out.Routes, r)
 		}
+		for _, info := range l.res.Jobs[name] {
+			var fields []*syntax.Field
+			if info.Decl.Params != nil {
+				fields = info.Decl.Params.Fields
+			}
+			j := &Job{Module: name, Name: info.Name, Params: addRecord(info.Params.Name, info.Params, fields), Retries: info.Retries,
+				Timeout: info.Timeout, Every: info.Every, Cron: info.Cron, SiloParam: info.Silo}
+			l.jobs[key(name, info.Name)] = j
+			l.out.Jobs = append(l.out.Jobs, j)
+		}
 	}
 	l.declareRouteSessions()
 	for info, r := range l.routeOf {
@@ -818,6 +829,9 @@ func (l *lowerer) declareValues() {
 				case "update":
 					r.Update = v
 				}
+			}
+			if j := l.jobs[key(name, vd.Route)]; vd.Route != "" && j != nil && vd.Name == "run" {
+				j.Run = v
 			}
 		}
 	}

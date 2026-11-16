@@ -309,6 +309,8 @@ func (mc *modCtx) scopedRefusal(subject, key string) string {
 		return subject + " cannot be used in a fake: a fake has no session"
 	case mc.narrowed(key):
 		return ""
+	case mc.jobArm():
+		return subject + " cannot be used in a job's `run`: a job has no session; give the job the user as a parameter and use the unscoped operations"
 	case mc.route != nil:
 		return subject + " needs a route that `requires " + key + "`: `" + mc.route.Name + "` does not"
 	case mc.c.routes[mc.m.Name] != nil:

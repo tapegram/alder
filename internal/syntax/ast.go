@@ -23,6 +23,7 @@ const (
 	RefCapability         // capability module (Password.verify)
 	RefStd                // standard library value
 	RefRoute              // route constructor: `Row { id }`, `Todos.Row { id }` (Module "Todos", Name "Row")
+	RefJob                // job constructor (#168): `SendWelcome { user }`, `Signup.SendWelcome { user }`
 )
 
 type Ref struct {

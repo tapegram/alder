@@ -37,6 +37,8 @@ type Checker struct {
 	// routes are each route module's routes, in declaration order (routes.go); routeRefs the
 	// references from route members to values of their module, for checkRouteRefs
 	routes map[string][]*RouteInfo
+	// jobs are each module's jobs, in declaration order (jobs.go)
+	jobs map[string][]*JobInfo
 	// unqualified[module][member]: an unqualified load/view/update already reported as E0046 with
 	// the route to qualify it with; those routes' E0043 for the member is not shown (#185)
 	unqualified map[string]map[string]bool
@@ -191,7 +193,7 @@ func Program(prog *names.Program, bag *diag.Bag) *Result {
 func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 	c := &Checker{prog: prog, bag: bag, u: &types.Unifier{Subst: types.Subst{}}, opts: o,
 		types: map[string]types.Type{}, values: map[string]types.Type{}, ctors: map[string]*ctorInfo{},
-		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, paramRecs: map[string]bool{}, caps: map[string]map[string]types.Type{}, routes: map[string][]*RouteInfo{}, losers: map[syntax.Decl]bool{},
+		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, paramRecs: map[string]bool{}, caps: map[string]map[string]types.Type{}, routes: map[string][]*RouteInfo{}, jobs: map[string][]*JobInfo{}, losers: map[syntax.Decl]bool{},
 		anonDefaults: map[*syntax.Field]bool{}, fakes: map[string]*syntax.FakeDecl{}, fakeTables: map[string]string{}, fakeUses: map[diag.Span]bool{},
 		res:         &Result{Types: map[syntax.Expr]types.Type{}, Binds: map[any]types.Type{}, DefaultModules: map[syntax.Expr]string{}, Widened: map[syntax.Expr]*types.Record{}, Wrapped: map[*syntax.Element]string{}, Rendered: map[*syntax.Element]string{}, Props: map[*syntax.TestDecl]PropInfo{}, FuzzAny: map[*syntax.Var]types.Type{}},
 		widenedFrom: map[syntax.Expr]types.Type{}, ambiguousErr: map[*syntax.CtorRef]bool{}}
@@ -234,6 +236,7 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 		if prog.IsRouteModule(name) {
 			mc.defineRoutes()
 		}
+		mc.defineJobs()
 		mc.defineCapabilities()
 	}
 	for _, name := range prog.Order {
@@ -351,7 +354,7 @@ func (c *Checker) errorf(code string, span diag.Span, format string, args ...any
 
 // declareStd maps Prelude's opaque types to their canonical representation.
 func (c *Checker) declareStd() {
-	for _, t := range []*types.Con{types.Int, types.Float, types.Bool, types.Text, types.Unit, types.Date, types.Time, types.Never, types.Error, types.Route, types.Response, types.File, types.Bytes} {
+	for _, t := range []*types.Con{types.Int, types.Float, types.Bool, types.Text, types.Unit, types.Date, types.Time, types.Never, types.Error, types.Route, types.Job, types.Response, types.File, types.Bytes} {
 		c.types[c.key("Prelude", t.Name)] = t // canonical singletons, so identity comparisons (e.g. `ft == types.Time`) hold
 	}
 }
