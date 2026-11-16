@@ -9,6 +9,7 @@ import (
 	"alder/internal/diag"
 	doccomment "alder/internal/doc"
 	"alder/internal/elements"
+	"alder/internal/langdoc"
 	"alder/internal/markup"
 	"alder/internal/scratch"
 	"alder/internal/syntax"
@@ -48,10 +49,14 @@ func hoverReq(s *server, params json.RawMessage) (any, error) {
 	return map[string]any{"contents": map[string]any{"kind": "markdown", "value": text}}, nil
 }
 
-// hoverOrTheme is a theme declaration's field hover, else hoverText when pos has an expression path.
+// hoverOrTheme is a theme declaration's field hover, else the entry of the operator, `<-` or
+// keyword at pos, else hoverText when pos has an expression path.
 func hoverOrTheme(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Pos) string {
 	if d, isTheme := declAt(m, pos).(*syntax.ThemeDecl); isTheme {
 		return themeHover(d.Fields, pos)
+	}
+	if h := langHover(m, path, pos); h != "" {
+		return h
 	}
 	if len(path) > 0 {
 		return hoverText(a, m, path, pos)
@@ -70,7 +75,8 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 	switch n := n.(type) {
 	case *syntax.HoleExpr:
 		if t, ok := a.res.Types[n]; ok && t != nil {
-			return sig("?"+n.Name, t)
+			e, _ := langdoc.Lookup("?")
+			return withDoc(sig("?"+n.Name, t), e.Markdown())
 		}
 		return ""
 	case *syntax.HtmlAttr, *syntax.Element:
@@ -131,6 +137,60 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 		return "```alder\n" + types.StringQ(t, m.Name, a.prog.Qualify(m.Name)) + "\n```"
 	}
 	return ""
+}
+
+// langHover is the langdoc entry of the token at pos, "" for none: an operator (only where an
+// expression applies it, so the `<` of an element is not one), `<-`, or a keyword as the parser
+// reads it (not a declaration word after column 1, nor a keyword naming a tag or an attribute).
+func langHover(m *syntax.Module, path []syntax.Spanned, pos diag.Pos) string {
+	t, ok := tokenAt(m, pos)
+	if !ok {
+		return ""
+	}
+	var last syntax.Spanned
+	if len(path) > 0 {
+		last = path[len(path)-1]
+	}
+	switch t.Kind {
+	case syntax.Keyword:
+		switch last.(type) {
+		case *syntax.HtmlAttr, *syntax.Element: // `<label for="x">`
+			return ""
+		}
+	case syntax.LeftArrow:
+	default:
+		if b, isOp := last.(*syntax.BinOp); !isOp || b.Op != t.Text {
+			return ""
+		}
+	}
+	e, ok := langdoc.Lookup(t.Text)
+	if !ok {
+		return ""
+	}
+	return e.Markdown()
+}
+
+// tokenAt is the token of m that pos is on, with the kind the parser reads it as; the tokens of a
+// text literal's interpolations count, the literal's text and comments do not.
+func tokenAt(m *syntax.Module, pos diag.Pos) (syntax.Token, bool) {
+	trace, _ := syntax.Tokens(m.File, []byte(strings.Join(m.Lines, "\n")))
+	for len(trace) > 0 {
+		var inner []syntax.Token
+		for _, t := range trace {
+			t.Kind = syntax.ParserKind(t)
+			if t.Line != pos.Line || pos.Col < t.Col || pos.Col >= t.Col+len(t.Text) {
+				continue
+			}
+			if t.Kind != syntax.String {
+				return t, true
+			}
+			for _, in := range syntax.Interpolations(m.File, t) {
+				inner = append(inner, in.Tokens...)
+			}
+		}
+		trace = inner
+	}
+	return syntax.Token{}, false
 }
 
 // markupHover is the hover of an element or an attribute named by the last node of path: the

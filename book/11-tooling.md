@@ -3185,6 +3185,15 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   the signature, as for any declaration. On a use of a route (`Toggle` in
   `click={Toggle { … }}`), it shows the route as declared: its method and
   path, the parameter record, the `form` and the `requires` clauses.
+
+  On an operator such as `|>` or `??`, on the `<-` of an effect block and on
+  a keyword such as `match` or `requires`, hover shows what it does in the
+  same format: a signature where one makes sense
+  (`(|>) : a -> (a -> b) -> b`), the summary and details, the examples and
+  the book line. On a hole it shows the `?name : T` block, then what a hole
+  is and how `alder fill` fills one. An operator inside a text literal or a
+  comment is text, and has no such hover; neither has the `<` or `/` of a
+  tag, nor a word such as `for` used as an attribute name.
 - **Go to definition.** On a use of `lastPage` it jumps to `lastPage : Int`;
   on a local, to the `let` or the parameter that binds it; on the `title` of
   `post.title` to the field in `app/Table/Post.alder`. Neovim's own key for it is

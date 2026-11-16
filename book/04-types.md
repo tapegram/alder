@@ -34,10 +34,25 @@ their markup).
   `9223372036854775807 + 1` is `-9223372036854775808`.
 - `/` truncates toward zero (`-7 / 2` is `-3`), and `%` has the sign of the
   dividend (`-7 % 2` is `-1`).
-- Dividing an `Int` by zero, with `/` or `%`, is a runtime failure: the
-  program stops where it happens (later milestones turn it into a failed
-  task). This holds for constants too; `1 / 0` compiles and fails when it
-  runs.
+- Dividing an `Int` by zero, with `/` or `%`, is a runtime failure, not a
+  value; `1 / 0` compiles and fails when it runs. Where it stops depends on
+  when the division runs:
+  - In code a request runs (a route's `load`, `view` or `update`, and the
+    functions they call), the request gets the error page (`App.error`,
+    chapter 6) and the error is logged; the server goes on answering other
+    requests.
+  - In code a test runs, that test fails with
+    `runtime error: integer divide by zero` and the other tests still run.
+  - In the expression `alder eval` evaluates, the evaluation stops with the
+    error.
+  - A top-level value that is not a function is worked out once, when the
+    program starts. One that divides by zero stops the program before it
+    does anything: the server never starts, `alder test` stops before any
+    test runs ("the test program stopped"), and `alder eval` fails whatever
+    the expression. A top-level value that refers back to itself, directly
+    or through other values, or whose type has a type parameter, is the
+    exception: it is worked out each time it is used, so it fails where it
+    is used, as above.
 
 `Float` is a 64-bit IEEE float: `1.0 / 0.0` is infinity, not a failure.
 

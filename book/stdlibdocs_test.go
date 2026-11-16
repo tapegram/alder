@@ -15,6 +15,7 @@ import (
 
 	"alder/internal/diag"
 	"alder/internal/doc"
+	"alder/internal/langdoc"
 	"alder/internal/syntax"
 	"alder/stdlib"
 )
@@ -512,14 +513,42 @@ func TestStdlibDocs_FixtureFails(t *testing.T) {
 	}
 }
 
+// langdocProblems are the langdoc entries whose Book line names no heading of the book, as
+// "langdoc |>: Book: …: no such heading in the book".
+func langdocProblems(headingExists func(ref string) bool) []string {
+	var out []string
+	for _, e := range langdoc.All() {
+		if ref := doc.Parse(e.Doc).Book; !headingExists(ref) {
+			out = append(out, fmt.Sprintf("langdoc %s: Book: %s: no such heading in the book", e.Token, ref))
+		}
+	}
+	return out
+}
+
+// langdocExamples are the examples of every langdoc entry, in All's order, each at
+// "langdoc <token>".
+func langdocExamples() []docExample {
+	var out []docExample
+	for _, e := range langdoc.All() {
+		for _, ex := range doc.Parse(e.Doc).Examples {
+			out = append(out, docExample{Where: "langdoc " + e.Token, Source: ex.Source})
+		}
+	}
+	return out
+}
+
 func TestStdlibDocs_Complete(t *testing.T) {
 	for _, p := range stdlibDocProblems(stdlib.FS, noExample, bookHeadingExists) {
 		t.Error(p)
 	}
+	for _, p := range langdocProblems(bookHeadingExists) {
+		t.Error(p)
+	}
 }
 
+// TestStdlibDocs_Examples checks the stdlib's examples and the langdoc entries' in one batch.
 func TestStdlibDocs_Examples(t *testing.T) {
-	for _, f := range runExamples(t, stdlibExamples(stdlib.FS)) {
+	for _, f := range runExamples(t, append(stdlibExamples(stdlib.FS), langdocExamples()...)) {
 		t.Error(f)
 	}
 }

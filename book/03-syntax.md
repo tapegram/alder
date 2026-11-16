@@ -438,7 +438,7 @@ annotated and plain parameters mix freely:
 | Operator | Types | Meaning |
 |---|---|---|
 | `+ - * /` | `Int` or `Float` (both sides the same) | arithmetic; `/` on `Int` truncates |
-| `%` | `Int` | remainder |
+| `%` | `Int` or `Float` (both sides the same) | remainder, with the sign of the left side |
 | `++` | `Text` or `List a` | concatenation |
 | `== !=` | any type without functions or effects (both sides identical) | equality |
 | `< <= > >=` | `Int`, `Float`, `Text`, `Date`, `Time`, payload-less unions | comparison |

@@ -599,3 +599,78 @@ func TestDeclDoc_PreludeBook(t *testing.T) {
 		}
 	}
 }
+
+func TestHover_Operator(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "|> Db.where (Post.published", 1))
+	if !strings.Contains(got, "```alder\n(|>) : a -> (a -> b) -> b\n```") || !strings.Contains(got, `*Book: chapter 3, "Operators"*`) {
+		t.Fatalf("hover %q", got)
+	}
+	if got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "* perPage)", 0)); !strings.Contains(got, "(*) : number -> number -> number") {
+		t.Fatalf("hover on * %q", got)
+	}
+}
+
+func TestHover_OperatorInInterpolation(t *testing.T) {
+	c := start(t, blogCopy(t))
+	text := strings.Replace(c.disk("app/Posts/Index.alder"), `then "" else`, `then "{Text.fromInt (perPage + 1)}" else`, 1)
+	c.open("app/Posts/Index.alder", text)
+	c.diags("app/Posts/Index.alder")
+	if got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "+ 1)}", 0)); !strings.Contains(got, "(+) : number -> number -> number") {
+		t.Fatalf("hover %q", got)
+	}
+}
+
+func TestHover_Keyword(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Write.alder")
+	if got := hover(t, c, "app/Write.alder", c.at("app/Write.alder", "match taken", 2)); !strings.Contains(got, `*Book: chapter 3, "Match"*`) {
+		t.Fatalf("hover on match %q", got)
+	}
+	if got := hover(t, c, "app/Write.alder", c.at("app/Write.alder", "<- Post.bySlug", 0)); !strings.Contains(got, `*Book: chapter 7, "Building effects"*`) {
+		t.Fatalf("hover on <- %q", got)
+	}
+	if got := hover(t, c, "app/Write.alder", c.at("app/Write.alder", "route Create", 0)); !strings.Contains(got, `*Book: chapter 6, "`+"`route`"+`"*`) {
+		t.Fatalf("hover on route %q", got)
+	}
+}
+
+func TestHover_KeywordAsAttribute(t *testing.T) {
+	c := start(t, blogCopy(t))
+	text := strings.Replace(c.disk("app/Posts/Index.alder"), "<h1>Blog</h1>", `<h1>Blog</h1><label for="q">Q</label>`, 1)
+	c.open("app/Posts/Index.alder", text)
+	c.diags("app/Posts/Index.alder")
+	if got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", `for="q"`, 0)); strings.Contains(got, "Book: chapter 5") {
+		t.Fatalf("the attribute `for` hovered as the keyword: %q", got)
+	}
+}
+
+func TestHover_HoleDoc(t *testing.T) {
+	c := start(t, blogCopy(t))
+	text := strings.Replace(c.disk("app/Posts/Index.alder"), "Db.limit (perPage + 1)", "Db.limit ?n", 1)
+	c.open("app/Posts/Index.alder", text)
+	c.diags("app/Posts/Index.alder")
+	got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "?n", 1))
+	if !strings.HasPrefix(got, "```alder\n?n : Int\n```\n\n") || !strings.Contains(got, "alder fill") {
+		t.Fatalf("hover %q", got)
+	}
+}
+
+func TestHover_OperatorInString(t *testing.T) {
+	c := start(t, blogCopy(t))
+	text := strings.Replace(c.disk("app/Posts/Index.alder"), `then "" else`, `then "a |> b" else`, 1)
+	text = strings.Replace(text, "perPage : Int", "-- perPage |> pages\nperPage : Int", 1)
+	c.open("app/Posts/Index.alder", text)
+	c.diags("app/Posts/Index.alder")
+	for _, at := range []Position{
+		c.at("app/Posts/Index.alder", "|> b\"", 0),   // in a text literal
+		c.at("app/Posts/Index.alder", "|> pages", 0), // in a comment
+		c.at("app/Posts/Index.alder", "<h1>Blog", 0), // `<` opening an element
+		c.at("app/Posts/Index.alder", "</h1>", 1),    // `/` closing one
+	} {
+		if got := hover(t, c, "app/Posts/Index.alder", at); strings.Contains(got, "Book: chapter 3, \"Operators\"") {
+			t.Errorf("operator hover at %v: %q", at, got)
+		}
+	}
+}
