@@ -1512,7 +1512,12 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 		c.Ref = syntax.Ref{Kind: syntax.RefRoute, Module: c.Module, Name: c.Name}
 		return
 	}
-	// another module's job, through its import (`Signup.SendWelcome { user: id }`)
+	// another module's job, like a route: with the module's path and no import, or through its
+	// import's qualifier (`Signup.SendWelcome { user: id }`)
+	if c.Module != r.m.Name && r.p.Modules[c.Module] != nil && r.p.Job(c.Module, c.Name) != nil {
+		c.Ref = syntax.Ref{Kind: syntax.RefJob, Module: c.Module, Name: c.Name}
+		return
+	}
 	if im, ok := r.ms.imports[c.Module]; ok && r.p.Job(im.Module, c.Name) != nil {
 		r.ms.used[im.Module] = true
 		c.Ref = syntax.Ref{Kind: syntax.RefJob, Module: im.Module, Name: c.Name}

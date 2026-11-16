@@ -4,6 +4,7 @@
 package check
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -170,7 +171,7 @@ func (mc *modCtx) jobSilo(jd *syntax.JobDecl, params *types.Record) string {
 	k, at := jd.Silo, jd.Span
 	for _, o := range jd.Options {
 		if o.Name == "silo" {
-			at = diag.Span{File: jd.Span.File, Start: o.Pos, End: o.Pos}
+			at = diag.Span{File: jd.Span.File, Start: o.Pos, End: diag.Pos{Line: o.Pos.Line, Col: o.Pos.Col + len("silo")}}
 		}
 	}
 	kt, has := c.sessionKey(k)
@@ -235,8 +236,76 @@ func (mc *modCtx) checkJobs() {
 	}
 }
 
-// jobArm reports whether mc is checking a job's `run`.
-func (mc *modCtx) jobArm() bool {
+// armJob is the job whose `run` mc is checking, nil outside one.
+func (mc *modCtx) armJob() *JobInfo {
 	name, member, ok := strings.Cut(mc.value, ".")
-	return ok && member == "run" && mc.c.job(mc.m.Name, name) != nil
+	if !ok || member != "run" || mc.inTest || mc.fake != "" {
+		return nil
+	}
+	return mc.c.job(mc.m.Name, name)
+}
+
+// jobRefusal is E0026's message for subject used in job j's `run` where it needs the session's
+// key: a job has no session, so only its own `silo k` is narrowed.
+func jobRefusal(j *JobInfo, subject, key string) string {
+	switch {
+	case key == "user":
+		return subject + " cannot be used in a job's `run`: a job has no session; give the job the user as a parameter and use the unscoped operations"
+	case j.Silo != "":
+		return subject + " needs `silo " + key + "`: job `" + j.Name + "` runs in `silo " + j.Silo + "`"
+	}
+	return subject + " needs a job with `silo " + key + "`: a job without `silo " + key + "` runs on the shared store"
+}
+
+// checkJobSessions refuses `Session.put` reached from a job's `run` through the top-level values
+// it refers to (a job has no session; written in `run` itself it is refused where it is checked).
+func (c *Checker) checkJobSessions() {
+	puts := map[string]bool{} // values whose body names Session.put
+	refs := map[string]map[string]bool{}
+	for _, name := range c.prog.Order {
+		for _, d := range c.live(c.prog.Modules[name]) {
+			vd, ok := d.(*syntax.ValueDecl)
+			if !ok || vd.Body == nil {
+				continue
+			}
+			k := c.key(name, vd.FullName())
+			refs[k] = c.bodyFacts(vd.Body).refs
+			walkExpr(vd.Body, func(x syntax.Expr) {
+				if v, ok := x.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Session" && v.Ref.Name == "put" {
+					puts[k] = true
+				}
+			})
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for k, rs := range refs {
+			for r := range rs {
+				if puts[r] && !puts[k] {
+					puts[k], changed = true, true
+				}
+			}
+		}
+	}
+	for _, name := range c.prog.Order {
+		if c.prog.Failed[name] {
+			continue
+		}
+		for _, j := range c.jobs[name] {
+			run := c.routeMembers(c.prog.Modules[name], j.Name)["run"]
+			if run == nil || run.Body == nil {
+				continue
+			}
+			var via []string
+			for r := range refs[c.key(name, run.FullName())] {
+				if puts[r] {
+					via = append(via, r)
+				}
+			}
+			if len(via) > 0 {
+				slices.Sort(via)
+				c.errorf(diag.TypeMismatch, run.Span, "`%s` reaches `Session.put` through `%s`: a job has no session to put", run.FullName(), via[0])
+			}
+		}
+	}
 }

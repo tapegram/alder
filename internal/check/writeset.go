@@ -24,6 +24,9 @@
 //     (Result.Arms) for Lower's Route.Store: the silo's, or shared (also for an update that
 //     writes nothing).
 //  4. A fake's entry is checked the same way (as one arm).
+//  5. A job's `run` (#168) is one arm, checked the same way: writes in two stores are E0031.
+//     Its store is its `silo k`'s, else shared; a silo's table written from any other job is
+//     E0026 (rules.go), where it is written.
 //
 // Session.put and capability calls are not writes to either store (the cookie; the adapter).
 //
@@ -166,6 +169,22 @@ func (c *Checker) checkWriteSets() {
 				st.Silo = groups[0].silo
 			}
 			c.res.Arms[name] = append(c.res.Arms[name], st)
+		}
+	}
+	// a job's `run` (#168) is an arm too; a write of a silo other than its `silo k`'s (or of any
+	// silo, without one) is E0026 where it is written
+	for _, name := range c.prog.Order {
+		if c.prog.Failed[name] {
+			continue
+		}
+		for _, j := range c.jobs[name] {
+			vd := c.routeMembers(c.prog.Modules[name], j.Name)["run"]
+			if vd == nil || vd.Body == nil {
+				continue
+			}
+			if groups := c.storeGroups(writesOf(vd.Body)); len(groups) > 1 {
+				c.errorf(diag.WriteStores, vd.Span, "%s", c.mixMessage("`"+vd.FullName()+"`", "job", groups))
+			}
 		}
 	}
 	for _, fe := range fakes {

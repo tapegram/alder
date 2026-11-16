@@ -136,7 +136,7 @@ func (r *resolver) shadowedEntryHint(q, path, entry string) (hint, spelling stri
 	return "", ""
 }
 
-// routeClashes reports (E0044) each route of this module whose name cannot be told apart: a
+// routeClashes reports (E0044) each route (and job, #168) of this module whose name cannot be told apart: a
 // second route of a name; a module named by this module's path and the route (`Todos.Row`
 // beside route Row in `Todos`); an import's qualifier or a standard-library module, which a
 // dotted name reaches first; a constructor, brand or table in scope, which `Row { … }` would
@@ -144,42 +144,54 @@ func (r *resolver) shadowedEntryHint(q, path, entry string) (hint, spelling stri
 func (r *resolver) routeClashes() {
 	seen := map[string]int{}
 	for _, d := range r.m.Decls {
-		rd, ok := d.(*syntax.RouteDecl)
-		if !ok {
+		var name, noun string
+		var sp, at diag.Span
+		switch d := d.(type) {
+		case *syntax.RouteDecl:
+			name, noun, sp, at = d.Name, "route", d.NameSpan, d.Span
+		case *syntax.JobDecl: // a job's name is written like a route's (#168): one set of rules
+			name, noun, sp, at = d.Name, "job", d.NameSpan, d.Span
+		default:
 			continue
 		}
-		name, sp := rd.Name, rd.NameSpan
 		if line, dup := seen[name]; dup {
-			r.bag.Error(diag.RouteName, sp, "route `%s` is already declared at line %d", name, line)
+			r.bag.Error(diag.RouteName, sp, "%s `%s` is already declared at line %d", noun, name, line)
 			continue
 		}
-		seen[name] = rd.Span.Start.Line
+		seen[name] = at.Start.Line
 		if mod := r.m.Name + "." + name; r.p.Modules[mod] != nil {
-			r.bag.Error(diag.RouteName, sp, "route `%s` of `%s` and the module `%s` have one name: `%s.view` could name either; rename the route or the module", name, r.m.Name, mod, mod)
+			example := "view"
+			if noun == "job" {
+				example = "run"
+			}
+			r.bag.Error(diag.RouteName, sp, "%s `%s` of `%s` and the module `%s` have one name: `%s.%s` could name either; rename the %s or the module", noun, name, r.m.Name, mod, mod, example, noun)
 			continue
 		}
 		member := r.firstMember(name)
 		if r.p.isStd(name) {
-			r.bag.Error(diag.RouteName, sp, "route `%s` is named like the standard-library module `%s`: `%s.%s` would name that module's `%s`; rename the route", name, name, name, member, member)
+			r.bag.Error(diag.RouteName, sp, "%s `%s` is named like the standard-library module `%s`: `%s.%s` would name that module's `%s`; rename the %s", noun, name, name, name, member, member, noun)
 			continue
 		}
 		if im, ok := r.ms.imports[name]; ok {
-			r.bag.Error(diag.RouteName, sp, "route `%s` is named like the qualifier of `import %s`: `%s.%s` would name that module's `%s`; rename the route", name, im.Module, name, member, member)
+			r.bag.Error(diag.RouteName, sp, "%s `%s` is named like the qualifier of `import %s`: `%s.%s` would name that module's `%s`; rename the %s", noun, name, im.Module, name, member, member, noun)
 			continue
 		}
 		if what := r.ctorInScope(name); what != "" {
-			r.bag.Error(diag.RouteName, sp, "route `%s` is named like %s: `%s { … }` cannot mean both; rename the route", name, what, name)
+			r.bag.Error(diag.RouteName, sp, "%s `%s` is named like %s: `%s { … }` cannot mean both; rename the %s", noun, name, what, name, noun)
 		}
 	}
 }
 
-// firstMember is the name of the first declaration of route `route` in this module (`load` for
-// `Row.load`), or "view" when it has none: an example for a message.
+// firstMember is the name of the first declaration of route (or job) `route` in this module
+// (`load` for `Row.load`), or "view" ("run" for a job) when it has none: an example for a message.
 func (r *resolver) firstMember(route string) string {
 	for _, d := range r.m.Decls {
 		if v, ok := d.(*syntax.ValueDecl); ok && v.Route == route {
 			return v.Name
 		}
+	}
+	if r.ms.jobs[route] && !r.ms.routes[route] {
+		return "run"
 	}
 	return "view"
 }

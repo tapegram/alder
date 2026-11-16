@@ -219,7 +219,7 @@ func TestJob_Options(t *testing.T) {
 func TestJob_ScopedDbInRun(t *testing.T) {
 	src := "module Signup\n\nimport Project\n\njob J = {}\n\nJ.run : J.Params -> Task Unit\nJ.run p = {\n  let _ <- Db.insertScoped Project { name: \"x\" }\n  Task.succeed ()\n}\n"
 	_, got := checkFiles(t, jobApp(t, src))
-	wantJobDiag(t, got, diag.ScopedOutside, "job's `run`")
+	wantJobDiag(t, got, diag.ScopedOutside, "a job without `silo org` runs on the shared store")
 	if e := diag.Explain[diag.ScopedOutside]; !strings.Contains(e, "A job's `run` has no session either") {
 		t.Errorf("explain E0026 = %q", e)
 	}
@@ -229,5 +229,72 @@ func TestJob_NoSession(t *testing.T) {
 	_, got := checkFiles(t, jobApp(t, jobModule("job J = {}\n\nJ.run : J.Params -> Task Unit\nJ.run p = {\n  let _ <- Session.put session\n  Task.succeed ()\n}")))
 	if len(got) == 0 || !strings.HasPrefix(got[0], diag.UnknownName+" ") || !strings.Contains(got[0], "session") {
 		t.Fatalf("got %q, want an unknown name `session`", got)
+	}
+}
+
+// A `silo org` job's `run` may use its silo's tables, scoped or not (review fix 1).
+func TestJob_SiloRunUsesItsSilo(t *testing.T) {
+	src := "module Signup\n\nimport Org\nimport Project\n\njob J = { org: Org.OrgId } silo org\n\n" +
+		"J.run : J.Params -> Task Unit\nJ.run p = {\n  let _ <- Db.insertScoped Project { name: \"x\" }\n  let ps <- Db.from Project |> Db.all\n  Task.succeed ()\n}\n"
+	if _, got := checkFiles(t, jobApp(t, src)); len(got) != 0 {
+		t.Fatalf("got %q", got)
+	}
+	// without `silo org`, an unscoped write of a silo's table is refused too
+	src = "module Signup\n\nimport Org\nimport Project\n\njob J = {}\n\nJ.run : J.Params -> Task Unit\nJ.run p = {\n  let _ <- Db.insert Project { name: \"x\", org: Org.OrgId \"o\" }\n  Task.succeed ()\n}\n"
+	_, got := checkFiles(t, jobApp(t, src))
+	if len(got) == 0 || !strings.HasPrefix(got[0], diag.ScopedOutside+" ") || !strings.Contains(got[0], "runs on the shared store") {
+		t.Fatalf("got %q, want E0026", got)
+	}
+}
+
+// A job's `run` that reaches a helper of its module using a scoped operation is E0026 (review
+// fix 2), in a module with a route (where the helper itself is allowed).
+func TestJob_HelperScopedInRun(t *testing.T) {
+	src := "module Signup\n\nimport Project\n\nroute Home = GET \"/home\" { } requires user, org\n\n" +
+		"Home.load : Home.Params -> Session -> Query Int\nHome.load p s = Query.succeed 0\n\n" +
+		"Home.view : Int -> Session -> Html\nHome.view n s = <p>hi</p>\n\n" +
+		"add : Task Unit\nadd = {\n  let _ <- Db.insertScoped Project { name: \"x\" }\n  Task.succeed ()\n}\n\n" +
+		"job J = {}\n\nJ.run : J.Params -> Task Unit\nJ.run p = add\n"
+	_, got := checkFiles(t, jobApp(t, src))
+	wantJobDiag(t, got, diag.ScopedOutside, "`add` uses", "runs on the shared store")
+}
+
+// A job's `run` that writes two stores is E0031 (review fix 3).
+func TestJob_RunWritesTwoStores(t *testing.T) {
+	src := "module Signup\n\nimport Org\nimport Project\n\njob J = { org: Org.OrgId } silo org\n\n" +
+		"J.run : J.Params -> Task Unit\nJ.run p = {\n  let _ <- Db.insertScoped Project { name: \"x\" }\n" +
+		"  let _ <- Db.insert Org { name: \"o\" }\n  Task.succeed ()\n}\n"
+	_, got := checkFiles(t, jobApp(t, src))
+	wantJobDiag(t, got, diag.WriteStores, "`J.run` writes", "`Project` (silo `org`)", "`Org` (shared)")
+}
+
+// `Session.put` in a job's `run`, written there or reached through a helper, is refused (review
+// fix 4).
+func TestJob_SessionPutInRun(t *testing.T) {
+	_, got := checkFiles(t, jobApp(t, jobModule("job J = {}\n\nJ.run : J.Params -> Task Unit\nJ.run p = Session.put (\\s -> { s | user: Nothing })")))
+	wantJobDiag(t, got, diag.TypeMismatch, "`Session.put` cannot be used in a job's `run`")
+	_, got = checkFiles(t, jobApp(t, jobModule("signOut : Task Unit\nsignOut = Session.put (\\s -> { s | user: Nothing })\n\n"+
+		"job J = {}\n\nJ.run : J.Params -> Task Unit\nJ.run p = signOut")))
+	wantJobDiag(t, got, diag.TypeMismatch, "`J.run` reaches `Session.put` through `Signup.signOut`")
+}
+
+// A job's name is checked like a route's (E0044, review fix 5).
+func TestJob_NameClashes(t *testing.T) {
+	_, got := checkFiles(t, jobApp(t, jobModule("job J = {}\n\njob J = { n: Int }\n\n"+runArm("J"))))
+	if len(got) == 0 || !strings.HasPrefix(got[0], diag.RouteName+" ") || !strings.Contains(got[0], "job `J` is already declared at line") {
+		t.Fatalf("duplicate: got %q", got)
+	}
+	_, got = checkFiles(t, jobApp(t, jobModule("type Kind = Circle | Square\n\njob Circle = {}\n\n"+runArm("Circle"))))
+	if len(got) == 0 || !strings.HasPrefix(got[0], diag.RouteName+" ") || !strings.Contains(got[0], "job `Circle` is named like the constructor `Circle`") {
+		t.Fatalf("constructor: got %q", got)
+	}
+}
+
+// Another module's job constructor needs no import, like a route's (controller ruling 6).
+func TestJob_CtorWithoutImport(t *testing.T) {
+	files := jobApp(t, jobModule("job Ping = { n: Int }\n\n"+runArm("Ping")))
+	files["Other.alder"] = "module Other\n\nmore : Job\nmore = Signup.Ping { n: 1 }\n"
+	if _, got := checkFiles(t, files); len(got) != 0 {
+		t.Fatalf("got %q", got)
 	}
 }

@@ -1213,6 +1213,9 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 		}
 		if x.Ref.Module == "Session" && x.Ref.Name == "put" {
 			c.usesSessionPut = true
+			if mc.armJob() != nil {
+				c.errorf(diag.TypeMismatch, x.Span, "`Session.put` cannot be used in a job's `run`: a job has no session")
+			}
 		}
 		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Db" && scopedOps[x.Ref.Name] != "" {
 			return mc.inferScoped(x)
