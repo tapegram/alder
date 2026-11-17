@@ -32,7 +32,7 @@ section it implements, and that section is part of the task's requirements.
   shows only that default.
 - Nothing in the test runtime starts a goroutine for jobs.
 - Times in the table are milliseconds since the epoch (`Time`'s representation). Ids are 8 hex
-  characters from `applog.NewID` (`rt/applog/id.go:20`).
+  characters from `crypto/rand` (`jobs.NewID`, `rt/jobs/enqueue.go`), drawn again on a taken id.
 - Values pinned by the spec: default retries 4 (five attempts); backoff after attempt 1, 2, 3, 4
   = 10 s, 1 min, 10 min, 1 h, and 1 h for every later one; timeout default `5m`, maximum `1h`;
   lease = timeout + 30 s; poll 1 s; housekeeping every 1 min; prune done after 7 days, dead after

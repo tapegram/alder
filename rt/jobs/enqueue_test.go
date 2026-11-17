@@ -184,3 +184,97 @@ func TestStatus(t *testing.T) {
 		t.Fatalf("unknown id: %v %v", s, err)
 	}
 }
+
+// ids is a job id source that gives the listed ids in turn.
+func ids(list ...string) func() string {
+	return func() string {
+		id := list[0]
+		list = list[1:]
+		return id
+	}
+}
+
+func TestEnqueue_IdTakenRetries(t *testing.T) {
+	st := open(t)
+	env, _ := newEnv(st)
+	defer jobs.SetNewID(ids("0000000a", "0000000a", "0000000b", "0000000a", "0000000c"))()
+	if a := runEnqueue(t, env, welcome, nil); a != "0000000a" {
+		t.Fatalf("first id %q", a)
+	}
+	if b := runEnqueue(t, env, welcome, nil); b != "0000000b" {
+		t.Fatalf("after a taken id: %q, want a fresh one", b)
+	}
+	// With a key and no queued row of it, a taken id is retried as well.
+	if c := runEnqueue(t, env, welcome, ptr("u1")); c != "0000000c" {
+		t.Fatalf("keyed, after a taken id: %q", c)
+	}
+	if n := count(t, st, `SELECT COUNT(*) FROM "_alder_jobs"`); n != 3 {
+		t.Fatalf("rows: %d", n)
+	}
+}
+
+func TestEnqueue_IdTakenGivesUp(t *testing.T) {
+	st := open(t)
+	env, _ := newEnv(st)
+	defer jobs.SetNewID(func() string { return "0000000a" })()
+	runEnqueue(t, env, welcome, nil)
+	_, err := eff.Run(env, eff.KTask, enqueue(welcome, nil))
+	if err == nil || !strings.Contains(err.Error(), "is taken") {
+		t.Fatalf("err %v: want the id taken after the retries", err)
+	}
+}
+
+func TestNewID_RandomHex(t *testing.T) {
+	seen := map[string]bool{}
+	for range 100 {
+		id := jobs.NewID()
+		if len(id) != 8 || strings.Trim(id, "0123456789abcdef") != "" {
+			t.Fatalf("id %q: want 8 lowercase hex characters", id)
+		}
+		if seen[id] {
+			t.Fatalf("id %q repeated", id)
+		}
+		seen[id] = true
+	}
+}
+
+// In an app with silos (a production Stores, not a test's TestStore), a job enqueued by a Task
+// entered on a silo is inserted into that silo's database, which got the jobs table when opened.
+func TestEnqueue_InSilo(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	org := db.TableDesc{Name: "Org.Org", ID: "id", Columns: []db.Column{{Name: "id", Type: db.CText}}}
+	path := dir + "/app.db"
+	shared, err := db.OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { shared.Close() })
+	tables := []db.TableDesc{org, noteTable}
+	if err := shared.Ensure(ctx, tables, true); err != nil {
+		t.Fatal(err)
+	}
+	s, err := db.OpenStores(shared, path, db.StoresConfig{Dir: dir, Silos: []db.Silo{{Key: "org", Tables: []string{"Note.Note"}}}, Tables: tables})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	env, _ := newEnv(shared)
+	env.Stores = s
+	db.Narrow(env, "org", "A")
+	if err := db.Enter(env, "org"); err != nil {
+		t.Fatal(err)
+	}
+	id := runEnqueue(t, env, welcome, nil)
+	silo, err := db.OpenSQLite(dir + "/silos/org/" + db.SiloFileName("A"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer silo.Close()
+	if n := count(t, silo, `SELECT COUNT(*) FROM "_alder_jobs" WHERE "id" = ?`, id); n != 1 {
+		t.Fatalf("the silo holds %d rows of job %s", n, id)
+	}
+	if n := count(t, shared, `SELECT COUNT(*) FROM "_alder_jobs"`); n != 0 {
+		t.Fatalf("the shared store holds %d job rows", n)
+	}
+}

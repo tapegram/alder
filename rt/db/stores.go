@@ -603,6 +603,9 @@ func (s *Stores) openSilo(ctx context.Context, ss *siloSchema, value string, all
 	if detail != "" {
 		s.logf("info", fmt.Sprintf("silo %s/%s: %s", ss.key, value, detail))
 	}
+	if err := EnsureJobsTable(ctx, st.db); err != nil { // a Task on the silo enqueues here
+		return fail(SiloFailed, err.Error())
+	}
 	st.register(ss.descs)
 	if path != ":memory:" {
 		r, err := OpenSQLiteReader(path)
