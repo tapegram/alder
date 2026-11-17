@@ -339,6 +339,12 @@ func TestJob_StateConstructors(t *testing.T) {
 	if _, got := checkFiles(t, files); len(got) != 0 {
 		t.Fatalf("imported Done: got %q", got)
 	}
+	// another module's Done, not imported here, does not hide Job's
+	files = jobApp(t, jobModule(use))
+	files["Other.alder"] = "module Other\n\ntype Step = Todo | Done\n"
+	if _, got := checkFiles(t, files); len(got) != 0 {
+		t.Fatalf("unimported Done elsewhere: got %q", got)
+	}
 	// own Done is not Job's: using it as a Job.State is a type error
 	_, got := checkFiles(t, jobApp(t, jobModule(own+"\nstate : Job.State\nstate = Done\n")))
 	if len(got) != 1 || !strings.HasPrefix(got[0], diag.TypeMismatch+" ") {

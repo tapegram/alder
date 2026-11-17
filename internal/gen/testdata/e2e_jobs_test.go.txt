@@ -100,6 +100,14 @@ func TestJobCodec_Drift(t *testing.T) {
 	if err := run(`{"user": "u1"}`); err != nil {
 		t.Errorf("Run of good parameters: %v", err)
 	}
+	// a Maybe field renamed since the row was written: missing, not Nothing
+	enc := rt.JsonEncode(jobenc__Signup__Everything__Params(everything()))
+	for from, want := range map[string]string{`"at":`: "at: missing", `"zip":`: "address.zip: missing"} {
+		v, _ := std.JobParse(strings.Replace(enc, from, `"renamed":`, 1))
+		if _, err := jobdec__Signup__Everything__Params(v, ""); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("renamed Maybe field %s: %v, want %q", from, err, want)
+		}
+	}
 	// nested: the path names the field inside the custom type
 	v, _ := std.JobParse(strings.Replace(rt.JsonEncode(jobenc__Signup__Everything__Params(everything())), `"h":2`, `"h":"2"`, 1))
 	if _, err := jobdec__Signup__Everything__Params(v, ""); err == nil || !strings.Contains(err.Error(), "shape.Rect.h: expected an Int") {

@@ -280,9 +280,9 @@ func JobDecMaybe[T any](d func(rt.JsonValue, string) (T, error)) func(rt.JsonVal
 }
 
 // JobField decodes field key of the object v (at path) with d. A field the object lacks is an
-// error naming it, unless optional (a Maybe field: Nothing, so a field added since still
-// decodes).
-func JobField[T any](v rt.JsonValue, path, key string, optional bool, d func(rt.JsonValue, string) (T, error)) (T, error) {
+// error naming it, a Maybe field too (the encoder writes Nothing as null): a field renamed
+// since the row was written makes it undecodable, never silently Nothing.
+func JobField[T any](v rt.JsonValue, path, key string, d func(rt.JsonValue, string) (T, error)) (T, error) {
 	var zero T
 	if v.Kind != rt.JsonObject {
 		return zero, jobWant(path, "an object", v)
@@ -296,16 +296,13 @@ func JobField[T any](v rt.JsonValue, path, key string, optional bool, d func(rt.
 			return d(m.Value, at)
 		}
 	}
-	if optional {
-		return d(rt.JsonValue{}, at)
-	}
 	return zero, fmt.Errorf("%s: missing", at)
 }
 
 // JobTagged reads a custom type's value at path: its constructor's name and arguments, of which
 // it must have n.
 func JobTagged(v rt.JsonValue, path string, n map[string]int) (string, []rt.JsonValue, error) {
-	tag, err := JobField(v, path, "tag", false, JobDecText)
+	tag, err := JobField(v, path, "tag", JobDecText)
 	if err != nil {
 		return "", nil, err
 	}

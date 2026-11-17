@@ -58,7 +58,7 @@ func init() {
 func jobdec__Signup__SendWelcome__Params(v rt.JsonValue, path string) (Signup__SendWelcome__Params, error) {
 	var r Signup__SendWelcome__Params
 	var err error
-	if r.User, err = std.JobField(v, path, "user", false, std.JobDecText); err != nil {
+	if r.User, err = std.JobField(v, path, "user", std.JobDecText); err != nil {
 		return r, err
 	}
 	return r, nil
@@ -87,10 +87,10 @@ func jobenc__Signup__Nightly__Params(v Signup__Nightly__Params) rt.JsonValue {
 func jobdec__Signup__Address(v rt.JsonValue, path string) (Signup__Address, error) {
 	var r Signup__Address
 	var err error
-	if r.Street, err = std.JobField(v, path, "street", false, std.JobDecText); err != nil {
+	if r.Street, err = std.JobField(v, path, "street", std.JobDecText); err != nil {
 		return r, err
 	}
-	if r.Zip, err = std.JobField(v, path, "zip", true, std.JobDecMaybe(std.JobDecInt)); err != nil {
+	if r.Zip, err = std.JobField(v, path, "zip", std.JobDecMaybe(std.JobDecInt)); err != nil {
 		return r, err
 	}
 	return r, nil
@@ -105,10 +105,10 @@ func jobenc__payload__Signup__Shape__Rect(v payload__Signup__Shape__Rect) rt.Jso
 func jobdec__payload__Signup__Shape__Rect(v rt.JsonValue, path string) (payload__Signup__Shape__Rect, error) {
 	var r payload__Signup__Shape__Rect
 	var err error
-	if r.W, err = std.JobField(v, path, "w", false, std.JobDecInt); err != nil {
+	if r.W, err = std.JobField(v, path, "w", std.JobDecInt); err != nil {
 		return r, err
 	}
-	if r.H, err = std.JobField(v, path, "h", false, std.JobDecInt); err != nil {
+	if r.H, err = std.JobField(v, path, "h", std.JobDecInt); err != nil {
 		return r, err
 	}
 	return r, nil
@@ -160,13 +160,13 @@ func jobenc__payload__Signup__Tree__Node(v payload__Signup__Tree__Node) rt.JsonV
 func jobdec__payload__Signup__Tree__Node(v rt.JsonValue, path string) (payload__Signup__Tree__Node, error) {
 	var r payload__Signup__Tree__Node
 	var err error
-	if r.Left, err = std.JobField(v, path, "left", false, jobdec__Signup__Tree); err != nil {
+	if r.Left, err = std.JobField(v, path, "left", jobdec__Signup__Tree); err != nil {
 		return r, err
 	}
-	if r.Value, err = std.JobField(v, path, "value", false, std.JobDecInt); err != nil {
+	if r.Value, err = std.JobField(v, path, "value", std.JobDecInt); err != nil {
 		return r, err
 	}
-	if r.Right, err = std.JobField(v, path, "right", false, jobdec__Signup__Tree); err != nil {
+	if r.Right, err = std.JobField(v, path, "right", jobdec__Signup__Tree); err != nil {
 		return r, err
 	}
 	return r, nil
@@ -237,43 +237,43 @@ func jobdec__rt_Result_string_int64(v rt.JsonValue, path string) (rt.Result[stri
 func jobdec__Signup__Everything__Params(v rt.JsonValue, path string) (Signup__Everything__Params, error) {
 	var r Signup__Everything__Params
 	var err error
-	if r.N, err = std.JobField(v, path, "n", false, std.JobDecInt); err != nil {
+	if r.N, err = std.JobField(v, path, "n", std.JobDecInt); err != nil {
 		return r, err
 	}
-	if r.X, err = std.JobField(v, path, "x", false, std.JobDecFloat); err != nil {
+	if r.X, err = std.JobField(v, path, "x", std.JobDecFloat); err != nil {
 		return r, err
 	}
-	if r.Ok, err = std.JobField(v, path, "ok", false, std.JobDecBool); err != nil {
+	if r.Ok, err = std.JobField(v, path, "ok", std.JobDecBool); err != nil {
 		return r, err
 	}
-	if r.Title, err = std.JobField(v, path, "title", false, std.JobDecText); err != nil {
+	if r.Title, err = std.JobField(v, path, "title", std.JobDecText); err != nil {
 		return r, err
 	}
-	if r.User, err = std.JobField(v, path, "user", false, std.JobDecText); err != nil {
+	if r.User, err = std.JobField(v, path, "user", std.JobDecText); err != nil {
 		return r, err
 	}
-	if r.Due, err = std.JobField(v, path, "due", true, std.JobDecMaybe(std.JobDecDate)); err != nil {
+	if r.Due, err = std.JobField(v, path, "due", std.JobDecMaybe(std.JobDecDate)); err != nil {
 		return r, err
 	}
-	if r.At, err = std.JobField(v, path, "at", true, std.JobDecMaybe(std.JobDecTime)); err != nil {
+	if r.At, err = std.JobField(v, path, "at", std.JobDecMaybe(std.JobDecTime)); err != nil {
 		return r, err
 	}
-	if r.Tags, err = std.JobField(v, path, "tags", false, std.JobDecList(std.JobDecText)); err != nil {
+	if r.Tags, err = std.JobField(v, path, "tags", std.JobDecList(std.JobDecText)); err != nil {
 		return r, err
 	}
-	if r.Address, err = std.JobField(v, path, "address", false, jobdec__Signup__Address); err != nil {
+	if r.Address, err = std.JobField(v, path, "address", jobdec__Signup__Address); err != nil {
 		return r, err
 	}
-	if r.Shape, err = std.JobField(v, path, "shape", false, jobdec__Signup__Shape); err != nil {
+	if r.Shape, err = std.JobField(v, path, "shape", jobdec__Signup__Shape); err != nil {
 		return r, err
 	}
-	if r.Shapes, err = std.JobField(v, path, "shapes", false, std.JobDecList(std.JobDecMaybe(jobdec__Signup__Shape))); err != nil {
+	if r.Shapes, err = std.JobField(v, path, "shapes", std.JobDecList(std.JobDecMaybe(jobdec__Signup__Shape))); err != nil {
 		return r, err
 	}
-	if r.Tree, err = std.JobField(v, path, "tree", false, jobdec__Signup__Tree); err != nil {
+	if r.Tree, err = std.JobField(v, path, "tree", jobdec__Signup__Tree); err != nil {
 		return r, err
 	}
-	if r.Outcome, err = std.JobField(v, path, "outcome", false, jobdec__rt_Result_string_int64); err != nil {
+	if r.Outcome, err = std.JobField(v, path, "outcome", jobdec__rt_Result_string_int64); err != nil {
 		return r, err
 	}
 	return r, nil

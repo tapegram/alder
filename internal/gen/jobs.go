@@ -22,7 +22,7 @@ import (
 // Maybe null or the value, a custom type (Result too) {"tag": "C", "args": [payload]} (no
 // argument for a constructor without one), a brand its base, a Time its milliseconds since
 // the epoch, a Date "YYYY-MM-DD". Decoding is strict: a field of the wrong type, or missing
-// (except a Maybe, read as Nothing), is an error naming its path ("user", "items[2].due"), and
+// (a Maybe too: Nothing is written as null), is an error naming its path ("user", "items[2].due"), and
 // the worker marks the row dead with it.
 //
 // Jobs() lists every job as a jobs.Kind, whose Run decodes the parameters and calls the job's
@@ -219,14 +219,13 @@ func (g *gen) recordDec(c *jobCodecs, typ string, fields []types.Field, module, 
 		b.WriteString("if v.Kind != rt.JsonObject {\nreturn r, fmt.Errorf(\"%s: expected an object\", path)\n}\n")
 	}
 	for i, f := range fields {
-		opt := maybeArg(unbrand(f.Type)) != nil
 		target := "r." + Field(f.Name)
 		boxed := name != "" && g.boxed.has(module, name, f.Name)
 		if boxed {
 			target = fmt.Sprintf("f%d", i)
 			fmt.Fprintf(&b, "var %s %s\n", target, GoType(f.Type))
 		}
-		fmt.Fprintf(&b, "if %s, err = std.JobField(v, path, %q, %t, %s); err != nil {\nreturn r, err\n}\n", target, f.Name, opt, g.dec(c, f.Type))
+		fmt.Fprintf(&b, "if %s, err = std.JobField(v, path, %q, %s); err != nil {\nreturn r, err\n}\n", target, f.Name, g.dec(c, f.Type))
 		if boxed {
 			fmt.Fprintf(&b, "r.%s = &%s\n", Field(f.Name), target)
 		}

@@ -1496,8 +1496,9 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 			return
 		}
 		// Job.State's constructors (#168) are the last resort: the module's own, Prelude's and
-		// its imports' come first, and one some app module declares keeps its "import" hint
-		if s := r.p.scopes["Job"]; s != nil && len(r.p.ctorIndex[c.Name]) == 0 {
+		// its imports' come first; another app module's `Done` that is not imported does not
+		// hide Job's (the "import" hint is for the names Job does not have)
+		if s := r.p.scopes["Job"]; s != nil {
 			if _, ok := s.ctors[c.Name]; ok {
 				c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: "Job", Name: c.Name}
 				return

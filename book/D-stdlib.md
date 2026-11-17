@@ -2404,8 +2404,9 @@ Where a job stands: waiting, running, finished, or given up.
 
 `Queued` waits for its time and a free worker, `Running` is being run, `Done` finished, and
 `Dead` failed on every attempt its `retries` allow, or had parameters this build cannot read.
-The constructors are written bare, like `Just`; a module's own `Done`, or an imported one,
-comes first.
+The constructors are written bare, like `Just`. A constructor of the same name that the
+module declares, or one of a module it imports, comes first; one of a module it does not
+import does not.
 
 ### `Job.Status`
 
