@@ -399,6 +399,47 @@ Spec §8 (`alder test`). Schedule ticks in `Test.work` come in Task 12; silos in
 
 ---
 
+## Carried from PR 1's reviews
+
+Deferred findings from PR 1's task and final reviews, each with the task that owns it.
+
+- **Task 8 (worker):** a cancelled attempt at shutdown is recorded as an ordinary failure; re-queue
+  it with `attempts - 1` and no error (spec §3, `lost: the process stopped`). Timeout detection
+  (`rt/jobs/run.go:86`, `ctx.Err() == DeadlineExceeded`) misattributes a parent deadline or an
+  own failure near the deadline: use `context.WithTimeoutCause` + `context.Cause`. A dev recreate
+  keeps queued/running rows while dropping the tables they point at: consider deleting them.
+  Re-verify `stdlib/Job.alder:44` ("a worker picks the job up") once the worker exists.
+  `LockHeld` is 0 under `env.Within` (tests), so log/panel tests must not expect it there.
+- **PR 2 (any task):** one test that `Fuzz.any` over `Job.State`/`Job.Status` generates
+  compiling Go.
+- **Task 11 (cron):** `every ""`/`timeout ""` are accepted silently (`internal/check/jobs.go:134`,
+  `:146` guards); drop the guards. CHANGELOG: say cron is checked once it is. Golden for `Cron`
+  emission in `Jobs()`.
+- **Task 13 (silos):** route the `Job.done` mark and `StatusOf` (shared-store fallback, spec §2)
+  to the right store; `db.On` refuses non-SQLite/TestStore stores. `stdlib/Job.alder:61-62`
+  ("a job queued in another store is `Nothing` here") changes with the fallback. `Test.work`'s
+  job Env drops `Bound`/`Pending`/`SiloKey`/`CheckSession`, so silo test writes are not routed.
+  `rtesting.Jobs` takes an unused `kinds`: use it or drop it. Golden for `SiloParam` emission.
+  E0031 for a `silo org` job writing only shared tables is accepted like a `requires org` route.
+- **Task 17 (dev panel):** decode errors: the empty-record decoder lacks "got X"
+  (`internal/gen/jobs.go:219`) and a root error renders `cannot decode the parameters: : …`.
+  An unknown state string maps silently to `Dead` (`rt/std/job.go:82`).
+- **Task 20 (editors):** remove `job` from langdoc's `oldKeywords`; decide whether the option words
+  (`every`, `cron`, `retries`, `timeout`, `silo`) are keywords in both the server highlighter and
+  tree-sitter (now `@variable` in both). Ruling owed: reserve `Job` as a Prelude type (E0012) like
+  `Route` (`internal/names` preludeReserved; m3b-effects golden declares its own `type Job`).
+  Fix the stale comment `internal/names/graph.go:25-26` (job ctors resolve without an import).
+- **Task 21 (book ch 17):** repoint `stdlib/Job.alder`'s Book line from ch 9 to ch 17. Spec
+  example fixes (named `run` param, `Task.succeed ()`, `Ok ()`, `Test.get` before `Test.submit`).
+  Say: adding an optional (`Maybe`) param kills queued rows of the old build (a missing key is a
+  decode error by design); `-0.0`/`0.0` give unequal `Job` values and NaN/Inf params go dead;
+  jobs' own steps are not in `Test.trace`; same-named jobs in two modules look alike in the
+  trace; an older alder opening a database with `_alder_jobs` refuses it as drift (rollback
+  caveat, spec §5).
+- **Any PR (cleanup):** `jobLines` may duplicate `routeLines`; `gen/expr.go:150-152` hard-codes
+  `Test.jobs`/`Test.work`; `Ensure`'s doc says a refusal "touches nothing" (`rt/db/sqlite.go`);
+  test gaps: retries-6 loop skips attempts 1–4, parse-error tests lack missing `=`/record cases.
+
 ## PR 2: the worker
 
 ### Task 7: Split `Serve`; `ALDER_JOBS`
