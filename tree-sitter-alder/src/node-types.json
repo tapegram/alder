@@ -4425,6 +4425,72 @@
     }
   },
   {
+    "type": "job_decl",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "constructor",
+            "named": true
+          }
+        ]
+      },
+      "option": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "job_option",
+            "named": true
+          }
+        ]
+      },
+      "params": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "record_type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "job_option",
+    "named": true,
+    "fields": {
+      "key": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "integer",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "lambda",
     "named": true,
     "fields": {
@@ -6634,6 +6700,10 @@
           "named": true
         },
         {
+          "type": "job_decl",
+          "named": true
+        },
+        {
           "type": "login_decl",
           "named": true
         },
@@ -6873,6 +6943,10 @@
         },
         {
           "type": "import_decl",
+          "named": true
+        },
+        {
+          "type": "job_decl",
           "named": true
         },
         {
@@ -7712,11 +7786,19 @@
     "named": true
   },
   {
+    "type": "cron",
+    "named": false
+  },
+  {
     "type": "deploy",
     "named": false
   },
   {
     "type": "else",
+    "named": false
+  },
+  {
+    "type": "every",
     "named": false
   },
   {
@@ -7764,6 +7846,10 @@
     "named": true
   },
   {
+    "type": "job",
+    "named": false
+  },
+  {
     "type": "let",
     "named": false
   },
@@ -7785,6 +7871,10 @@
   },
   {
     "type": "requires",
+    "named": false
+  },
+  {
+    "type": "retries",
     "named": false
   },
   {
@@ -7829,6 +7919,10 @@
   },
   {
     "type": "then",
+    "named": false
+  },
+  {
+    "type": "timeout",
     "named": false
   },
   {
