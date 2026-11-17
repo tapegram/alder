@@ -4715,6 +4715,42 @@ as `Test.advance` and the milliseconds (`Test.advance 86400000ms`).
 Test.advance (24 * 60 * 60 * 1000)
 ```
 
+### `Test.jobs`
+
+```alder fragment
+jobs : Task (List { id: Job.Id, job: Job, status: Job.Status })
+```
+
+Every job in the test's database, oldest first, with its status.
+
+A test runs no worker: `Job.enqueue` stores the job in the test's transaction, so it is
+listed here and gone with the test, and a `Test.run` that fails drops the jobs it queued.
+Jobs that have run stay, as `Done` or `Dead`, and a failed one is `Queued` again with its
+`error` and the `runAt` of its retry. Only `Test.work` runs them.
+
+```alder fragment
+Test.jobs |> Task.map (\rows -> List.length rows)
+```
+
+### `Test.work`
+
+```alder fragment
+work : Task (List { id: Job.Id, job: Job, result: Result Text Unit })
+```
+
+Runs every job that is due at the test's clock, oldest first, and gives each run's result.
+
+Each job runs as its own `Task` in the test's transaction. A job that fails has its writes
+undone, and it is retried at the clock's time plus the same wait a worker uses (10 seconds
+after the first attempt) or, past its `retries`, is `Dead`; `result` is `Err` with its
+error. The jobs that the jobs queue run in the same call when they are due. A job not yet due
+waits for `Test.advance`. After 1000 runs in one call the test fails with "Test.work: jobs
+keep enqueueing jobs".
+
+```alder fragment
+Test.work |> Task.map (\runs -> List.all (\r -> r.result == Ok ()) runs)
+```
+
 ### `Test.get`
 
 ```alder fragment

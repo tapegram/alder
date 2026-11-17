@@ -530,6 +530,26 @@ func TestTest_Clock(t *testing.T) {
 	}
 }
 
+// TestTest_Jobs runs jobs-ok (#168): the spec's welcome-mail test, Test.work on the test's
+// clock (not due, retried after a failure with its writes undone, jobs that queue jobs), a
+// failed request queueing nothing, the trace naming the job, and a job that queues itself
+// forever failing its test at the cap.
+func TestTest_Jobs(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	src, err := filepath.Abs("../../testdata/corpus/jobs-ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "jobs-ok")
+	copyDir(t, src, dir)
+	code, stdout, stderr := runTest(t, dir)
+	want := "FAIL Signup \"a job that enqueues itself forever\"\n  error: Test.work: jobs keep enqueueing jobs\n"
+	if code == 0 || !strings.Contains(stdout, want) || !strings.Contains(stdout, "6 passed, 1 failed\n") {
+		t.Fatalf("exit %d, want %q\nstdout:\n%s\nstderr:\n%s", code, want, stdout, stderr)
+	}
+}
+
 // An `<al-button href>` puts the attributes that describe its link on the `<a>` it renders:
 // `Test.has "#edit a[data-alder-reload]"` finds it there and not on the element.
 func TestTest_AlButtonAnchorAttrs(t *testing.T) {

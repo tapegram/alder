@@ -47,20 +47,26 @@ func init() {
 }
 
 // JobEnqueue is Job.enqueue: j, due now, in the running Task's transaction (jobs.Enqueue). It is
-// a write: it never runs inside a Query.
+// a write: it never runs inside a Query. The trace names the job: "Job.enqueue SendWelcome".
 func JobEnqueue(j rt.Job) eff.Task[string] {
-	return eff.Call("Job.enqueue", true, func(e *eff.Env) (string, error) { return jobs.Enqueue(e, j, now(e), nil) })
+	return eff.Call(jobStep("Job.enqueue", j), true, func(e *eff.Env) (string, error) { return jobs.Enqueue(e, j, now(e), nil) })
 }
 
 // JobEnqueueAt is Job.enqueueAt: j, not due before at.
 func JobEnqueueAt(at time.Time, j rt.Job) eff.Task[string] {
-	return eff.Call("Job.enqueueAt", true, func(e *eff.Env) (string, error) { return jobs.Enqueue(e, j, at, nil) })
+	return eff.Call(jobStep("Job.enqueueAt", j), true, func(e *eff.Env) (string, error) { return jobs.Enqueue(e, j, at, nil) })
 }
 
 // JobEnqueueOnce is Job.enqueueOnce: j, due now, unless a job of its kind with key is queued or
 // running, whose id it gives instead.
 func JobEnqueueOnce(key string, j rt.Job) eff.Task[string] {
-	return eff.Call("Job.enqueueOnce", true, func(e *eff.Env) (string, error) { return jobs.Enqueue(e, j, now(e), &key) })
+	return eff.Call(jobStep("Job.enqueueOnce", j), true, func(e *eff.Env) (string, error) { return jobs.Enqueue(e, j, now(e), &key) })
+}
+
+// jobStep is the trace name of an enqueue step: the step and the job's name without its module
+// ("Job.enqueue SendWelcome"), as a Db step names its table.
+func jobStep(step string, j rt.Job) string {
+	return step + " " + j.Kind[strings.LastIndexByte(j.Kind, '.')+1:]
 }
 
 // JobStatus is Job.status: the status of job id in the store the Query is bound to, Nothing
@@ -71,25 +77,30 @@ func JobStatus(id string) eff.Query[rt.Maybe[JobStatusRecord]] {
 		if err != nil || s == nil {
 			return rt.Nothing[JobStatusRecord](), err
 		}
-		out := JobStatusRecord{Attempts: int64(s.Attempts), Error: rt.Nothing[string](), RunAt: rt.Nothing[time.Time]()}
-		switch s.State {
-		case jobs.Queued:
-			out.State.Tag = JobQueued
-		case jobs.Running:
-			out.State.Tag = JobRunning
-		case jobs.Done:
-			out.State.Tag = JobDone
-		default:
-			out.State.Tag = JobDead
-		}
-		if s.Error != nil {
-			out.Error = rt.Just(*s.Error)
-		}
-		if s.RunAt != nil {
-			out.RunAt = rt.Just(*s.RunAt)
-		}
-		return rt.Just(out), nil
+		return rt.Just(JobStatusOf(*s)), nil
 	}))
+}
+
+// JobStatusOf is s as the stdlib `Job.Status`.
+func JobStatusOf(s jobs.Status) JobStatusRecord {
+	out := JobStatusRecord{Attempts: int64(s.Attempts), Error: rt.Nothing[string](), RunAt: rt.Nothing[time.Time]()}
+	switch s.State {
+	case jobs.Queued:
+		out.State.Tag = JobQueued
+	case jobs.Running:
+		out.State.Tag = JobRunning
+	case jobs.Done:
+		out.State.Tag = JobDone
+	default:
+		out.State.Tag = JobDead
+	}
+	if s.Error != nil {
+		out.Error = rt.Just(*s.Error)
+	}
+	if s.RunAt != nil {
+		out.RunAt = rt.Just(*s.RunAt)
+	}
+	return out
 }
 
 // JobParse reads a job's stored parameters as a JSON tree: a number without a fraction or an
