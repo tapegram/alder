@@ -450,7 +450,7 @@ func HasAppTables(ctx context.Context, st *SQLite) (bool, error) {
 // machine that deploys (a laptop, a CI runner) finds them: one row per build pushed (its
 // alder-deploy.json record, its migrations/schema.json and that schema's hash, its migrations'
 // names as a JSON list, and the point-in-time mark taken before it migrated), and the id of the
-// build serving. They are the runtime's tables, not the app's (internalTables): drift, adoption
+// build serving. They are the runtime's tables, not the app's (`_alder_*`, appTables): drift, adoption
 // and HasAppTables do not see them.
 const (
 	createDeployBuilds  = `CREATE TABLE IF NOT EXISTS "_alder_deploy_builds" ("id" TEXT PRIMARY KEY, "record" TEXT NOT NULL DEFAULT '', "schema" TEXT NOT NULL DEFAULT '', "schema_hash" TEXT NOT NULL DEFAULT '', "migrations" TEXT NOT NULL DEFAULT '[]', "pitr" TEXT NOT NULL DEFAULT '', "created" TEXT NOT NULL)`

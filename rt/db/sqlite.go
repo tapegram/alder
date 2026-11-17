@@ -157,6 +157,24 @@ type querier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
+// Execer is what statements outside the Store's operations run through: a *sql.DB, *sql.Conn
+// or *sql.Tx, or On's (rt/jobs writes the runtime's jobs table through it).
+type Execer = querier
+
+// On is the Execer of st's transaction tx (an eff.Tx it began), or of the database itself when
+// tx is nil, for the runtime's own tables: rt/jobs inserts and marks job rows inside a Task's
+// transaction. Its statements are recorded and counted like the Store's (Env.Rec, Env.Stats).
+// st is the store an Env runs on: a *SQLite, or a TestStore in a test of an app with silos.
+func On(st eff.Store, tx eff.Tx) (Execer, error) {
+	switch s := st.(type) {
+	case *SQLite:
+		return s.on(tx)
+	case TestStore:
+		return s.SQLite.on(tx)
+	}
+	return nil, fmt.Errorf("db: store %T is not a SQLite store", st)
+}
+
 // on is tx's *sql.Tx, or the database itself when tx is nil.
 func (s *SQLite) on(tx Tx) (querier, error) {
 	if tx == nil {
@@ -584,7 +602,7 @@ const Format = "1"
 // change, one naming the tables that changed for a schema change — and
 // touches nothing. It also creates the index of every @ref column (IndexStmts,
 // CREATE INDEX IF NOT EXISTS: a database made before them gets them), which the
-// hash does not cover.
+// hash does not cover, and the runtime's jobs table (EnsureJobsTable).
 //
 // Ensure is for an app without migrations; an app with them calls Migrate instead.
 func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err error) {
@@ -598,7 +616,7 @@ func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err 
 		return err
 	}
 	defer conn.Close()
-	if _, err := conn.ExecContext(ctx, createMetaTable); err != nil {
+	if err := EnsureJobsTable(ctx, conn); err != nil {
 		return err
 	}
 	oldHash, err := metaValue(ctx, conn, "schema_hash")
@@ -768,14 +786,15 @@ func formatNumber() int {
 	return n
 }
 
-// internalTables are the runtime's own tables, which are not the app's (appTables, liveSchema):
-// the schema record, the migration log, a silo's schema row, the deploy lock and the deploy
-// tables of a shared database on Turso (EnsureDeployTables).
-const internalTables = `'_alder_meta', '_alder_migrations', '_alder_schema', '_alder_lock', '_alder_deploy_builds', '_alder_deploy_current'`
+// Every table whose name begins `_alder_` is the runtime's own, not the app's (appTables,
+// liveSchema): the schema record, the migration log, a silo's schema row, the deploy lock, the
+// deploy tables of a shared database on Turso (EnsureDeployTables), the jobs table
+// (EnsureJobsTable), and whatever a later runtime adds, so a new internal table needs no edit
+// here. An app table's SQL name never begins with an underscore (SQLName).
 
-// appTables lists every table except SQLite's own and the runtime's (internalTables).
+// appTables lists every table except SQLite's own and the runtime's (`_alder_*`).
 func appTables(ctx context.Context, q querier) ([]string, error) {
-	rows, err := q.QueryContext(ctx, `SELECT "name" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT IN (`+internalTables+`) ORDER BY "name"`)
+	rows, err := q.QueryContext(ctx, `SELECT "name" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT LIKE '\_alder\_%' ESCAPE '\' ORDER BY "name"`)
 	if err != nil {
 		return nil, err
 	}

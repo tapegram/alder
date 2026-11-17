@@ -82,7 +82,13 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 		env.Tx = w.Tx
 	case kind == KTask && env.Store != nil:
 		store := env.Store
-		env.beginTx = func() (Tx, error) { return store.Begin(ctx(env)) }
+		env.beginTx = func() (Tx, error) {
+			tx, err := store.Begin(ctx(env))
+			if err == nil && env.OnBegin != nil {
+				env.OnBegin()
+			}
+			return tx, err
+		}
 	}
 	// commit ends a Task's transaction (or savepoint) after success; undo after a failure.
 	commit := func(tx Tx) error {
