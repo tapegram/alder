@@ -118,15 +118,15 @@ test "a failing job is retried on the clock" = {
   let runs <- Test.work
   let rows <- Test.jobs
   let users <- Db.from User.User |> Db.count
-  let queued = \(s : Job.Status) ->
-    s.state == Queued
-      && s.attempts == 1
-      && s.error == Just "smtp down"
-      && s.runAt == Just (Time.addMillis 10000 march)
+  let want = {
+    state: Queued,
+    attempts: 1,
+    error: Just "smtp down",
+    runAt: Just (Time.addMillis 10000 march),
+  }
   Task.succeed (
     List.map (\r -> r.result) runs == [Err "smtp down"]
-      && List.length rows == 1
-      && List.all (\r -> queued r.status) rows
+      && List.map (\r -> r.status) rows == [want]
       && users == 0
   )
 }

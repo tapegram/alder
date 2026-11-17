@@ -123,8 +123,11 @@ func TestJobs_WorkFailureRetriesOnTheClock(t *testing.T) {
 	if len(runs) != 1 || runs[0].Result.IsOk || runs[0].Result.Err != "smtp down" {
 		t.Fatalf("runs %+v", runs)
 	}
+	if len(left) != 1 {
+		t.Fatalf("left %+v", left)
+	}
 	s := left[0].Status
-	if len(left) != 1 || s.State.Tag != std.JobQueued || s.Attempts != 1 || !s.Error.Ok || s.Error.Val != "smtp down" ||
+	if s.State.Tag != std.JobQueued || s.Attempts != 1 || !s.Error.Ok || s.Error.Val != "smtp down" ||
 		!s.RunAt.Ok || !s.RunAt.Val.Equal(setAt.Add(10*time.Second)) {
 		t.Fatalf("left %+v", left)
 	}

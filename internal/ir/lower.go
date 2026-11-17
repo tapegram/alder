@@ -383,6 +383,11 @@ func (l *lowerer) recordType(t types.Type) *RecordType {
 		if rt, ok := l.records[key(rec.Module, rec.Name)]; ok {
 			return rt
 		}
+		if rec.Module == "Job" && rec.Name == "Status" { // the stdlib's record: gen builds std.JobStatusRecord
+			rt := l.anonRecord(rec)
+			rt.Module, rt.Name = rec.Module, rec.Name
+			return rt
+		}
 		panic(fmt.Sprintf("ir: record type %s is not declared", types.String(rec)))
 	}
 	return l.anonRecord(rec)

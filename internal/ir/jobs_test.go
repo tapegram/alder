@@ -63,3 +63,25 @@ func TestIR_Jobs(t *testing.T) {
 		}
 	}
 }
+
+// A record literal of the stdlib's Job.Status lowers to a Record whose type is Job.Status, as a
+// declared record's does (it crashed with "record type Job.Status is not declared").
+func TestIR_JobStatusLiteral(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	app := "module App\n\nerror : Error -> Html\nerror err = <h1>Something went wrong</h1>\n\nnotFound : Html\nnotFound = <h1>Not found</h1>\n"
+	src := "module Status\n\nqueued : Job.Status\n" +
+		"queued = { state: Queued, attempts: 1, error: Just \"smtp down\", runAt: Nothing }\n\n" +
+		"isQueued : Job.Status -> Bool\nisQueued s = s == { s | attempts: 1 }\n"
+	for name, body := range map[string]string{"App.alder": app, "Status.alder": src} {
+		if err := os.WriteFile(filepath.Join(dir, "app", name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dump := spaces(Dump(lowerDir(t, dir)))
+	if !strings.Contains(dump, "attempts") || !strings.Contains(dump, "smtp down") {
+		t.Errorf("dump:\n%s", dump)
+	}
+}

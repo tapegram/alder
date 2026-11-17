@@ -4743,9 +4743,11 @@ Runs every job that is due at the test's clock, oldest first, and gives each run
 Each job runs as its own `Task` in the test's transaction. A job that fails has its writes
 undone, and it is retried at the clock's time plus the same wait a worker uses (10 seconds
 after the first attempt) or, past its `retries`, is `Dead`; `result` is `Err` with its
-error. The jobs that the jobs queue run in the same call when they are due. A job not yet due
-waits for `Test.advance`. After 1000 runs in one call the test fails with "Test.work: jobs
-keep enqueueing jobs".
+error. The jobs that the jobs queue run in the same call when they are due. A clock the test
+has not set moves a second at every reading, and running a job reads it, so a job due a few
+seconds ahead, or a failed job's retry, can come due within the same call: set the clock with
+`Test.setClock` and a job not yet due waits for `Test.advance`. After 1000 runs in one call
+the test fails with "Test.work: jobs keep enqueueing jobs".
 
 ```alder fragment
 Test.work |> Task.map (\runs -> List.all (\r -> r.result == Ok ()) runs)
