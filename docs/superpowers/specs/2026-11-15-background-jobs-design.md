@@ -36,7 +36,7 @@ SendWelcome.run p = {
   let user <- Db.get User p.user
   match user {
     Just u -> Email.send { to: u.email, subject: "Welcome", body: <p>Hello {u.name}</p> },
-    Nothing -> Task.succeed {},          -- deleted before we got to it: nothing to send
+    Nothing -> Task.succeed (),          -- deleted before we got to it: nothing to send
   }
 }
 
@@ -52,14 +52,15 @@ Create.update p session = {
 job Nightly = {} cron "0 3 * * *"
 
 Nightly.run : Nightly.Params -> Task Unit
-Nightly.run _ = Log.info "cleanup ran"   -- the app's cleanup goes here
+Nightly.run p = Log.info "cleanup ran"   -- the app's cleanup goes here
 
 test "signing up sends the welcome mail" = {
   let _ <- Test.fake Email
+  let _ <- Test.get (Index {})
   let out <- Test.submit Create { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
   let jobs <- Test.jobs
   let runs <- Test.work
-  Task.succeed (List.length jobs == 1 && List.all (\r -> r.result == Ok {}) runs)
+  Task.succeed (List.length jobs == 1 && List.all (\r -> r.result == Ok ()) runs)
 }
 ```
 
@@ -584,13 +585,13 @@ job SendWelcome = { user: User.UserId }
 SendWelcome.run : SendWelcome.Params -> Task Unit
 SendWelcome.run p = {
   let _ <- Log.info "SendWelcome ran"
-  Task.succeed {}
+  Task.succeed ()
 }
 
 test "SendWelcome runs" = {
   let _ <- Job.enqueue (SendWelcome { user: User.UserId "u1" })
   let runs <- Test.work
-  Task.succeed (List.map (\r -> r.result) runs == [Ok {}])
+  Task.succeed (List.map (\r -> r.result) runs == [Ok ()])
 }
 ```
 
