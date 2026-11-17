@@ -1,0 +1,121 @@
+package app
+
+// The job codec and job value tests (#168): testdata/golden/gen_jobs emitted, with this file
+// beside it as zz_e2e_test.go. internal/gen's jobs_test.go runs it.
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"alder/rt"
+	"alder/rt/std"
+)
+
+// everything is a Signup.Everything's parameters with every kind of field set.
+func everything() Signup__Everything__Params {
+	return Signup__Everything__Params{
+		N:       -7,
+		X:       1.5,
+		Ok:      true,
+		Title:   "a \"title\"",
+		User:    "u1",
+		Due:     rt.Just(rt.Date{Y: 2026, M: 11, D: 16}),
+		At:      rt.Nothing[time.Time](),
+		Tags:    []string{"x", "y"},
+		Address: Signup__Address{Street: "Main", Zip: rt.Just(int64(12345))},
+		Shape:   Signup__Shape__Rect__(payload__Signup__Shape__Rect{W: 1, H: 2}),
+		Shapes:  []rt.Maybe[Signup__Shape]{rt.Just(Signup__Shape__Circle__(0.5)), rt.Nothing[Signup__Shape](), rt.Just(Signup__Shape__Dot__)},
+		Tree: Signup__Tree__Node__(payload__Signup__Tree__Node{
+			Left:  Signup__Tree__Leaf__,
+			Value: 3,
+			Right: Signup__Tree__Node__(payload__Signup__Tree__Node{Left: Signup__Tree__Leaf__, Value: 4, Right: Signup__Tree__Leaf__}),
+		}),
+		Outcome: rt.Err[string, int64]("nope"),
+	}
+}
+
+func TestJobCodec_RoundTrip(t *testing.T) {
+	for _, p := range []Signup__Everything__Params{everything(), func() Signup__Everything__Params {
+		p := everything() // the other way of each Maybe, and Ok
+		p.Due, p.At = rt.Nothing[rt.Date](), rt.Just(time.UnixMilli(1763251200123).UTC())
+		p.Address.Zip = rt.Nothing[int64]()
+		p.Outcome = rt.Ok[string, int64](42)
+		return p
+	}()} {
+		text := rt.JsonEncode(jobenc__Signup__Everything__Params(p))
+		v, err := std.JobParse(text)
+		if err != nil {
+			t.Fatalf("JobParse(%s): %v", text, err)
+		}
+		got, err := jobdec__Signup__Everything__Params(v, "")
+		if err != nil {
+			t.Fatalf("decode %s: %v", text, err)
+		}
+		if !rt.Eq(got, p) {
+			t.Errorf("round trip of %s:\ngot  %s\nwant %s", text, rt.Show(got), rt.Show(p))
+		}
+	}
+	text := rt.JsonEncode(jobenc__Signup__Everything__Params(everything()))
+	for _, want := range []string{
+		`"user":"u1"`,  // a brand is its base
+		`"at":null`,    // Nothing is null
+		`"due":"2026-11-16"`,
+		`"zip":12345`,  // Just is the value
+		`"shape":{"tag":"Rect","args":[{"w":1,"h":2}]}`,
+		`"shapes":[{"tag":"Circle","args":[0.5]},null,{"tag":"Dot","args":[]}]`,
+		`"outcome":{"tag":"Err","args":["nope"]}`,
+		`"address":{"street":"Main","zip":12345}`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("%s does not contain %s", text, want)
+		}
+	}
+}
+
+// A row whose parameters no longer decode (a field retyped or renamed since) is an error naming
+// the field, through the codec and through Jobs()'s Run.
+func TestJobCodec_Drift(t *testing.T) {
+	var run func(string) error
+	for _, k := range Jobs() {
+		if k.Name == "Signup.SendWelcome" {
+			run = func(params string) error { _, err := k.Run(nil, params); return err }
+		}
+	}
+	if run == nil {
+		t.Fatal("Jobs() has no Signup.SendWelcome")
+	}
+	for params, want := range map[string]string{
+		`{"user": 3}`:                  "user: expected a Text, got an Int",
+		`{}`:                           "user: missing",
+		`{"usr": "u1"}`:                "user: missing",
+		`[1]`:                          ": expected an object, got a list",
+		`{"user": "u1"} x`:             "text after the JSON value",
+	} {
+		err := run(params)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Run(%s) = %v, want an error containing %q", params, err, want)
+		}
+	}
+	if err := run(`{"user": "u1"}`); err != nil {
+		t.Errorf("Run of good parameters: %v", err)
+	}
+	// nested: the path names the field inside the custom type
+	v, _ := std.JobParse(strings.Replace(rt.JsonEncode(jobenc__Signup__Everything__Params(everything())), `"h":2`, `"h":"2"`, 1))
+	if _, err := jobdec__Signup__Everything__Params(v, ""); err == nil || !strings.Contains(err.Error(), "shape.Rect.h: expected an Int") {
+		t.Errorf("nested drift: %v", err)
+	}
+}
+
+func TestJobValue_Eq(t *testing.T) {
+	a, b := Signup__welcome("u1"), Signup__welcome("u1")
+	if !rt.Eq(a, b) || rt.Eq(a, Signup__welcome("u2")) {
+		t.Errorf("equal parameters give equal jobs: %v %v", a, b)
+	}
+	if a.Kind != "Signup.SendWelcome" || a.Params != `{"user":"u1"}` {
+		t.Errorf("job value = %+v", a)
+	}
+	if s := rt.Show(a); !strings.Contains(s, "Signup.SendWelcome") || !strings.Contains(s, `\"user\":\"u1\"`) {
+		t.Errorf("Show = %s, want the kind and the parameters", s)
+	}
+}

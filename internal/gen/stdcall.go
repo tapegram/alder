@@ -269,6 +269,11 @@ var StdCalls = map[string]string{
 	"Task.sleep":  "std.TaskSleep",
 	"Http.get":    "std.HttpGet",
 	"Http.post":   "std.HttpPost",
+	// Job (#168): enqueue* are writes (in the Task's transaction), status a read
+	"Job.enqueue":     "std.JobEnqueue",
+	"Job.enqueueAt":   "std.JobEnqueueAt",
+	"Job.enqueueOnce": "std.JobEnqueueOnce",
+	"Job.status":      "std.JobStatus",
 	// Fuzz (Fuzz.any is the derived generator, FuzzDerive; Fuzz.forAll and forAllTask are a
 	// property test's body, which gen's test emits)
 	"Fuzz.constant":    "fuzz.Constant",

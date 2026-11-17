@@ -1,0 +1,6 @@
+module Jobs.Nightly
+
+job Nightly = {}
+
+Nightly.run : Nightly.Params -> Task Unit
+Nightly.run p = Log.info "nightly ran"

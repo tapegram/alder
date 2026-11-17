@@ -221,6 +221,8 @@ func (p *printer) expr(e ir.Expr) string {
 			s += " " + p.atom(x.Params)
 		}
 		return s
+	case *ir.JobRef:
+		return p.qual(x.Job.Module, x.Job.Name) + " " + p.atom(x.Params)
 	case *ir.Hole:
 		return "?" + x.Name
 	case *ir.Match:

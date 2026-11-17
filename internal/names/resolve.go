@@ -1495,6 +1495,14 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 			r.bag.Error(diag.UnknownName, c.Span, "`%s` is a table of `fake %s` in module `%s`: write `%s.%s`", c.Name, fake, owner, r.qualFor(owner), c.Name)
 			return
 		}
+		// Job.State's constructors (#168) are the last resort: the module's own, Prelude's and
+		// its imports' come first, and one some app module declares keeps its "import" hint
+		if s := r.p.scopes["Job"]; s != nil && len(r.p.ctorIndex[c.Name]) == 0 {
+			if _, ok := s.ctors[c.Name]; ok {
+				c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: "Job", Name: c.Name}
+				return
+			}
+		}
 		r.unresolvedCtor(c)
 		return
 	}

@@ -266,6 +266,10 @@
                         (value
                           (route-ref Auth.Login.Login (record Login.Params))))))
                   (user (ctor Prelude.Maybe.Nothing)))))))))))
+(module Jobs.Nightly)
+(record Jobs.Nightly.Nightly.Params)
+(value Jobs.Nightly.Nightly.run : Nightly.Params -> Task Unit (p)
+  (call (std Log.info) "nightly ran"))
 (module Table.Todo)
 (union Table.Todo.Filter (All) (Active) (Completed))
 (record Table.Todo.Todo
@@ -1379,6 +1383,11 @@
   (requires user)
   (session Show.Session)
   (update Todos.Show.Delete.update))
+(job Jobs.Nightly.Nightly
+  (params Nightly.Params)
+  (run Jobs.Nightly.Nightly.run)
+  (retries 4)
+  (timeout 5m0s))
 (session App.Session)
 (deploy (env local script (script "./scripts/deploy-local.sh")) (proxy Caddy))
 (capability Auth.Login.Password

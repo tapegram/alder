@@ -8,6 +8,7 @@ import (
 	"alder/rt/db"
 	"alder/rt/eff"
 	"alder/rt/html"
+	"alder/rt/jobs"
 	"alder/rt/metrics"
 	"alder/rt/web"
 	"context"
@@ -49,6 +50,12 @@ func (Caps) Registry() map[string]any {
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__User__Role(0)), []string{"Reader", "Admin"})
+}
+
+// Jobs are the app's jobs (#168), in module order then declaration order: each kind's
+// qualified name, its options, and Run, which decodes a row's parameters and gives its `run`.
+func Jobs() []jobs.Kind {
+	return []jobs.Kind{}
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that

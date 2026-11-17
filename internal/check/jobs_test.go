@@ -36,9 +36,8 @@ func jobApp(t *testing.T, signup string) map[string]string {
 	return files
 }
 
-// signupOK is the spec's opening Signup module (#168 §Intent), without `Job.enqueue` (Task 4
-// adds the Job module), with a named parameter for `Nightly.run`, redirecting to a route of
-// this app.
+// signupOK is the spec's opening Signup module (#168 §Intent), with a named parameter for
+// `Nightly.run` and `Task.succeed ()`, redirecting to a route of this app.
 const signupOK = `module Signup
 
 import User
@@ -62,7 +61,7 @@ route Create = POST "/signup" { } form NewUser
 Create.update : Create.Params -> Session -> Task Response
 Create.update p session = {
   let id <- Db.insert User { email: p.form.email, name: p.form.name, passwordHash: "", role: Member }
-  let welcome = SendWelcome { user: id }
+  let _ <- Job.enqueue (SendWelcome { user: id })
   Task.succeed (Response.redirect (Projects.Index {}))
 }
 
@@ -151,6 +150,8 @@ func TestJob_ParamNotStorable(t *testing.T) {
 		"f: User.UserId",
 		"f: Shape",
 		"f: Tree",
+		"f: Result Text Int",
+		"f: Maybe (Result Text (List Shape))",
 	}
 	types := "type Shape = Circle Float | Square { side: Float } | Dot\n\ntype Tree = Leaf | Node (List Tree)\n\n"
 	for _, field := range accepted {
@@ -160,6 +161,10 @@ func TestJob_ParamNotStorable(t *testing.T) {
 			}
 		})
 	}
+	t.Run("Result of a function", func(t *testing.T) { // at its arguments, not its parameters
+		_, got := checkFiles(t, jobApp(t, jobModule("job J = { f: Result Text Int, g: Result (Int -> Int) Int }\n\n"+runArm("J"))))
+		wantJobDiag(t, got, diag.JobParam, "`g`")
+	})
 	t.Run("app type with a function", func(t *testing.T) {
 		_, got := checkFiles(t, jobApp(t, jobModule("type Box = Box (Int -> Int)\n\njob J = { f: Box }\n\n"+runArm("J"))))
 		wantJobDiag(t, got, diag.JobParam, "`f`", "`Box`")
@@ -296,5 +301,47 @@ func TestJob_CtorWithoutImport(t *testing.T) {
 	files["Other.alder"] = "module Other\n\nmore : Job\nmore = Signup.Ping { n: 1 }\n"
 	if _, got := checkFiles(t, files); len(got) != 0 {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// Job.enqueue is not a write for E0031 (spec §2): a `requires org` route that only enqueues, and
+// one that writes the org's project and enqueues, both check.
+func TestJob_EnqueueNotAWrite(t *testing.T) {
+	files := jobApp(t, jobModule("job J = { n: Int }\n\n"+runArm("J")))
+	files["Projects.alder"] = strings.Replace(files["Projects.alder"], "  let _ <- Db.insertScoped Project { name: params.form.name }\n",
+		"  let _ <- Db.insertScoped Project { name: params.form.name }\n  let _ <- Job.enqueue (Signup.J { n: 1 })\n", 1)
+	files["Projects.alder"] += "\nroute Ping = POST \"/projects/ping\" { } requires user, org\n\n" +
+		"Ping.update : Ping.Params -> Session -> Task Response\nPing.update params session = {\n" +
+		"  let _ <- Job.enqueueOnce \"ping\" (Signup.J { n: 2 })\n  Task.succeed (Response.redirect Index)\n}\n"
+	if !strings.Contains(files["Projects.alder"], "Job.enqueue (") {
+		t.Fatal("fixture: Add.update not found")
+	}
+	if _, got := checkFiles(t, files); len(got) != 0 {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// Job.State's constructors resolve unqualified as the last resort: an app's own `Done` (or an
+// imported one) wins, and elsewhere `Queued` is Job's.
+func TestJob_StateConstructors(t *testing.T) {
+	use := "state : Job.State\nstate = Queued\n\nisDone : Job.Status -> Bool\nisDone s = match s.state {\n  Done -> True,\n  _ -> False,\n}\n"
+	if _, got := checkFiles(t, jobApp(t, jobModule(use))); len(got) != 0 {
+		t.Fatalf("Job's constructors: got %q", got)
+	}
+	own := "type Step = Todo | Done\n\nlast : Step\nlast = Done\n"
+	if _, got := checkFiles(t, jobApp(t, jobModule(own))); len(got) != 0 {
+		t.Fatalf("own Done: got %q", got)
+	}
+	// imported: Other's Done, not Job's
+	files := jobApp(t, jobModule("import Other\n\nlast : Other.Step\nlast = Done\n"))
+	files["Signup.alder"] = strings.Replace(files["Signup.alder"], "import Org\n\nimport Other\n", "import Org\nimport Other\n", 1)
+	files["Other.alder"] = "module Other\n\ntype Step = Todo | Done\n"
+	if _, got := checkFiles(t, files); len(got) != 0 {
+		t.Fatalf("imported Done: got %q", got)
+	}
+	// own Done is not Job's: using it as a Job.State is a type error
+	_, got := checkFiles(t, jobApp(t, jobModule(own+"\nstate : Job.State\nstate = Done\n")))
+	if len(got) != 1 || !strings.HasPrefix(got[0], diag.TypeMismatch+" ") {
+		t.Fatalf("own Done as Job.State: got %q", got)
 	}
 }

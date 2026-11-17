@@ -22,6 +22,8 @@ func Children(e Expr) []Expr {
 		return x.Elems
 	case *RouteRef:
 		return []Expr{x.Params}
+	case *JobRef:
+		return []Expr{x.Params}
 	case *Match:
 		return matchChildren(x)
 	case *HMatch:

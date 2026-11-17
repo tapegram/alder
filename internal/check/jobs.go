@@ -104,17 +104,18 @@ func jobUnstorable(t types.Type, seen map[string]bool) types.Type {
 		if inner, ok := maybeOf(t); ok {
 			return jobUnstorable(inner, seen)
 		}
-		k := t.Module + "." + t.Name
+		k := types.String(t) // with its arguments: `Result Text Int` and `Result (Int -> Int) Int` differ
 		if seen[k] {
 			return nil
 		}
 		seen[k] = true
 		for _, ct := range t.Constructors() {
-			if ct.Arg == nil {
+			arg, _ := types.CtorArg(t, ct.Name) // at t's arguments (`Result Text Int`)
+			if arg == nil {
 				continue
 			}
-			if bad := jobUnstorable(ct.Arg, seen); bad != nil {
-				if bad == ct.Arg {
+			if bad := jobUnstorable(arg, seen); bad != nil {
+				if bad == arg {
 					return t // the app's type is what the field names
 				}
 				return bad

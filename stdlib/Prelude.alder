@@ -73,6 +73,13 @@ type Error
 -- Book: chapter 9, "Response, Route"
 type Route
 
+-- A background job to run, with its parameters: what `Job.enqueue` queues.
+--
+-- A job's name, given its parameters, is a `Job` (`Signup.SendWelcome { user: id }`), as a
+-- route's name makes a `Route`. Two jobs are equal when they are of the same job and have equal
+-- parameters. The `Job` module queues them and reads their status.
+type Job
+
 -- What a write route's update answers: where to go or what to show, and toasts.
 --
 -- It is built with the functions of the `Response` module (`Response.redirect`,

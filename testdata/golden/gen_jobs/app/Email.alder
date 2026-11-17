@@ -1,0 +1,5 @@
+module Email
+
+capability Email {
+  send : { to: Text.Email, subject: Text, body: Html } -> Task Unit,
+}

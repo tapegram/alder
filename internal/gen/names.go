@@ -34,6 +34,10 @@ import (
 //	                                        (routes__alder.go)
 //	encodeName  encode__M__Form             a form's encoder, the inverse of its decoder, for
 //	                                        Test.submit (routes__alder.go, test builds only)
+//	jobenc__T, jobdec__T                    the JSON codec of a record or custom type T a job's
+//	                                        parameters hold (jobs.go; T its Go type made an
+//	                                        identifier, numbered when two make the same,
+//	                                        app__alder.go)
 //	selector__N                             the N-th selector literal of the tests' queries,
 //	                                        parsed once (app__alder.go, test builds only)
 //	loadFunc    load__M__R                  GET route M.R's `requires` check and load (routes)
@@ -86,7 +90,7 @@ import (
 //     (an identifier never ends in "__"). Stripping that "__", Ctor is the text after the last
 //     "__" (Ctor has no "__" and does not start with '_'), and the rest is a GoName (1).
 //  3. payloadName, tagType, tagConst, widenName, tableName, insertName, insertVals, insertMineName, insertMineVals, enumName,
-//     checkName, decodeName, encodeName, selector__N, loadFunc, guardFunc, testFunc, fakeName, fakeEntry, fuzz__, lit__ and the
+//     checkName, decodeName, encodeName, jobenc__, jobdec__, selector__N, loadFunc, guardFunc, testFunc, fakeName, fakeEntry, fuzz__, lit__ and the
 //     route__/session__ helpers start with a lower-case word and "__". No GoName or ctorName does (they start with
 //     an upper-case module segment); no local does (a local contains "__" only at its end, or
 //     followed by its "_N" renaming suffix); the words differ, so the kinds cannot collide with
@@ -154,7 +158,7 @@ func init() {
 		any append bool byte cap clear close comparable complex complex64 complex128 copy delete
 		error false float32 float64 imag int int8 int16 int32 int64 iota len make max min new nil
 		panic print println real recover rune string true uint uint8 uint16 uint32 uint64 uintptr
-		rt html std time math eff db context fmt url web http json errors strings reflect rtesting fuzz applog`) {
+		rt html std time math eff db context fmt url web http json errors strings reflect rtesting fuzz applog jobs`) {
 		reserved[s] = true
 	}
 }

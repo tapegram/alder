@@ -13,6 +13,8 @@ import (
 //
 //	Int Float Bool Text Unit         int64 float64 bool string struct{}
 //	Date Time Route Error Never      rt.Date time.Time rt.Route error struct{}
+//	Job, Job.Id                      rt.Job, string
+//	Job.State, Job.Status            std.JobState, std.JobStatusRecord
 //	File, Bytes                      rt.File, []byte
 //	HttpError                        rt.HttpError
 //	Doc, Answer (test builds only)   rtesting.Doc, rtesting.Answer
@@ -55,6 +57,14 @@ func GoType(t types.Type) string {
 			return "time.Time"
 		case "Route":
 			return "rt.Route"
+		case "Job":
+			if t.Module == "" {
+				return "rt.Job"
+			}
+		case "Id":
+			if t.Module == "Job" {
+				return "string"
+			}
 		case "Response":
 			return "rt.Response"
 		case "Error":
@@ -120,6 +130,9 @@ func GoType(t types.Type) string {
 		}
 		return "any"
 	case *types.Record:
+		if t.Module == "Job" && t.Name == "Status" {
+			return "std.JobStatusRecord"
+		}
 		if t.Name != "" && !t.Anonymous {
 			return GoName(t.Module, t.Name) + typeArgs(t.Args)
 		}
@@ -141,6 +154,9 @@ func GoType(t types.Type) string {
 			case "Answer":
 				return "rtesting.Answer"
 			}
+		}
+		if t.Module == "Job" && t.Name == "State" {
+			return "std.JobState"
 		}
 		return GoName(t.Module, t.Name) + typeArgs(t.Args)
 	case *types.Fun:

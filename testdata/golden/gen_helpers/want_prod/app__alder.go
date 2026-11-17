@@ -7,6 +7,7 @@ import (
 	"alder/rt/applog"
 	"alder/rt/db"
 	"alder/rt/html"
+	"alder/rt/jobs"
 	"alder/rt/metrics"
 	"alder/rt/web"
 	"context"
@@ -41,6 +42,12 @@ func (c Caps) Registry() map[string]any {
 	return map[string]any{
 		"Gate.Gate": c.Gate__Gate,
 	}
+}
+
+// Jobs are the app's jobs (#168), in module order then declaration order: each kind's
+// qualified name, its options, and Run, which decodes a row's parameters and gives its `run`.
+func Jobs() []jobs.Kind {
+	return []jobs.Kind{}
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that
