@@ -72,8 +72,9 @@ of 10, as the baseline file's tables.
 | add 1000 | POST /rows | 10.22 | 971.0 kB | 25.85 MB / 125.9k | 3 | 2 | 5 | 3 |
 | enqueue 1000 | POST /rows/enqueue | 10.38 | 971.0 kB | 25.85 MB / 125.9k | 3 | 2 | 6 | 4 |
 
-(The page grew by about 300 bytes with the second form: `GET /` is 974.3 kB, against 973.8 kB in the
-2026-10 baseline's routes table; the other rows' bytes in that file moved by that much.)
+(The second form made `GET /` 974.3 kB in these runs, 0.5 kB more than the 973.8 kB of the 2026-10
+baseline's routes table; the `GET /` figure is from the run's output, not a table here. The
+`POST` rows above are unaffected: they answer a refresh of the same page, 971.0 kB for both.)
 
 An enqueue costs one more effect step and one more statement (the `INSERT` into `_alder_jobs`) and
 0.16 ms (1.6%) on a 10 ms request that renders a 1,000-row page twice; allocations and bytes are
@@ -92,10 +93,8 @@ that writes one row and nothing else; a job that does work outside the database 
 the lock, which is why the default is four workers and not one. For the polling and workers
 questions in §6a: one-second polling is not a limit, since a worker that finds a row claims again
 at once and waits one second (or for `Wake`) only when the table has nothing due; a queue of 2,000
-due rows drained in about a second and a half at four workers under load. Four workers keep up with
-any request rate this machine can write (the writers reached 46,000 writes a second and the jobs
-still ran at 1,600 a second beside them), so the queue is bounded by the requests' own write rate,
-not by the workers.
+due rows drained in about a second and a half at four workers under load. Under write contention the drain is about 1,600 jobs a second (about 2,800 alone), so a sustained
+enqueue rate above that grows the queue; below it the queue stays short.
 
 **Request p99.** With the jobs draining, the request writers' p99 is 0.049 and 0.051 ms against
 0.051 and 0.060 ms with no jobs at all (4 and 16 writers): no rise, inside the noise. p50 is 0.016

@@ -1983,8 +1983,9 @@ engine's default; `ALDER_DEPLOY_HEALTH_TIMEOUT` (a Go duration, such as
 `10m`) sets both.
 
 `/_alder/health`, which every build serves, answers `{"build":"<id>",
-"db":"ok"}`, or 503 when `db` is not `ok`: `unreachable`, or `ahead: …`
-for a database migrated past this build.
+"db":"ok","jobs":"ok"}`, or 503 when `db` is not `ok`: `unreachable`, or
+`ahead: …` for a database migrated past this build (`jobs` is `ok`, `off` or
+`stalled` and never changes the status: "The health endpoint").
 
 A build never migrates a remote database when it starts (several
 instances would race). Behind the database, it exits with "the database is behind this build: run
@@ -2599,6 +2600,10 @@ and for unusual setups:
   characters turns on `GET /_alder/metrics` ("Metrics"; unset: no endpoint);
   `open` (no token) is refused on Render, Fly and a box `alder deploy` set up,
   whose port is public; `alder deploy` leaves it as the environment sets it
+
+- `ALDER_JOBS`: read by the app's executable: the number of job workers it
+  starts ("Job workers"; default 4, `0`: none); a value that is not a whole
+  number below 65536 stops the app before it serves
 
 - `ALDER_ALLOW_DATA_LOSS`: read by the app's executable, never set by you: `1`
   lets `--migrate-only` apply a DROPS DATA migration; `alder deploy` sets it
