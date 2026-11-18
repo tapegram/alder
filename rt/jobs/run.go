@@ -32,8 +32,11 @@ const MaxError = 4096
 // Outcome is how one attempt ended.
 type Outcome struct {
 	ID, Kind string
-	Err      error     // nil when done; its text is the row's error (before MaxError cuts it)
-	Dead     bool      // the row is dead: past its retries, or its params cannot be decoded
+	Err      error // nil when done; its text is the row's error (before MaxError cuts it)
+	Dead     bool  // the row is dead: past its retries, or its params cannot be decoded
+	// Stopped: the workers' stop cancelled the attempt; the row is queued as before its claim
+	// (the attempt is not counted, no error) and Err is the cancellation.
+	Stopped  bool
 	Next     time.Time // the retry's run_at when Err != nil && !Dead
 	Took     time.Duration
 	LockHeld time.Duration // how long the attempt's write transaction was open
@@ -58,6 +61,9 @@ func Backoff(attempt int) time.Duration {
 // row done, so the job's writes and the mark commit together; a job that writes nothing commits
 // the mark alone. The attempt runs under k.Timeout (env.Ctx carries it).
 //
+// An attempt the workers' stop cancelled (Start) is not a failure: the row is queued again as it
+// was before its claim, its attempts not counted and its error cleared (Outcome.Stopped).
+//
 // On a failure (Task.fail, a not found, a capability's error, a panic, the timeout) the Task's
 // transaction is rolled back and a second short transaction records the error and either the
 // retry (queued, due Backoff(attempts) from now) or, past k.Retries, the row's death. Params k.Run
@@ -78,12 +84,15 @@ func RunOne(env *eff.Env, k Kind, row Row) Outcome {
 	}
 	ctx, cancel := base, context.CancelFunc(func() {})
 	if k.Timeout > 0 {
-		ctx, cancel = context.WithTimeout(base, k.Timeout)
+		ctx, cancel = context.WithTimeoutCause(base, k.Timeout, errTimedOut)
 	}
 	env.Ctx = ctx
 	err, decode := attempt(env, k, row)
 	end := env.Now()
-	timedOut := ctx.Err() == context.DeadlineExceeded
+	// the attempt's own timeout, not its caller's deadline, and not a failure of the job's own
+	// that came after the timeout
+	timedOut := context.Cause(ctx) == errTimedOut && errors.Is(err, context.DeadlineExceeded)
+	stopped := context.Cause(base) == errStopped
 	cancel()
 	env.Ctx, env.OnBegin = prevCtx, prevBegin
 	out.Took = end.Sub(start)
@@ -96,6 +105,12 @@ func RunOne(env *eff.Env, k Kind, row Row) Outcome {
 	switch {
 	case decode:
 		err = &failure{"cannot decode the parameters: " + err.Error(), err}
+	case stopped:
+		out.Err, out.Stopped = err, true
+		if rerr := record(env, store, base, `UPDATE "_alder_jobs" SET "state" = 'queued', "attempts" = "attempts" - 1, "error" = NULL, "lease_until" = NULL WHERE "id" = ?`, row.ID); rerr != nil {
+			out.Err = errors.Join(err, fmt.Errorf("jobs: re-queueing the stopped attempt: %w", rerr))
+		}
+		return out
 	case timedOut:
 		err = &failure{"timed out after " + durationText(k.Timeout), err}
 	}
@@ -175,6 +190,9 @@ func record(env *eff.Env, store eff.Store, ctx context.Context, stmt string, arg
 	}
 	return tx.Commit()
 }
+
+// errTimedOut is the cause of an attempt's context when its kind's timeout ends it.
+var errTimedOut = errors.New("jobs: the attempt timed out")
 
 // failure is an attempt's error with the text the row records: a timeout, a decode failure, a
 // panic. Unwrap is the error under it (nil for a panic).

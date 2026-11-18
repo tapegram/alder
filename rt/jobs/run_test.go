@@ -247,3 +247,36 @@ func TestBackoff(t *testing.T) {
 		}
 	}
 }
+
+// Only the attempt's own timeout is "timed out after": a deadline of the caller's context, and
+// a job's own failure once its timeout has passed, are recorded as they are.
+func TestRunOne_TimeoutCause(t *testing.T) {
+	st := open(t)
+	env, _ := newEnv(st)
+	waitDone := eff.Call("Wait", false, func(e *eff.Env) (struct{}, error) {
+		<-e.Ctx.Done()
+		return struct{}{}, e.Ctx.Err()
+	})
+	k := kind(waitDone)
+	k.Timeout = time.Hour
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	env.Ctx = ctx
+	id := runEnqueue(t, &eff.Env{Ctx: context.Background(), Store: st, Now: env.Now}, welcome, nil)
+	out := jobs.RunOne(env, k, claim(t, st, id))
+	if out.Err == nil || strings.HasPrefix(out.Err.Error(), "timed out") {
+		t.Fatalf("parent deadline: %v", out.Err)
+	}
+	env.Ctx = context.Background()
+
+	ownFail := eff.Call("Fail", false, func(e *eff.Env) (struct{}, error) {
+		<-e.Ctx.Done()
+		return struct{}{}, &eff.ErrFail{Msg: "x"}
+	})
+	k = kind(ownFail)
+	k.Timeout = 20 * time.Millisecond
+	id = runEnqueue(t, env, welcome, nil)
+	if out := jobs.RunOne(env, k, claim(t, st, id)); out.Err == nil || out.Err.Error() != "x" {
+		t.Fatalf("own failure after the timeout: %v", out.Err)
+	}
+}

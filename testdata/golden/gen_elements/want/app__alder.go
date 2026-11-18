@@ -95,10 +95,12 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 // Handler is the app's HTTP handler (web.NewRouter over Routes).
 func (a *App) Handler() http.Handler { return a.handler }
 
-// StartJobs starts n job workers and returns the function that stops them, waiting at most
-// grace for the attempts running. Workers do not run yet (#168): the stop does nothing.
+// StartJobs starts n job workers on the shared store (rt/jobs.Start: the kinds of Jobs(), each
+// attempt on JobEnv's Env, the router's clock and the log) and returns the function that stops
+// them: it stops claiming at once, waits at most grace for the attempts running, then cancels
+// them and queues their jobs again. n 0 starts none.
 func (a *App) StartJobs(n int) (stop func(grace time.Duration)) {
-	return func(time.Duration) {}
+	return jobs.Start(context.Background(), jobs.Options{Store: a.web.Store, Kinds: Jobs(), Env: a.JobEnv, Workers: n, Now: a.now, Log: a.log})
 }
 
 // JobEnv is the Env an attempt of a job of kind k runs with, built as the router builds a

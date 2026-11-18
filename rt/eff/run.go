@@ -25,7 +25,8 @@ var ErrInternal = errors.New("internal error")
 // started, so a failed Task leaves neither rows nor session changes behind.
 // A Task that succeeds — including one producing Reject — keeps both. env.Tx
 // is restored when Run returns. If env.Store is nil no transaction is ever
-// begun.
+// begun. After a commit Run calls the functions the Task registered with
+// env.AfterCommit, in order; a failed Task drops them.
 //
 // kind KQuery: no transaction (env.Tx is nil and env.Transaction gives nil);
 // a Call with write=true is not run and Run returns an internal error.
@@ -55,6 +56,9 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 		env.Now = time.Now
 	}
 	prevCtx, prevTx, prevBegin, prevKind, prevActive := env.Ctx, env.Tx, env.beginTx, env.Kind, env.active
+	prevAfter := env.afterCommit
+	defer func() { env.afterCommit = prevAfter }()
+	env.afterCommit = nil
 	if EnvFrom(env.Ctx) != env {
 		env.Ctx = context.WithValue(env.Ctx, envKey{}, env)
 	}
@@ -81,6 +85,7 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 		}
 		env.Tx = w.Tx
 	case kind == KTask && env.Store != nil:
+		env.afterCommit = new([]func())
 		store := env.Store
 		env.beginTx = func() (Tx, error) {
 			tx, err := store.Begin(ctx(env))
@@ -149,6 +154,11 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 		tx = nil // a failed commit is not rolled back again
 	}
 	done = true
+	if err == nil && w == nil && env.afterCommit != nil {
+		for _, f := range *env.afterCommit {
+			f()
+		}
+	}
 	if err != nil {
 		if kind == KTask {
 			if tx != nil {

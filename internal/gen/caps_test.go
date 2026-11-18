@@ -60,7 +60,7 @@ func funcBody(t *testing.T, f *ast.File, name string) *ast.BlockStmt {
 
 // TestMain_StartsJobs: the generated main opens the app, serves its Handler and starts
 // o.Jobs job workers; on shutdown it shuts the server down, then stops the workers, then the
-// backup, then closes the app. The maintenance tasks open no App and start no worker.
+// backup, then closes the app, and so does a failed Serve (the workers with no grace). The maintenance tasks open no App and start no worker.
 func TestMain_StartsJobs(t *testing.T) {
 	for _, withCaps := range []bool{false, true} {
 		for _, withSilos := range []bool{false, true} {
@@ -86,7 +86,10 @@ func TestMain_StartsJobs(t *testing.T) {
 					t.Errorf("caps %v silos %v: %d calls of %s", withCaps, withSilos, n, c)
 				}
 			}
-			for _, want := range []string{"a.StartJobs(o.Jobs)", "Jobs:      workers,", "workers, err := jobs.WorkersFromEnv() // ALDER_JOBS\n\tif err != nil {\n\t\tfmt.Fprintln(os.Stderr, \"alder:\", err)\n\t\tos.Exit(1)\n\t}"} {
+			// a failed Serve stops the workers at once (their attempts queued again), the backup and
+			// the app before it exits
+			failed := "case err := <-served:\n\t\tfmt.Fprintln(os.Stderr, \"alder:\", err)\n\t\tstopJobs(0) // the attempts running are queued again for the next start\n\t\tstopBackup()\n\t\ta.Close()\n\t\tos.Exit(1)"
+			for _, want := range []string{failed, "a.StartJobs(o.Jobs)", "Jobs:      workers,", "workers, err := jobs.WorkersFromEnv() // ALDER_JOBS\n\tif err != nil {\n\t\tfmt.Fprintln(os.Stderr, \"alder:\", err)\n\t\tos.Exit(1)\n\t}"} {
 				if !strings.Contains(string(src), want) {
 					t.Errorf("caps %v silos %v: main has no %q", withCaps, withSilos, want)
 				}

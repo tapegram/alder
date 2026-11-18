@@ -12,6 +12,7 @@ import (
 
 	"alder/rt"
 	"alder/rt/eff"
+	"alder/rt/jobs"
 	"alder/rt/std"
 )
 
@@ -139,7 +140,7 @@ func (mailer) Send(context.Context, Args__Email__Email__Send) (struct{}, error) 
 
 // TestApp_Open: Open's App serves through Handler, gives a job the Env a request gets (the
 // store, the capabilities, a clock and a log; no session), on which a job's Task runs, starts
-// and stops its workers, and closes its store.
+// and stops its workers, which run an enqueued job, and closes its store.
 func TestApp_Open(t *testing.T) {
 	a, err := Open(Caps{Email__Email: mailer{}}, Options{DB: t.TempDir() + "/app.db", Dev: true})
 	if err != nil {
@@ -175,7 +176,28 @@ func TestApp_Open(t *testing.T) {
 	if kind == "" {
 		t.Fatal("Jobs() has no Signup.SendWelcome")
 	}
-	a.StartJobs(4)(time.Millisecond)
+	// a job enqueued by a committed Task is run by the workers StartJobs starts, and is done
+	env := a.JobEnv(context.Background(), jobs.Kind{})
+	id, err := eff.Run(env, eff.KTask, std.JobEnqueue(Signup__welcome("nobody")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop := a.StartJobs(4)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		s, err := eff.Run(env, eff.KTask, eff.Call("Job.status", false, func(e *eff.Env) (*jobs.Status, error) { return jobs.StatusOf(e, id) }))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s != nil && s.State == jobs.Done {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("job %s: %+v, want done", id, s)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	stop(time.Second)
 	if err := a.Close(); err != nil {
 		t.Fatal(err)
 	}

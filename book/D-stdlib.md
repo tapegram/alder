@@ -2444,7 +2444,8 @@ enqueueAt : Time -> Job -> Task Id
 
 Queues a job that does not run before the given time.
 
-It is `Job.enqueue` with a due time: a worker picks the job up once the time has come.
+It is `Job.enqueue` with a due time: no worker takes the job before it, and once it has come
+the next free worker takes it when it next looks for work (an idle worker looks every second).
 
 ```alder fragment
 Job.enqueueAt (Time.fromMillis 86400000) (Jobs.Nightly.Nightly {})

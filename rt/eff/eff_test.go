@@ -573,3 +573,42 @@ func TestRun_OnBegin(t *testing.T) {
 		t.Fatalf("calls %v: want one, after Begin", calls)
 	}
 }
+
+// AfterCommit's function runs once the Task's transaction has committed, and never when the Task
+// fails (rolled back) or runs Within an outer transaction (a test's, which nothing commits).
+// Outside a running effect it runs at once.
+func TestEnv_AfterCommit(t *testing.T) {
+	s := &fakeStore{}
+	e := env(s)
+	var calls []bool // whether the transaction had committed when the function ran
+	hook := dbCall("Job.enqueue", true, func(e *Env) (int, error) {
+		tx := s.txs[len(s.txs)-1]
+		e.AfterCommit(func() { calls = append(calls, tx.committed) })
+		return 1, nil
+	})
+	if _, err := Run(e, KTask, hook); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(calls, []bool{true}) {
+		t.Fatalf("committed: calls %v, want one after the commit", calls)
+	}
+	calls = nil
+	if _, err := Run(e, KTask, Bind(hook, func(int) Task[int] { return Fail[int]("x") })); err == nil || len(calls) != 0 {
+		t.Fatalf("rolled back: calls %v, err %v", calls, err)
+	}
+	if _, err := Run(e, KTask, hook); err != nil || len(calls) != 1 {
+		t.Fatalf("a failed Task's hook was kept for the next: calls %v, err %v", calls, err)
+	}
+	calls = nil
+	w := env(s)
+	w.Within = &Within{Tx: &fakeTx{}}
+	s.txs = append(s.txs, w.Within.Tx.(*fakeTx))
+	if _, err := Run(w, KTask, hook); err != nil || len(calls) != 0 {
+		t.Fatalf("within: calls %v, err %v", calls, err)
+	}
+	ran := false
+	(&Env{}).AfterCommit(func() { ran = true })
+	if !ran {
+		t.Fatal("outside Run: not run at once")
+	}
+}

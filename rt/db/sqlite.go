@@ -765,13 +765,18 @@ func (s *SQLite) recreate(ctx context.Context, conn *sql.Conn, sc appSchema, tab
 	return tx.Commit()
 }
 
-// recreateTx drops the tables existing and creates sc's (tables'), their @ref indexes and the
-// _alder_meta record, inside tx (whose connection has foreign keys off).
+// recreateTx drops the tables existing, deletes every row of the jobs table, and creates sc's
+// (tables'), their @ref indexes and the _alder_meta record, inside tx (whose connection has foreign keys off).
 func recreateTx(ctx context.Context, tx *sql.Tx, sc appSchema, tables []TableDesc, existing []string) error {
 	for _, name := range existing {
 		if _, err := tx.ExecContext(ctx, "DROP TABLE "+quote(name)); err != nil {
 			return err
 		}
+	}
+	// the job rows go with the app's: a queued job would run against tables made anew, and the
+	// recreate promises an empty database (DevRemedy)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM "_alder_jobs"`); err != nil {
+		return err
 	}
 	for _, st := range append(slices.Clone(sc.stmts), IndexStmts(tables)...) {
 		if _, err := tx.ExecContext(ctx, st); err != nil {

@@ -441,10 +441,12 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 // Handler is the app's HTTP handler (web.NewRouter over Routes).
 func (a *App) Handler() http.Handler { return a.handler }
 
-// StartJobs starts n job workers and returns the function that stops them, waiting at most
-// grace for the attempts running. Workers do not run yet (#168): the stop does nothing.
+// StartJobs starts n job workers on the shared store (rt/jobs.Start: the kinds of Jobs(), each
+// attempt on JobEnv's Env, the router's clock and the log) and returns the function that stops
+// them: it stops claiming at once, waits at most grace for the attempts running, then cancels
+// them and queues their jobs again. n 0 starts none.
 func (a *App) StartJobs(n int) (stop func(grace time.Duration)) {
-	return func(time.Duration) {}
+	return jobs.Start(context.Background(), jobs.Options{Store: a.web.Store, Kinds: Jobs(), Env: a.JobEnv, Workers: n, Now: a.now, Log: a.log})
 }
 
 // JobEnv is the Env an attempt of a job of kind k runs with, built as the router builds a
@@ -761,7 +763,8 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 // (App.StartJobs). Its http.Server waits at most 10 s for a request's headers, and on SIGINT or
 // SIGTERM it stops accepting connections and lets the requests in flight finish (5 s at most),
 // then stops the job workers with what is left of those 5 s, stops the backup and closes the
-// app (App.Close). The maintenance tasks never start job workers.
+// app (App.Close); when serving fails it does the same with no grace for the job workers (their
+// attempts are queued again) and exits 1. The maintenance tasks never start job workers.
 // ALDER_EXIT_ON_STDIN_EOF=1 (set by alder run, which holds the other end of the app's standard
 // input) makes the same shutdown happen when standard input reaches EOF, so the app never
 // outlives the dev server; the variable is cleared once read, so a process the app starts does
@@ -934,6 +937,9 @@ func main() {
 	select {
 	case err := <-served:
 		fmt.Fprintln(os.Stderr, "alder:", err)
+		stopJobs(0) // the attempts running are queued again for the next start
+		stopBackup()
+		a.Close()
 		os.Exit(1)
 	case <-ctx.Done():
 	}
