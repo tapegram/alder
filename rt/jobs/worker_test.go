@@ -379,6 +379,53 @@ func TestWorker_ShutdownRequeues(t *testing.T) {
 	}
 }
 
+// An attempt that outlived its lease, whose row was re-queued and claimed by another worker,
+// does not rewind that claim when stop cancels it: the stop re-queue only touches a row still
+// running under the attempt's own worker.
+func TestWorker_StopLeavesReclaimedRow(t *testing.T) {
+	st := openFile(t)
+	env, c := newEnv(st)
+	started := make(chan string, 1)
+	blocked := kind(eff.Call("Block", false, func(e *eff.Env) (struct{}, error) {
+		var w string
+		if err := raw(t, st).QueryRowContext(context.Background(), `SELECT "worker" FROM "_alder_jobs"`).Scan(&w); err != nil {
+			t.Error(err)
+		}
+		started <- w
+		<-e.Ctx.Done()
+		return struct{}{}, e.Ctx.Err()
+	}))
+	id := runEnqueue(t, env, welcome, nil)
+	var outs []jobs.Outcome
+	var mu sync.Mutex
+	stop := jobs.Start(context.Background(), jobs.Options{
+		Store: st, Kinds: []jobs.Kind{blocked}, Workers: 1, Now: c.Now, Poll: 2 * time.Millisecond,
+		Env:       func(ctx context.Context, k jobs.Kind) *eff.Env { return &eff.Env{Ctx: ctx, Store: st, Now: c.Now} },
+		OnAttempt: func(o jobs.Outcome) { mu.Lock(); outs = append(outs, o); mu.Unlock() },
+	})
+	t.Cleanup(func() { stop(0) })
+	if w := <-started; w == "" {
+		t.Fatal("the claim set no worker")
+	}
+	// the lease ran out, housekeeping re-queued the row and another instance claimed it
+	if _, err := raw(t, st).ExecContext(context.Background(), `UPDATE "_alder_jobs" SET "state" = 'running', "attempts" = 2, "worker" = 'elsewhere' WHERE "id" = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	stop(0)
+	if r := read(t, st, id); r.state != "running" || r.attempts != 2 {
+		t.Fatalf("after the late stop: %+v, want running with 2 attempts", r)
+	}
+	var worker string
+	if err := raw(t, st).QueryRowContext(context.Background(), `SELECT "worker" FROM "_alder_jobs" WHERE "id" = ?`, id).Scan(&worker); err != nil || worker != "elsewhere" {
+		t.Fatalf("worker %q (%v), want elsewhere", worker, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(outs) != 1 || !outs[0].Stopped {
+		t.Fatalf("outcomes: %+v", outs)
+	}
+}
+
 // stop waits up to its grace for an attempt, which then finishes; a grace of 0 or less cancels
 // at once.
 func TestWorker_StopGrace(t *testing.T) {
