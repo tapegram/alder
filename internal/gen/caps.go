@@ -753,7 +753,7 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 // "open" is refused on Render, Fly and a box alder deployed, and logged at warn elsewhere;
 // rt/metrics), each a bad value exiting 1 before serving; ALDER_JOBS (the number of job workers
 // it starts with App.StartJobs, rt/jobs.WorkersFromEnv: default 4, 0 for none; a bad value
-// exits 2 before serving); static
+// exits 1 before serving); static
 // files are served from ALDER_STATIC, by default the static directory next to the executable
 // (alder build copies the app's static/ there). Before serving it prints "listening on
 // <address>" with the bound address, so ALDER_ADDR=127.0.0.1:0 picks a free port that a caller
@@ -804,7 +804,7 @@ func Main(name string, withCaps, withSilos bool) []byte {
 // box alder deployed, whose port is public, and is a warn line elsewhere. A bad value of any of
 // these exits 1 before anything is served. ALDER_JOBS=N is the number of job workers the app
 // starts (App.StartJobs; default 4, 0 for none); a value that is not a whole number below 65536
-// exits 2 before anything is served. Static files are served under /static/
+// exits 1 before anything is served. Static files are served under /static/
 // from ALDER_STATIC, by default the static directory next to the executable. SIGINT or SIGTERM
 // shuts the server down gracefully: requests in flight get 5 s to finish. ALDER_EXIT_ON_STDIN_EOF=1
 // (set by alder run) makes the app stop the same way when its standard input reaches EOF, so it
@@ -875,7 +875,7 @@ func main() {
 	workers, err := jobs.WorkersFromEnv() // ALDER_JOBS
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "alder:", err)
-		os.Exit(2)
+		os.Exit(1)
 	}
 	static := os.Getenv("ALDER_STATIC")
 	if static == "" {

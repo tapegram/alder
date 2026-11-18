@@ -86,7 +86,7 @@ func TestMain_StartsJobs(t *testing.T) {
 					t.Errorf("caps %v silos %v: %d calls of %s", withCaps, withSilos, n, c)
 				}
 			}
-			for _, want := range []string{"a.StartJobs(o.Jobs)", "Jobs:      workers,", "workers, err := jobs.WorkersFromEnv() // ALDER_JOBS\n\tif err != nil {\n\t\tfmt.Fprintln(os.Stderr, \"alder:\", err)\n\t\tos.Exit(2)\n\t}"} {
+			for _, want := range []string{"a.StartJobs(o.Jobs)", "Jobs:      workers,", "workers, err := jobs.WorkersFromEnv() // ALDER_JOBS\n\tif err != nil {\n\t\tfmt.Fprintln(os.Stderr, \"alder:\", err)\n\t\tos.Exit(1)\n\t}"} {
 				if !strings.Contains(string(src), want) {
 					t.Errorf("caps %v silos %v: main has no %q", withCaps, withSilos, want)
 				}
@@ -100,7 +100,7 @@ func TestMain_StartsJobs(t *testing.T) {
 }
 
 // TestOptions_AlderJobs: ALDER_JOBS unset or empty is 4 workers, 0 none, N N; a value that is
-// not a whole number makes the built command exit 2 with a message before it opens the app.
+// not a whole number makes the built command exit 1 with a message before it opens the app.
 func TestOptions_AlderJobs(t *testing.T) {
 	for v, want := range map[string]int{"": 4, "0": 0, "1": 1, " 12 ": 12} {
 		t.Setenv(jobs.WorkersEnv, v)
@@ -136,8 +136,8 @@ func TestOptions_AlderJobs(t *testing.T) {
 		code   int
 		stderr string
 	}{
-		{"x", 2, "alder: ALDER_JOBS=x: want a whole number of job workers below 65536 (0: none)\n"},
-		{"-1", 2, "alder: ALDER_JOBS=-1: want a whole number of job workers below 65536 (0: none)\n"},
+		{"x", 1, "alder: ALDER_JOBS=x: want a whole number of job workers below 65536 (0: none)\n"},
+		{"-1", 1, "alder: ALDER_JOBS=-1: want a whole number of job workers below 65536 (0: none)\n"},
 		// read, then Open refuses the stub adapter: the value got past the read
 		{"0", 1, "alder: capability Email.Email is not wired: adapters/email/: func Email returned nil\n"},
 	} {
