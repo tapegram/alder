@@ -37,6 +37,8 @@ type Outcome struct {
 	// Stopped: the workers' stop cancelled the attempt; the row is queued as before its claim
 	// (the attempt is not counted, no error) and Err is the cancellation.
 	Stopped  bool
+	Attempt  int       // this attempt, 1 for the first (the row's attempts, counting it)
+	Attempts int       // the most the job may have: its kind's retries plus one
 	Next     time.Time // the retry's run_at when Err != nil && !Dead
 	Took     time.Duration
 	LockHeld time.Duration // how long the attempt's write transaction was open
@@ -70,7 +72,7 @@ func Backoff(attempt int) time.Duration {
 // cannot decode make the row dead at once whatever k.Retries says: the same build cannot decode
 // them on a retry. Under env.Within (a test) the record is written in Within.Tx instead.
 func RunOne(env *eff.Env, k Kind, row Row) Outcome {
-	out := Outcome{ID: row.ID, Kind: row.Kind}
+	out := Outcome{ID: row.ID, Kind: row.Kind, Attempt: row.Attempts, Attempts: k.Retries + 1}
 	store, base := env.Store, ctxOf(env)
 	prevCtx, prevBegin := env.Ctx, env.OnBegin
 	start := env.Now()

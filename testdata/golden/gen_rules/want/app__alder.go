@@ -116,6 +116,7 @@ type Options struct {
 	Log       func(level, msg string)     // nil: no log
 	LogID     func(id, level, msg string) // as Log, for a line during a request: its id; nil: Log
 	Access    func(*applog.Access)        // one call per request routed (not the health check); nil: no access log
+	JobLine   func(*applog.Job)           // one call per job attempt (rt/applog: Logger.Job); nil: the line through LogID
 	Build     string                      // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
 	Metrics   *metrics.Collector          // ALDER_METRICS: answers /_alder/metrics and counts requests; nil: no endpoint
 	SlowAfter time.Duration               // ALDER_SLOW_MS: a request this slow is a warn line with its breakdown; 0: none
@@ -125,10 +126,13 @@ type Options struct {
 // App is the app opened (Open): its store(s), capabilities, log and clock, shared by its HTTP
 // handler and its job workers.
 type App struct {
-	store   *db.SQLite              // the shared store
-	web     web.Options             // the router's options: Store, Stores, Caps, SessionCheck
-	log     func(level, msg string) // o.Log, or one that drops the line
-	now     func() time.Time        // the router's clock: web.Options.Now, else time.Now
+	store   *db.SQLite                  // the shared store
+	web     web.Options                 // the router's options: Store, Stores, Caps, SessionCheck
+	log     func(level, msg string)     // o.Log, or one that drops the line
+	logID   func(id, level, msg string) // o.LogID: a job's lines under its id; nil: log
+	jobLine func(*applog.Job)           // o.JobLine
+	now     func() time.Time            // the router's clock: web.Options.Now, else time.Now
+	health  *jobs.Health                // the job workers' state, answered by /_alder/health as "jobs"
 	handler http.Handler
 }
 
@@ -145,18 +149,21 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 func (a *App) Handler() http.Handler { return a.handler }
 
 // StartJobs starts n job workers on the shared store (rt/jobs.Start: the kinds of Jobs(), each
-// attempt on JobEnv's Env, the router's clock and the log) and returns the function that stops
-// them: it stops claiming at once, waits at most grace for the attempts running, then cancels
-// them and queues their jobs again. n 0 starts none.
+// attempt on JobEnv's Env, the router's clock, the log with each job's lines under its id, the
+// metrics and the health check's state) and returns the function that stops them: it stops
+// claiming at once, waits at most grace for the attempts running, then cancels them and queues
+// their jobs again. n 0 starts none, and /_alder/health answers "jobs": "off".
 func (a *App) StartJobs(n int) (stop func(grace time.Duration)) {
-	return jobs.Start(context.Background(), jobs.Options{Store: a.web.Store, Kinds: Jobs(), Env: a.JobEnv, Workers: n, Now: a.now, Log: a.log})
+	return jobs.Start(context.Background(), jobs.Options{Store: a.web.Store, Kinds: Jobs(), Env: a.JobEnv, Workers: n, Now: a.now,
+		Log: a.log, LogID: a.logID, Line: a.jobLine, Metrics: a.web.Metrics, Health: a.health})
 }
 
 // JobEnv is the Env an attempt of a job of kind k runs with, built as the router builds a
 // request's (rt/web's newEnv without a request): the store(s), the capabilities, the session
-// check, the router's clock and the log; Session nil.
+// check and the router's clock; Session nil. Its Log is left to the worker, which writes the
+// job's lines under its id.
 func (a *App) JobEnv(ctx context.Context, k jobs.Kind) *eff.Env {
-	env := &eff.Env{Ctx: ctx, Store: a.web.Store, Caps: a.web.Caps, Now: a.now, Log: a.log}
+	env := &eff.Env{Ctx: ctx, Store: a.web.Store, Caps: a.web.Caps, Now: a.now}
 	if a.web.Stores != nil {
 		env.Stores = a.web.Stores
 	}
@@ -251,7 +258,9 @@ func Open(caps Caps, o Options) (*App, error) {
 	for _, m := range Migrations {
 		w.Migrations = append(w.Migrations, m.Name)
 	}
-	a := &App{store: store, web: w, log: o.Log, now: w.Now, handler: web.NewRouter(Routes, w)}
+	health := &jobs.Health{}
+	w.Jobs = health.State
+	a := &App{store: store, web: w, log: o.Log, logID: o.LogID, jobLine: o.JobLine, now: w.Now, health: health, handler: web.NewRouter(Routes, w)}
 	if a.log == nil {
 		a.log = func(string, string) {}
 	}

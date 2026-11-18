@@ -9,7 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"alder/rt/applog"
 	"alder/rt/eff"
+	"alder/rt/metrics"
 )
 
 const (
@@ -37,7 +39,21 @@ type Options struct {
 	Env     func(ctx context.Context, k Kind) *eff.Env
 	Workers int                     // goroutines claiming and running rows; 0 or less: none
 	Now     func() time.Time        // the clock (nil: the wall clock)
-	Log     func(level, msg string) // nil: no log; an Env without a Log logs here
+	Log     func(level, msg string) // the workers' own lines; nil: no log
+	// LogID, when set, is the hook for a line about one job, called with its id
+	// (applog.Logger.LogID): an Env without a Log logs here under the attempt's job id (the
+	// job's Log.*, its effect steps), and so does each attempt's line unless Line is set. nil:
+	// Log serves both.
+	LogID func(id, level, msg string)
+	// Line, when set, is called with each attempt's line (Outcome.Line; applog.Logger.Job)
+	// instead of writing it through LogID or Log.
+	Line func(*applog.Job)
+	// Metrics, when set (ALDER_METRICS), counts each attempt by kind and outcome and its time,
+	// the attempts running, and reads the jobs queued and due at a scrape.
+	Metrics *metrics.Collector
+	// Health, when set, is told that the workers started and stopped and when they claim a row
+	// (/_alder/health's "jobs": Health.State).
+	Health *Health
 	// OnAttempt, when set, is called with the Outcome of every attempt a worker ran.
 	OnAttempt func(Outcome)
 	// Poll is how long an idle worker waits for a wake before it looks again (0: DefaultPoll);
@@ -90,6 +106,12 @@ func Start(ctx context.Context, o Options) (stop func(grace time.Duration)) {
 	if o.Housekeep <= 0 {
 		o.Housekeep = DefaultHousekeep
 	}
+	if o.Health != nil {
+		o.Health.start(o)
+	}
+	if o.Metrics != nil {
+		o.Metrics.JobsQueued(queuedDue(o.Store, o.Now))
+	}
 	p := &pool{o: o, kinds: map[string]Kind{}, hk: newHousekeeper(o.Store, o.Kinds, o.Log), due: make(chan struct{}, 1)}
 	for _, k := range o.Kinds {
 		p.kinds[k.Name] = k
@@ -113,6 +135,9 @@ func Start(ctx context.Context, o Options) (stop func(grace time.Duration)) {
 	var once sync.Once
 	return func(grace time.Duration) {
 		once.Do(func() {
+			if o.Health != nil {
+				o.Health.stop()
+			}
 			quit()
 			ticker.Stop()
 			done := make(chan struct{})
@@ -155,11 +180,15 @@ func (p *pool) work(claimCtx, runCtx context.Context, tick <-chan time.Time, wor
 			p.hk.run(claimCtx, p.o.Now())
 		default:
 		}
-		row, err := Claim(claimCtx, p.o.Store, p.o.Kinds, p.o.Now(), worker)
+		now := p.o.Now()
+		row, err := Claim(claimCtx, p.o.Store, p.o.Kinds, now, worker)
 		if err != nil && claimCtx.Err() == nil {
 			p.o.Log("warn", "jobs: claiming a job: "+err.Error())
 		}
 		if row != nil {
+			if p.o.Health != nil {
+				p.o.Health.claimed(now)
+			}
 			Wake() // another idle worker looks too: more rows may be due
 			p.run(runCtx, *row)
 			continue
@@ -178,9 +207,14 @@ func (p *pool) work(claimCtx, runCtx context.Context, tick <-chan time.Time, wor
 	}
 }
 
-// run runs one attempt of row, which the worker has claimed. A panic outside the job's own Task
+// run runs one attempt of row, which the worker has claimed, and logs and counts it (observe).
+// An Env without a Log logs through LogID under the row's id. A panic outside the job's own Task
 // (RunOne recovers that one) is logged and leaves the row to its lease; the worker goes on.
 func (p *pool) run(ctx context.Context, row Row) {
+	if m := p.o.Metrics; m != nil {
+		m.JobRunning(1)
+		defer m.JobRunning(-1)
+	}
 	defer func() {
 		if v := recover(); v != nil {
 			p.o.Log("error", fmt.Sprintf("job %s %s: worker: panic: %v\n%s", row.Kind, row.ID, v, debug.Stack()))
@@ -190,11 +224,15 @@ func (p *pool) run(ctx context.Context, row Row) {
 	env := p.o.Env(ctx, k)
 	if env.Log == nil {
 		env.Log = p.o.Log
+		if logID := p.o.LogID; logID != nil {
+			env.Log = func(level, msg string) { logID(row.ID, level, msg) }
+		}
 	}
 	if env.Now == nil {
 		env.Now = p.o.Now
 	}
 	out := RunOne(env, k, row)
+	p.observe(out)
 	if p.o.OnAttempt != nil {
 		p.o.OnAttempt(out)
 	}
