@@ -25,7 +25,7 @@ import "embed"
 //go:embed eff/eff.go eff/run.go
 //go:embed fuzz/brands.go fuzz/choices.go fuzz/combinators.go fuzz/derive.go fuzz/draw.go fuzz/literal.go fuzz/shrink.go
 //go:embed html/diff.go html/fragments.go html/html.go html/parse.go html/repair.go html/state.go
-//go:embed jobs/enqueue.go jobs/run.go jobs/table.go
+//go:embed jobs/enqueue.go jobs/env.go jobs/run.go jobs/table.go
 //go:embed publicurl/publicurl.go
 //go:embed selector/selector.go
 //go:embed testing/bench.go testing/browser.go testing/clock.go testing/jobs.go testing/mutate.go testing/property.go testing/steps.go testing/testing.go

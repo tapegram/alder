@@ -305,6 +305,8 @@ func (g *gen) unionDraw(w *strings.Builder, t *ir.GenTree) {
 		fmt.Fprintf(w, "case %d:\n", i)
 		ct := ctorT(u, name)
 		switch {
+		case u.Module == "Job": // Job.State (#168): rt/std's, constructors without payloads
+			fmt.Fprintf(w, "return std.JobState{Tag: std.Job%s}\n", name)
 		case ct.Payload == nil && ta == "":
 			fmt.Fprintf(w, "return %s\n", ctorName(u.Module, u.Name, name))
 		case ct.Payload == nil:
@@ -352,7 +354,11 @@ func (g *gen) litFuncDecl(w *strings.Builder, t *ir.GenTree) {
 		u := t.Union
 		w.WriteString("switch v.Tag {\n")
 		for i, name := range t.Names {
-			fmt.Fprintf(w, "case %s:\n", tagConst(u.Module, u.Name, name))
+			if u.Module == "Job" { // Job.State (#168): rt/std's tags
+				fmt.Fprintf(w, "case std.Job%s:\n", name)
+			} else {
+				fmt.Fprintf(w, "case %s:\n", tagConst(u.Module, u.Name, name))
+			}
 			ct := ctorT(u, name)
 			qn := "q.Name(" + strconv.Quote(u.Module) + ", " + strconv.Quote(name) + ")"
 			switch {

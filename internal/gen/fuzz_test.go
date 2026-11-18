@@ -304,3 +304,41 @@ func TestChain(t *testing.T) {
 }
 `)
 }
+
+// Fuzz.any over the stdlib's Job.State and Job.Status (#168) derives generators that compile
+// and draw: every state comes up, and a status's state is one of them.
+func TestGen_FuzzJobState(t *testing.T) {
+	files := emitSourceWith(t, map[string]string{"J.alder": `module J
+
+states : Fuzz.Fuzzer Job.State
+states = Fuzz.any
+
+test "statuses" = \(s : Job.Status) -> s.attempts == s.attempts
+`}, true)
+	runGo(t, files, `package app
+
+import (
+	"testing"
+
+	"alder/rt/fuzz"
+	"alder/rt/std"
+)
+
+func TestJobFuzz(t *testing.T) {
+	seen := map[std.JobStateTag]bool{}
+	for seed := range uint64(200) {
+		seen[J__states(fuzz.Fresh(seed)).Tag] = true
+	}
+	if len(seen) != 4 {
+		t.Fatalf("drew states %v, want all four", seen)
+	}
+	p := Tests[0].Prop
+	for seed := range uint64(50) {
+		s := p.Draw(fuzz.Fresh(seed))[0].(std.JobStatusRecord)
+		if s.State.Tag > std.JobDead {
+			t.Fatalf("status state %v", s.State.Tag)
+		}
+	}
+}
+`)
+}

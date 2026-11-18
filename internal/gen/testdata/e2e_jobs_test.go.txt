@@ -1,14 +1,17 @@
 package app
 
-// The job codec and job value tests (#168): testdata/golden/gen_jobs emitted, with this file
-// beside it as zz_e2e_test.go. internal/gen's jobs_test.go runs it.
+// The job codec, job value and App tests (#168): testdata/golden/gen_jobs emitted, with this
+// file beside it as zz_e2e_test.go. internal/gen's jobs_test.go runs it.
 
 import (
+	"context"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"alder/rt"
+	"alder/rt/eff"
 	"alder/rt/std"
 )
 
@@ -125,5 +128,58 @@ func TestJobValue_Eq(t *testing.T) {
 	}
 	if s := rt.Show(a); !strings.Contains(s, "Signup.SendWelcome") || !strings.Contains(s, `\"user\":\"u1\"`) {
 		t.Errorf("Show = %s, want the kind and the parameters", s)
+	}
+}
+
+type mailer struct{}
+
+func (mailer) Send(context.Context, Args__Email__Email__Send) (struct{}, error) {
+	return struct{}{}, nil
+}
+
+// TestApp_Open: Open's App serves through Handler, gives a job the Env a request gets (the
+// store, the capabilities, a clock and a log; no session), on which a job's Task runs, starts
+// and stops its workers, and closes its store.
+func TestApp_Open(t *testing.T) {
+	a, err := Open(Caps{Email__Email: mailer{}}, Options{DB: t.TempDir() + "/app.db", Dev: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	a.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "home") {
+		t.Fatalf("GET / = %d %s", w.Code, w.Body)
+	}
+	var kind string
+	for _, k := range Jobs() {
+		if k.Name != "Signup.SendWelcome" {
+			continue
+		}
+		kind = k.Name
+		ctx := context.Background()
+		env := a.JobEnv(ctx, k)
+		if env.Ctx != ctx || env.Store == nil || env.Store != a.web.Store || env.Session != nil || env.Stores != nil || env.Now == nil || env.Log == nil {
+			t.Fatalf("JobEnv = %+v", env)
+		}
+		if _, ok := env.Caps["Email.Email"].(mailer); !ok {
+			t.Fatalf("JobEnv caps = %v", env.Caps)
+		}
+		task, err := k.Run(env, `{"user":"nobody"}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := eff.Run(env, eff.KTask, task); err != nil { // Db.get finds no user: done
+			t.Fatalf("the job's Task on JobEnv: %v", err)
+		}
+	}
+	if kind == "" {
+		t.Fatal("Jobs() has no Signup.SendWelcome")
+	}
+	a.StartJobs(4)(time.Millisecond)
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Serve(Caps{Email__Email: mailer{}}, Options{DB: ":memory:", Dev: true}); err != nil {
+		t.Fatalf("Serve: %v", err)
 	}
 }
