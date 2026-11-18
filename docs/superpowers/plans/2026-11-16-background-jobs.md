@@ -440,6 +440,28 @@ Deferred findings from PR 1's task and final reviews, each with the task that ow
   `Test.jobs`/`Test.work`; `Ensure`'s doc says a refusal "touches nothing" (`rt/db/sqlite.go`);
   test gaps: retries-6 loop skips attempts 1–4, parse-error tests lack missing `=`/record cases.
 
+## Carried from PR 2's reviews
+
+- **Task 13 (silos):** the silo recreate path (`rt/db/stores.go:805`) does not delete job rows as
+  the shared-store recreate now does; an `Env` with `Stores` but a nil `Store` drops the
+  after-commit wake (`rt/jobs/run.go:96`); `App.JobEnv` ignores `web.Options.EnvFor`.
+- **Task 17 (dev panel):** `App.JobEnv` returns `Log` nil (the worker binds it per attempt), so
+  "Run now" and any other `JobEnv` caller must bind a log.
+- **Task 14 (Turso) or earlier:** a persistent claim error logs one warn line per worker per poll
+  (`rt/jobs/worker.go`, ~4 lines/s with the database down): rate-limit it before remote stores.
+- **Any PR (cleanup):** done/failure record UPDATEs lack the `state='running' AND worker=?`
+  guard the stop re-queue now has; the unclaimable-kind warning fires once per process, never
+  again; a lost-row warning is logged even when its guarded UPDATE touched no row; the queued
+  gauge's reader is never cleared on stop and runs on `context.Background`; health may take
+  twice its timeout when the database is down and the workers have idled 5 min; the worker's
+  panic line is not under the job's id; `RETURNING *` + `scanRow` depend on column order;
+  `TestWorker_RunsEnqueued` (20 ms sleep) and `TestWorker_ZeroWorkers` (`NumGoroutine`) can
+  pass or flake for the wrong reason; the `AfterCommit` commit-failure path is untested;
+  `fuzz.go` keys on module name `Job` (ties to Task 20's Prelude ruling); the Migrations comment
+  says "Open (was: Serve)" for apps with no `App` module; `tui/internal/devproc` still kills
+  `alder run` after 5 s (harmless: the app exits on stdin EOF); bench fixture's second form
+  repeats the `title` field id.
+
 ## PR 2: the worker
 
 ### Task 7: Split `Serve`; `ALDER_JOBS`
