@@ -164,7 +164,7 @@ func displayAddr(a net.Addr) string { return rt.DisplayAddr(a.String()) }
 // up is announced on stdout (`dev server on <addr> → app on <child addr>`). A child that exits
 // on its own is reported in the overlay and the proxy answers 502 until the next good build.
 // When stop closes, done closes: the watcher, worker and /_dev/reload streams end, the HTTP
-// server shuts down, and the current child is stopped (SIGTERM, then SIGKILL after 5 s).
+// server shuts down, and the current child is stopped (SIGTERM, then SIGKILL after 10 s: child.stop).
 //
 // Generations: each child is started with its own build generation, ALDER_RELOAD=<nonce>-<n>
 // (nonce: random per dev server, n: counts the children started), which the app writes into
@@ -769,15 +769,23 @@ func startChild(binary, dbPath, staticDir, gen, devAddr string, logs func() *log
 	}
 }
 
-// stop shuts c down: SIGTERM (a graceful shutdown), then SIGKILL after 5 s; it returns once c
-// has exited. It closes the child's stdin pipe after the SIGTERM (the EOF only repeats it).
+// childKillDelay is how long stop waits after the SIGTERM before it kills the child. It is above
+// the app's whole shutdown: the generated main gives requests and running jobs 5 s from the
+// signal, then the job workers wait up to 1 s more for the cancelled attempts to be re-queued,
+// then the app closes its database. A kill inside that budget would leave a running job's row
+// `running` until its lease ran out, instead of re-queued for the next child.
+const childKillDelay = 10 * time.Second
+
+// stop shuts c down: SIGTERM (a graceful shutdown), then SIGKILL after childKillDelay (10 s); it
+// returns once c has exited. It closes the child's stdin pipe after the SIGTERM (the EOF only
+// repeats it).
 func (c *child) stop() {
 	c.stopping.Store(true)
 	_ = c.cmd.Process.Signal(syscall.SIGTERM)
 	_ = c.stdinW.Close()
 	select {
 	case <-c.exited:
-	case <-time.After(5 * time.Second):
+	case <-time.After(childKillDelay):
 		_ = c.cmd.Process.Kill()
 		<-c.exited
 	}

@@ -295,3 +295,43 @@ func TestRun_RestartAfterFailedStart(t *testing.T) {
 		t.Fatalf("hello.build after the good restart = %q, want ok", b)
 	}
 }
+
+// TestChildStop_WaitsForShutdown: stop gives the child its whole shutdown (the generated main's
+// 5 s grace, then up to 1 s while the job workers re-queue what they cancelled) before it kills
+// it. The stand-in child takes 6 s after its SIGTERM and exits 3: stop must see that exit, not
+// a SIGKILL.
+func TestChildStop_WaitsForShutdown(t *testing.T) {
+	if childKillDelay <= 6*time.Second {
+		t.Fatalf("childKillDelay = %v, want above the app's 5 s grace plus 1 s of job stop", childKillDelay)
+	}
+	if testing.Short() {
+		t.Skip("takes 6 s")
+	}
+	cmd := exec.Command("sh", "-c", `trap 'sleep 6; exit 3' TERM; echo ready; while :; do sleep 0.1; done`)
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Stdin = stdinR
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	stdinR.Close()
+	t.Cleanup(func() { _ = cmd.Process.Kill() })
+	if l, err := bufio.NewReader(out).ReadString('\n'); err != nil || l != "ready\n" {
+		t.Fatalf("child: %q, %v", l, err)
+	}
+	c := &child{cmd: cmd, stdinW: stdinW, exited: make(chan struct{})}
+	go func() { _ = cmd.Wait(); close(c.exited) }()
+	start := time.Now()
+	c.stop()
+	took := time.Since(start)
+	ws := cmd.ProcessState.Sys().(syscall.WaitStatus)
+	if ws.Signaled() || ws.ExitStatus() != 3 {
+		t.Fatalf("child ended with %v after %v, want exit 3 (its own shutdown, not a kill)", cmd.ProcessState, took)
+	}
+}
