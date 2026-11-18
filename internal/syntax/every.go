@@ -7,13 +7,13 @@ import (
 )
 
 // EveryDuration reads the literal of an `every="…"` attribute (#160): a whole number above 0
-// without leading zeros, then `ms`, `s` or `m` (`^[1-9][0-9]*(ms|s|m)$`). It returns the
-// duration as Datastar's interval modifier takes it and whether lit matches. Datastar's parser
-// has no minutes (it reads `1m` as 1 ms), so `Nm` is given as `<N*60>s`; `ms` and `s` pass
-// through unchanged.
+// without leading zeros, then `ms`, `s`, `m`, `h` or `d` (`^[1-9][0-9]*(ms|s|m|h|d)$`). It
+// returns the duration as Datastar's interval modifier takes it and whether lit matches.
+// Datastar's parser has no minutes (it reads `1m` as 1 ms), so `Nm`, `Nh` and `Nd` are given in
+// seconds (`<N*60>s`, `<N*3600>s`, `<N*86400>s`); `ms` and `s` pass through unchanged.
 func EveryDuration(lit string) (string, bool) {
 	num, unit := lit, ""
-	for _, u := range []string{"ms", "s", "m"} {
+	for _, u := range []string{"ms", "s", "m", "h", "d"} {
 		if strings.HasSuffix(lit, u) {
 			num, unit = strings.TrimSuffix(lit, u), u
 			break
@@ -27,12 +27,13 @@ func EveryDuration(lit string) (string, bool) {
 			return "", false
 		}
 	}
-	if unit != "m" {
+	secs := map[string]int{"m": 60, "h": 3600, "d": 86400}[unit]
+	if secs == 0 {
 		return lit, true
 	}
 	n, err := strconv.Atoi(num)
-	if err != nil || n > math.MaxInt/60 {
+	if err != nil || n > math.MaxInt/secs {
 		return "", false
 	}
-	return strconv.Itoa(n*60) + "s", true
+	return strconv.Itoa(n*secs) + "s", true
 }

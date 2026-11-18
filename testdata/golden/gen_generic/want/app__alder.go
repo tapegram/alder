@@ -5,6 +5,7 @@ package app
 import (
 	_ "alder/rt" // initialized before this package (rt/tether.go)
 	"alder/rt/db"
+	"alder/rt/jobs"
 )
 
 // Tables describes every table of the app, in module order then declaration order, for db.Ensure.
@@ -27,4 +28,10 @@ type Caps struct{}
 // field is). It is exported for alder test's main; Serve uses it too.
 func (Caps) Registry() map[string]any {
 	return map[string]any{}
+}
+
+// Jobs are the app's jobs (#168), in module order then declaration order: each kind's
+// qualified name, its options, and Run, which decodes a row's parameters and gives its `run`.
+func Jobs() []jobs.Kind {
+	return []jobs.Kind{}
 }

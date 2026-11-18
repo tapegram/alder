@@ -1,0 +1,9 @@
+module Home
+
+route Home = GET "/" { }
+
+Home.load : Home.Params -> Session -> Query Unit
+Home.load p session = Query.succeed ()
+
+Home.view : Unit -> Session -> Html
+Home.view model session = <p>home</p>

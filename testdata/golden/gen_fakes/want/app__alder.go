@@ -5,6 +5,7 @@ package app
 import (
 	_ "alder/rt" // initialized before this package (rt/tether.go)
 	"alder/rt/db"
+	"alder/rt/jobs"
 	rtesting "alder/rt/testing"
 	"alder/rt/web"
 )
@@ -62,6 +63,12 @@ var FakeTables = []db.TableDesc{table__Payments__Charge.Desc()}
 var Fakes = map[string]func() any{
 	"Payments.Stripe":   func() any { return fake__Payments__Stripe{} },
 	"Markdown.Markdown": func() any { return fake__Markdown__Markdown{} },
+}
+
+// Jobs are the app's jobs (#168), in module order then declaration order: each kind's
+// qualified name, its options, and Run, which decodes a row's parameters and gives its `run`.
+func Jobs() []jobs.Kind {
+	return []jobs.Kind{}
 }
 
 // Routes are the app's routes: none, as the app has no App module (alder test's browser serves them).

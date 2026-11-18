@@ -7,6 +7,7 @@ import (
 	"alder/rt/applog"
 	"alder/rt/db"
 	"alder/rt/html"
+	"alder/rt/jobs"
 	"alder/rt/metrics"
 	rtesting "alder/rt/testing"
 	"alder/rt/web"
@@ -57,6 +58,12 @@ var FakeTables = []db.TableDesc{}
 // Fakes are the app's fakes by the Env.Caps key of their capability: Test.fake installs one in the
 // running test's Env.Caps. Test builds only.
 var Fakes = map[string]func() any{}
+
+// Jobs are the app's jobs (#168), in module order then declaration order: each kind's
+// qualified name, its options, and Run, which decodes a row's parameters and gives its `run`.
+func Jobs() []jobs.Kind {
+	return []jobs.Kind{}
+}
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that
 // returned nil.

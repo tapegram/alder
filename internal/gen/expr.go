@@ -288,6 +288,8 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 		return GoType(x.Ty) + "{" + strings.Join(es, ", ") + "}", precAtom
 	case *ir.RouteRef:
 		return f.routeRef(x, s), precAtom
+	case *ir.JobRef:
+		return f.jobRef(x, s), precAtom
 	case *ir.Op:
 		return f.op(x, s)
 	case *ir.Str:
@@ -363,9 +365,13 @@ func (f *fn) variable(x *ir.Var, s *scope) string {
 		if _, isFun := x.Ty.(*types.Fun); isFun { // a function value, not called: instantiate it
 			return name + stdInstance(x.Module, x.Name, x.Ty)
 		}
-		// a stdlib constant is a Go function; Dict.empty needs its type arguments
+		// a stdlib constant is a Go function; Dict.empty needs its type arguments, Test.jobs
+		// and Test.work the app's jobs
 		if app, ok := x.Ty.(*types.App); ok && app.Con == "Dict" {
 			return name + typeArgs(app.Args) + "()"
+		}
+		if x.Module == "Test" && (x.Name == "jobs" || x.Name == "work") {
+			return name + "(Jobs())"
 		}
 		return name + "()"
 	}
@@ -487,6 +493,9 @@ func (f *fn) lambda(x *ir.Lambda, s *scope) string {
 // recordTypeName is the Go type a record literal builds: its named record, else the anonymous
 // struct of its type.
 func recordTypeName(x *ir.Record) string {
+	if x.T != nil && x.T.Module == "Job" { // Job.Status
+		return GoType(x.Ty)
+	}
 	if x.T != nil && x.T.Name != "" {
 		var args []types.Type
 		if r, ok := x.Ty.(*types.Record); ok {
@@ -601,6 +610,9 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 			return "rtesting.Answer{Tag: rtesting.RequestFailed, Text: " + inner() + "}"
 		}
 		panic(fmt.Sprintf("gen: unknown Prelude constructor %s", x.Name))
+	}
+	if x.U.Module == "Job" { // Job.State (#168): rt/std's
+		return "std.JobState{Tag: std.Job" + x.Name + "}"
 	}
 	u := x.U
 	ta := ""

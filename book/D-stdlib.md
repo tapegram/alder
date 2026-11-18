@@ -2373,6 +2373,114 @@ Int.pow 2 (-1) == 0
 Int.pow 2 64 == 0
 ```
 
+## Job
+
+Background jobs: put a job on the queue from a `Task`, and ask how it is doing.
+
+A module declares a job with `job Name = { … }` and its arm `Name.run`, and `Name { … }`
+builds a `Job` value from the job's parameters. `Job.enqueue` and its variants store that
+value in the running `Task`'s transaction, so the job is queued only if the `Task` succeeds,
+and a worker runs it later, outside any request. Enqueueing does not count as a database
+write for the rule that a `Task` writes one store (E0031).
+
+### `Job.Id`
+
+```alder fragment
+type Id
+```
+
+A queued job's id, 8 hex characters long like a request's.
+
+`Job.enqueue` and its variants give it back, and `Job.status` takes it. It does not say which
+store the job is in.
+
+### `Job.State`
+
+```alder fragment
+type State = Queued | Running | Done | Dead
+```
+
+Where a job stands: waiting, running, finished, or given up.
+
+`Queued` waits for its time and a free worker, `Running` is being run, `Done` finished, and
+`Dead` failed on every attempt its `retries` allow, or had parameters this build cannot read.
+The constructors are written bare, like `Just`. A constructor of the same name that the
+module declares, or one of a module it imports, comes first; one of a module it does not
+import does not.
+
+### `Job.Status`
+
+```alder fragment
+type Status = { state: State, attempts: Int, error: Maybe Text, runAt: Maybe Time }
+```
+
+What `Job.status` gives: a job's state, attempts so far, last failure and due time.
+
+`runAt` is the time the job is next due while it is `Queued`, and `Nothing` in any other
+state. `error` is the text of the last failed attempt, and a job that is `Done` after a retry
+keeps it.
+
+### `Job.enqueue`
+
+```alder fragment
+enqueue : Job -> Task Id
+```
+
+Queues a job to run as soon as a worker is free, and gives its id.
+
+The job is stored in the running `Task`'s transaction: it is kept when the `Task` succeeds
+and dropped with its writes when it fails. A job's parameters take at most 64 KB as JSON; a
+larger job fails the `Task`.
+
+```alder fragment
+Job.enqueue (Jobs.Nightly.Nightly {})
+```
+
+### `Job.enqueueAt`
+
+```alder fragment
+enqueueAt : Time -> Job -> Task Id
+```
+
+Queues a job that does not run before the given time.
+
+It is `Job.enqueue` with a due time: a worker picks the job up once the time has come.
+
+```alder fragment
+Job.enqueueAt (Time.fromMillis 86400000) (Jobs.Nightly.Nightly {})
+```
+
+### `Job.enqueueOnce`
+
+```alder fragment
+enqueueOnce : Text -> Job -> Task Id
+```
+
+Queues a job unless one of its kind with the same key is queued or running.
+
+When such a job exists, nothing is added and its id comes back. A key belongs to the job's
+kind, so two kinds of job may use the same key, and a job that is `Done` or `Dead` frees it.
+
+```alder fragment
+Job.enqueueOnce "nightly" (Jobs.Nightly.Nightly {})
+```
+
+### `Job.status`
+
+```alder fragment
+status : Id -> Query (Maybe Status)
+```
+
+The status of the job with this id, `Nothing` when there is no such job.
+
+It reads the store the `Query` is bound to, so a job queued in another store is `Nothing`
+here.
+
+```alder fragment
+\(id : Job.Id) ->
+  Job.status id |> Query.map (Maybe.map (\(s : Job.Status) -> s.state == Done))
+```
+
 ## Json
 
 Functions for `Json.Value`, a JSON document you build and write out.
@@ -3472,6 +3580,18 @@ A request to one of the app's routes: an href, or the target of a redirect.
 
 A route's name, given its parameters, is a `Route` (`Todos.Index.Index { filter: All }`).
 Two routes are equal when they have the same method and the same address.
+
+### `Job`
+
+```alder fragment
+type Job
+```
+
+A background job to run, with its parameters: what `Job.enqueue` queues.
+
+A job's name, given its parameters, is a `Job` (`Signup.SendWelcome { user: id }`), as a
+route's name makes a `Route`. Two jobs are equal when they are of the same job and have equal
+parameters. The `Job` module queues them and reads their status.
 
 ### `Response`
 
@@ -4593,6 +4713,44 @@ as `Test.advance` and the milliseconds (`Test.advance 86400000ms`).
 
 ```alder fragment
 Test.advance (24 * 60 * 60 * 1000)
+```
+
+### `Test.jobs`
+
+```alder fragment
+jobs : Task (List { id: Job.Id, job: Job, status: Job.Status })
+```
+
+Every job in the test's database, oldest first, with its status.
+
+A test runs no worker: `Job.enqueue` stores the job in the test's transaction, so it is
+listed here and gone with the test, and a `Test.run` that fails drops the jobs it queued.
+Jobs that have run stay, as `Done` or `Dead`, and a failed one is `Queued` again with its
+`error` and the `runAt` of its retry. Only `Test.work` runs them.
+
+```alder fragment
+Test.jobs |> Task.map (\rows -> List.length rows)
+```
+
+### `Test.work`
+
+```alder fragment
+work : Task (List { id: Job.Id, job: Job, result: Result Text Unit })
+```
+
+Runs every job that is due at the test's clock, oldest first, and gives each run's result.
+
+Each job runs as its own `Task` in the test's transaction. A job that fails has its writes
+undone, and it is retried at the clock's time plus the same wait a worker uses (10 seconds
+after the first attempt) or, past its `retries`, is `Dead`; `result` is `Err` with its
+error. The jobs that the jobs queue run in the same call when they are due. A clock the test
+has not set moves a second at every reading, and running a job reads it, so a job due a few
+seconds ahead, or a failed job's retry, can come due within the same call: set the clock with
+`Test.setClock` and a job not yet due waits for `Test.advance`. After 1000 runs in one call
+the test fails with "Test.work: jobs keep enqueueing jobs".
+
+```alder fragment
+Test.work |> Task.map (\runs -> List.all (\r -> r.result == Ok ()) runs)
 ```
 
 ### `Test.get`

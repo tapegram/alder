@@ -279,7 +279,7 @@ func (a *attacher) walk(n any) {
 		a.walk(n.Arg)
 	case *syntax.PageDecl:
 		a.walk(n.Params)
-	case *syntax.RouteDecl:
+	case *syntax.RouteDecl, *syntax.JobDecl:
 		// printed on one line: a comment inside the parameters leads the route line
 	case *syntax.MsgDecl:
 		if n.Params != nil {

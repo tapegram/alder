@@ -468,6 +468,7 @@ func sigReturnsFile(d *syntax.ValueDecl) bool {
 type routeRef struct {
 	x     *syntax.Var
 	route *RouteInfo
+	job   *JobInfo // set instead of route for a reference in a job's `run` (#168)
 }
 
 // checkRouteRefs reports E0026 for each pending routeRef whose value uses a scoped operation
@@ -485,6 +486,13 @@ func (c *Checker) checkRouteRefs() {
 		}
 		slices.Sort(keys)
 		for _, key := range keys {
+			if j := rr.job; j != nil {
+				if j.Silo != key {
+					c.reportScoped(rr.x.Span, jobRefusal(j, "`"+rr.x.Ref.Name+"` uses `"+uses[key]+"`, which", key))
+					break
+				}
+				continue
+			}
 			if !slices.Contains(rr.route.narrowed, key) {
 				c.reportScoped(rr.x.Span, "`"+rr.x.Ref.Name+"` uses `"+uses[key]+"`, which needs a route that `requires "+key+"`: `"+rr.route.Name+"` does not")
 				break

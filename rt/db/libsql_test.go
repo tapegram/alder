@@ -190,6 +190,24 @@ func openTursoApp(t *testing.T, path string, v int) (*Stores, StoresConfig) {
 	return s, cfg
 }
 
+// A silo's child database on Turso gets the jobs table when it is opened and ok.
+func TestTurso_SiloJobsTable(t *testing.T) {
+	f := tursofake.New(t, "acme")
+	path := tursoEnv(t, f)
+	s, _ := openTursoApp(t, path, 1)
+	ctx := context.Background()
+	id, err := s.shared.Insert(ctx, nil, "Org.Org", orgDesc.Columns, "id", "", "", []any{nil, "A"}, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.silo(ctx, "org", id); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := tableExists(ctx, f.DB(ChildName("blog", "org", id)), "_alder_jobs"); err != nil || !ok {
+		t.Fatalf("the child database has no _alder_jobs: %v", err)
+	}
+}
+
 func tursoConfig(t *testing.T, path string, v int) StoresConfig {
 	cfg := siloConfig(t, SiloDir(path), v)
 	cfg.Silos[0].Ref, cfg.Shared = "Org.Org", path

@@ -7,6 +7,7 @@ import (
 	"alder/rt/applog"
 	"alder/rt/db"
 	"alder/rt/html"
+	"alder/rt/jobs"
 	"alder/rt/metrics"
 	rtesting "alder/rt/testing"
 	"alder/rt/web"
@@ -61,6 +62,12 @@ var Fakes = map[string]func() any{}
 func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__Table__User__Role(0)), []string{"Reader", "Admin"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Table__Todo__Filter(0)), []string{"All", "Done"})
+}
+
+// Jobs are the app's jobs (#168), in module order then declaration order: each kind's
+// qualified name, its options, and Run, which decodes a row's parameters and gives its `run`.
+func Jobs() []jobs.Kind {
+	return []jobs.Kind{}
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that

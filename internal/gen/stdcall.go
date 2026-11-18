@@ -269,6 +269,11 @@ var StdCalls = map[string]string{
 	"Task.sleep":  "std.TaskSleep",
 	"Http.get":    "std.HttpGet",
 	"Http.post":   "std.HttpPost",
+	// Job (#168): enqueue* are writes (in the Task's transaction), status a read
+	"Job.enqueue":     "std.JobEnqueue",
+	"Job.enqueueAt":   "std.JobEnqueueAt",
+	"Job.enqueueOnce": "std.JobEnqueueOnce",
+	"Job.status":      "std.JobStatus",
 	// Fuzz (Fuzz.any is the derived generator, FuzzDerive; Fuzz.forAll and forAllTask are a
 	// property test's body, which gen's test emits)
 	"Fuzz.constant":    "fuzz.Constant",
@@ -304,6 +309,9 @@ var StdCalls = map[string]string{
 	// Test's clock steps: calls returning eff.Task[struct{}], as Query.delay and Task.sleep
 	"Test.setClock": "rtesting.SetClock",
 	"Test.advance":  "rtesting.Advance",
+	// Test.jobs and Test.work take the app's Jobs() (variable, expr.go)
+	"Test.jobs": "rtesting.Jobs",
+	"Test.work": "rtesting.Work",
 }
 
 // Effectful lists the stdlib modules and functions that have no StdCalls entry (except the

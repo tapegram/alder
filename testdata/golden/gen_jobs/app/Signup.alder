@@ -1,0 +1,73 @@
+module Signup
+
+import Table.User
+import Email
+
+-- The spec's opening example (#168), with `Task.succeed ()` and a named `run` parameter.
+job SendWelcome = { user: User.UserId }
+
+SendWelcome.run : SendWelcome.Params -> Task Unit
+SendWelcome.run p = {
+  let user <- Db.get User p.user
+  match user {
+    Just u -> Email.send { to: u.email, subject: "Welcome", body: <p>Hello {u.name}</p> },
+    Nothing -> Task.succeed (),
+  }
+}
+
+form NewUser = { email: Text.Email, name: Text.NonEmpty }
+
+route Create = POST "/signup" { } form NewUser
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let id <- Db.insert User { email: p.form.email, name: p.form.name }
+  let _ <- Job.enqueue (SendWelcome { user: id })
+  Task.succeed (Response.redirect (Home.Home {}))
+}
+
+job Nightly = {} every "1h"
+
+Nightly.run : Nightly.Params -> Task Unit
+Nightly.run p = Log.info "cleanup ran"
+
+-- Every kind of parameter a job may hold (the codec tests: internal/gen/jobs_test.go).
+type Shape = Circle Float | Rect { w: Int, h: Int } | Dot
+
+type Tree = Leaf | Node { left: Tree, value: Int, right: Tree }
+
+type Address = { street: Text, zip: Maybe Int }
+
+job Everything = {
+  n: Int,
+  x: Float,
+  ok: Bool,
+  title: Text,
+  user: User.UserId,
+  due: Maybe Date,
+  at: Maybe Time,
+  tags: List Text,
+  address: Address,
+  shape: Shape,
+  shapes: List (Maybe Shape),
+  tree: Tree,
+  outcome: Result Text Int,
+} retries 0 timeout "30s"
+
+Everything.run : Everything.Params -> Task Unit
+Everything.run p = {
+  let _ <- Job.enqueueOnce p.title (Nightly {})
+  let id <- Job.enqueueAt (Time.fromMillis 0) (SendWelcome { user: p.user })
+  let st <- Job.status id
+  match st {
+    Just s -> match s.state {
+      Done -> Log.info "done",
+      _ -> Log.info "not done",
+    },
+    Nothing -> Task.succeed (),
+  }
+}
+
+-- A job value, built in Alder (TestJobValue_Eq).
+welcome : User.UserId -> Job
+welcome u = SendWelcome { user: u }

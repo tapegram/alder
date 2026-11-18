@@ -624,3 +624,67 @@ route A = GET "/a" { }
       expr: (additive_expr
         left: (integer)
         right: (integer)))))
+
+================================================================================
+jobs: options in any order and a run arm
+================================================================================
+
+module Jobs
+
+job Nightly = { id: Text } every "1d" retries 3 timeout "5m" silo org
+job Cleanup = {} cron "0 3 * * *"
+
+Nightly.run : Nightly.Params -> Task Unit
+Nightly.run p = Log.info "ran"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    (module_name
+      (constructor)))
+  (job_decl
+    (constructor)
+    (record_type
+      (field_decl
+        (identifier)
+        (type_name
+          (constructor))))
+    (job_option
+      (string))
+    (job_option
+      (integer))
+    (job_option
+      (string))
+    (job_option
+      (identifier)))
+  (job_decl
+    (constructor)
+    (record_type)
+    (job_option
+      (string)))
+  (value_decl
+    (signature
+      (qualified_decl_name
+        (constructor)
+        (identifier))
+      (type_arrow
+        (type_name
+          (constructor)
+          (constructor))
+        (type_app
+          (type_name
+            (constructor))
+          (type_name
+            (constructor)))))
+    (binding
+      (qualified_decl_name
+        (constructor)
+        (identifier))
+      (parameters
+        (identifier))
+      (application
+        (qualified_name
+          (constructor)
+          (identifier))
+        (string)))))

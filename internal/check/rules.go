@@ -290,6 +290,9 @@ func (mc *modCtx) narrowed(key string) bool {
 	case mc.route != nil:
 		return slices.Contains(mc.route.narrowed, key)
 	}
+	if j := mc.armJob(); j != nil { // a job's `run`: only its `silo k` (#168)
+		return j.Silo != "" && j.Silo == key
+	}
 	return mc.routeHelper()
 }
 
@@ -309,6 +312,8 @@ func (mc *modCtx) scopedRefusal(subject, key string) string {
 		return subject + " cannot be used in a fake: a fake has no session"
 	case mc.narrowed(key):
 		return ""
+	case mc.armJob() != nil:
+		return jobRefusal(mc.armJob(), subject, key)
 	case mc.route != nil:
 		return subject + " needs a route that `requires " + key + "`: `" + mc.route.Name + "` does not"
 	case mc.c.routes[mc.m.Name] != nil:
@@ -349,7 +354,9 @@ func (mc *modCtx) scopedRef(x *syntax.Var) {
 		}
 		if mc.route != nil && !mc.inTest && mc.fake == "" {
 			// what the value uses is known once the module's bodies are (checkRouteRefs)
-			c.routeRefs = append(c.routeRefs, routeRef{x, mc.route})
+			c.routeRefs = append(c.routeRefs, routeRef{x: x, route: mc.route})
+		} else if j := mc.armJob(); j != nil {
+			c.routeRefs = append(c.routeRefs, routeRef{x: x, job: j})
 		}
 		return
 	}

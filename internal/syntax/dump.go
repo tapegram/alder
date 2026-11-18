@@ -91,6 +91,27 @@ func dump(sb *strings.Builder, n any) {
 		}
 		dumpGuard(sb, &x.Guard)
 		sb.WriteByte(')')
+	case *JobDecl:
+		fmt.Fprintf(sb, "(job %s ", x.Name)
+		dump(sb, x.Params)
+		for _, o := range x.Options {
+			sb.WriteString(" " + o.Name)
+			switch o.Name {
+			case "every":
+				fmt.Fprintf(sb, " %q", x.Every.Text)
+			case "cron":
+				fmt.Fprintf(sb, " %q", x.Cron.Text)
+			case "timeout":
+				fmt.Fprintf(sb, " %q", x.Timeout.Text)
+			case "retries":
+				if x.Retries != nil {
+					fmt.Fprintf(sb, " %d", x.Retries.Value)
+				}
+			case "silo":
+				sb.WriteString(" " + x.Silo)
+			}
+		}
+		sb.WriteByte(')')
 	case *MsgDecl:
 		fmt.Fprintf(sb, "(msg %s", x.Name)
 		if x.Params != nil {

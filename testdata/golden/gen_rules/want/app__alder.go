@@ -6,6 +6,7 @@ import (
 	"alder/rt"
 	"alder/rt/applog"
 	"alder/rt/db"
+	"alder/rt/jobs"
 	"alder/rt/metrics"
 	rtesting "alder/rt/testing"
 	"alder/rt/web"
@@ -92,6 +93,12 @@ var MutantsSuppressed, MutantsSkipped = 0, 3
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__User__Role(0)), []string{"Reader", "Author", "Admin"})
+}
+
+// Jobs are the app's jobs (#168), in module order then declaration order: each kind's
+// qualified name, its options, and Run, which decodes a row's parameters and gives its `run`.
+func Jobs() []jobs.Kind {
+	return []jobs.Kind{}
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that

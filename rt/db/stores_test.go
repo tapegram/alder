@@ -1355,3 +1355,38 @@ func TestStores_SiloOldNameReusedBySharedTable(t *testing.T) {
 		t.Fatalf("the project after the rename: %q %v", name, err)
 	}
 }
+
+// A silo's database gets the jobs table when it is opened and ok, so a job enqueued by a Task
+// on the silo is inserted there (in the Task's transaction on the silo's store).
+func TestStores_SiloJobsTable(t *testing.T) {
+	dir := t.TempDir()
+	s := openApp(t, dir, 1)
+	ctx := context.Background()
+	if _, err := InsertRow(ctx, s.Shared(), nil, orgT, []any{nil, "A"}, clock); err != nil {
+		t.Fatal(err)
+	}
+	env := siloEnv(s, "A")
+	Narrow(env, "org", "A")
+	if err := Enter(env, "org"); err != nil {
+		t.Fatal(err)
+	}
+	insert := eff.Call("Job.enqueue", true, func(e *eff.Env) (struct{}, error) {
+		q, err := On(e.Store, TxOf(e))
+		if err != nil {
+			return struct{}{}, err
+		}
+		_, err = q.ExecContext(e.Ctx, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created") VALUES ('0000000a', 'K', '{}', 'queued', 0, 0)`)
+		return struct{}{}, err
+	})
+	if _, err := eff.Run(env, eff.KTask, insert); err != nil {
+		t.Fatal(err)
+	}
+	f, err := OpenSQLite(filepath.Join(dir, "silos", "org", SiloFileName("A")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if n := rawCount(t, f, `SELECT COUNT(*) FROM "_alder_jobs"`); n != 1 {
+		t.Fatalf("the silo holds %d job rows", n)
+	}
+}

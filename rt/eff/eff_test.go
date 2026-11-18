@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -550,5 +551,25 @@ func TestEnv_Note(t *testing.T) {
 	empty.Note("x")
 	if strings.Join(empty.Trace, ",") != "x" {
 		t.Fatalf("empty trace: %q", empty.Trace)
+	}
+}
+
+// OnBegin is called once, when the Task's transaction is begun, and not for a Task that never
+// asks for one.
+func TestRun_OnBegin(t *testing.T) {
+	s := &fakeStore{}
+	e := env(s)
+	var calls []int
+	e.OnBegin = func() { calls = append(calls, len(s.txs)) }
+	read := Call("pure step", false, func(*Env) (int, error) { return 1, nil })
+	if _, err := Run(e, KTask, read); err != nil || len(calls) != 0 {
+		t.Fatalf("no transaction: %v %v", calls, err)
+	}
+	w := dbCall("ins", true, func(*Env) (int, error) { return 1, nil })
+	if _, err := Run(e, KTask, Bind(read, func(int) Task[int] { return Bind(w, func(int) Task[int] { return w }) })); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(calls, []int{1}) {
+		t.Fatalf("calls %v: want one, after Begin", calls)
 	}
 }

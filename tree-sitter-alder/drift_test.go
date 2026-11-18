@@ -118,6 +118,8 @@ func goDecls(m *syntax.Module) (imports, decls []decl) {
 			decls = append(decls, decl{"page", d.Path}) // legacy: see legacy
 		case *syntax.RouteDecl:
 			decls = append(decls, decl{"route", d.Name})
+		case *syntax.JobDecl:
+			decls = append(decls, decl{"job", d.Name})
 		case *syntax.MsgDecl:
 			decls = append(decls, decl{"msg", d.Name}) // legacy: see legacy
 		case *syntax.FormDecl:

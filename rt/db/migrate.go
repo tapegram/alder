@@ -391,7 +391,7 @@ func (s *SQLite) prepare(ctx context.Context, tx *sql.Tx, sc appSchema, tables [
 		}
 		return prepared{recreated: reason}, nil
 	}
-	if _, err := tx.ExecContext(ctx, createMetaTable); err != nil {
+	if err := EnsureJobsTable(ctx, tx); err != nil {
 		return r, err
 	}
 	hasLog, err := tableExists(ctx, tx, migrationsTable)
@@ -856,6 +856,51 @@ func foreignKeysOff(ctx context.Context, conn *sql.Conn) (func() error, error) {
 
 const createMetaTable = `CREATE TABLE IF NOT EXISTS "_alder_meta" ("key" TEXT NOT NULL PRIMARY KEY, "value" TEXT NOT NULL)`
 
+// JobsTable is the table of background jobs (#168, rt/jobs), one per store: created with
+// _alder_meta (Ensure, Migrate) and versioned by its jobs_schema row there.
+const JobsTable = "_alder_jobs"
+
+// jobsSchema is the jobs table's version, the jobs_schema row of _alder_meta.
+const jobsSchema = "1"
+
+// createJobs is the jobs table and its indexes: the due index the claim reads, the key of
+// Job.enqueueOnce (unique while a row with it is queued or running) and the one queued tick of
+// a schedule. Times are milliseconds since the epoch.
+var createJobs = []string{
+	`CREATE TABLE IF NOT EXISTS "_alder_jobs" (
+  "id"            TEXT    NOT NULL PRIMARY KEY,
+  "kind"          TEXT    NOT NULL,
+  "params"        TEXT    NOT NULL,
+  "key"           TEXT,
+  "state"         TEXT    NOT NULL,
+  "run_at"        INTEGER NOT NULL,
+  "created"       INTEGER NOT NULL,
+  "started"       INTEGER,
+  "finished"      INTEGER,
+  "attempts"      INTEGER NOT NULL DEFAULT 0,
+  "error"         TEXT,
+  "lease_until"   INTEGER,
+  "worker"        TEXT,
+  "schedule"      INTEGER NOT NULL DEFAULT 0,
+  "scheduled_for" INTEGER
+) STRICT`,
+	`CREATE INDEX IF NOT EXISTS "_alder_jobs_due" ON "_alder_jobs" ("state", "run_at")`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS "_alder_jobs_once" ON "_alder_jobs" ("kind", "key") WHERE "key" IS NOT NULL AND "state" IN ('queued', 'running')`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS "_alder_jobs_tick" ON "_alder_jobs" ("kind") WHERE "schedule" = 1 AND "state" = 'queued'`,
+}
+
+// EnsureJobsTable creates the jobs table and its indexes when they do not exist and records
+// jobs_schema in _alder_meta (made too, when missing). It is idempotent.
+func EnsureJobsTable(ctx context.Context, q Execer) error {
+	for _, st := range append([]string{createMetaTable}, createJobs...) {
+		if _, err := q.ExecContext(ctx, st); err != nil {
+			return err
+		}
+	}
+	_, err := q.ExecContext(ctx, `INSERT INTO "_alder_meta" ("key", "value") VALUES ('jobs_schema', ?) ON CONFLICT ("key") DO NOTHING`, jobsSchema)
+	return err
+}
+
 // metaValue is _alder_meta's value for key, "" when absent.
 func metaValue(ctx context.Context, q querier, key string) (string, error) {
 	var v string
@@ -880,7 +925,7 @@ func putMeta(ctx context.Context, q querier, schema, hash string) error {
 // and joined by "\n", and their hash: for a database made by Ensure or by migrations, what
 // schemaOf computes for its tables.
 func liveSchema(ctx context.Context, q querier) (string, string, error) {
-	rows, err := q.QueryContext(ctx, `SELECT "sql" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT IN (`+internalTables+`)`)
+	rows, err := q.QueryContext(ctx, `SELECT "sql" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT LIKE '\_alder\_%' ESCAPE '\'`)
 	if err != nil {
 		return "", "", err
 	}

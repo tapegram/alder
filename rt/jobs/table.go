@@ -1,0 +1,62 @@
+// Package jobs is the runtime of background jobs (#168): the jobs table each store holds, the
+// enqueue a Task makes inside its own transaction, a job's status, and RunOne, which runs one
+// attempt of a claimed row and records how it ended. The worker loop and Test.work are its two
+// callers.
+//
+// Every time this package reads is the Env's clock (env.Now), never the wall clock, so it is
+// tested with a test Clock. Times in the table are milliseconds since the epoch.
+package jobs
+
+import (
+	"context"
+
+	"alder/rt/db"
+	"alder/rt/eff"
+)
+
+// Table is the jobs table of a store: one row per job, created with the runtime's other
+// `_alder_` tables (db.EnsureJobsTable).
+const Table = db.JobsTable
+
+// EnsureTable creates the jobs table and its indexes when they do not exist and records
+// jobs_schema = 1 in _alder_meta. It is idempotent; db.Ensure and db.Migrate run it.
+func EnsureTable(ctx context.Context, x db.Execer) error { return db.EnsureJobsTable(ctx, x) }
+
+// Row is a row of the jobs table. Times are milliseconds since the epoch; a nil pointer is NULL.
+type Row struct {
+	ID, Kind, Params, State, Worker             string
+	Key                                         *string
+	RunAt, Created                              int64
+	Started, Finished, LeaseUntil, ScheduledFor *int64
+	Attempts                                    int
+	Error                                       *string
+	Schedule                                    bool
+}
+
+// State is a job row's state.
+type State string
+
+const (
+	Queued  State = "queued"  // waiting for its run_at and a free worker
+	Running State = "running" // claimed by a worker
+	Done    State = "done"    // its attempt committed
+	Dead    State = "dead"    // failed past its retries, or its parameters cannot be decoded
+)
+
+// on is where the running effect of env writes the jobs table: its Task's transaction (begun
+// on first use), or the database itself in a Query outside any transaction.
+func on(env *eff.Env) (db.Execer, error) {
+	tx, err := env.Transaction()
+	if err != nil {
+		return nil, err
+	}
+	return db.On(env.Store, tx)
+}
+
+// ctxOf is env.Ctx, or Background when it is nil.
+func ctxOf(env *eff.Env) context.Context {
+	if env.Ctx == nil {
+		return context.Background()
+	}
+	return env.Ctx
+}

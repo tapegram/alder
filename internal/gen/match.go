@@ -16,6 +16,7 @@ import (
 //	Maybe, Result     if s.Ok { … } / if s.IsOk { … } then the other case or the default
 //	Answer            switch s.Tag { case rtesting.Redirected: … } (payloads s.Page,
 //	                  s.FieldErrors(), s.Text; test builds only)
+//	Job.State         switch s.Tag { case std.JobQueued: … }
 //	Bool              if s { … } (or if !s) then the other case or the default
 //	List              if len(s) == 0 { … } (or len(s) > 0) then the other case or the default
 //	literal           switch s { case 1: … default: … }
@@ -45,6 +46,22 @@ func (f *fn) match(w *strings.Builder, x *ir.Match, s *scope, k func(ir.Expr, *s
 			fmt.Fprintf(w, "switch %s.Tag {\n", subj)
 			for _, c := range x.Cases {
 				fmt.Fprintf(w, "case rtesting.%s:\n", c.Tag)
+				f.caseBody(w, x, c, subj, s.child(), k)
+			}
+			if x.Default != nil {
+				w.WriteString("default:\n")
+				f.defaultBody(w, x, s.child(), k)
+			}
+			w.WriteString("}\n")
+			if x.Default == nil {
+				w.WriteString("panic(\"unreachable\")\n")
+			}
+			return
+		}
+		if u != nil && u.Module == "Job" { // Job.State (#168): rt/std's
+			fmt.Fprintf(w, "switch %s.Tag {\n", subj)
+			for _, c := range x.Cases {
+				fmt.Fprintf(w, "case std.Job%s:\n", c.Tag)
 				f.caseBody(w, x, c, subj, s.child(), k)
 			}
 			if x.Default != nil {

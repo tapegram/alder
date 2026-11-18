@@ -77,6 +77,9 @@ func Dump(p *Program) string {
 	for _, r := range p.Routes {
 		form(routeForm(p, r))
 	}
+	for _, j := range p.Jobs {
+		form(jobForm(j))
+	}
 	if p.Session != nil {
 		form(atoms("session", p.Session.Module+"."+p.Session.Name))
 	}
@@ -170,6 +173,27 @@ func routeForm(p *Program, r *Route) *sx {
 			ss = append(ss, o.Module+"."+o.Name)
 		}
 		x.items = append(x.items, atoms(ss...))
+	}
+	return x
+}
+
+// jobForm is (job M.J (params T) (run M.J.run)? (retries N) (timeout D) (every D)? (cron "c")?
+// (silo k)?).
+func jobForm(j *Job) *sx {
+	d := &dumper{home: j.Module}
+	x := list(2, atom("job"), atom(j.Module+"."+j.Name), atoms("params", d.rt(j.Params)))
+	if j.Run != nil {
+		x.items = append(x.items, atoms("run", j.Run.Module+"."+j.Run.Name))
+	}
+	x.items = append(x.items, atoms("retries", strconv.Itoa(j.Retries)), atoms("timeout", j.Timeout.String()))
+	if j.Every != 0 {
+		x.items = append(x.items, atoms("every", j.Every.String()))
+	}
+	if j.Cron != "" {
+		x.items = append(x.items, atoms("cron", strconv.Quote(j.Cron)))
+	}
+	if j.SiloParam != "" {
+		x.items = append(x.items, atoms("silo", j.SiloParam))
 	}
 	return x
 }
@@ -487,6 +511,8 @@ func (d *dumper) expr(e Expr) *sx {
 			return atoms("route-ref", name)
 		}
 		return list(2, atom("route-ref"), atom(name), d.expr(x.Params))
+	case *JobRef:
+		return list(2, atom("job-ref"), atom(x.Job.Module+"."+x.Job.Name), d.expr(x.Params))
 	case *Hole:
 		return atoms("hole", x.Name)
 	case *Match:

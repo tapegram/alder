@@ -15,7 +15,7 @@ import "embed"
 // without being listed here fails. This file itself is not listed: the written copy of package
 // rt does not embed anything.
 //
-//go:embed builder.go core.go file.go fresh.go json.go response.go route.go show.go tether.go
+//go:embed builder.go core.go file.go fresh.go job.go json.go response.go route.go show.go tether.go
 //go:embed backup/bucket.go backup/lock_other.go backup/lock_unix.go backup/restore.go backup/s3.go backup/ship.go backup/silos.go backup/snapshot.go
 //go:embed applog/applog.go applog/id.go applog/mask.go applog/render.go
 //go:embed metrics/metrics.go metrics/env.go
@@ -25,10 +25,11 @@ import "embed"
 //go:embed eff/eff.go eff/run.go
 //go:embed fuzz/brands.go fuzz/choices.go fuzz/combinators.go fuzz/derive.go fuzz/draw.go fuzz/literal.go fuzz/shrink.go
 //go:embed html/diff.go html/fragments.go html/html.go html/parse.go html/repair.go html/state.go
+//go:embed jobs/enqueue.go jobs/run.go jobs/table.go
 //go:embed publicurl/publicurl.go
 //go:embed selector/selector.go
-//go:embed testing/bench.go testing/browser.go testing/clock.go testing/mutate.go testing/property.go testing/steps.go testing/testing.go
-//go:embed std/bytes.go std/date.go std/dict.go std/effects.go std/file.go std/html.go std/json.go std/list.go std/maybe.go std/num.go std/random.go std/response.go std/result.go std/text.go
+//go:embed testing/bench.go testing/browser.go testing/clock.go testing/jobs.go testing/mutate.go testing/property.go testing/steps.go testing/testing.go
+//go:embed std/bytes.go std/date.go std/dict.go std/effects.go std/file.go std/html.go std/job.go std/json.go std/list.go std/maybe.go std/num.go std/random.go std/response.go std/result.go std/text.go
 //go:embed web/answer.go web/decode.go web/request.go web/router.go web/method.go web/deliver.go web/shown.go web/options.go web/devpanel.go web/devpanel_ui.go web/devrequests.go web/session.go
 //go:embed dist/go.mod.txt dist/go.sum.txt
 var Files embed.FS

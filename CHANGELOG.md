@@ -7,10 +7,12 @@ with the previous release, each with what to do.
 
 ### Breaking
 
+- `job` is a reserved keyword (it opens a job declaration), so an identifier named `job` stops parsing. Rename it (#168).
 - A session field that is a `Text.Secret` (or a `Maybe Text.Secret`) is E0048: the session cookie is signed, not encrypted, so the user can read it. Keep the secret in a table and store the row's id in the session (#254).
 
 ### Added
 
+- Background jobs, part 1 (#168): a module declares a job with `job Name = { … }` and its arm `Name.run : Name.Params -> Task Unit`, with the options `every "1h"`, `cron "0 3 * * *"`, `retries`, `timeout` and `silo`; `every`, `retries`, `timeout` and `silo` are checked, and a `cron` expression is stored but not checked or run until a later release. `Name { … }` builds a `Job`, and the `Job` module puts it on the queue: `Job.enqueue`, `Job.enqueueAt` (not before a time), `Job.enqueueOnce` (unless one of its kind with that key is queued or running) and `Job.status`. A job is stored in the `Task`'s transaction, so a failed `Task` drops it. In tests, `Test.jobs` lists every job with its status (queued, running, done or dead) and `Test.work` runs the due ones. A parameter that cannot be stored is E0049, and a job's options the rules refuse (two schedules, parameters on a scheduled job, an unreadable or out-of-range `every` or `timeout`) are E0050. Jobs do not run outside tests yet: there is no worker, and `every` and `cron` schedules do not fire.
 - Book appendix D, the standard library reference, generated from the doc comments in `stdlib/` and held current by a test (#227).
 - `alder search <query>`: search the standard library and the app by name, by module (`Text.`) or by type (`Text -> Int`, `: List Text`, `_` as a wildcard), with `--json` (#166).
 - Language server: `alder/search` and `alder/searchEdit` (search by name or type, and for a picked result the edit and the cursor), `workspace/symbol` for the app's declarations, and a "Search for <type>" action on typed holes for clients that declare `experimental.alderSearch` (#166).

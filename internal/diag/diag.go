@@ -147,6 +147,8 @@ const (
 	RemovedSyntax       = "E0046" // page-era syntax (#160): `page`, `msg`, `Nav` and its constructors, `Page`, `Html` with a type argument, an unqualified `load`/`view`/`update`
 	RouteTrigger        = "E0047" // a route trigger attribute misused: `input` off a control, without a literal name, or naming no Text query parameter; two of `load`/`intersect`/`input` on one element; `every` without `load` or not a literal like "5s"; any of the four on a custom element
 	SecretInSession     = "E0048" // a session field that holds a `Text.Secret` (or a `Maybe` of one): the cookie is signed, not encrypted
+	JobParam            = "E0049" // a job parameter that cannot be stored: a function, `Task`, `Query`, `Html`, `Doc`, `Job`, `Route` or `Answer`, or a type holding one
+	JobSchedule         = "E0050" // a job's options the rules refuse: two schedules, a scheduled job with parameters, an unreadable or out-of-range `every` or `timeout`
 	ImportAlias         = "E0204" // an import's `as` is missing, redundant or not its canonical qualifier
 	FullPath            = "E0205" // a name written with an imported module's full path instead of its qualifier
 	NoQualifier         = "E0206" // an import with no usable qualifier: every candidate is taken or shared

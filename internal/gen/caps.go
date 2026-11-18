@@ -264,6 +264,7 @@ func (g *gen) appSource(p *ir.Program, migrations bool, version string) string {
 		g.mutantsTable(&b, p) // a mutate build only
 	}
 	unionsInit(&b, p)
+	b.WriteString(g.jobsSource(p))
 	if p.Session != nil {
 		var sb strings.Builder
 		g.serve(&sb, p)

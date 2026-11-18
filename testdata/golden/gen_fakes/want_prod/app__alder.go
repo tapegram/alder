@@ -5,6 +5,7 @@ package app
 import (
 	_ "alder/rt" // initialized before this package (rt/tether.go)
 	"alder/rt/db"
+	"alder/rt/jobs"
 )
 
 // Tables describes every table of the app, in module order then declaration order, for db.Ensure.
@@ -33,4 +34,10 @@ func (c Caps) Registry() map[string]any {
 		"Payments.Stripe":   c.Payments__Stripe,
 		"Markdown.Markdown": c.Markdown__Markdown,
 	}
+}
+
+// Jobs are the app's jobs (#168), in module order then declaration order: each kind's
+// qualified name, its options, and Run, which decodes a row's parameters and gives its `run`.
+func Jobs() []jobs.Kind {
+	return []jobs.Kind{}
 }

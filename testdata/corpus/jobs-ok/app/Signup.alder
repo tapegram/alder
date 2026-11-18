@@ -1,0 +1,159 @@
+module Signup
+
+-- The spec's opening example (#168): signing up queues the welcome mail, which a job sends.
+
+import User
+
+type SentId = brand Text
+
+capability Email {
+  send : { to: Text.Email, subject: Text, body: Text } -> Task Unit,
+}
+
+fake Email {
+  table Sent {
+    id: SentId @id,
+    to: Text.Email,
+    subject: Text,
+  }
+
+  send args = {
+    let _ <- Db.insert Sent { to: args.to, subject: args.subject }
+    Task.succeed ()
+  }
+}
+
+job SendWelcome = { user: User.UserId }
+
+SendWelcome.run : SendWelcome.Params -> Task Unit
+SendWelcome.run p = {
+  let user <- Db.get User.User p.user
+  match user {
+    Just u -> Email.send { to: u.email, subject: "Welcome", body: "Hello {u.name}" },
+    Nothing -> Task.succeed (),
+  }
+}
+
+form NewUser = { email: Text.Email, name: Text.NonEmpty }
+
+route Index = GET "/" { }
+route Create = POST "/signup" { } form NewUser
+route Refuse = POST "/refuse" { } form NewUser
+
+Index.load : Index.Params -> Session -> Query Unit
+Index.load params session = Query.succeed ()
+
+Index.view : Unit -> Session -> Html
+Index.view model session =
+  <html><body>
+    <form submit={Create}><Input field="email" /><Input field="name" /><Errors form /><button>Sign up</button></form>
+    <form submit={Refuse}><Input field="email" /><Input field="name" /><Errors form /><button>Try</button></form>
+  </body></html>
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let id <- Db.insert User.User { email: p.form.email, name: p.form.name }
+  let _ <- Job.enqueue (SendWelcome { user: id })
+  Task.succeed (Response.redirect (Index {}))
+}
+
+-- Queues the mail and then fails: the job goes with the request's writes.
+Refuse.update : Refuse.Params -> Session -> Task Response
+Refuse.update p session = {
+  let id <- Db.insert User.User { email: p.form.email, name: p.form.name }
+  let _ <- Job.enqueue (SendWelcome { user: id })
+  Task.fail "refused"
+}
+
+-- A job that fails after a write, a job that queues another, and one that queues itself.
+job Flaky = { email: Text.Email, name: Text.NonEmpty }
+
+Flaky.run : Flaky.Params -> Task Unit
+Flaky.run p = {
+  let _ <- Db.insert User.User { email: p.email, name: p.name }
+  Task.fail "smtp down"
+}
+
+job First = {}
+
+First.run : First.Params -> Task Unit
+First.run p = Job.enqueue (Second {}) |> Task.map (\id -> ())
+
+job Second = {}
+
+Second.run : Second.Params -> Task Unit
+Second.run p = Task.succeed ()
+
+job Forever = {}
+
+Forever.run : Forever.Params -> Task Unit
+Forever.run p = Job.enqueue (Forever {}) |> Task.map (\id -> ())
+
+-- 2026-03-04T05:06:07Z
+march : Time
+march = Time.fromMillis 1772600767000
+
+test "signing up sends the welcome mail" = {
+  let _ <- Test.fake Email
+  let _ <- Test.get (Index {})
+  let out <- Test.submit Create { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let jobs <- Test.jobs
+  let runs <- Test.work
+  let sent <- Db.from Sent |> Db.count
+  Task.succeed (List.length jobs == 1 && List.all (\r -> r.result == Ok ()) runs && List.length runs == 1 && sent == 1)
+}
+
+test "work runs nothing that is not due" = {
+  let _ <- Test.setClock march
+  let _ <- Job.enqueueAt (Time.addMillis 60000 march) (Second {})
+  let early <- Test.work
+  let _ <- Test.advance 60000
+  let later <- Test.work
+  Task.succeed (List.isEmpty early && List.map (\r -> r.result) later == [Ok ()])
+}
+
+test "a failing job is retried on the clock" = {
+  let _ <- Test.setClock march
+  let _ <- Job.enqueue (Flaky { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" })
+  let runs <- Test.work
+  let rows <- Test.jobs
+  let users <- Db.from User.User |> Db.count
+  let want = {
+    state: Queued,
+    attempts: 1,
+    error: Just "smtp down",
+    runAt: Just (Time.addMillis 10000 march),
+  }
+  Task.succeed (
+    List.map (\r -> r.result) runs == [Err "smtp down"]
+      && List.map (\r -> r.status) rows == [want]
+      && users == 0
+  )
+}
+
+test "jobs that enqueue jobs run in the same work" = {
+  let _ <- Job.enqueue (First {})
+  let runs <- Test.work
+  Task.succeed (List.map (\r -> r.job) runs == [First {}, Second {}])
+}
+
+test "a job that enqueues itself forever" = {
+  let _ <- Job.enqueue (Forever {})
+  let runs <- Test.work
+  Task.succeed True
+}
+
+test "a failed request queues nothing" = {
+  let _ <- Test.get (Index {})
+  let out <- Test.submit Refuse { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let rows <- Test.jobs
+  Task.succeed (List.isEmpty rows)
+}
+
+test "the trace names the job" = {
+  let _ <- Test.fake Email
+  let user <- Db.insert User.User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let r <- Test.run (Job.enqueue (SendWelcome { user: user }))
+  let steps <- Test.trace
+  Task.succeed (List.member "Job.enqueue SendWelcome" r.trace && List.member "Job.enqueue SendWelcome" steps)
+}

@@ -244,7 +244,7 @@ func ParserKind(t Token) Kind {
 	return t.Kind
 }
 
-var declKeywords = map[string]bool{"module": true, "import": true, "type": true, "page": true, "route": true, "msg": true,
+var declKeywords = map[string]bool{"module": true, "import": true, "type": true, "page": true, "route": true, "job": true, "msg": true,
 	"form": true, "table": true, "capability": true, "fake": true, "session": true, "login": true, "test": true}
 
 func (p *Parser) expect(k Kind, what string) Token {
@@ -379,6 +379,71 @@ func (p *Parser) checkModSegment(t Token) {
 
 var routeMethods = map[string]bool{"GET": true, "POST": true, "PUT": true, "PATCH": true, "DELETE": true}
 
+// parseJobDecl reads `job NAME = { params } options`; the options are the words every, cron,
+// retries, timeout and silo, in any order, each at most once.
+func (p *Parser) parseJobDecl(start Token) Decl {
+	p.advance()
+	d := &JobDecl{}
+	nt := p.expect(UIdent, "job name")
+	d.Name, d.NameSpan = nt.Text, p.spanTok(nt)
+	p.expect(Equal, "`=`")
+	pop := p.in("job parameters")
+	d.Params = p.parseRecordType()
+	pop()
+	seen := map[string]bool{}
+	for p.at(LIdent) {
+		ot := p.tok
+		switch ot.Text {
+		case "every", "cron", "retries", "timeout", "silo":
+		default:
+			p.errorAt(ot, "unknown job option `"+ot.Text+"`; the options are every, cron, retries, timeout and silo")
+			p.skipLine()
+			d.Span = p.spanFrom(start)
+			return d
+		}
+		if seen[ot.Text] {
+			p.errorAt(ot, "the job option `"+ot.Text+"` is given more than once")
+			p.skipLine()
+			d.Span = p.spanFrom(start)
+			return d
+		}
+		seen[ot.Text] = true
+		p.advance()
+		d.Options = append(d.Options, JobOption{Name: ot.Text, Pos: p.posOf(ot)})
+		switch ot.Text {
+		case "every":
+			d.Every = p.parseOptionString(ot.Text)
+		case "cron":
+			d.Cron = p.parseOptionString(ot.Text)
+		case "timeout":
+			d.Timeout = p.parseOptionString(ot.Text)
+		case "retries":
+			if it := p.tok; p.at(Int) {
+				p.advance()
+				d.Retries = p.intLit(it, false)
+			} else {
+				p.errorAt(it, "expected a whole number after `retries`, got "+describe(it))
+			}
+		case "silo":
+			d.Silo = p.expect(LIdent, "silo key").Text
+		}
+	}
+	d.Span = p.spanFrom(start)
+	return d
+}
+
+// parseOptionString reads the string literal after a job option, its text kept as written.
+func (p *Parser) parseOptionString(opt string) *StringLit {
+	t := p.tok
+	if !p.at(String) {
+		p.errorAt(t, "expected a string after `"+opt+"`, got "+describe(t))
+		return &StringLit{}
+	}
+	s := &StringLit{Text: p.parseStringText()}
+	s.Span = p.spanTok(t)
+	return s
+}
+
 func (p *Parser) parseDecl() Decl {
 	start := p.tok
 	switch {
@@ -430,6 +495,8 @@ func (p *Parser) parseDecl() Decl {
 		}
 		d.Span = p.spanFrom(start)
 		return d
+	case p.atKeyword("job"):
+		return p.parseJobDecl(start)
 	case p.atKeyword("msg"):
 		p.advance()
 		d := &MsgDecl{Name: p.expect(UIdent, "message name").Text}

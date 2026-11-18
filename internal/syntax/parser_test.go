@@ -757,3 +757,67 @@ func TestParse_RouteBadMethodParams(t *testing.T) {
 	}
 	_ = Dump(m) // must not panic
 }
+
+func TestParse_JobDecl(t *testing.T) {
+	src := "module M\n\n" +
+		"job SendWelcome = { user: User.UserId }\n" +
+		"job Digest      = { org: Org.OrgId } silo org\n" +
+		"job Hourly      = {} every \"1h\"\n" +
+		"job Nightly     = {} cron \"0 3 * * *\"\n" +
+		"job Charge      = { invoice: Invoice.InvoiceId } retries 0 timeout \"30s\"\n" +
+		"job Mixed       = {} timeout \"5s\" silo org retries 2 every \"2m\" cron \"* * * * *\"\n"
+	m, diags := ParseFile("m.alder", []byte(src))
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+	if len(m.Decls) != 6 {
+		t.Fatalf("%d decls", len(m.Decls))
+	}
+	job := func(i int) *JobDecl { return m.Decls[i].(*JobDecl) }
+	if d := job(0); d.Name != "SendWelcome" || len(d.Params.Fields) != 1 || len(d.Options) != 0 || d.Every != nil || d.Retries != nil || d.Silo != "" {
+		t.Errorf("%+v", d)
+	}
+	if d := job(1); d.Silo != "org" || len(d.Options) != 1 || d.Options[0].Name != "silo" {
+		t.Errorf("%+v", d)
+	}
+	if d := job(2); d.Every == nil || d.Every.Text != "1h" {
+		t.Errorf("%+v", d)
+	}
+	if d := job(3); d.Cron == nil || d.Cron.Text != "0 3 * * *" {
+		t.Errorf("%+v", d)
+	}
+	if d := job(4); d.Retries == nil || d.Retries.Value != 0 || d.Timeout == nil || d.Timeout.Text != "30s" || len(d.Options) != 2 {
+		t.Errorf("%+v", d)
+	}
+	d := job(5)
+	if d.Timeout.Text != "5s" || d.Silo != "org" || d.Retries.Value != 2 || d.Every.Text != "2m" || d.Cron.Text != "* * * * *" {
+		t.Errorf("%+v", d)
+	}
+	var names []string
+	for _, o := range d.Options {
+		names = append(names, o.Name)
+	}
+	if got := strings.Join(names, " "); got != "timeout silo retries every cron" {
+		t.Errorf("options in source order: %s", got)
+	}
+	// the option words stay ordinary names elsewhere
+	_, diags = ParseFile("m.alder", []byte("module M\n\nf : Int -> Int\nf retries = retries\n\ng : Int -> Int\ng cron = cron\n"))
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+}
+
+func TestParse_JobDecl_Errors(t *testing.T) {
+	for src, want := range map[string]string{
+		"job A = {} weekly":                    "weekly",
+		"job A = {} retries 1 retries 2":       "retries",
+		"job A = {} every \"1h\" every \"2h\"": "every",
+		"job A = {} retries \"x\"":             "retries",
+		"job A = {} cron 5":                    "cron",
+	} {
+		_, diags := ParseFile("m.alder", []byte("module M\n\n"+src+"\n"))
+		if len(diags) == 0 || !strings.Contains(diags[0].Message, "`"+want+"`") {
+			t.Errorf("%s: want an error naming `%s`, got %v", src, want, diags)
+		}
+	}
+}

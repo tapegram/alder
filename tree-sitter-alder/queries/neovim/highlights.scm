@@ -16,7 +16,7 @@
 ["module" "import" "as"] @keyword.import
 (field_decl "as" @keyword) ; a route parameter's wire name: `id: Text as "Id"`
 ["type" "brand" "where"] @keyword.type
-["route" "form" "table" "capability" "fake" "session" "login" "test" "deploy" "theme" "silo"
+["route" "job" "form" "table" "capability" "fake" "session" "login" "test" "deploy" "theme" "silo"
  "choose" "requires" "role" "via" "let"] @keyword
 ["if" "then" "else" "match"] @keyword.conditional
 ["for" "in"] @keyword.repeat
@@ -77,6 +77,10 @@
 (route_decl path: (string) @string.special.url)
 (route_decl "form" @keyword) ; `form` is a name, not a keyword, elsewhere
 (route_method) @constructor
+; the option words are plain variables to the server (not lexer keywords)
+(job_option ["every" "cron" "retries" "timeout" "silo"] @variable)
+(job_option key: (identifier) @variable.member)
+(job_option value: (string) @string)
 (session_key) @variable.member
 (role_clause role: (constructor) @constructor)
 (silo_clause key: (identifier) @variable.member)

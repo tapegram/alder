@@ -22,6 +22,9 @@ type Program struct {
 	// so references to one add no import edge; its members are values and types of the module,
 	// reached through `import` like any other.
 	routes map[string]map[string]*syntax.RouteDecl
+	// jobs maps a module to its jobs by name (#168). A job's constructor, arm and `Params` are
+	// reached like a route's, except that another module's job needs its module imported.
+	jobs map[string]map[string]*syntax.JobDecl
 	// oldPages are the modules that still declare a `page` (E0046, the checker): a reference to
 	// one from another module resolves (RefPage) instead of adding an error of its own, so an app
 	// part-way through a rewrite by hand reports only its old syntax.
@@ -164,7 +167,7 @@ var ReservedModules = []string{"Args", "Cap", "Route"}
 
 func Build(mods []*syntax.Module, std map[string]*syntax.Module) (*Program, *diag.Bag) {
 	bag := &diag.Bag{}
-	p := &Program{Modules: map[string]*syntax.Module{}, routes: map[string]map[string]*syntax.RouteDecl{}, oldPages: map[string]bool{}, oldAppMsgs: map[string]bool{}, Std: std, scopes: map[string]*moduleScope{},
+	p := &Program{Modules: map[string]*syntax.Module{}, routes: map[string]map[string]*syntax.RouteDecl{}, jobs: map[string]map[string]*syntax.JobDecl{}, oldPages: map[string]bool{}, oldAppMsgs: map[string]bool{}, Std: std, scopes: map[string]*moduleScope{},
 		stdNamed: map[string]bool{}, quiet: map[string]bool{}}
 	folded := map[string]*syntax.Module{} // by lower-cased name
 	for _, m := range mods {
@@ -206,6 +209,13 @@ func Build(mods []*syntax.Module, std map[string]*syntax.Module) (*Program, *dia
 				}
 				if _, dup := p.routes[m.Name][d.Name]; !dup {
 					p.routes[m.Name][d.Name] = d
+				}
+			case *syntax.JobDecl:
+				if p.jobs[m.Name] == nil {
+					p.jobs[m.Name] = map[string]*syntax.JobDecl{}
+				}
+				if _, dup := p.jobs[m.Name][d.Name]; !dup {
+					p.jobs[m.Name][d.Name] = d
 				}
 			case *syntax.PageDecl:
 				p.oldPages[m.Name] = true
@@ -336,6 +346,9 @@ type ctorOwner struct{ Module, Type string }
 
 // Route is route name of module, the first one declared with that name; nil when there is none.
 func (p *Program) Route(module, name string) *syntax.RouteDecl { return p.routes[module][name] }
+
+// Job is job name of module, the first one declared with that name; nil when there is none.
+func (p *Program) Job(module, name string) *syntax.JobDecl { return p.jobs[module][name] }
 
 // RouteAt is the route a full name `Module.Route` names (`Orgs.Pick.Pick`), as App's `choose`
 // writes one; nil when there is none.

@@ -5,6 +5,7 @@ package app
 import (
 	"alder/rt"
 	"alder/rt/db"
+	"alder/rt/jobs"
 	"reflect"
 )
 
@@ -35,4 +36,10 @@ func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__Note__Pick(0)), []string{"Neither", "One", "Two"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Todo__Tree(0)), []string{"Leaf", "Node"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Todo__Shape(0)), []string{"Dot", "Circle", "Square"})
+}
+
+// Jobs are the app's jobs (#168), in module order then declaration order: each kind's
+// qualified name, its options, and Run, which decodes a row's parameters and gives its `run`.
+func Jobs() []jobs.Kind {
+	return []jobs.Kind{}
 }

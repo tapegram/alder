@@ -213,6 +213,9 @@ type Env struct {
 	// and after: an app whose session has a `via` field checks the membership (a non-nil error
 	// fails the step, *ErrFail for a refusal).
 	CheckSession func(e *Env, old, new any) (any, error)
+	// OnBegin, when set, is called by Run right after it begins a Task's transaction on Store
+	// (not under Within): rt/jobs times how long a job's attempt holds the write lock.
+	OnBegin func()
 
 	beginTx func() (Tx, error) // set by Run for a Task with a Store: begins Tx
 	active  bool               // Run is running (RunInner may run inside it); restored when it returns
