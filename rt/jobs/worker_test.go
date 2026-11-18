@@ -126,7 +126,7 @@ func TestClaim_Atomic(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range 50 {
-				r, err := jobs.Claim(context.Background(), st, []string{welcome.Kind}, t0, time.Minute, fmt.Sprintf("test:%d", w))
+				r, err := jobs.Claim(context.Background(), st, []jobs.Kind{timed(welcome.Kind, time.Minute)}, t0, fmt.Sprintf("test:%d", w))
 				if err != nil {
 					errs <- err
 					return
@@ -157,26 +157,58 @@ func TestClaim_Atomic(t *testing.T) {
 	}
 }
 
+// timed is a kind named name with the given timeout.
+func timed(name string, timeout time.Duration) jobs.Kind {
+	k := kind(eff.Pure(struct{}{}))
+	k.Name, k.Timeout = name, timeout
+	return k
+}
+
+// The lease is the claimed row's own kind's timeout plus 30 s; the claim sets started.
+func TestClaim_LeasePerKind(t *testing.T) {
+	st := openFile(t)
+	env, _ := newEnv(st)
+	short := runEnqueue(t, env, rt.Job{Kind: "A.Short", Params: "{}"}, nil)
+	long := runEnqueue(t, env, rt.Job{Kind: "B.Long", Params: "{}"}, nil)
+	kinds := []jobs.Kind{timed("A.Short", 10*time.Second), timed("B.Long", time.Hour), timed("C.None", 0)}
+	none := runEnqueue(t, env, rt.Job{Kind: "C.None", Params: "{}"}, nil)
+	want := map[string]time.Duration{short: 40 * time.Second, long: time.Hour + 30*time.Second, none: time.Hour + 30*time.Second}
+	for range 3 {
+		r, err := jobs.Claim(context.Background(), st, kinds, t0, "w")
+		if err != nil || r == nil {
+			t.Fatalf("claim: %+v %v", r, err)
+		}
+		if r.LeaseUntil == nil || *r.LeaseUntil != t0.Add(want[r.ID]).UnixMilli() || r.Started == nil || *r.Started != t0.UnixMilli() {
+			t.Fatalf("%s (%s): lease %v started %v, want lease now + %v", r.ID, r.Kind, r.LeaseUntil, r.Started, want[r.ID])
+		}
+		var lease, started int64
+		if err := raw(t, st).QueryRowContext(context.Background(), `SELECT "lease_until", "started" FROM "_alder_jobs" WHERE "id" = ?`, r.ID).Scan(&lease, &started); err != nil || lease != *r.LeaseUntil || started != t0.UnixMilli() {
+			t.Fatalf("%s stored: lease %d started %d %v", r.ID, lease, started, err)
+		}
+	}
+}
+
 func TestClaim_SkipsUnknownKinds(t *testing.T) {
 	st := openFile(t)
 	env, _ := newEnv(st)
 	other := runEnqueue(t, env, rt.Job{Kind: "Old.Gone", Params: "{}"}, nil)
 	id := runEnqueue(t, env, welcome, nil)
-	r, err := jobs.Claim(context.Background(), st, []string{welcome.Kind, "Other.Known"}, t0, time.Minute, "h:1:1")
+	r, err := jobs.Claim(context.Background(), st, []jobs.Kind{timed(welcome.Kind, time.Minute), timed("Other.Known", time.Hour)}, t0, "h:1:1")
 	if err != nil || r == nil || r.ID != id {
 		t.Fatalf("claim: %+v %v, want %s", r, err, id)
 	}
-	if r.State != "running" || r.Attempts != 1 || r.Worker != "h:1:1" || r.LeaseUntil == nil || *r.LeaseUntil != t0.Add(time.Minute).UnixMilli() ||
+	if r.State != "running" || r.Attempts != 1 || r.Worker != "h:1:1" || r.LeaseUntil == nil || *r.LeaseUntil != t0.Add(time.Minute+30*time.Second).UnixMilli() ||
+		r.Started == nil || *r.Started != t0.UnixMilli() ||
 		r.Kind != welcome.Kind || r.Params != welcome.Params || r.RunAt != t0.UnixMilli() {
 		t.Fatalf("claimed row: %+v", r)
 	}
-	if r, err := jobs.Claim(context.Background(), st, []string{welcome.Kind}, t0, time.Minute, "h:1:1"); r != nil || err != nil {
+	if r, err := jobs.Claim(context.Background(), st, []jobs.Kind{timed(welcome.Kind, time.Minute)}, t0, "h:1:1"); r != nil || err != nil {
 		t.Fatalf("second claim: %+v %v", r, err)
 	}
 	if s := read(t, st, other); s.state != "queued" || s.attempts != 0 {
 		t.Fatalf("unknown kind's row: %+v", s)
 	}
-	if r, err := jobs.Claim(context.Background(), st, nil, t0, time.Minute, "h:1:1"); r != nil || err != nil {
+	if r, err := jobs.Claim(context.Background(), st, nil, t0, "h:1:1"); r != nil || err != nil {
 		t.Fatalf("no kinds: %+v %v", r, err)
 	}
 }
@@ -190,12 +222,12 @@ func TestClaim_NotBeforeRunAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r, err := jobs.Claim(context.Background(), st, []string{welcome.Kind}, t0.Add(time.Minute-time.Millisecond), time.Minute, "w"); r != nil || err != nil {
+	if r, err := jobs.Claim(context.Background(), st, []jobs.Kind{timed(welcome.Kind, time.Minute)}, t0.Add(time.Minute-time.Millisecond), "w"); r != nil || err != nil {
 		t.Fatalf("before run_at: %+v %v", r, err)
 	}
 	now := runEnqueue(t, env, welcome, nil) // due at t0: claimed first, though enqueued last
 	for _, want := range []string{now, later} {
-		r, err := jobs.Claim(context.Background(), st, []string{welcome.Kind}, t0.Add(time.Minute), time.Minute, "w")
+		r, err := jobs.Claim(context.Background(), st, []jobs.Kind{timed(welcome.Kind, time.Minute)}, t0.Add(time.Minute), "w")
 		if err != nil || r == nil || r.ID != want {
 			t.Fatalf("claim: %+v %v, want %s", r, err, want)
 		}
@@ -327,6 +359,10 @@ func TestWorker_ShutdownRequeues(t *testing.T) {
 	stop(10 * time.Millisecond)
 	if r := read(t, st, id); r.state != "queued" || r.attempts != 1 || r.err != nil || r.leaseUntil != nil || r.runAt != t0.UnixMilli() {
 		t.Fatalf("after stop: %+v", r)
+	}
+	var startedAt, worker *string
+	if err := raw(t, st).QueryRowContext(context.Background(), `SELECT "started", "worker" FROM "_alder_jobs" WHERE "id" = ?`, id).Scan(&startedAt, &worker); err != nil || startedAt != nil || worker != nil {
+		t.Fatalf("after stop: started %v worker %v (%v), want both NULL", startedAt, worker, err)
 	}
 	mu.Lock()
 	if len(outs) != 1 || !outs[0].Stopped || outs[0].Dead {

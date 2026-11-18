@@ -765,7 +765,8 @@ func (s *SQLite) recreate(ctx context.Context, conn *sql.Conn, sc appSchema, tab
 	return tx.Commit()
 }
 
-// recreateTx drops the tables existing, deletes every row of the jobs table, and creates sc's
+// recreateTx drops the tables existing (and, when there are any, deletes every row of the jobs
+// table), and creates sc's
 // (tables'), their @ref indexes and the _alder_meta record, inside tx (whose connection has foreign keys off).
 func recreateTx(ctx context.Context, tx *sql.Tx, sc appSchema, tables []TableDesc, existing []string) error {
 	for _, name := range existing {
@@ -773,10 +774,14 @@ func recreateTx(ctx context.Context, tx *sql.Tx, sc appSchema, tables []TableDes
 			return err
 		}
 	}
-	// the job rows go with the app's: a queued job would run against tables made anew, and the
-	// recreate promises an empty database (DevRemedy)
-	if _, err := tx.ExecContext(ctx, `DELETE FROM "_alder_jobs"`); err != nil {
-		return err
+	// the job rows go with the app's rows when tables are dropped: a queued job would run
+	// against tables made anew, and that recreate promises an empty database (DevRemedy). With
+	// no table dropped (the first tables of an app, a format bump on an empty schema; outside
+	// dev mode too) nothing the jobs point at is gone, and they are kept.
+	if len(existing) > 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM "_alder_jobs"`); err != nil {
+			return err
+		}
 	}
 	for _, st := range append(slices.Clone(sc.stmts), IndexStmts(tables)...) {
 		if _, err := tx.ExecContext(ctx, st); err != nil {

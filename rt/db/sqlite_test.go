@@ -64,6 +64,20 @@ func TestRecreate_DeletesJobs(t *testing.T) {
 	if n := rawCount(t, m, `SELECT COUNT(*) FROM "_alder_jobs"`); n != 0 {
 		t.Fatalf("after Migrate's recreate: %d job rows", n)
 	}
+
+	// outside dev mode, an app whose database has no tables yet (jobs only) gets its first
+	// table: nothing is dropped, and the jobs are kept
+	p := openMem(t)
+	if err := p.Ensure(ctx, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	exec(t, p, job("0000000d", "queued"))
+	if err := p.Ensure(ctx, []TableDesc{postV1}, false); err != nil {
+		t.Fatal(err)
+	}
+	if n := rawCount(t, p, `SELECT COUNT(*) FROM "_alder_jobs"`); n != 1 {
+		t.Fatalf("first table, not dev: %d job rows, want 1", n)
+	}
 }
 
 // Every `_alder_` table is the runtime's: _alder_jobs and an invented _alder_future are not app

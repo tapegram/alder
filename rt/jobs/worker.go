@@ -20,7 +20,7 @@ const (
 	DefaultHousekeep = time.Minute
 	// LeaseMargin is how much longer than its kind's timeout a claimed row's lease runs.
 	LeaseMargin = 30 * time.Second
-	// maxTimeout is the longest timeout a job may declare (spec §1), the lease of a kind
+	// maxTimeout is the longest timeout a job may declare (spec §1): Lease takes it for a kind
 	// without one.
 	maxTimeout = time.Hour
 	// stopWait is how long stop waits, after it cancels the attempts still running, for them to
@@ -93,12 +93,6 @@ func Start(ctx context.Context, o Options) (stop func(grace time.Duration)) {
 	p := &pool{o: o, kinds: map[string]Kind{}, hk: newHousekeeper(o.Store, o.Kinds, o.Log), due: make(chan struct{}, 1)}
 	for _, k := range o.Kinds {
 		p.kinds[k.Name] = k
-		p.names = append(p.names, k.Name)
-		t := k.Timeout
-		if t <= 0 {
-			t = maxTimeout
-		}
-		p.lease = max(p.lease, t+LeaseMargin)
 	}
 	p.due <- struct{}{} // housekeeping at start
 	claimCtx, quit := context.WithCancel(ctx)
@@ -147,8 +141,6 @@ func Start(ctx context.Context, o Options) (stop func(grace time.Duration)) {
 type pool struct {
 	o     Options
 	kinds map[string]Kind
-	names []string
-	lease time.Duration // the longest of the kinds' timeouts, plus LeaseMargin
 	hk    *housekeeper
 	due   chan struct{} // the housekeeping at start
 }
@@ -163,7 +155,7 @@ func (p *pool) work(claimCtx, runCtx context.Context, tick <-chan time.Time, wor
 			p.hk.run(claimCtx, p.o.Now())
 		default:
 		}
-		row, err := Claim(claimCtx, p.o.Store, p.names, p.o.Now(), p.lease, worker)
+		row, err := Claim(claimCtx, p.o.Store, p.o.Kinds, p.o.Now(), worker)
 		if err != nil && claimCtx.Err() == nil {
 			p.o.Log("warn", "jobs: claiming a job: "+err.Error())
 		}

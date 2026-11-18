@@ -61,8 +61,8 @@ func Backoff(attempt int) time.Duration {
 // row done, so the job's writes and the mark commit together; a job that writes nothing commits
 // the mark alone. The attempt runs under k.Timeout (env.Ctx carries it).
 //
-// An attempt the workers' stop cancelled (Start) is not a failure: the row is queued again as it
-// was before its claim, its attempts not counted and its error cleared (Outcome.Stopped).
+// An attempt the workers' stop cancelled (Start) is not a failure: the row is queued again, its
+// attempts not counted, its error, started and worker cleared (Outcome.Stopped).
 //
 // On a failure (Task.fail, a not found, a capability's error, a panic, the timeout) the Task's
 // transaction is rolled back and a second short transaction records the error and either the
@@ -107,7 +107,7 @@ func RunOne(env *eff.Env, k Kind, row Row) Outcome {
 		err = &failure{"cannot decode the parameters: " + err.Error(), err}
 	case stopped:
 		out.Err, out.Stopped = err, true
-		if rerr := record(env, store, base, `UPDATE "_alder_jobs" SET "state" = 'queued', "attempts" = "attempts" - 1, "error" = NULL, "lease_until" = NULL WHERE "id" = ?`, row.ID); rerr != nil {
+		if rerr := record(env, store, base, `UPDATE "_alder_jobs" SET "state" = 'queued', "attempts" = "attempts" - 1, "error" = NULL, "lease_until" = NULL, "started" = NULL, "worker" = NULL WHERE "id" = ?`, row.ID); rerr != nil {
 			out.Err = errors.Join(err, fmt.Errorf("jobs: re-queueing the stopped attempt: %w", rerr))
 		}
 		return out
