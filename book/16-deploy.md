@@ -1053,6 +1053,13 @@ The level names are upper case, as Go's `log/slog` writes them; the
 objects come from its JSON handler, which escapes correctly and reuses
 its buffers.
 
+### Job workers
+
+An app's jobs run in its own process: `ALDER_JOBS=N` is the number of job
+workers it starts (default 4; `0` starts none, and `/_alder/health` answers
+`"jobs":"off"`). A value that is not a whole number below 65536 stops the
+app before it serves, like a bad `ALDER_LOG`.
+
 ### Slow requests
 
 `ALDER_SLOW_MS=N` makes the access line of a request that took N
@@ -1155,6 +1162,15 @@ a Fly app with a token like any other.
 | `alder_go_goroutines`, `alder_go_heap_bytes`, `alder_go_gc_cycles_total` | gauge, gauge, counter | |
 | `alder_process_start_time_seconds` | gauge | |
 | `alder_build_info` | gauge, always 1 | `build`: the build id |
+| `alder_jobs_total` | counter | `kind`: the job's name, `outcome`: `done`, `failed` or `dead` |
+| `alder_job_duration_seconds` | histogram | `kind` |
+| `alder_jobs_running` | gauge | |
+| `alder_jobs_queued` | gauge | |
+
+The job metrics count this process's attempts: `alder_jobs_running` is the
+attempts running in it now, and `alder_jobs_queued` the jobs of every kind
+queued and due now in the shared database (it is left out when the process
+runs no workers, `ALDER_JOBS=0`, and from a scrape in which the count fails).
 
 Every label comes from a set the program fixes, never from a request:
 
@@ -1251,11 +1267,17 @@ continuation, `listening on`) goes with the line before it.
 
 #### The health endpoint
 
-`GET /_alder/health` answers `{"build":"<id>","db":"ok"}` when the
-build is serving and its database answers a `SELECT 1` within five
-seconds, and 503 otherwise. It says "this process can serve", which is
-what a platform needs to decide whether to route to it. It does not say
-the app is being used: the access lines do.
+`GET /_alder/health` answers `{"build":"<id>","db":"ok","jobs":"ok"}`
+when the build is serving and its database answers a `SELECT 1` within
+five seconds, and 503 otherwise. It says "this process can serve", which
+is what a platform needs to decide whether to route to it. It does not
+say the app is being used: the access lines do.
+
+`"jobs"` is the state of this process's job workers: `"ok"`; `"off"` when
+it runs none (`ALDER_JOBS=0`); or `"stalled"` when a job it runs has been
+due for more than five minutes and its workers have claimed nothing in
+that time. It never changes the status: a stalled queue is something to
+look at, not a reason to take the instance out of service.
 
 The access lines answer "is it alive?"; the counters behind "how many,
 how slow, which route" are `ALDER_METRICS`'s ("Metrics", above), off
