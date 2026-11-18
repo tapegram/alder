@@ -411,7 +411,7 @@ type Options struct {
 	StaticDir string                  // the directory served under /static/; "" for none
 	Reload    string                  // under alder run, the build generation; non-empty: pages subscribe to the dev server's reloads and error overlay
 	Log       func(level, msg string) // nil: no log
-	LogID     func(id, level, msg string) // as Log, for a line during a request: its id; nil: Log
+	LogID     func(id, level, msg string) // as Log, for a line during a request or a job attempt: the request's or the job's id; nil: Log
 	Access    func(*applog.Access)    // one call per request routed (not the health check); nil: no access log
 	JobLine   func(*applog.Job)       // one call per job attempt (rt/applog: Logger.Job); nil: the line through LogID
 	Build     string                  // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
@@ -449,7 +449,8 @@ func (a *App) Handler() http.Handler { return a.handler }
 // attempt on JobEnv's Env, the router's clock, the log with each job's lines under its id, the
 // metrics and the health check's state) and returns the function that stops them: it stops
 // claiming at once, waits at most grace for the attempts running, then cancels them and queues
-// their jobs again. n 0 starts none, and /_alder/health answers "jobs": "off".
+// their jobs again. n 0 starts none, and /_alder/health answers "jobs": "off" (an app that
+// declares no job has no "jobs" there at all).
 func (a *App) StartJobs(n int) (stop func(grace time.Duration)) {
 	return jobs.Start(context.Background(), jobs.Options{Store: a.web.Store, Kinds: Jobs(), Env: a.JobEnv, Workers: n, Now: a.now,
 		Log: a.log, LogID: a.logID, Line: a.jobLine, Metrics: a.web.Metrics, Health: a.health})
@@ -557,7 +558,9 @@ SILOWEB
 		w.Migrations = append(w.Migrations, m.Name)
 	}
 	health := &jobs.Health{}
-	w.Jobs = health.State
+	if len(Jobs()) > 0 { // an app with no job has no "jobs" in /_alder/health
+		w.Jobs = health.State
+	}
 	a := &App{store: store, web: w, log: o.Log, logID: o.LogID, jobLine: o.JobLine, now: w.Now, health: health, handler: web.NewRouter(Routes, w)}
 	if a.log == nil {
 		a.log = func(string, string) {}
@@ -818,10 +821,13 @@ func Main(name string, withCaps, withSilos bool) []byte {
 // starts (App.StartJobs; default 4, 0 for none); a value that is not a whole number below 65536
 // exits 1 before anything is served. Static files are served under /static/
 // from ALDER_STATIC, by default the static directory next to the executable. SIGINT or SIGTERM
-// shuts the server down gracefully: requests in flight get 5 s to finish. ALDER_EXIT_ON_STDIN_EOF=1
+// shuts the server down gracefully: requests in flight get 5 s to finish, and the job attempts
+// still running what is left of them, after which they are cancelled and queued again. ALDER_EXIT_ON_STDIN_EOF=1
 // (set by alder run) makes the app stop the same way when its standard input reaches EOF, so it
 // never outlives the dev server. GET /_alder/health answers {"build":"<ALDER_BUILD>","db":"ok"}
-// (200) when the database answers, else 503 "unreachable" (the error is logged). With
+// (200) when the database answers, else 503 "unreachable" (the error is logged); an app that
+// declares a job adds "jobs": "ok", "off" (ALDER_JOBS=0) or "stalled", which never changes the
+// status. With
 // ALDER_DB=libsql://… (a database on Turso) the app does not migrate on start: it exits 1 when
 // the database is behind this build (alder deploy migrates it) and serves the maintenance page
 // when a newer build migrated it.

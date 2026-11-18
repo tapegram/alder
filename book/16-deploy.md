@@ -1273,7 +1273,9 @@ five seconds, and 503 otherwise. It says "this process can serve", which
 is what a platform needs to decide whether to route to it. It does not
 say the app is being used: the access lines do.
 
-`"jobs"` is the state of this process's job workers: `"ok"`; `"off"` when
+`"jobs"` is there only when the app declares a job (an app without one
+answers `{"build":"<id>","db":"ok"}`). It is the state of this process's
+job workers: `"ok"`; `"off"` when
 it runs none (`ALDER_JOBS=0`); or `"stalled"` when a job it runs has been
 due for more than five minutes and its workers have claimed nothing in
 that time. It never changes the status: a stalled queue is something to
@@ -1984,8 +1986,9 @@ engine's default; `ALDER_DEPLOY_HEALTH_TIMEOUT` (a Go duration, such as
 
 `/_alder/health`, which every build serves, answers `{"build":"<id>",
 "db":"ok","jobs":"ok"}`, or 503 when `db` is not `ok`: `unreachable`, or
-`ahead: …` for a database migrated past this build (`jobs` is `ok`, `off` or
-`stalled` and never changes the status: "The health endpoint").
+`ahead: …` for a database migrated past this build (`jobs`, there only when
+the app declares a job, is `ok`, `off` or `stalled` and never changes the
+status: "The health endpoint").
 
 A build never migrates a remote database when it starts (several
 instances would race). Behind the database, it exits with "the database is behind this build: run
