@@ -240,6 +240,19 @@ func unitName(s string) string { return unitUnsafe.ReplaceAllString(s, "-") }
 // q quotes s for the remote POSIX shell.
 func q(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
+// stampTS is shell that sets $ts to the UTC time (20261119T014106Z), or that time with -2, -3, …
+// while a file named one of kept (shell words, such as "app.db.before-rollback-") + $ts exists:
+// two rollbacks or restores within one second would otherwise keep their replaced files under
+// one name, and the second would overwrite the first's.
+func stampTS(kept ...string) string {
+	var taken []string
+	for _, k := range kept {
+		taken = append(taken, `[ -e `+k+`"$ts" ]`)
+	}
+	return `ts0=$(date -u +%Y%m%dT%H%M%SZ); ts=$ts0; n=1
+while ` + strings.Join(taken, " || ") + `; do n=$((n+1)); ts="$ts0-$n"; done`
+}
+
 // sshArgs are the arguments of every ssh before the remote command: the options, the run's
 // shared connection when there is one, and `--` before the destination (a destination is never
 // read as an option).
@@ -1284,7 +1297,7 @@ func (s *Ssh) RestoreBackup(ctx context.Context, to, src string) (Restored, erro
 to=`+q(to)+`; src=`+q(src)+`
 [ -f "$R/builds/$src/backup.db" ] || { echo "builds/$src/backup.db is missing" >&2; exit 1; }
 cd "$R/db"
-ts=$(date -u +%Y%m%dT%H%M%SZ)
+`+stampTS("app.db.before-rollback-", "schema.json.before-rollback-", "migrations.before-rollback-")+`
 for x in "" -wal -shm; do if [ -f "app.db$x" ]; then mv "app.db$x" "app.db.before-rollback-$ts$x"; fi; done
 for f in schema.json migrations; do if [ -f "$f" ]; then cp "$f" "$f.before-rollback-$ts"; fi; done
 cp "$R/builds/$src/backup.db" app.db.new && chmod 600 app.db.new && mv app.db.new app.db
@@ -1621,7 +1634,7 @@ func (s *Ssh) Restore(ctx context.Context, db string) (string, error) {
 	}
 	out, err := s.run(ctx, `set -e
 cd "$R/db"
-ts=$(date -u +%Y%m%dT%H%M%SZ)
+`+stampTS("app.db.before-restore-", "schema.json.before-restore-", "migrations.before-restore-")+`
 for x in "" -wal -shm; do if [ -f "app.db$x" ]; then mv "app.db$x" "app.db.before-restore-$ts$x"; fi; done
 for f in schema.json migrations; do if [ -f "$f" ]; then mv "$f" "$f.before-restore-$ts"; fi; done
 chmod 600 app.db.restore

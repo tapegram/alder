@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -330,5 +331,42 @@ func TestSsh_LogsN(t *testing.T) {
 		if want := strings.Join(lines[150-n:], "\n") + "\n"; w.String() != want {
 			t.Errorf("-n %d:\n%s", n, w.String())
 		}
+	}
+}
+
+// Two rollbacks or restores in one second must not keep their replaced files under one name:
+// the second would overwrite the first's. stampTS picks the time, then -2, -3, … while a kept
+// file of that name exists.
+func TestStampTS_FreeName(t *testing.T) {
+	dir := t.TempDir()
+	run := func() string {
+		t.Helper()
+		cmd := exec.Command("sh", "-c", `set -e
+`+stampTS("app.db.before-rollback-", "migrations.before-rollback-")+`
+touch "app.db.before-rollback-$ts"
+echo "$ts"`)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	a, b, c := run(), run(), run()
+	if !regexp.MustCompile(`^\d{8}T\d{6}Z$`).MatchString(a) {
+		t.Fatalf("first stamp %q", a)
+	}
+	// the three runs may straddle a second; within one second they get -2, -3
+	if a == b || b == c || a == c {
+		t.Fatalf("stamps collide: %q %q %q", a, b, c)
+	}
+	// a kept file of the second name alone also moves it on
+	if err := os.WriteFile(filepath.Join(dir, "migrations.before-rollback-x"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", "-c", "set -e\n"+strings.ReplaceAll(stampTS("app.db.before-rollback-", "migrations.before-rollback-"), "$(date -u +%Y%m%dT%H%M%SZ)", "x")+"\necho \"$ts\"")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "x-2" {
+		t.Fatalf("with migrations.before-rollback-x kept: %q %v", out, err)
 	}
 }

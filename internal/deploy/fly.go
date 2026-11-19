@@ -676,7 +676,7 @@ A="${ALDER_APP_DIR:-/app}"
 B="$R/builds/$ALDER_BUILD"
 mkdir -p "$B" "$R/db"
 if [ -f "$R/db/app.db.restore" ]; then
-  ts=$(date -u +%Y%m%dT%H%M%SZ)
+  ` + stampTS(`"$R/db/app.db.before-restore-"`) + `
   for x in "" -wal -shm; do [ -f "$R/db/app.db$x" ] && mv "$R/db/app.db$x" "$R/db/app.db.before-restore-$ts$x"; done
   mv "$R/db/app.db.restore" "$R/db/app.db"
   rm -f "$R/db/schema.json" "$R/db/migrations"

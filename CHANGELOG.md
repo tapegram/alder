@@ -21,6 +21,7 @@ with the previous release, each with what to do.
 
 ### Fixed
 
+- Two `alder rollback --restore-backup` or `alder restore` runs within one second kept the database each replaced under one name (`db/app.db.before-rollback-<time>`), so the second overwrote the first's. A second kept file in the same second now gets `-2`, `-3`, … after the time, on SSH (and silo and Turso) targets and on Fly.
 - The dev panel and its "Copy as curl" line mask a route's `Text.Secret` form fields and path parameters by type, not only by name (a `pin` field was shown), and a log line masks a `Text.Secret` path parameter. The `Text.Secret` docs now say what is masked and what is not: `Log`, `Json.string`, `++` and a view's text show it in clear (#254).
 
 ## v0.2.0 — 2026-11-11

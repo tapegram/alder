@@ -161,14 +161,16 @@ func TestHealth_NoSession(t *testing.T) {
 	}
 }
 
-// stepClock is a clock a test sets.
+// stepClock is a clock a test sets; it counts its reads so a test can wait for a goroutine's.
 type stepClock struct {
-	mu sync.Mutex
-	t  time.Time
+	mu    sync.Mutex
+	t     time.Time
+	reads int
 }
 
-func (c *stepClock) Now() time.Time  { c.mu.Lock(); defer c.mu.Unlock(); return c.t }
+func (c *stepClock) Now() time.Time  { c.mu.Lock(); defer c.mu.Unlock(); c.reads++; return c.t }
 func (c *stepClock) Set(t time.Time) { c.mu.Lock(); c.t = t; c.mu.Unlock() }
+func (c *stepClock) Reads() int      { c.mu.Lock(); defer c.mu.Unlock(); return c.reads }
 
 // Spec §9: /_alder/health carries "jobs": "off" when this instance runs no workers
 // (ALDER_JOBS=0), "stalled" when a row has been due more than five minutes and no worker claimed
@@ -214,7 +216,15 @@ func TestHealth_Jobs(t *testing.T) {
 		k.Name, t0.Add(time.Minute).UnixMilli(), t0.UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
+	n := c.Reads()
 	h := start(1)
+	// Wait for the worker's first pass to read the clock (Health's start, the housekeeping at
+	// start, the claim): a worker scheduled after the clock moves would claim the row and be "ok".
+	for deadline := time.Now().Add(10 * time.Second); c.Reads() < n+3; time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the worker never tried to claim")
+		}
+	}
 	check(h, "ok")
 	c.Set(t0.Add(6 * time.Minute)) // due 5 min: not more than five
 	check(h, "ok")

@@ -118,7 +118,7 @@ func (s *Ssh) serveAgain(ctx context.Context, cur string) error {
 func (s *Ssh) swapTurso(ctx context.Context, name, host, why string) (string, error) {
 	out, err := s.run(ctx, `set -e
 cd "$R/db"
-ts=$(date -u +%Y%m%dT%H%M%SZ)
+`+stampTS(`"turso.env.before-`+why+`-"`, `"schema.json.before-`+why+`-"`, `"migrations.before-`+why+`-"`)+`
 cp turso.env "turso.env.before-`+why+`-$ts"
 printf '%s' `+q(TursoEnv(name, host))+` > turso.env.new && mv turso.env.new turso.env
 echo "ts=$ts"
@@ -293,7 +293,7 @@ func (s *Ssh) RestoreSilo(ctx context.Context, key, value, file string, at time.
 		}
 		out, err := s.run(ctx, `set -e
 f="$R/"`+q(rel)+`
-ts=$(date -u +%Y%m%dT%H%M%SZ)
+`+stampTS(`"$f.before-restore-"`)+`
 for x in "" -wal -shm; do if [ -f "$f$x" ]; then mv "$f$x" "$f.before-restore-$ts$x"; fi; done
 mv "$f.restore" "$f"
 echo "ts=$ts"

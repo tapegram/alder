@@ -425,7 +425,7 @@ func TestDeploySsh_CaddyDrainRestore(t *testing.T) {
 	bad := filepath.Join(t.TempDir(), "bad.db")
 	writeFile(t, bad, strings.Repeat("not a database\n", 400))
 	_, err = s.Restore(ctx, bad)
-	if err == nil || !regexp.MustCompile(`the restored file is kept as db/app\.db\.refused-\d{8}T\d{6}Z, and the database it replaced \(db/app\.db\.before-restore-\d{8}T\d{6}Z\) is back in place as db/app\.db; build `+id1+` serves again`).MatchString(err.Error()) {
+	if err == nil || !regexp.MustCompile(`the restored file is kept as db/app\.db\.refused-\d{8}T\d{6}Z(-\d+)?, and the database it replaced \(db/app\.db\.before-restore-\d{8}T\d{6}Z(-\d+)?\) is back in place as db/app\.db; build `+id1+` serves again`).MatchString(err.Error()) {
 		t.Fatalf("restoring a bad file: %v", err)
 	}
 	if got := namesVia(t, public); got != "Barbara,Ada" {
