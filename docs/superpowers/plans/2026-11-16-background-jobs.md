@@ -426,8 +426,9 @@ Deferred findings from PR 1's task and final reviews, each with the task that ow
   An unknown state string maps silently to `Dead` (`rt/std/job.go:82`).
 - **Task 20 (editors):** remove `job` from langdoc's `oldKeywords`; decide whether the option words
   (`every`, `cron`, `retries`, `timeout`, `silo`) are keywords in both the server highlighter and
-  tree-sitter (now `@variable` in both). Ruling owed: reserve `Job` as a Prelude type (E0012) like
-  `Route` (`internal/names` preludeReserved; m3b-effects golden declares its own `type Job`).
+  tree-sitter (now `@variable` in both). User ruling (2026-11-18): reserve `Job` as a Prelude type (E0012)
+  like `Route` (`internal/names` preludeReserved; rename the m3b-effects golden's own `type Job`;
+  breaking, so a CHANGELOG line). The `fuzz.go` `Job` module-name check then holds.
   Fix the stale comment `internal/names/graph.go:25-26` (job ctors resolve without an import).
 - **Task 21 (book ch 17):** repoint `stdlib/Job.alder`'s Book line from ch 9 to ch 17. Spec
   example fixes (named `run` param, `Task.succeed ()`, `Ok ()`, `Test.get` before `Test.submit`).
