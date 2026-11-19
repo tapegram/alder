@@ -30,7 +30,9 @@ type Row struct {
 	Started, Finished, LeaseUntil, ScheduledFor *int64
 	Attempts                                    int
 	Error                                       *string
-	Schedule                                    bool
+	// Schedule: the row is its kind's queued schedule tick, or was until this claim (ClaimedTick
+	// clears it in the table; a tick keeps its ScheduledFor).
+	Schedule bool
 }
 
 // State is a job row's state.

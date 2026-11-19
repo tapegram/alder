@@ -202,3 +202,35 @@ func TestJobs_TraceNamesTheJob(t *testing.T) {
 		t.Fatalf("trace %v", trace)
 	}
 }
+
+// Schedule ticks in a test (spec §8): the first Test.work creates the tick from the clock, so
+// with the clock at 02:59 UTC a nightly job runs once after Test.advance of two minutes; after
+// three days more it runs once, not three times.
+func TestJobs_WorkTicks(t *testing.T) {
+	nightly := jobKind("Jobs.Nightly", func() eff.Task[struct{}] { return eff.Pure(struct{}{}) })
+	nightly.Cron = "0 3 * * *"
+	kinds := []jobs.Kind{nightly}
+	var first, second, third []JobRun
+	var left []JobRow
+	task := then(SetClock(time.Date(2026, 3, 4, 2, 59, 0, 0, time.UTC)), eff.Bind(Work(kinds), func(rs []JobRun) eff.Task[bool] {
+		first = rs
+		return then(Advance(120000), eff.Bind(Work(kinds), func(rs []JobRun) eff.Task[bool] {
+			second = rs
+			return then(Advance(3*86400000), eff.Bind(Work(kinds), func(rs []JobRun) eff.Task[bool] {
+				third = rs
+				return eff.Map(func(js []JobRow) bool { left = js; return true }, Jobs(kinds))
+			}))
+		}))
+	}))
+	if r := runJobs(t, task); !r.OK {
+		t.Fatalf("%+v", r)
+	}
+	tick := rt.Job{Kind: "Jobs.Nightly", Params: "{}"}
+	if len(first) != 0 || len(second) != 1 || second[0].Job != tick || !second[0].Result.IsOk || len(third) != 1 || !third[0].Result.IsOk {
+		t.Fatalf("runs: %+v, %+v, %+v", first, second, third)
+	}
+	// two done, and the next tick queued for 8 March 03:00
+	if len(left) != 3 || left[2].Status.State.Tag != std.JobQueued || !left[2].Status.RunAt.Val.Equal(time.Date(2026, 3, 8, 3, 0, 0, 0, time.UTC)) {
+		t.Fatalf("left %+v", left)
+	}
+}

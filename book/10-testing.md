@@ -74,8 +74,8 @@ same text.
 ## 2. Running the tests
 
 `alder test` checks the app, compiles it with its tests, runs every test
-and prints one line per test. In the repository, the to-do app has 147:
-its own 25, and the 122 of the admin that `alder new admin` generated for
+and prints one line per test. In the repository, the to-do app has 148:
+its own 26, and the 122 of the admin that `alder new admin` generated for
 it (chapter 15). `-run` (section 7) picks out the app's own, by module:
 
 ```text
@@ -2723,7 +2723,7 @@ example, admin included, reads:
 ```text
 $ alder test --mutate examples/todos
 …
-147 passed, 0 failed
+148 passed, 0 failed
 226 mutants: 222 killed, 4 survived  (score 0.98)
 survived:
   Admin.Todos.Edit   Save.update:80     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
@@ -2732,11 +2732,13 @@ survived:
   Admin.Users.Bulk   selected:44        where dropped      Db.where (Todo.owner.in taken) → the condition dropped
 ```
 
-(`…` stands for the 147 `ok` lines.) The app's own code has 41 mutants
-and all are killed by its 25 tests: the nine above; the four of the route
+(`…` stands for the 148 `ok` lines.) The app's own code has 41 mutants
+and all are killed by 25 of its 26 tests: the nine above; the four of the route
 operators ("Logout clears the user…", "a visitor is sent to log in from a
 todo" and the two that send a write after logging out); and twelve older
-ones (`Todos.Index`'s eight, `Auth.Login`'s three, "countOpen…").
+ones (`Todos.Index`'s eight, `Auth.Login`'s three, "countOpen…"). The
+26th, `Jobs.Nightly`'s, checks when the nightly job runs; its module has
+no mutant.
 
 Two of the nine exist for the
 session's `role`, which the admin of chapter 15 needed: `App "Logout makes

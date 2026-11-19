@@ -40,11 +40,11 @@ The example's login is the development stub, which refuses every password outsid
 
 ## Mutation score
 
-`alder test --mutate examples/todos` (book 10, "Mutation testing"): 226 mutants, 147 tests, 222
+`alder test --mutate examples/todos` (book 10, "Mutation testing"): 226 mutants, 148 tests, 222
 killed, 4 survived (score 0.98). `TestExample_TodosMutation` fails if the score drops below
 0.98, the exact 0.982 rounded down, or the number of mutants is not 226.
 
-- **The app's own code:** 41 mutants, all killed by its 25 tests (score 1.00).
+- **The app's own code:** 41 mutants, all killed by its 26 tests (score 1.00).
 
 - **The generated admin** (`app/Admin/`, "Replaying the admin" below): 185 mutants, 181 killed by
   its 122 generated tests, kept as `alder new admin` wrote them.

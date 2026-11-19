@@ -19,13 +19,15 @@ const (
 	KeepDone = 7 * 24 * time.Hour
 	KeepDead = 30 * 24 * time.Hour
 	// Unclaimable is how long a queued row of a kind this build does not know waits before
-	// housekeeping warns about its kind.
+	// housekeeping warns about its kind, and how old a queued tick of such a kind is when
+	// housekeeping deletes it.
 	Unclaimable = 24 * time.Hour
 )
 
 // housekeeper keeps a store's jobs table for one Start's workers, one of them at a time.
 type housekeeper struct {
 	store  eff.Store
+	all    []Kind // the kinds, in the order given
 	kinds  map[string]Kind
 	log    func(level, msg string)
 	mu     sync.Mutex
@@ -33,7 +35,7 @@ type housekeeper struct {
 }
 
 func newHousekeeper(s eff.Store, kinds []Kind, log func(level, msg string)) *housekeeper {
-	h := &housekeeper{store: s, kinds: map[string]Kind{}, log: log, warned: map[string]bool{}}
+	h := &housekeeper{store: s, all: kinds, kinds: map[string]Kind{}, log: log, warned: map[string]bool{}}
 	for _, k := range kinds {
 		h.kinds[k.Name] = k
 	}
@@ -44,8 +46,11 @@ func newHousekeeper(s eff.Store, kinds []Kind, log func(level, msg string)) *hou
 //   - a running row past its lease is re-queued with LostError (due after the backoff, its
 //     attempt counted), or made dead when that attempt was its last;
 //   - done rows finished more than KeepDone ago and dead ones more than KeepDead ago are deleted;
+//   - a queued tick of a kind this build does not know, created more than Unclaimable ago, is
+//     deleted with a warn line (a schedule renamed or removed: the new name has its own tick);
 //   - a kind this build does not know, with a row queued and due for more than Unclaimable, is
-//     a warn line, once per kind.
+//     a warn line, once per kind;
+//   - each scheduled kind without a queued tick gets one (EnsureTicks).
 //
 // An error is a warn line; the next run tries again.
 func (h *housekeeper) run(ctx context.Context, now time.Time) {
@@ -62,7 +67,13 @@ func (h *housekeeper) run(ctx context.Context, now time.Time) {
 			now.Add(-KeepDone).UnixMilli(), now.Add(-KeepDead).UnixMilli())
 	}
 	if err == nil {
+		err = h.unknownTicks(ctx, q, now)
+	}
+	if err == nil {
 		err = h.unclaimable(ctx, q, now)
+	}
+	if err == nil {
+		err = EnsureTicksOn(ctx, q, h.all, now)
 	}
 	if err != nil && ctx.Err() == nil {
 		h.log("warn", "jobs: housekeeping: "+err.Error())
@@ -107,6 +118,42 @@ func (h *housekeeper) leases(ctx context.Context, q db.Execer, now time.Time) er
 			return err
 		}
 		h.log("warn", fmt.Sprintf("job %s %s: %s", l.kind, l.id, LostError))
+	}
+	return nil
+}
+
+// unknownTicks deletes the queued ticks of kinds this build does not know created more than
+// Unclaimable before now.
+func (h *housekeeper) unknownTicks(ctx context.Context, q db.Execer, now time.Time) error {
+	before := now.Add(-Unclaimable).UnixMilli()
+	rows, err := q.QueryContext(ctx, `SELECT "id", "kind" FROM "_alder_jobs" WHERE "schedule" = 1 AND "state" = 'queued' AND "created" < ? ORDER BY "kind"`, before)
+	if err != nil {
+		return err
+	}
+	var gone [][2]string
+	for rows.Next() {
+		var id, kind string
+		if err := rows.Scan(&id, &kind); err != nil {
+			rows.Close()
+			return err
+		}
+		if _, known := h.kinds[kind]; !known {
+			gone = append(gone, [2]string{id, kind})
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, g := range gone {
+		// still queued: a build that knows the kind may have claimed it in the meantime
+		res, err := q.ExecContext(ctx, `DELETE FROM "_alder_jobs" WHERE "id" = ? AND "schedule" = 1 AND "state" = 'queued'`, g[0])
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 1 {
+			h.log("warn", fmt.Sprintf("jobs: deleted the queued schedule tick %s of kind %s: this build does not know the kind and the tick is more than a day old (a schedule renamed or removed)", g[0], g[1]))
+		}
 	}
 	return nil
 }

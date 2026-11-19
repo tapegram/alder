@@ -4750,6 +4750,10 @@ seconds ahead, or a failed job's retry, can come due within the same call: set t
 `Test.setClock` and a job not yet due waits for `Test.advance`. After 1000 runs in one call
 the test fails with "Test.work: jobs keep enqueueing jobs".
 
+A job with `every` or `cron` runs on its schedule, as under a worker: the first `Test.work`
+of a test queues its first run at the schedule's next time after the clock, and each run
+queues the next, so moving the clock past several of its times runs it once.
+
 ```alder fragment
 Test.work |> Task.map (\runs -> List.all (\r -> r.result == Ok ()) runs)
 ```

@@ -32,6 +32,10 @@ func Lease(k Kind) time.Duration {
 // its kind. The claim is one statement in a transaction of its own (BEGIN IMMEDIATE on a file
 // database), so two workers, in one process or several on one database, never claim the same
 // row. nil when no row is due.
+//
+// Claiming a tick also inserts its kind's next tick, in the same transaction (ClaimedTick): the
+// claim and the next tick commit together. When the next tick cannot be found (a
+// *ScheduleError), the claim commits without it and Claim returns the row and that error.
 func Claim(ctx context.Context, s eff.Store, kinds []Kind, now time.Time, worker string) (*Row, error) {
 	if len(kinds) == 0 {
 		return nil, nil
@@ -65,8 +69,24 @@ func Claim(ctx context.Context, s eff.Store, kinds []Kind, now time.Time, worker
 		tx.Rollback()
 		return nil, err
 	}
+	var schedErr *ScheduleError
+	if r.Schedule {
+		for _, k := range kinds {
+			if k.Name == r.Kind {
+				err = ClaimedTick(ctx, q, k, *r, now)
+				break
+			}
+		}
+		if err != nil && !errors.As(err, &schedErr) {
+			tx.Rollback()
+			return nil, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
+	}
+	if schedErr != nil {
+		return r, schedErr
 	}
 	return r, nil
 }
