@@ -31,6 +31,11 @@ job Nightly = {} every "1h"
 Nightly.run : Nightly.Params -> Task Unit
 Nightly.run p = Log.info "cleanup ran"
 
+job Weekdays = {} cron "0 3 * * 1-5"
+
+Weekdays.run : Weekdays.Params -> Task Unit
+Weekdays.run p = Log.info "weekday report"
+
 -- Every kind of parameter a job may hold (the codec tests: internal/gen/jobs_test.go).
 type Shape = Circle Float | Rect { w: Int, h: Int } | Dot
 

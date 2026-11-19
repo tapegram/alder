@@ -83,6 +83,20 @@ func jobenc__Signup__Nightly__Params(v Signup__Nightly__Params) rt.JsonValue {
 	return rt.JsonValue{Kind: rt.JsonObject}
 }
 
+// jobdec__Signup__Weekdays__Params reads a Signup__Weekdays__Params from a job's parameters' JSON at path.
+func jobdec__Signup__Weekdays__Params(v rt.JsonValue, path string) (Signup__Weekdays__Params, error) {
+	var r Signup__Weekdays__Params
+	if v.Kind != rt.JsonObject {
+		return r, fmt.Errorf("%s: expected an object", path)
+	}
+	return r, nil
+}
+
+// jobenc__Signup__Weekdays__Params is a Signup__Weekdays__Params as a job's parameters' JSON.
+func jobenc__Signup__Weekdays__Params(v Signup__Weekdays__Params) rt.JsonValue {
+	return rt.JsonValue{Kind: rt.JsonObject}
+}
+
 // jobdec__Signup__Address reads a Signup__Address from a job's parameters' JSON at path.
 func jobdec__Signup__Address(v rt.JsonValue, path string) (Signup__Address, error) {
 	var r Signup__Address
@@ -325,6 +339,22 @@ func Jobs() []jobs.Kind {
 		Retries: 4,
 		Timeout: 300000000000,  // 5m0s
 		Every:   3600000000000, // 1h0m0s
+	}, {
+		Name: "Signup.Weekdays",
+		Run: func(e *eff.Env, params string) (eff.Task[struct{}], error) {
+			v, err := std.JobParse(params)
+			if err != nil {
+				return eff.Task[struct{}]{}, err
+			}
+			p, err := jobdec__Signup__Weekdays__Params(v, "")
+			if err != nil {
+				return eff.Task[struct{}]{}, err
+			}
+			return Signup__Weekdays__run(p), nil
+		},
+		Retries: 4,
+		Timeout: 300000000000, // 5m0s
+		Cron:    "0 3 * * 1-5",
 	}, {
 		Name: "Signup.Everything",
 		Run: func(e *eff.Env, params string) (eff.Task[struct{}], error) {
