@@ -147,7 +147,7 @@ func (mc *modCtx) jobOptions(jd *syntax.JobDecl, info *JobInfo) {
 	}
 	if jd.Cron != nil {
 		if _, err := cron.Parse(jd.Cron.Text); err != nil {
-			c.errorf(diag.JobSchedule, jd.Cron.Span, "`cron \"%s\"`: %v; write five fields, `minute hour day-of-month month day-of-week`, as in `0 3 * * *`", jd.Cron.Text, err)
+			c.errorf(diag.JobSchedule, jd.Cron.Span, "`cron \"%s\"`: %v; write `minute hour day-of-month month day-of-week`, as in `0 3 * * *`", jd.Cron.Text, err)
 		} else {
 			info.Cron = jd.Cron.Text
 		}

@@ -13,9 +13,9 @@ func TestParse(t *testing.T) {
 		}
 	}
 	bad := []struct{ expr, field string }{
-		{"", "minute"},
-		{"0 3 * *", "day of week"},
-		{"0 3 * * * *", "minute"},
+		{"", "five fields"},
+		{"0 3 * *", "five fields"},
+		{"0 3 * * * *", "five fields"},
 		{"60 * * * *", "minute"},
 		{"0 24 * * *", "hour"},
 		{"0 25 * * *", "hour"},
@@ -96,12 +96,19 @@ func TestNext_StrictlyAfterAndUTC(t *testing.T) {
 }
 
 func TestNext_Bounded(t *testing.T) {
-	// the longest wait that Parse allows: the 29th of February on a Monday in `*/…` form
-	s, err := Parse("0 0 29 2 */3")
+	// the longest wait between two matches of an expression Parse accepts: the 29th of February
+	// on a Sunday (`*/7` is 0 alone) comes 40 years apart from 2088, across 2100, which is not a
+	// leap year
+	s, err := Parse("0 0 29 2 */7")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := s.Next(at("2026-01-01 00:00")); got.IsZero() {
-		t.Error("no match found")
+	for _, tc := range []struct{ after, want string }{
+		{"2026-01-01 00:00", "2032-02-29 00:00"},
+		{"2088-02-29 00:00", "2128-02-29 00:00"},
+	} {
+		if got := s.Next(at(tc.after)); !got.Equal(at(tc.want)) {
+			t.Errorf("Next(%s) = %v, want %s", tc.after, got, tc.want)
+		}
 	}
 }

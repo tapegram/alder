@@ -129,17 +129,21 @@ func (s Schedule) matchDay(t time.Time) bool {
 	return d || w
 }
 
-// searchYears bounds Next: a schedule Parse accepts matches within a few decades at most (a
-// 29 February on given weekdays, across a skipped leap year).
-const searchYears = 40
+// searchYears bounds Next: the Gregorian calendar repeats every 400 years (146097 days, a whole
+// number of weeks), so a day that matches once matches again within 400 years of any day, and
+// the search through the 400th anniversary of its first day, inclusive, finds the next match of
+// every schedule that has one. The longest wait in practice is 40 years (a 29 February on a
+// Sunday, from 2088 to 2128).
+const searchYears = 400
 
 // Next is the first minute matching s strictly after `after`, in UTC, or the zero Time if none
-// within searchYears (Parse refuses the expressions that never match, so this is a guard).
+// within searchYears, which happens only for a schedule that never matches (Parse refuses those,
+// so for a parsed one this is a guard).
 func (s Schedule) Next(after time.Time) time.Time {
 	t := after.UTC().Truncate(time.Minute).Add(time.Minute)
 	day := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 	end := day.AddDate(searchYears, 0, 0)
-	for ; day.Before(end); day = day.AddDate(0, 0, 1) {
+	for ; !day.After(end); day = day.AddDate(0, 0, 1) {
 		if s.month&(1<<int(day.Month())) == 0 || !s.matchDay(day) {
 			continue
 		}
