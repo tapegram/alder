@@ -178,6 +178,8 @@ func TestJob_Schedules(t *testing.T) {
 		{`job J = { n: Int } cron "0 3 * * *"`, "A scheduled job takes no parameters"},
 		{`job J = {} every "500ms"`, "1s"},
 		{`job J = {} every "3x"`, "`3x`"},
+		{`job J = {} every ""`, "cannot read"},
+		{`job J = {} cron ""`, "five fields"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.decl, func(t *testing.T) {
@@ -190,10 +192,31 @@ func TestJob_Schedules(t *testing.T) {
 	}
 }
 
+func TestJob_CronMalformed(t *testing.T) {
+	cases := []struct{ expr, sub string }{
+		{"0 25 * * *", "hour `25`"},
+		{"60 * * * *", "minute `60`"},
+		{"0 3 * *", "five fields"},
+		{"0 0 * * MON", "day of week `MON`"},
+		{"0 0 31 2 *", "day of month `31`"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.expr, func(t *testing.T) {
+			_, got := checkFiles(t, jobApp(t, jobModule("job J = {} cron \""+tc.expr+"\"\n\n"+runArm("J"))))
+			wantJobDiag(t, got, diag.JobSchedule, "`cron \""+tc.expr+"\"`", tc.sub)
+		})
+	}
+	res, got := checkFiles(t, jobApp(t, jobModule("job J = {} cron \"0 3 * * 1-5\"\n\n"+runArm("J"))))
+	if len(got) != 0 || res.Jobs["Signup"][0].Cron != "0 3 * * 1-5" {
+		t.Fatalf("valid cron: got %q, jobs %+v", got, res.Jobs["Signup"])
+	}
+}
+
 func TestJob_Options(t *testing.T) {
 	cases := []struct{ decl, code, sub string }{
 		{`job J = {} timeout "2h"`, diag.JobSchedule, "1h"},
 		{`job J = {} timeout "soon"`, diag.JobSchedule, "`soon`"},
+		{`job J = {} timeout ""`, diag.JobSchedule, "cannot read"},
 		{`job J = {} retries -1`, diag.ParseError, "retries"},
 		{`job J = { n: Int } silo org`, diag.SiloDecl, "`silo org` takes `org` from the job's parameter: add `org: Org.OrgId` to the job's parameters"},
 		{`job J = { org: Text } silo org`, diag.SiloDecl, "the job's parameter `org` is `Text`; `silo org` needs `Org.OrgId`"},
