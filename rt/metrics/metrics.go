@@ -1,17 +1,20 @@
 // Package metrics is a served app's counters and timings, written as Prometheus text
 // (`text/plain; version=0.0.4`) at /_alder/metrics when ALDER_METRICS turns it on (FromEnv):
 // requests by route pattern, method and status class, their latency, the requests in flight,
-// database statements, effect steps, Go runtime basics and the build id.
+// database statements, effect steps, job attempts by kind and outcome, their duration, the
+// attempts running and the jobs due, Go runtime basics and the build id.
 //
 // Every label value comes from a finite set the program fixes: the route is the matched
 // pattern or one of a few fixed names (the router's), the method one of seven, the status one of
-// five classes, the effect a Call name of the generated code. No series is made from a path,
+// five classes, the effect a Call name of the generated code, a job's kind one the build
+// declares and its outcome one of three. No series is made from a path,
 // query, header, parameter or session value.
 package metrics
 
 import (
 	"fmt"
 	"io"
+	"maps"
 	"runtime/metrics"
 	"slices"
 	"strconv"
@@ -32,6 +35,9 @@ var methods = [...]string{"GET", "POST", "HEAD", "PUT", "PATCH", "DELETE", "othe
 // classes are the status label's values.
 var classes = [...]string{"1xx", "2xx", "3xx", "4xx", "5xx"}
 
+// outcomes are a job attempt's outcome label's values (Collector.Job).
+var outcomes = [...]string{"done", "failed", "dead"}
+
 // MaxSteps bounds the effect-name series: a name past this many distinct ones is counted as
 // "(other)". The names are the generated code's Call names, so an app never reaches it; it is
 // a guard, not a limit an app is expected to meet.
@@ -46,6 +52,11 @@ type reqKey struct {
 type histKey struct {
 	route  string
 	method uint8
+}
+
+type jobKey struct {
+	kind    string
+	outcome uint8
 }
 
 type histogram struct {
@@ -66,17 +77,23 @@ type Collector struct {
 	steps    map[string]uint64
 	stmts    [2]uint64        // exec, query
 	stmtDur  [2]time.Duration // exec, query
+	jobs     map[jobKey]uint64
+	jobHist  map[string]*histogram // by kind
+	running  int64
+	queued   func() (int64, error) // nil: no alder_jobs_queued sample
 }
 
 // New is a Collector answering a scrape that carries token (Authorization: Bearer <token>), or
 // every scrape when token is "" (open). The process start time is now.
 func New(token string) *Collector {
 	return &Collector{
-		auth:  newAuthorizer(token),
-		start: time.Now(),
-		reqs:  map[reqKey]uint64{},
-		hist:  map[histKey]*histogram{},
-		steps: map[string]uint64{},
+		auth:    newAuthorizer(token),
+		start:   time.Now(),
+		reqs:    map[reqKey]uint64{},
+		hist:    map[histKey]*histogram{},
+		steps:   map[string]uint64{},
+		jobs:    map[jobKey]uint64{},
+		jobHist: map[string]*histogram{},
 	}
 }
 
@@ -101,12 +118,50 @@ func (c *Collector) Request(route, method string, status int, d time.Duration) {
 		h = &histogram{}
 		c.hist[histKey{route: route, method: m}] = h
 	}
+	h.observe(sec)
+	c.mu.Unlock()
+}
+
+func (h *histogram) observe(sec float64) {
 	if i, ok := bucketOf(sec); ok {
 		h.counts[i]++
 	} else {
 		h.inf++
 	}
 	h.sum += sec
+}
+
+// Job counts one job attempt ended: kind (the job's qualified name, which the build declares),
+// outcome ("done", "failed" or "dead"; anything else is not counted) and how long it took.
+func (c *Collector) Job(kind, outcome string, d time.Duration) {
+	o := slices.Index(outcomes[:], outcome)
+	if o < 0 {
+		return
+	}
+	c.mu.Lock()
+	c.jobs[jobKey{kind: kind, outcome: uint8(o)}]++
+	h := c.jobHist[kind]
+	if h == nil {
+		h = &histogram{}
+		c.jobHist[kind] = h
+	}
+	h.observe(d.Seconds())
+	c.mu.Unlock()
+}
+
+// JobRunning adds delta to the job attempts running in this process.
+func (c *Collector) JobRunning(delta int64) {
+	c.mu.Lock()
+	c.running += delta
+	c.mu.Unlock()
+}
+
+// JobsQueued sets how a scrape reads the number of jobs queued and due (rt/jobs: a count on the
+// jobs table). Write calls it, outside the Collector's lock; an error leaves alder_jobs_queued
+// out of that exposition. Unset, it is always left out.
+func (c *Collector) JobsQueued(f func() (int64, error)) {
+	c.mu.Lock()
+	c.queued = f
 	c.mu.Unlock()
 }
 
@@ -193,13 +248,20 @@ const ContentType = "text/plain; version=0.0.4; charset=utf-8"
 func (c *Collector) Write(w io.Writer, build string) error {
 	var b strings.Builder
 	c.mu.Lock()
-	c.write(&b, build)
+	f := c.queued
+	c.mu.Unlock()
+	queued, qerr := int64(0), error(nil)
+	if f != nil {
+		queued, qerr = f()
+	}
+	c.mu.Lock()
+	c.write(&b, build, queued, f != nil && qerr == nil)
 	c.mu.Unlock()
 	_, err := io.WriteString(w, b.String())
 	return err
 }
 
-func (c *Collector) write(b *strings.Builder, build string) {
+func (c *Collector) write(b *strings.Builder, build string, queued int64, queuedOK bool) {
 	head := func(name, typ, help string) {
 		fmt.Fprintf(b, "# HELP %s %s\n# TYPE %s %s\n", name, help, name, typ)
 	}
@@ -235,17 +297,7 @@ func (c *Collector) write(b *strings.Builder, build string) {
 		return strings.Compare(methods[a.method], methods[b.method])
 	})
 	for _, k := range hkeys {
-		h := c.hist[k]
-		labels := "route=\"" + escape(k.route) + "\",method=\"" + methods[k.method] + "\""
-		var cum uint64
-		for i, le := range buckets {
-			cum += h.counts[i]
-			fmt.Fprintf(b, "alder_http_request_duration_seconds_bucket{%s,le=\"%s\"} %d\n", labels, num(le), cum)
-		}
-		cum += h.inf
-		fmt.Fprintf(b, "alder_http_request_duration_seconds_bucket{%s,le=\"+Inf\"} %d\n", labels, cum)
-		fmt.Fprintf(b, "alder_http_request_duration_seconds_sum{%s} %s\n", labels, num(h.sum))
-		fmt.Fprintf(b, "alder_http_request_duration_seconds_count{%s} %d\n", labels, cum)
+		c.hist[k].write(b, "alder_http_request_duration_seconds", "route=\""+escape(k.route)+"\",method=\""+methods[k.method]+"\"")
 	}
 
 	head("alder_http_requests_in_flight", "gauge", "Requests being answered now.")
@@ -267,6 +319,31 @@ func (c *Collector) write(b *strings.Builder, build string) {
 		fmt.Fprintf(b, "alder_effect_steps_total{name=\"%s\"} %d\n", escape(n), c.steps[n])
 	}
 
+	head("alder_jobs_total", "counter", "Job attempts ended, by kind and outcome (done, failed or dead).")
+	jkeys := make([]jobKey, 0, len(c.jobs))
+	for k := range c.jobs {
+		jkeys = append(jkeys, k)
+	}
+	slices.SortFunc(jkeys, func(a, b jobKey) int {
+		if c := strings.Compare(a.kind, b.kind); c != 0 {
+			return c
+		}
+		return int(a.outcome) - int(b.outcome)
+	})
+	for _, k := range jkeys {
+		fmt.Fprintf(b, "alder_jobs_total{kind=\"%s\",outcome=\"%s\"} %d\n", escape(k.kind), outcomes[k.outcome], c.jobs[k])
+	}
+	head("alder_job_duration_seconds", "histogram", "Job attempt duration, by kind.")
+	for _, k := range slices.Sorted(maps.Keys(c.jobHist)) {
+		c.jobHist[k].write(b, "alder_job_duration_seconds", "kind=\""+escape(k)+"\"")
+	}
+	head("alder_jobs_running", "gauge", "Job attempts running now in this process.")
+	fmt.Fprintf(b, "alder_jobs_running %d\n", c.running)
+	if queuedOK {
+		head("alder_jobs_queued", "gauge", "Jobs queued and due now, of every kind.")
+		fmt.Fprintf(b, "alder_jobs_queued %d\n", queued)
+	}
+
 	rt := []metrics.Sample{{Name: "/sched/goroutines:goroutines"}, {Name: "/memory/classes/heap/objects:bytes"}, {Name: "/gc/cycles/total:gc-cycles"}}
 	metrics.Read(rt)
 	head("alder_go_goroutines", "gauge", "Goroutines that currently exist.")
@@ -281,6 +358,19 @@ func (c *Collector) write(b *strings.Builder, build string) {
 
 	head("alder_build_info", "gauge", "The build being served (ALDER_BUILD); always 1.")
 	fmt.Fprintf(b, "alder_build_info{build=\"%s\"} 1\n", escape(build))
+}
+
+// write writes h as the histogram name with labels.
+func (h *histogram) write(b *strings.Builder, name, labels string) {
+	var cum uint64
+	for i, le := range buckets {
+		cum += h.counts[i]
+		fmt.Fprintf(b, "%s_bucket{%s,le=\"%s\"} %d\n", name, labels, num(le), cum)
+	}
+	cum += h.inf
+	fmt.Fprintf(b, "%s_bucket{%s,le=\"+Inf\"} %d\n", name, labels, cum)
+	fmt.Fprintf(b, "%s_sum{%s} %s\n", name, labels, num(h.sum))
+	fmt.Fprintf(b, "%s_count{%s} %d\n", name, labels, cum)
 }
 
 func sampleUint(s metrics.Sample) uint64 {

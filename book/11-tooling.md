@@ -1170,8 +1170,10 @@ you open the address before the first build is done. Everything the app prints
 goes to `alder run`'s stderr.
 
 Ctrl-C (or `SIGTERM`) stops the dev server: a build in progress finishes,
-the app is stopped (`SIGTERM`, then killed if it hasn't exited after 5
-seconds), and `alder run` exits 0. A second Ctrl-C kills it at once.
+the app is stopped (`SIGTERM`, then killed if it hasn't exited after 10
+seconds: more than the app's own shutdown, which gives requests and running
+jobs 5 seconds and the job workers up to one more to queue again what they
+cancelled), and `alder run` exits 0. A second Ctrl-C kills it at once.
 
 The app also exits when the dev server dies without stopping it: killed with
 `kill -9`, say, or by a test harness's timeout, when no clean-up code gets to

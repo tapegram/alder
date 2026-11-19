@@ -35,7 +35,8 @@ var newID = NewID
 // returns the row's id (8 hex characters, NewID); an id another row has is drawn again, up to
 // idTries times. With a key, the key is j.Kind's: while a row of the kind with that key is
 // queued or running, nothing is inserted and that row's id comes back; a done or dead row
-// releases the key. Parameters longer than MaxParams fail the Task (*eff.ErrFail).
+// releases the key. Parameters longer than MaxParams fail the Task (*eff.ErrFail). Once the
+// Task's transaction commits, a new row wakes this process's workers (Wake).
 func Enqueue(env *eff.Env, j rt.Job, runAt time.Time, key *string) (string, error) {
 	if len(j.Params) > MaxParams {
 		return "", &eff.ErrFail{Msg: fmt.Sprintf("Job.enqueue %s: its parameters take %d bytes; a job's parameters are at most 64 KB (%d bytes)", j.Kind, len(j.Params), MaxParams)}
@@ -58,6 +59,7 @@ func Enqueue(env *eff.Env, j rt.Job, runAt time.Time, key *string) (string, erro
 			return "", err
 		}
 		if n == 1 {
+			env.AfterCommit(Wake)
 			return id, nil
 		}
 		if key == nil {

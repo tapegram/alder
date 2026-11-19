@@ -104,6 +104,9 @@ type Options struct {
 	// and answers MetricsPath; nil: no endpoint (the path is routed like any other), nothing
 	// counted.
 	Metrics *metrics.Collector
+	// Jobs, when set, is the state of the app's job workers that /_alder/health answers as
+	// "jobs" (generated: rt/jobs.Health.State): "ok", "off" or "stalled". nil: no "jobs" key.
+	Jobs func(ctx context.Context) string
 	// SlowAfter, when positive (ALDER_SLOW_MS), marks a request that took at least this long
 	// Slow in its access record (a warn line with its breakdown); 0: none.
 	SlowAfter time.Duration
@@ -776,7 +779,9 @@ const healthTimeout = 5 * time.Second
 // the error itself goes to the log at warn, once when the check starts failing (and a warn
 // line once it answers again), not on every check. When Options.SharedMaintenance is set, 503
 // with its text as "db" ("ahead: <detail>", the schema check's own sentence: migration names,
-// no host). A platform's health check (Render's) sends it: a build that cannot reach its
+// no host). With Options.Jobs set, the body also carries "jobs": "ok", "off" or "stalled"
+// (rt/jobs.Health.State), which never changes the status: a stalled queue is a thing to look at,
+// not a reason to take the instance out of service. A platform's health check (Render's) sends it: a build that cannot reach its
 // database, or that a newer build's migrations left behind, is never switched to. It is answered
 // before anything else the router does: no session is read or set, no CSRF check, no request
 // log line, no dev panel; never cached.
@@ -802,10 +807,15 @@ func (rt *router) health(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodHead {
 		return
 	}
+	jobs := ""
+	if rt.opts.Jobs != nil {
+		jobs = rt.opts.Jobs(r.Context())
+	}
 	_ = json.NewEncoder(w).Encode(struct {
 		Build string `json:"build"`
 		DB    string `json:"db"`
-	}{rt.opts.Build, state})
+		Jobs  string `json:"jobs,omitempty"`
+	}{rt.opts.Build, state, jobs})
 }
 
 // reload answers a Datastar GET with a real navigation to its URL (datastar.Assign): the

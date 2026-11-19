@@ -43,6 +43,13 @@ test "add 1000" = {
   Task.succeed (r.answer == Refreshed)
 }
 
+test "enqueue 1000" = {
+  let _ <- Task.all (List.map (\i -> Db.insert Row { title: Text.NonEmpty ("row " ++ Text.fromInt i), n: i }) (List.range 1 1000))
+  let _ <- Test.get (Rows.Index {})
+  let r <- Test.submit Rows.Enqueue { title: Text.NonEmpty "new" }
+  Task.succeed (r.answer == Refreshed)
+}
+
 test "delete 1000" = {
   let ids <- Task.all (List.map (\i -> Db.insert Row { title: Text.NonEmpty ("row " ++ Text.fromInt i), n: i }) (List.range 1 1000))
   let _ <- Test.get (Rows.Index {})

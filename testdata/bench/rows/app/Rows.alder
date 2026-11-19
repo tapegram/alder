@@ -9,6 +9,7 @@ route Toggle = PATCH  "/rows/{id}"    { id: Row.RowId }
 route Jump   = POST   "/rows/{id}/jump" { id: Row.RowId }
 route Delete = DELETE "/rows/{id}"    { id: Row.RowId }
 route Slow   = GET    "/slow"         { }
+route Enqueue = POST "/rows/enqueue" { } form NewRow
 route Show   = GET    "/rows/{id}/show" { id: Row.RowId }
 
 type Model = { rows: List Row }
@@ -52,6 +53,19 @@ Add.update params session = {
   Task.succeed Response.refresh
 }
 
+-- Add, and a job on the queue in the same transaction (`enqueue 1000` against `add 1000`).
+Enqueue.update : Enqueue.Params -> Session -> Task Response
+Enqueue.update params session = {
+  let _ <- Db.insert Row { title: params.form.title, n: 0 }
+  let _ <- Job.enqueue (Noop {})
+  Task.succeed Response.refresh
+}
+
+job Noop = {}
+
+Noop.run : Noop.Params -> Task Unit
+Noop.run p = Task.succeed ()
+
 Toggle.update : Toggle.Params -> Session -> Task Response
 Toggle.update params session = {
   let _ <- Db.update Row params.id (\r -> { r | done: not r.done })
@@ -77,6 +91,12 @@ Index.view model session =
         <Input field="title" label="Title" />
         <Errors field="title" />
         <button>Add</button>
+      </form>
+      <form submit={Enqueue}>
+        <Errors form />
+        <Input field="title" label="Title" />
+        <Errors field="title" />
+        <button>Enqueue</button>
       </form>
       <ul id="rows">
         {for r in model.rows -> Item.view r session}

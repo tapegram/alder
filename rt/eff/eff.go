@@ -217,8 +217,23 @@ type Env struct {
 	// (not under Within): rt/jobs times how long a job's attempt holds the write lock.
 	OnBegin func()
 
-	beginTx func() (Tx, error) // set by Run for a Task with a Store: begins Tx
-	active  bool               // Run is running (RunInner may run inside it); restored when it returns
+	beginTx     func() (Tx, error) // set by Run for a Task with a Store: begins Tx
+	active      bool               // Run is running (RunInner may run inside it); restored when it returns
+	afterCommit *[]func()          // set by Run for a Task of its own transaction: AfterCommit's functions
+}
+
+// AfterCommit has f called once the running Task's transaction has committed: rt/jobs wakes the
+// job workers after an enqueue, so a worker never looks for a row before it is visible. f is
+// dropped when the Task fails (its transaction is rolled back), and when the Task runs Within an
+// outer transaction (a test's: nothing commits it, and no worker runs). Called outside a running
+// effect (the statement committed on its own), f is called at once.
+func (e *Env) AfterCommit(f func()) {
+	switch {
+	case e.afterCommit != nil:
+		*e.afterCommit = append(*e.afterCommit, f)
+	case !e.active:
+		f()
+	}
 }
 
 // Stats is a request's database statements: how many of each kind and their time. Plain fields:

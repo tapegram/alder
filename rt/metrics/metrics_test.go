@@ -180,6 +180,13 @@ alder_db_statement_seconds_total{kind="query"} 0.25
 # TYPE alder_effect_steps_total counter
 alder_effect_steps_total{name="Db.all Todo"} 2
 alder_effect_steps_total{name="Time.now"} 1
+# HELP alder_jobs_total Job attempts ended, by kind and outcome (done, failed or dead).
+# TYPE alder_jobs_total counter
+# HELP alder_job_duration_seconds Job attempt duration, by kind.
+# TYPE alder_job_duration_seconds histogram
+# HELP alder_jobs_running Job attempts running now in this process.
+# TYPE alder_jobs_running gauge
+alder_jobs_running 0
 `
 	if got := expoHead(t, c); got != want {
 		t.Errorf("exposition:\n%s\nwant:\n%s", got, want)
@@ -341,5 +348,52 @@ func BenchmarkRequest(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		c.Request("/todos/{id}", "GET", 200, time.Millisecond)
+	}
+}
+
+// Job attempts: alder_jobs_total by kind and outcome, alder_job_duration_seconds by kind with
+// the request histogram's buckets, the running gauge, and the queued gauge read at the scrape
+// (absent when no worker gave a way to read it).
+func TestMetrics_Jobs(t *testing.T) {
+	c := New("")
+	if v := line(t, c, "alder_jobs_queued"); v != -1 {
+		t.Fatalf("queued without a reader: %v", v)
+	}
+	c.Job("Signup.SendWelcome", "done", 30*time.Millisecond)
+	c.Job("Signup.SendWelcome", "failed", 2*time.Second)
+	c.JobRunning(1)
+	c.JobRunning(1)
+	c.JobRunning(-1)
+	c.JobsQueued(func() (int64, error) { return 7, nil })
+	for series, want := range map[string]float64{
+		`alder_jobs_total{kind="Signup.SendWelcome",outcome="done"}`:             1,
+		`alder_jobs_total{kind="Signup.SendWelcome",outcome="failed"}`:           1,
+		`alder_job_duration_seconds_bucket{kind="Signup.SendWelcome",le="0.05"}`: 1,
+		`alder_job_duration_seconds_bucket{kind="Signup.SendWelcome",le="2.5"}`:  2,
+		`alder_job_duration_seconds_bucket{kind="Signup.SendWelcome",le="+Inf"}`: 2,
+		`alder_job_duration_seconds_sum{kind="Signup.SendWelcome"}`:              2.03,
+		`alder_job_duration_seconds_count{kind="Signup.SendWelcome"}`:            2,
+		`alder_jobs_running`: 1,
+		`alder_jobs_queued`:  7,
+	} {
+		if got := line(t, c, series); got != want {
+			t.Errorf("%s = %v, want %v", series, got, want)
+		}
+	}
+	if v := line(t, c, `alder_jobs_total{kind="Signup.SendWelcome",outcome="dead"}`); v != -1 {
+		t.Errorf("dead series without a dead attempt: %v", v)
+	}
+	// the job histogram has the request histogram's bounds
+	var b strings.Builder
+	c.Write(&b, "b-1")
+	for _, le := range buckets {
+		if !strings.Contains(b.String(), `alder_job_duration_seconds_bucket{kind="Signup.SendWelcome",le="`+num(le)+`"}`) {
+			t.Errorf("no bucket le=%s", num(le))
+		}
+	}
+	// a queued count that cannot be read leaves the series out
+	c.JobsQueued(func() (int64, error) { return 0, fmt.Errorf("database is locked") })
+	if v := line(t, c, "alder_jobs_queued"); v != -1 {
+		t.Errorf("queued on a failed read: %v", v)
 	}
 }

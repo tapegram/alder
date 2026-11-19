@@ -200,7 +200,7 @@ func fakesTable(b *strings.Builder, p *ir.Program) {
 // declaration order (db.Ensure's schema hash depends on it); Capabilities, the Env.Caps key of
 // every capability; Caps and its Registry; in a test build only, Tests and TestSession
 // (testsTable) and FakeTables and Fakes (fakesTable); and for an app with an App module Options,
-// Serve and the session codec. Its header names the compiler's version (Options.Version) when
+// App (Open, Serve) and the session codec. Its header names the compiler's version (Options.Version) when
 // given.
 func (g *gen) appSource(p *ir.Program, migrations bool, version string) string {
 	var ds, cs []string
@@ -221,12 +221,12 @@ func (g *gen) appSource(p *ir.Program, migrations bool, version string) string {
 			"//\n" +
 			"//go:embed migrations/*.sql\n" +
 			"var migrationsFS embed.FS\n\n" +
-			"// " + migrationsVar + " are the app's migrations in order (db.ReadMigrations): Serve applies those the\n" +
+			"// " + migrationsVar + " are the app's migrations in order (db.ReadMigrations): Open applies those the\n" +
 			"// database has not had (db.Migrate).\n" +
 			"var " + migrationsVar + " = db.ReadMigrations(migrationsFS)\n\n")
 	} else {
 		b.WriteString("// " + migrationsVar + " are the app's migrations: none (the app has no migrations/ directory), so\n" +
-			"// Serve creates the tables with db.Ensure.\n" +
+			"// Open creates the tables with db.Ensure.\n" +
 			"var " + migrationsVar + " []db.Migration\n\n")
 	}
 
@@ -237,7 +237,7 @@ func (g *gen) appSource(p *ir.Program, migrations bool, version string) string {
 	// Caps
 	b.WriteString("// Caps are the app's capability implementations, one field per capability, named by its\n" +
 		"// module and name: the generated caps package's Caps function builds them from the adapters,\n" +
-		"// and Serve refuses a field left nil.\n")
+		"// and Open refuses a field left nil.\n")
 	if len(p.Caps) == 0 {
 		b.WriteString("type Caps struct{}\n\n")
 	} else {
@@ -248,7 +248,7 @@ func (g *gen) appSource(p *ir.Program, migrations bool, version string) string {
 		b.WriteString("}\n\n")
 	}
 	b.WriteString("// Registry is c as eff.Env.Caps: each implementation by its key in Capabilities (nil when the\n" +
-		"// field is). It is exported for alder test's main; Serve uses it too.\n")
+		"// field is). It is exported for alder test's main; Open uses it too.\n")
 	if len(p.Caps) == 0 {
 		b.WriteString("func (Caps) Registry() map[string]any {\nreturn map[string]any{}\n}\n\n")
 	} else {
@@ -387,7 +387,7 @@ func importSpec(path string) string {
 	return strconv.Quote(path)
 }
 
-// serve writes Options, Serve and the session codec of an app with an App module.
+// serve writes Options, App (Open, Serve) and the session codec of an app with an App module.
 func (g *gen) serve(b *strings.Builder, p *ir.Program) {
 	login := p.Login
 	if login == "" { // no `login`: the checker accepts that only when no route `requires`
@@ -403,7 +403,7 @@ func (g *gen) serve(b *strings.Builder, p *ir.Program) {
 	}
 	b.WriteString("// capAdapters name the adapter constructor of each capability, for Serve's refusal of one that\n" +
 		"// returned nil.\nvar capAdapters = map[string]string{\n" + strings.Join(adapters, "") + "}\n\n")
-	b.WriteString(`// Options configure Serve. The generated cmd/main.go fills them from the environment.
+	b.WriteString(`// Options configure Open (and Serve). The generated cmd/main.go fills them from the environment.
 type Options struct {
 	DB        string                  // the SQLite database file; ":memory:" or "" for a database in memory
 	Dev       bool                    // development mode: a changed schema recreates the tables; error pages show the error
@@ -411,14 +411,75 @@ type Options struct {
 	StaticDir string                  // the directory served under /static/; "" for none
 	Reload    string                  // under alder run, the build generation; non-empty: pages subscribe to the dev server's reloads and error overlay
 	Log       func(level, msg string) // nil: no log
-	LogID     func(id, level, msg string) // as Log, for a line during a request: its id; nil: Log
+	LogID     func(id, level, msg string) // as Log, for a line during a request or a job attempt: the request's or the job's id; nil: Log
 	Access    func(*applog.Access)    // one call per request routed (not the health check); nil: no access log
+	JobLine   func(*applog.Job)       // one call per job attempt (rt/applog: Logger.Job); nil: the line through LogID
 	Build     string                  // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
 	Metrics   *metrics.Collector      // ALDER_METRICS: answers /_alder/metrics and counts requests; nil: no endpoint
 	SlowAfter time.Duration           // ALDER_SLOW_MS: a request this slow is a warn line with its breakdown; 0: none
+	Jobs      int                     // ALDER_JOBS: the job workers cmd/main.go starts (App.StartJobs); 0: none
 }
 
-// Serve is the app's HTTP handler. It checks that o.Secret is at least 16 bytes outside dev
+// App is the app opened (Open): its store(s), capabilities, log and clock, shared by its HTTP
+// handler and its job workers.
+type App struct {
+	store   *db.SQLite              // the shared store
+	web     web.Options             // the router's options: Store, Stores, Caps, SessionCheck
+	log     func(level, msg string) // o.Log, or one that drops the line
+	logID   func(id, level, msg string) // o.LogID: a job's lines under its id; nil: log
+	jobLine func(*applog.Job)       // o.JobLine
+	now     func() time.Time        // the router's clock: web.Options.Now, else time.Now
+	health  *jobs.Health            // the job workers' state, answered by /_alder/health as "jobs"
+	handler http.Handler
+}
+
+// Serve is the app's HTTP handler: Open's Handler. The App is never closed.
+func Serve(caps Caps, o Options) (http.Handler, error) {
+	a, err := Open(caps, o)
+	if err != nil {
+		return nil, err
+	}
+	return a.Handler(), nil
+}
+
+// Handler is the app's HTTP handler (web.NewRouter over Routes).
+func (a *App) Handler() http.Handler { return a.handler }
+
+// StartJobs starts n job workers on the shared store (rt/jobs.Start: the kinds of Jobs(), each
+// attempt on JobEnv's Env, the router's clock, the log with each job's lines under its id, the
+// metrics and the health check's state) and returns the function that stops them: it stops
+// claiming at once, waits at most grace for the attempts running, then cancels them and queues
+// their jobs again. n 0 starts none, and /_alder/health answers "jobs": "off" (an app that
+// declares no job has no "jobs" there at all).
+func (a *App) StartJobs(n int) (stop func(grace time.Duration)) {
+	return jobs.Start(context.Background(), jobs.Options{Store: a.web.Store, Kinds: Jobs(), Env: a.JobEnv, Workers: n, Now: a.now,
+		Log: a.log, LogID: a.logID, Line: a.jobLine, Metrics: a.web.Metrics, Health: a.health})
+}
+
+// JobEnv is the Env an attempt of a job of kind k runs with, built as the router builds a
+// request's (rt/web's newEnv without a request): the store(s), the capabilities, the session
+// check and the router's clock; Session nil. Its Log is left to the worker, which writes the
+// job's lines under its id.
+func (a *App) JobEnv(ctx context.Context, k jobs.Kind) *eff.Env {
+	env := &eff.Env{Ctx: ctx, Store: a.web.Store, Caps: a.web.Caps, Now: a.now}
+	if a.web.Stores != nil {
+		env.Stores = a.web.Stores
+	}
+	env.CheckSession = a.web.SessionCheck
+	return env
+}
+
+// Close closes the app's stores: the silos' (when it declares a ` + "`silo`" + `), then the shared one.
+func (a *App) Close() error {
+	var errs []error
+	if a.web.Stores != nil {
+		errs = append(errs, a.web.Stores.Close())
+	}
+	errs = append(errs, a.store.Close())
+	return errors.Join(errs...)
+}
+
+// Open opens the app. It checks that o.Secret is at least 16 bytes outside dev
 // mode (web.CheckSecret) and that caps implements every capability (an error names the
 // adapter of each field left nil: "adapters/mail/: func Mailer returned nil"), opens the
 // database o.DB and brings it to the app's tables (db.MigrateLog with the app's Migrations,
@@ -427,12 +488,12 @@ type Options struct {
 // App.error, App.notFound and the page App.login names.
 //
 // A database on Turso (o.DB libsql://…, outside dev mode) is not migrated: several instances
-// start at once, and alder deploy migrates it before the build starts. Serve compares it with
+// start at once, and alder deploy migrates it before the build starts. Open compares it with
 // this build instead (db.CheckShared, which writes nothing): behind (or without tables) is the
 // error "the database is behind this build: run ` + "`alder deploy`" + `"; ahead (a newer build migrated
 // it) serves the maintenance page on every route, and /_alder/health answers 503 "ahead:
 // <detail>" (web.Options.SharedMaintenance); equal serves.
-func Serve(caps Caps, o Options) (http.Handler, error) {
+func Open(caps Caps, o Options) (*App, error) {
 	if err := web.CheckSecret(o.Secret, o.Dev); err != nil {
 		return nil, err
 	}
@@ -496,11 +557,22 @@ SILOWEB
 	for _, m := range Migrations {
 		w.Migrations = append(w.Migrations, m.Name)
 	}
-	return web.NewRouter(Routes, w), nil
+	health := &jobs.Health{}
+	if len(Jobs()) > 0 { // an app with no job has no "jobs" in /_alder/health
+		w.Jobs = health.State
+	}
+	a := &App{store: store, web: w, log: o.Log, logID: o.LogID, jobLine: o.JobLine, now: w.Now, health: health, handler: web.NewRouter(Routes, w)}
+	if a.log == nil {
+		a.log = func(string, string) {}
+	}
+	if a.now == nil {
+		a.now = time.Now
+	}
+	return a, nil
 }
 
 // Web is the app's options for web.NewRouter that do not depend on how it runs: the session
-// codec, App.error, App.notFound, the page App.login names and App's theme. Serve adds the
+// codec, App.error, App.notFound, the page App.login names and App's theme. Open adds the
 // store, the capabilities, the log, dev mode, the secret, the static directory and the reload
 // generation; alder test's browser routes the app with these options too.
 func Web() web.Options {
@@ -536,7 +608,7 @@ func (g *gen) silosVar(b *strings.Builder, p *ir.Program) {
 		"var Silos = []db.Silo{" + strings.Join(items, ", ") + "}\n\n")
 }
 
-// serveSilos fills serve's placeholders: for an app with silos, Serve opens its stores
+// serveSilos fills serve's placeholders: for an app with silos, Open opens its stores
 // (db.OpenStores, the silos next to o.DB) and Web names them; App.maintenance, when declared,
 // and the membership check of a session with `via` (session__via) go into Web. Without any,
 // the source is the M11 one.
@@ -679,7 +751,7 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 }
 
 // Main is the source of the app's command, cmd/main.go of the generated module: it serves the
-// app (Serve) with the capabilities the generated caps package wires (caps.Caps) when withCaps
+// app (Open) with the capabilities the generated caps package wires (caps.Caps) when withCaps
 // is set (the app has capabilities), else with none. name is the app's name, the default database file's base name.
 // Configuration comes from the environment: ALDER_ADDR (default ":8080"), ALDER_DB (default
 // "<name>.db", in the working directory), ALDER_SECRET, ALDER_DEV=1, ALDER_STATIC and
@@ -693,12 +765,18 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 // route, steps and database time; unset or 0: off) and ALDER_METRICS ("open", or a bearer token
 // of at least 16 characters: GET /_alder/metrics answers Prometheus text; unset: no endpoint;
 // "open" is refused on Render, Fly and a box alder deployed, and logged at warn elsewhere;
-// rt/metrics), each a bad value exiting 1 before serving; static
+// rt/metrics), each a bad value exiting 1 before serving; ALDER_JOBS (the number of job workers
+// it starts with App.StartJobs, rt/jobs.WorkersFromEnv: default 4, 0 for none; a bad value
+// exits 1 before serving); static
 // files are served from ALDER_STATIC, by default the static directory next to the executable
 // (alder build copies the app's static/ there). Before serving it prints "listening on
 // <address>" with the bound address, so ALDER_ADDR=127.0.0.1:0 picks a free port that a caller
-// can read. Its http.Server waits at most 10 s for a request's headers, and on SIGINT or SIGTERM
-// it stops accepting connections and lets the requests in flight finish (5 s at most).
+// can read. It opens the app (app.Open), serves its Handler and starts its job workers
+// (App.StartJobs). Its http.Server waits at most 10 s for a request's headers, and on SIGINT or
+// SIGTERM it stops accepting connections and lets the requests in flight finish (5 s at most),
+// then stops the job workers with what is left of those 5 s, stops the backup and closes the
+// app (App.Close); when serving fails it does the same with no grace for the job workers (their
+// attempts are queued again) and exits 1. The maintenance tasks never start job workers.
 // ALDER_EXIT_ON_STDIN_EOF=1 (set by alder run, which holds the other end of the app's standard
 // input) makes the same shutdown happen when standard input reaches EOF, so the app never
 // outlives the dev server; the variable is cleared once read, so a process the app starts does
@@ -739,12 +817,17 @@ func Main(name string, withCaps, withSilos bool) []byte {
 // GET /_alder/metrics: Prometheus text of requests by route, latency, database statements and
 // effect steps (unset: no endpoint). "open" (unauthenticated) is refused on Render, Fly and a
 // box alder deployed, whose port is public, and is a warn line elsewhere. A bad value of any of
-// these exits 1 before anything is served. Static files are served under /static/
+// these exits 1 before anything is served. ALDER_JOBS=N is the number of job workers the app
+// starts (App.StartJobs; default 4, 0 for none); a value that is not a whole number below 65536
+// exits 1 before anything is served. Static files are served under /static/
 // from ALDER_STATIC, by default the static directory next to the executable. SIGINT or SIGTERM
-// shuts the server down gracefully: requests in flight get 5 s to finish. ALDER_EXIT_ON_STDIN_EOF=1
+// shuts the server down gracefully: requests in flight get 5 s to finish, and the job attempts
+// still running what is left of them, after which they are cancelled and queued again. ALDER_EXIT_ON_STDIN_EOF=1
 // (set by alder run) makes the app stop the same way when its standard input reaches EOF, so it
 // never outlives the dev server. GET /_alder/health answers {"build":"<ALDER_BUILD>","db":"ok"}
-// (200) when the database answers, else 503 "unreachable" (the error is logged). With
+// (200) when the database answers, else 503 "unreachable" (the error is logged); an app that
+// declares a job adds "jobs": "ok", "off" (ALDER_JOBS=0) or "stalled", which never changes the
+// status. With
 // ALDER_DB=libsql://… (a database on Turso) the app does not migrate on start: it exits 1 when
 // the database is behind this build (alder deploy migrates it) and serves the maintenance page
 // when a newer build migrated it.
@@ -773,6 +856,7 @@ import (
 	"alder/rt/applog"
 	"alder/rt/backup"
 	"alder/rt/db"
+	"alder/rt/jobs"
 	"alder/rt/metrics"
 	"alder/rt/publicurl" // sets rt.PublicURL from the environment before package app initialises
 	"alder/rt/web"
@@ -806,6 +890,11 @@ func main() {
 	if m != nil && m.Open() {
 		lg.Log("warn", metrics.OpenWarning)
 	}
+	workers, err := jobs.WorkersFromEnv() // ALDER_JOBS
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "alder:", err)
+		os.Exit(1)
+	}
 	static := os.Getenv("ALDER_STATIC")
 	if static == "" {
 		static = "static"
@@ -813,7 +902,7 @@ func main() {
 			static = filepath.Join(filepath.Dir(exe), "static")
 		}
 	}
-	h, err := app.Serve(` + caps + `, app.Options{
+	o := app.Options{
 		DB:        dbPath,
 		Dev:       dev,
 		Secret:    []byte(os.Getenv("ALDER_SECRET")),
@@ -823,9 +912,12 @@ func main() {
 		Log:       lg.Log,
 		LogID:     lg.LogID,
 		Access:    lg.Access,
+		JobLine:   lg.Job,
 		Metrics:   m,
 		SlowAfter: slow,
-	})
+		Jobs:      workers,
+	}
+	a, err := app.Open(` + caps + `, o)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "alder:", err)
 		os.Exit(1)
@@ -845,7 +937,7 @@ func main() {
 	}
 	publicurl.Listened(ln.Addr().String()) // a port-0 address: the base's port is the one picked
 	fmt.Println("listening on " + ln.Addr().String())
-	srv := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: a.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	if os.Getenv("ALDER_EXIT_ON_STDIN_EOF") == "1" {
 		os.Unsetenv("ALDER_EXIT_ON_STDIN_EOF") // not inherited by a process the app starts
@@ -855,11 +947,15 @@ func main() {
 			stop()
 		}()
 	}
+	stopJobs := a.StartJobs(o.Jobs)
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
 	select {
 	case err := <-served:
 		fmt.Fprintln(os.Stderr, "alder:", err)
+		stopJobs(0) // the attempts running are queued again for the next start
+		stopBackup()
+		a.Close()
 		os.Exit(1)
 	case <-ctx.Done():
 	}
@@ -869,7 +965,12 @@ DRAIN	grace, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	if err := srv.Shutdown(grace); err != nil {
 		fmt.Fprintln(os.Stderr, "alder: shutting down:", err)
 	}
-	stopBackup() // ships what the last requests wrote
+	deadline, _ := grace.Deadline()
+	stopJobs(time.Until(deadline)) // the attempts running get what is left of the 5 s
+	stopBackup()                   // ships what the last requests and jobs wrote
+	if err := a.Close(); err != nil {
+		fmt.Fprintln(os.Stderr, "alder: closing the database:", err)
+	}
 }
 
 // maintain runs the maintenance task args name (see the package comment) on the database at

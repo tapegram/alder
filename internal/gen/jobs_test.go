@@ -5,12 +5,13 @@ import (
 	"testing"
 )
 
-// TestJobCodec_RoundTrip, TestJobCodec_Drift and TestJobValue_Eq (#168) run in the emitted
-// gen_jobs app (testdata/e2e_jobs_test.go.txt): every kind of parameter round-trips through
-// JSON, a row that no longer decodes is an error naming the field, and a job value's ==
-// and Show are those of its kind and parameters.
+// TestJobCodec_RoundTrip, TestJobCodec_Drift, TestJobValue_Eq and TestApp_Open (#168) run in
+// the emitted gen_jobs app (testdata/e2e_jobs_test.go.txt): every kind of parameter
+// round-trips through JSON, a row that no longer decodes is an error naming the field, a job
+// value's == and Show are those of its kind and parameters, and Open's App serves, gives a job
+// its Env (JobEnv), starts and stops its workers and closes.
 func TestJobCodec_RoundTrip(t *testing.T) {
-	runE2E(t, "../../testdata/golden/gen_jobs", "testdata/e2e_jobs_test.go.txt", "TestJobCodec_RoundTrip", "TestJobCodec_Drift", "TestJobValue_Eq")
+	runE2E(t, "../../testdata/golden/gen_jobs", "testdata/e2e_jobs_test.go.txt", "TestJobCodec_RoundTrip", "TestJobCodec_Drift", "TestJobValue_Eq", "TestApp_Open")
 }
 
 // An app without jobs has an empty Jobs().

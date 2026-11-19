@@ -19,16 +19,16 @@ var Tables = []db.TableDesc{table__Note__Note.Desc()}
 var Capabilities = []string{}
 
 // Migrations are the app's migrations: none (the app has no migrations/ directory), so
-// Serve creates the tables with db.Ensure.
+// Open creates the tables with db.Ensure.
 var Migrations []db.Migration
 
 // Caps are the app's capability implementations, one field per capability, named by its
 // module and name: the generated caps package's Caps function builds them from the adapters,
-// and Serve refuses a field left nil.
+// and Open refuses a field left nil.
 type Caps struct{}
 
 // Registry is c as eff.Env.Caps: each implementation by its key in Capabilities (nil when the
-// field is). It is exported for alder test's main; Serve uses it too.
+// field is). It is exported for alder test's main; Open uses it too.
 func (Caps) Registry() map[string]any {
 	return map[string]any{}
 }

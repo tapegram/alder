@@ -5,10 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"alder/rt/db"
+	"alder/rt/eff"
+	"alder/rt/jobs"
 )
 
 // healthBody decodes /_alder/health's answer.
@@ -153,5 +158,81 @@ func TestHealth_NoSession(t *testing.T) {
 	// a POST is not a health check: the router's usual 404
 	if w := serve(h, httptest.NewRequest("POST", "/_alder/health", strings.NewReader(""))); w.Code != 404 {
 		t.Fatalf("POST: %d", w.Code)
+	}
+}
+
+// stepClock is a clock a test sets; it counts its reads so a test can wait for a goroutine's.
+type stepClock struct {
+	mu    sync.Mutex
+	t     time.Time
+	reads int
+}
+
+func (c *stepClock) Now() time.Time  { c.mu.Lock(); defer c.mu.Unlock(); c.reads++; return c.t }
+func (c *stepClock) Set(t time.Time) { c.mu.Lock(); c.t = t; c.mu.Unlock() }
+func (c *stepClock) Reads() int      { c.mu.Lock(); defer c.mu.Unlock(); return c.reads }
+
+// Spec §9: /_alder/health carries "jobs": "off" when this instance runs no workers
+// (ALDER_JOBS=0), "stalled" when a row has been due more than five minutes and no worker claimed
+// in that time, else "ok" — and the status code does not change.
+func TestHealth_Jobs(t *testing.T) {
+	st, err := db.OpenSQLite(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.Ensure(context.Background(), nil, true); err != nil { // the jobs table
+		t.Fatal(err)
+	}
+	t0 := time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
+	c := &stepClock{t: t0}
+	k := jobs.Kind{Name: "Signup.SendWelcome", Run: func(*eff.Env, string) (eff.Task[struct{}], error) { return eff.Pure(struct{}{}), nil }}
+	start := func(workers int) *jobs.Health {
+		h := &jobs.Health{}
+		stop := jobs.Start(context.Background(), jobs.Options{
+			Store: st, Kinds: []jobs.Kind{k}, Workers: workers, Now: c.Now, Health: h,
+			Env:  func(ctx context.Context, k jobs.Kind) *eff.Env { return &eff.Env{Ctx: ctx, Store: st, Now: c.Now} },
+			Poll: time.Hour, Housekeep: time.Hour,
+		})
+		t.Cleanup(func() { stop(0) })
+		return h
+	}
+	check := func(h *jobs.Health, want string) {
+		t.Helper()
+		r := NewRouter(nil, testOpts(func(o *Options) { o.Store, o.Build, o.Jobs = st, "b-1", h.State }))
+		w := serve(r, httptest.NewRequest("GET", "/_alder/health", nil))
+		if m := healthBody(t, w); w.Code != 200 || m["db"] != "ok" || m["jobs"] != want {
+			t.Fatalf("%d %v, want jobs %q", w.Code, m, want)
+		}
+	}
+	check(start(0), "off") // ALDER_JOBS=0
+	check(&jobs.Health{}, "off")
+	// a row due at t0 + 1m, which the worker, idle until its hour's poll, never claims
+	q, err := db.On(st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.ExecContext(context.Background(), `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "attempts") VALUES ('aaaa0001', ?, '{}', 'queued', ?, ?, 0)`,
+		k.Name, t0.Add(time.Minute).UnixMilli(), t0.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	n := c.Reads()
+	h := start(1)
+	// Wait for the worker's first pass to read the clock (Health's start, the housekeeping at
+	// start, the claim): a worker scheduled after the clock moves would claim the row and be "ok".
+	for deadline := time.Now().Add(10 * time.Second); c.Reads() < n+3; time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the worker never tried to claim")
+		}
+	}
+	check(h, "ok")
+	c.Set(t0.Add(6 * time.Minute)) // due 5 min: not more than five
+	check(h, "ok")
+	c.Set(t0.Add(7 * time.Minute)) // due 6 min, the workers' start (no claim since) 7 min ago
+	check(h, "stalled")
+	// HEAD answers the same status, without a body
+	r := NewRouter(nil, testOpts(func(o *Options) { o.Store, o.Jobs = st, h.State }))
+	if w := serve(r, httptest.NewRequest("HEAD", "/_alder/health", nil)); w.Code != 200 {
+		t.Fatalf("HEAD: %d", w.Code)
 	}
 }

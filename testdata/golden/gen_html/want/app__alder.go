@@ -6,6 +6,7 @@ import (
 	"alder/rt"
 	"alder/rt/applog"
 	"alder/rt/db"
+	"alder/rt/eff"
 	"alder/rt/html"
 	"alder/rt/jobs"
 	"alder/rt/metrics"
@@ -27,16 +28,16 @@ var Tables = []db.TableDesc{}
 var Capabilities = []string{}
 
 // Migrations are the app's migrations: none (the app has no migrations/ directory), so
-// Serve creates the tables with db.Ensure.
+// Open creates the tables with db.Ensure.
 var Migrations []db.Migration
 
 // Caps are the app's capability implementations, one field per capability, named by its
 // module and name: the generated caps package's Caps function builds them from the adapters,
-// and Serve refuses a field left nil.
+// and Open refuses a field left nil.
 type Caps struct{}
 
 // Registry is c as eff.Env.Caps: each implementation by its key in Capabilities (nil when the
-// field is). It is exported for alder test's main; Serve uses it too.
+// field is). It is exported for alder test's main; Open uses it too.
 func (Caps) Registry() map[string]any {
 	return map[string]any{}
 }
@@ -57,7 +58,7 @@ func Jobs() []jobs.Kind {
 // returned nil.
 var capAdapters = map[string]string{}
 
-// Options configure Serve. The generated cmd/main.go fills them from the environment.
+// Options configure Open (and Serve). The generated cmd/main.go fills them from the environment.
 type Options struct {
 	DB        string                      // the SQLite database file; ":memory:" or "" for a database in memory
 	Dev       bool                        // development mode: a changed schema recreates the tables; error pages show the error
@@ -65,14 +66,75 @@ type Options struct {
 	StaticDir string                      // the directory served under /static/; "" for none
 	Reload    string                      // under alder run, the build generation; non-empty: pages subscribe to the dev server's reloads and error overlay
 	Log       func(level, msg string)     // nil: no log
-	LogID     func(id, level, msg string) // as Log, for a line during a request: its id; nil: Log
+	LogID     func(id, level, msg string) // as Log, for a line during a request or a job attempt: the request's or the job's id; nil: Log
 	Access    func(*applog.Access)        // one call per request routed (not the health check); nil: no access log
+	JobLine   func(*applog.Job)           // one call per job attempt (rt/applog: Logger.Job); nil: the line through LogID
 	Build     string                      // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
 	Metrics   *metrics.Collector          // ALDER_METRICS: answers /_alder/metrics and counts requests; nil: no endpoint
 	SlowAfter time.Duration               // ALDER_SLOW_MS: a request this slow is a warn line with its breakdown; 0: none
+	Jobs      int                         // ALDER_JOBS: the job workers cmd/main.go starts (App.StartJobs); 0: none
 }
 
-// Serve is the app's HTTP handler. It checks that o.Secret is at least 16 bytes outside dev
+// App is the app opened (Open): its store(s), capabilities, log and clock, shared by its HTTP
+// handler and its job workers.
+type App struct {
+	store   *db.SQLite                  // the shared store
+	web     web.Options                 // the router's options: Store, Stores, Caps, SessionCheck
+	log     func(level, msg string)     // o.Log, or one that drops the line
+	logID   func(id, level, msg string) // o.LogID: a job's lines under its id; nil: log
+	jobLine func(*applog.Job)           // o.JobLine
+	now     func() time.Time            // the router's clock: web.Options.Now, else time.Now
+	health  *jobs.Health                // the job workers' state, answered by /_alder/health as "jobs"
+	handler http.Handler
+}
+
+// Serve is the app's HTTP handler: Open's Handler. The App is never closed.
+func Serve(caps Caps, o Options) (http.Handler, error) {
+	a, err := Open(caps, o)
+	if err != nil {
+		return nil, err
+	}
+	return a.Handler(), nil
+}
+
+// Handler is the app's HTTP handler (web.NewRouter over Routes).
+func (a *App) Handler() http.Handler { return a.handler }
+
+// StartJobs starts n job workers on the shared store (rt/jobs.Start: the kinds of Jobs(), each
+// attempt on JobEnv's Env, the router's clock, the log with each job's lines under its id, the
+// metrics and the health check's state) and returns the function that stops them: it stops
+// claiming at once, waits at most grace for the attempts running, then cancels them and queues
+// their jobs again. n 0 starts none, and /_alder/health answers "jobs": "off" (an app that
+// declares no job has no "jobs" there at all).
+func (a *App) StartJobs(n int) (stop func(grace time.Duration)) {
+	return jobs.Start(context.Background(), jobs.Options{Store: a.web.Store, Kinds: Jobs(), Env: a.JobEnv, Workers: n, Now: a.now,
+		Log: a.log, LogID: a.logID, Line: a.jobLine, Metrics: a.web.Metrics, Health: a.health})
+}
+
+// JobEnv is the Env an attempt of a job of kind k runs with, built as the router builds a
+// request's (rt/web's newEnv without a request): the store(s), the capabilities, the session
+// check and the router's clock; Session nil. Its Log is left to the worker, which writes the
+// job's lines under its id.
+func (a *App) JobEnv(ctx context.Context, k jobs.Kind) *eff.Env {
+	env := &eff.Env{Ctx: ctx, Store: a.web.Store, Caps: a.web.Caps, Now: a.now}
+	if a.web.Stores != nil {
+		env.Stores = a.web.Stores
+	}
+	env.CheckSession = a.web.SessionCheck
+	return env
+}
+
+// Close closes the app's stores: the silos' (when it declares a `silo`), then the shared one.
+func (a *App) Close() error {
+	var errs []error
+	if a.web.Stores != nil {
+		errs = append(errs, a.web.Stores.Close())
+	}
+	errs = append(errs, a.store.Close())
+	return errors.Join(errs...)
+}
+
+// Open opens the app. It checks that o.Secret is at least 16 bytes outside dev
 // mode (web.CheckSecret) and that caps implements every capability (an error names the
 // adapter of each field left nil: "adapters/mail/: func Mailer returned nil"), opens the
 // database o.DB and brings it to the app's tables (db.MigrateLog with the app's Migrations,
@@ -81,12 +143,12 @@ type Options struct {
 // App.error, App.notFound and the page App.login names.
 //
 // A database on Turso (o.DB libsql://…, outside dev mode) is not migrated: several instances
-// start at once, and alder deploy migrates it before the build starts. Serve compares it with
+// start at once, and alder deploy migrates it before the build starts. Open compares it with
 // this build instead (db.CheckShared, which writes nothing): behind (or without tables) is the
 // error "the database is behind this build: run `alder deploy`"; ahead (a newer build migrated
 // it) serves the maintenance page on every route, and /_alder/health answers 503 "ahead:
 // <detail>" (web.Options.SharedMaintenance); equal serves.
-func Serve(caps Caps, o Options) (http.Handler, error) {
+func Open(caps Caps, o Options) (*App, error) {
 	if err := web.CheckSecret(o.Secret, o.Dev); err != nil {
 		return nil, err
 	}
@@ -149,11 +211,22 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	for _, m := range Migrations {
 		w.Migrations = append(w.Migrations, m.Name)
 	}
-	return web.NewRouter(Routes, w), nil
+	health := &jobs.Health{}
+	if len(Jobs()) > 0 { // an app with no job has no "jobs" in /_alder/health
+		w.Jobs = health.State
+	}
+	a := &App{store: store, web: w, log: o.Log, logID: o.LogID, jobLine: o.JobLine, now: w.Now, health: health, handler: web.NewRouter(Routes, w)}
+	if a.log == nil {
+		a.log = func(string, string) {}
+	}
+	if a.now == nil {
+		a.now = time.Now
+	}
+	return a, nil
 }
 
 // Web is the app's options for web.NewRouter that do not depend on how it runs: the session
-// codec, App.error, App.notFound, the page App.login names and App's theme. Serve adds the
+// codec, App.error, App.notFound, the page App.login names and App's theme. Open adds the
 // store, the capabilities, the log, dev mode, the secret, the static directory and the reload
 // generation; alder test's browser routes the app with these options too.
 func Web() web.Options {
