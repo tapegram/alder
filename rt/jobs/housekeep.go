@@ -46,8 +46,9 @@ func newHousekeeper(s eff.Store, kinds []Kind, log func(level, msg string)) *hou
 //   - a running row past its lease is re-queued with LostError (due after the backoff, its
 //     attempt counted), or made dead when that attempt was its last;
 //   - done rows finished more than KeepDone ago and dead ones more than KeepDead ago are deleted;
-//   - a queued tick of a kind this build does not know, created more than Unclaimable ago, is
-//     deleted with a warn line (a schedule renamed or removed: the new name has its own tick);
+//   - a queued tick of a kind this build does not know (its kind's queued tick, or a tick
+//     queued for its retry: scheduled_for is set), created more than Unclaimable ago, is
+//     deleted with a warn line (a job renamed or removed: the new name has its own tick);
 //   - a kind this build does not know, with a row queued and due for more than Unclaimable, is
 //     a warn line, once per kind;
 //   - each scheduled kind without a queued tick gets one (EnsureTicks).
@@ -123,10 +124,11 @@ func (h *housekeeper) leases(ctx context.Context, q db.Execer, now time.Time) er
 }
 
 // unknownTicks deletes the queued ticks of kinds this build does not know created more than
-// Unclaimable before now.
+// Unclaimable before now: rows with scheduled_for, whether still their kind's queued tick
+// (schedule 1) or queued for a retry after a claim cleared it.
 func (h *housekeeper) unknownTicks(ctx context.Context, q db.Execer, now time.Time) error {
 	before := now.Add(-Unclaimable).UnixMilli()
-	rows, err := q.QueryContext(ctx, `SELECT "id", "kind" FROM "_alder_jobs" WHERE "schedule" = 1 AND "state" = 'queued' AND "created" < ? ORDER BY "kind"`, before)
+	rows, err := q.QueryContext(ctx, `SELECT "id", "kind" FROM "_alder_jobs" WHERE "scheduled_for" IS NOT NULL AND "state" = 'queued' AND "created" < ? ORDER BY "kind"`, before)
 	if err != nil {
 		return err
 	}
@@ -147,7 +149,7 @@ func (h *housekeeper) unknownTicks(ctx context.Context, q db.Execer, now time.Ti
 	}
 	for _, g := range gone {
 		// still queued: a build that knows the kind may have claimed it in the meantime
-		res, err := q.ExecContext(ctx, `DELETE FROM "_alder_jobs" WHERE "id" = ? AND "schedule" = 1 AND "state" = 'queued'`, g[0])
+		res, err := q.ExecContext(ctx, `DELETE FROM "_alder_jobs" WHERE "id" = ? AND "scheduled_for" IS NOT NULL AND "state" = 'queued'`, g[0])
 		if err != nil {
 			return err
 		}

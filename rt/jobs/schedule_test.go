@@ -302,33 +302,35 @@ func TestClaimTick_BadCron(t *testing.T) {
 }
 
 // Housekeeping deletes a queued tick of a kind this build does not know once it is a day old,
-// and nothing else of that kind; it creates the ticks of the kinds it knows.
+// a tick queued for its retry too (schedule 0 since its claim), and nothing else of that kind;
+// it creates the ticks of the kinds it knows.
 func TestHousekeep_UnknownTick(t *testing.T) {
 	st := openFile(t)
 	old, recent := t0.Add(-25*time.Hour), t0.Add(-23*time.Hour)
 	for _, r := range []struct {
-		id, kind string
-		created  time.Time
-		tick     bool
+		id, kind      string
+		created       time.Time
+		tick, retried bool // a tick: scheduled_for set; retried: schedule 0, claimed once
 	}{
-		{"t0000001", "Gone.Tick", old, true},
-		{"t0000002", "Fresh.Tick", recent, true},
-		{"t0000003", "Gone.Plain", old, false},
-		{"t0000004", nightly.Name, old, true},
+		{"t0000001", "Gone.Tick", old, true, false},
+		{"t0000002", "Fresh.Tick", recent, true, false},
+		{"t0000003", "Gone.Plain", old, false, false},
+		{"t0000004", nightly.Name, old, true, false},
+		{"t0000005", "Gone.Retry", old, true, true},
 	} {
 		var sched any
 		if r.tick {
 			sched = t0.Add(time.Hour).UnixMilli()
 		}
 		if _, err := raw(t, st).ExecContext(context.Background(), `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "schedule", "scheduled_for") VALUES (?, ?, '{}', 'queued', ?, ?, ?, ?)`,
-			r.id, r.kind, t0.Add(time.Hour).UnixMilli(), r.created.UnixMilli(), r.tick, sched); err != nil {
+			r.id, r.kind, t0.Add(time.Hour).UnixMilli(), r.created.UnixMilli(), r.tick && !r.retried, sched); err != nil {
 			t.Fatal(err)
 		}
 	}
 	lg := &lines{}
 	hourly := scheduled("A.Hourly", time.Hour, "", eff.Pure(struct{}{}))
 	jobs.Housekeeper(st, []jobs.Kind{nightly, hourly}, lg.log)(context.Background(), t0)
-	for id, want := range map[string]bool{"t0000001": false, "t0000002": true, "t0000003": true, "t0000004": true} {
+	for id, want := range map[string]bool{"t0000001": false, "t0000002": true, "t0000003": true, "t0000004": true, "t0000005": false} {
 		if exists(t, st, id) != want {
 			t.Errorf("row %s kept: %v, want %v", id, !want, want)
 		}
@@ -336,7 +338,7 @@ func TestHousekeep_UnknownTick(t *testing.T) {
 	if queuedTicks(t, st, nightly.Name) != 1 || queuedTicks(t, st, hourly.Name) != 1 {
 		t.Fatalf("ticks: nightly %d, hourly %d", queuedTicks(t, st, nightly.Name), queuedTicks(t, st, hourly.Name))
 	}
-	if len(lg.with("warn", "Gone.Tick")) != 1 || len(lg.all) != 1 {
+	if len(lg.with("warn", "Gone.Tick")) != 1 || len(lg.with("warn", "Gone.Retry")) != 1 || len(lg.all) != 2 {
 		t.Fatalf("log %q", lg.all)
 	}
 }
@@ -354,5 +356,44 @@ func TestWorker_TicksAtStart(t *testing.T) {
 	}
 	if runAt != utc(t, "2026-11-17 03:00:00").UnixMilli() {
 		t.Fatalf("run_at %v", time.UnixMilli(runAt).UTC())
+	}
+}
+
+// A changed schedule takes effect at the next EnsureTicks: the queued tick moves to the new
+// schedule's next time when that comes sooner, and a kind no longer scheduled loses its tick.
+func TestEnsureTicks_ScheduleChanged(t *testing.T) {
+	st := openFile(t)
+	at := utc(t, "2026-11-16 10:17:00")
+	daily := scheduled("A.Job", 24*time.Hour, "", eff.Pure(struct{}{}))
+	ensure(t, st, []jobs.Kind{daily}, at)
+	hourly := scheduled("A.Job", time.Hour, "", eff.Pure(struct{}{}))
+	ensure(t, st, []jobs.Kind{hourly}, at.Add(time.Minute))
+	if rows := tickRows(t, st, "A.Job"); len(rows) != 1 || rows[0].state != "queued" ||
+		rows[0].schedAt != utc(t, "2026-11-16 11:00:00").UnixMilli() || rows[0].runAt != rows[0].schedAt {
+		t.Fatalf("every 1d → 1h: %+v", rows)
+	}
+	// back to daily: the sooner tick stays, and runs once on the old schedule's time
+	ensure(t, st, []jobs.Kind{daily}, at.Add(2*time.Minute))
+	if rows := tickRows(t, st, "A.Job"); len(rows) != 1 || rows[0].schedAt != utc(t, "2026-11-16 11:00:00").UnixMilli() {
+		t.Fatalf("every 1h → 1d: %+v", rows)
+	}
+
+	monthly := scheduled(nightly.Name, 0, "0 3 1 * *", eff.Pure(struct{}{}))
+	ensure(t, st, []jobs.Kind{monthly}, at)
+	ensure(t, st, []jobs.Kind{nightly}, at)
+	if rows := tickRows(t, st, nightly.Name); len(rows) != 1 || rows[0].schedAt != utc(t, "2026-11-17 03:00:00").UnixMilli() || rows[0].runAt != rows[0].schedAt {
+		t.Fatalf("monthly → nightly: %+v", rows)
+	}
+
+	// the schedule removed: the queued tick is deleted; a tick queued for its retry stays
+	if _, err := raw(t, st).ExecContext(context.Background(), `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "schedule", "scheduled_for") VALUES ('r0000001', ?, '{}', 'queued', ?, ?, 0, ?)`,
+		nightly.Name, at.UnixMilli(), at.UnixMilli(), at.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	plain := kind(eff.Pure(struct{}{}))
+	plain.Name = nightly.Name
+	ensure(t, st, []jobs.Kind{plain}, at)
+	if rows := tickRows(t, st, nightly.Name); len(rows) != 1 || rows[0].id != "r0000001" {
+		t.Fatalf("schedule removed: %+v", rows)
 	}
 }

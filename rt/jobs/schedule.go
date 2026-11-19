@@ -82,7 +82,12 @@ func Next(k Kind, after time.Time) (time.Time, error) {
 
 // EnsureTicks inserts, for each scheduled kind of kinds without a queued tick in s, its tick
 // due at Next(k, now). Two callers at once, in one process or several, insert one: the
-// _alder_jobs_tick index refuses the second, which is ignored. A kind whose next tick cannot be
+// _alder_jobs_tick index refuses the second, which is ignored. A kind whose queued tick is due
+// later than Next(k, now) has a schedule that changed (`every "1d"` to `every "1h"`), and its
+// tick is moved to Next(k, now): Next only grows with its `after`, so a tick made under the
+// current schedule is never later than that. A tick due sooner (the schedule made rarer) is
+// left to run once. A kind of kinds that is not scheduled loses its queued tick (a schedule
+// removed from the job); a tick queued for its retry runs. A kind whose next tick cannot be
 // found (*ScheduleError) gets none; the others do, and the errors are joined.
 func EnsureTicks(ctx context.Context, s eff.Store, kinds []Kind, now time.Time) error {
 	q, err := db.On(s, nil)
@@ -97,11 +102,18 @@ func EnsureTicksOn(ctx context.Context, q db.Execer, kinds []Kind, now time.Time
 	var errs []error
 	for _, k := range kinds {
 		if !scheduledKind(k) {
+			if _, err := q.ExecContext(ctx, `DELETE FROM "_alder_jobs" WHERE "kind" = ? AND "schedule" = 1 AND "state" = 'queued'`, k.Name); err != nil {
+				errs = append(errs, err)
+			}
 			continue
 		}
 		at, err := Next(k, now)
 		if err == nil {
 			err = insertTick(ctx, q, k.Name, at, now)
+		}
+		if err == nil {
+			_, err = q.ExecContext(ctx, `UPDATE "_alder_jobs" SET "run_at" = ?, "scheduled_for" = ? WHERE "kind" = ? AND "schedule" = 1 AND "state" = 'queued' AND "scheduled_for" > ?`,
+				at.UnixMilli(), at.UnixMilli(), k.Name, at.UnixMilli())
 		}
 		if err != nil {
 			errs = append(errs, err)
@@ -114,9 +126,10 @@ func EnsureTicksOn(ctx context.Context, q db.Execer, kinds []Kind, now time.Time
 // claimed at now) asks when it is its kind's queued tick: the row stops being the queued tick
 // (schedule 0) and the next tick is inserted, due at Next(k, max(scheduled_for, now)), so a
 // tick missed while the app was down runs once, late, and the next is on the grid. Nothing for
-// any other row, or a kind no longer scheduled (its last tick runs). An error the claim must
+// any other row; for a kind no longer scheduled, no next tick. An error the claim must
 // roll back on is a statement's; a *ScheduleError comes after the statements, and the claim
-// stands without a next tick (EnsureTicks reports the kind again at each housekeeping).
+// stands without a next tick (EnsureTicks reports the kind again at each housekeeping). A tick
+// of a kind no longer scheduled is claimed only before EnsureTicks deletes it.
 func ClaimedTick(ctx context.Context, q db.Execer, k Kind, row Row, now time.Time) error {
 	if !row.Schedule {
 		return nil

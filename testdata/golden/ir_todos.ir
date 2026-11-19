@@ -288,13 +288,20 @@
               (pure task
                 (&&
                   (&&
-                    (call (std List.isEmpty) (var start))
-                    (== : List Job (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field job (var r))) (var first))
+                    (&&
+                      (&&
+                        (call (std List.isEmpty) (var start))
+                        (== : List Job (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field job (var r))) (var first))
+                          (list
+                            (job-ref Jobs.Nightly.Nightly
+                              (record Nightly.Params)))))
+                      (== : List (Result Text Unit) (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field result (var r))) (var first))
+                        (list (ctor Prelude.Result.Ok (record (value ()))))))
+                    (== : List Job (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field job (var r))) (var late))
                       (list
                         (job-ref Jobs.Nightly.Nightly (record Nightly.Params)))))
-                  (== : List Job (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field job (var r))) (var late))
-                    (list
-                      (job-ref Jobs.Nightly.Nightly (record Nightly.Params)))))))))))))
+                  (== : List (Result Text Unit) (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field result (var r))) (var late))
+                    (list (ctor Prelude.Result.Ok (record (value ()))))))))))))))
 (module Table.Todo)
 (union Table.Todo.Filter (All) (Active) (Completed))
 (record Table.Todo.Todo

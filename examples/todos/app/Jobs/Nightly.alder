@@ -10,7 +10,7 @@ beforeThree : Time
 beforeThree = Time.fromMillis 1772593140000
 
 -- The first Test.work plays the worker's start: it creates the tick at 03:00 and runs nothing.
--- Three days later the missed ticks run once, not three times.
+-- Three days later the missed ticks run once, not three times. Each run must succeed.
 test "the nightly job runs at 03:00 UTC, and once after an outage" = {
   let _ <- Test.setClock beforeThree
   let start <- Test.work
@@ -21,6 +21,8 @@ test "the nightly job runs at 03:00 UTC, and once after an outage" = {
   Task.succeed (
     List.isEmpty start
       && List.map (\r -> r.job) first == [Nightly {}]
+      && List.map (\r -> r.result) first == [Ok ()]
       && List.map (\r -> r.job) late == [Nightly {}]
+      && List.map (\r -> r.result) late == [Ok ()]
   )
 }
