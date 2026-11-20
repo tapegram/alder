@@ -154,7 +154,7 @@ func (h *housekeeper) unknownTicks(ctx context.Context, q db.Execer, now time.Ti
 			return err
 		}
 		if n, _ := res.RowsAffected(); n == 1 {
-			h.log("warn", fmt.Sprintf("jobs: deleted the queued schedule tick %s of kind %s: this build does not know the kind and the tick is more than a day old (a schedule renamed or removed)", g[0], g[1]))
+			h.log("warn", fmt.Sprintf("jobs: deleted the queued tick %s of kind %s (a schedule tick, or one queued for its retry): this build does not know the kind and the tick was made more than a day ago (a job renamed or removed)", g[0], g[1]))
 		}
 	}
 	return nil

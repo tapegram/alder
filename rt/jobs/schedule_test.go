@@ -397,3 +397,26 @@ func TestEnsureTicks_ScheduleChanged(t *testing.T) {
 		t.Fatalf("schedule removed: %+v", rows)
 	}
 }
+
+// A housekeeping whose now was read just before a claim inserted the next tick (or an instance
+// whose clock is behind) does not pull that next tick back onto the slot that just ran: only a
+// tick more than one period ahead of Next(k, now) is moved.
+func TestEnsureTicks_StaleNowLeavesNextAlone(t *testing.T) {
+	st := openFile(t)
+	hourly := scheduled("A.Hourly", time.Hour, "", eff.Pure(struct{}{}))
+	kinds := []jobs.Kind{hourly}
+	ensure(t, st, kinds, utc(t, "2026-11-16 10:17:00"))
+	claimAt(t, st, kinds, utc(t, "2026-11-16 11:00:00"))
+	ensure(t, st, kinds, utc(t, "2026-11-16 10:59:59"))
+	rows := tickRows(t, st, hourly.Name)
+	if len(rows) != 2 || rows[1].state != "queued" || rows[1].schedAt != utc(t, "2026-11-16 12:00:00").UnixMilli() || rows[1].runAt != rows[1].schedAt {
+		t.Fatalf("rows %+v, want the next tick still at 12:00", rows)
+	}
+	// the same with cron
+	ensure(t, st, []jobs.Kind{nightly}, utc(t, "2026-11-16 02:00:00"))
+	claimAt(t, st, []jobs.Kind{nightly}, utc(t, "2026-11-16 03:00:00"))
+	ensure(t, st, []jobs.Kind{nightly}, utc(t, "2026-11-16 02:59:59"))
+	if rows := tickRows(t, st, nightly.Name); len(rows) != 2 || rows[1].schedAt != utc(t, "2026-11-17 03:00:00").UnixMilli() {
+		t.Fatalf("nightly rows %+v, want the next tick still on 11-17", rows)
+	}
+}

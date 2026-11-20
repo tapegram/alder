@@ -83,10 +83,14 @@ func Next(k Kind, after time.Time) (time.Time, error) {
 // EnsureTicks inserts, for each scheduled kind of kinds without a queued tick in s, its tick
 // due at Next(k, now). Two callers at once, in one process or several, insert one: the
 // _alder_jobs_tick index refuses the second, which is ignored. A kind whose queued tick is due
-// later than Next(k, now) has a schedule that changed (`every "1d"` to `every "1h"`), and its
-// tick is moved to Next(k, now): Next only grows with its `after`, so a tick made under the
-// current schedule is never later than that. A tick due sooner (the schedule made rarer) is
-// left to run once. A kind of kinds that is not scheduled loses its queued tick (a schedule
+// later than the time after next, Next(k, Next(k, now)), has a schedule that changed (`every
+// "1d"` to `every "1h"`), and its tick is moved to Next(k, now). A tick made under the current
+// schedule is never that late, as Next only grows with its `after`: a claim made less than an
+// `every` after this now (for a cron, before the time after next) inserts a tick no later than
+// Next(k, Next(k, now)), which stays put. So a now read just before a claim, or an instance
+// whose clock is behind, never pulls the next tick back onto the slot that just ran. A changed
+// schedule may so wait one more tick of the old schedule. A tick due sooner (the
+// schedule made rarer) is left to run once. A kind of kinds that is not scheduled loses its queued tick (a schedule
 // removed from the job); a tick queued for its retry runs. A kind whose next tick cannot be
 // found (*ScheduleError) gets none; the others do, and the errors are joined.
 func EnsureTicks(ctx context.Context, s eff.Store, kinds []Kind, now time.Time) error {
@@ -108,12 +112,16 @@ func EnsureTicksOn(ctx context.Context, q db.Execer, kinds []Kind, now time.Time
 			continue
 		}
 		at, err := Next(k, now)
+		var after time.Time
+		if err == nil {
+			after, err = Next(k, at)
+		}
 		if err == nil {
 			err = insertTick(ctx, q, k.Name, at, now)
 		}
 		if err == nil {
 			_, err = q.ExecContext(ctx, `UPDATE "_alder_jobs" SET "run_at" = ?, "scheduled_for" = ? WHERE "kind" = ? AND "schedule" = 1 AND "state" = 'queued' AND "scheduled_for" > ?`,
-				at.UnixMilli(), at.UnixMilli(), k.Name, at.UnixMilli())
+				at.UnixMilli(), at.UnixMilli(), k.Name, after.UnixMilli())
 		}
 		if err != nil {
 			errs = append(errs, err)
