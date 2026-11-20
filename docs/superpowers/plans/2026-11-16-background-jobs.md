@@ -480,7 +480,7 @@ Deferred findings from PR 1's task and final reviews, each with the task that ow
   next housekeeping or after one more old tick); one sentence: set the test clock for a short
   `every` (unset clock moves 1 s per read, `Test.work` never goes quiet); CHANGELOG and
   `cron.Parse` doc say "names the field at fault" — not for the field-count error.
-- **Follow-up issue:** accept day of week `7` as Sunday.
+- **Follow-up issue:** accept day of week `7` as Sunday — filed as #279.
 
 ## PR 2: the worker
 
