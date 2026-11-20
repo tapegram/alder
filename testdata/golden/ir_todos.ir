@@ -270,6 +270,38 @@
 (record Jobs.Nightly.Nightly.Params)
 (value Jobs.Nightly.Nightly.run : Nightly.Params -> Task Unit (p)
   (call (std Log.info) "nightly ran"))
+(value Jobs.Nightly.beforeThree : Time ()
+  (call (std Time.fromMillis) 1772593140000))
+(test "the nightly job runs at 03:00 UTC, and once after an outage" task
+  (bind task _
+    (call (std Test.setClock) (global Jobs.Nightly.beforeThree))
+    (bind task start : List { id: Job.Id, job: Job, result: Result Text Unit }
+      (std Test.work)
+      (bind task _
+        (call (std Test.advance) 120000)
+        (bind task first : List { id: Job.Id, job: Job, result: Result Text Unit }
+          (std Test.work)
+          (bind task _
+            (call (std Test.advance) (* 3 86400000))
+            (bind task late : List { id: Job.Id, job: Job, result: Result Text Unit }
+              (std Test.work)
+              (pure task
+                (&&
+                  (&&
+                    (&&
+                      (&&
+                        (call (std List.isEmpty) (var start))
+                        (== : List Job (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field job (var r))) (var first))
+                          (list
+                            (job-ref Jobs.Nightly.Nightly
+                              (record Nightly.Params)))))
+                      (== : List (Result Text Unit) (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field result (var r))) (var first))
+                        (list (ctor Prelude.Result.Ok (record (value ()))))))
+                    (== : List Job (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field job (var r))) (var late))
+                      (list
+                        (job-ref Jobs.Nightly.Nightly (record Nightly.Params)))))
+                  (== : List (Result Text Unit) (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field result (var r))) (var late))
+                    (list (ctor Prelude.Result.Ok (record (value ()))))))))))))))
 (module Table.Todo)
 (union Table.Todo.Filter (All) (Active) (Completed))
 (record Table.Todo.Todo
@@ -1387,7 +1419,8 @@
   (params Nightly.Params)
   (run Jobs.Nightly.Nightly.run)
   (retries 4)
-  (timeout 5m0s))
+  (timeout 5m0s)
+  (cron "0 3 * * *"))
 (session App.Session)
 (deploy (env local script (script "./scripts/deploy-local.sh")) (proxy Caddy))
 (capability Auth.Login.Password

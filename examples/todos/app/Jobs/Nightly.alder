@@ -1,6 +1,28 @@
 module Jobs.Nightly
 
-job Nightly = {}
+job Nightly = {} cron "0 3 * * *"
 
 Nightly.run : Nightly.Params -> Task Unit
 Nightly.run p = Log.info "nightly ran"
+
+-- 2026-03-04T02:59:00Z, a minute before the nightly tick
+beforeThree : Time
+beforeThree = Time.fromMillis 1772593140000
+
+-- The first Test.work plays the worker's start: it creates the tick at 03:00 and runs nothing.
+-- Three days later the missed ticks run once, not three times. Each run must succeed.
+test "the nightly job runs at 03:00 UTC, and once after an outage" = {
+  let _ <- Test.setClock beforeThree
+  let start <- Test.work
+  let _ <- Test.advance 120000
+  let first <- Test.work
+  let _ <- Test.advance (3 * 86400000)
+  let late <- Test.work
+  Task.succeed (
+    List.isEmpty start
+      && List.map (\r -> r.job) first == [Nightly {}]
+      && List.map (\r -> r.result) first == [Ok ()]
+      && List.map (\r -> r.job) late == [Nightly {}]
+      && List.map (\r -> r.result) late == [Ok ()]
+  )
+}

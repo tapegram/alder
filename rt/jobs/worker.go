@@ -18,7 +18,7 @@ const (
 	// DefaultPoll is how often an idle worker looks for a due row (Options.Poll's default).
 	DefaultPoll = time.Second
 	// DefaultHousekeep is how often a process's workers keep the table (Options.Housekeep's
-	// default): expired leases, pruning, unclaimable kinds.
+	// default): expired leases, pruning, unclaimable kinds, schedule ticks.
 	DefaultHousekeep = time.Minute
 	// LeaseMargin is how much longer than its kind's timeout a claimed row's lease runs.
 	LeaseMargin = 30 * time.Second
@@ -81,7 +81,8 @@ var errStopped = errors.New("jobs: the workers stopped")
 
 // Start starts o.Workers workers. Each claims the oldest due row of a kind it knows (Claim),
 // runs it (RunOne on o.Env's Env), and claims again; with none due it waits o.Poll or until
-// Wake. One worker at a time keeps the table (housekeeping): at start and every o.Housekeep.
+// Wake. One worker at a time keeps the table (housekeeping): at start and every o.Housekeep,
+// which also inserts each scheduled kind's tick when it has none queued (EnsureTicks).
 // With no workers or no store it starts nothing, and stop does nothing.
 //
 // stop(grace) stops claiming at once, waits up to grace for the running attempts (grace <= 0:

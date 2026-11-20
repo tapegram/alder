@@ -387,7 +387,8 @@ class BuildContextTests(unittest.TestCase):
         # `More` shape, E0047) and the attribute and `Test.load/intersect/input` rows in chapters 5 and 10.
         # Item 4's route/method book edits (#177, #180, #193, #195) measured 73.4k, so 73.5k.
         # E12 (#208): the COMMANDS table on routes, paid for by three drops in chapter 10's Properties
-        self.assertLessEqual(len(out) // 4, 73500, "the reference is at most 73.5k tokens (len/4)")
+        # #168 PR 3 (schedules): `Test.work`'s paragraph on schedule ticks measured 73.54k, so 73.6k.
+        self.assertLessEqual(len(out) // 4, 73600, "the reference is at most 73.6k tokens (len/4)")
         # M17 (file pages) raised from 48000; see the M17 plan
         # M15: the partition rules, `via`, `silo`, the one-store rule and the commands are in; the
         # silo files, the open-time check and moving a table into a silo (the inside) are not

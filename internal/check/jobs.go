@@ -1,6 +1,6 @@
 // Job declarations (#168): `job NAME = { params } [every "…"] [cron "…"] [retries N]
 // [timeout "…"] [silo k]` and the arm `NAME.run : NAME.Params -> Task Unit` (E0043). Params that
-// cannot be stored are E0049; the options' rules are E0050 (cron expressions are read in rt/jobs).
+// cannot be stored are E0049; the options' rules are E0050 (a cron expression is read by rt/jobs/cron).
 package check
 
 import (
@@ -11,6 +11,7 @@ import (
 	"alder/internal/diag"
 	"alder/internal/syntax"
 	"alder/internal/types"
+	"alder/rt/jobs/cron"
 )
 
 // Defaults and limits of a job's options (spec §1).
@@ -135,7 +136,7 @@ func (mc *modCtx) jobOptions(jd *syntax.JobDecl, info *JobInfo) {
 	} else if (jd.Every != nil || jd.Cron != nil) && len(info.Params.Fields) > 0 {
 		c.errorf(diag.JobSchedule, jd.Params.Span, "A scheduled job takes no parameters: job `%s` runs on its schedule, with nothing to fill them; write `job %s = {}`", jd.Name, jd.Name)
 	}
-	if jd.Every != nil && jd.Every.Text != "" {
+	if jd.Every != nil {
 		if d, ok := jobDuration(jd.Every.Text); !ok {
 			c.errorf(diag.JobSchedule, jd.Every.Span, "`every \"%s\"`: cannot read `%s` as a duration; %s", jd.Every.Text, jd.Every.Text, jobDurationEnd)
 		} else if d < jobEveryMin {
@@ -145,9 +146,13 @@ func (mc *modCtx) jobOptions(jd *syntax.JobDecl, info *JobInfo) {
 		}
 	}
 	if jd.Cron != nil {
-		info.Cron = jd.Cron.Text
+		if _, err := cron.Parse(jd.Cron.Text); err != nil {
+			c.errorf(diag.JobSchedule, jd.Cron.Span, "`cron \"%s\"`: %v; write `minute hour day-of-month month day-of-week`, as in `0 3 * * *`", jd.Cron.Text, err)
+		} else {
+			info.Cron = jd.Cron.Text
+		}
 	}
-	if jd.Timeout != nil && jd.Timeout.Text != "" {
+	if jd.Timeout != nil {
 		if d, ok := jobDuration(jd.Timeout.Text); !ok {
 			c.errorf(diag.JobSchedule, jd.Timeout.Span, "`timeout \"%s\"`: cannot read `%s` as a duration; %s", jd.Timeout.Text, jd.Timeout.Text, jobDurationEnd)
 		} else if d > jobTimeoutMax {

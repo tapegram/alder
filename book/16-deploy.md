@@ -253,7 +253,7 @@ alder deploy local → Script ./scripts/deploy-local.sh
 gate
   check    ok
   build    ok
-  test     ok  147 passed
+  test     ok  148 passed
   mutate   ok  score 0.98 ≥ floor 0.00 (none yet; 226 mutants, 4 survived)
 artifact build/todos/deploy/… (…)
 plan

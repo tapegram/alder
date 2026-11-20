@@ -88,6 +88,8 @@ type Signup__SendWelcome__Params struct {
 
 type Signup__Nightly__Params struct{}
 
+type Signup__Weekdays__Params struct{}
+
 type Signup__Everything__Params struct {
 	N       int64
 	X       float64
@@ -142,6 +144,10 @@ func Signup__Create__update(p Signup__Create__Params, session App__Session) eff.
 
 func Signup__Nightly__run(p Signup__Nightly__Params) eff.Task[struct{}] {
 	return std.LogInfo("cleanup ran")
+}
+
+func Signup__Weekdays__run(p Signup__Weekdays__Params) eff.Task[struct{}] {
+	return std.LogInfo("weekday report")
 }
 
 func Signup__Everything__run(p Signup__Everything__Params) eff.Task[struct{}] {

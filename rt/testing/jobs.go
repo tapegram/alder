@@ -89,6 +89,12 @@ func Jobs(kinds []jobs.Kind) eff.Task[[]JobRow] {
 // transaction (the error, and the retry Backoff on or the row's death). A row of a kind not in
 // kinds stays queued. Past MaxWorkRuns runs it fails the test. It gives each run in order with
 // how it ended (Err with the row's error text).
+//
+// Schedule ticks (spec §8): each call first inserts the tick of every scheduled kind without a
+// queued one, due after the clock's time (jobs.EnsureTicksOn), as the worker does at its start
+// and every housekeeping. A queued tick always exists after that, since claiming one inserts
+// the next in the same transaction (jobs.ClaimedTick), so it is the case's first Test.work that
+// creates the ticks, from its clock.
 func Work(kinds []jobs.Kind) eff.Task[[]JobRun] {
 	return eff.Call("Test.work", true, func(e *eff.Env) ([]JobRun, error) {
 		byName := map[string]jobs.Kind{}
@@ -101,6 +107,13 @@ func Work(kinds []jobs.Kind) eff.Task[[]JobRun] {
 		}
 		if tx == nil {
 			return nil, errors.New("Test.work: the test has no database")
+		}
+		q, err := db.On(e.Store, tx)
+		if err != nil {
+			return nil, err
+		}
+		if err := jobs.EnsureTicksOn(e.Ctx, q, kinds, e.Now()); err != nil {
+			return nil, err
 		}
 		sp, _ := e.Store.(eff.Savepointer)
 		within := &eff.Within{Tx: tx, Savepoints: sp}
@@ -117,7 +130,7 @@ func Work(kinds []jobs.Kind) eff.Task[[]JobRun] {
 				if len(out) == MaxWorkRuns {
 					return nil, errKeepEnqueueing
 				}
-				if err := claim(e, &row); err != nil {
+				if err := claim(e, byName[row.Kind], &row); err != nil {
 					return nil, err
 				}
 				je := &eff.Env{Ctx: e.Ctx, Store: e.Store, Caps: e.Caps, Now: e.Now, Sleep: e.Sleep, Log: e.Log, Within: within, Stores: e.Stores}
@@ -138,7 +151,7 @@ func dueRows(e *eff.Env, byName map[string]jobs.Kind) ([]jobs.Row, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := q.QueryContext(e.Ctx, `SELECT "id", "kind", "params", "attempts", "run_at", "created" FROM "_alder_jobs" WHERE "state" = 'queued' AND "run_at" <= ? ORDER BY "run_at", "created", "rowid"`, e.Now().UnixMilli())
+	rows, err := q.QueryContext(e.Ctx, `SELECT "id", "kind", "params", "attempts", "run_at", "created", "schedule", "scheduled_for" FROM "_alder_jobs" WHERE "state" = 'queued' AND "run_at" <= ? ORDER BY "run_at", "created", "rowid"`, e.Now().UnixMilli())
 	if err != nil {
 		return nil, err
 	}
@@ -146,8 +159,12 @@ func dueRows(e *eff.Env, byName map[string]jobs.Kind) ([]jobs.Row, error) {
 	var out []jobs.Row
 	for rows.Next() {
 		r := jobs.Row{State: string(jobs.Queued)}
-		if err := rows.Scan(&r.ID, &r.Kind, &r.Params, &r.Attempts, &r.RunAt, &r.Created); err != nil {
+		var schedAt sql.NullInt64
+		if err := rows.Scan(&r.ID, &r.Kind, &r.Params, &r.Attempts, &r.RunAt, &r.Created, &r.Schedule, &schedAt); err != nil {
 			return nil, err
+		}
+		if schedAt.Valid {
+			r.ScheduledFor = &schedAt.Int64
 		}
 		if _, ok := byName[r.Kind]; ok {
 			out = append(out, r)
@@ -156,14 +173,19 @@ func dueRows(e *eff.Env, byName map[string]jobs.Kind) ([]jobs.Row, error) {
 	return out, rows.Err()
 }
 
-// claim does to row what the worker's claim does: attempts + 1, running, started now.
-func claim(e *eff.Env, row *jobs.Row) error {
+// claim does to row, of kind k, what the worker's claim does: attempts + 1, running, started
+// now, and for a tick the next one (jobs.ClaimedTick), all in the test's transaction.
+func claim(e *eff.Env, k jobs.Kind, row *jobs.Row) error {
 	q, err := jobsOn(e)
 	if err != nil {
 		return err
 	}
-	now := e.Now().UnixMilli()
+	at := e.Now()
+	now := at.UnixMilli()
 	if _, err := q.ExecContext(e.Ctx, `UPDATE "_alder_jobs" SET "state" = 'running', "attempts" = "attempts" + 1, "started" = ? WHERE "id" = ?`, now, row.ID); err != nil {
+		return err
+	}
+	if err := jobs.ClaimedTick(e.Ctx, q, k, *row, at); err != nil {
 		return err
 	}
 	row.Attempts++

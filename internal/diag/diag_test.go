@@ -154,3 +154,13 @@ func TestRenderTextNoCode(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// E0050's explanation covers a cron expression the checker refuses (internal/check/jobs.go,
+// rt/jobs/cron.Parse).
+func TestExplain_E0050Cron(t *testing.T) {
+	for _, want := range []string{"`cron`", "five fields", "UTC", "`0 0 31 2 *`", "names the field"} {
+		if !strings.Contains(Explain["E0050"], want) {
+			t.Errorf("Explain[E0050] lacks %q", want)
+		}
+	}
+}
