@@ -463,6 +463,25 @@ Deferred findings from PR 1's task and final reviews, each with the task that ow
   `alder run` after 5 s (harmless: the app exits on stdin EOF); bench fixture's second form
   repeats the `title` field id.
 
+## Carried from PR 3's reviews
+
+- **Ruling (PR 3):** a claim sets the tick's `schedule` to 0 and keeps `scheduled_for`; `schedule = 1`
+  = the kind's pending tick; "is or was a tick" = `scheduled_for IS NOT NULL`; a manual run is
+  schedule 0 / scheduled_for NULL.
+- **Task 13 (silos):** ticks live only in the shared store (a scheduled job has no params, so no
+  `silo`); EnsureTicks/housekeeping run on the shared store only; `Test.work`'s per-silo pass must
+  not call `EnsureTicksOn` on silo stores.
+- **Task 18 (`alder jobs`):** key ticks on `scheduled_for`; "next run" = `schedule = 1 AND state =
+  'queued'`; `retry` of a dead tick runs once and inserts no next tick (say so); unknown-tick
+  deletion age runs from `created`, not from due — a rollback across a new kind can drop a weekly
+  tick: decide and document.
+- **Task 21 (book/spec):** amend spec §5 "1 for a tick" → "1 while it is the kind's pending tick";
+  document UTC, the dom/dow rule, no `7`/names, the retry overlap, a changed schedule (applies at the
+  next housekeeping or after one more old tick); one sentence: set the test clock for a short
+  `every` (unset clock moves 1 s per read, `Test.work` never goes quiet); CHANGELOG and
+  `cron.Parse` doc say "names the field at fault" — not for the field-count error.
+- **Follow-up issue:** accept day of week `7` as Sunday.
+
 ## PR 2: the worker
 
 ### Task 7: Split `Serve`; `ALDER_JOBS`
