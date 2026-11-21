@@ -100,22 +100,27 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 // Handler is the app's HTTP handler (web.NewRouter over Routes).
 func (a *App) Handler() http.Handler { return a.handler }
 
-// StartJobs starts n job workers on the shared store (rt/jobs.Start: the kinds of Jobs(), each
-// attempt on JobEnv's Env, the router's clock, the log with each job's lines under its id, the
-// metrics and the health check's state) and returns the function that stops them: it stops
-// claiming at once, waits at most grace for the attempts running, then cancels them and queues
-// their jobs again. n 0 starts none, and /_alder/health answers "jobs": "off" (an app that
-// declares no job has no "jobs" there at all).
+// StartJobs starts n job workers on the shared store and, in an app with silos, the silos open
+// in its stores (rt/jobs.Start: the kinds of Jobs(), each attempt on JobEnv's Env, the router's
+// clock, the log with each job's lines under its id, the metrics and the health check's state)
+// and returns the function that stops them: it stops claiming at once, waits at most grace for
+// the attempts running, then cancels them and queues their jobs again. n 0 starts none, and
+// /_alder/health answers "jobs": "off" (an app that declares no job has no "jobs" there at all).
 func (a *App) StartJobs(n int) (stop func(grace time.Duration)) {
-	return jobs.Start(context.Background(), jobs.Options{Store: a.web.Store, Kinds: Jobs(), Env: a.JobEnv, Workers: n, Now: a.now,
+	return jobs.Start(context.Background(), jobs.Options{Store: a.web.Store, Stores: a.web.Stores, Kinds: Jobs(), Env: a.JobEnv, Workers: n, Now: a.now,
 		Log: a.log, LogID: a.logID, Line: a.jobLine, Metrics: a.web.Metrics, Health: a.health})
 }
 
 // JobEnv is the Env an attempt of a job of kind k runs with, built as the router builds a
-// request's (rt/web's newEnv without a request): the store(s), the capabilities, the session
-// check and the router's clock; Session nil. Its Log is left to the worker, which writes the
-// job's lines under its id.
+// request's (rt/web's newEnv without a request): web.Options.EnvFor's when it is set, with
+// Session nil; else the store(s), the capabilities, the session check and the router's clock.
+// Its Log is left to the worker, which writes the job's lines under its id.
 func (a *App) JobEnv(ctx context.Context, k jobs.Kind) *eff.Env {
+	if a.web.EnvFor != nil {
+		env := a.web.EnvFor(ctx, nil)
+		env.Session = nil
+		return env
+	}
 	env := &eff.Env{Ctx: ctx, Store: a.web.Store, Caps: a.web.Caps, Now: a.now}
 	if a.web.Stores != nil {
 		env.Stores = a.web.Stores
@@ -147,7 +152,9 @@ func (a *App) Close() error {
 // this build instead (db.CheckShared, which writes nothing): behind (or without tables) is the
 // error "the database is behind this build: run `alder deploy`"; ahead (a newer build migrated
 // it) serves the maintenance page on every route, and /_alder/health answers 503 "ahead:
-// <detail>" (web.Options.SharedMaintenance); equal serves.
+// <detail>" (web.Options.SharedMaintenance); equal serves. Ahead or equal, it creates the
+// runtime's own tables the database lacks (db.EnsureRuntimeTables: the jobs table), as
+// --migrate-only does.
 func Open(caps Caps, o Options) (*App, error) {
 	if err := web.CheckSecret(o.Secret, o.Dev); err != nil {
 		return nil, err
@@ -189,6 +196,10 @@ func Open(caps Caps, o Options) (*App, error) {
 			if o.Log != nil {
 				o.Log("warn", "the database is ahead of this build, every page answers the maintenance page: "+detail)
 			}
+		}
+		if err := db.EnsureRuntimeTables(context.Background(), store); err != nil {
+			store.Close()
+			return nil, err
 		}
 	} else if len(Migrations) > 0 {
 		logf := func(msg string) {

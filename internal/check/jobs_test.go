@@ -296,6 +296,26 @@ func TestJob_RunWritesTwoStores(t *testing.T) {
 	wantJobDiag(t, got, diag.WriteStores, "`J.run` writes", "`Project` (silo `org`)", "`Org` (shared)")
 }
 
+// A `silo org` job runs in its org's silo, so a `run` that writes a shared table (in place or
+// through a helper) writes a second store: E0031. One that writes only its silo's tables, or
+// nothing, compiles.
+func TestJob_SiloRunWritesShared(t *testing.T) {
+	src := "module Signup\n\nimport Org\n\njob J = { org: Org.OrgId } silo org\n\n" +
+		"J.run : J.Params -> Task Unit\nJ.run p = {\n  let _ <- Db.insert Org { name: \"o\" }\n  Task.succeed ()\n}\n"
+	_, got := checkFiles(t, jobApp(t, src))
+	wantJobDiag(t, got, diag.WriteStores, "`J.run` writes `Org` (shared)", "`silo org` runs in its org's silo")
+	src = "module Signup\n\nimport Org\n\njob J = { org: Org.OrgId } silo org\n\n" +
+		"add : Task Unit\nadd = {\n  let _ <- Db.insert Org { name: \"o\" }\n  Task.succeed ()\n}\n\n" +
+		"J.run : J.Params -> Task Unit\nJ.run p = add\n"
+	_, got = checkFiles(t, jobApp(t, src))
+	wantJobDiag(t, got, diag.WriteStores, "`J.run` writes `Org` (shared)")
+	src = "module Signup\n\nimport Org\n\njob J = { org: Org.OrgId } silo org\n\n" +
+		"J.run : J.Params -> Task Unit\nJ.run p = Task.succeed ()\n"
+	if _, got := checkFiles(t, jobApp(t, src)); len(got) != 0 {
+		t.Fatalf("a silo job that writes nothing: %q", got)
+	}
+}
+
 // `Session.put` in a job's `run`, written there or reached through a helper, is refused (review
 // fix 4).
 func TestJob_SessionPutInRun(t *testing.T) {

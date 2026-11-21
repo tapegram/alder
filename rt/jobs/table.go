@@ -33,6 +33,10 @@ type Row struct {
 	// Schedule: the row is its kind's queued schedule tick, or was until this claim (ClaimedTick
 	// clears it in the table; a tick keeps its ScheduledFor).
 	Schedule bool
+	// In is where the row is, which is not a column: the store its claimer found it in and, in
+	// a test, the transaction its statements run in. Zero: the store of the Env RunOne is given
+	// (its Within's transaction in a test).
+	In db.Place
 }
 
 // State is a job row's state.
@@ -46,13 +50,14 @@ const (
 )
 
 // on is where the running effect of env writes the jobs table: its Task's transaction (begun
-// on first use), or the database itself in a Query outside any transaction.
+// on first use), or the database itself in a Query outside any transaction. That is the store the
+// Task is bound to (db.RuntimeOn): a silo's once db.Enter bound it to one, in a test too.
 func on(env *eff.Env) (db.Execer, error) {
-	tx, err := env.Transaction()
+	p, err := db.RuntimeOn(env)
 	if err != nil {
 		return nil, err
 	}
-	return db.On(env.Store, tx)
+	return db.On(p.Store, p.Tx)
 }
 
 // ctxOf is env.Ctx, or Background when it is nil.

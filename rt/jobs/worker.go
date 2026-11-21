@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"alder/rt/applog"
+	"alder/rt/db"
 	"alder/rt/eff"
 	"alder/rt/metrics"
 )
@@ -33,7 +36,10 @@ const (
 // Options configure Start.
 type Options struct {
 	Store eff.Store // the store whose jobs table the workers claim from (the shared one)
-	Kinds []Kind    // the kinds this build knows (generated: app.Jobs()); rows of others are left
+	// Stores, in an app with silos, are its stores: the workers claim from, and keep, the jobs
+	// tables of the silos of their active set too (spec §7). nil: the shared store only.
+	Stores *db.Stores
+	Kinds  []Kind // the kinds this build knows (generated: app.Jobs()); rows of others are left
 	// Env is the Env an attempt of a job of kind k runs with (generated: App.JobEnv); ctx is
 	// cancelled when stop gives up waiting for the attempt.
 	Env     func(ctx context.Context, k Kind) *eff.Env
@@ -79,10 +85,23 @@ func Wake() {
 // the row without counting the attempt.
 var errStopped = errors.New("jobs: the workers stopped")
 
-// Start starts o.Workers workers. Each claims the oldest due row of a kind it knows (Claim),
-// runs it (RunOne on o.Env's Env), and claims again; with none due it waits o.Poll or until
-// Wake. One worker at a time keeps the table (housekeeping): at start and every o.Housekeep,
-// which also inserts each scheduled kind's tick when it has none queued (EnsureTicks).
+// Start starts o.Workers workers. Each claims the oldest due row of a kind it knows (Claim) in
+// one of the stores it polls — the shared store and, with o.Stores, the silos of the active set,
+// taken in turn from a start that moves on with every claim — runs it (RunOne on o.Env's Env,
+// the row in the store it was found in), and claims again; with none due it waits o.Poll or
+// until Wake. One worker at a time keeps the tables (housekeeping): at start and every
+// o.Housekeep. The shared store's keeping also inserts each scheduled kind's tick when it has
+// none queued (EnsureTicks): ticks are only ever in the shared store. A silo's keeping is its
+// expired leases and its pruning.
+//
+// The active set (spec §7) is every silo the start scan finds with jobs (scan: the first
+// housekeeping reads every silo database once, opening none) and every silo an Enqueue of this
+// process touches; a silo leaves it after ActiveFor with no row queued or running there. A
+// worker's look at a silo is not a use of it (db.Stores.Poll): a silo with nothing due or running
+// closes at its idle time, as one no worker looks at, and is opened again only when a row there
+// comes due (housekeeping records when). The queued gauge and Health read the active silos
+// beside the shared store, by the same rule. A store whose claims keep failing is one warn line, then at most one every
+// ClaimLogEvery, and one line when they work again.
 // With no workers or no store it starts nothing, and stop does nothing.
 //
 // stop(grace) stops claiming at once, waits up to grace for the running attempts (grace <= 0:
@@ -92,6 +111,11 @@ var errStopped = errors.New("jobs: the workers stopped")
 // does anything. ctx is the workers' parent: the generated App passes context.Background(), and
 // stop is how they end.
 func Start(ctx context.Context, o Options) (stop func(grace time.Duration)) {
+	return start(ctx, o, nil)
+}
+
+// start is Start; housekept, when set, is called after each housekeeping (a test waits on it).
+func start(ctx context.Context, o Options, housekept func()) (stop func(grace time.Duration)) {
 	if o.Workers <= 0 || o.Store == nil {
 		return func(time.Duration) {}
 	}
@@ -107,15 +131,18 @@ func Start(ctx context.Context, o Options) (stop func(grace time.Duration)) {
 	if o.Housekeep <= 0 {
 		o.Housekeep = DefaultHousekeep
 	}
+	p := newPool(o)
+	p.housekept = housekept
+	if o.Stores != nil {
+		actives.mu.Lock()
+		actives.m[o.Stores] = p.active
+		actives.mu.Unlock()
+	}
 	if o.Health != nil {
-		o.Health.start(o)
+		o.Health.start(o, p.each)
 	}
 	if o.Metrics != nil {
-		o.Metrics.JobsQueued(queuedDue(o.Store, o.Now))
-	}
-	p := &pool{o: o, kinds: map[string]Kind{}, hk: newHousekeeper(o.Store, o.Kinds, o.Log), due: make(chan struct{}, 1)}
-	for _, k := range o.Kinds {
-		p.kinds[k.Name] = k
+		o.Metrics.JobsQueued(p.queuedDue)
 	}
 	p.due <- struct{}{} // housekeeping at start
 	claimCtx, quit := context.WithCancel(ctx)
@@ -138,6 +165,13 @@ func Start(ctx context.Context, o Options) (stop func(grace time.Duration)) {
 		once.Do(func() {
 			if o.Health != nil {
 				o.Health.stop()
+			}
+			if o.Stores != nil {
+				actives.mu.Lock()
+				if actives.m[o.Stores] == p.active {
+					delete(actives.m, o.Stores)
+				}
+				actives.mu.Unlock()
 			}
 			quit()
 			ticker.Stop()
@@ -165,10 +199,105 @@ func Start(ctx context.Context, o Options) (stop func(grace time.Duration)) {
 
 // pool is the shared state of one Start's workers.
 type pool struct {
-	o     Options
-	kinds map[string]Kind
-	hk    *housekeeper
-	due   chan struct{} // the housekeeping at start
+	o      Options
+	kinds  map[string]Kind
+	hk     *housekeeper
+	due    chan struct{} // the housekeeping at start
+	turn   atomic.Uint64 // moves the store a claim looks in first
+	active *activeSet    // with o.Stores: the silos polled beside the shared store
+	// scanned is set by the start scan (scan), which runs once
+	scanned  atomic.Bool
+	claimLog claimLog
+	// pendingStmt and its arguments give the earliest run_at of the rows queued of a kind the
+	// workers know, 0 when a row is running, NULL when there is none (keepSilos)
+	pendingStmt string
+	pendingArgs []any
+	housekept   func() // see start
+}
+
+// newPool is the pool of the workers of o (its Now and Log set).
+func newPool(o Options) *pool {
+	p := &pool{o: o, kinds: map[string]Kind{}, hk: newHousekeeper(o.Store, o.Kinds, o.Log), due: make(chan struct{}, 1)}
+	p.claimLog.last = map[string]time.Time{}
+	// a running row counts as due at 0 (now): its lease is housekeeping's to watch
+	p.pendingStmt = `SELECT MIN(CASE "state" WHEN 'running' THEN 0 ELSE "run_at" END) FROM "_alder_jobs" WHERE "state" = 'running'`
+	if len(o.Kinds) > 0 {
+		p.pendingStmt += ` OR ("state" = 'queued' AND "kind" IN (` + strings.TrimSuffix(strings.Repeat("?, ", len(o.Kinds)), ", ") + `))`
+	}
+	for _, k := range o.Kinds {
+		p.kinds[k.Name] = k
+		p.pendingArgs = append(p.pendingArgs, k.Name)
+	}
+	if o.Stores != nil {
+		p.active = newActiveSet(o.Now)
+		p.active.left = func(id siloID) { p.claimLog.forget(id.String()) }
+		p.hk.silos = p.keepSilos
+	}
+	return p
+}
+
+// housekeep is the housekeeping at now: the start scan first, the first time.
+func (p *pool) housekeep(ctx context.Context, now time.Time) {
+	p.scan(ctx, now)
+	p.hk.run(ctx, now)
+	if p.housekept != nil {
+		p.housekept()
+	}
+}
+
+// claim claims the oldest due row of the first store that has one (Claim), the stores taken in
+// turn from a start that moves on with every call, so a busy store keeps no other waiting; the
+// row's In is the store it was found in. An error of one store does not keep the others from
+// being looked in: it is a line (claimed), as is a tick claimed without its next tick (a
+// *ScheduleError).
+func (p *pool) claim(ctx context.Context, now time.Time, worker string) *Row {
+	var silos []siloID
+	if p.active != nil {
+		silos = p.active.list()
+	}
+	n := len(silos) + 1
+	start := int(p.turn.Add(1) % uint64(n))
+	for i := range n {
+		var (
+			row  *Row
+			err  error
+			ran  = true // a claim was attempted: not in a silo that was closed or not served
+			name = "the shared store"
+		)
+		if j := (start + i) % n; j == 0 {
+			if row, err = Claim(ctx, p.o.Store, p.o.Kinds, now, worker); row != nil {
+				row.In = db.Place{Store: p.o.Store}
+			}
+		} else {
+			id := silos[j-1]
+			name = id.String()
+			ran, err = p.at(ctx, id, func(pl db.Place) error {
+				var err error
+				if row, err = Claim(ctx, pl.Store, p.o.Kinds, now, worker); row != nil {
+					row.In = pl
+				}
+				return err
+			})
+			if row != nil {
+				p.active.add(id)
+			}
+		}
+		if ctx.Err() != nil {
+			return row
+		}
+		var se *ScheduleError
+		if errors.As(err, &se) {
+			p.o.Log("warn", "jobs: claiming a job: "+err.Error())
+			err = nil
+		}
+		if ran || err != nil {
+			p.claimed(name, err, now)
+		}
+		if row != nil {
+			return row
+		}
+	}
+	return nil
 }
 
 // work is one worker's loop: claim on claimCtx, run on runCtx, until claimCtx ends.
@@ -176,16 +305,13 @@ func (p *pool) work(claimCtx, runCtx context.Context, tick <-chan time.Time, wor
 	for claimCtx.Err() == nil {
 		select {
 		case <-p.due:
-			p.hk.run(claimCtx, p.o.Now())
+			p.housekeep(claimCtx, p.o.Now())
 		case <-tick:
-			p.hk.run(claimCtx, p.o.Now())
+			p.housekeep(claimCtx, p.o.Now())
 		default:
 		}
 		now := p.o.Now()
-		row, err := Claim(claimCtx, p.o.Store, p.o.Kinds, now, worker)
-		if err != nil && claimCtx.Err() == nil {
-			p.o.Log("warn", "jobs: claiming a job: "+err.Error())
-		}
+		row := p.claim(claimCtx, now, worker)
 		if row != nil {
 			if p.o.Health != nil {
 				p.o.Health.claimed(now)
@@ -200,9 +326,9 @@ func (p *pool) work(claimCtx, runCtx context.Context, tick <-chan time.Time, wor
 		case <-wake:
 		case <-t.C:
 		case <-p.due:
-			p.hk.run(claimCtx, p.o.Now())
+			p.housekeep(claimCtx, p.o.Now())
 		case <-tick:
-			p.hk.run(claimCtx, p.o.Now())
+			p.housekeep(claimCtx, p.o.Now())
 		}
 		t.Stop()
 	}

@@ -63,19 +63,37 @@ func Backoff(attempt int) time.Duration {
 // row done, so the job's writes and the mark commit together; a job that writes nothing commits
 // the mark alone. The attempt runs under k.Timeout (env.Ctx carries it).
 //
+// A `silo k` job (k.SiloParam) runs bound to the silo its parameter names: k.Run narrows env to
+// the parameter's value (db.Narrow) and RunOne binds the Task there (db.Enter); any other job runs
+// on the shared store. The row is in row.In's store (env's when it is zero), the one its claimer
+// found it in (a database, by db.Place.Same: a silo closed and opened again since is the same).
+// When that is not the database the Task runs on, the done mark is a second short transaction
+// after the job's commit, `WHERE "state" = 'running' AND "worker" IS` the claim's worker, so a
+// lease expiry that re-queued the row in between (spec §6's window), or another worker's claim
+// of it since, is left as it is; a mark that fails is a warn line, and the row's lease runs the
+// job again.
+//
 // An attempt the workers' stop cancelled (Start) is not a failure: the row is queued again, its
 // attempts not counted, its error, started and worker cleared (Outcome.Stopped) — only while it
 // is still running under row.Worker: an attempt that outlived its lease, whose row was re-queued
 // and claimed again elsewhere, leaves that claim alone.
 //
-// On a failure (Task.fail, a not found, a capability's error, a panic, the timeout) the Task's
-// transaction is rolled back and a second short transaction records the error and either the
-// retry (queued, due Backoff(attempts) from now) or, past k.Retries, the row's death. Params k.Run
-// cannot decode make the row dead at once whatever k.Retries says: the same build cannot decode
-// them on a retry. Under env.Within (a test) the record is written in Within.Tx instead.
+// On a failure (Task.fail, a not found, a capability's error, a panic, the timeout, a silo that is
+// not served) the Task's transaction is rolled back and a second short transaction in the row's
+// store records the error and either the retry (queued, due Backoff(attempts) from now) or, past
+// k.Retries, the row's death. Params k.Run cannot decode make the row dead at once whatever
+// k.Retries says: the same build cannot decode them on a retry. Under env.Within (a test) the
+// record is written in Within.Tx instead (in row.In.Tx, for a row in a test silo).
 func RunOne(env *eff.Env, k Kind, row Row) Outcome {
 	out := Outcome{ID: row.ID, Kind: row.Kind, Attempt: row.Attempts, Attempts: k.Retries + 1}
-	store, base := env.Store, ctxOf(env)
+	at, base := row.In, ctxOf(env)
+	if at.Store == nil {
+		at = db.Place{Store: env.Store, Key: env.SiloKey, Value: env.SiloValue}
+		if w := env.Within; w != nil {
+			at.Tx = w.Tx
+		}
+	}
+	reg, _ := env.Stores.(*db.Stores)
 	prevCtx, prevBegin := env.Ctx, env.OnBegin
 	start := env.Now()
 	var began time.Time
@@ -91,7 +109,7 @@ func RunOne(env *eff.Env, k Kind, row Row) Outcome {
 		ctx, cancel = context.WithTimeoutCause(base, k.Timeout, errTimedOut)
 	}
 	env.Ctx = ctx
-	err, decode := attempt(env, k, row)
+	err, decode, apart := attempt(env, k, row, at)
 	end := env.Now()
 	// the attempt's own timeout, not its caller's deadline, and not a failure of the job's own
 	// that came after the timeout
@@ -104,6 +122,11 @@ func RunOne(env *eff.Env, k Kind, row Row) Outcome {
 		out.LockHeld = end.Sub(began)
 	}
 	if err == nil {
+		if apart {
+			if merr := record(reg, at, base, `UPDATE "_alder_jobs" SET "state" = 'done', "finished" = ?, "lease_until" = NULL WHERE "id" = ? AND "state" = 'running' AND "worker" IS ?`, env.Now().UnixMilli(), row.ID, workerArg(row)); merr != nil && env.Log != nil {
+				env.Log("warn", fmt.Sprintf("job %s %s: marking it done in its store: %v (it ran; its lease runs it again)", row.Kind, row.ID, merr))
+			}
+		}
 		return out
 	}
 	switch {
@@ -111,7 +134,7 @@ func RunOne(env *eff.Env, k Kind, row Row) Outcome {
 		err = &failure{"cannot decode the parameters: " + err.Error(), err}
 	case stopped:
 		out.Err, out.Stopped = err, true
-		if rerr := record(env, store, base, `UPDATE "_alder_jobs" SET "state" = 'queued', "attempts" = "attempts" - 1, "error" = NULL, "lease_until" = NULL, "started" = NULL, "worker" = NULL WHERE "id" = ? AND "state" = 'running' AND "worker" = ?`, row.ID, row.Worker); rerr != nil {
+		if rerr := record(reg, at, base, `UPDATE "_alder_jobs" SET "state" = 'queued', "attempts" = "attempts" - 1, "error" = NULL, "lease_until" = NULL, "started" = NULL, "worker" = NULL WHERE "id" = ? AND "state" = 'running' AND "worker" IS ?`, row.ID, workerArg(row)); rerr != nil {
 			out.Err = errors.Join(err, fmt.Errorf("jobs: re-queueing the stopped attempt: %w", rerr))
 		}
 		return out
@@ -124,10 +147,10 @@ func RunOne(env *eff.Env, k Kind, row Row) Outcome {
 	msg := clip(err.Error())
 	var rerr error
 	if out.Dead {
-		rerr = record(env, store, base, `UPDATE "_alder_jobs" SET "state" = 'dead', "error" = ?, "finished" = ?, "lease_until" = NULL WHERE "id" = ?`, msg, now.UnixMilli(), row.ID)
+		rerr = record(reg, at, base, `UPDATE "_alder_jobs" SET "state" = 'dead', "error" = ?, "finished" = ?, "lease_until" = NULL WHERE "id" = ?`, msg, now.UnixMilli(), row.ID)
 	} else {
 		out.Next = now.Add(Backoff(row.Attempts))
-		rerr = record(env, store, base, `UPDATE "_alder_jobs" SET "state" = 'queued', "run_at" = ?, "error" = ?, "lease_until" = NULL WHERE "id" = ?`, out.Next.UnixMilli(), msg, row.ID)
+		rerr = record(reg, at, base, `UPDATE "_alder_jobs" SET "state" = 'queued', "run_at" = ?, "error" = ?, "lease_until" = NULL WHERE "id" = ?`, out.Next.UnixMilli(), msg, row.ID)
 	}
 	if rerr != nil {
 		out.Err = errors.Join(err, fmt.Errorf("jobs: recording the failure: %w", rerr))
@@ -135,10 +158,12 @@ func RunOne(env *eff.Env, k Kind, row Row) Outcome {
 	return out
 }
 
-// attempt decodes row's params and runs its Task followed by the done mark. decode is set when
-// k.Run could not decode them. A panic is the attempt's error (its first line), logged with its
-// stack at level "error"; eff.Run has rolled the transaction back by then.
-func attempt(env *eff.Env, k Kind, row Row) (err error, decode bool) {
+// attempt decodes row's params, binds env to the store k's jobs run on, and runs the job's Task
+// followed by the done mark when the row (in at's store) is in that store; apart is set when it
+// is not, and the caller marks it. decode is set when k.Run could not decode the params. A panic
+// is the attempt's error (its first line), logged with its stack at level "error"; eff.Run has
+// rolled the transaction back by then.
+func attempt(env *eff.Env, k Kind, row Row, at db.Place) (err error, decode, apart bool) {
 	defer func() {
 		if v := recover(); v != nil {
 			first, _, _ := strings.Cut(fmt.Sprint(v), "\n")
@@ -150,7 +175,18 @@ func attempt(env *eff.Env, k Kind, row Row) (err error, decode bool) {
 	}()
 	task, err := k.Run(env, row.Params)
 	if err != nil {
-		return err, true
+		return err, true, false
+	}
+	if err := db.Enter(env, k.SiloParam); err != nil {
+		return err, false, false
+	}
+	runs, err := db.RuntimeOn(env)
+	if err != nil {
+		return err, false, false
+	}
+	if !runs.Same(at) {
+		_, err = eff.Run(env, eff.KTask, task)
+		return err, false, true
 	}
 	done := eff.Call("Job.done", true, func(e *eff.Env) (struct{}, error) {
 		q, err := on(e)
@@ -161,30 +197,38 @@ func attempt(env *eff.Env, k Kind, row Row) (err error, decode bool) {
 		return struct{}{}, err
 	})
 	_, err = eff.Run(env, eff.KTask, eff.Bind(task, func(struct{}) eff.Task[struct{}] { return done }))
-	return err, false
+	return err, false, false
 }
 
-// record runs one statement on the jobs table of store in a transaction of its own (in the
-// test's transaction under env.Within), on ctx without its cancellation: a failure is recorded
-// even when the attempt was cancelled.
-func record(env *eff.Env, store eff.Store, ctx context.Context, stmt string, args ...any) error {
+// record runs one statement on the jobs table of at's store: in at.Tx when it is set (a test's
+// transaction), else in a transaction of its own, on ctx without its cancellation: a failure is
+// recorded even when the attempt was cancelled. A silo's store is the one open now (reg.Place),
+// not the one the row was claimed from, which the idle sweep may have closed since.
+func record(reg *db.Stores, at db.Place, ctx context.Context, stmt string, args ...any) error {
 	ctx = context.WithoutCancel(ctx)
-	if w := env.Within; w != nil && w.Tx != nil {
-		q, err := db.On(store, w.Tx)
+	if at.Key != "" && at.Tx == nil && reg != nil {
+		live, err := reg.Place(ctx, at.Key, at.Value)
+		if err != nil {
+			return err
+		}
+		at = live
+	}
+	if at.Tx != nil {
+		q, err := db.On(at.Store, at.Tx)
 		if err != nil {
 			return err
 		}
 		_, err = q.ExecContext(ctx, stmt, args...)
 		return err
 	}
-	if store == nil {
+	if at.Store == nil {
 		return errors.New("jobs: no store")
 	}
-	tx, err := store.Begin(ctx)
+	tx, err := at.Store.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	q, err := db.On(store, tx)
+	q, err := db.On(at.Store, tx)
 	if err == nil {
 		_, err = q.ExecContext(ctx, stmt, args...)
 	}
@@ -193,6 +237,15 @@ func record(env *eff.Env, store eff.Store, ctx context.Context, stmt string, arg
 		return err
 	}
 	return tx.Commit()
+}
+
+// workerArg is the worker a guarded statement expects to hold row: row.Worker, or NULL for a row
+// Test.work claimed (it names no worker).
+func workerArg(row Row) any {
+	if row.Worker == "" {
+		return nil
+	}
+	return row.Worker
 }
 
 // errTimedOut is the cause of an attempt's context when its kind's timeout ends it.

@@ -26,7 +26,8 @@ import (
 // the worker marks the row dead with it.
 //
 // Jobs() lists every job as a jobs.Kind, whose Run decodes the parameters and calls the job's
-// `run` arm. They are written to app__alder.go.
+// `run` arm; for a `silo k` job it first narrows the Env to the parameter k (db.Narrow), the
+// silo jobs.RunOne binds the Task to. They are written to app__alder.go.
 
 // jobCodecs are the codec functions the program's jobs need, in order of first need.
 type jobCodecs struct {
@@ -48,11 +49,19 @@ func (g *gen) jobsSource(p *ir.Program) string {
 		}
 		dec := g.recordDec(c, pt, rec.Fields, j.Params.Module, j.Params.Name)
 		g.recordEnc(c, pt, rec.Fields, j.Params.Module, j.Params.Name)
+		narrow := "" // `silo k`: the job's Env narrowed to its parameter k (Keys), which RunOne binds
+		if k := j.SiloParam; k != "" {
+			v := "p." + Field(k)
+			if g.boxed.has(j.Params.Module, j.Params.Name, k) {
+				v = "*" + v
+			}
+			narrow = "db.Narrow(e, " + strconv.Quote(k) + ", " + v + ")\n"
+		}
 		k := fmt.Sprintf("{\nName: %q,\nRun: func(e *eff.Env, params string) (eff.Task[struct{}], error) {\n"+
 			"v, err := std.JobParse(params)\nif err != nil {\nreturn eff.Task[struct{}]{}, err\n}\n"+
-			"p, err := %s(v, \"\")\nif err != nil {\nreturn eff.Task[struct{}]{}, err\n}\nreturn %s(p), nil\n},\n"+
+			"p, err := %s(v, \"\")\nif err != nil {\nreturn eff.Task[struct{}]{}, err\n}\n%sreturn %s(p), nil\n},\n"+
 			"Retries: %d,\nTimeout: %d, // %s\n",
-			j.Module+"."+j.Name, dec, GoName(j.Module, j.Name+".run"), j.Retries, int64(j.Timeout), j.Timeout)
+			j.Module+"."+j.Name, dec, narrow, GoName(j.Module, j.Name+".run"), j.Retries, int64(j.Timeout), j.Timeout)
 		if j.Every != 0 {
 			k += fmt.Sprintf("Every: %d, // %s\n", int64(j.Every), j.Every)
 		}

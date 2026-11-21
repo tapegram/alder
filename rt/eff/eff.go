@@ -223,9 +223,10 @@ type Env struct {
 }
 
 // AfterCommit has f called once the running Task's transaction has committed: rt/jobs wakes the
-// job workers after an enqueue, so a worker never looks for a row before it is visible. f is
-// dropped when the Task fails (its transaction is rolled back), and when the Task runs Within an
-// outer transaction (a test's: nothing commits it, and no worker runs). Called outside a running
+// job workers after an enqueue, so a worker never looks for a row before it is visible. A Task
+// on an Env without a Store has no transaction: f is called once it succeeds. f is dropped when
+// the Task fails (its transaction is rolled back), and when the Task runs Within an outer
+// transaction (a test's: nothing commits it, and no worker runs). Called outside a running
 // effect (the statement committed on its own), f is called at once.
 func (e *Env) AfterCommit(f func()) {
 	switch {

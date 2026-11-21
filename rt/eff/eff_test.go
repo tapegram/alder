@@ -612,3 +612,21 @@ func TestEnv_AfterCommit(t *testing.T) {
 		t.Fatal("outside Run: not run at once")
 	}
 }
+
+// A Task on an Env with no Store of its own (an app's Stores beside it, or none) has no
+// transaction to commit: AfterCommit's function runs once the Task has succeeded, and not when
+// it fails.
+func TestEnv_AfterCommitWithoutStore(t *testing.T) {
+	e := &Env{Ctx: context.Background(), Stores: struct{}{}}
+	ran := 0
+	hook := Call("Job.enqueue", true, func(e *Env) (int, error) {
+		e.AfterCommit(func() { ran++ })
+		return 1, nil
+	})
+	if _, err := Run(e, KTask, hook); err != nil || ran != 1 {
+		t.Fatalf("ran %d, err %v", ran, err)
+	}
+	if _, err := Run(e, KTask, Bind(hook, func(int) Task[int] { return Fail[int]("x") })); err == nil || ran != 1 {
+		t.Fatalf("failed Task: ran %d, err %v", ran, err)
+	}
+}

@@ -1,0 +1,14 @@
+module Reports
+
+import Org
+import Project
+
+-- A job that runs in an org's silo (#168): Jobs() narrows its Env to the `org` parameter, and
+-- the worker binds it there, so its insert lands in that org's database.
+job Digest = { org: Org.OrgId } silo org
+
+Digest.run : Digest.Params -> Task Unit
+Digest.run p = {
+  let _ <- Db.insert Project { name: "digest", org: p.org }
+  Task.succeed ()
+}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"alder/rt"
+	"alder/rt/db"
 	"alder/rt/eff"
 )
 
@@ -36,12 +37,17 @@ var newID = NewID
 // idTries times. With a key, the key is j.Kind's: while a row of the kind with that key is
 // queued or running, nothing is inserted and that row's id comes back; a done or dead row
 // releases the key. Parameters longer than MaxParams fail the Task (*eff.ErrFail). Once the
-// Task's transaction commits, a new row wakes this process's workers (Wake).
+// Task's transaction commits, a new row in a silo puts the silo in the active set of this
+// process's workers (spec §7), and a new row wakes them (Wake).
 func Enqueue(env *eff.Env, j rt.Job, runAt time.Time, key *string) (string, error) {
 	if len(j.Params) > MaxParams {
 		return "", &eff.ErrFail{Msg: fmt.Sprintf("Job.enqueue %s: its parameters take %d bytes; a job's parameters are at most 64 KB (%d bytes)", j.Kind, len(j.Params), MaxParams)}
 	}
-	q, err := on(env)
+	at, err := db.RuntimeOn(env)
+	if err != nil {
+		return "", err
+	}
+	q, err := db.On(at.Store, at.Tx)
 	if err != nil {
 		return "", err
 	}
@@ -59,7 +65,13 @@ func Enqueue(env *eff.Env, j rt.Job, runAt time.Time, key *string) (string, erro
 			return "", err
 		}
 		if n == 1 {
-			env.AfterCommit(Wake)
+			reg, _ := env.Stores.(*db.Stores)
+			env.AfterCommit(func() {
+				if at.Key != "" && reg != nil {
+					touch(reg, at.Key, at.Value)
+				}
+				Wake()
+			})
 			return id, nil
 		}
 		if key == nil {
@@ -83,33 +95,42 @@ type Status struct {
 	RunAt    *time.Time
 }
 
-// StatusOf is the status of job id in the store the effect running on env is bound to, nil when
-// there is no such row (never enqueued there, or pruned).
+// StatusOf is the status of job id, nil when there is no such row (never enqueued where it
+// looks, or pruned). It looks in the store the effect running on env is bound to and, in an app
+// with silos, in the shared store after a silo, or first in the silo of the org a page is
+// narrowed to (db.RuntimeReads): a row is where the Task that enqueued it was bound.
 func StatusOf(env *eff.Env, id string) (*Status, error) {
-	q, err := on(env)
+	places, err := db.RuntimeReads(env)
 	if err != nil {
 		return nil, err
 	}
-	var (
-		state  string
-		s      Status
-		runAt  int64
-		errTxt sql.NullString
-	)
-	err = q.QueryRowContext(ctxOf(env), `SELECT "state", "attempts", "error", "run_at" FROM "_alder_jobs" WHERE "id" = ?`, id).Scan(&state, &s.Attempts, &errTxt, &runAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+	for _, p := range places {
+		q, err := db.On(p.Store, p.Tx)
+		if err != nil {
+			return nil, err
+		}
+		var (
+			state  string
+			s      Status
+			runAt  int64
+			errTxt sql.NullString
+		)
+		err = q.QueryRowContext(ctxOf(env), `SELECT "state", "attempts", "error", "run_at" FROM "_alder_jobs" WHERE "id" = ?`, id).Scan(&state, &s.Attempts, &errTxt, &runAt)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		s.State = State(state)
+		if errTxt.Valid {
+			s.Error = &errTxt.String
+		}
+		if s.State == Queued {
+			t := time.UnixMilli(runAt).UTC()
+			s.RunAt = &t
+		}
+		return &s, nil
 	}
-	if err != nil {
-		return nil, err
-	}
-	s.State = State(state)
-	if errTxt.Valid {
-		s.Error = &errTxt.String
-	}
-	if s.State == Queued {
-		t := time.UnixMilli(runAt).UTC()
-		s.RunAt = &t
-	}
-	return &s, nil
+	return nil, nil
 }

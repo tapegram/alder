@@ -365,12 +365,12 @@ func (f *fn) variable(x *ir.Var, s *scope) string {
 		if _, isFun := x.Ty.(*types.Fun); isFun { // a function value, not called: instantiate it
 			return name + stdInstance(x.Module, x.Name, x.Ty)
 		}
-		// a stdlib constant is a Go function; Dict.empty needs its type arguments, Test.jobs
-		// and Test.work the app's jobs
+		// a stdlib constant is a Go function; Dict.empty needs its type arguments, Test.work
+		// the app's jobs
 		if app, ok := x.Ty.(*types.App); ok && app.Con == "Dict" {
 			return name + typeArgs(app.Args) + "()"
 		}
-		if x.Module == "Test" && (x.Name == "jobs" || x.Name == "work") {
+		if x.Module == "Test" && x.Name == "work" {
 			return name + "(Jobs())"
 		}
 		return name + "()"

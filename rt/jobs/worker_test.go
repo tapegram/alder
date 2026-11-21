@@ -528,3 +528,23 @@ func TestWorker_ZeroWorkers(t *testing.T) {
 		t.Fatalf("row %+v, Env called %v", r, called)
 	}
 }
+
+// A stop re-queues a row Test.work claimed, which names no worker (NULL), as the done mark
+// does: "worker" IS ?, not = ?.
+func TestRunOne_StopRequeuesRowWithNoWorker(t *testing.T) {
+	st := openFile(t)
+	env, _ := newEnv(st)
+	id := runEnqueue(t, env, welcome, nil)
+	if _, err := raw(t, st).ExecContext(context.Background(), `UPDATE "_alder_jobs" SET "state" = 'running', "attempts" = 1, "worker" = NULL WHERE "id" = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	env.Ctx = jobs.StoppedContext()
+	k := kind(eff.Call("Block", false, func(e *eff.Env) (struct{}, error) { return struct{}{}, e.Ctx.Err() }))
+	out := jobs.RunOne(env, k, jobs.Row{ID: id, Kind: k.Name, Attempts: 1})
+	if !out.Stopped {
+		t.Fatalf("outcome %+v, want stopped", out)
+	}
+	if r := read(t, st, id); r.state != "queued" || r.attempts != 0 {
+		t.Fatalf("after stop: %+v, want queued with 0 attempts", r)
+	}
+}

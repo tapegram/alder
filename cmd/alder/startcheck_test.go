@@ -137,8 +137,20 @@ func TestStartCheck_Binary(t *testing.T) {
 		}
 		return strings.Join(names, " ")
 	}
+	// jobsTable reports whether the shared database has the jobs table
+	jobsTable := func() bool {
+		t.Helper()
+		var n int
+		if err := f.DB("siloapp").QueryRow(`SELECT COUNT(*) FROM sqlite_schema WHERE "type" = 'table' AND "name" = '_alder_jobs'`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n == 1
+	}
 	if code, out := run(v1, remote, "--migrate-only"); code != 0 {
 		t.Fatalf("v1 --migrate-only: %d\n%s", code, out)
+	}
+	if !jobsTable() {
+		t.Fatal("--migrate-only left no _alder_jobs")
 	}
 
 	t.Run("Behind", func(t *testing.T) {
@@ -176,8 +188,18 @@ func TestStartCheck_Binary(t *testing.T) {
 	})
 
 	t.Run("Equal", func(t *testing.T) {
+		// a database migrated before the jobs table: the serving binary creates it at open. The
+		// Ahead build's streams go first (as Turso expires an idle one): a claim it was making
+		// when it was stopped may hold its transaction open.
+		f.ExpireStreams()
+		if _, err := f.DB("siloapp").Exec(`DROP TABLE "_alder_jobs"`); err != nil {
+			t.Fatal(err)
+		}
 		app := serveBin(t, v2, "ALDER_DB="+remote, "ALDER_BUILD=b2")
-		if code, body := get(t, app, "/_alder/health"); code != 200 || body != `{"build":"b2","db":"ok"}`+"\n" {
+		if !jobsTable() {
+			t.Fatal("serving left no _alder_jobs")
+		}
+		if code, body := get(t, app, "/_alder/health"); code != 200 || body != `{"build":"b2","db":"ok","jobs":"ok"}`+"\n" {
 			t.Fatalf("health: %d %q", code, body)
 		}
 		if code, body := get(t, app, "/"); code != 200 || !strings.Contains(body, "home") {
@@ -185,7 +207,7 @@ func TestStartCheck_Binary(t *testing.T) {
 		}
 		// the database goes away: 503 "unreachable", and nothing of the driver's error
 		f.Close()
-		if code, body := get(t, app, "/_alder/health"); code != 503 || body != `{"build":"b2","db":"unreachable"}`+"\n" {
+		if code, body := get(t, app, "/_alder/health"); code != 503 || body != `{"build":"b2","db":"unreachable","jobs":"ok"}`+"\n" {
 			t.Fatalf("health with the database gone: %d %q", code, body)
 		}
 	})

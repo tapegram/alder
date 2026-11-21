@@ -1390,3 +1390,176 @@ func TestStores_SiloJobsTable(t *testing.T) {
 		t.Fatalf("the silo holds %d job rows", n)
 	}
 }
+
+// A silo recreated in dev mode (the app's schema changed, no migrations) loses its job rows with
+// its tables, as the shared store's recreate does: a queued job would run against tables made
+// anew. A silo made before the jobs table existed is recreated too.
+func TestStores_SiloDevRecreateDeletesJobs(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	cfg := func(v int) StoresConfig {
+		c := siloConfig(t, dir, v)
+		c.Migrations, c.Dev = nil, true
+		return c
+	}
+	v1, _ := newStores(nil, cfg(1))
+	open := func(value string, jobs bool) *SQLite {
+		p, _ := SiloPath(dir, "org", value)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		f, err := OpenSQLite(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { f.Close() })
+		if st, _, err := v1.check(ctx, f, v1.silos["org"], false, true); err != nil || st != SiloOK {
+			t.Fatalf("%s %v", st, err)
+		}
+		if jobs {
+			if err := EnsureJobsTable(ctx, f.db); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.db.ExecContext(ctx, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created") VALUES ('0000000a', 'K', '{}', 'queued', 0, 0)`); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return f
+	}
+	withJobs, before := open("A", true), open("B", false)
+	v2, _ := newStores(nil, cfg(2))
+	for _, f := range []*SQLite{withJobs, before} {
+		st, detail, err := v2.check(ctx, f, v2.silos["org"], false, true)
+		if err != nil || st != SiloOK || !strings.Contains(detail, "recreated") {
+			t.Fatalf("%s %q %v", st, detail, err)
+		}
+	}
+	if n := rawCount(t, withJobs, `SELECT COUNT(*) FROM "_alder_jobs"`); n != 0 {
+		t.Fatalf("the recreated silo holds %d job rows", n)
+	}
+}
+
+// A job worker's poll of a silo's jobs table is not a use (spec §7): a silo polled with nothing
+// queued still closes at its idle time, and a poll without open does not open it again; while a
+// poll holds its store, the sweep leaves it open.
+func TestIdleClose_IgnoresWorkerPoll(t *testing.T) {
+	dir := t.TempDir()
+	s := openApp(t, dir, 1)
+	s.cfg.IdleClose = 50 * time.Millisecond
+	ctx := context.Background()
+	if _, err := s.silo(ctx, "org", "A"); err != nil { // a request's use
+		t.Fatal(err)
+	}
+	sweep := func() { // a use of B sweeps (at most once a minute: the test lets it now)
+		t.Helper()
+		s.mu.Lock()
+		s.swept = time.Time{}
+		s.mu.Unlock()
+		if _, err := s.silo(ctx, "org", "B"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	open := func() bool {
+		ps, err := s.OpenSilos(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range ps {
+			if p.Value == "A" {
+				return true
+			}
+		}
+		return false
+	}
+
+	// held by a poll past its idle time: not closed under it
+	p, release, err := s.Poll(ctx, "org", "A", false)
+	if err != nil || p.Store == nil {
+		t.Fatalf("poll: %+v %v", p, err)
+	}
+	time.Sleep(60 * time.Millisecond)
+	sweep()
+	if !open() {
+		t.Fatal("the sweep closed a silo a poll holds")
+	}
+	release()
+
+	// polled every few milliseconds and used by nothing else: a poll's sweep (at most once per
+	// IdleClose, as it is shorter than a minute) closes it at its idle time all the same
+	closed := false
+	for t0 := time.Now(); !closed && time.Since(t0) < 2*time.Second; time.Sleep(5 * time.Millisecond) {
+		p, release, err := s.Poll(ctx, "org", "A", false)
+		if err != nil {
+			t.Fatalf("poll: %v", err)
+		}
+		closed = p.Store == nil
+		release()
+	}
+	if !closed || open() {
+		t.Fatal("a silo only the workers polled was not closed at its idle time")
+	}
+	if p, _, err := s.Poll(ctx, "org", "A", false); err != nil || p.Store != nil || p.Value != "A" {
+		t.Fatalf("a poll without open: %+v %v", p, err)
+	}
+	if open() {
+		t.Fatal("a poll without open opened the silo")
+	}
+	if p, release, err := s.Poll(ctx, "org", "A", true); err != nil || p.Store == nil {
+		t.Fatalf("a poll with open: %+v %v", p, err)
+	} else {
+		release()
+	}
+	if !open() {
+		t.Fatal("a poll with open did not open the silo")
+	}
+}
+
+// A silo in maintenance (pending-data-loss) is not polled: a poll, even with open, is its
+// *MaintenanceError, and it gets no jobs table (only a silo opened in state ok does). The start
+// scan reads it without changing it.
+func TestMaintenanceSilo_NotPolled(t *testing.T) {
+	dir := t.TempDir()
+	makeSilo(t, dir, 1, "old") // a silo made before the jobs table, behind a migration that drops data
+	s := openApp(t, dir, 3)
+	ctx := context.Background()
+	for _, open := range []bool{true, false} {
+		var me *MaintenanceError
+		p, release, err := s.Poll(ctx, "org", "old", open)
+		release()
+		if !errors.As(err, &me) || me.State != SiloDataLoss || p.Store != nil {
+			t.Fatalf("poll (open %v): %+v %v", open, p, err)
+		}
+	}
+	var seen []string
+	if err := s.ScanSilos(ctx, func(key, value string, q Execer) error {
+		seen = append(seen, key+"/"+value)
+		_, err := q.ExecContext(ctx, `CREATE TABLE "x" ("a" TEXT)`) // read-only
+		if err == nil {
+			t.Error("the scan's database is writable")
+		}
+		return nil
+	}); err != nil || len(seen) != 1 || seen[0] != "org/old" {
+		t.Fatalf("scan: %q %v", seen, err)
+	}
+	f, err := OpenSQLite(filepath.Join(dir, "silos", "org", SiloFileName("old")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if ok, err := tableExists(ctx, f.db, "_alder_jobs"); err != nil || ok {
+		t.Fatalf("the silo in maintenance has a jobs table: %v %v", ok, err)
+	}
+
+	// a served silo opened by a poll gets one
+	if _, release, err := s.Poll(ctx, "org", "fresh", true); err != nil {
+		t.Fatal(err)
+	} else {
+		release()
+	}
+	g, err := OpenSQLite(filepath.Join(dir, "silos", "org", SiloFileName("fresh")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	if ok, err := tableExists(ctx, g.db, "_alder_jobs"); err != nil || !ok {
+		t.Fatalf("the served silo has no jobs table: %v %v", ok, err)
+	}
+}

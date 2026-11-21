@@ -1169,8 +1169,9 @@ a Fly app with a token like any other.
 
 The job metrics count this process's attempts: `alder_jobs_running` is the
 attempts running in it now, and `alder_jobs_queued` the jobs of every kind
-queued and due now in the shared database (it is left out when the process
-runs no workers, `ALDER_JOBS=0`, and from a scrape in which the count fails).
+queued and due now in the shared database and in the silos its workers
+look in (it is left out when the process runs no workers, `ALDER_JOBS=0`,
+and from a scrape in which the shared database's count fails).
 
 Every label comes from a set the program fixes, never from a request:
 
@@ -1277,8 +1278,8 @@ say the app is being used: the access lines do.
 answers `{"build":"<id>","db":"ok"}`). It is the state of this process's
 job workers: `"ok"`; `"off"` when
 it runs none (`ALDER_JOBS=0`); or `"stalled"` when a job it runs has been
-due for more than five minutes and its workers have claimed nothing in
-that time. It never changes the status: a stalled queue is something to
+due for more than five minutes, in the shared database or a silo its
+workers look in, and its workers have claimed nothing in that time. It never changes the status: a stalled queue is something to
 look at, not a reason to take the instance out of service.
 
 The access lines answer "is it alive?"; the counters behind "how many,

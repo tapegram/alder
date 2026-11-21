@@ -784,7 +784,8 @@ func TestTest_Rules(t *testing.T) {
 }
 
 // TestTest_Silos runs testdata/corpus/silo-ok's tests — Test.run of a page's update runs on the
-// store of the message's arm (Tag's shared one beside the `_` arm's silo), as the request does —
+// store of the message's arm (Tag's shared one beside the `_` arm's silo), as the request does;
+// Test.jobs and Test.work cover the test silos beside the shared store (#168) —
 // and then a Test.run whose Task writes two stores, which fails as the request would (C1: the
 // one-store rule holds for a test's own Tasks, not only for the checker's arms).
 func TestTest_Silos(t *testing.T) {
@@ -801,7 +802,8 @@ func TestTest_Silos(t *testing.T) {
 		"ok   Projects.Index \"labels are scoped by org in the shared store\"\n",
 		"ok   Projects.Index \"Test.run of Tag writes the shared store, of Seed the org's\"\n",
 		"ok   Orgs \"a non-member's switch from the form is the form's error\"\n",
-		"23 passed, 0 failed\n",
+		"ok   Reports \"Test.work runs a silo's job and the shared store's, oldest first\"\n",
+		"24 passed, 0 failed\n",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("missing %q in\n%s\nstderr: %s", want, stdout, stderr)

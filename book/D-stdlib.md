@@ -2474,8 +2474,12 @@ status : Id -> Query (Maybe Status)
 
 The status of the job with this id, `Nothing` when there is no such job.
 
-It reads the store the `Query` is bound to, so a job queued in another store is `Nothing`
-here.
+A job is stored where the `Task` that queued it writes: in an app with silos, the silo a
+route's `update` writes in, else the shared store. `Job.status` looks first in the silo its
+page `requires` (or its `Task` writes in), then in the shared store, so a page that requires
+what the queueing route requires finds the job. A job in another silo is `Nothing` here, and
+so is a job removed after it finished (a week after `Done`, 30 days after `Dead`; in a silo,
+once a job there is queued or runs after that, or at the latest when the app next starts).
 
 ```alder fragment
 \(id : Job.Id) ->

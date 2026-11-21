@@ -482,6 +482,26 @@ Deferred findings from PR 1's task and final reviews, each with the task that ow
   `cron.Parse` doc say "names the field at fault" — not for the field-count error.
 - **Follow-up issue:** accept day of week `7` as Sunday — filed as #279.
 
+## Carried from PR 4's reviews
+
+- **Task 15 (`--jobs-only`):** web instances with `ALDER_JOBS=0` build no active set, so a silo job
+  enqueued on a web instance reaches the `--jobs-only` worker only at its next start scan. PR 5 must
+  design this (periodic rescan of SiloFiles/StatusSilos, or a shared record of touched silos).
+- **Task 21 (book/spec):** amend spec §7 "a silo leaves the set after an hour with no row due" →
+  "with no row queued or running" (ruling: a row on a backoff or `enqueueAt` keeps its silo in the
+  set; a closed silo is reopened only when a row is due). Amend spec §2/§7: an enqueue-only
+  `requires org` route (writes nothing) is bound to the shared store, so its row lands there. Book:
+  a `silo k` job that writes shared tables is E0031.
+- **Any PR (cleanup):** a metrics scrape or health check may open a closed silo with a due row;
+  the kept/add race can clear `busy` on a just-touched silo (recovers at the next housekeeping); the
+  start scan runs before the first housekeeping (slow on many Turso children);
+  `TestStartCheck_Binary/Equal`'s SQLITE_BUSY is worked around with `ExpireStreams`, not explained; a
+  concurrent claim can re-add a forgotten claimLog entry; a test-runtime silo arm's `Test.run` that
+  enqueues before its first write lands in `Keys[SiloKey]` or shared; test gaps: test-mode
+  `RuntimeReads` silo→shared read, same-store in-Task mark for a test-silo row,
+  `SiloDevRecreateDeletesJobs` does not assert the before-silo has a jobs table; `rt/testing`
+  `TestMutate_Continuation` fails under `-race` on main (pre-existing).
+
 ## PR 2: the worker
 
 ### Task 7: Split `Serve`; `ALDER_JOBS`

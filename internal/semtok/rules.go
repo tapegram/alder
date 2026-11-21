@@ -147,6 +147,16 @@ func (w *walker) rule(n syntax.Spanned) {
 		}
 	case *syntax.PageDecl: // `requires user, org, role R | S, silo k`
 		w.guard(&n.Guard)
+	case *syntax.JobDecl: // `job J = { … } silo k`: the key as in `requires …, silo k` (the option
+		// names stay variables, as in queries/neovim/highlights.scm's job_option)
+		ts := w.in(n.Span)
+		for _, o := range n.Options {
+			for i, t := range ts[:max(len(ts)-1, 0)] {
+				if o.Name == "silo" && pos(t) == o.Pos && ts[i+1].Kind == syntax.LIdent {
+					w.set(ts[i+1], TProperty, 0)
+				}
+			}
+		}
 	case *syntax.SiloDecl: // `silo k { T, U }`
 		w.keywordAt(n.Span)
 		if t, ok := w.first(n.KeySpan); ok {

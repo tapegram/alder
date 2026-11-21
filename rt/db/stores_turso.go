@@ -405,6 +405,18 @@ func PruneSilos(ctx context.Context, cfg StoresConfig, names []string, out io.Wr
 	return kept, nil
 }
 
+// ---- the runtime's own tables in the shared database on Turso
+
+// EnsureRuntimeTables creates, in the shared database st on Turso, the runtime's own tables a
+// serving binary needs, which it does not migrate on start (Open checks it with CheckShared,
+// which creates nothing): the jobs table (EnsureJobsTable), as `alder deploy`'s --migrate-only
+// does (MigrateLog, Ensure), so a database migrated before the jobs table gets it when the
+// first build with jobs opens it. _alder_lock is made where it is used (TakeLock). It is
+// idempotent, and leaves a table a newer build made as it is.
+func EnsureRuntimeTables(ctx context.Context, st *SQLite) error {
+	return EnsureJobsTable(ctx, st.db)
+}
+
 // ---- the deploy lock of a database on Turso
 
 const createLockTable = `CREATE TABLE IF NOT EXISTS "_alder_lock" ("key" TEXT NOT NULL PRIMARY KEY, "holder" TEXT NOT NULL, "expires" TEXT NOT NULL)`

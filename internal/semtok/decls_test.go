@@ -26,6 +26,8 @@ session { user: User.UserId, org: Maybe Org.OrgId via Membership }
 
 silo org { Project, Task }
 
+job Digest = { org: Org.OrgId } silo org
+
 choose org = Orgs.Index
 
 login = Auth.Login
@@ -98,6 +100,8 @@ func TestDecls(t *testing.T) {
 		{"silo org {", 5, TProperty, 0},
 		{"{ Project, Task }", 2, TType, 0},
 		{"{ Project, Task }", 11, TType, 0},
+		{"OrgId } silo org", 8, TVariable, 0},
+		{"OrgId } silo org", 13, TProperty, 0},
 		{"choose org = Orgs.Index", 0, TKeyword, 0},
 		{"choose org = Orgs.Index", 7, TProperty, 0},
 		{"choose org = Orgs.Index", 13, TNamespace, 0},

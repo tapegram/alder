@@ -84,7 +84,9 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 			sp = name
 		}
 		env.Tx = w.Tx
-	case kind == KTask && env.Store != nil:
+	case kind == KTask && env.Store == nil:
+		env.afterCommit = new([]func()) // nothing to commit: run once the Task succeeds
+	case kind == KTask:
 		env.afterCommit = new([]func())
 		store := env.Store
 		env.beginTx = func() (Tx, error) {

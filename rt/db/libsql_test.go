@@ -458,3 +458,52 @@ func TestTurso_CreateExists(t *testing.T) {
 		t.Fatal("not an exists")
 	}
 }
+
+// The shared database on Turso gets the jobs table from `alder deploy`'s --migrate-only
+// (MigrateLog) and, when it was migrated before the table existed, from the serving binary's
+// open (EnsureRuntimeTables after CheckShared, which creates nothing).
+func TestTurso_CreatesJobsTable(t *testing.T) {
+	f := tursofake.New(t, "acme")
+	path := tursoEnv(t, f)
+	cfg := siloConfig(t, "", 1)
+	ctx := context.Background()
+	st, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	has := func() bool {
+		t.Helper()
+		ok, err := tableExists(ctx, f.DB("blog"), "_alder_jobs")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	if _, err := st.MigrateLog(ctx, cfg.Tables, cfg.Migrations, false, nil); err != nil { // --migrate-only
+		t.Fatal(err)
+	}
+	if !has() {
+		t.Fatal("--migrate-only left no _alder_jobs")
+	}
+	if _, err := f.DB("blog").Exec(`DROP TABLE "_alder_jobs"`); err != nil { // migrated by an older alder
+		t.Fatal(err)
+	}
+	serving, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serving.Close()
+	if state, detail, err := CheckShared(ctx, serving, cfg.Tables, cfg.Migrations); err != nil || state != SharedOK {
+		t.Fatalf("check: %s %s %v", state, detail, err)
+	}
+	if has() {
+		t.Fatal("CheckShared created the table")
+	}
+	if err := EnsureRuntimeTables(ctx, serving); err != nil {
+		t.Fatal(err)
+	}
+	if !has() {
+		t.Fatal("opening the store left no _alder_jobs")
+	}
+}

@@ -25,7 +25,8 @@
 //     writes nothing).
 //  4. A fake's entry is checked the same way (as one arm).
 //  5. A job's `run` (#168) is one arm, checked the same way: writes in two stores are E0031.
-//     Its store is its `silo k`'s, else shared; a silo's table written from any other job is
+//     Its store is its `silo k`'s, else shared: a `silo k` job that writes a shared table is
+//     E0031 too (the worker binds it to its silo); a silo's table written from any other job is
 //     E0026 (rules.go), where it is written.
 //
 // Session.put and capability calls are not writes to either store (the cookie; the adapter).
@@ -40,6 +41,7 @@
 package check
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -182,8 +184,13 @@ func (c *Checker) checkWriteSets() {
 			if vd == nil || vd.Body == nil {
 				continue
 			}
-			if groups := c.storeGroups(writesOf(vd.Body)); len(groups) > 1 {
+			switch groups := c.storeGroups(writesOf(vd.Body)); {
+			case len(groups) > 1:
 				c.errorf(diag.WriteStores, vd.Span, "%s", c.mixMessage("`"+vd.FullName()+"`", "job", groups))
+			case len(groups) == 1 && j.Silo != "" && groups[0].silo == "":
+				// a `silo k` job runs in its silo (the worker binds it there): a shared write
+				// is a second store, as it is for a route whose arm is the silo's
+				c.errorf(diag.WriteStores, vd.Span, "%s", siloJobMessage("`"+vd.FullName()+"`", j.Silo, groups[0].tables))
 			}
 		}
 	}
@@ -250,6 +257,17 @@ func (c *Checker) mixMessage(name, from string, groups []storeGroup) string {
 		hint = "Write " + shared + " inside the silo, or send it from its own " + from + "."
 	}
 	return name + " writes " + andList(parts) + ": a Task writes to one store. " + hint
+}
+
+// siloJobMessage is E0031's text for the `run` (name) of a `silo k` job that writes the shared
+// tables tables: the job runs in its silo, so they are a second store.
+func siloJobMessage(name, key string, tables []string) string {
+	ts := make([]string, len(tables))
+	for i, t := range tables {
+		ts[i] = "`" + t + "`"
+	}
+	return fmt.Sprintf("%s writes %s (shared), but a job with `silo %s` runs in its %s's silo: a Task writes to one store. "+
+		"Write %s from a job without `silo %s` (this job may enqueue one), or keep the write in the silo.", name, andList(ts), key, key, andList(ts), key)
 }
 
 // andList joins items as "a", "a and b", "a, b and c".

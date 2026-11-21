@@ -32,6 +32,10 @@ type housekeeper struct {
 	log    func(level, msg string)
 	mu     sync.Mutex
 	warned map[string]bool // the unknown kinds already warned about
+	// silos, when set, keeps the silos' tables too: it runs keep, their expired leases and their
+	// pruning, on each silo of the active set (pool.keepSilos). Ticks are only ever in the
+	// shared store.
+	silos func(ctx context.Context, now time.Time, keep func(db.Execer) error)
 }
 
 func newHousekeeper(s eff.Store, kinds []Kind, log func(level, msg string)) *housekeeper {
@@ -53,7 +57,9 @@ func newHousekeeper(s eff.Store, kinds []Kind, log func(level, msg string)) *hou
 //     a warn line, once per kind;
 //   - each scheduled kind without a queued tick gets one (EnsureTicks).
 //
-// An error is a warn line; the next run tries again.
+// Then, in each silo h.silos keeps, the expired leases and the pruning; nothing about ticks or
+// unknown kinds, which concern the shared store's ticks and rows alone. An error is a warn line;
+// the next run tries again.
 func (h *housekeeper) run(ctx context.Context, now time.Time) {
 	if !h.mu.TryLock() {
 		return
@@ -64,8 +70,7 @@ func (h *housekeeper) run(ctx context.Context, now time.Time) {
 		err = h.leases(ctx, q, now)
 	}
 	if err == nil {
-		_, err = q.ExecContext(ctx, `DELETE FROM "_alder_jobs" WHERE ("state" = 'done' AND COALESCE("finished", "created") < ?) OR ("state" = 'dead' AND COALESCE("finished", "created") < ?)`,
-			now.Add(-KeepDone).UnixMilli(), now.Add(-KeepDead).UnixMilli())
+		err = prune(ctx, q, now)
 	}
 	if err == nil {
 		err = h.unknownTicks(ctx, q, now)
@@ -79,6 +84,23 @@ func (h *housekeeper) run(ctx context.Context, now time.Time) {
 	if err != nil && ctx.Err() == nil {
 		h.log("warn", "jobs: housekeeping: "+err.Error())
 	}
+	if h.silos == nil {
+		return
+	}
+	h.silos(ctx, now, func(q db.Execer) error {
+		if err := h.leases(ctx, q, now); err != nil {
+			return err
+		}
+		return prune(ctx, q, now)
+	})
+}
+
+// prune deletes the done rows finished more than KeepDone before now and the dead ones more
+// than KeepDead before.
+func prune(ctx context.Context, q db.Execer, now time.Time) error {
+	_, err := q.ExecContext(ctx, `DELETE FROM "_alder_jobs" WHERE ("state" = 'done' AND COALESCE("finished", "created") < ?) OR ("state" = 'dead' AND COALESCE("finished", "created") < ?)`,
+		now.Add(-KeepDone).UnixMilli(), now.Add(-KeepDead).UnixMilli())
+	return err
 }
 
 // leases re-queues (or makes dead) every running row whose lease ended before now.

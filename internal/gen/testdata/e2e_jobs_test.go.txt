@@ -228,6 +228,20 @@ func TestApp_Open(t *testing.T) {
 		t.Fatalf("job lines %+v, want the one attempt of %s, done", lines, id)
 	}
 	mu.Unlock()
+	// web.Options.EnvFor, when set, makes a job's Env as it makes a request's, without a session
+	mine := &eff.Env{Session: "kept?"}
+	a.web.EnvFor = func(ctx context.Context, session any) *eff.Env {
+		if session != nil {
+			t.Fatalf("EnvFor given session %v", session)
+		}
+		mine.Ctx = ctx
+		return mine
+	}
+	ctx := context.Background()
+	if env := a.JobEnv(ctx, jobs.Kind{}); env != mine || env.Ctx != ctx || env.Session != nil {
+		t.Fatalf("JobEnv with EnvFor = %+v", env)
+	}
+	a.web.EnvFor = nil
 	if err := a.Close(); err != nil {
 		t.Fatal(err)
 	}

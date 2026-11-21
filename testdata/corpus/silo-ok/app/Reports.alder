@@ -1,0 +1,89 @@
+module Reports
+
+import Membership
+import Org
+import Project
+import User
+
+-- Jobs in an app with silos (#168): Queue writes the org's silo, so the job it queues is stored
+-- there; Digest runs in the silo its `org` names, wherever its row is.
+route Index = GET  "/reports" { } requires user, org
+route Queue = POST "/reports" { } requires user, org
+
+job Ping = {}
+
+Ping.run : Ping.Params -> Task Unit
+Ping.run p = Task.succeed ()
+
+job Digest = { org: Org.OrgId } silo org
+
+Digest.run : Digest.Params -> Task Unit
+Digest.run p = {
+  let _ <- Db.insert Project { name: "digest", org: p.org }
+  Task.succeed ()
+}
+
+Index.load : Index.Params -> Session -> Query (List Text)
+Index.load params session = {
+  let projects <-
+    Db.scoped Project
+      |> Db.orderBy Project.name.asc
+      |> Db.all
+  Query.succeed (List.map (\p -> p.name) projects)
+}
+
+Queue.update : Queue.Params -> Session -> Task Response
+Queue.update params session = {
+  let _ <- Db.insertScoped Project { name: "queued" }
+  let _ <- Job.enqueue (Ping {})
+  Task.succeed Response.refresh
+}
+
+Index.view : List Text -> Session -> Html
+Index.view names session =
+  <html>
+    <body>
+      <button click={Queue}>queue</button>
+      <ul>{for n in names -> <li>{n}</li>}</ul>
+    </body>
+  </html>
+
+-- Ping is queued by a request in org A's silo, Digest a second later in the shared store: both
+-- are listed and run, oldest first across the stores; the test's own body, bound to no silo,
+-- does not see Ping's row (Job.status reads the shared store), and Digest's project lands in A.
+test "Test.work runs a silo's job and the shared store's, oldest first" = {
+  let me <- Db.insert User { name: "Me" }
+  let a <- Db.insert Org { name: "A" }
+  let _ <- Db.insert Membership { user: me, org: a }
+  let _ <- Test.login { user: Just me, org: Just a }
+  let _ <- Test.get (Index {})
+  let _ <- Test.click Queue
+  let _ <- Test.advance 1000
+  let _ <- Job.enqueue (Digest { org: a })
+  let before <- Test.jobs
+  let ping <- Task.succeed (List.head (List.filter (\j -> j.job == Ping {}) before))
+  let here <- match ping {
+    Just j -> Job.status j.id,
+    Nothing -> Query.succeed Nothing,
+  }
+  let runs <- Test.work
+  let after <- Test.jobs
+  let page <- Test.get (Index {})
+  Task.succeed (
+    {
+      before: List.map (\j -> j.job) before,
+      here: here,
+      ran: List.map (\r -> r.job) runs,
+      results: List.map (\r -> r.result) runs,
+      after: List.map (\j -> j.status.state) after,
+      projects: page.model,
+    } == {
+      before: [Ping {}, Digest { org: a }],
+      here: Nothing,
+      ran: [Ping {}, Digest { org: a }],
+      results: [Ok (), Ok ()],
+      after: [Done, Done],
+      projects: ["digest", "queued"],
+    }
+  )
+}

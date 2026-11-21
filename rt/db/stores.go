@@ -161,6 +161,9 @@ type siloDB struct {
 	// opener's alone, and every other request for the silo waits on it (only it).
 	ready chan struct{}
 	used  atomic.Int64 // unix nanoseconds of its last use, for the idle eviction
+	// polls is how many of the job workers' looks at its jobs table hold its store now (Poll),
+	// under Stores.mu: the sweep does not close it under them, though they are not a use.
+	polls int
 }
 
 // recheck is how long a silo found not servable stays so before a request opens it again (an
@@ -489,19 +492,21 @@ func isReady(d *siloDB) bool {
 	}
 }
 
-// sweep (under s.mu, at most once a minute) closes the silos unused for IdleClose (M2): not a
-// test's, whose transaction stays open. A Task holding one runs far shorter than that.
+// sweep (under s.mu, at most once a minute, or once per IdleClose when that is shorter) closes
+// the silos unused for IdleClose (M2): not a test's, whose transaction stays open, nor one a job
+// worker's poll holds (Poll). A Task holding one runs far shorter than that. A worker's poll is
+// not a use: a silo only the workers look at is closed all the same.
 func (s *Stores) sweep(now time.Time) {
-	if s.test || now.Sub(s.swept) < time.Minute {
-		return
-	}
-	s.swept = now
 	idle := s.cfg.IdleClose
 	if idle <= 0 {
 		idle = idleClose
 	}
+	if s.test || now.Sub(s.swept) < min(time.Minute, idle) {
+		return
+	}
+	s.swept = now
 	for id, d := range s.open {
-		if isReady(d) && d.state == SiloOK && d.tx == nil && now.Sub(time.Unix(0, d.used.Load())) > idle {
+		if isReady(d) && d.state == SiloOK && d.tx == nil && d.polls == 0 && now.Sub(time.Unix(0, d.used.Load())) > idle {
 			d.close()
 			delete(s.open, id)
 		}
@@ -809,6 +814,16 @@ func (s *Stores) check(ctx context.Context, st *SQLite, ss *siloSchema, allowDat
 		}
 		for _, n := range existing {
 			if _, err := tx.ExecContext(ctx, "DROP TABLE "+quote(n)); err != nil {
+				return "", "", err
+			}
+		}
+		// the job rows go with the tables dropped, as the shared store's recreate does
+		// (recreateTx); a silo made before the jobs table gets it here
+		if len(existing) > 0 {
+			if err := EnsureJobsTable(ctx, tx); err != nil {
+				return "", "", err
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM "_alder_jobs"`); err != nil {
 				return "", "", err
 			}
 		}
@@ -1250,6 +1265,230 @@ func (s *Stores) TestSilo(key, value string) *SQLite {
 		return d.store
 	}
 	return nil
+}
+
+// ---- the runtime's own tables (rt/jobs)
+
+// Place is a store and the transaction statements on it run in (nil: none; a statement runs on
+// its own, or in a transaction its caller begins): where rt/jobs reads and writes a job row. Key
+// and Value name it: a silo's key and value, "" for the shared store. Two Places are the same
+// database when they name the same one, even when the idle sweep closed the silo and it was
+// opened again in between (a new Store); Stores.Place gives a silo's Place as it is open now.
+type Place struct {
+	Store      eff.Store
+	Tx         eff.Tx
+	Key, Value string
+}
+
+// Same reports whether p and q are the same database: the same silo, or both the shared store.
+func (p Place) Same(q Place) bool { return p.Key == q.Key && p.Value == q.Value }
+
+// OpenSilos are the Places of the silos open now and served (state ok), by key then value,
+// each with its store (Tx nil): Test.work looks in their jobs tables (the job workers poll their
+// active set instead, through Poll). Listing a silo is not a use of it; the idle sweep may close
+// it at any time after (Place opens it again). In a test (NewTestStores) each comes with its transaction for the
+// test, begun (with the savepoints open elsewhere) when the test had not used it yet.
+func (s *Stores) OpenSilos(ctx context.Context) ([]Place, error) {
+	var out []Place
+	s.mu.Lock()
+	for _, d := range s.open {
+		if isReady(d) && d.state == SiloOK {
+			out = append(out, Place{Store: d.store, Key: d.key, Value: d.value})
+		}
+	}
+	s.mu.Unlock()
+	slices.SortFunc(out, func(a, b Place) int {
+		if c := strings.Compare(a.Key, b.Key); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Value, b.Value)
+	})
+	if s.test {
+		for i := range out {
+			st, tx, err := s.testSilo(ctx, out[i].Key, out[i].Value)
+			if err != nil {
+				return nil, err
+			}
+			out[i].Store, out[i].Tx = st, tx
+		}
+	}
+	return out, nil
+}
+
+// Place is the Place of silo key's value as it is open now: opened (and checked) again when the
+// idle sweep closed it; in a test, with its transaction. A silo not served is its
+// *MaintenanceError.
+func (s *Stores) Place(ctx context.Context, key, value string) (Place, error) {
+	if s.test {
+		st, tx, err := s.testSilo(ctx, key, value)
+		return Place{Store: st, Tx: tx, Key: key, Value: value}, err
+	}
+	d, err := s.silo(ctx, key, value)
+	if err != nil {
+		return Place{}, err
+	}
+	return Place{Store: d.store, Key: key, Value: value}, nil
+}
+
+// Poll is the Place of silo key's value for a look at its jobs table by the job workers (spec
+// §7), which is not a use of it: the idle sweep closes a silo after IdleClose without a use,
+// however often the workers look. A silo open and served now is given as it is, and the sweep
+// leaves it open until release is called. One that is not open (never opened since the start,
+// or closed by the sweep) is opened (and checked, as a request opens it: a migration it is
+// behind by is applied, and it gets its jobs table) when open is set, the opening counting as a
+// use; without open, the Place's Store is nil. A silo not served is its *MaintenanceError (one
+// found so within recheck is not opened again); one whose key row is gone, eff.ErrNotFound.
+// release is never nil. In a test (NewTestStores), Place.
+func (s *Stores) Poll(ctx context.Context, key, value string, open bool) (p Place, release func(), err error) {
+	release = func() {}
+	if s.test {
+		p, err = s.Place(ctx, key, value)
+		return p, release, err
+	}
+	id := key + "/" + value
+	now := time.Now()
+	s.mu.Lock()
+	s.sweep(now)
+	d := s.open[id]
+	if d != nil && isReady(d) {
+		switch {
+		case d.state == SiloOK:
+			d.polls++
+			s.mu.Unlock()
+			release = func() {
+				s.mu.Lock()
+				d.polls--
+				s.mu.Unlock()
+			}
+			return Place{Store: d.store, Key: key, Value: value}, release, nil
+		case now.Sub(d.checked) <= recheckAfter() || !open:
+			s.mu.Unlock()
+			return Place{}, release, &MaintenanceError{Key: key, Value: value, State: d.state, Detail: d.detail}
+		}
+	}
+	s.mu.Unlock()
+	if !open {
+		return Place{Key: key, Value: value}, release, nil
+	}
+	p, err = s.Place(ctx, key, value)
+	return p, release, err
+}
+
+// ScanSilos calls f with every silo database of every key — the files under Dir, or the
+// children on Turso — each opened read-only apart from the silos served: not checked, not
+// migrated, not a use, and closed after f. It is the job workers' look at every silo's jobs
+// table at their start (spec §7: SiloFiles, or the children StatusSilos lists). A database that
+// cannot be opened, or whose f fails, is an error joined to the result; the others are still
+// scanned. With the silos in memory, and in a test, there are none.
+func (s *Stores) ScanSilos(ctx context.Context, f func(key, value string, q Execer) error) error {
+	if s.test || (s.remote == nil && s.cfg.Dir == "") {
+		return nil
+	}
+	es, err := s.entries(ctx)
+	errs := []error{err}
+	for _, e := range es {
+		if ctx.Err() != nil {
+			break
+		}
+		st, err := s.openEntry(ctx, e, true)
+		if err == nil {
+			err = f(e.key, e.value, recQ{st.db})
+			st.Close()
+		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("silo %s/%s: %w", e.key, e.value, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// RuntimeOn is the Place the effect running on e writes the runtime's own tables in (rt/jobs:
+// Job.enqueue's row, a job's done mark): e.Store, which is a silo's once db.Enter bound the Task
+// to one, and the Task's transaction (e.Transaction: begun on first use; e.Tx in a Query). In a
+// test of an app with silos e.Store stays the TestStore whatever the Task is bound to, so a Task
+// bound to a silo gets that test silo's store and transaction, as its siloed rows do: the silo
+// of SiloKey's value (SiloValue; while Test.run's Task has not bound one yet, the value e is
+// narrowed to in Env.Keys; with neither, the shared store's).
+func RuntimeOn(e *eff.Env) (Place, error) {
+	if reg, key, value := testBound(e); reg != nil {
+		return reg.Place(envCtx(e), key, value)
+	}
+	tx, err := e.Transaction()
+	p := Place{Store: e.Store, Tx: tx}
+	if r, _ := e.Stores.(*Stores); r != nil && !r.test { // a test's Store is the shared one here
+		p.Key, p.Value = e.SiloKey, e.SiloValue
+	}
+	return p, err
+}
+
+// RuntimeReads are the Places a read of the runtime's own tables by the effect running on e
+// looks in, in order (Job.status): RuntimeOn's; then, when that is a silo's, the shared store
+// (outside the transaction; in a test through the test's); or, when it is the shared store and e
+// is narrowed to a value of a silo's key (Env.Keys: a page's `requires org`, whose `load` no
+// db.Enter binds), that silo first, as a read of one of the silo's tables goes there. A narrowed
+// silo whose key row does not exist is left out; one that is not served is its
+// *MaintenanceError.
+func RuntimeReads(e *eff.Env) ([]Place, error) {
+	first, err := RuntimeOn(e)
+	if err != nil {
+		return nil, err
+	}
+	reg, _ := e.Stores.(*Stores)
+	switch {
+	case reg == nil:
+		return []Place{first}, nil
+	case reg.test:
+		if r, _, _ := testBound(e); r != nil {
+			tx, err := e.Transaction()
+			if err != nil {
+				return nil, err
+			}
+			return []Place{first, {Store: e.Store, Tx: tx}}, nil
+		}
+	case e.SiloKey != "":
+		return []Place{first, {Store: reg.shared}}, nil
+	}
+	ctx := envCtx(e)
+	var out []Place
+	for _, key := range slices.Sorted(maps.Keys(e.Keys)) {
+		if reg.silos[key] == nil {
+			continue
+		}
+		p, err := reg.Place(ctx, key, e.Keys[key])
+		switch {
+		case errors.Is(err, eff.ErrNotFound):
+			continue
+		case err != nil:
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return append(out, first), nil
+}
+
+// testBound is, in a test of an app with silos, the test's Stores and the silo value the Task
+// on e is bound to (RuntimeOn); reg is nil when there is none.
+func testBound(e *eff.Env) (reg *Stores, key, value string) {
+	r, _ := e.Stores.(*Stores)
+	if r == nil || !r.test || e.SiloKey == "" {
+		return nil, "", ""
+	}
+	v := e.SiloValue
+	if v == "" {
+		v = e.Keys[e.SiloKey]
+	}
+	if v == "" {
+		return nil, "", ""
+	}
+	return r, e.SiloKey, v
+}
+
+// envCtx is e.Ctx, or Background when it is nil.
+func envCtx(e *eff.Env) context.Context {
+	if e.Ctx == nil {
+		return context.Background()
+	}
+	return e.Ctx
 }
 
 // ---- the binary's maintenance tasks: --migrate-silos and --silo-status

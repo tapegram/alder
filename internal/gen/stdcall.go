@@ -309,7 +309,7 @@ var StdCalls = map[string]string{
 	// Test's clock steps: calls returning eff.Task[struct{}], as Query.delay and Task.sleep
 	"Test.setClock": "rtesting.SetClock",
 	"Test.advance":  "rtesting.Advance",
-	// Test.jobs and Test.work take the app's Jobs() (variable, expr.go)
+	// Test.work takes the app's Jobs() (variable, expr.go)
 	"Test.jobs": "rtesting.Jobs",
 	"Test.work": "rtesting.Work",
 }
