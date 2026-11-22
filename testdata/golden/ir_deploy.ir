@@ -9,6 +9,7 @@
     (service "blog")
     (plan "starter")
     (instances 2)
+    (workers 2)
     (database turso "my-org" (group "default") (app "blog")))
   (env cloudpreview render
     (region "oregon")

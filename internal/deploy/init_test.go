@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -108,4 +109,29 @@ func keys(m map[string]string) []string {
 		k = append(k, n)
 	}
 	return k
+}
+
+// Without `workers` the render.yaml is what it was before workers existed, byte for byte
+// (the golden files were written by the code of that day).
+func TestRenderYAML_NoWorkersUnchanged(t *testing.T) {
+	for name, disk := range map[string]bool{"nodisk": false, "disk": true} {
+		want, err := os.ReadFile("testdata/render_yaml_" + name + ".golden")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := initFiles(t, InitSpec{Target: "render", App: "blog", Ref: "abc", Disk: disk})["render.yaml"]; got != string(want) {
+			t.Errorf("%s: render.yaml changed:\n%s", name, got)
+		}
+	}
+}
+
+// `workers` is refused for render.yaml, with or without a disk: the web and worker services
+// would not share a store; the message sends the user to `alder deploy`.
+func TestRenderYAML_Workers(t *testing.T) {
+	for _, disk := range []bool{false, true} {
+		_, err := InitFiles(InitSpec{Target: "render", App: "blog", Workers: 2, Disk: disk})
+		if err == nil || !strings.Contains(err.Error(), "`workers`") || !strings.Contains(err.Error(), "shared Turso store") || !strings.Contains(err.Error(), "`alder deploy`") {
+			t.Errorf("disk %v: %v", disk, err)
+		}
+	}
 }

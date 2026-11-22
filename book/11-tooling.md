@@ -2046,7 +2046,7 @@ Chapter 16 is the full account; here are the usage lines and exit codes.
 alder deploy <env> [dir] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json]
 alder status <env> [dir] [--host name]
 alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]
-alder logs <env> [dir] [--host name] [-f] [-n N] [--since T] [--grep PATTERN]
+alder logs <env> [dir] [--host name] [--worker] [-f] [-n N] [--since T] [--grep PATTERN]
 alder restore <env> [--silo key:id] [--from url] [--to time] [--out file.db] [--dir dir] [--yes]
 alder migrate silos <env> [dir] [--host name] [--allow-data-loss]
 alder silos prune <env> [dir] [--host name] [--yes]

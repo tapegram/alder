@@ -245,7 +245,7 @@ var commandTree = []cmdSpec{
 		}},
 	{Name: "logs", Summary: "print an environment's logs", Usage: commandUsages["logs"],
 		Args: []string{"<env>", "[dir]"},
-		Flags: []flagSpec{hostFlagSpec, {Name: "-f", Summary: "follow"},
+		Flags: []flagSpec{hostFlagSpec, {Name: "--worker", Summary: "a Render environment's worker service (`workers:`), not the web service"}, {Name: "-f", Summary: "follow"},
 			{Name: "-n", Value: "N", Summary: "the last N lines (default 100)"},
 			{Name: "--since", Value: "T", Summary: "every line since T: a duration ago (2h), an RFC 3339 time or a date"},
 			{Name: "--grep", Value: "PATTERN", Summary: "only the lines a Go regexp matches (rid=<id>: one request's)"}}},

@@ -801,7 +801,7 @@ func TestIR_Deploy(t *testing.T) {
 		"preview":    {Kind: "ssh", Host: "deploy@box.example.com", Domain: "*.preview.example.com", Path: "/srv/blog-preview"},
 		"long":       {Kind: "fly", Region: "ord", App: "a-very-long-hyphenated-application-name-for-staging"},
 		"local":      {Kind: "script", ScriptPath: "./scripts/deploy-local.sh"},
-		"cloud": {Kind: "render", Region: "oregon", Service: "blog", Plan: "starter", Instances: 2,
+		"cloud": {Kind: "render", Region: "oregon", Service: "blog", Plan: "starter", Instances: 2, Workers: 2,
 			Database: &Database{Kind: "turso", Org: "my-org", Group: "default", App: "blog"}},
 		"cloudpreview": {Kind: "render", Region: "oregon", Service: "blog-preview",
 			Database: &Database{Kind: "turso", Org: "my-org", Group: "default", App: "blog-preview"}},

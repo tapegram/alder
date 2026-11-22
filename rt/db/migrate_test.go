@@ -838,3 +838,33 @@ func TestMigrate_DropsDataRefused(t *testing.T) {
 		t.Fatalf("allowed: %v %v", applied, err)
 	}
 }
+
+// The silo hints table (#168, rt/jobs: a process without workers names the silos it enqueued
+// into, for the --jobs-only workers): created with the jobs table, idempotently, and not one of
+// the app's tables.
+func TestEnsureJobsTable_SiloHints(t *testing.T) {
+	ctx := context.Background()
+	s := openMem(t)
+	for range 2 {
+		if err := s.Ensure(ctx, []TableDesc{postV1}, false); err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := tableExists(ctx, s.db, SiloHintsTable); err != nil || !ok {
+			t.Fatalf("after Ensure: %v %v", ok, err)
+		}
+	}
+	if err := EnsureJobsTable(ctx, s.db); err != nil {
+		t.Fatal(err)
+	}
+	exec(t, s, `INSERT INTO "_alder_jobs_silos" ("key", "value", "touched") VALUES ('org', 'A', 1)`)
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO "_alder_jobs_silos" ("key", "value", "touched") VALUES ('org', 'A', 2)`); err == nil {
+		t.Fatal("two hints for one silo")
+	}
+	got, err := appTables(ctx, s.db)
+	if err != nil || slices.Contains(got, SiloHintsTable) {
+		t.Fatalf("appTables %q %v", got, err)
+	}
+	if v, err := metaValue(ctx, s.db, "jobs_schema"); err != nil || v != "1" {
+		t.Fatalf("jobs_schema %q %v", v, err)
+	}
+}

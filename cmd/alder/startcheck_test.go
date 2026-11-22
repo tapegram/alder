@@ -161,6 +161,14 @@ func TestStartCheck_Binary(t *testing.T) {
 		if got := recorded(); got != "0001_initial" {
 			t.Fatalf("recorded after the refusal: %q", got)
 		}
+		// TestJobsOnly_Behind: the worker refuses as the web build does
+		code, out = run(v2, remote, "--jobs-only")
+		if code != 1 || !strings.Contains(out, "alder: the database is behind this build: run `alder deploy`\n") {
+			t.Fatalf("--jobs-only: %d\n%s", code, out)
+		}
+		if got := recorded(); got != "0001_initial" {
+			t.Fatalf("recorded after --jobs-only's refusal: %q", got)
+		}
 	})
 
 	if code, out := run(v2, remote, "--migrate-only"); code != 0 {
@@ -184,6 +192,43 @@ func TestStartCheck_Binary(t *testing.T) {
 		}
 		if got := recorded(); !strings.HasPrefix(got, "0001_initial 0002_") {
 			t.Fatalf("recorded: %q", got)
+		}
+	})
+
+	// TestJobsOnly_Ahead: v1 --jobs-only on the database v2 migrated claims nothing (a due Ping
+	// stays queued across several polls of a worker that ran) and stops at once on SIGTERM; v2
+	// --jobs-only, whose build the database is, runs it. The 10 s re-read is rt/jobs's
+	// TestJobsOnly_Ahead (an injected clock).
+	t.Run("JobsOnlyAhead", func(t *testing.T) {
+		f.ExpireStreams() // the Ahead build's, killed: a claim it was making may hold its transaction open
+		env := append(append([]string{}, base...), "ALDER_DB="+remote)
+		pingState := func() (state string, attempts int) {
+			t.Helper()
+			if err := f.DB("siloapp").QueryRow(`SELECT "state", "attempts" FROM "_alder_jobs" WHERE "id" = '0000000c'`).Scan(&state, &attempts); err != nil {
+				t.Fatal(err)
+			}
+			return state, attempts
+		}
+		p := startJobsOnly(t, v1, env...)
+		p.waitLog(t, "the database is ahead of this build, no job runs until it is not (looked at again every 10 s): a newer build migrated it (to 0002_")
+		if _, err := f.DB("siloapp").Exec(`INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created") VALUES ('0000000c', 'Reports.Ping', '{}', 'queued', 0, 0)`); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2500 * time.Millisecond) // two and a half polls of a worker that ran
+		if state, attempts := pingState(); state != "queued" || attempts != 0 {
+			t.Fatalf("Ping: %s, %d attempts; want queued, never claimed", state, attempts)
+		}
+		start := time.Now()
+		if code := p.stop(t, syscall.SIGTERM); code != 0 || time.Since(start) > 3*time.Second {
+			t.Fatalf("SIGTERM while waiting: exit %d after %v; stderr:\n%s", code, time.Since(start), p.stderr)
+		}
+		if strings.Contains(p.stderr.String(), "jobs: the start scan") { // the workers' first housekeeping
+			t.Fatalf("the workers started:\n%s", p.stderr)
+		}
+		p = startJobsOnly(t, v2, env...)
+		within(t, 15*time.Second, "v2 to run Ping", func() bool { state, _ := pingState(); return state == "done" })
+		if code := p.stop(t, syscall.SIGTERM); code != 0 {
+			t.Fatalf("v2: exit %d; stderr:\n%s", code, p.stderr)
 		}
 	})
 

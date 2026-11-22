@@ -16,6 +16,7 @@ deploy {
     service:   "blog",
     database:  Turso "my-org" { app: "blog" },
     instances: 2,
+    workers:   2,
     plan:      "starter",
   },
   cloudpreview: Render "oregon" {

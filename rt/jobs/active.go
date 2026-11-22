@@ -186,6 +186,61 @@ func touch(s *db.Stores, key, value string) {
 	}
 }
 
+// HintBatch is the most silo hints the workers read at once (Options.Hints).
+const HintBatch = 100
+
+// hints reads the silo hints of the shared store when the workers were started with Hints and
+// none of them read them in the last Poll by the clock: each, oldest first and at most
+// HintBatch, joins the active set and is deleted, so the claim that follows looks in its silo. A
+// failure is a line of claimed under the name "the silo hints".
+func (p *pool) hints(ctx context.Context, now time.Time) {
+	if !p.o.Hints || p.active == nil {
+		return
+	}
+	p.hintMu.Lock()
+	if !p.hintAt.IsZero() && now.Sub(p.hintAt) < p.o.Poll {
+		p.hintMu.Unlock()
+		return
+	}
+	p.hintAt = now
+	p.hintMu.Unlock()
+	err := p.readHints(ctx)
+	if ctx.Err() == nil {
+		p.claimed("the silo hints", err, now)
+	}
+}
+
+// readHints is one read of the hints (hints).
+func (p *pool) readHints(ctx context.Context) error {
+	q, err := db.On(p.o.Store, nil)
+	if err != nil {
+		return err
+	}
+	rows, err := q.QueryContext(ctx, `SELECT "key", "value" FROM "_alder_jobs_silos" ORDER BY "touched" LIMIT ?`, HintBatch)
+	if err != nil {
+		return err
+	}
+	var ids []siloID
+	for rows.Next() {
+		var id siloID
+		if err := rows.Scan(&id.key, &id.value); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		p.active.add(id)
+		if _, err := q.ExecContext(ctx, `DELETE FROM "_alder_jobs_silos" WHERE "key" = ? AND "value" = ?`, id.key, id.value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // at runs f on silo id's Place as Poll gives it — opened again, when closed, only while a row
 // is due or running there (activeSet.opens) — and releases it after. ran is false when f did not
 // run: the silo is closed, or it is not served (a *MaintenanceError: it is no longer busy), or

@@ -237,9 +237,18 @@ func (j renderServiceJSON) service() RenderService {
 // ServiceByName finds the web service with exactly this name (the API's name filter is a
 // substring match).
 func (a *RenderAPI) ServiceByName(ctx context.Context, name string) (RenderService, bool, error) {
+	return a.serviceByName(ctx, name, "web_service")
+}
+
+// WorkerByName finds the background worker with exactly this name.
+func (a *RenderAPI) WorkerByName(ctx context.Context, name string) (RenderService, bool, error) {
+	return a.serviceByName(ctx, name, "background_worker")
+}
+
+func (a *RenderAPI) serviceByName(ctx context.Context, name, typ string) (RenderService, bool, error) {
 	var found RenderService
 	var ok bool
-	q := url.Values{"name": {name}, "type": {"web_service"}}
+	q := url.Values{"name": {name}, "type": {typ}}
 	err := a.pages(ctx, "/services", q, "service", 20, func(r json.RawMessage) (bool, error) {
 		var j renderServiceJSON
 		if err := json.Unmarshal(r, &j); err != nil {
@@ -264,6 +273,9 @@ type RenderCreate struct {
 	OwnerID, Name, Region, Plan, ImagePath, CredentialID string
 	Instances                                            int
 	Env                                                  []RenderEnv
+	// Command, when set, makes the service a background worker running it (the image's
+	// entrypoint replaced): no address, no health check.
+	Command string
 }
 
 type renderEnvJSON struct {
@@ -279,7 +291,7 @@ func envBody(env []RenderEnv) []renderEnvJSON {
 	return out
 }
 
-// CreateService creates an image-backed web service. Render starts a deploy of the image at
+// CreateService creates an image-backed web service, or with Command a background worker. Render starts a deploy of the image at
 // once; its id is returned.
 func (a *RenderAPI) CreateService(ctx context.Context, c RenderCreate) (RenderService, string, error) {
 	image := map[string]any{"imagePath": c.ImagePath, "ownerId": c.OwnerID}
@@ -294,8 +306,14 @@ func (a *RenderAPI) CreateService(ctx context.Context, c RenderCreate) (RenderSe
 	if c.Plan != "" { // none declared: Render's default plan (an empty string is not a plan)
 		details["plan"] = c.Plan
 	}
+	typ := "web_service"
+	if c.Command != "" {
+		typ = "background_worker"
+		delete(details, "healthCheckPath")
+		details["envSpecificDetails"] = map[string]any{"dockerCommand": c.Command}
+	}
 	body := map[string]any{
-		"type": "web_service", "name": c.Name, "ownerId": c.OwnerID,
+		"type": typ, "name": c.Name, "ownerId": c.OwnerID,
 		"image":          image,
 		"serviceDetails": details,
 		"envVars":        envBody(c.Env),

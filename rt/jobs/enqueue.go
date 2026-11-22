@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -38,7 +39,13 @@ var newID = NewID
 // queued or running, nothing is inserted and that row's id comes back; a done or dead row
 // releases the key. Parameters longer than MaxParams fail the Task (*eff.ErrFail). Once the
 // Task's transaction commits, a new row in a silo puts the silo in the active set of this
-// process's workers (spec §7), and a new row wakes them (Wake).
+// process's workers (spec §7), and a new row wakes them (Wake). A process with no workers on its
+// stores (ALDER_JOBS=0: the web service of a `workers:` deploy) has no active set: a new row in
+// a silo instead upserts the silo's hint in the shared store (db.SiloHintsTable, touched now),
+// at once, outside the Task's transaction and so before it commits, for the --jobs-only workers
+// to read (Options.Hints). A hint that cannot be written fails the Task, so a committed row in a
+// silo always has one; a Task that fails after it leaves a hint with no row, which costs a worker
+// one look in that silo. A test's stores write no hint.
 func Enqueue(env *eff.Env, j rt.Job, runAt time.Time, key *string) (string, error) {
 	if len(j.Params) > MaxParams {
 		return "", &eff.ErrFail{Msg: fmt.Sprintf("Job.enqueue %s: its parameters take %d bytes; a job's parameters are at most 64 KB (%d bytes)", j.Kind, len(j.Params), MaxParams)}
@@ -66,6 +73,11 @@ func Enqueue(env *eff.Env, j rt.Job, runAt time.Time, key *string) (string, erro
 		}
 		if n == 1 {
 			reg, _ := env.Stores.(*db.Stores)
+			if at.Key != "" && reg != nil && !reg.Testing() && activeOf(reg) == nil {
+				if err := writeHint(ctx, reg, at.Key, at.Value, env.Now()); err != nil {
+					return "", err
+				}
+			}
 			env.AfterCommit(func() {
 				if at.Key != "" && reg != nil {
 					touch(reg, at.Key, at.Value)
@@ -84,6 +96,19 @@ func Enqueue(env *eff.Env, j rt.Job, runAt time.Time, key *string) (string, erro
 		}
 	}
 	return "", fmt.Errorf("jobs: job id %s is taken (%d ids drawn)", id, idTries)
+}
+
+// writeHint upserts the hint of silo key/value in the shared store of s, touched at now: an
+// autocommit statement, apart from the silo's transaction (as keyExists reads the shared store
+// from a Task bound to a silo).
+func writeHint(ctx context.Context, s *db.Stores, key, value string, now time.Time) error {
+	q, err := db.On(s.Shared(), nil)
+	if err != nil {
+		return err
+	}
+	_, err = q.ExecContext(ctx, `INSERT INTO "_alder_jobs_silos" ("key", "value", "touched") VALUES (?, ?, ?) ON CONFLICT ("key", "value") DO UPDATE SET "touched" = excluded."touched"`,
+		key, value, now.UnixMilli())
+	return err
 }
 
 // Status is what Job.status gives: the row's state, its attempts so far, its last failure, and,

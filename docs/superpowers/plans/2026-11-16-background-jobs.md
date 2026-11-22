@@ -39,8 +39,9 @@ section it implements, and that section is part of the task's requirements.
   30 days; unclaimable warning and unknown-kind tick deletion after 1 day; params at most 64 KB
   (65536 bytes); error text at most 4 KB (4096 bytes); `Test.work` cap 1000 runs; `every`
   minimum `1s`; write-lock mark above 2 s; `ALDER_JOBS` default 4, 8 under `--jobs-only`, 0 =
-  off; `--jobs-only` ahead of the database polls every 10 s; stalled = a row due for more than
-  5 min with no claim in that time; silo active set drops a silo after 1 h with nothing due.
+  off; `--jobs-only` ahead of the database polls every 10 s; `--jobs-only` reads the silo hints
+  every poll (`HintBatch` 100); stalled = a row due for more than 5 min with no claim in that
+  time; silo active set drops a silo after 1 h with nothing due.
 - New codes: **E0049** "A job parameter that cannot be stored"; **E0050** "A scheduled job takes
   no parameters" / "A job has two schedules" (one code, several messages). Register them in
   `internal/diag/diag.go` after E0048 (`:149`) with explanations in `internal/diag/explain.go`.
@@ -487,6 +488,8 @@ Deferred findings from PR 1's task and final reviews, each with the task that ow
 - **Task 15 (`--jobs-only`):** web instances with `ALDER_JOBS=0` build no active set, so a silo job
   enqueued on a web instance reaches the `--jobs-only` worker only at its next start scan. PR 5 must
   design this (periodic rescan of SiloFiles/StatusSilos, or a shared record of touched silos).
+  Ruled: the hint table `_alder_jobs_silos` (design note
+  `.superpowers/sdd/2026-11-16-background-jobs/task-15-design.md`), done in Task 15.
 - **Task 21 (book/spec):** amend spec §7 "a silo leaves the set after an hour with no row due" →
   "with no row queued or running" (ruling: a row on a backoff or `enqueueAt` keeps its silo in the
   set; a closed silo is reopened only when a row is due). Amend spec §2/§7: an enqueue-only
@@ -501,6 +504,31 @@ Deferred findings from PR 1's task and final reviews, each with the task that ow
   `RuntimeReads` silo→shared read, same-store in-Task mark for a test-silo row,
   `SiloDevRecreateDeletesJobs` does not assert the before-silo has a jobs table; `rt/testing`
   `TestMutate_Continuation` fails under `-race` on main (pre-existing).
+
+## Carried from PR 5's reviews
+
+- **Task 18 (`alder jobs`) or cleanup:** the `--jobs-only` hint read is throttled on the injected
+  clock, so a frozen test clock reads hints once; no end-to-end test of a `--jobs-only` binary
+  consuming a silo hint; `TestJobsOnly_Ahead` checks "no claim" with a 2.5 s sleep and a second
+  `ExpireStreams` workaround; tursofake's RETURNING detection needs a space on both sides
+  (`internal/tursofake/tursofake.go:603`); the `jobsOnly` field comment sits after the uncommented
+  `handler` in the generated `App` (all goldens).
+- **Task 21 (book/spec):** amend spec §7a: `dockerCommand` is `/app/app --jobs-only` (`/app` is a
+  directory, `internal/deploy/oci.go:188`); `alder deploy init render` refuses `workers:` (render.yaml
+  cannot set up the shared Turso store `alder deploy` uses); without `workers`, every Render command
+  refuses while a `<service>-worker` service exists. Amend §5/§7/§7a for the silo hint table
+  `_alder_jobs_silos` (shared store; written by `Enqueue` before the silo commit when the process has
+  no active set; read by `--jobs-only` workers once per poll; see `docs/superpowers/specs/2026-11-21-jobs-silo-hints.md`).
+  Book: rolling back to a build older than `--jobs-only` fails the worker deploy.
+- **Follow-up issue (deploy):** `workerEnv` never removes a variable dropped from the web service;
+  an existing worker's `dockerCommand`/plan/region are never reconciled; a failed worker deploy's
+  message does not say the web already serves the new build; `awaitOn` failure/timeout untested;
+  `workers:` on an app with no job runs an idle paid service (check warning); stale `declWorkers`
+  comment (`cmd/alder/deploy_init.go:142`).
+- **Real-account checklist (first live Render deploy with `workers:`):** Render's `dockerCommand`
+  replaces the image ENTRYPOINT and runs without a shell; the API accepts
+  `envSpecificDetails.dockerCommand` and the `background_worker` type filter; real Turso returns rows
+  for `UPDATE … RETURNING` (PR 4's claim never ran on real Turso before this PR fixed the fake).
 
 ## PR 2: the worker
 
@@ -831,6 +859,10 @@ Spec §7a (`--jobs-only`).
   - `TestJobsOnly_Behind`: store schema behind the build → exit 1 with the web build's message.
   - `TestJobsOnly_Ahead`: store ahead → no claims; it polls the schema row every 10 s (clock
     injected) and starts working when the build matches.
+  - Silo hints (`rt/jobs/hints_test.go`, `rt/db` `TestEnsureJobsTable_SiloHints`):
+    `TestHint_WrittenWithoutWorkers`, `TestHint_NotWrittenWithWorkers`,
+    `TestHint_OnlyJobsOnlyReads`, `TestHint_FailedTaskIsHarmless`,
+    `TestHint_ReadErrorRateLimited`; the `--jobs-only` main passes `Hints: true`.
 - [ ] **Step 2: Run** the new tests; expected FAIL.
 - [ ] **Step 3: Implement** using `Open`/`StartJobs`/`Close` (Task 7) without `Handler`.
 - [ ] **Step 4: Run** them and the goldens; expected PASS.

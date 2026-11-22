@@ -1,0 +1,10 @@
+module App
+
+-- A worker for `app --jobs-only` (#168): Note writes a row, Hold waits on the Gate capability
+-- until its attempt is cancelled.
+
+error : Error -> Html
+error err = <p>error</p>
+
+notFound : Html
+notFound = <p>not found</p>

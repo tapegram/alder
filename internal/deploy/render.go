@@ -47,9 +47,14 @@ import (
 type Render struct {
 	Env, AppName, Region, Service, Plan, Image string
 	Instances                                  int
-	DB                                         *Turso
-	API                                        *RenderAPI
-	Reg                                        *Registry
+	// Workers, when above 0, is the `workers` of the declaration: a second service named
+	// <Service>-worker runs the same image as `app --jobs-only` on that many instances, and the
+	// web service runs no jobs (ALDER_JOBS=0). WorkerLogs makes Logs read the worker service.
+	Workers    int
+	WorkerLogs bool
+	DB         *Turso
+	API        *RenderAPI
+	Reg        *Registry
 	// Artifact is the local directory of build id's artifact (build/<app>/deploy/<id>); a build
 	// whose directory is absent (a fresh checkout) is read from its builds row instead.
 	Artifact func(id string) string
@@ -78,8 +83,13 @@ type Render struct {
 	imageErr  error
 	owner     string
 	svc       RenderService
-	have      bool        // the service exists
-	env       []RenderEnv // the service's environment as read: values never printed
+	wsvc      RenderService // the worker service, when Workers > 0
+	whave     bool          // the worker service exists
+	wenv      []RenderEnv   // its environment as read
+	workerDep string        // the deploy Start made of it, which Health waits for
+	lastCred  string        // the registry credential credential last returned
+	have      bool          // the service exists
+	env       []RenderEnv   // the service's environment as read: values never printed
 	// publicDefault is the ALDER_PUBLIC_URL mergedEnv defaulted to the expected address ("": the
 	// service had one, or a `requires` value set it); publicURLFix corrects it once the service
 	// exists with another address
@@ -115,7 +125,7 @@ func NewRender(app, env string, t ir.Target, d *ir.Deploy, image string) *Render
 
 // NewRenderEnv is NewRender reading this machine's environment with getenv (its Getenv too).
 func NewRenderEnv(app, env string, t ir.Target, d *ir.Deploy, image string, getenv func(string) string) *Render {
-	r := &Render{Env: env, AppName: app, Region: t.Region, Service: t.Service, Plan: t.Plan, Image: image, Instances: t.Instances,
+	r := &Render{Env: env, AppName: app, Region: t.Region, Service: t.Service, Plan: t.Plan, Image: image, Instances: t.Instances, Workers: max(t.Workers, 0),
 		API: NewRenderAPIEnv(getenv), Getenv: getenv, Out: io.Discard, HTTP: &http.Client{Timeout: 10 * time.Second}, dirs: map[string]string{}}
 	if r.Instances < 1 {
 		r.Instances = 1
@@ -175,12 +185,21 @@ func (r *Render) Close() error {
 	return nil
 }
 
+// WorkerName is the worker service's name: the web service's with -worker (render.yaml's too).
+func (r *Render) WorkerName() string { return r.Service + "-worker" }
+
+// renderWorkerCommand is the worker service's command: the image's binary (oci.go's entrypoint)
+// as `--jobs-only`, which the binary reads only as its sole argument.
+const renderWorkerCommand = "/app/app --jobs-only"
+
 // ref is build id's image reference.
 func (r *Render) ref(id string) string { return r.Image + ":" + id }
 
 // Connect finds the workspace (the first the key reaches, unless RENDER_OWNER_ID names one) and
 // the service by name, and reads the shared database's name from the service's ALDER_TURSO_DB.
-// It changes nothing. The platform is Render's only one, linux/amd64.
+// It changes nothing, and it refuses a leftover <service>-worker (below) for every command that
+// connects: deploy, status, logs, rollback and restore. The platform is Render's only one,
+// linux/amd64.
 func (r *Render) Connect(ctx context.Context) (Platform, error) {
 	switch {
 	case r.imageErr != nil:
@@ -217,6 +236,28 @@ func (r *Render) Connect(ctx context.Context) (Platform, error) {
 			return Platform{}, err
 		}
 		r.DB.SetShared(r.envValue(db.EnvTursoDB))
+	}
+	r.wsvc, r.whave, r.wenv = RenderService{}, false, nil
+	if r.Workers < 1 {
+		// `workers` was removed (or never set): a worker service left from before would run
+		// jobs on a stale build while the web service, still ALDER_JOBS=0, runs none
+		if _, ok, err := r.API.WorkerByName(ctx, r.WorkerName()); err != nil {
+			return Platform{}, err
+		} else if ok {
+			return Platform{}, refuse("", "the Render worker service %s exists but %s declares no `workers`: delete or suspend it in Render, and unset ALDER_JOBS on the web service %s (it was set to 0 for the worker), or declare `workers: N` again", r.WorkerName(), r.Describe(), r.Service)
+		}
+	}
+	if r.Workers > 0 {
+		w, ok, err := r.API.WorkerByName(ctx, r.WorkerName())
+		if err != nil {
+			return Platform{}, err
+		}
+		r.wsvc, r.whave = w, ok
+		if ok {
+			if r.wenv, err = r.API.EnvVars(ctx, w.ID); err != nil {
+				return Platform{}, err
+			}
+		}
 	}
 	return Platform{OS: "linux", Arch: "amd64"}, nil
 }
@@ -642,7 +683,12 @@ func (r *Render) refreshEnv(ctx context.Context) error {
 // cancelForeign cancels a deploy in progress whose image is not build id's (one Render may start
 // for an environment change), so the roll Start triggers is the one that counts.
 func (r *Render) cancelForeign(ctx context.Context, id string) error {
-	deps, err := r.API.Deploys(ctx, r.svc.ID, 10)
+	return r.cancelForeignOn(ctx, r.svc.ID, id)
+}
+
+// cancelForeignOn is cancelForeign for the service svcID (the web service or the worker's).
+func (r *Render) cancelForeignOn(ctx context.Context, svcID, id string) error {
+	deps, err := r.API.Deploys(ctx, svcID, 10)
 	if err != nil {
 		return err
 	}
@@ -650,7 +696,7 @@ func (r *Render) cancelForeign(ctx context.Context, id string) error {
 		if d.Status == "live" || d.Failed() || d.ImageURL == r.ref(id) {
 			continue
 		}
-		if err := r.API.CancelDeploy(ctx, r.svc.ID, d.ID); err != nil {
+		if err := r.API.CancelDeploy(ctx, svcID, d.ID); err != nil {
 			return fmt.Errorf("cancelling Render's deploy %s (%s): %w", d.ID, d.Status, err)
 		}
 		fmt.Fprintf(r.Out, "Render deploy %s (%s) cancelled: not this build's\n", d.ID, d.Status)
@@ -678,6 +724,9 @@ func (r *Render) mergedEnv(ctx context.Context) ([]RenderEnv, bool, error) {
 	set := map[string]string{
 		"ALDER_DB": "libsql://" + host, db.EnvTursoOrg: r.DB.Org, db.EnvTursoGroup: r.DB.Group, db.EnvTursoApp: r.DB.App, db.EnvTursoDB: r.DB.SharedName(),
 		db.EnvTursoAPI: c.API, db.EnvTursoToken: c.Token, "ALDER_ADDR": RenderAddr, SecretName: secret,
+	}
+	if r.Workers > 0 {
+		set["ALDER_JOBS"] = "0" // the jobs run on the worker service
 	}
 	r.publicDefault = ""
 	if r.envValue(PublicURLName) == "" {
@@ -778,6 +827,12 @@ func (r *Render) Migrate(ctx context.Context, id string) (string, error) {
 // with the token of this run, so a new or rotated token reaches Render, which pulls the image
 // with it on every restart; "" without a token (a public image).
 func (r *Render) credential(ctx context.Context) (string, error) {
+	id, err := r.credentialOf(ctx)
+	r.lastCred = id
+	return id, err
+}
+
+func (r *Render) credentialOf(ctx context.Context) (string, error) {
 	if r.Reg.Token == "" {
 		return "", nil
 	}
@@ -864,7 +919,79 @@ func (r *Render) Start(ctx context.Context, id string) (int, error) {
 		}
 		dep = d.ID
 	}
-	return RenderPort, r.await(ctx, dep)
+	if err := r.await(ctx, dep); err != nil {
+		return RenderPort, err
+	}
+	// the worker service rolls once the web one is live; Health waits for it after the web
+	// service's health check (nothing to probe: the worker listens on nothing)
+	return RenderPort, r.startWorker(ctx, id)
+}
+
+// workerEnv is the worker service's environment: its own as read, with the web service's laid
+// over it (r.env, as Start left it) except ALDER_ADDR (no listener) and ALDER_JOBS (unset: 8).
+func (r *Render) workerEnv() ([]RenderEnv, bool) {
+	set := map[string]string{}
+	for _, e := range r.env {
+		if e.Key != "ALDER_ADDR" && e.Key != "ALDER_JOBS" {
+			set[e.Key] = e.Value
+		}
+	}
+	env, changed, _ := overlay(r.wenv, set)
+	return env, changed
+}
+
+// startWorker creates the worker service (with its first deploy) or brings it in line with the
+// web service's environment and `workers` and deploys build id to it, and records the deploy for
+// Health. Nothing when the declaration has no `workers`.
+func (r *Render) startWorker(ctx context.Context, id string) error {
+	if r.Workers < 1 {
+		return nil
+	}
+	env, changed := r.workerEnv()
+	if !r.whave {
+		svc, d, err := r.API.CreateService(ctx, RenderCreate{OwnerID: r.owner, Name: r.WorkerName(), Region: r.Region, Plan: r.Plan, ImagePath: r.ref(id),
+			CredentialID: r.lastCred, Instances: r.Workers, Env: env, Command: renderWorkerCommand})
+		if err != nil {
+			return fmt.Errorf("creating the Render worker service %s: %w", r.WorkerName(), err)
+		}
+		if d == "" {
+			return fmt.Errorf("Render created the worker service %s but named no deploy of it: check it in the dashboard and deploy again", r.WorkerName())
+		}
+		r.wsvc, r.whave, r.wenv, r.workerDep = svc, true, env, d
+		fmt.Fprintf(r.Out, "Render worker service %s created (%s)\n", r.WorkerName(), instances(r.Workers))
+		return nil
+	}
+	cur, err := r.API.EnvVars(ctx, r.wsvc.ID) // read again: the dashboard may have changed it since Connect
+	if err != nil {
+		return fmt.Errorf("reading the environment of the service %s: %w", r.WorkerName(), err)
+	}
+	r.wenv = cur
+	if env, changed = r.workerEnv(); changed {
+		if err := r.API.PutEnvVars(ctx, r.wsvc.ID, env); err != nil {
+			return fmt.Errorf("setting the environment of the service %s: %w", r.WorkerName(), err)
+		}
+		r.wenv = env
+		fmt.Fprintf(r.Out, "environment of %s set (%d variables)\n", r.WorkerName(), len(env))
+		if err := r.cancelForeignOn(ctx, r.wsvc.ID, id); err != nil {
+			return err
+		}
+	}
+	if r.wsvc.NumInstances != r.Workers {
+		if err := r.API.Scale(ctx, r.wsvc.ID, r.Workers); err != nil {
+			return fmt.Errorf("scaling the service %s to %d instances: %w", r.WorkerName(), r.Workers, err)
+		}
+		fmt.Fprintf(r.Out, "service %s scaled %d → %d instances\n", r.WorkerName(), r.wsvc.NumInstances, r.Workers)
+		r.wsvc.NumInstances = r.Workers
+	}
+	d, err := r.API.CreateDeploy(ctx, r.wsvc.ID, r.ref(id))
+	if err != nil {
+		return fmt.Errorf("deploying %s to the worker service %s: %w", r.ref(id), r.WorkerName(), err)
+	}
+	if d.ID == "" {
+		return fmt.Errorf("Render named no deploy of %s for the worker service", r.ref(id))
+	}
+	r.workerDep = d.ID
+	return nil
 }
 
 // rollTimeout is how long Render may take to roll a deploy: RollTimeout, which the command sets
@@ -895,24 +1022,30 @@ func (r *Render) poll() time.Duration {
 // await polls deploy dep until it is live, fails, or the roll timeout passes (it is then
 // cancelled).
 func (r *Render) await(ctx context.Context, dep string) error {
+	return r.awaitOn(ctx, r.svc, "Render deploy", r.Instances, dep)
+}
+
+// awaitOn is await for service svc, whose deploys the transcript calls what and whose instances
+// number n (the web service's, or the worker service's).
+func (r *Render) awaitOn(ctx context.Context, svc RenderService, what string, n int, dep string) error {
 	deadline := time.Now().Add(r.rollTimeout())
 	for {
-		d, err := r.API.Deploy(ctx, r.svc.ID, dep)
+		d, err := r.API.Deploy(ctx, svc.ID, dep)
 		if err != nil {
 			return err
 		}
 		switch {
 		case d.Status == "live":
-			fmt.Fprintf(r.Out, "Render deploy %s live (%s)\n", dep, instances(r.Instances))
+			fmt.Fprintf(r.Out, "%s %s live (%s)\n", what, dep, instances(n))
 			return nil
 		case d.Failed():
-			return fmt.Errorf("Render deploy %s %s%s", dep, d.Status, r.logTail(ctx))
+			return fmt.Errorf("%s %s %s%s", what, dep, d.Status, r.logTail(ctx, svc.ID))
 		case time.Now().After(deadline):
 			cancelled := "it was cancelled"
-			if err := r.API.CancelDeploy(ctx, r.svc.ID, dep); err != nil {
+			if err := r.API.CancelDeploy(ctx, svc.ID, dep); err != nil {
 				cancelled = "cancelling it failed (" + err.Error() + "): cancel it in Render's dashboard"
 			}
-			return fmt.Errorf("Render deploy %s is still %s after %s (ALDER_DEPLOY_HEALTH_TIMEOUT): %s%s", dep, d.Status, r.rollTimeout(), cancelled, r.logTail(ctx))
+			return fmt.Errorf("%s %s is still %s after %s (ALDER_DEPLOY_HEALTH_TIMEOUT): %s%s", what, dep, d.Status, r.rollTimeout(), cancelled, r.logTail(ctx, svc.ID))
 		}
 		select {
 		case <-ctx.Done():
@@ -923,8 +1056,8 @@ func (r *Render) await(ctx context.Context, dep string) error {
 }
 
 // logTail is the service's last 50 log lines, for an error.
-func (r *Render) logTail(ctx context.Context) string {
-	logs, err := r.API.Tail(ctx, r.owner, r.svc.ID, 50)
+func (r *Render) logTail(ctx context.Context, svcID string) string {
+	logs, err := r.API.Tail(ctx, r.owner, svcID, 50)
 	if err != nil {
 		return "; its log could not be read: " + err.Error()
 	}
@@ -944,6 +1077,18 @@ func logLine(l RenderLog) string { return "[" + l.Instance + "] " + l.Message }
 // Health waits until `instances` consecutive answers of GET <address>/_alder/health carry build
 // id, so every instance has rolled; the error carries the last answer.
 func (r *Render) Health(ctx context.Context, id string, port int, timeout time.Duration) error {
+	if err := r.webHealth(ctx, id, timeout); err != nil {
+		return err
+	}
+	if r.workerDep == "" {
+		return nil
+	}
+	dep := r.workerDep
+	r.workerDep = ""
+	return r.awaitOn(ctx, r.wsvc, "Render worker deploy", r.Workers, dep)
+}
+
+func (r *Render) webHealth(ctx context.Context, id string, timeout time.Duration) error {
 	url := r.Address() + renderHealthPath
 	deadline := time.Now().Add(timeout)
 	ok, last := 0, ""
@@ -1069,7 +1214,37 @@ func (r *Render) Info(ctx context.Context) (Info, error) {
 		line += ", no live deploy"
 	}
 	in.Lines = append(in.Lines, line)
+	if r.Workers > 0 {
+		wl, err := r.workerLine(ctx)
+		if err != nil {
+			return Info{}, err
+		}
+		in.Lines = append(in.Lines, wl)
+	}
 	return in, nil
+}
+
+// workerLine is the worker service's line of `alder status`: its name, instances and live deploy.
+func (r *Render) workerLine(ctx context.Context) (string, error) {
+	if !r.whave {
+		return "worker   " + r.WorkerName() + " (expected: not created yet)", nil
+	}
+	line := "worker   " + r.WorkerName() + ", " + instances(r.wsvc.NumInstances)
+	deps, err := r.API.Deploys(ctx, r.wsvc.ID, 20)
+	if err != nil {
+		return "", err
+	}
+	for _, d := range deps {
+		if d.Status != "live" {
+			continue
+		}
+		since := d.FinishedAt
+		if since.IsZero() {
+			since = d.CreatedAt
+		}
+		return line + ", live deploy " + d.ID + " (" + tagOf(d.ImageURL) + ", " + time.Since(since).Truncate(time.Second).String() + " ago)", nil
+	}
+	return line + ", no live deploy", nil
 }
 
 // RenderLogMax is the most lines one read of Render's log API returns.
@@ -1084,24 +1259,33 @@ const RenderSincePages = 20
 // note on Out when that cut them; with follow, then the lines of Render's log stream as they
 // come, until ctx ends.
 func (r *Render) Logs(ctx context.Context, follow bool, n int, since time.Time, w io.Writer) error {
+	if r.WorkerLogs && r.Workers < 1 {
+		return refuse("", "%s has no worker service: `--worker` reads the logs of the service `workers:` adds to a Render environment", r.Describe())
+	}
 	if !r.have {
 		// `alder logs` has not connected (status and the deploys do): look for the service
 		if _, err := r.Connect(ctx); err != nil {
 			return err
 		}
 	}
-	if !r.have {
+	svcID, name := r.svc.ID, r.Service
+	if r.WorkerLogs {
+		svcID, name = r.wsvc.ID, r.WorkerName()
+		if !r.whave {
+			return refuse("", "the worker service %s does not exist at Render yet: deploy first", name)
+		}
+	} else if !r.have {
 		return refuse("", "the service %s does not exist at Render yet: deploy first", r.Service)
 	}
 	if !since.IsZero() {
-		if err := r.logsSince(ctx, since, w); err != nil {
+		if err := r.logsSince(ctx, svcID, since, w); err != nil {
 			return err
 		}
 	} else if !follow {
 		if n == 0 {
 			n = RenderLogMax
 		}
-		logs, err := r.API.Tail(ctx, r.owner, r.svc.ID, min(max(n, 1), RenderLogMax))
+		logs, err := r.API.Tail(ctx, r.owner, svcID, min(max(n, 1), RenderLogMax))
 		if err != nil {
 			return err
 		}
@@ -1113,7 +1297,7 @@ func (r *Render) Logs(ctx context.Context, follow bool, n int, since time.Time, 
 	if !follow {
 		return nil
 	}
-	c, err := DialWS(ctx, r.API.LogsURL(r.owner, r.svc.ID), r.API.AuthHeader())
+	c, err := DialWS(ctx, r.API.LogsURL(r.owner, svcID), r.API.AuthHeader())
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil
@@ -1150,10 +1334,10 @@ func (r *Render) Logs(ctx context.Context, follow bool, n int, since time.Time, 
 // logsSince writes the lines from since on: Render's log API read forward, a page of
 // RenderLogMax at a time from the start each page returns, while a page is full and the start
 // moves, at most RenderSincePages pages (then a note on Out says the rest is cut).
-func (r *Render) logsSince(ctx context.Context, since time.Time, w io.Writer) error {
+func (r *Render) logsSince(ctx context.Context, svcID string, since time.Time, w io.Writer) error {
 	start := since
 	for page := 1; ; page++ {
-		logs, next, err := r.API.Logs(ctx, r.owner, r.svc.ID, RenderLogMax, start)
+		logs, next, err := r.API.Logs(ctx, r.owner, svcID, RenderLogMax, start)
 		if err != nil {
 			return err
 		}

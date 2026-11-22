@@ -71,7 +71,7 @@ The other fields are settings of every environment.
 |---|---|
 | `<env>: Ssh "user@host" { domain, path, user?, port? }` | a Linux server reached with your SSH key (see "The `Ssh` fields", below) |
 | `<env>: Fly "region" { app }` | a Fly.io app in a region: one machine and a volume for the database (see "The Fly target") |
-| `<env>: Render "region" { service, database, instances?, plan? }` | a Render web service running an image alder pushes, its data in a Turso `database` (see "The Render target") |
+| `<env>: Render "region" { service, database, instances?, workers?, plan? }` | a Render web service running an image alder pushes, its data in a Turso `database` (see "The Render target") |
 | `<env>: Script "./path"` | your own script, handed the finished build (see "The Script hatch") |
 | `floor: 0.95` | the least mutation score a build may have (`0` to `1`); without it, the score of the build deployed last, `0` before any |
 | `checks: ["cmd", …]` | shell commands run from the app's root after the tests; each must exit 0 |
@@ -633,7 +633,7 @@ write lock: while it runs, the old build's writes wait.
 ```text
 alder status <env> [dir] [--host name]
 alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]
-alder logs <env> [dir] [--host name] [-f] [-n N] [--since T] [--grep PATTERN]
+alder logs <env> [dir] [--host name] [--worker] [-f] [-n N] [--since T] [--grep PATTERN]
 ```
 
 `alder status` reads the state at the target: the current build, the
@@ -801,6 +801,10 @@ file, if anything was written then.
 it follows the **current** build, so after a deploy or rollback
 switches builds it goes on with the new current build's log (a line
 `--- alder logs: build <id> is current` marks the change).
+
+`alder logs <env> --worker` reads the worker service's log instead of the
+web service's (on an environment without `workers:` it stops with an
+error saying so).
 
 `--grep PATTERN` keeps only the lines a Go regular expression matches, on
 every target and with `-f` too, and `--since T` prints every line since a
@@ -1854,6 +1858,25 @@ The fields:
 
 - **`instances`** is how many copies run (default 1).
 
+- **`workers`** (a whole number of at least 1; E0030 otherwise) moves
+  the app's background jobs off the web service. The deploy makes a
+  second Render service, `<service>-worker`, a background worker that
+  runs the same image as `app --jobs-only` on that many instances, and
+  sets `ALDER_JOBS=0` on the web service so it runs none. Its
+  environment is the web service's without `ALDER_ADDR` (it listens on
+  nothing) and without `ALDER_JOBS`, which unset means 8 job workers per
+  instance in this mode. There is no health check to ask: the
+  deploy waits for Render to report the worker's deploy `live`, after the
+  web service's health check has passed. Without `workers`, nothing about
+  the Render service changes, and a `<service>-worker` left over from
+  before stops every alder command on that environment (`deploy`,
+  `status`, `logs`, `rollback` and `restore` alike) with a message to
+  delete or suspend it and to unset `ALDER_JOBS` on the web service;
+  none of them works until it is gone. `alder deploy init render`
+  refuses an app that declares `workers`: the two services need one
+  shared Turso store, which `alder deploy` sets up and a `render.yaml`
+  cannot.
+
 - **`plan`** is passed to Render as given (`starter`, `standard`,
   `1c-2g`, …; unset leaves Render's default).
 
@@ -2025,7 +2048,8 @@ the health check has seen the build.
 The commands on a Render environment:
 
 - **`alder status`** adds the service's URL, its instances, the live
-  deploy and its age.
+  deploy and its age, and with `workers` a `worker` line of the same for
+  the worker service.
 
 - **`alder rollback <env> [id]`** deploys the older image by its tag and
   polls, under the same schema rule as any rollback; `--restore-backup`

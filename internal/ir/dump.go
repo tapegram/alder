@@ -219,6 +219,9 @@ func deployForm(dp *Deploy) *sx {
 		if t.Instances != 0 {
 			e.items = append(e.items, atoms("instances", strconv.Itoa(t.Instances)))
 		}
+		if t.Workers != 0 {
+			e.items = append(e.items, atoms("workers", strconv.Itoa(t.Workers)))
+		}
 		if d := t.Database; d != nil {
 			db := list(1, atom("database"), atom(d.Kind), atom(strconv.Quote(d.Org)), list(1, atom("group"), atom(strconv.Quote(d.Group))), list(1, atom("app"), atom(strconv.Quote(d.App))))
 			if d.Sample != 0 {

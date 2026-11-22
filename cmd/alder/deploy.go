@@ -35,7 +35,7 @@ const (
 	deployUsage   = "usage: alder deploy <env> [dir] [--build-dir DIR] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json] | alder deploy init render|fly [dir] [--force] [--dry-run]"
 	statusUsage   = "usage: alder status <env> [dir] [--host name]"
 	rollbackUsage = "usage: alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]"
-	logsUsage     = "usage: alder logs <env> [dir] [--host name] [-f] [-n N] [--since T] [--grep PATTERN]"
+	logsUsage     = "usage: alder logs <env> [dir] [--host name] [--worker] [-f] [-n N] [--since T] [--grep PATTERN]"
 	restoreUsage  = "usage: alder restore <env> [--silo key:id] [--from url] [--to time] [--out file.db] [--dir dir] [--yes]"
 )
 
@@ -808,7 +808,7 @@ func runRollbackWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	return 0
 }
 
-// runLogsTo is `alder logs <env> [dir] [-f] [-n N] [--since T] [--grep PATTERN]`: the current
+// runLogsTo is `alder logs <env> [dir] [--worker] [-f] [-n N] [--since T] [--grep PATTERN]`: the current
 // build's log, its last N lines (default 100), or with --since every line since T (a duration
 // ago, an RFC 3339 time, or a date: parseSince; Render reads that range, Fly and Ssh what they
 // keep, kept by each line's stamp: sinceWriter), or with -f followed until interrupted; with
@@ -821,7 +821,7 @@ func runLogsTo(args []string, stdout, stderr io.Writer) int {
 // runLogsWith is runLogsTo with the environment e.
 func runLogsWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	var pos []string
-	follow, host, n := false, "", 100
+	follow, host, n, worker := false, "", 100, false
 	var grep *regexp.Regexp
 	var since time.Time
 	nSet := false
@@ -878,6 +878,8 @@ func runLogsWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 		switch {
 		case a == "-f" || a == "--follow":
 			follow = true
+		case a == "--worker":
+			worker = true
 		case strings.HasPrefix(a, "-"):
 			fmt.Fprintln(stderr, logsUsage)
 			return 2
@@ -909,6 +911,14 @@ func runLogsWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	rd, isRender := t.(*deploy.Render)
+	if worker {
+		// the worker service is a Render environment's, and only when it declares `workers:`
+		if !isRender || rd.Workers < 1 {
+			fmt.Fprintf(stderr, "%s --worker reads the worker service that `workers:` adds to a Render environment; environment %s has none\n", errTag(stderr, "alder logs:"), pos[0])
+			return 2
+		}
+		rd.WorkerLogs = true
+	}
 	if isRender && !follow && n > deploy.RenderLogMax {
 		fmt.Fprintf(stderr, "alder logs: Render returns at most %d lines at once: these are the last %d\n", deploy.RenderLogMax, deploy.RenderLogMax)
 	}

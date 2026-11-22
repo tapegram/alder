@@ -1,0 +1,28 @@
+module Work
+
+import Table.Note
+
+capability Gate {
+  hold : Task Unit,
+}
+
+route Home = GET "/" { }
+
+Home.load : Home.Params -> Session -> Query Unit
+Home.load p session = Query.succeed ()
+
+Home.view : Unit -> Session -> Html
+Home.view model session = <p>home</p>
+
+job Write = {}
+
+Write.run : Write.Params -> Task Unit
+Write.run p = {
+  let _ <- Db.insert Note.Note { text: "written" }
+  Task.succeed ()
+}
+
+job Hold = {}
+
+Hold.run : Hold.Params -> Task Unit
+Hold.run p = Gate.hold

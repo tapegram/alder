@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"alder/internal/deploy"
+	"alder/internal/ir"
 	"alder/internal/version"
 )
 
@@ -64,6 +65,9 @@ func runDeployInitWith(args []string, stdout, stderr io.Writer, source func() ve
 	}
 	src := source()
 	spec := deploy.InitSpec{Target: target, App: r.app, Ref: src.Ref, Disk: initNeedsDisk(r.tables, len(r.silos))}
+	if target == "render" && r.decl != nil {
+		spec.Workers = declWorkers(r.decl)
+	}
 	files, err := deploy.InitFiles(spec)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder deploy init:"), err)
@@ -131,6 +135,17 @@ func runDeployInitWith(args []string, stdout, stderr io.Writer, source func() ve
 	case "fly":
 		fmt.Fprintf(stdout, "next: commit these files, then `fly launch --no-deploy --copy-config`, `fly secrets set ALDER_SECRET=$(openssl rand -hex 32)`%s and `fly deploy`\n",
 			map[bool]string{true: ", `fly volumes create data --size 1`"}[spec.Disk])
+	}
+	return 0
+}
+
+// declWorkers is the `workers` of the declaration's first Render environment (by name) that has
+// one, 0 when none does: render.yaml is one file for the app, so it takes the first.
+func declWorkers(d *ir.Deploy) int {
+	for _, n := range envNames(d) {
+		if t := d.Envs[n]; t.Kind == "render" && t.Workers > 0 {
+			return t.Workers
+		}
 	}
 	return 0
 }

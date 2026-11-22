@@ -599,7 +599,9 @@ func verb(q string) string {
 func (s *Server) execute(d *database, st *stream, q string, args []any) (map[string]any, error) {
 	ctx := context.Background()
 	v := verb(q)
-	rowsWanted := v == "SELECT" || v == "WITH" || v == "VALUES" || v == "EXPLAIN" || (v == "PRAGMA" && !strings.Contains(q, "="))
+	// a write with RETURNING answers its rows, as Turso's does (a job's claim: UPDATE … RETURNING *)
+	returning := (v == "INSERT" || v == "UPDATE" || v == "DELETE" || v == "REPLACE") && strings.Contains(strings.ToUpper(q), " RETURNING ")
+	rowsWanted := returning || v == "SELECT" || v == "WITH" || v == "VALUES" || v == "EXPLAIN" || (v == "PRAGMA" && !strings.Contains(q, "="))
 	res := map[string]any{"cols": []any{}, "rows": []any{}, "affected_row_count": 0, "last_insert_rowid": nil}
 	if rowsWanted {
 		rows, err := st.conn.QueryContext(ctx, q, args...)
@@ -634,6 +636,12 @@ func (s *Server) execute(d *database, st *stream, q string, args []any) (map[str
 		res["cols"] = cols
 		if out != nil {
 			res["rows"] = out
+		}
+		if returning {
+			res["affected_row_count"] = len(out)
+			if !st.inTx {
+				s.committed(d) // an autocommit write is a point in time, as below
+			}
 		}
 		return res, nil
 	}

@@ -25,6 +25,8 @@ type InitSpec struct {
 	App    string
 	Ref    string
 	Disk   bool
+	// Workers is the declaration's `workers`; any value above 0 makes InitFiles refuse for Render.
+	Workers int
 }
 
 // InitFile is one file to write.
@@ -45,6 +47,9 @@ func InitFiles(s InitSpec) ([]InitFile, error) {
 	files := []InitFile{{"Dockerfile", initDockerfile(s)}, {".dockerignore", Dockerignore}}
 	switch s.Target {
 	case "render":
+		if s.Workers > 0 {
+			return nil, fmt.Errorf("`workers` is not for render.yaml: worker machines need a shared Turso store, which `alder deploy` sets up and a Render blueprint cannot (it gives the web service and the worker service one SQLite file each); deploy with `alder deploy` instead")
+		}
 		files = append(files, InitFile{"render.yaml", renderYAML(s)})
 	case "fly":
 		files = append(files, InitFile{"fly.toml", FlyToml(s.App, "", true, s.Disk)})

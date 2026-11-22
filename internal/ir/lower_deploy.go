@@ -104,6 +104,10 @@ func lowerTarget(v *syntax.DeployValue) (Target, bool) {
 			if n, err := strconv.Atoi(s); err == nil && f.Value.Kind == "int" {
 				t.Instances = n
 			}
+		case "workers":
+			if n, err := strconv.Atoi(s); err == nil && f.Value.Kind == "int" {
+				t.Workers = n
+			}
 		case "database":
 			t.Database = lowerDatabase(f.Value)
 		}

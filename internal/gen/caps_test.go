@@ -81,15 +81,17 @@ func TestMain_StartsJobs(t *testing.T) {
 			if at != len(order) {
 				t.Errorf("caps %v silos %v: main calls %v, want %v in that order (stopped at %s)", withCaps, withSilos, got, order, order[at])
 			}
-			for _, c := range []string{"app.Serve", "app.Open", "a.StartJobs"} {
-				if n := strings.Count(string(src), c+"("); c == "app.Serve" && n != 0 || c != "app.Serve" && n != 1 {
+			// a.StartJobs twice: serving, and runJobs (--jobs-only)
+			for c, want := range map[string]int{"app.Serve": 0, "app.Open": 1, "a.StartJobs": 2} {
+				if n := strings.Count(string(src), c+"("); n != want {
 					t.Errorf("caps %v silos %v: %d calls of %s", withCaps, withSilos, n, c)
 				}
 			}
 			// a failed Serve stops the workers at once (their attempts queued again), the backup and
 			// the app before it exits
 			failed := "case err := <-served:\n\t\tfmt.Fprintln(os.Stderr, \"alder:\", err)\n\t\tstopJobs(0) // the attempts running are queued again for the next start\n\t\tstopBackup()\n\t\ta.Close()\n\t\tos.Exit(1)"
-			for _, want := range []string{failed, "a.StartJobs(o.Jobs)", "Jobs:      workers,", "workers, err := jobs.WorkersFromEnv() // ALDER_JOBS\n\tif err != nil {\n\t\tfmt.Fprintln(os.Stderr, \"alder:\", err)\n\t\tos.Exit(1)\n\t}"} {
+			readJobs := "if jobsOnly {\n\t\tworkers, err = jobs.JobsOnlyWorkersFromEnv() // ALDER_JOBS: default 8\n\t} else {\n\t\tworkers, err = jobs.WorkersFromEnv() // ALDER_JOBS: default 4\n\t}\n\tif err != nil {\n\t\tfmt.Fprintln(os.Stderr, \"alder:\", err)\n\t\tos.Exit(1)\n\t}"
+			for _, want := range []string{failed, "a.StartJobs(o.Jobs)", "Jobs:      workers,", "JobsOnly:  jobsOnly,", readJobs} {
 				if !strings.Contains(string(src), want) {
 					t.Errorf("caps %v silos %v: main has no %q", withCaps, withSilos, want)
 				}
@@ -152,6 +154,59 @@ func TestOptions_AlderJobs(t *testing.T) {
 		var ee *exec.ExitError
 		if !errors.As(err, &ee) || ee.ExitCode() != c.code || stderr.String() != c.stderr {
 			t.Errorf("ALDER_JOBS=%s: %v, stderr %q; want exit %d, %q", c.v, err, stderr.String(), c.code, c.stderr)
+		}
+	}
+}
+
+// TestMain_JobsOnly: `app --jobs-only` (spec §7a) reads ALDER_JOBS with the default 8, opens the
+// app and, before the backup and the listener, runs runJobs: it waits out a database ahead of
+// the build (a.AwaitBuild) before it starts the workers, and on SIGINT or SIGTERM stops them with
+// a 5 s grace (an app with silos drains first) and closes the app. It never calls Handler.
+func TestMain_JobsOnly(t *testing.T) {
+	for _, withSilos := range []bool{false, true} {
+		src := Main("todos", true, withSilos)
+		f, err := parser.ParseFile(token.NewFileSet(), "main.go", src, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := calls(funcBody(t, f, "main"))
+		order := []string{"jobs.JobsOnlyWorkersFromEnv", "app.Open", "runJobs", "backup.Start", "net.Listen", "a.Handler"}
+		at := 0
+		for _, c := range got {
+			if at < len(order) && c == order[at] {
+				at++
+			}
+		}
+		if at != len(order) {
+			t.Errorf("silos %v: main calls %v, want %v in that order (stopped at %s)", withSilos, got, order, order[at])
+		}
+		for _, want := range []string{
+			"jobsOnly := len(os.Args) == 2 && os.Args[1] == \"--jobs-only\"\n\tif len(os.Args) > 1 && !jobsOnly {\n\t\tos.Exit(maintain(os.Args[1:], dbPath, dev))\n\t}",
+			"if jobsOnly {\n\t\tos.Exit(runJobs(a, o.Jobs, lg.Log))\n\t}",
+			"[--jobs-only | --migrate-only | --backup-to FILE",
+		} {
+			if !strings.Contains(string(src), want) {
+				t.Errorf("silos %v: main has no %q", withSilos, want)
+			}
+		}
+		rj := calls(funcBody(t, f, "runJobs"))
+		order = []string{"signal.NotifyContext", "a.AwaitBuild", "a.StartJobs", "stop", "stopJobs", "a.Close"}
+		if withSilos {
+			order = []string{"signal.NotifyContext", "a.AwaitBuild", "a.StartJobs", "stop", "db.Drain", "stopJobs", "a.Close"}
+		}
+		at = 0
+		for _, c := range rj {
+			if at < len(order) && c == order[at] {
+				at++
+			}
+		}
+		if at != len(order) || slices.ContainsFunc(rj, func(c string) bool {
+			return strings.Contains(c, "Handler") || strings.Contains(c, "Listen") || strings.Contains(c, "backup")
+		}) {
+			t.Errorf("silos %v: runJobs calls %v, want %v in that order and no listener or backup", withSilos, rj, order)
+		}
+		if !strings.Contains(string(src), "stopJobs(5 * time.Second)") {
+			t.Errorf("silos %v: runJobs gives the attempts no 5 s grace", withSilos)
 		}
 	}
 }

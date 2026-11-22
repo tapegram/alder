@@ -300,3 +300,35 @@ func TestDeployRender_DefaultImage(t *testing.T) {
 		t.Errorf("no manifest at tavish/blog:%s; registry saw %v", id[1], f.reg.Requests())
 	}
 }
+
+const rdWorkersDecl = `deploy {
+  production: Render "oregon" { service: "blog", plan: "starter", workers: 2, database: Turso "acme" { app: "blog" } },
+  staging: Render "oregon" { service: "blog-staging", database: Turso "acme" { app: "blog-staging" } },
+  image: "ghcr.io/tavish/blog",
+  requires: ["SMTP_URL"],
+}`
+
+// `alder logs <env> --worker` reads the worker service's log (not the web service's); on an
+// environment without `workers:` it is a usage error naming `workers:`, before any request.
+func TestLogs_Worker(t *testing.T) {
+	t.Parallel()
+	dir, f, c := renderApp(t, rdWorkersDecl)
+	f.render.AddService("blog", "ghcr.io/tavish/blog:aaaa", 1)
+	f.render.AddWorker("blog-worker", "ghcr.io/tavish/blog:aaaa", 2)
+	f.render.Logs(renderfake.LogLine{Time: time.Now(), Instance: "web-1", Message: "listening on :10000"})
+	f.render.ServiceLogs("blog-worker", renderfake.LogLine{Time: time.Now(), Instance: "wrk-1", Message: "job SendWelcome done"})
+	code, out := runCmd(t, c.logs, "production", dir, "--worker")
+	if code != 0 || out != "[wrk-1] job SendWelcome done\n" {
+		t.Errorf("logs --worker: exit %d\n%s", code, out)
+	}
+	if code, out = runCmd(t, c.logs, "production", dir); code != 0 || out != "[web-1] listening on :10000\n" {
+		t.Errorf("logs: exit %d\n%s", code, out)
+	}
+	n := len(f.render.Requests())
+	if code, out = runCmd(t, c.logs, "staging", dir, "--worker"); code != 2 || !strings.Contains(out, "`workers:`") {
+		t.Errorf("logs --worker without workers: exit %d\n%s", code, out)
+	}
+	if len(f.render.Requests()) != n {
+		t.Errorf("a refused --worker asked Render: %v", f.render.Requests()[n:])
+	}
+}

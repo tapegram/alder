@@ -164,7 +164,7 @@ func (mc *modCtx) deployTarget(f *syntax.DeployField) {
 		fields = map[string]string{"app": "text"}
 	case "Render":
 		arg, argWhat, required = "region", "the region as text, such as \"oregon\"", []string{"service"}
-		fields = map[string]string{"service": "text", "plan": "text", "instances": "instances", "database": "database"}
+		fields = map[string]string{"service": "text", "plan": "text", "instances": "instances", "workers": "workers", "database": "database"}
 	case "Script":
 		arg, argWhat = "path", "the script's path as text, such as \"./scripts/deploy.sh\""
 		fields = map[string]string{}
@@ -200,6 +200,10 @@ func (mc *modCtx) deployTarget(f *syntax.DeployField) {
 		case kind == "instances":
 			if n, err := strconv.Atoi(rf.Value.Str); rf.Value.Kind != "int" || err != nil || n < 1 {
 				c.errorf(diag.DeployDecl, rf.Value.Span, "`instances` is how many instances Render runs: a whole number of at least 1")
+			}
+		case kind == "workers":
+			if n, err := strconv.Atoi(rf.Value.Str); rf.Value.Kind != "int" || err != nil || n < 1 {
+				c.errorf(diag.DeployDecl, rf.Value.Span, "`workers` is how many worker instances Render runs: a whole number of at least 1")
 			}
 		case kind == "port":
 			if n, err := strconv.Atoi(rf.Value.Str); rf.Value.Kind != "int" || err != nil || n < 1 || n > 65535 {

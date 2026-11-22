@@ -298,6 +298,10 @@ func newSiloSchema(si Silo, byName map[string]TableDesc) (*siloSchema, error) {
 // Shared is the shared store.
 func (s *Stores) Shared() *SQLite { return s.shared }
 
+// Testing reports whether s are a test's stores (NewTestStores): one transaction per store,
+// held by the test.
+func (s *Stores) Testing() bool { return s.test }
+
 // Close closes every silo (a test's transactions are rolled back first) and the reader.
 func (s *Stores) Close() error {
 	s.mu.Lock()

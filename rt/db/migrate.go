@@ -860,12 +860,20 @@ const createMetaTable = `CREATE TABLE IF NOT EXISTS "_alder_meta" ("key" TEXT NO
 // _alder_meta (Ensure, Migrate) and versioned by its jobs_schema row there.
 const JobsTable = "_alder_jobs"
 
+// SiloHintsTable names the silos a process without job workers enqueued into (rt/jobs: Enqueue
+// writes a row, the --jobs-only workers read and delete it): created with the jobs table, so it
+// is in every store that has one; only the shared store's is used.
+const SiloHintsTable = "_alder_jobs_silos"
+
 // jobsSchema is the jobs table's version, the jobs_schema row of _alder_meta.
 const jobsSchema = "1"
 
 // createJobs is the jobs table and its indexes: the due index the claim reads, the key of
 // Job.enqueueOnce (unique while a row with it is queued or running) and the one queued tick of
-// a schedule. Times are milliseconds since the epoch.
+// a schedule; then the silo hints table (SiloHintsTable: one row per silo, touched when the
+// enqueuer last wrote it), which jobs_schema does not count: it is only ever created if missing,
+// and the drift check leaves every _alder_ table to the runtime. Times are milliseconds since the
+// epoch.
 var createJobs = []string{
 	`CREATE TABLE IF NOT EXISTS "_alder_jobs" (
   "id"            TEXT    NOT NULL PRIMARY KEY,
@@ -887,6 +895,12 @@ var createJobs = []string{
 	`CREATE INDEX IF NOT EXISTS "_alder_jobs_due" ON "_alder_jobs" ("state", "run_at")`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS "_alder_jobs_once" ON "_alder_jobs" ("kind", "key") WHERE "key" IS NOT NULL AND "state" IN ('queued', 'running')`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS "_alder_jobs_tick" ON "_alder_jobs" ("kind") WHERE "schedule" = 1 AND "state" = 'queued'`,
+	`CREATE TABLE IF NOT EXISTS "_alder_jobs_silos" (
+  "key"     TEXT    NOT NULL,
+  "value"   TEXT    NOT NULL,
+  "touched" INTEGER NOT NULL,
+  PRIMARY KEY ("key", "value")
+) STRICT`,
 }
 
 // EnsureJobsTable creates the jobs table and its indexes when they do not exist and records

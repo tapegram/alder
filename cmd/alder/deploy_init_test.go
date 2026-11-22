@@ -212,3 +212,25 @@ func TestDeployInit_Dispatch(t *testing.T) {
 		t.Errorf("exit %d %q", code, errb.String())
 	}
 }
+
+// `workers` on a Render environment: init refuses, with or without tables, writes nothing, and
+// points at `alder deploy`.
+func TestDeployInit_Workers(t *testing.T) {
+	t.Parallel()
+	decl := `deploy { production: Render "oregon" { service: "blog", workers: 2, database: Turso "acme" { app: "blog" } }, image: "ghcr.io/tavish/blog" }`
+	dir := deployScaffold(t, decl, map[string]string{"app/Home.alder": staticHome})
+	check := func(label string) {
+		code, out, errs := runDeployInit("render", dir)
+		if code != 2 || !strings.Contains(errs, "`workers`") || !strings.Contains(errs, "`alder deploy`") {
+			t.Errorf("%s: exit %d\n%s%s", label, code, out, errs)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "render.yaml")); err == nil {
+			t.Errorf("%s: render.yaml written", label)
+		}
+	}
+	check("with tables")
+	if err := os.Remove(filepath.Join(dir, "app", "Table", "Entry.alder")); err != nil {
+		t.Fatal(err)
+	}
+	check("without tables")
+}

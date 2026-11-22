@@ -61,14 +61,17 @@ type Call struct {
 // Service is a snapshot of a service's state.
 type Service struct {
 	ID, Name, OwnerID, Region, Plan, URL string
-	Instances                            int
-	Env                                  []Env
-	Image                                string // the image of the newest live deploy
-	CredentialID                         string
-	HealthCheckPath                      string
-	MaxShutdownDelay                     int
-	Deploys                              []Deploy // oldest first
-	InstanceImages                       []string // what each simulated instance runs
+	// Type is "web_service" or "background_worker" (a worker has no URL); DockerCommand is the
+	// command a worker was created with ("" for a web service).
+	Type, DockerCommand string
+	Instances           int
+	Env                 []Env
+	Image               string // the image of the newest live deploy
+	CredentialID        string
+	HealthCheckPath     string
+	MaxShutdownDelay    int
+	Deploys             []Deploy // oldest first
+	InstanceImages      []string // what each simulated instance runs
 }
 
 type dep struct {
@@ -80,6 +83,7 @@ type dep struct {
 type svc struct {
 	Service
 	deps    []*dep
+	logs    []LogLine // this service's own log; nil: the server's (Logs)
 	delayed map[int]bool
 	rr      int
 	hits    int
@@ -173,6 +177,24 @@ func (s *Server) Logs(lines ...LogLine) {
 	s.logs = append([]LogLine(nil), lines...)
 }
 
+// ServiceLogs sets the log of the named service alone: a read of its log (by its id as resource)
+// gets these lines, and those of Logs for a service that has none of its own.
+func (s *Server) ServiceLogs(name string, lines ...LogLine) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if v := s.byName(name); v != nil {
+		v.logs = append([]LogLine{}, lines...)
+	}
+}
+
+// logsOf are the log lines a read of resource gets.
+func (s *Server) logsOf(resource string) []LogLine {
+	if v := s.byID(resource); v != nil && v.logs != nil {
+		return v.logs
+	}
+	return s.logs
+}
+
 // AddService seeds a service that already runs image on instances instances, with a live deploy
 // of it.
 func (s *Server) AddService(name, image string, instances int, env ...Env) *Service {
@@ -185,6 +207,20 @@ func (s *Server) AddService(name, image string, instances int, env ...Env) *Serv
 	for i := range v.InstanceImages {
 		v.InstanceImages[i] = image
 	}
+	snap := v.snapshot()
+	return &snap
+}
+
+// AddWorker seeds a background worker that already runs image on instances instances, with a live
+// deploy of it.
+func (s *Server) AddWorker(name, image string, instances int, env ...Env) *Service {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v := s.newSvc(name, OwnerID, "oregon", "starter", instances, "", env)
+	v.Type, v.URL, v.HealthCheckPath, v.DockerCommand = "background_worker", "", "", "/app/app --jobs-only"
+	d := s.newDep(v, image)
+	d.Status, d.Finished = "live", d.Created
+	v.Image = image
 	snap := v.snapshot()
 	return &snap
 }
@@ -306,7 +342,7 @@ func (s *Server) byID(id string) *svc {
 func (s *Server) newSvc(name, owner, region, plan string, n int, cred string, env []Env) *svc {
 	v := &svc{delayed: map[int]bool{}}
 	v.Service = Service{
-		ID: s.id("srv"), Name: name, OwnerID: owner, Region: region, Plan: plan,
+		Type: "web_service", ID: s.id("srv"), Name: name, OwnerID: owner, Region: region, Plan: plan,
 		URL: s.URL + "/svc/" + name, Instances: n, Env: append([]Env(nil), env...),
 		CredentialID: cred, HealthCheckPath: "/_alder/health", MaxShutdownDelay: 30,
 		InstanceImages: make([]string, n),
@@ -394,7 +430,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/logs/subscribe" {
-		lines := append([]LogLine(nil), s.logs...)
+		lines := append([]LogLine(nil), s.logsOf(r.URL.Query().Get("resource"))...)
 		s.mu.Unlock()
 		wsLogs(w, r, lines)
 		return
@@ -461,7 +497,7 @@ func page(w http.ResponseWriter, r *http.Request, key string, items []any) {
 
 func (v *svc) json() map[string]any {
 	m := map[string]any{
-		"id": v.ID, "name": v.Name, "type": "web_service", "ownerId": v.OwnerID,
+		"id": v.ID, "name": v.Name, "type": v.Type, "ownerId": v.OwnerID,
 		"imagePath": v.Image,
 		"serviceDetails": map[string]any{
 			"url": v.URL, "region": v.Region, "plan": v.Plan, "numInstances": v.Instances,
@@ -495,7 +531,7 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request, body []byte) {
 				if n := r.URL.Query().Get("name"); n != "" && !strings.Contains(v.Name, n) {
 					continue
 				}
-				if ty := r.URL.Query().Get("type"); ty != "" && ty != "web_service" {
+				if ty := r.URL.Query().Get("type"); ty != "" && ty != v.Type {
 					continue
 				}
 				items = append(items, v.json())
@@ -535,10 +571,11 @@ func (s *Server) createService(w http.ResponseWriter, body []byte) {
 			Plan                             *string
 			NumInstances                     int
 			MaxShutdownDelaySeconds          int
+			EnvSpecificDetails               struct{ DockerCommand string }
 		}
 		EnvVars []struct{ Key, Value string }
 	}
-	if err := json.Unmarshal(body, &in); err != nil || in.Name == "" || in.Type != "web_service" || in.Image.ImagePath == "" {
+	if err := json.Unmarshal(body, &in); err != nil || in.Name == "" || (in.Type != "web_service" && in.Type != "background_worker") || in.Image.ImagePath == "" {
 		msg(w, 400, "invalid service")
 		return
 	}
@@ -572,6 +609,11 @@ func (s *Server) createService(w http.ResponseWriter, body []byte) {
 	}
 	v := s.newSvc(in.Name, in.OwnerID, in.ServiceDetails.Region, plan, in.ServiceDetails.NumInstances, in.Image.RegistryCredentialID, env)
 	v.URL += s.URLSuffix
+	if in.Type == "background_worker" {
+		// like Render: a worker has no address and no health check, and runs a command
+		v.Type, v.URL, v.HealthCheckPath = in.Type, "", ""
+		v.DockerCommand = in.ServiceDetails.EnvSpecificDetails.DockerCommand
+	}
 	if in.ServiceDetails.HealthCheckPath != "" {
 		v.HealthCheckPath = in.ServiceDetails.HealthCheckPath
 	}
@@ -731,7 +773,7 @@ func (s *Server) logsList(w http.ResponseWriter, r *http.Request) {
 		start = t
 	}
 	var sel []LogLine
-	for _, l := range s.logs {
+	for _, l := range s.logsOf(q.Get("resource")) {
 		if !l.Time.Before(start) {
 			sel = append(sel, l)
 		}

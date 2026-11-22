@@ -1,0 +1,22 @@
+# Written by alder deploy init (book chapter 16): blog as one Docker web service.
+# Commit it, then in Render: New > Blueprint, and connect this repository.
+services:
+  - type: web
+    name: blog
+    runtime: docker
+    plan: starter
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /_alder/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: ALDER_ADDR
+        value: ":10000"
+      - key: PORT
+        value: "10000"
+      - key: ALDER_SECRET
+        generateValue: true
+      - key: ALDER_PUBLIC_URL
+        value: https://blog.onrender.com # change if Render gave the service another name
+      - key: TZ
+        value: UTC

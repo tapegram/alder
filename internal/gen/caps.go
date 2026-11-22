@@ -418,6 +418,7 @@ type Options struct {
 	Metrics   *metrics.Collector      // ALDER_METRICS: answers /_alder/metrics and counts requests; nil: no endpoint
 	SlowAfter time.Duration           // ALDER_SLOW_MS: a request this slow is a warn line with its breakdown; 0: none
 	Jobs      int                     // ALDER_JOBS: the job workers cmd/main.go starts (App.StartJobs); 0: none
+	JobsOnly  bool                    // --jobs-only: no listener; the workers read the silo hints (App.StartJobs, App.AwaitBuild)
 }
 
 // App is the app opened (Open): its store(s), capabilities, log and clock, shared by its HTTP
@@ -431,6 +432,7 @@ type App struct {
 	now     func() time.Time        // the router's clock: web.Options.Now, else time.Now
 	health  *jobs.Health            // the job workers' state, answered by /_alder/health as "jobs"
 	handler http.Handler
+	jobsOnly bool                    // o.JobsOnly
 }
 
 // Serve is the app's HTTP handler: Open's Handler. The App is never closed.
@@ -451,9 +453,24 @@ func (a *App) Handler() http.Handler { return a.handler }
 // and returns the function that stops them: it stops claiming at once, waits at most grace for
 // the attempts running, then cancels them and queues their jobs again. n 0 starts none, and
 // /_alder/health answers "jobs": "off" (an app that declares no job has no "jobs" there at all).
+// Under --jobs-only (Options.JobsOnly) the workers also read the silo hints the Enqueues of a
+// process without workers write in the shared store (jobs.Options.Hints).
 func (a *App) StartJobs(n int) (stop func(grace time.Duration)) {
 	return jobs.Start(context.Background(), jobs.Options{Store: a.web.Store, Stores: a.web.Stores, Kinds: Jobs(), Env: a.JobEnv, Workers: n, Now: a.now,
-		Log: a.log, LogID: a.logID, Line: a.jobLine, Metrics: a.web.Metrics, Health: a.health})
+		Log: a.log, LogID: a.logID, Line: a.jobLine, Metrics: a.web.Metrics, Health: a.health, Hints: a.jobsOnly})
+}
+
+// AwaitBuild returns nil at once unless Open found the shared database on Turso ahead of this
+// build (a newer build migrated it). Then it is --jobs-only's maintenance page (jobs.AwaitBuild):
+// it reads the database's schema again every 10 s (db.CheckShared) and returns nil once it is
+// this build's, the web build's error once it is behind, or ctx's error when ctx ends first.
+func (a *App) AwaitBuild(ctx context.Context) error {
+	if a.web.SharedMaintenance == nil {
+		return nil
+	}
+	return jobs.AwaitBuild(ctx, func(ctx context.Context) (db.SharedState, string, error) {
+		return db.CheckShared(ctx, a.store, Tables, Migrations)
+	}, nil, a.log)
 }
 
 // JobEnv is the Env an attempt of a job of kind k runs with, built as the router builds a
@@ -497,9 +514,9 @@ func (a *App) Close() error {
 // this build instead (db.CheckShared, which writes nothing): behind (or without tables) is the
 // error "the database is behind this build: run ` + "`alder deploy`" + `"; ahead (a newer build migrated
 // it) serves the maintenance page on every route, and /_alder/health answers 503 "ahead:
-// <detail>" (web.Options.SharedMaintenance); equal serves. Ahead or equal, it creates the
-// runtime's own tables the database lacks (db.EnsureRuntimeTables: the jobs table), as
-// --migrate-only does.
+// <detail>" (web.Options.SharedMaintenance), or under --jobs-only (o.JobsOnly) waits in
+// App.AwaitBuild; equal serves. Ahead or equal, it creates the runtime's own tables the database
+// lacks (db.EnsureRuntimeTables: the jobs table and the silo hints), as --migrate-only does.
 func Open(caps Caps, o Options) (*App, error) {
 	if err := web.CheckSecret(o.Secret, o.Dev); err != nil {
 		return nil, err
@@ -538,7 +555,11 @@ func Open(caps Caps, o Options) (*App, error) {
 			return nil, errors.New("the database is behind this build: run ` + "`alder deploy`" + `")
 		case db.SharedAhead:
 			shared = errors.New("ahead: " + detail)
-			if o.Log != nil {
+			switch {
+			case o.Log == nil:
+			case o.JobsOnly:
+				o.Log("warn", "the database is ahead of this build, no job runs until it is not (looked at again every 10 s): "+detail)
+			default:
 				o.Log("warn", "the database is ahead of this build, every page answers the maintenance page: "+detail)
 			}
 		}
@@ -572,7 +593,7 @@ SILOWEB
 	if len(Jobs()) > 0 { // an app with no job has no "jobs" in /_alder/health
 		w.Jobs = health.State
 	}
-	a := &App{store: store, web: w, log: o.Log, logID: o.LogID, jobLine: o.JobLine, now: w.Now, health: health, handler: web.NewRouter(Routes, w)}
+	a := &App{store: store, web: w, log: o.Log, logID: o.LogID, jobLine: o.JobLine, now: w.Now, health: health, handler: web.NewRouter(Routes, w), jobsOnly: o.JobsOnly}
 	if a.log == nil {
 		a.log = func(string, string) {}
 	}
@@ -788,6 +809,10 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 // then stops the job workers with what is left of those 5 s, stops the backup and closes the
 // app (App.Close); when serving fails it does the same with no grace for the job workers (their
 // attempts are queued again) and exits 1. The maintenance tasks never start job workers.
+// --jobs-only (runJobs) opens the app and starts its job workers (ALDER_JOBS default 8,
+// rt/jobs.JobsOnlyWorkersFromEnv; Options.JobsOnly: the workers read the silo hints) once the
+// shared database is not ahead of the build (App.AwaitBuild), with no listener and no backup;
+// SIGINT or SIGTERM stops them with a 5 s grace and closes the app.
 // ALDER_EXIT_ON_STDIN_EOF=1 (set by alder run, which holds the other end of the app's standard
 // input) makes the same shutdown happen when standard input reaches EOF, so the app never
 // outlives the dev server; the variable is cleared once read, so a process the app starts does
@@ -843,6 +868,16 @@ func Main(name string, withCaps, withSilos bool) []byte {
 // the database is behind this build (alder deploy migrates it) and serves the maintenance page
 // when a newer build migrated it.
 //
+// --jobs-only runs the app's job workers and serves nothing (the worker service of a deploy
+// with workers:, spec §7a): ALDER_ADDR is not listened on, nothing is printed to standard
+// output, there is no /_alder/health (the process being up is its health), and no backup is
+// streamed. ALDER_JOBS is 8 by default in this mode; the workers also read the silos named in
+// the shared database by the enqueues of an app run with ALDER_JOBS=0. With ALDER_DB=libsql://…
+// it exits 1 when the database is behind this build, as serving does, and when a newer build
+// migrated it, it runs no job and reads the database's schema again every 10 s until it is this
+// build's. SIGINT or SIGTERM stops it: no new claim, 5 s for the attempts running, then they are
+// cancelled and queued again.
+//
 // Two arguments run a maintenance task instead of serving (alder deploy runs them at the
 // target, chapter 16): --migrate-only applies the pending migrations to ALDER_DB (each
 // "migrated <name>" printed) and exits, 0 or 1 with the refusal, before the new build is
@@ -876,7 +911,8 @@ import (
 func main() {
 	dev := os.Getenv("ALDER_DEV") == "1"
 	dbPath := env("ALDER_DB", ` + strconv.Quote(name+".db") + `)
-	if len(os.Args) > 1 {
+	jobsOnly := len(os.Args) == 2 && os.Args[1] == "--jobs-only"
+	if len(os.Args) > 1 && !jobsOnly {
 		os.Exit(maintain(os.Args[1:], dbPath, dev))
 	}
 	if publicurl.Err != nil { // a bad ALDER_PUBLIC_URL, read before package app initialised
@@ -901,7 +937,12 @@ func main() {
 	if m != nil && m.Open() {
 		lg.Log("warn", metrics.OpenWarning)
 	}
-	workers, err := jobs.WorkersFromEnv() // ALDER_JOBS
+	var workers int
+	if jobsOnly {
+		workers, err = jobs.JobsOnlyWorkersFromEnv() // ALDER_JOBS: default 8
+	} else {
+		workers, err = jobs.WorkersFromEnv() // ALDER_JOBS: default 4
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "alder:", err)
 		os.Exit(1)
@@ -927,11 +968,15 @@ func main() {
 		Metrics:   m,
 		SlowAfter: slow,
 		Jobs:      workers,
+		JobsOnly:  jobsOnly,
 	}
 	a, err := app.Open(` + caps + `, o)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "alder:", err)
 		os.Exit(1)
+	}
+	if jobsOnly {
+		os.Exit(runJobs(a, o.Jobs, lg.Log))
 	}
 	stopBackup := func() {}
 	if loc := os.Getenv(backup.EnvURL); loc != "" {
@@ -950,14 +995,7 @@ func main() {
 	fmt.Println("listening on " + ln.Addr().String())
 	srv := &http.Server{Handler: a.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	if os.Getenv("ALDER_EXIT_ON_STDIN_EOF") == "1" {
-		os.Unsetenv("ALDER_EXIT_ON_STDIN_EOF") // not inherited by a process the app starts
-		// alder run holds the other end of stdin: when it dies, this read ends and the app stops
-		go func() {
-			_, _ = io.Copy(io.Discard, os.Stdin)
-			stop()
-		}()
-	}
+	exitOnStdinEOF(stop)
 	stopJobs := a.StartJobs(o.Jobs)
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
@@ -982,6 +1020,49 @@ DRAIN	grace, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	if err := a.Close(); err != nil {
 		fmt.Fprintln(os.Stderr, "alder: closing the database:", err)
 	}
+}
+
+// runJobs is --jobs-only (see the package comment): it runs n job workers on the app a opened, and
+// no listener and no backup, until SIGINT or SIGTERM (or standard input's EOF, see
+// exitOnStdinEOF), and returns the exit code. A shared database ahead of this build is waited out
+// first (App.AwaitBuild: no claim until it is this build's; 1 when it turns out behind, 0 when
+// stopped while waiting). Stopping, it stops claiming, gives the attempts running 5 s, then
+// cancels them and queues their jobs again, and closes the app.
+func runJobs(a *app.App, n int, log func(level, msg string)) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	exitOnStdinEOF(stop)
+	log("info", fmt.Sprintf("jobs only: %d job workers, no listener", n))
+	if err := a.AwaitBuild(ctx); err != nil {
+		a.Close()
+		if ctx.Err() != nil {
+			return 0
+		}
+		fmt.Fprintln(os.Stderr, "alder:", err)
+		return 1
+	}
+	stopJobs := a.StartJobs(n)
+	<-ctx.Done()
+	stop()
+DRAIN	stopJobs(5 * time.Second) // the attempts still running then are cancelled and queued again
+	if err := a.Close(); err != nil {
+		fmt.Fprintln(os.Stderr, "alder: closing the database:", err)
+	}
+	return 0
+}
+
+// exitOnStdinEOF calls stop when standard input reaches EOF if ALDER_EXIT_ON_STDIN_EOF=1 (alder
+// run holds the other end: when it dies, the read ends and the app stops), and clears the
+// variable, so a process the app starts does not inherit it. Without it standard input is not read.
+func exitOnStdinEOF(stop func()) {
+	if os.Getenv("ALDER_EXIT_ON_STDIN_EOF") != "1" {
+		return
+	}
+	os.Unsetenv("ALDER_EXIT_ON_STDIN_EOF")
+	go func() {
+		_, _ = io.Copy(io.Discard, os.Stdin)
+		stop()
+	}()
 }
 
 // maintain runs the maintenance task args name (see the package comment) on the database at
@@ -1017,7 +1098,7 @@ func maintain(args []string, path string, dev bool) int {
 		}
 		return 0
 	}
-SILOCASES	fmt.Fprintln(os.Stderr, "usage: "+filepath.Base(os.Args[0])+" [--migrate-only | --backup-to FILE"+SILOUSAGE+"]  (no argument: serve)")
+SILOCASES	fmt.Fprintln(os.Stderr, "usage: "+filepath.Base(os.Args[0])+" [--jobs-only | --migrate-only | --backup-to FILE"+SILOUSAGE+"]  (no argument: serve)")
 	return 2
 }
 
@@ -1042,7 +1123,7 @@ func env(name, def string) string {
 	if withSilos { // M3: the old process opens no silo while it drains, and re-checks before a write
 		drain = "\tdb.Drain()\n"
 	}
-	src = strings.Replace(src, "DRAIN", drain, 1)
+	src = strings.Replace(src, "DRAIN", drain, -1)
 	src = strings.Replace(strings.Replace(src, "SILOCASES", cases, 1), "+SILOUSAGE", usage, 1)
 	out, err := format.Source([]byte(src))
 	if err != nil {

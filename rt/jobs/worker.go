@@ -65,6 +65,11 @@ type Options struct {
 	// Poll is how long an idle worker waits for a wake before it looks again (0: DefaultPoll);
 	// Housekeep the interval of the housekeeping (0: DefaultHousekeep).
 	Poll, Housekeep time.Duration
+	// Hints, with Stores, makes the workers read the silo hints of the shared store (written by
+	// the Enqueues of a process with no workers, db.SiloHintsTable) before a claim, at most once
+	// per Poll by Now for them all: each hint read, at most HintBatch of them oldest first, puts
+	// its silo in the active set and is deleted. The generated --jobs-only main sets it.
+	Hints bool
 }
 
 // wake carries Wake's signal to an idle worker: one pending signal is enough, since the worker
@@ -95,11 +100,12 @@ var errStopped = errors.New("jobs: the workers stopped")
 // expired leases and its pruning.
 //
 // The active set (spec §7) is every silo the start scan finds with jobs (scan: the first
-// housekeeping reads every silo database once, opening none) and every silo an Enqueue of this
-// process touches; a silo leaves it after ActiveFor with no row queued or running there. A
-// worker's look at a silo is not a use of it (db.Stores.Poll): a silo with nothing due or running
-// closes at its idle time, as one no worker looks at, and is opened again only when a row there
-// comes due (housekeeping records when). The queued gauge and Health read the active silos
+// housekeeping reads every silo database once, opening none), every silo an Enqueue of this
+// process touches and, with o.Hints, every silo a hint in the shared store names (hints: read
+// before a claim, at most once per o.Poll); a silo leaves it after ActiveFor with no row queued
+// or running there. A worker's look at a silo is not a use of it (db.Stores.Poll): a silo with
+// nothing due or running closes at its idle time, as one no worker looks at, and is opened again
+// only when a row there comes due (housekeeping records when). The queued gauge and Health read the active silos
 // beside the shared store, by the same rule. A store whose claims keep failing is one warn line, then at most one every
 // ClaimLogEvery, and one line when they work again.
 // With no workers or no store it starts nothing, and stop does nothing.
@@ -213,6 +219,9 @@ type pool struct {
 	pendingStmt string
 	pendingArgs []any
 	housekept   func() // see start
+	// hintMu guards hintAt, when the hints were last read (Options.Hints)
+	hintMu sync.Mutex
+	hintAt time.Time
 }
 
 // newPool is the pool of the workers of o (its Now and Log set).
@@ -311,6 +320,7 @@ func (p *pool) work(claimCtx, runCtx context.Context, tick <-chan time.Time, wor
 		default:
 		}
 		now := p.o.Now()
+		p.hints(claimCtx, now)
 		row := p.claim(claimCtx, now, worker)
 		if row != nil {
 			if p.o.Health != nil {

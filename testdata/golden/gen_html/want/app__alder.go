@@ -73,19 +73,21 @@ type Options struct {
 	Metrics   *metrics.Collector          // ALDER_METRICS: answers /_alder/metrics and counts requests; nil: no endpoint
 	SlowAfter time.Duration               // ALDER_SLOW_MS: a request this slow is a warn line with its breakdown; 0: none
 	Jobs      int                         // ALDER_JOBS: the job workers cmd/main.go starts (App.StartJobs); 0: none
+	JobsOnly  bool                        // --jobs-only: no listener; the workers read the silo hints (App.StartJobs, App.AwaitBuild)
 }
 
 // App is the app opened (Open): its store(s), capabilities, log and clock, shared by its HTTP
 // handler and its job workers.
 type App struct {
-	store   *db.SQLite                  // the shared store
-	web     web.Options                 // the router's options: Store, Stores, Caps, SessionCheck
-	log     func(level, msg string)     // o.Log, or one that drops the line
-	logID   func(id, level, msg string) // o.LogID: a job's lines under its id; nil: log
-	jobLine func(*applog.Job)           // o.JobLine
-	now     func() time.Time            // the router's clock: web.Options.Now, else time.Now
-	health  *jobs.Health                // the job workers' state, answered by /_alder/health as "jobs"
-	handler http.Handler
+	store    *db.SQLite                  // the shared store
+	web      web.Options                 // the router's options: Store, Stores, Caps, SessionCheck
+	log      func(level, msg string)     // o.Log, or one that drops the line
+	logID    func(id, level, msg string) // o.LogID: a job's lines under its id; nil: log
+	jobLine  func(*applog.Job)           // o.JobLine
+	now      func() time.Time            // the router's clock: web.Options.Now, else time.Now
+	health   *jobs.Health                // the job workers' state, answered by /_alder/health as "jobs"
+	handler  http.Handler
+	jobsOnly bool // o.JobsOnly
 }
 
 // Serve is the app's HTTP handler: Open's Handler. The App is never closed.
@@ -106,9 +108,24 @@ func (a *App) Handler() http.Handler { return a.handler }
 // and returns the function that stops them: it stops claiming at once, waits at most grace for
 // the attempts running, then cancels them and queues their jobs again. n 0 starts none, and
 // /_alder/health answers "jobs": "off" (an app that declares no job has no "jobs" there at all).
+// Under --jobs-only (Options.JobsOnly) the workers also read the silo hints the Enqueues of a
+// process without workers write in the shared store (jobs.Options.Hints).
 func (a *App) StartJobs(n int) (stop func(grace time.Duration)) {
 	return jobs.Start(context.Background(), jobs.Options{Store: a.web.Store, Stores: a.web.Stores, Kinds: Jobs(), Env: a.JobEnv, Workers: n, Now: a.now,
-		Log: a.log, LogID: a.logID, Line: a.jobLine, Metrics: a.web.Metrics, Health: a.health})
+		Log: a.log, LogID: a.logID, Line: a.jobLine, Metrics: a.web.Metrics, Health: a.health, Hints: a.jobsOnly})
+}
+
+// AwaitBuild returns nil at once unless Open found the shared database on Turso ahead of this
+// build (a newer build migrated it). Then it is --jobs-only's maintenance page (jobs.AwaitBuild):
+// it reads the database's schema again every 10 s (db.CheckShared) and returns nil once it is
+// this build's, the web build's error once it is behind, or ctx's error when ctx ends first.
+func (a *App) AwaitBuild(ctx context.Context) error {
+	if a.web.SharedMaintenance == nil {
+		return nil
+	}
+	return jobs.AwaitBuild(ctx, func(ctx context.Context) (db.SharedState, string, error) {
+		return db.CheckShared(ctx, a.store, Tables, Migrations)
+	}, nil, a.log)
 }
 
 // JobEnv is the Env an attempt of a job of kind k runs with, built as the router builds a
@@ -152,9 +169,9 @@ func (a *App) Close() error {
 // this build instead (db.CheckShared, which writes nothing): behind (or without tables) is the
 // error "the database is behind this build: run `alder deploy`"; ahead (a newer build migrated
 // it) serves the maintenance page on every route, and /_alder/health answers 503 "ahead:
-// <detail>" (web.Options.SharedMaintenance); equal serves. Ahead or equal, it creates the
-// runtime's own tables the database lacks (db.EnsureRuntimeTables: the jobs table), as
-// --migrate-only does.
+// <detail>" (web.Options.SharedMaintenance), or under --jobs-only (o.JobsOnly) waits in
+// App.AwaitBuild; equal serves. Ahead or equal, it creates the runtime's own tables the database
+// lacks (db.EnsureRuntimeTables: the jobs table and the silo hints), as --migrate-only does.
 func Open(caps Caps, o Options) (*App, error) {
 	if err := web.CheckSecret(o.Secret, o.Dev); err != nil {
 		return nil, err
@@ -193,7 +210,11 @@ func Open(caps Caps, o Options) (*App, error) {
 			return nil, errors.New("the database is behind this build: run `alder deploy`")
 		case db.SharedAhead:
 			shared = errors.New("ahead: " + detail)
-			if o.Log != nil {
+			switch {
+			case o.Log == nil:
+			case o.JobsOnly:
+				o.Log("warn", "the database is ahead of this build, no job runs until it is not (looked at again every 10 s): "+detail)
+			default:
 				o.Log("warn", "the database is ahead of this build, every page answers the maintenance page: "+detail)
 			}
 		}
@@ -226,7 +247,7 @@ func Open(caps Caps, o Options) (*App, error) {
 	if len(Jobs()) > 0 { // an app with no job has no "jobs" in /_alder/health
 		w.Jobs = health.State
 	}
-	a := &App{store: store, web: w, log: o.Log, logID: o.LogID, jobLine: o.JobLine, now: w.Now, health: health, handler: web.NewRouter(Routes, w)}
+	a := &App{store: store, web: w, log: o.Log, logID: o.LogID, jobLine: o.JobLine, now: w.Now, health: health, handler: web.NewRouter(Routes, w), jobsOnly: o.JobsOnly}
 	if a.log == nil {
 		a.log = func(string, string) {}
 	}

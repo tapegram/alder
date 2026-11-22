@@ -48,6 +48,7 @@ type renderRig struct {
 	dir, root string
 	n         int
 	instances int
+	workers   int  // `workers` of the declaration (0: none)
 	refuse    bool // the next migration run refuses (exits 1) without applying anything
 	out       syncBuffer
 	texts     []string   // errors, --json, other outputs
@@ -112,7 +113,7 @@ func (g *renderRig) decl() *ir.Deploy {
 
 // target is a Render target made as the command makes it (NewRender, from the environment).
 func (g *renderRig) target() *Render {
-	r := NewRender("blog", "production", ir.Target{Kind: "render", Region: "oregon", Service: "blog", Plan: "starter", Instances: g.instances,
+	r := NewRender("blog", "production", ir.Target{Kind: "render", Region: "oregon", Service: "blog", Plan: "starter", Instances: g.instances, Workers: g.workers,
 		Database: &ir.Database{Kind: "turso", Org: "acme", App: "blog"}}, g.decl(), rImage)
 	r.Out = &g.out
 	r.ExpectedURL = func(name string) string { return g.render.URL + "/svc/" + name } // the fake's unsuffixed address
@@ -1328,5 +1329,234 @@ func TestRender_HealthNeverServes(t *testing.T) {
 		if b.ID == res.Record.Build && (b.Current || b.Record != nil) {
 			t.Errorf("recorded: %+v", b)
 		}
+	}
+}
+
+// workers: the deploy creates the worker service (a background worker running the image's binary
+// as --jobs-only, the web service's environment without ALDER_ADDR and ALDER_JOBS) and sets
+// ALDER_JOBS=0 on the web service; a later deploy scales it and waits for its deploy after the
+// web service's health check.
+func TestRenderDeploy_ScalesWorker(t *testing.T) {
+	g := newRenderRig(t)
+	g.workers = 1
+	id1 := g.mustDeploy(g.target())
+	w := g.render.Service("blog-worker")
+	if w == nil || w.Type != "background_worker" || w.Instances != 1 || w.DockerCommand != "/app/app --jobs-only" || w.URL != "" {
+		t.Fatalf("worker service: %+v\n%s", w, g.out.String())
+	}
+	web := g.render.Service("blog")
+	we, ee := envOf(w), envOf(web)
+	if _, ok := we["ALDER_ADDR"]; ok {
+		t.Errorf("the worker has ALDER_ADDR")
+	}
+	if v, ok := we["ALDER_JOBS"]; ok {
+		t.Errorf("the worker sets ALDER_JOBS=%q: its default is 8", v)
+	}
+	if ee["ALDER_JOBS"] != "0" || ee["ALDER_ADDR"] != RenderAddr {
+		t.Errorf("web env: ALDER_JOBS=%q ALDER_ADDR=%q", ee["ALDER_JOBS"], ee["ALDER_ADDR"])
+	}
+	for k, v := range ee {
+		if k != "ALDER_ADDR" && k != "ALDER_JOBS" && we[k] != v {
+			t.Errorf("worker env %s differs from the web service's", k)
+		}
+	}
+	if w.Image != rImage+":"+id1 || w.Region != "oregon" {
+		t.Errorf("worker image %q region %q", w.Image, w.Region)
+	}
+
+	g.workers = 2
+	nr := len(g.render.Requests())
+	g.out.b.Reset()
+	id2 := g.mustDeploy(g.target())
+	reqs := g.requests(nr)
+	if n := count(reqs, "POST /services/"+w.ID+"/scale"); n != 1 {
+		t.Errorf("%d worker scale requests: %v", n, nonGET(reqs))
+	}
+	if n := count(reqs, "POST /services/"+w.ID+"/deploys"); n != 1 {
+		t.Errorf("%d worker deploys: %v", n, nonGET(reqs))
+	}
+	if n := count(reqs, "POST /services/"+web.ID+"/scale"); n != 0 {
+		t.Errorf("the web service was scaled: %v", nonGET(reqs))
+	}
+	if n := count(reqs, "GET /services/"+w.ID+"/deploys/"); n == 0 {
+		t.Errorf("no wait on the worker's deploy: %v", reqs)
+	}
+	w = g.render.Service("blog-worker")
+	if w.Instances != 2 || w.Image != rImage+":"+id2 {
+		t.Errorf("worker after the second deploy: %d instances, image %q", w.Instances, w.Image)
+	}
+	out := g.out.String()
+	h, l := strings.Index(out, "health: 1/1 instances serve "+id2), strings.Index(out, "Render worker deploy dep-")
+	if h < 0 || l < h || !strings.Contains(out, "service blog-worker scaled 1 → 2 instances\n") || !strings.Contains(out, " live (2 instances)\n") {
+		t.Errorf("transcript (the worker's deploy is awaited after the web health):\n%s", out)
+	}
+}
+
+// A second deploy that changes the environment (a new `requires` value) puts the existing
+// worker's environment once, keeps a variable set only in the dashboard, never sets ALDER_ADDR
+// or ALDER_JOBS on it, and looks at the worker's deploys for a foreign one (cancelForeignOn)
+// before it deploys.
+func TestRenderDeploy_WorkerEnvPut(t *testing.T) {
+	g := newRenderRig(t)
+	g.workers = 1
+	g.mustDeploy(g.target())
+	w := g.render.Service("blog-worker")
+	dash, newSMTP := "dashboard-only-worker-value", "smtp://mailer:OTHERPASS@mail.example"
+	g.secrets = append(g.secrets, dash, newSMTP)
+	g.render.SetEnv("blog-worker", "DASH_ONLY", dash)
+	t.Setenv("SMTP_URL", newSMTP)
+
+	nr := len(g.render.Requests())
+	g.out.b.Reset()
+	g.mustDeploy(g.target())
+	reqs := g.requests(nr)
+	put := "PUT /services/" + w.ID + "/env-vars"
+	if n := count(reqs, put); n != 1 {
+		t.Fatalf("%d env PUTs to the worker: %v", n, nonGET(reqs))
+	}
+	we := envOf(g.render.Service("blog-worker"))
+	if we["DASH_ONLY"] != dash {
+		t.Errorf("the dashboard variable was dropped from the worker")
+	}
+	if we["SMTP_URL"] != newSMTP {
+		t.Errorf("the worker has not the changed requires value")
+	}
+	if _, ok := we["ALDER_ADDR"]; ok {
+		t.Errorf("the worker has ALDER_ADDR")
+	}
+	if v, ok := we["ALDER_JOBS"]; ok {
+		t.Errorf("the worker sets ALDER_JOBS=%q", v)
+	}
+	// cancelForeignOn: the worker's deploys are listed after the PUT and before its deploy is made
+	pi, di, ci := -1, -1, -1
+	for i, q := range reqs {
+		switch {
+		case q == put || strings.HasPrefix(q, put+" "):
+			pi = i
+		case strings.HasPrefix(q, "GET /services/"+w.ID+"/deploys") && pi >= 0 && di < 0 && ci < 0:
+			di = i
+		case q == "POST /services/"+w.ID+"/deploys":
+			ci = i
+		}
+	}
+	if pi < 0 || di <= pi || ci <= di {
+		t.Errorf("no listing of the worker's deploys between the env PUT and its deploy (put %d, list %d, deploy %d): %v", pi, di, ci, reqs)
+	}
+	if !strings.Contains(g.out.String(), "environment of blog-worker set (") {
+		t.Errorf("transcript:\n%s", g.out.String())
+	}
+}
+
+// Without `workers` nothing at Render changes: no worker service, no ALDER_JOBS on the web one.
+func TestRenderDeploy_NoWorkers(t *testing.T) {
+	g := newRenderRig(t)
+	g.mustDeploy(g.target())
+	if g.render.Service("blog-worker") != nil {
+		t.Errorf("a worker service was made")
+	}
+	if _, ok := envOf(g.render.Service("blog"))["ALDER_JOBS"]; ok {
+		t.Errorf("the web service has ALDER_JOBS")
+	}
+}
+
+// Status lists the worker service beside the web one.
+func TestStatus_ListsWorker(t *testing.T) {
+	g := newRenderRig(t)
+	g.workers = 2
+	g.mustDeploy(g.target())
+	var w bytes.Buffer
+	if err := Status(context.Background(), g.connected(), &w); err != nil {
+		t.Fatal(err)
+	}
+	out := w.String()
+	g.texts = append(g.texts, out)
+	for _, l := range []string{"service  " + g.render.URL + "/svc/blog, 1 instance, live deploy dep-", "worker   blog-worker, 2 instances, live deploy dep-"} {
+		if !strings.Contains(out, l) {
+			t.Errorf("status lacks %q:\n%s", l, out)
+		}
+	}
+	if strings.Index(out, "service  ") > strings.Index(out, "worker   ") {
+		t.Errorf("the worker line comes before the service's:\n%s", out)
+	}
+}
+
+// Logs with WorkerLogs read the worker service's log; without `workers` that is a refusal
+// naming `workers:`.
+func TestLogs_Worker(t *testing.T) {
+	g := newRenderRig(t)
+	g.workers = 1
+	g.mustDeploy(g.target())
+	g.render.Logs(renderfake.LogLine{Time: time.Now(), Instance: "srv-web", Message: "listening on :10000"})
+	g.render.ServiceLogs("blog-worker", renderfake.LogLine{Time: time.Now(), Instance: "srv-w1", Message: "job SendWelcome done"})
+	var w bytes.Buffer
+	r := g.connected()
+	r.WorkerLogs = true
+	if err := r.Logs(context.Background(), false, 100, time.Time{}, &w); err != nil {
+		t.Fatal(err)
+	}
+	if w.String() != "[srv-w1] job SendWelcome done\n" {
+		t.Errorf("worker logs: %q", w.String())
+	}
+	w.Reset()
+	if err := g.connected().Logs(context.Background(), false, 100, time.Time{}, &w); err != nil || w.String() != "[srv-web] listening on :10000\n" {
+		t.Errorf("web logs: %q, %v", w.String(), err)
+	}
+	g.workers = 0
+	r = g.target()
+	r.WorkerLogs = true
+	if err := r.Logs(context.Background(), false, 100, time.Time{}, &w); err == nil || !strings.Contains(err.Error(), "`workers:`") {
+		t.Errorf("--worker without workers: %v", err)
+	}
+}
+
+// `workers` removed while a <service>-worker still exists: Connect refuses, naming the worker
+// service and what to do, before anything changes at Render.
+func TestRender_LeftoverWorkerRefused(t *testing.T) {
+	g := newRenderRig(t)
+	g.workers = 1
+	g.mustDeploy(g.target())
+	g.workers = 0
+	nr := len(g.render.Requests())
+	_, err := g.deploy(g.target())
+	if err == nil {
+		t.Fatalf("a deploy without workers went on with blog-worker present:\n%s", g.out.String())
+	}
+	for _, want := range []string{"blog-worker", "delete or suspend", "unset ALDER_JOBS", "`workers`"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error lacks %q: %v", want, err)
+		}
+	}
+	if n := len(nonGET(g.requests(nr))); n != 0 {
+		t.Errorf("Render changed before the refusal: %v", nonGET(g.requests(nr)))
+	}
+}
+
+// Without `workers` and without a worker service, Connect makes the calls it always made, plus
+// the lookup of <service>-worker (GET /services?type=background_worker).
+func TestRender_NoWorkersLookup(t *testing.T) {
+	g := newRenderRig(t)
+	g.mustDeploy(g.target())
+	var before []renderfake.Call
+	before = g.render.Calls()
+	n := len(before)
+	g.connected()
+	var web, worker int
+	for _, c := range g.render.Calls()[n:] {
+		if c.Method == "GET" && c.Path == "/services" {
+			switch c.Query.Get("type") {
+			case "web_service":
+				web++
+			case "background_worker":
+				worker++
+				if c.Query.Get("name") != "blog-worker" {
+					t.Errorf("worker lookup name %q", c.Query.Get("name"))
+				}
+			}
+		} else if c.Method != "GET" {
+			t.Errorf("Connect made %s %s", c.Method, c.Path)
+		}
+	}
+	if web != 1 || worker != 1 {
+		t.Errorf("service lookups: web %d, worker %d", web, worker)
 	}
 }

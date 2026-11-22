@@ -89,7 +89,7 @@ type Deploy struct {
 }
 
 // Target is one environment's destination. Kind is "ssh" (Host, Domain, Path, User, Port),
-// "fly" (Region, App), "render" (Region, Service, Plan, Instances) or "script" (ScriptPath). Port is the decimal text of the SSH port, ""
+// "fly" (Region, App), "render" (Region, Service, Plan, Instances, Workers) or "script" (ScriptPath). Port is the decimal text of the SSH port, ""
 // for the default (22); User "" takes the user in Host (`user@host`) or ssh's own default.
 type Target struct {
 	Kind                                                    string
@@ -98,6 +98,9 @@ type Target struct {
 	// default); Instances its numInstances (0 when unset: means 1).
 	Service, Plan string
 	Instances     int
+	// Workers is a Render environment's `workers`: how many instances of the worker service run
+	// the jobs (0 when unset: no worker service, the web instances run them).
+	Workers int
 	// Database is an Ssh or Render environment's `database: Turso "org" { … }` (M15): the app's data on
 	// Turso instead of a file on the box; nil for the file.
 	Database *Database
