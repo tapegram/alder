@@ -980,8 +980,9 @@ write any `Host`, and a page that printed it into a link (a password-reset
 email, say) would send the reader to the attacker's site.
 
 The server waits at most 10 seconds for a request's headers. On `SIGINT`
-(Ctrl-C) or `SIGTERM` it stops accepting connections, gives the requests
-in flight up to 5 seconds to finish, and exits 0.
+(Ctrl-C) or `SIGTERM` it stops accepting connections and claiming jobs,
+gives the requests in flight and the jobs running up to 5 seconds to
+finish (chapter 17, "Stopping"), and exits 0.
 
 `build/<app>/` then holds the generated package (one
 `<Module>_alder.go` per module, `app__alder.go`, `routes__alder.go`,

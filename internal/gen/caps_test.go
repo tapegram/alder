@@ -59,8 +59,9 @@ func funcBody(t *testing.T, f *ast.File, name string) *ast.BlockStmt {
 }
 
 // TestMain_StartsJobs: the generated main opens the app, serves its Handler and starts
-// o.Jobs job workers; on shutdown it shuts the server down, then stops the workers, then the
-// backup, then closes the app, and so does a failed Serve (the workers with no grace). The maintenance tasks open no App and start no worker.
+// o.Jobs job workers; on shutdown it stops the workers claiming and shuts the server down at once
+// (#288: no claims while requests drain; the attempts running and the requests share the 5 s),
+// then stops the backup, then closes the app, and so does a failed Serve (the workers with no grace). The maintenance tasks open no App and start no worker.
 func TestMain_StartsJobs(t *testing.T) {
 	for _, withCaps := range []bool{false, true} {
 		for _, withSilos := range []bool{false, true} {
@@ -71,7 +72,7 @@ func TestMain_StartsJobs(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := calls(funcBody(t, f, "main"))
-			order := []string{"jobs.WorkersFromEnv", "app.Open", "a.Handler", "a.StartJobs", "srv.Shutdown", "stopJobs", "stopBackup", "a.Close"}
+			order := []string{"jobs.WorkersFromEnv", "app.Open", "a.Handler", "a.StartJobs", "stopJobs", "srv.Shutdown", "stopBackup", "a.Close"}
 			at := 0
 			for _, c := range got {
 				if at < len(order) && c == order[at] {
@@ -91,7 +92,8 @@ func TestMain_StartsJobs(t *testing.T) {
 			// the app before it exits
 			failed := "case err := <-served:\n\t\tfmt.Fprintln(os.Stderr, \"alder:\", err)\n\t\tstopJobs(0) // the attempts running are queued again for the next start\n\t\tstopBackup()\n\t\ta.Close()\n\t\tos.Exit(1)"
 			readJobs := "if jobsOnly {\n\t\tworkers, err = jobs.JobsOnlyWorkersFromEnv() // ALDER_JOBS: default 8\n\t} else {\n\t\tworkers, err = jobs.WorkersFromEnv() // ALDER_JOBS: default 4\n\t}\n\tif err != nil {\n\t\tfmt.Fprintln(os.Stderr, \"alder:\", err)\n\t\tos.Exit(1)\n\t}"
-			for _, want := range []string{failed, "a.StartJobs(o.Jobs)", "Jobs:      workers,", "JobsOnly:  jobsOnly,", readJobs} {
+			drain := "go func() {\n\t\tstopJobs(time.Until(deadline)) // stops claiming at once; the attempts running get the same 5 s as the requests\n\t\tclose(jobsStopped)\n\t}()\n\tif err := srv.Shutdown(grace); err != nil {\n\t\tfmt.Fprintln(os.Stderr, \"alder: shutting down:\", err)\n\t}\n\t<-jobsStopped"
+			for _, want := range []string{failed, drain, "a.StartJobs(o.Jobs)", "Jobs:      workers,", "JobsOnly:  jobsOnly,", readJobs} {
 				if !strings.Contains(string(src), want) {
 					t.Errorf("caps %v silos %v: main has no %q", withCaps, withSilos, want)
 				}
