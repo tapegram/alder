@@ -128,6 +128,7 @@ func capabilities(enc posEncoding) map[string]any {
 		"semanticTokensProvider":     semanticTokensProvider(),
 		"foldingRangeProvider":       true,
 		"selectionRangeProvider":     true,
+		"documentSymbolProvider":     true,
 		"workspaceSymbolProvider":    true,
 		"experimental":               map[string]any{"alderScratch": true},
 	}

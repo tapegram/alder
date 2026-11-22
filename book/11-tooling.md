@@ -3129,7 +3129,12 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   not a warning. The buffer's text replaces the file's; everything else is
   read from disk.
 - **Symbols.** `workspace/symbol` lists the app's declarations by name
-  (see "Search in the editor", below).
+  (see "Search in the editor", below). `textDocument/documentSymbol` gives
+  a file's outline, from the buffer's text as you have typed it: every
+  top-level declaration in order, with a type's constructors, a job's
+  `run` arm and a route's members as children, and each function's or
+  value's signature as its detail. Text that parses to nothing keeps the
+  last good build's outline.
 - `<leader>at` runs `alder test`; failures land in the quickfix list at their `test` line,
   compile errors as diagnostics. `<leader>aT` runs the test under the cursor (the module's
   tests when none is above it).

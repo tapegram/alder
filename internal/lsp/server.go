@@ -60,6 +60,7 @@ var (
 		"textDocument/semanticTokens/range": semanticTokensRangeReq,
 		"textDocument/foldingRange":         foldingRangeReq,
 		"textDocument/selectionRange":       selectionRangeReq,
+		"textDocument/documentSymbol":       documentSymbolReq,
 		"alder/generators":                  generatorsReq,
 		"alder/routes":                      routesReq,
 		"alder/search":                      searchReq,
