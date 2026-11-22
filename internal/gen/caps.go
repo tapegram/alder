@@ -813,8 +813,8 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 // <address>" with the bound address, so ALDER_ADDR=127.0.0.1:0 picks a free port that a caller
 // can read. It opens the app (app.Open), serves its Handler and starts its job workers
 // (App.StartJobs). Its http.Server waits at most 10 s for a request's headers, and on SIGINT or
-// SIGTERM it stops accepting connections and lets the requests in flight finish (5 s at most),
-// then stops the job workers with what is left of those 5 s, stops the backup and closes the
+// SIGTERM it stops accepting connections and the job workers claiming, lets the requests in flight
+// and the job attempts running finish (the same 5 s at most), then stops the backup and closes the
 // app (App.Close); when serving fails it does the same with no grace for the job workers (their
 // attempts are queued again) and exits 1. The maintenance tasks never start job workers.
 // --jobs-only (runJobs) opens the app and starts its job workers (ALDER_JOBS default 8,
@@ -865,8 +865,9 @@ func Main(name string, withCaps, withSilos bool) []byte {
 // starts (App.StartJobs; default 4, 0 for none); a value that is not a whole number below 65536
 // exits 1 before anything is served. Static files are served under /static/
 // from ALDER_STATIC, by default the static directory next to the executable. SIGINT or SIGTERM
-// shuts the server down gracefully: requests in flight get 5 s to finish, and the job attempts
-// still running what is left of them, after which they are cancelled and queued again. ALDER_EXIT_ON_STDIN_EOF=1
+// shuts the server down gracefully: the job workers stop claiming at once, and the requests in
+// flight and the job attempts running get the same 5 s to finish, after which the attempts are
+// cancelled and queued again. ALDER_EXIT_ON_STDIN_EOF=1
 // (set by alder run) makes the app stop the same way when its standard input reaches EOF, so it
 // never outlives the dev server. GET /_alder/health answers {"build":"<ALDER_BUILD>","db":"ok"}
 // (200) when the database answers, else 503 "unreachable" (the error is logged); an app that
@@ -1019,12 +1020,17 @@ func main() {
 	stop()
 DRAIN	grace, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	deadline, _ := grace.Deadline()
+	jobsStopped := make(chan struct{})
+	go func() {
+		stopJobs(time.Until(deadline)) // stops claiming at once; the attempts running get the same 5 s as the requests
+		close(jobsStopped)
+	}()
 	if err := srv.Shutdown(grace); err != nil {
 		fmt.Fprintln(os.Stderr, "alder: shutting down:", err)
 	}
-	deadline, _ := grace.Deadline()
-	stopJobs(time.Until(deadline)) // the attempts running get what is left of the 5 s
-	stopBackup()                   // ships what the last requests and jobs wrote
+	<-jobsStopped
+	stopBackup() // ships what the last requests and jobs wrote
 	if err := a.Close(); err != nil {
 		fmt.Fprintln(os.Stderr, "alder: closing the database:", err)
 	}

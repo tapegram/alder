@@ -380,12 +380,11 @@ its workers look in):
 
 ### Stopping
 
-When the app stops (`SIGINT` or `SIGTERM`), it first lets the requests
-in flight finish, for up to five seconds, and its workers go on claiming
-meanwhile. Then the workers stop claiming, and the jobs they are running
-get what is left of those five seconds. (`app --jobs-only`, which serves
-no requests, stops claiming at once and gives its jobs five seconds.)
-After that, each job still running is cancelled and queued again as it
+When the app stops (`SIGINT` or `SIGTERM`), its workers stop claiming at
+once, and the requests in flight and the jobs running share the same
+five seconds to finish. A job a request enqueues in that time stays
+queued for the next process. (`app --jobs-only`, which serves no
+requests, does the same for its jobs alone.) After that, each job still running is cancelled and queued again as it
 was before its claim: the attempt does not count, and its error is
 cleared, so an earlier attempt's error is gone from the row too. So a
 deploy, or a rebuild under `alder run`, hands
