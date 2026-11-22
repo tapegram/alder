@@ -347,6 +347,10 @@ func declared(m *syntax.Module, name string) bool {
 			if d.Name == name {
 				return true
 			}
+		case *syntax.JobDecl:
+			if d.Name == name {
+				return true
+			}
 		}
 	}
 	return false

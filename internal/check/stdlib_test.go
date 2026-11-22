@@ -31,10 +31,10 @@ func TestStdlib_ResponseSignatures(t *testing.T) {
 	}
 }
 
-// Route and Response are Prelude types an app may not redeclare; Rendered and Refreshed are
+// Route, Response and Job are Prelude types an app may not redeclare; Rendered and Refreshed are
 // constructors of the test type Answer.
 func TestStdlib_RouteResponseReserved(t *testing.T) {
-	for _, decl := range []string{"type Route = { n: Int }", "type Response = { n: Int }", "type Rendered = Rendered | Other", "type Refreshed = Refreshed | Other"} {
+	for _, decl := range []string{"type Route = { n: Int }", "type Response = { n: Int }", "type Job = { n: Int }", "form Job = { n: Int }", "type Rendered = Rendered | Other", "type Refreshed = Refreshed | Other"} {
 		src := "module App\n\n" + decl + "\n\nerror : Error -> Html\nerror err = <html><body></body></html>\n\nnotFound : Html\nnotFound = <html><body></body></html>\n"
 		_, errs := checkFiles(t, map[string]string{"App.alder": src})
 		found := false

@@ -150,6 +150,8 @@ func declName(d syntax.Spanned) (name string, skip int, ok bool) {
 		return d.FullName(), 0, true // `Row.view` for a route's member
 	case *syntax.RouteDecl:
 		return d.Name, len("route"), true
+	case *syntax.JobDecl:
+		return d.Name, len("job"), true
 	case *syntax.TypeDecl:
 		return d.Name, len("type"), true
 	case *syntax.TableDecl:
@@ -179,6 +181,9 @@ func nameSpan(d syntax.Spanned, m *syntax.Module) diag.Span {
 	}
 	if rd, ok := d.(*syntax.RouteDecl); ok && rd.NameSpan.Start.Line > 0 {
 		return rd.NameSpan
+	}
+	if jd, ok := d.(*syntax.JobDecl); ok && jd.NameSpan.Start.Line > 0 {
+		return jd.NameSpan
 	}
 	name, skip, ok := declName(d)
 	if !ok {
@@ -300,7 +305,7 @@ func target(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Pos) 
 		}
 	}
 	if d, ok := declAt(m, pos).(*syntax.ValueDecl); ok && d.Route != "" && onRoutePart(d, m, pos) {
-		return syntax.Ref{Kind: syntax.RefRoute, Module: m.Name, Name: d.Route}, nil, true
+		return syntax.Ref{Kind: routeKind(a, m.Name, d.Route), Module: m.Name, Name: d.Route}, nil, true
 	}
 	if d := declAt(m, pos); d != nil && (syntax.Contains(nameSpan(d, m), pos) || syntax.Contains(defNameSpan(d, m), pos)) {
 		if ref, ok := declRef(m.Name, d); ok {
@@ -370,13 +375,22 @@ func routeQualifierAt(a *analysis, qual string, sp diag.Span, ref syntax.Ref, po
 		return syntax.Ref{}, false
 	}
 	i := strings.LastIndexByte(ref.Name, '.')
-	if i < 0 || (ref.Kind != syntax.RefValue && ref.Kind != syntax.RefType) || a.prog.Route(ref.Module, ref.Name[:i]) == nil {
+	if i < 0 || (ref.Kind != syntax.RefValue && ref.Kind != syntax.RefType) || a.prog.Route(ref.Module, ref.Name[:i]) == nil && a.prog.Job(ref.Module, ref.Name[:i]) == nil {
 		return syntax.Ref{}, false
 	}
 	if j := strings.LastIndexByte(qual, '.'); j >= 0 && pos.Col < sp.Start.Col+j+1 {
 		return syntax.Ref{Kind: syntax.RefNone, Module: ref.Module}, true // the module part of `Todos.Row`
 	}
-	return syntax.Ref{Kind: syntax.RefRoute, Module: ref.Module, Name: ref.Name[:i]}, true
+	return syntax.Ref{Kind: routeKind(a, ref.Module, ref.Name[:i]), Module: ref.Module, Name: ref.Name[:i]}, true
+}
+
+// routeKind is the Ref kind of the route or job name of module, which qualifies a member
+// (`Row.view`, `SendWelcome.run`): RefJob for a job, else RefRoute.
+func routeKind(a *analysis, module, name string) syntax.RefKind {
+	if a.prog.Job(module, name) != nil {
+		return syntax.RefJob
+	}
+	return syntax.RefRoute
 }
 
 // declRef is the Ref the resolver gives a use of declaration d of module mod.
@@ -386,6 +400,8 @@ func declRef(mod string, d syntax.Decl) (syntax.Ref, bool) {
 		return syntax.Ref{Kind: syntax.RefValue, Module: mod, Name: d.FullName()}, true
 	case *syntax.RouteDecl:
 		return syntax.Ref{Kind: syntax.RefRoute, Module: mod, Name: d.Name}, true
+	case *syntax.JobDecl:
+		return syntax.Ref{Kind: syntax.RefJob, Module: mod, Name: d.Name}, true
 	case *syntax.TypeDecl:
 		return syntax.Ref{Kind: syntax.RefType, Module: mod, Name: d.Name}, true
 	case *syntax.TableDecl:
@@ -443,7 +459,7 @@ func modulePath(a *analysis, name string) *syntax.Module {
 }
 
 // findDecl is the node that declares ref in its module (app or standard library): a value, a
-// type, table, form or route, a union constructor, or a capability or
+// type, table, form, route or job, a union constructor, or a capability or
 // its entry. nil when there is none.
 func findDecl(a *analysis, ref syntax.Ref) (*syntax.Module, syntax.Spanned) {
 	mod := modulePath(a, ref.Module)
@@ -459,6 +475,11 @@ func findDecl(a *analysis, ref syntax.Ref) (*syntax.Module, syntax.Spanned) {
 		case *syntax.RouteDecl:
 			// a route's constructor, or its generated type (`Row.Params`, `Row.Session`)
 			if ref.Kind == syntax.RefRoute && d.Name == ref.Name || ref.Kind == syntax.RefType && strings.HasPrefix(ref.Name, d.Name+".") {
+				return mod, d
+			}
+		case *syntax.JobDecl:
+			// a job's constructor, or its generated `Params`
+			if ref.Kind == syntax.RefJob && d.Name == ref.Name || ref.Kind == syntax.RefType && ref.Name == d.Name+".Params" {
 				return mod, d
 			}
 		case *syntax.TypeDecl:

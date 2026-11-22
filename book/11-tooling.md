@@ -308,6 +308,13 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 **Writes:** the capability (named after the module's last segment) with its entry, a `fake` whose entry is the hole `?<entry>`, a test that installs the fake, and the adapter, `adapters/<segment>/<capability>_<entry>.go`, whose methods return "not implemented"
 
+#### `alder new job <Name> [<field>:<Type> …] [--every D | --cron E] [--into M]`
+
+**Writes:** `app/Jobs/<Name>.alder` (module `Jobs.<Name>`), or in `--into`'s module (appended when it exists): `job <Name>` with its parameters, a `<Name>.run` that logs and succeeds, and a test that queues it and runs it with `Test.work` (chapter 15, "A job: `alder new job`"; chapter 17)
+
+- `--every`/`--cron` write a scheduled job, without parameters; its test sets the clock a minute before the first tick, works, advances past the tick and works again
+- Parameters on a schedule, or both schedules, are refused with E0050's words
+
 #### `alder edit table <T> add-field <field>`
 
 **Writes:** the field, after the table's last, and its migration
@@ -617,8 +624,8 @@ its route picker.
 
 ### `alder search`
 
-`alder search <query> [--json] [--limit N] [--doc]` finds a function, a value, a type
-or a union constructor, in the standard library and in your app, when you know
+`alder search <query> [--json] [--limit N] [--doc]` finds a function, a value, a type,
+a union constructor or a job (and its `run`), in the standard library and in your app, when you know
 what it does or what type it has but not what it is called. The query is every
 argument that is not a flag, joined with spaces, so `alder search : List Text`
 is the query `: List Text`. Quote a query that contains `->`, or `(` or `)`, as in
@@ -746,8 +753,9 @@ it prints them all anyway. The result below is `Text.split`; its `doc` field is 
 
 `mode` says how the query was read: `name`, `type` or `produces` (the `:`
 queries). `note` is a message about the query, or empty. `results` is the list,
-`[]` when nothing matches. In each result `kind` is `function`, `value`, `type`
-or `constructor`; `effect` appears when the result is a `query` or a `task`;
+`[]` when nothing matches. In each result `kind` is `function`, `value`, `type`,
+`constructor` or `job` (a job's type is its constructor's, `Name.Params -> Job`; its
+`Name.run` is a `function`); `effect` appears when the result is a `query` or a `task`;
 `match` appears for type queries and `args` for `:` queries, including `0`.
 Results from your app add `file`, `line` and `col`, where the declaration is
 written (relative to the app, 1-based); standard library declarations have no
@@ -2706,7 +2714,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 
 #### E0012 — a type named like a Prelude type
 
-- **Prelude types.** A type, table, form or union named like a Prelude type a program writes (`Query`, `Task`, `Html`, `Maybe`, `Result`, `List`, `Dict`, `Int`, `Float`, `Text`, `Bool`, `Unit`, `Date`, `Time`, `Never`, `Error`, `File`, `Bytes`, `Route` and `Response`; not Db's `Order`, `Form`, `Table`, `Id`, `Insert`, `Select`, `Condition`, `Column`) or like the Prelude's test types `Doc` and `Answer`, whose module's other errors wait for the rename.
+- **Prelude types.** A type, table, form or union named like a Prelude type a program writes (`Query`, `Task`, `Html`, `Maybe`, `Result`, `List`, `Dict`, `Int`, `Float`, `Text`, `Bool`, `Unit`, `Date`, `Time`, `Never`, `Error`, `File`, `Bytes`, `Route`, `Response` and `Job`; not Db's `Order`, `Form`, `Table`, `Id`, `Insert`, `Select`, `Condition`, `Column`) or like the Prelude's test types `Doc` and `Answer`, whose module's other errors wait for the rename.
 - **`Answer`'s constructors.** In any module, a constructor named like one of `Answer`'s (`Shown`, `Rendered`, `Refreshed`, `Redirected`, `FormRejected`, `PageMissing`, `RequestFailed`: "`PageMissing` is a constructor of the Prelude's test type `Answer`; name the constructor differently (for example `MissingLookup`)").
 - **Generated types.** In `App`, also the type the compiler generates there (`Session`).
 

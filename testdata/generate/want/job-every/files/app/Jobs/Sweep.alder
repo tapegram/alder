@@ -1,0 +1,24 @@
+module Jobs.Sweep
+
+job Sweep = {} every "1h"
+
+Sweep.run : Sweep.Params -> Task Unit
+Sweep.run p = {
+  let _ <- Log.info "Sweep ran"
+  Task.succeed ()
+}
+
+-- The clock starts at 2026-03-04T00:59:00Z; the job's first tick is at 2026-03-04T01:00:00Z.
+-- The first Test.work plays the worker's start: it queues the tick and runs nothing.
+-- A second past the tick, the second Test.work runs the job, once.
+-- Other jobs in the app run in the same calls, so only this job's runs are checked.
+test "Sweep runs on its schedule" = {
+  let _ <- Test.setClock (Time.fromMillis 1772585940000)
+  let start <- Test.work
+  let _ <- Test.advance 61000
+  let runs <- Test.work
+  let job = Sweep {}
+  let ownStart = List.filter (\r -> r.job == job) start
+  let own = List.filter (\r -> r.job == job) runs
+  Task.succeed (List.isEmpty ownStart && List.map (\r -> r.result) own == [Ok ()])
+}

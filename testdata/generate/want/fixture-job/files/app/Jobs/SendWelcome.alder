@@ -1,0 +1,19 @@
+module Jobs.SendWelcome
+
+import Table.User
+
+job SendWelcome = { user: User.UserId }
+
+SendWelcome.run : SendWelcome.Params -> Task Unit
+SendWelcome.run p = {
+  let _ <- Log.info "SendWelcome ran"
+  Task.succeed ()
+}
+
+test "SendWelcome runs" = {
+  let job = SendWelcome { user: User.UserId "u1" }
+  let _ <- Job.enqueue job
+  let runs <- Test.work
+  let own = List.filter (\r -> r.job == job) runs
+  Task.succeed (List.map (\r -> r.result) own == [Ok ()])
+}

@@ -1,0 +1,17 @@
+[[- define "job" -]]
+job [[.Name]] = [[.Params]][[.Schedule]]
+
+[[.Name]].run : [[.Name]].Params -> Task Unit
+[[.Name]].run p = {
+  let _ <- Log.info "[[.Name]] ran"
+  Task.succeed ()
+}
+[[- end]]
+
+[[- define "job_module" -]]
+module [[.Module]]
+
+[[if .Imports]][[range .Imports]]import [[.]]
+[[end]]
+[[end]][[template "job" .]]
+[[- end]]

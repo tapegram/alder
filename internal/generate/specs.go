@@ -338,6 +338,26 @@ func newSpecs() []*Spec {
 				})
 			},
 		},
+		{
+			ID: "new job", Summary: "a background job with its run arm and a test",
+			Args: []Field{
+				{Name: "name", Kind: ArgText, Required: true, Value: "<Name>", Help: "the job's name, a capitalised identifier; it is declared in Jobs.<Name> unless --into says otherwise", Example: "SendWelcome"},
+				{Name: "fields", Kind: ArgFieldList, Variadic: true, Value: "<field>:<Type>…", Help: "the job's parameters as name:Type words; none for a scheduled job", Example: "user:User.UserId"},
+			},
+			Flags: []Field{
+				{Name: "every", Kind: ArgText, Value: "<duration>", Summary: "run on an interval (a whole number and ms, s, m, h or d, at least 1s); the job then takes no fields", Example: "1h"},
+				{Name: "cron", Kind: ArgText, Value: "\"<m h dom mon dow>\"", Summary: "run on a cron schedule, read in UTC; the job then takes no fields, and not with --every", Example: "0 3 * * *"},
+				{Name: "into", Kind: ArgModule, Value: "<Module>", Summary: "the module the job goes in, created when new (default: Jobs.<Name>)", Example: "Signup"},
+			},
+			Run: func(s Sets, app App, dry bool) (*Result, error) {
+				fields, err := fieldList(s.All("fields"), false)
+				if err != nil {
+					return nil, err
+				}
+				o := JobOptions{Name: s.One("name"), Fields: fields, Into: s.One("into"), Every: s.One("every"), Cron: s.One("cron")}
+				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return NewJob(p, o) })
+			},
+		},
 	}
 }
 

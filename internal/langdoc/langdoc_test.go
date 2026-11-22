@@ -15,7 +15,6 @@ const operatorSample = "== != < <= > >= + - * / % ++ && || ?? |> <-"
 var oldKeywords = map[string]string{
 	"page": "the old form of a route: a `page` declaration is E0046 (internal/check/removed.go)",
 	"msg":  "the old form of a write route: a `msg` declaration is E0046 (internal/check/removed.go)",
-	"job":  "a background job (#168): its entry needs a book chapter, which the jobs docs task writes; remove this line then",
 }
 
 // notDocumented are the token kinds that have no entry: names, literals, brackets and
@@ -125,5 +124,24 @@ func TestMarkdown(t *testing.T) {
 	k, _ := Lookup("match")
 	if got := k.Markdown(); strings.HasPrefix(got, "```") || !strings.HasSuffix(got, `*Book: chapter 3, "Match"*`) {
 		t.Fatalf("keyword Markdown %q", got)
+	}
+}
+
+// jobOptions are the words that are keywords in a job declaration only (the lexer reads them as
+// names): each has an entry, which hover shows on the word in a job's line.
+var jobOptions = []string{"every", "cron", "retries", "timeout", "silo"}
+
+func TestJobOptions(t *testing.T) {
+	keywords := map[string]bool{}
+	for _, w := range syntax.Keywords() {
+		keywords[w] = true
+	}
+	for _, w := range jobOptions {
+		if keywords[w] {
+			t.Errorf("%s is a reserved word; it was a job option only", w)
+		}
+		if _, ok := Lookup(w); !ok {
+			t.Errorf("job option %s has no entry", w)
+		}
 	}
 }

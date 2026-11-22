@@ -254,10 +254,13 @@ status      : Job.Id -> Query (Maybe Status)
 
 - `enqueue` is a write Call: it inserts the row through `env.Transaction()`, so it is in the
   enqueuing Task's transaction and rolls back with it. It writes to the store the Task is bound to
-  (`db.Enter`'s: the shared store, or the silo of a `requires org` route). It is **not** a write for
-  E0031's purposes, like `Session.put`: it binds the Task to no store and follows whichever it is
-  in, so a `requires org` route that only enqueues, and one that writes a project and enqueues,
-  both compile.
+  (`db.Enter`'s: the shared store, or the silo of a `requires org` route that writes a silo
+  table). It is **not** a write for E0031's purposes, like `Session.put`: it binds the Task to no
+  store and follows whichever it is in, so a `requires org` route that only enqueues, and one that
+  writes a project and enqueues, both compile. *(Amended in PR 7: a route's store is the store of
+  the tables its `update` writes (`internal/check/writeset.go:167-172`); a `requires org` route
+  that only enqueues writes none, so it is bound to the shared store (`internal/gen/routes.go:355`,
+  `db.Enter(env, "")`) and its row lands there.)*
 - `enqueueOnce key`: the key is scoped to the job kind (`SendWelcome` and `Digest` may share
   `"u1"`). The uniqueness is a partial unique index on `(kind, key) WHERE state IN ('queued',
   'running')`; a conflicting insert returns the existing row's id. `Done` and `Dead` rows release
@@ -328,8 +331,10 @@ stopJobs(grace)   // cancels attempts still running after the grace; they are re
 
 ### 4. Schedules
 
-A schedule tick is an ordinary row with `schedule = 1` and `scheduled_for`, so it is claimed,
-retried, logged and shown like any job, and several instances agree through the database:
+A schedule tick is an ordinary row with `schedule = 1` (while it is the kind's queued tick: the
+claim sets it to 0 and the row keeps `scheduled_for`, `rt/jobs/schedule.go:156-162`) and
+`scheduled_for`, so it is claimed, retried, logged and shown like any job, and several instances
+agree through the database:
 
 - At most one `queued` schedule row per kind: a partial unique index on `(kind) WHERE schedule = 1
   AND state = 'queued'`.
@@ -344,7 +349,15 @@ retried, logged and shown like any job, and several instances agree through the 
   can overlap with it (documented; `enqueueOnce` is not involved).
 - A kind removed from the app leaves its queued tick unclaimable; housekeeping deletes queued
   schedule rows of unknown kinds after a day (a renamed schedule is not a lost job, it is the next
-  tick of the new name).
+  tick of the new name). *(Amended in PR 7: a day after the tick is **due** (`scheduled_for`), not a
+  day after it was made, so a rollback to a build without a new weekly kind keeps that kind's
+  tick (`rt/jobs/housekeep.go:149-186`). A changed schedule applies at the next housekeeping, or
+  after one more tick of the old one: housekeeping moves a queued tick only when it is due later
+  than the new schedule's next two times (`rt/jobs/schedule.go:98-146`). Times are UTC; the day
+  fields follow standard cron's rule (both restricted: either matches; one starting with `*`:
+  both must); the day of week is 0-6 with no `7` and no names (`rt/jobs/cron/cron.go:1-11,28-31`).
+  In a test, a short `every` needs a set clock: an unset test clock moves a second per reading,
+  so such a tick is always due again and `Test.work` never goes quiet.)*
 - Manual run: `alder jobs run Nightly` (§9) enqueues a non-schedule row of the kind with `{}`.
 
 ### 5. Storage
@@ -367,13 +380,24 @@ CREATE TABLE IF NOT EXISTS "_alder_jobs" (
   "error"         TEXT,                           -- last failure, at most 4 KB
   "lease_until"   INTEGER,
   "worker"        TEXT,                           -- "<host>:<pid>:<n>"
-  "schedule"      INTEGER NOT NULL DEFAULT 0,     -- 1 for a tick
+  "schedule"      INTEGER NOT NULL DEFAULT 0,     -- 1 while it is the kind's pending tick
   "scheduled_for" INTEGER
 ) STRICT;
 CREATE INDEX IF NOT EXISTS "_alder_jobs_due" ON "_alder_jobs" ("state", "run_at");
 CREATE UNIQUE INDEX IF NOT EXISTS "_alder_jobs_once" ON "_alder_jobs" ("kind", "key") WHERE "key" IS NOT NULL AND "state" IN ('queued', 'running');
 CREATE UNIQUE INDEX IF NOT EXISTS "_alder_jobs_tick" ON "_alder_jobs" ("kind") WHERE "schedule" = 1 AND "state" = 'queued';
+CREATE TABLE IF NOT EXISTS "_alder_jobs_silos" (
+  "key"     TEXT    NOT NULL,   -- the silo's key, "org"
+  "value"   TEXT    NOT NULL,   -- its value
+  "touched" INTEGER NOT NULL,   -- ms since the epoch, the enqueuer's env.Now
+  PRIMARY KEY ("key", "value")
+) STRICT;
 ```
+
+*(Amended in PR 7.)* `_alder_jobs_silos` is the silo hint table
+(`docs/superpowers/specs/2026-11-21-jobs-silo-hints.md`, `rt/db/migrate.go:877-904`): it is
+read and written in the shared store only; a silo's copy is created and unused. `jobs_schema`
+stays 1 for it.
 
 The table is versioned by a row in `_alder_meta` (`jobs_schema = 1`), so a later column is added by
 the runtime at open, not by the app's migrations. `alder dump` and the admin generator skip
@@ -386,6 +410,14 @@ table: in production its drift check refuses, in development `Ensure` recreates 
 is the existing rule for any internal table added since that build (`_alder_deploy_*` set the
 precedent), and the book's rollback section says so in one sentence: do not `alder rollback`
 across an alder upgrade that added a table without a `--migrate-only` of the newer build first.
+*(Amended in PR 7: the `--migrate-only` advice does not help, since the older build is the one
+that refuses. What the older runtime does, read in its code (08af2bf4 `rt/db/sqlite.go:774`,
+`rt/db/migrate.go:454-471,556-633`): an app **with migrations** compares the live schema, which
+now includes `_alder_jobs`, with the recorded hash and refuses as drift, on a file and on Turso;
+on Turso an app without migrations is "behind"; on a file an app without migrations goes through
+`Ensure`, whose recorded hash still matches, and starts. A refused start fails the rollback's
+health check and nothing is switched. Book chapter 16, "Status, rollback and logs", and chapter
+17, "Rolling back", say so.)*
 
 The table is created wherever the runtime opens a store for serving: the shared store at start,
 a silo when it is opened and in state `ok` (after any migration it applies), a Turso child the same
@@ -438,7 +470,9 @@ clamp; `enqueueAt` is the way to wait longer), or run on the request's connectio
 ### 7. Silos, Turso and several instances
 
 - **Row store.** `Job.enqueue` writes the row in the store its Task is bound to: a `requires org`
-  route's enqueue lands in that org's silo file. This keeps enqueueing atomic with the route's
+  route's enqueue lands in that org's silo file when the route writes a silo table; a route that
+  only enqueues writes none and is bound to the shared store, so its row lands there (amended in
+  PR 7; see §2). This keeps enqueueing atomic with the route's
   writes, which is the point of the design.
 - **Run store.** A job runs on the shared store unless declared `silo k`, in which case
   `db.Narrow(env, k, value)` + `db.Enter` bind it to the silo named by its parameter. The row's
@@ -448,13 +482,20 @@ clamp; `enqueueAt` is the way to wait longer), or run on the request's connectio
 - **Where workers look.** The shared store always. A silo's table is polled while the silo is in
   the worker's *active set*: every silo listed by `SiloFiles`/`StatusSilos` at start (one pass),
   plus every silo an enqueue in this process touched since; a silo leaves the set after an hour
-  with no row due. A crash forgets the set and the next start rebuilds it, so no silo's job is
+  with no row queued or running *(amended in PR 7, ruling of PR 4: a row on a backoff or an
+  `enqueueAt` keeps its silo in the set; a closed silo is reopened only when a row there is due,
+  `rt/jobs/active.go:17-19,107-136`)*. A crash forgets the set and the next start rebuilds it, so no silo's job is
   lost, only delayed to the next start in the worst case. Thousands of idle silos cost one scan at
   start and nothing afterwards. **(my call)** `IdleClose` is told the worker's poll is not use, so
   a silo with nothing queued still closes. Until the silo PR lands, the worker polls the shared
   store and the silos `Stores` currently has open (those a request touched since start), so a
   siloed app's jobs run from the first worker PR; the start scan and the active set close the
-  gap of a silo that was closed with a row due.
+  gap of a silo that was closed with a row due. *(Amended in PR 7, from the silo-hints design.)*
+  A process that runs no workers (`ALDER_JOBS=0`) records each silo it enqueues into in the
+  shared store's `_alder_jobs_silos` before its transaction commits (`rt/jobs/enqueue.go:74-80`);
+  the `--jobs-only` workers read and clear that table every poll (`rt/jobs/active.go:189-244`;
+  the poll ticker also wakes an idle worker), so such a job starts within a poll, not at the
+  worker's next start. A process with workers writes no hint: its own active set has the silo.
 - **Turso** (`ALDER_DB=libsql://`): the same statements over Hrana with `BEGIN IMMEDIATE`; the
   claim's latency is the HTTP round trip, fine at one poll a second. The app does not migrate on
   start there, but internal tables are created at open by the runtime, as `_alder_lock` is;
@@ -485,17 +526,28 @@ asked for, and it is one field and one flag:
       name: <app>-worker
       runtime: docker
       dockerfilePath: ./Dockerfile
-      dockerCommand: /app --jobs-only
+      dockerCommand: /app/app --jobs-only
       autoDeployTrigger: commit
       envVars: (the web service's, ALDER_ADDR dropped, ALDER_JOBS unset → 8)
   ```
 
-  and sets `ALDER_JOBS=0` on the web service. `alder deploy` scales the worker service to
+  and sets `ALDER_JOBS=0` on the web service, whose silo enqueues the worker service learns of
+  through `_alder_jobs_silos` (§7). `alder deploy` scales the worker service to
   `workers` as it scales the web one to `instances` (same API call, `Render.Instances`'s
   precedent), waits for the web health as today, then waits for the worker service's deploy to be
   live through Render's deploy status (no HTTP to probe); `alder status` lists both services'
   counts; `alder logs` gains `--worker` to read the worker service's log **(my call)**. Without
   `workers`, nothing in the Render files changes.
+
+  *(Amended in PR 7.)* The command is `/app/app --jobs-only`: `/app` is the image's directory and
+  `/app/app` its binary (`internal/deploy/oci.go:188`, `internal/deploy/render.go:193`). `alder
+  deploy init render` does not write the worker service: it refuses an app that declares `workers`
+  (render.yaml cannot set up the shared Turso store `alder deploy` uses). An environment without
+  `workers` refuses every Render command (`deploy`, `status`, `logs`, `rollback`, `restore`) while
+  a `<service>-worker` service exists (`internal/deploy/render.go:241-248`). A rollback with
+  `workers` rolls the worker service too; a build older than `--jobs-only` prints its usage and
+  exits 2 on the flag (08af2bf4's `maintain`), so the worker deploy fails and the rollback with it
+  (`internal/deploy/render.go:1076-1088`, `:1030-1056`).
 - **Scaling story, plainly, for the book**: the queue scales as far as the database does. One
   machine with a file (Ssh, Fly): the app process runs the jobs; a CPU-heavy job competes with
   requests, and `ALDER_JOBS` is the knob. A shared store (Render + Turso): `workers: N` worker
@@ -516,6 +568,8 @@ asked for, and it is one field and one flag:
 
 - **`alder run`**: jobs run in the child as in production; the dev panel (§9) shows them; the
   event feed carries `job` events so alder-tui's Logs screen shows them with the requests.
+  *(Amended in PR 7: there is no `job` event type; an attempt's line is one of the app's log lines
+  and reaches the feed as a `log` event, like a request's, `cmd/alder/run_logs.go:98-104`.)*
 - **`alder test`**: the test runtime starts no worker. `Job.enqueue` inside a test (directly, or
   through a browser step's request) inserts into the test's in-memory database, inside the test's
   transaction, so it is visible to the test and gone with the case. Two steps:
@@ -569,6 +623,21 @@ asked for, and it is one field and one flag:
   <Kind>` for a parameterless kind. Runs against the file directly, as `alder dump` does; the
   running app sees the change at its next poll.
 - **`alder logs <env>`** needs nothing: the lines are there.
+- *(Amended in PR 7, from PR 6's reviews.)* Retry (panel and CLI, `rt/jobs/admin.go:95-124`)
+  queues a dead row due now with attempts 0 and clears its error, started, finished, lease and
+  worker; it is refused (409 in the panel) while another queued or running row of the kind holds
+  the dead row's `enqueueOnce` key. A retried dead tick keeps `scheduled_for` but has
+  `schedule = 0`, so it runs once and inserts no next tick. "Run now" (`:126-141`) only makes a
+  queued row due now and wakes this process's workers; with `ALDER_JOBS=0` in the process nothing
+  here runs it. The Jobs page is served only in development mode (`rt/web/devpanel.go:438`); it
+  masks a job's params by top-level member name only (`applog.Sensitive`,
+  `rt/web/devjobs.go:83-106`); it keeps the last attempt's trace in memory, per process, for the
+  last 100 jobs run (`rt/jobs/panel.go:16-18`); a silo of the active set that is closed with
+  nothing due is not opened for it and is listed only as a skipped line
+  (`rt/jobs/panel.go:151-219`). `alder jobs` (`cmd/alder/jobs.go`) covers the shared file and
+  `silos/<key>/*.db` beside it, refuses a Turso `--db`, and `run <Kind>` reads and type-checks the
+  app (an app with errors is refused); a CLI change to a silo outside the running workers' active
+  set waits for the silo to rejoin it or for a restart.
 
 ### 10. The generator
 
@@ -589,11 +658,18 @@ SendWelcome.run p = {
 }
 
 test "SendWelcome runs" = {
-  let _ <- Job.enqueue (SendWelcome { user: User.UserId "u1" })
+  let job = SendWelcome { user: User.UserId "u1" }
+  let _ <- Job.enqueue job
   let runs <- Test.work
-  Task.succeed (List.map (\r -> r.result) runs == [Ok ()])
+  let own = List.filter (\r -> r.job == job) runs
+  Task.succeed (List.map (\r -> r.result) own == [Ok ()])
 }
 ```
+
+*(Amended in PR 7: the block above is the generator's current output. The test checks only its own
+job's runs, since another job's tick can come due in the same `Test.work`. The scheduled variants
+(`--every`, `--cron`) filter the same way, and `--into Module` appends the job to that existing
+module instead of creating `app/Jobs/<Name>.alder` (`internal/generate/job.go:26,47,154-157,216-217`).)*
 
 `--every 1h` / `--cron "0 3 * * *"` write a parameterless scheduled job and a test that sets the
 clock to just before a tick, advances past it and works. The generator joins the registry in

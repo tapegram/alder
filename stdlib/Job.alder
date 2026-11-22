@@ -6,7 +6,7 @@
 -- and a worker runs it later, outside any request. Enqueueing does not count as a database
 -- write for the rule that a `Task` writes one store (E0031).
 --
--- Book: chapter 9, "Query, Task, Db, Session, Log, Time, Random, Http"
+-- Book: chapter 17, "Enqueueing a job"
 module Job
 
 -- A queued job's id, 8 hex characters long like a request's.

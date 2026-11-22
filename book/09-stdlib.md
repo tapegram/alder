@@ -799,6 +799,33 @@ A toast is a one-line notice shown once, in the next page the browser shows
 > and `error`. They still work, as aliases, and each use is W0012. Write the
 > `Response` builders.
 
+## Job
+
+Background jobs (chapter 17). A module declares a job with
+`job Name = { … }` and its `Name.run`; `Name { … }` builds a `Job`
+value, which these put on the queue:
+
+```alder
+Job.enqueue     : Job -> Task Job.Id                  -- due now
+Job.enqueueAt   : Time -> Job -> Task Job.Id          -- not before the time
+Job.enqueueOnce : Text -> Job -> Task Job.Id          -- unless one of its kind with that key is queued or running
+Job.status      : Job.Id -> Query (Maybe Job.Status)
+```
+
+- The job is stored in the running `Task`'s transaction: kept when the
+  `Task` succeeds, dropped with its writes when it fails.
+- `Job.enqueueOnce` gives back the id of the job that holds the key
+  when there is one, and adds nothing.
+- `Job.Status` is `{ state: Job.State, attempts: Int, error: Maybe Text,
+  runAt: Maybe Time }`, and `Job.State` is `Queued | Running | Done |
+  Dead`, written bare like `Just`. `runAt` is set only while the job is
+  queued.
+- `Job.status` is `Nothing` for a job it does not find: one in another
+  silo, or one removed after it finished (no sooner than a week after
+  `Done`, 30 days after `Dead`).
+- A job's parameters take at most 64 KB as JSON; a larger one fails the
+  `Task` that queues it.
+
 ## Test
 
 Only a `test` or a test helper may use these (chapter 10, "Test
@@ -839,6 +866,16 @@ reach, such as a route's `view`, each is E0040 "… is only available in a
 
 - `Test.advance : Int -> Task Unit` moves the test's clock that many
   milliseconds forward (a negative number is 0), set or ticking.
+
+- `Test.jobs : Task (List { id: Job.Id, job: Job, status: Job.Status })`
+  lists every job in the test's database, oldest first. A test runs no
+  worker: a queued job waits there until `Test.work` (chapter 10, "Jobs:
+  `Test.jobs` and `Test.work`").
+
+- `Test.work : Task (List { id: Job.Id, job: Job, result: Result Text Unit })`
+  runs every job due at the test's clock, oldest first, as a worker
+  would, and the due jobs they queue; past 1000 runs in one call the test
+  fails.
 
 ### Browser steps and queries
 

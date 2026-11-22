@@ -1,6 +1,7 @@
 package search
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -122,5 +123,30 @@ func TestBuild_SkipsUntyped(t *testing.T) {
 		if (e.Kind == Function || e.Kind == Value) && e.Type == nil {
 			t.Errorf("%s.%s has no type", e.Module, e.Name)
 		}
+	}
+}
+
+// A job is a declaration search finds, with its constructor's type, and so is its `run` arm
+// (a route's members are not: a job has only the one).
+func TestBuild_Job(t *testing.T) {
+	prog, res, _, errs := buildkit.LoadChecked("../../examples/todos", nil)
+	if len(errs) > 0 || res == nil {
+		t.Fatalf("load: %v", errs)
+	}
+	ix := Build(prog, res)
+	job := find(ix, "Jobs.Nightly", "Nightly", Job)
+	if job == nil || job.Signature != "Jobs.Nightly.Nightly.Params -> Job" || job.File != "app/Jobs/Nightly.alder" || job.Line != 3 || job.Col != 1 {
+		t.Fatalf("job Nightly: %+v", job)
+	}
+	run := find(ix, "Jobs.Nightly", "Nightly.run", Function)
+	if run == nil || run.Signature != "Jobs.Nightly.Nightly.Params -> Task Unit" || run.Effect != "task" || run.Line != 5 {
+		t.Fatalf("Nightly.run: %+v", run)
+	}
+	var names []string
+	for _, h := range ix.Search("Nightly", Options{Source: "app", Limit: -1}).Results {
+		names = append(names, h.Entry.Name)
+	}
+	if !slices.Contains(names, "Nightly") || !slices.Contains(names, "Nightly.run") {
+		t.Errorf("search Nightly: %v", names)
 	}
 }

@@ -148,6 +148,12 @@ capability Weather {
 Each entry is a function whose result is a `Query` or `Task`. Using
 `Email.send { ... }` in `update` is then an ordinary effect.
 
+The request waits while it runs, though, and a send that fails fails
+the whole `Task`, its writes with it. Work that can happen a moment later
+(a welcome mail, a call to a slow service) belongs in a background job:
+`update` queues it in its own transaction, and the app's workers run it
+outside the request, retrying it when it fails (chapter 17).
+
 The compiler generates a Go interface for each capability, and the app will
 not build or start until every capability is implemented and wired in
 ("Implementing a capability", below).

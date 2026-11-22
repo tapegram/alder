@@ -30,9 +30,11 @@ var fields = [5]struct {
 	min, max int
 }{{"minute", 0, 59}, {"hour", 0, 23}, {"day of month", 1, 31}, {"month", 1, 12}, {"day of week", 0, 6}}
 
-// Parse reads expr. The error names the field at fault: "minute", "hour", "day of month",
-// "month" or "day of week". An expression that can never match (`0 0 31 2 *`) is an error
-// naming "day of month".
+// Parse reads expr. An error about a field names it: "minute", "hour", "day of month", "month"
+// or "day of week"; an expression without five fields is an error that says how many it has
+// and names none. A restricted day of month with a `*` day of week, none of whose days exists in
+// the months listed (`0 0 31 2 *`), is an error naming "day of month"; with both day fields
+// restricted (`0 0 31 2 1`) the day of week can still match, and it is accepted.
 func Parse(expr string) (Schedule, error) {
 	parts := strings.Fields(expr)
 	if len(parts) != 5 {

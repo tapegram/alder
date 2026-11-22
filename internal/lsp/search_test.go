@@ -870,3 +870,31 @@ func TestSearch_DocFields(t *testing.T) {
 	}
 	t.Errorf("no List.take in %+v", r.Results)
 }
+
+// A job and its `run` arm are workspace symbols, as other declarations are.
+func TestSymbol_Job(t *testing.T) {
+	c := start(t, jobsCopy(t))
+	const rel = "app/Jobs/SendWelcome.alder"
+	text := openClean(t, c, rel)
+	var job, run *symbolInformation
+	syms := symbolsFor(t, c, "SendWelcome")
+	for i := range syms {
+		switch syms[i].Name {
+		case "SendWelcome":
+			job = &syms[i]
+		case "SendWelcome.run":
+			run = &syms[i]
+		}
+	}
+	if job == nil || run == nil {
+		t.Fatalf("no job or run in %+v", syms)
+	}
+	jobLine := strings.Count(text[:strings.Index(text, "job SendWelcome")], "\n")
+	runLine := strings.Count(text[:strings.Index(text, "SendWelcome.run :")], "\n")
+	if job.Kind != 24 || job.ContainerName != "Jobs.SendWelcome" || !strings.HasSuffix(job.Location.URI, "/"+rel) || job.Location.Range.Start.Line != jobLine {
+		t.Errorf("job %+v, want an event of Jobs.SendWelcome at line %d", job, jobLine)
+	}
+	if run.Kind != 12 || run.Location.Range.Start.Line != runLine {
+		t.Errorf("run %+v, want a function at line %d", run, runLine)
+	}
+}

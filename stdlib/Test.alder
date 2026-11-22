@@ -114,7 +114,7 @@ advance : Int -> Task Unit
 --
 --     Test.jobs |> Task.map (\rows -> List.length rows)
 --
--- Book: chapter 10, "3. Testing effects"
+-- Book: chapter 10, "Jobs: `Test.jobs` and `Test.work`"
 jobs : Task (List { id: Job.Id, job: Job, status: Job.Status })
 
 -- Runs every job that is due at the test's clock, oldest first, and gives each run's result.
@@ -134,7 +134,7 @@ jobs : Task (List { id: Job.Id, job: Job, status: Job.Status })
 --
 --     Test.work |> Task.map (\runs -> List.all (\r -> r.result == Ok ()) runs)
 --
--- Book: chapter 10, "3. Testing effects"
+-- Book: chapter 10, "Jobs: `Test.jobs` and `Test.work`"
 work : Task (List { id: Job.Id, job: Job, result: Result Text Unit })
 
 -- Requests a GET route's page and fails the test unless the page is shown.

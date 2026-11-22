@@ -147,12 +147,17 @@ func (w *walker) rule(n syntax.Spanned) {
 		}
 	case *syntax.PageDecl: // `requires user, org, role R | S, silo k`
 		w.guard(&n.Guard)
-	case *syntax.JobDecl: // `job J = { … } silo k`: the key as in `requires …, silo k` (the option
-		// names stay variables, as in queries/neovim/highlights.scm's job_option)
+	case *syntax.JobDecl: // `job J = { … } every "1h" retries 3 timeout "5m" silo k`: the option
+		// words are keywords here only (the lexer reads them as names; queries/neovim/highlights.scm's
+		// job_option), and the key as in `requires …, silo k`
 		ts := w.in(n.Span)
 		for _, o := range n.Options {
-			for i, t := range ts[:max(len(ts)-1, 0)] {
-				if o.Name == "silo" && pos(t) == o.Pos && ts[i+1].Kind == syntax.LIdent {
+			for i, t := range ts {
+				if pos(t) != o.Pos {
+					continue
+				}
+				w.set(t, TKeyword, 0)
+				if o.Name == "silo" && i+1 < len(ts) && ts[i+1].Kind == syntax.LIdent {
 					w.set(ts[i+1], TProperty, 0)
 				}
 			}

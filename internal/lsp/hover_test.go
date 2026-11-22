@@ -3,6 +3,7 @@ package lsp
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -671,6 +672,96 @@ func TestHover_OperatorInString(t *testing.T) {
 	} {
 		if got := hover(t, c, "app/Posts/Index.alder", at); strings.Contains(got, "Book: chapter 3, \"Operators\"") {
 			t.Errorf("operator hover at %v: %q", at, got)
+		}
+	}
+}
+
+// jobsCopy is examples/todos with a job that has parameters and options, app/Jobs/SendWelcome.alder.
+func jobsCopy(t *testing.T) string {
+	t.Helper()
+	root := copyExample(t, "todos")
+	src := "module Jobs.SendWelcome\n\njob SendWelcome = { email: Text } retries 2 timeout \"30s\"\n\nSendWelcome.run : SendWelcome.Params -> Task Unit\nSendWelcome.run p = Log.info p.email\n\ncron : Int\ncron = 1\n\nwelcome : Task Unit\nwelcome = {\n  let _ <- Job.enqueue (SendWelcome { email: \"a@b.c\" })\n  Task.succeed ()\n}\n"
+	if err := os.WriteFile(filepath.Join(root, "app", "Jobs", "SendWelcome.alder"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+// The `job` keyword and a job's option words hover with their langdoc entries; an option word
+// used as a name elsewhere is a name.
+func TestHover_JobKeywords(t *testing.T) {
+	c := start(t, jobsCopy(t))
+	const nightly, welcome = "app/Jobs/Nightly.alder", "app/Jobs/SendWelcome.alder"
+	openClean(t, c, nightly)
+	openClean(t, c, welcome)
+	if got := hover(t, c, nightly, c.at(nightly, "job Nightly", 1)); !strings.Contains(got, "Declare a background job") {
+		t.Fatalf("hover on job %q", got)
+	}
+	if got := hover(t, c, nightly, c.at(nightly, `cron "0 3`, 2)); !strings.Contains(got, "five fields") {
+		t.Fatalf("hover on cron %q", got)
+	}
+	for _, w := range []string{"retries", "timeout"} {
+		if got := hover(t, c, welcome, c.at(welcome, w+" ", 0)); !strings.Contains(got, "*Book: ") || strings.Contains(got, "```alder") {
+			t.Fatalf("hover on %s %q", w, got)
+		}
+	}
+	if got := hover(t, c, welcome, c.at(welcome, "cron : Int", 0)); !strings.Contains(got, "cron : Int") || strings.Contains(got, "five fields") {
+		t.Fatalf("hover on the value cron %q", got)
+	}
+}
+
+// A job's name and its constructor's uses go to the job and find each other, as a route's do.
+func TestDefinition_Job(t *testing.T) {
+	c := start(t, jobsCopy(t))
+	const rel = "app/Jobs/SendWelcome.alder"
+	openClean(t, c, rel)
+	decl := c.at(rel, "SendWelcome = {", 0)
+	for _, p := range []Position{c.at(rel, "SendWelcome { email", 0), c.at(rel, "SendWelcome.run p", 0)} {
+		if locs := definitionAt(t, c, rel, p); len(locs) != 1 || locs[0].Range.Start != decl {
+			t.Fatalf("definition at %+v: %+v, want %+v", p, locs, decl)
+		}
+	}
+	var lines []int
+	for _, l := range refsAt(t, c, rel, decl, true) {
+		lines = append(lines, l.Range.Start.Line)
+	}
+	sig := c.at(rel, "SendWelcome.run :", 0).Line // `SendWelcome.run` and `SendWelcome.Params`
+	want := []int{decl.Line, c.at(rel, "SendWelcome { email", 0).Line, sig, sig, c.at(rel, "SendWelcome.run p", 0).Line}
+	slices.Sort(lines)
+	slices.Sort(want)
+	if !slices.Equal(lines, want) {
+		t.Fatalf("references on lines %v, want %v", lines, want)
+	}
+	if got := hover(t, c, rel, c.at(rel, "SendWelcome { email", 0)); !strings.Contains(got, "SendWelcome.Params -> Job") {
+		t.Fatalf("hover on the constructor %q", got)
+	}
+}
+
+// In an app with silos, `every` and `silo` hover with their entries in a job's line, and `silo`
+// in a route's `requires …, silo k` or in App's `silo k { … }` is not a job option.
+func TestHover_JobOptionsOnlyInAJob(t *testing.T) {
+	root := copyExample(t, "workspace")
+	src := "module Jobs.Digest\n\nimport Table.Org\n\njob Digest = { org: Org.OrgId } silo org\n\nDigest.run : Digest.Params -> Task Unit\nDigest.run p = Log.info \"digest\"\n\njob Tick = {} every \"1h\"\n\nTick.run : Tick.Params -> Task Unit\nTick.run p = Log.info \"tick\"\n"
+	if err := os.MkdirAll(filepath.Join(root, "app", "Jobs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "app", "Jobs", "Digest.alder"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := start(t, root)
+	const job, app, route = "app/Jobs/Digest.alder", "app/App.alder", "app/Admin/Projects/New.alder"
+	openClean(t, c, job)
+	openClean(t, c, app)
+	openClean(t, c, route)
+	if got := hover(t, c, job, c.at(job, "silo org", 0)); !strings.Contains(got, "run the job in the silo") {
+		t.Fatalf("hover on silo in a job %q", got)
+	}
+	if got := hover(t, c, job, c.at(job, `every "1h"`, 0)); !strings.Contains(got, "at a fixed interval") {
+		t.Fatalf("hover on every %q", got)
+	}
+	for _, at := range []struct{ rel, needle string }{{app, "silo org {"}, {route, "silo org"}} {
+		if got := hover(t, c, at.rel, c.at(at.rel, at.needle, 0)); strings.Contains(got, "job") {
+			t.Fatalf("%s: hover on %q shows the job option: %q", at.rel, at.needle, got)
 		}
 	}
 }

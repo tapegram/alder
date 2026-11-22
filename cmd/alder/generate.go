@@ -291,11 +291,13 @@ const newAuthUsage = "usage: alder new auth [--users User] [--role Role] [--to R
 
 const newSiloUsage = "usage: alder new silo <key> <Table> … [--empty] [--dir app] [--json] [--dry-run]"
 
+const newJobUsage = "usage: alder new job <Name> [<field>:<Type> …] [--every <duration> | --cron \"<m h dom mon dow>\"] [--into <Module>] [--dir app] [--json] [--dry-run]"
+
 // specUsage is each generator's usage line (the text `--help` prints and an argument error shows).
 var specUsage = map[string]string{
 	"new route": newRouteUsage, "new table": newTableUsage, "new form": newFormUsage, "new action": newActionUsage,
 	"new capability": newCapabilityUsage, "new admin": newAdminUsage, "new resource": newResourceUsage, "new auth": newAuthUsage,
-	"new type": newTypeUsage, "new decl": newDeclUsage, "new test": newTestUsage, "new silo": newSiloUsage,
+	"new type": newTypeUsage, "new decl": newDeclUsage, "new test": newTestUsage, "new silo": newSiloUsage, "new job": newJobUsage,
 }
 
 // migrateFor is the migration writer the Specs are given (generate.App.Migrate); slug "" is

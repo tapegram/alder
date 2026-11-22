@@ -1,0 +1,17 @@
+module Signup
+
+job Cleanup = {}
+
+Cleanup.run : Cleanup.Params -> Task Unit
+Cleanup.run p = {
+  let _ <- Log.info "Cleanup ran"
+  Task.succeed ()
+}
+
+test "Cleanup runs" = {
+  let job = Cleanup {}
+  let _ <- Job.enqueue job
+  let runs <- Test.work
+  let own = List.filter (\r -> r.job == job) runs
+  Task.succeed (List.map (\r -> r.result) own == [Ok ()])
+}

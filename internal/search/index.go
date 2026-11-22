@@ -22,6 +22,7 @@ const (
 	Value       Kind = "value"
 	TypeDecl    Kind = "type"
 	Constructor Kind = "constructor"
+	Job         Kind = "job" // a job declaration (#168); its Type is its constructor's
 )
 
 // Entry is one searchable declaration.
@@ -96,22 +97,31 @@ func (ix *Index) addModule(m *syntax.Module, source string, res *check.Result) {
 	for _, d := range m.Decls {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
-			if d.Route != "" {
-				continue
+			if d.Route != "" && (d.Name != "run" || jobOf(res, m.Name, d.Route) == nil) {
+				continue // a route's members are not declarations of their own; a job's one `run` is
 			}
 			if source == "stdlib" && m.Name == "Test" && (check.IsTestStep(d.Name) || d.Name == "fake") {
 				continue // special forms the checker handles, not declarations
 			}
-			t, ok := res.Values[m.Name+"."+d.Name]
+			t, ok := res.Values[m.Name+"."+d.FullName()]
 			if !ok {
 				continue
 			}
 			t = res.U.Apply(t)
-			e := Entry{Name: d.Name, Module: m.Name, Kind: Value, Type: t, Signature: types.String(t),
+			e := Entry{Name: d.FullName(), Module: m.Name, Kind: Value, Type: t, Signature: types.String(t),
 				Source: source, Effect: effectOf(t)}
 			if _, fn := t.(*types.Fun); fn {
 				e.Kind = Function
 			}
+			where(&e, d.GetSpan())
+			ix.Entries = append(ix.Entries, e)
+		case *syntax.JobDecl:
+			j := jobOf(res, m.Name, d.Name)
+			if j == nil || j.Decl != d {
+				continue
+			}
+			var t types.Type = &types.Fun{Params: []types.Type{j.Params}, Result: types.Job}
+			e := Entry{Name: d.Name, Module: m.Name, Kind: Job, Type: t, Signature: types.String(t), Source: source}
 			where(&e, d.GetSpan())
 			ix.Entries = append(ix.Entries, e)
 		case *syntax.TypeDecl:
@@ -147,6 +157,16 @@ func (ix *Index) addModule(m *syntax.Module, source string, res *check.Result) {
 			}
 		}
 	}
+}
+
+// jobOf is job name of module in res, nil when there is none.
+func jobOf(res *check.Result, module, name string) *check.JobInfo {
+	for _, j := range res.Jobs[module] {
+		if j.Name == name {
+			return j
+		}
+	}
+	return nil
 }
 
 // effectOf is "query" or "task" when t, or a function's result, is a Query or Task.

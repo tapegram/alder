@@ -17,6 +17,7 @@
 (type_name (constructor) @type)
 (route_decl path: (string) @string.special)
 (route_method) @constructor
+(job_option ["every" "cron" "retries" "timeout"] @keyword) ; names elsewhere; `silo` is above
 (binding name: (_) @function)
 (signature name: (_) @function)
 (qualified_decl_name route: (constructor) @module name: (identifier) @function)

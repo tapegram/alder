@@ -301,8 +301,9 @@ func (p *pool) each(ctx context.Context, f func(db.Execer) error) error {
 
 // scan is the start scan (spec §7): every silo database whose jobs table has a row queued or
 // running, or one housekeeping prunes now (a done row older than KeepDone, a dead one older than
-// KeepDead), joins the active set. It reads each database apart from the silos served
-// (Stores.ScanSilos): a silo with nothing there is not opened. Once per Start.
+// KeepDead), joins the active set. Stores.ScanSilos opens each silo
+// database read-only, without the migration check and not as a use of the silo, and closes it
+// after this look; a silo with nothing there does not join the served pool. Once per Start.
 func (p *pool) scan(ctx context.Context, now time.Time) {
 	if p.active == nil || !p.scanned.CompareAndSwap(false, true) {
 		return

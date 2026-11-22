@@ -80,6 +80,8 @@ func namespace(k syntax.RefKind) int {
 		return 3
 	case syntax.RefRoute:
 		return 4
+	case syntax.RefJob:
+		return 5
 	}
 	return 0
 }
@@ -100,8 +102,9 @@ func uses(a *analysis, ref syntax.Ref, local *binder) []diag.Span {
 				sp.File = m.File
 				out = append(out, sp)
 			}
-			if d, ok := n.(*syntax.ValueDecl); ok && local == nil && ref.Kind == syntax.RefRoute && d.Route == ref.Name && m.Name == ref.Module {
-				// a route member's signature and definition each name the route (`Row` of `Row.view`)
+			if d, ok := n.(*syntax.ValueDecl); ok && local == nil && (ref.Kind == syntax.RefRoute || ref.Kind == syntax.RefJob) && d.Route == ref.Name && m.Name == ref.Module {
+				// a route member's signature and definition each name the route (`Row` of `Row.view`),
+				// and a job's `run` its job
 				out = append(out, d.RouteSpan)
 				if def := defNameSpan(d, m); def.Start.Line > 0 {
 					out = append(out, lineSpan(m.File, def.Start.Line, def.Start.Col, len(d.Route)))
@@ -143,9 +146,10 @@ func useSpan(a *analysis, m *syntax.Module, n syntax.Spanned, path []syntax.Span
 		}
 		return wordSpan(m, n.GetSpan(), 0, name), true
 	}
-	if ref.Kind == syntax.RefRoute && (r.Kind == syntax.RefValue || r.Kind == syntax.RefType) && r.Module == ref.Module &&
-		strings.HasPrefix(r.Name, ref.Name+".") && a.prog.Route(r.Module, ref.Name) != nil && strings.Count(r.Name, ".") == strings.Count(ref.Name, ".")+1 {
-		// a member (`Row.view`, `Row.Params`) uses its route: the span is the route part. The name is
+	if (ref.Kind == syntax.RefRoute && a.prog.Route(r.Module, ref.Name) != nil || ref.Kind == syntax.RefJob && a.prog.Job(r.Module, ref.Name) != nil) &&
+		(r.Kind == syntax.RefValue || r.Kind == syntax.RefType) && r.Module == ref.Module &&
+		strings.HasPrefix(r.Name, ref.Name+".") && strings.Count(r.Name, ".") == strings.Count(ref.Name, ".")+1 {
+		// a member (`Row.view`, `Row.Params`, a job's `run`) uses its route: the span is the route part. The name is
 		// exactly one segment longer than the route (not `Row.Sub.x`), and a qualifier that already
 		// ends in the route (`Todos.Row`) must not be skipped past it.
 		skip := 0

@@ -13,9 +13,9 @@ same = Db.count (Db.from Tag) == Db.count (Db.from Tag)
 sameT : Bool
 sameT = Task.succeed 1 != Task.succeed 1
 
-type Job = { run: Task Int }
+type Work = { run: Task Int }
 
-sameJob : Job -> Job -> Bool
+sameJob : Work -> Work -> Bool
 sameJob a b = a == b
 
 keyed : Dict (Query Int) Int

@@ -14,12 +14,12 @@ capability Pay {
   limit : Customer.UserId -> Int -> Query Int,
 }
 
-type Job = { run: Task Int, label: Text }
+type Work = { run: Task Int, label: Text }
 
-current : Job
+current : Work
 current = { run: Task.succeed 1, label: "one" }
 
-runJob : Job -> Task Int
+runJob : Work -> Task Int
 runJob j = j.run
 
 after : Response -> Response

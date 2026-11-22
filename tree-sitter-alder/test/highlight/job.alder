@@ -1,0 +1,14 @@
+module Jobs
+
+job Nightly = {} every "1d" retries 3 timeout "5m"
+-- <- keyword
+--               ^ keyword
+--                          ^ keyword
+--                                    ^ keyword
+job Digest = { org: Text } cron "0 3 * * *" silo org
+--                         ^ keyword
+--                                          ^ keyword
+
+every : Int
+-- <- !keyword
+every = 1

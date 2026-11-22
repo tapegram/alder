@@ -1,6 +1,8 @@
 // Package langdoc documents what no `.alder` file declares: the operators, `<-` in an effect
-// block, the typed hole `?name` and the keywords. Each entry's doc is in the doc comment format
-// (internal/doc), so the stdlib's tests, renderer and hover take it as they take a declaration's.
+// block, the typed hole `?name`, the keywords, and the words that are keywords only in a job's
+// line (`every`, `cron`, `retries`, `timeout`, `silo`). Each entry's doc is in the doc comment
+// format (internal/doc), so the stdlib's tests, renderer and hover take it as they take a
+// declaration's.
 package langdoc
 
 import (
@@ -283,6 +285,20 @@ Each entry of ˋcapability Email { send : … }ˋ is a function whose result is 
 every capability is implemented and wired in. A test can use a ˋfakeˋ in its place.
 
 Book: chapter 7, "Capabilities"`},
+	{"cron", "", `
+In a job's declaration, run the job at the times a cron expression matches.
+
+ˋjob Nightly = {} cron "0 3 * * *"ˋ runs ˋNightly.runˋ at 03:00 every day. The expression has
+five fields: minute (0 to 59), hour (0 to 23), day of month (1 to 31), month (1 to 12) and day
+of week (0 to 6, Sunday is 0). Each field is ˋ*ˋ, a number or a range ˋa-bˋ, any of them with a
+step (ˋ*/15ˋ), or a list of those joined by commas. There are no names, no seconds and no ˋLˋ,
+ˋWˋ or ˋ#ˋ, and every time is UTC. When neither day field begins with ˋ*ˋ, a day matches if
+either does; when one does (ˋ*ˋ, ˋ*/2ˋ), a day must match both. An expression that cannot be
+read is E0050, and so is a restricted day of month with a ˋ*ˋ day of week when none of the listed
+days exists in the listed months (ˋ0 0 30 2 *ˋ); ˋ0 0 31 2 1ˋ is accepted, and runs on Mondays in
+February. Parameters on a scheduled job, and a job with both ˋcronˋ and ˋeveryˋ, are E0050 too.
+
+Book: chapter 17, "Schedules"`},
 	{"else", "", `
 Start the branch an ˋifˋ takes when its condition is ˋFalseˋ.
 
@@ -292,6 +308,15 @@ Every ˋifˋ has an ˋelseˋ, and both branches have the same type. In markup, w
     (if 1 > 2 then "yes" else "no") == "no"
 
 Book: chapter 3, "Conditionals"`},
+	{"every", "", `
+In a job's declaration, run the job at a fixed interval.
+
+ˋjob Hourly = {} every "1h"ˋ runs ˋHourly.runˋ every hour. The interval is a whole number and a
+unit, ˋmsˋ, ˋsˋ, ˋmˋ, ˋhˋ or ˋdˋ, and at least ˋ1sˋ. An interval that divides a day puts the runs
+on its grid from midnight UTC: ˋevery "1h"ˋ runs on the hour. A scheduled job takes no
+parameters, and a job has ˋeveryˋ or ˋcronˋ, not both (E0050).
+
+Book: chapter 17, "Schedules"`},
 	{"fake", "", `
 Implement a capability in Alder, for tests.
 
@@ -342,6 +367,18 @@ Separate the name of a ˋforˋ loop from the list it walks.
 In ˋ{for todo in todos -> …}ˋ, each element of ˋtodosˋ is named ˋtodoˋ in turn.
 
 Book: chapter 5, "Control flow in HTML"`},
+	{"job", "", `
+Declare a background job: its name and the parameters it takes.
+
+ˋjob SendWelcome = { user: User.UserId }ˋ declares the job ˋSendWelcomeˋ, whose code is
+declared under its name in the same module: ˋSendWelcome.run : SendWelcome.Params -> Task Unitˋ.
+ˋSendWelcome { user: id }ˋ builds a ˋJobˋ, and ˋJob.enqueueˋ puts it on the queue. The
+parameters are stored as JSON: use table-column types, records, lists, ˋMaybeˋ and the app's own
+types without functions. Any other parameter is E0049, "A job parameter that cannot be stored".
+Options follow the parameters on the same line, in any order and each at most once: ˋeveryˋ,
+ˋcronˋ, ˋretriesˋ, ˋtimeoutˋ and ˋsiloˋ.
+
+Book: chapter 17, "Declaring a job"`},
 	{"let", "", `
 Name a value inside a block.
 
@@ -386,6 +423,15 @@ the route the field has type ˋaˋ. ˋrequires user, role Authorˋ also answers 
 whose session ˋroleˋ is not ˋAuthorˋ.
 
 Book: chapter 6, "ˋrequiresˋ"`},
+	{"retries", "", `
+In a job's declaration, set how many times a failed run is tried again.
+
+ˋretries Nˋ is the number of attempts after the first: ˋjob Charge = { … } retries 0ˋ runs once,
+and a job without ˋretriesˋ has 4, five attempts in all. The waits before them are 10 s, 1 min,
+10 min, then 1 h before each later one. A job whose last attempt fails is dead, and so is one
+whose parameters cannot be decoded, whatever its ˋretriesˋ.
+
+Book: chapter 17, "Retries and idempotency"`},
 	{"route", "", `
 Declare a route: its name, its method, its path and the parameters it takes.
 
@@ -401,6 +447,15 @@ Declare the fields of the session, which the runtime keeps for each visitor in a
 rules of form fields, and ˋSession.putˋ changes it.
 
 Book: chapter 6, "The ˋAppˋ module"`},
+	{"silo", "", `
+In a job's declaration, run the job in the silo that one of its parameters names.
+
+ˋjob Digest = { org: Org.OrgId } silo orgˋ runs ˋDigest.runˋ bound to the silo whose key ˋorgˋ
+is the job's ˋorgˋ parameter. ˋAppˋ must declare ˋsilo org { … }ˋ and a ˋMaybeˋ session field
+ˋorgˋ, and the parameter has that field's type without the ˋMaybeˋ: ˋOrg.OrgIdˋ for a session
+field ˋorg: Maybe Org.OrgIdˋ (E0033 otherwise). Without ˋsiloˋ, a job runs on the shared store.
+
+Book: chapter 17, "Silos"`},
 	{"table", "", `
 Declare a database table and the record type of its rows.
 
@@ -421,6 +476,15 @@ Start the branch an ˋifˋ takes when its condition is ˋTrueˋ.
     (if 2 > 1 then "yes" else "no") == "yes"
 
 Book: chapter 3, "Conditionals"`},
+	{"timeout", "", `
+In a job's declaration, set the most time one attempt may take.
+
+ˋjob Report = {} cron "0 6 * * 1" timeout "20m"ˋ gives each attempt of ˋReport.runˋ 20
+minutes. The duration is written as ˋeveryˋ's is; without ˋtimeoutˋ it is 5 minutes, and it is
+at most ˋ1hˋ (E0050). An attempt that runs out of time fails with "timed out after" its limit
+and is retried like any other failure.
+
+Book: chapter 17, "The options"`},
 	{"type", "", `
 Declare a new type: a record, a union or a brand.
 

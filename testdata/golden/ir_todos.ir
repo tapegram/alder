@@ -285,23 +285,32 @@
             (call (std Test.advance) (* 3 86400000))
             (bind task late : List { id: Job.Id, job: Job, result: Result Text Unit }
               (std Test.work)
-              (pure task
-                (&&
-                  (&&
-                    (&&
-                      (&&
-                        (call (std List.isEmpty) (var start))
-                        (== : List Job (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field job (var r))) (var first))
-                          (list
-                            (job-ref Jobs.Nightly.Nightly
-                              (record Nightly.Params)))))
-                      (== : List (Result Text Unit) (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field result (var r))) (var first))
-                        (list (ctor Prelude.Result.Ok (record (value ()))))))
-                    (== : List Job (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field job (var r))) (var late))
-                      (list
-                        (job-ref Jobs.Nightly.Nightly (record Nightly.Params)))))
-                  (== : List (Result Text Unit) (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field result (var r))) (var late))
-                    (list (ctor Prelude.Result.Ok (record (value ()))))))))))))))
+              (let job : Job
+                (job-ref Jobs.Nightly.Nightly (record Nightly.Params))
+                (let ownStart : List { id: Job.Id, job: Job, result: Result Text Unit }
+                  (call (std List.filter)
+                    (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit })
+                      (== : Job (field job (var r)) (var job)))
+                    (var start))
+                  (let ownFirst : List { id: Job.Id, job: Job, result: Result Text Unit }
+                    (call (std List.filter)
+                      (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit })
+                        (== : Job (field job (var r)) (var job)))
+                      (var first))
+                    (let ownLate : List { id: Job.Id, job: Job, result: Result Text Unit }
+                      (call (std List.filter)
+                        (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit })
+                          (== : Job (field job (var r)) (var job)))
+                        (var late))
+                      (pure task
+                        (&&
+                          (&&
+                            (call (std List.isEmpty) (var ownStart))
+                            (== : List (Result Text Unit) (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field result (var r))) (var ownFirst))
+                              (list
+                                (ctor Prelude.Result.Ok (record (value ()))))))
+                          (== : List (Result Text Unit) (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field result (var r))) (var ownLate))
+                            (list (ctor Prelude.Result.Ok (record (value ()))))))))))))))))))
 (module Table.Todo)
 (union Table.Todo.Filter (All) (Active) (Completed))
 (record Table.Todo.Todo

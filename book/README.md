@@ -28,6 +28,7 @@ changes, this book changes first.
 | [14. A second app](14-second-app.md) | The blog and workspace examples |
 | [15. Generators and the admin](15-generators.md) | Building an app from the command line |
 | [16. Deploying](16-deploy.md) | The `deploy` declaration and `alder deploy` |
+| [17. Background jobs](17-jobs.md) | `job`, the `Job` module, retries, schedules, testing jobs, and running them on each target |
 | [A. Grammar](A-grammar.md) | The formal grammar, including the `route` declaration and qualified names |
 | [B. Common mistakes](B-pitfalls.md) | The errors seen most often in experiments, and the route-name mistakes the compiler catches |
 | [C. The alder-ui design system](C-design-system.md) | The `al-` elements every app can use: linking the stylesheet, tokens and themes, every element's attributes with examples, what the renderer adds; the library's documentation |
@@ -69,6 +70,14 @@ changes, this book changes first.
   the `Ssh`, `Fly`, `Render` and `Script` targets, `status`, `rollback` and
   `logs`, the streamed backup and `restore`, `alder ci init` and a pull
   request's preview, SQLite in production; the `Script` transcript verified.
+
+- **[17. Background jobs](17-jobs.md)** covers `job` declarations and the
+  `Job` module, how the queue works inside (one table, an atomic claim,
+  the done mark in the job's own transaction), retries and writing a job
+  that may run twice, long jobs and fan-out, `every` and `cron`
+  schedules, silos, `Test.jobs` and `Test.work`, the Jobs page and
+  `alder jobs`, and jobs on each deploy target, with worker machines on
+  Render and how far the queue scales.
 
 Chapters 3–9 are the **reference**: together they are what an agent is given
 as context when writing Alder. They are kept short on purpose.

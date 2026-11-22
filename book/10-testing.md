@@ -563,6 +563,61 @@ like the page's. Things to know:
 A pure test (section 1) touches none of this: it is an expression,
 evaluated once.
 
+### Jobs: `Test.jobs` and `Test.work`
+
+A test runs no job worker (chapter 17). `Job.enqueue` in a test, or in
+a route a test's browser requests, writes the job's row in the test's
+transaction like any write: it is there for the test to see, and gone
+with the test. A `Test.run` that fails drops the jobs it queued. Two
+steps read and run the queue:
+
+```alder
+Test.jobs : Task (List { id: Job.Id, job: Job, status: Job.Status })
+Test.work : Task (List { id: Job.Id, job: Job, result: Result Text Unit })
+```
+
+- **`Test.jobs`** lists every job, oldest first, with its status. A job
+  that ran stays, `Done` or `Dead`; a failed one is `Queued` again, with
+  its `error` and the `runAt` of its retry.
+
+- **`Test.work`** runs every job due at the test's clock, oldest first,
+  each as its own `Task`. A job that fails has its writes undone, and is
+  retried at the clock's time plus the wait a worker uses, or is `Dead`
+  past its `retries`; its `result` is `Err` with the error. The jobs that
+  the jobs queue run in the same call when they are due. After 1000 runs
+  in one call, the test fails with "Test.work: jobs keep enqueueing
+  jobs".
+
+```alder
+test "a queued job waits for Test.work" = {
+  let _ <- Test.setClock (Time.fromMillis 1772582400000)
+  let id <- Job.enqueue (Nightly.Nightly {})
+  let before <- Job.status id
+  let runs <- Test.work
+  let after <- Job.status id
+  Task.succeed (
+    Maybe.map (\s -> s.state) before == Just Queued
+      && List.map (\r -> r.job) runs == [Nightly.Nightly {}]
+      && Maybe.map (\s -> s.state) after == Just Done
+  )
+}
+```
+
+The clock matters. A job with `every` or `cron` runs on its schedule:
+the first `Test.work` of a test queues its first tick after the clock,
+as a worker does when it starts, and runs nothing until the clock
+passes it. (Here `Nightly`'s tick is at 03:00, so only the job the test
+queued runs.) A clock the test never set moves a second at every
+reading, and running a job reads it: set the clock with
+`Test.setClock`, or a short `every` stays due and `Test.work` runs until
+it fails. Chapter 17, "Testing jobs", has a retry and a schedule tested
+step by step.
+
+The capabilities a job calls are the test's: a `Test.fake` installed
+before `Test.work` applies inside the jobs too. The steps a job takes
+are not in the test's trace; the enqueue is, as
+`"Job.enqueue Nightly"`.
+
 ## 4. `Test.run`: running a task that may fail
 
 `Toggle.update` for another user's todo ends in `Task.notFound`. If the

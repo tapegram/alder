@@ -700,6 +700,7 @@ func TestBook_Classify(t *testing.T) {
 		{"type Filter = All | Active\n", Decls},
 		{"table Todo {\n  id: TodoId @id,\n}\n", Decls},
 		{"msg Toggle { id: TodoId }\n", Decls},
+		{"job Nightly = {} cron \"0 3 * * *\"\n", Decls},
 		{"import Todo\n", Decls},
 		{"login = Auth.Login\n", Decls},
 		{"test \"flip alternates\" =\n  flip (flip Light) == Light\n", Decls},

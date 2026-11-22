@@ -237,6 +237,18 @@ var genCases = []genCase{
 		fills: [][2]string{{"--decl Home.Clear.update", "{\n  let _ <- Log.info \"cleared\"\n  Task.succeed Response.refresh\n}"}}},
 	{name: "capability", base: "scaffold", args: []string{"new", "capability", "Weather", "current", "{ city: Text } -> Query (Maybe Float)"}, test: true,
 		fills: [][2]string{{"Weather.Weather.current", "Query.succeed (Just 21.5)"}}},
+	// #168: jobs: with parameters, into a module, on an interval, on a cron schedule, with a fix-up
+	{name: "fixture-job", base: "fixture", args: []string{"new", "job", "SendWelcome", "user:User.UserId"}, test: true},
+	{name: "job-into", base: "fixture", args: []string{"new", "job", "SendWelcome", "user:User.UserId", "note:Text", "--into", "Home"}, test: true},
+	{name: "job-into-new", base: "fixture", args: []string{"new", "job", "Cleanup", "--into", "Signup"}, test: true},
+	{name: "job-every", base: "scaffold", args: []string{"new", "job", "Sweep", "--every", "1h"}, test: true},
+	{name: "job-every-offgrid", base: "scaffold", args: []string{"new", "job", "Sweep", "--every", "7h"}, test: true},
+	{name: "job-cron", base: "scaffold", args: []string{"new", "job", "Nightly", "--cron", "0 3 * * *"}, test: true},
+	// #168: a second scheduled job in the app: the first's ticks land in the same Test.work as
+	// the new job's, and each job's test still checks only its own runs
+	{name: "job-two-scheduled", base: "scaffold", pre: [][]string{{"new", "job", "Hourly", "--every", "1h"}}, args: []string{"new", "job", "Nightly", "--cron", "0 3 * * *"}, test: true},
+	{name: "job-every-fields", base: "fixture", args: []string{"new", "job", "Sweep", "n:Int", "--every", "1h"}, code: 1},
+	{name: "job-both", base: "scaffold", args: []string{"new", "job", "Sweep", "--every", "1h", "--cron", "0 3 * * *"}, code: 1},
 	{name: "edit-add", base: "scaffold", args: []string{"edit", "table", "Entry", "add-field", "note:Maybe Text"}, breaks: true},
 
 	{name: "fixture-route-list-search", base: "fixture", args: []string{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--search", "title", "--requires", "user"}, test: true},

@@ -22,8 +22,8 @@ This chapter is about writing those pieces with commands instead of by
 hand.
 
 - `alder new route`, `alder new table`, `alder new form`, `alder new action`,
-  `alder new capability`, `alder new type`, `alder new decl` and
-  `alder new test` each write one piece, and `alder new auth` the login.
+  `alder new capability`, `alder new job`, `alder new type`, `alder new decl`
+  and `alder new test` each write one piece, and `alder new auth` the login.
 
 - `alder edit table` changes a table and writes its migration, `alder edit
   route` a route's parameters.
@@ -5767,6 +5767,139 @@ refuses instead, and writes nothing, when the change breaks anything.
 A change no migration can make is refused with `alder migrate`'s
 reason: a new field that is neither a `Maybe` nor given a default
 cannot be filled in the rows already stored.
+
+## A job: `alder new job`
+
+`alder new job` writes a background job (chapter 17): its declaration,
+a `run` that logs and succeeds, and a test. In the blog of chapter 14:
+
+```text command=blog
+$ alder new job SendWelcome user:User.UserId
+wrote app/Jobs/SendWelcome.alder
+```
+
+```alder written=blog/app/Jobs/SendWelcome.alder
+module Jobs.SendWelcome
+
+import Table.User
+
+job SendWelcome = { user: User.UserId }
+
+SendWelcome.run : SendWelcome.Params -> Task Unit
+SendWelcome.run p = {
+  let _ <- Log.info "SendWelcome ran"
+  Task.succeed ()
+}
+
+test "SendWelcome runs" = {
+  let job = SendWelcome { user: User.UserId "u1" }
+  let _ <- Job.enqueue job
+  let runs <- Test.work
+  let own = List.filter (\r -> r.job == job) runs
+  Task.succeed (List.map (\r -> r.result) own == [Ok ()])
+}
+```
+
+- **The module** is `Jobs.<Name>`, in `app/Jobs/`. `--into <Module>`
+  puts the job in another module instead, appended to it when it exists.
+
+- **The parameters** are written like a table's fields,
+  `<field>:<Type>`, and imported as needed (`Table.User` here).
+
+- **The test** queues the job with sample parameters and runs it with
+  `Test.work`. A parameter that is a table's id gets a literal of its
+  brand, `User.UserId "u1"`: the job only logs, so no row is needed.
+  Once `run` reads the user, insert one in the test first, or the job
+  finds nothing to work on.
+
+`--every <duration>` or `--cron "<expression>"` writes a scheduled job,
+which takes no parameters:
+
+```text command=blog
+$ alder new job Digest --every 1d
+wrote app/Jobs/Digest.alder
+```
+
+```alder written=blog/app/Jobs/Digest.alder
+module Jobs.Digest
+
+job Digest = {} every "1d"
+
+Digest.run : Digest.Params -> Task Unit
+Digest.run p = {
+  let _ <- Log.info "Digest ran"
+  Task.succeed ()
+}
+
+-- The clock starts at 2026-03-04T23:59:00Z; the job's first tick is at 2026-03-05T00:00:00Z.
+-- The first Test.work plays the worker's start: it queues the tick and runs nothing.
+-- A second past the tick, the second Test.work runs the job, once.
+-- Other jobs in the app run in the same calls, so only this job's runs are checked.
+test "Digest runs on its schedule" = {
+  let _ <- Test.setClock (Time.fromMillis 1772668740000)
+  let start <- Test.work
+  let _ <- Test.advance 61000
+  let runs <- Test.work
+  let job = Digest {}
+  let ownStart = List.filter (\r -> r.job == job) start
+  let own = List.filter (\r -> r.job == job) runs
+  Task.succeed (List.isEmpty ownStart && List.map (\r -> r.result) own == [Ok ()])
+}
+```
+
+The test sets the clock a minute before the job's first tick after
+2026-03-04, works once (which queues the tick, as a worker's start
+does), moves a second past the tick, and works again. The tick's time
+is the worker's own: the generator computes it with the runtime's
+schedule code. An `every` that does not divide a day (`7m`) has no grid
+to stand a minute before, so its test starts the clock at 2026-03-04
+00:00 instead.
+
+Other jobs run in the same `Test.work` calls (a worker runs every job
+that is due), so the test looks only at its own job's runs: it filters
+them with `r.job == job`. In an app with two schedules that meet, the
+to-do app's nightly job at 03:00 and an hourly one, each job's test
+still passes.
+
+`--into` appends to a module that exists:
+
+```text command=blog
+$ alder new job Ping --into Jobs.SendWelcome
+edited app/Jobs/SendWelcome.alder
+--- a/app/Jobs/SendWelcome.alder
++++ b/app/Jobs/SendWelcome.alder
+@@ -17,3 +17,19 @@
+   let own = List.filter (\r -> r.job == job) runs
+   Task.succeed (List.map (\r -> r.result) own == [Ok ()])
+ }
++
++job Ping = {}
++
++Ping.run : Ping.Params -> Task Unit
++Ping.run p = {
++  let _ <- Log.info "Ping ran"
++  Task.succeed ()
++}
++
++test "Ping runs" = {
++  let job = Ping {}
++  let _ <- Job.enqueue job
++  let runs <- Test.work
++  let own = List.filter (\r -> r.job == job) runs
++  Task.succeed (List.map (\r -> r.result) own == [Ok ()])
++}
+```
+
+A schedule with parameters, or both schedules, is refused with E0050's
+words, and nothing is written:
+
+```text command=blog
+$ alder new job Digest2 user:User.UserId --every 1d
+alder new job: A scheduled job takes no parameters: job `Digest2` runs on its schedule, with nothing to fill them; leave out the fields, or leave out `--every`/`--cron`
+```
+
+A `--cron` the checker cannot read is refused with the checker's own
+message.
 
 ## Owned regions and `alder regen admin`
 

@@ -368,8 +368,8 @@ type symbolInformation struct {
 }
 
 // symbolKinds maps a search entry's kind to an LSP SymbolKind number: function 12, value 13,
-// type 23, constructor 22.
-var symbolKinds = map[search.Kind]int{search.Function: 12, search.Value: 13, search.TypeDecl: 23, search.Constructor: 22}
+// type 23, constructor 22, job 24 (Event: LSP has no kind for a background job).
+var symbolKinds = map[search.Kind]int{search.Function: 12, search.Value: 13, search.TypeDecl: 23, search.Constructor: 22, search.Job: 24}
 
 // symbolReq answers workspace/symbol: the app's declarations (not the standard library's) whose
 // names match the query, from the index alder/search reads (searchSnapshot). The query is taken

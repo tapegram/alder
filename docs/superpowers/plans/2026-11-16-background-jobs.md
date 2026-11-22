@@ -1040,3 +1040,16 @@ Spec §11, §6, §6a, §7a (scaling story), §5 (rollback sentence), "Follow-ups
 - [ ] **Step 4: Close out.** `go test ./...`; open PR 7; after merge tick #52 item 9, close #168,
   `go install ./cmd/alder`, rebuild the tree-sitter parser for alder.nvim.
 - [ ] **Step 5: Commit** `book: chapter 17, background jobs (#168)`.
+
+## Follow-ups to file after PR 7 merges
+
+Drafted during PR 7 (Task 21 report, final review); file each as an issue after merge.
+
+1. **#165: subscribe a watched route to the job worker's finished channel** — Comment on #165: jobs (#168) landed with an in-process `Wake` channel and an `OnAttempt` hook (rt/jobs/worker.go:63-64,80-92); a watched route could subscribe to a job's outcome by id to refresh a page when its job finishes, instead of polling `Job.status`. Cross-process (a `--jobs-only` worker) needs the database or a notification path; design open.
+2. **Jobs: `Job.cancel`, `Job.enqueueIn`, priorities, and a `Job.Id` on the response** — v1 has none (spec §2 "Not in v1", "Calls to check" 8). `cancel` would mark a queued row dead/cancelled (and decide what a running one does); `enqueueIn ms` is sugar for `enqueueAt (Time.addMillis ms now)`; priorities need a column and the claim's ORDER BY; a `Job.Id` carried on a `Response` (or a route parameter type) would let a page poll its job's status. Book ch 17 "What is not there yet" lists them.
+3. **alder-tui: a Jobs screen over `/_dev/jobs.json`** — The dev server serves the Jobs listing as JSON (rt/web/devjobs.go:20-23,117-144: queued/running/dead/done, schedules, `workers`, `missed`); alder-tui (separate module) should show it beside Logs, with retry/run-now via the POST endpoints (`/_dev/jobs/{id}/retry|run`, cross-origin protected).
+4. **`alder jobs --env <name>` against a deployed environment** — `alder jobs` reads only a local file and refuses Turso (cmd/alder/jobs.go:106-108). Through the deploy adapters (Ssh: the box's file via the run script; Render/Turso: the shared database and silo children), list counts and dead jobs and retry/run, with the same admin operations (rt/jobs/admin.go).
+5. **A streaming or paged `Db` read for jobs over large tables** — `Db.all` loads every row; the book's answer is fan-out with `Db.limit`/`Db.offset` (ch 17 "Long jobs and fan-out"). If that proves not enough, add a paged/streaming read whose transaction shape does not hold the write lock.
+6. **New (spec §8 not built): a typed `job` event in `alder run`'s event feed** — The spec said the feed carries `job` events; attempts reach it only as `log` events (cmd/alder/run_logs.go:98-104). If alder-tui's Logs screen should treat jobs apart from requests, emit a typed event (kind, id, outcome, ms, attempt).
+7. **Serve mode keeps claiming jobs while requests drain** — on SIGINT/SIGTERM the generated main runs `srv.Shutdown` (up to 5 s) before `stopJobs` (internal/gen/caps.go:1018-1026), so workers claim new rows during the drain and those get only what is left of the 5 s. Call `stopJobs`'s stop-claiming half before `Shutdown`; ch 17 "Stopping" documents today's order.
+8. **LSP `textDocument/documentSymbol`** — the server has none (PR 7 covered jobs through `workspace/symbol` only); add it for declarations including jobs and their `run` arms.

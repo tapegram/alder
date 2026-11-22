@@ -158,6 +158,10 @@ func langHover(m *syntax.Module, path []syntax.Spanned, pos diag.Pos) string {
 			return ""
 		}
 	case syntax.LeftArrow:
+	case syntax.LIdent: // a job's option word (`every`, `cron`, …), a name anywhere else
+		if !jobOptionAt(m, t) {
+			return ""
+		}
 	default:
 		if b, isOp := last.(*syntax.BinOp); !isOp || b.Op != t.Text {
 			return ""
@@ -168,6 +172,19 @@ func langHover(m *syntax.Module, path []syntax.Spanned, pos diag.Pos) string {
 		return ""
 	}
 	return e.Markdown()
+}
+
+// jobOptionAt reports whether t is an option word of the job declared where it stands.
+func jobOptionAt(m *syntax.Module, t syntax.Token) bool {
+	at := diag.Pos{Line: t.Line, Col: t.Col}
+	if d, ok := declAt(m, at).(*syntax.JobDecl); ok {
+		for _, o := range d.Options {
+			if o.Pos == at {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // tokenAt is the token of m that pos is on, with the kind the parser reads it as; the tokens of a

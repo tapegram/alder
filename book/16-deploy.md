@@ -696,6 +696,13 @@ so the health check fails, nothing is switched, and the refusal says so.
 It is there for the rare change the runtime accepts (a new table the old
 build never reads), not as a way back across a migration.
 
+An alder upgrade that adds a table of the runtime's own is such a
+crossing, with no migration of yours in it. The jobs table came with
+background jobs (chapter 17): a build of an app with migrations made by
+an older alder counts it as a change made outside migrations and
+refuses the database, so rolling back to that build fails its health
+check, and nothing is switched.
+
 ### Back across a migration: `--restore-backup`
 
 The usual way back across a migration is forward: deploy a build whose
@@ -1063,6 +1070,28 @@ An app's jobs run in its own process: `ALDER_JOBS=N` is the number of job
 workers it starts (default 4; `0` starts none, and `/_alder/health` answers
 `"jobs":"off"`). A value that is not a whole number below 65536 stops the
 app before it serves, like a bad `ALDER_LOG`.
+
+What that means on each target (chapter 17, "Deploying jobs", has the
+whole story):
+
+- **`Ssh`.** The app process on the box runs the jobs beside the
+  requests. During a deploy the new build starts beside the old one, and
+  both claim jobs from the one file while the old one drains; a claim is
+  atomic, so they never run the same job. When the old build is stopped,
+  the jobs it was running are queued again for the new one.
+
+- **`Fly`.** The same, on one machine replaced in place: the old process
+  stops, its running jobs are queued again (or, if it is killed outright,
+  once their leases run out), and the new one claims them once the
+  machine is back.
+
+- **`Render`.** Each instance runs its workers, all claiming from the
+  shared Turso database. With `workers: N` ("The Render target", below)
+  the jobs move to a worker service running `app --jobs-only`, and the
+  web service runs none (`ALDER_JOBS=0`).
+
+- **`Script`.** Whatever runs the executable runs its workers, with the
+  same `ALDER_JOBS`.
 
 ### Slow requests
 
@@ -2056,6 +2085,11 @@ The commands on a Render environment:
   copies the database as it was at the time recorded for the next build,
   and sets the new `ALDER_DB` in one call before the roll.
 
+  With `workers`, the worker service rolls to the same image with
+  `--jobs-only`. A build made before `--jobs-only` existed does not know
+  the flag: it prints its usage and exits, so the worker service's deploy
+  fails, and the rollback with it.
+
 - **`alder restore <env> --to <time>`** (with `--silo` for one org) is
   the Turso restore above, with that call in place of `turso.env`.
 
@@ -2630,8 +2664,9 @@ and for unusual setups:
   whose port is public; `alder deploy` leaves it as the environment sets it
 
 - `ALDER_JOBS`: read by the app's executable: the number of job workers it
-  starts ("Job workers"; default 4, `0`: none); a value that is not a whole
-  number below 65536 stops the app before it serves
+  starts ("Job workers"; default 4, `0`: none; 8 by default under
+  `--jobs-only`, the worker service of `workers:`); a value that is not a
+  whole number below 65536 stops the app before it serves
 
 - `ALDER_ALLOW_DATA_LOSS`: read by the app's executable, never set by you: `1`
   lets `--migrate-only` apply a DROPS DATA migration; `alder deploy` sets it

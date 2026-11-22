@@ -243,9 +243,9 @@ A type, table, form or union of any module may not take the name of a
 Prelude type that programs write, which every module uses unqualified
 (E0012):
 
-`Query`, `Task`, `Html`, `Maybe`, `Result`, `Response`, `Route`, `File`,
-`List`, `Dict`, `Int`, `Float`, `Text`, `Bool`, `Unit`, `Date`, `Time`,
-`Never`, `Error`.
+`Query`, `Task`, `Html`, `Maybe`, `Result`, `Response`, `Route`, `Job`,
+`File`, `List`, `Dict`, `Int`, `Float`, `Text`, `Bool`, `Unit`, `Date`,
+`Time`, `Never`, `Error`.
 
 Nor may one take `Doc` or `Answer`, the Prelude's types for tests
 (chapter 10), and no constructor may be named like one of `Answer`'s:

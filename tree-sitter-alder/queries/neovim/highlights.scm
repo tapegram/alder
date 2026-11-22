@@ -77,8 +77,9 @@
 (route_decl path: (string) @string.special.url)
 (route_decl "form" @keyword) ; `form` is a name, not a keyword, elsewhere
 (route_method) @constructor
-; the option words are plain variables to the server (not lexer keywords)
-(job_option ["every" "cron" "retries" "timeout" "silo"] @variable)
+; the option words are keywords in a job's line only (the lexer reads them as names, as the server
+; does: internal/semtok's JobDecl rule)
+(job_option ["every" "cron" "retries" "timeout" "silo"] @keyword)
 (job_option key: (identifier) @variable.member)
 (job_option value: (string) @string)
 (session_key) @variable.member

@@ -23,7 +23,8 @@ type Program struct {
 	// reached through `import` like any other.
 	routes map[string]map[string]*syntax.RouteDecl
 	// jobs maps a module to its jobs by name (#168). A job's constructor, arm and `Params` are
-	// reached like a route's, except that another module's job needs its module imported.
+	// reached like a route's: the constructor from anywhere without an import (or through an
+	// import's qualifier), the members through `import`.
 	jobs map[string]map[string]*syntax.JobDecl
 	// oldPages are the modules that still declare a `page` (E0046, the checker): a reference to
 	// one from another module resolves (RefPage) instead of adding an error of its own, so an app

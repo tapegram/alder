@@ -27,6 +27,11 @@ session { user: User.UserId, org: Maybe Org.OrgId via Membership }
 silo org { Project, Task }
 
 job Digest = { org: Org.OrgId } silo org
+job Nightly = {} every "1d" retries 3 timeout "5m"
+job Weekly = {} cron "0 3 * * 1"
+
+every : Int
+every = 1
 
 choose org = Orgs.Index
 
@@ -100,8 +105,15 @@ func TestDecls(t *testing.T) {
 		{"silo org {", 5, TProperty, 0},
 		{"{ Project, Task }", 2, TType, 0},
 		{"{ Project, Task }", 11, TType, 0},
-		{"OrgId } silo org", 8, TVariable, 0},
+		{"OrgId } silo org", 8, TKeyword, 0},
 		{"OrgId } silo org", 13, TProperty, 0},
+		{`{} every "1d"`, 3, TKeyword, 0},
+		{`retries 3 timeout`, 0, TKeyword, 0},
+		{`retries 3 timeout`, 8, TNumber, 0},
+		{`retries 3 timeout`, 10, TKeyword, 0},
+		{`{} cron "0 3`, 3, TKeyword, 0},
+		{"every : Int", 0, TFunction, Declaration},
+		{"every = 1", 0, TFunction, Declaration},
 		{"choose org = Orgs.Index", 0, TKeyword, 0},
 		{"choose org = Orgs.Index", 7, TProperty, 0},
 		{"choose org = Orgs.Index", 13, TNamespace, 0},
