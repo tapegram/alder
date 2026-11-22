@@ -85,6 +85,9 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 	for i, t := range tabs {
 		fmt.Fprintf(&b, ` <button type="button" aria-controls="_alder_tab_%s" aria-selected="%t">%s</button>`, strings.ToLower(t), i == 0, t)
 	}
+	if rt.opts.DevJobs != nil { // the dev server's Jobs page (devjobs.go), in an app with jobs
+		b.WriteString(` <a href="` + devJobsRoot + `" data-jobs>Jobs</a>`)
+	}
 	b.WriteString(`</nav>`)
 	// the hop markers: "then GET <url>" before the first step and statement of each redirect
 	// follow served
@@ -439,6 +442,7 @@ func (rt *router) devOn() bool { return rt.opts.Dev && os.Getenv("ALDER_DEV") ==
 var devPage = template.Must(template.New("dev").Parse(`<!doctype html><html><head><meta charset="utf-8"><title>Alder dev map</title></head><body>
 <h1>Alder dev map</h1>
 <p>build <code>{{.Build}}</code></p>
+{{if .Jobs}}<p><a href="/_dev/jobs">Jobs</a></p>{{end}}
 <h2>Routes</h2>
 {{range .Map.Routes}}<h3>{{.Method}} {{if .Link}}<a href="{{.Path}}">{{.Path}}</a>{{else}}<code>{{.Path}}</code>{{end}} <small>{{.Module}}</small></h3>
 <ul>{{if .Requires}}<li>requires {{.Requires}}{{if .Roles}}, role {{range $i, $r := .Roles}}{{if $i}} | {{end}}{{$r}}{{end}}{{end}}</li>{{end}}
@@ -522,13 +526,14 @@ type devMapView struct {
 	Map        devMapData `json:"map"`
 	Caps       []devCap   `json:"caps"`
 	Migrations []string   `json:"migrations"`
+	Jobs       bool       `json:"-"` // the app has jobs: /_dev links to its Jobs page
 }
 
 // devMapView collects the running app's map: the generator's (Options.DevMap), the capabilities
 // (adapter or fake wired), the migrations applied and the build id. The routes are the generator's
 // (in the map), not the router's.
 func (rt *router) devMapView() devMapView {
-	data := devMapView{Build: BuildID(), Migrations: rt.opts.Migrations, Caps: []devCap{}}
+	data := devMapView{Build: BuildID(), Migrations: rt.opts.Migrations, Caps: []devCap{}, Jobs: rt.opts.DevJobs != nil}
 	if data.Migrations == nil {
 		data.Migrations = []string{}
 	}

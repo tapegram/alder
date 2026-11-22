@@ -84,11 +84,17 @@ func (j *Job) Text() string {
 		}
 	}
 	if j.LockHeld > LockMark {
-		b = append(b, ", held the write lock "...)
-		b = strconv.AppendInt(b, int64(math.Round(j.LockHeld.Seconds())), 10)
-		b = append(b, " s: write last, or fan out — book 17"...)
+		b = append(b, ", "...)
+		b = append(b, LockText(j.LockHeld)...)
 	}
 	return string(b)
+}
+
+// LockText is the mark of an attempt that held the write transaction for d (spec §6a), as its
+// line and the dev panel's Jobs page show it: "held the write lock 41 s: write last, or fan out
+// — book 17" (whole seconds, rounded). Its callers mark only a d above LockMark.
+func LockText(d time.Duration) string {
+	return "held the write lock " + strconv.FormatInt(int64(math.Round(d.Seconds())), 10) + " s: write last, or fan out — book 17"
 }
 
 // Job writes j's line at j.Level(): as text, Text; as JSON, Text as the message, with the job's

@@ -124,6 +124,7 @@ usage: alder <command> [arguments]
   test      run the app's tests
   bench     measure each browser step of the app's tests
   migrate   write the migration for a schema change
+  jobs      list the dev database's jobs, retry dead ones, run one now
   repl      an interactive session in the app (deprecated: use alder scratch)
   new       create an app, or generate code in one
   edit      change a table, route, declaration, auth or the session

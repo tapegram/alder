@@ -183,6 +183,17 @@ var commandTree = []cmdSpec{
 				Flags: []flagSpec{hostFlagSpec,
 					{Name: "--allow-data-loss", Summary: "apply a migration that drops data"}}},
 		}},
+	{Name: "jobs", Summary: "list the dev database's jobs, retry dead ones, run one now", Usage: commandUsages["jobs"],
+		Args: []string{"[dir]"},
+		Flags: []flagSpec{
+			{Name: "--db", Value: "FILE", Summary: "another database file than build/<app>/dev.db"},
+			buildDirFlag,
+		},
+		Subcommands: []cmdSpec{
+			{Name: "retry", Summary: "queue a dead job again, or every one", Args: []string{"<id>", "[dir]"},
+				Flags: []flagSpec{{Name: "--dead", Summary: "every dead job"}}},
+			{Name: "run", Summary: "queue a run of a job without parameters now", Args: []string{"<Kind>", "[dir]"}},
+		}},
 	{Name: "repl", Summary: "an interactive session in the app (deprecated: use alder scratch)", Usage: commandUsages["repl"],
 		Args: []string{"[dir]"},
 		Flags: []flagSpec{

@@ -128,6 +128,8 @@ func main() {
 		os.Exit(runRestoreTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "silos":
 		os.Exit(runSilosTo(os.Args[2:], os.Stdout, os.Stderr))
+	case "jobs":
+		os.Exit(runJobsTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "ci":
 		os.Exit(runCiTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "version":

@@ -96,7 +96,6 @@ func TestJobCodec_Drift(t *testing.T) {
 		`{"user": 3}`:                  "user: expected a Text, got an Int",
 		`{}`:                           "user: missing",
 		`{"usr": "u1"}`:                "user: missing",
-		`[1]`:                          ": expected an object, got a list",
 		`{"user": "u1"} x`:             "text after the JSON value",
 	} {
 		err := run(params)
@@ -106,6 +105,15 @@ func TestJobCodec_Drift(t *testing.T) {
 	}
 	if err := run(`{"user": "u1"}`); err != nil {
 		t.Errorf("Run of good parameters: %v", err)
+	}
+	// at the root, the error names no path (no ": expected ..."); a job without parameters too
+	for _, k := range Jobs() {
+		if k.Name != "Signup.SendWelcome" && k.Name != "Signup.Nightly" {
+			continue
+		}
+		if _, err := k.Run(nil, `[1]`); err == nil || err.Error() != "expected an object, got a list" {
+			t.Errorf("%s: Run([1]) = %v, want \"expected an object, got a list\"", k.Name, err)
+		}
 	}
 	// a Maybe field renamed since the row was written: missing, not Nothing
 	enc := rt.JsonEncode(jobenc__Signup__Everything__Params(everything()))

@@ -530,6 +530,27 @@ Deferred findings from PR 1's task and final reviews, each with the task that ow
   `envSpecificDetails.dockerCommand` and the `background_worker` type filter; real Turso returns rows
   for `UPDATE … RETURNING` (PR 4's claim never ran on real Turso before this PR fixed the fake).
 
+## Carried from PR 6's reviews
+
+- **Task 21 (book/spec):** spec §9: Retry also clears started/finished/worker/lease; "Run now" only makes the
+  row due and wakes the workers (nothing runs it with `ALDER_JOBS=0`); a retried dead tick runs once and
+  inserts no next tick. Unknown-kind ticks are deleted a day after they are due (`scheduled_for`), not a day
+  after they were made. `alder jobs` covers the shared file and `silos/<key>/*.db`, refuses Turso `--db`, and
+  `run <Kind>` needs an app that type-checks; a CLI retry in a silo outside the running workers' active set
+  waits for the silo to rejoin it or a restart. The Jobs page masks params by name only (`applog.Sensitive`),
+  keeps the last attempt's trace in memory per process, and lists an idle closed silo only as a skipped line.
+  The silo-hints spec now says a hint tick wakes an idle worker.
+- **Follow-up issues (file after merge):** a serving build whose database is ahead of it still starts its job
+  workers (`internal/gen/caps.go` StartJobs, no ahead check) — gate on `SharedMaintenance` with a re-check and
+  an honest health `"jobs"`; mask `Text.Secret` job params by type on the Jobs page.
+- **Any PR (cleanup):** Retry's key pre-check and UPDATE are not atomic (a concurrent `enqueueOnce` gives a raw
+  unique error); `OpenSilos` may close a silo under the panel (transient "database is closed"); "Done (last
+  50)" hard-coded (use `jobs.ShownDone`); `TestPanel_Silos` success-only; `TestDevJobs_Detail` asserts bare
+  "done"; `_ = st` in devjobs_test.go; `Panel.Now` nil panics; no test of the unreadable-silo 500; one bad silo
+  file aborts `alder jobs` list/retry; `jobsRetry` opens every store for writing and `Get`s twice;
+  `ALDER_BACKUP_URL` is inherited by CLI write opens; overlong doc lines `rt/jobs/worker.go`; caps template
+  spacing on the `handler` field; `--dead <name>` with a missing dir gives a bare usage error.
+
 ## PR 2: the worker
 
 ### Task 7: Split `Serve`; `ALDER_JOBS`

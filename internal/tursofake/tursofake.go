@@ -595,12 +595,67 @@ func verb(q string) string {
 	return strings.ToUpper(f[0])
 }
 
+// hasReturning reports whether q has a RETURNING clause: the bare word RETURNING, in any case,
+// with anything but a letter, digit, _ or $ on each side (whitespace of any kind, a parenthesis,
+// a quote, the start or end of q); the word inside a '…' string, a "…", `…` or […] name, or a
+// -- or /* */ comment is not one.
+func hasReturning(q string) bool {
+	word := func(c byte) bool {
+		return c == '_' || c == '$' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
+	}
+	for i := 0; i < len(q); {
+		switch c := q[i]; {
+		case c == '\'' || c == '"' || c == '`' || c == '[':
+			end := c
+			if c == '[' {
+				end = ']'
+			}
+			i++
+			for i < len(q) {
+				if q[i] == end {
+					if i+1 < len(q) && q[i+1] == end && end != ']' { // a doubled quote is one character
+						i += 2
+						continue
+					}
+					break
+				}
+				i++
+			}
+			i++
+		case c == '-' && strings.HasPrefix(q[i:], "--"):
+			if n := strings.IndexByte(q[i:], '\n'); n >= 0 {
+				i += n + 1
+			} else {
+				i = len(q)
+			}
+		case c == '/' && strings.HasPrefix(q[i:], "/*"):
+			if n := strings.Index(q[i+2:], "*/"); n >= 0 {
+				i += n + 4
+			} else {
+				i = len(q)
+			}
+		case word(c):
+			j := i
+			for j < len(q) && word(q[j]) {
+				j++
+			}
+			if strings.EqualFold(q[i:j], "RETURNING") {
+				return true
+			}
+			i = j
+		default:
+			i++
+		}
+	}
+	return false
+}
+
 // execute runs q on stream st of database d; a commit is a point in time.
 func (s *Server) execute(d *database, st *stream, q string, args []any) (map[string]any, error) {
 	ctx := context.Background()
 	v := verb(q)
 	// a write with RETURNING answers its rows, as Turso's does (a job's claim: UPDATE … RETURNING *)
-	returning := (v == "INSERT" || v == "UPDATE" || v == "DELETE" || v == "REPLACE") && strings.Contains(strings.ToUpper(q), " RETURNING ")
+	returning := (v == "INSERT" || v == "UPDATE" || v == "DELETE" || v == "REPLACE") && hasReturning(q)
 	rowsWanted := returning || v == "SELECT" || v == "WITH" || v == "VALUES" || v == "EXPLAIN" || (v == "PRAGMA" && !strings.Contains(q, "="))
 	res := map[string]any{"cols": []any{}, "rows": []any{}, "affected_row_count": 0, "last_insert_rowid": nil}
 	if rowsWanted {

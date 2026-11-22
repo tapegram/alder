@@ -19,8 +19,8 @@ const (
 	KeepDone = 7 * 24 * time.Hour
 	KeepDead = 30 * 24 * time.Hour
 	// Unclaimable is how long a queued row of a kind this build does not know waits before
-	// housekeeping warns about its kind, and how old a queued tick of such a kind is when
-	// housekeeping deletes it.
+	// housekeeping warns about its kind, and how long past its scheduled_for a queued tick of
+	// such a kind is when housekeeping deletes it.
 	Unclaimable = 24 * time.Hour
 )
 
@@ -51,8 +51,9 @@ func newHousekeeper(s eff.Store, kinds []Kind, log func(level, msg string)) *hou
 //     attempt counted), or made dead when that attempt was its last;
 //   - done rows finished more than KeepDone ago and dead ones more than KeepDead ago are deleted;
 //   - a queued tick of a kind this build does not know (its kind's queued tick, or a tick
-//     queued for its retry: scheduled_for is set), created more than Unclaimable ago, is
-//     deleted with a warn line (a job renamed or removed: the new name has its own tick);
+//     queued for its retry: scheduled_for is set), due (scheduled_for) more than Unclaimable
+//     ago, is deleted with a warn line (a job renamed or removed: the new name has its own
+//     tick; a tick not yet due, such as a new weekly kind's after a rollback, is kept);
 //   - a kind this build does not know, with a row queued and due for more than Unclaimable, is
 //     a warn line, once per kind;
 //   - each scheduled kind without a queued tick gets one (EnsureTicks).
@@ -145,12 +146,14 @@ func (h *housekeeper) leases(ctx context.Context, q db.Execer, now time.Time) er
 	return nil
 }
 
-// unknownTicks deletes the queued ticks of kinds this build does not know created more than
-// Unclaimable before now: rows with scheduled_for, whether still their kind's queued tick
-// (schedule 1) or queued for a retry after a claim cleared it.
+// unknownTicks deletes the queued ticks of kinds this build does not know whose time
+// (scheduled_for) is more than Unclaimable before now: rows with scheduled_for, whether still
+// their kind's queued tick (schedule 1) or queued for a retry after a claim cleared it. The age
+// is the tick's due time, not its created (ruling R3): a rollback to a build that lacks a new
+// weekly kind keeps that kind's tick, made long ago and not yet due, for the build that knows it.
 func (h *housekeeper) unknownTicks(ctx context.Context, q db.Execer, now time.Time) error {
 	before := now.Add(-Unclaimable).UnixMilli()
-	rows, err := q.QueryContext(ctx, `SELECT "id", "kind" FROM "_alder_jobs" WHERE "scheduled_for" IS NOT NULL AND "state" = 'queued' AND "created" < ? ORDER BY "kind"`, before)
+	rows, err := q.QueryContext(ctx, `SELECT "id", "kind" FROM "_alder_jobs" WHERE "scheduled_for" IS NOT NULL AND "state" = 'queued' AND "scheduled_for" < ? ORDER BY "kind"`, before)
 	if err != nil {
 		return err
 	}
@@ -176,7 +179,7 @@ func (h *housekeeper) unknownTicks(ctx context.Context, q db.Execer, now time.Ti
 			return err
 		}
 		if n, _ := res.RowsAffected(); n == 1 {
-			h.log("warn", fmt.Sprintf("jobs: deleted the queued tick %s of kind %s (a schedule tick, or one queued for its retry): this build does not know the kind and the tick was made more than a day ago (a job renamed or removed)", g[0], g[1]))
+			h.log("warn", fmt.Sprintf("jobs: deleted the queued tick %s of kind %s (a schedule tick, or one queued for its retry): this build does not know the kind and the tick was due more than a day ago (a job renamed or removed)", g[0], g[1]))
 		}
 	}
 	return nil

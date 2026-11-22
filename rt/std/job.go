@@ -77,12 +77,17 @@ func JobStatus(id string) eff.Query[rt.Maybe[JobStatusRecord]] {
 		if err != nil || s == nil {
 			return rt.Nothing[JobStatusRecord](), err
 		}
-		return rt.Just(JobStatusOf(*s)), nil
+		st, err := JobStatusOf(*s)
+		if err != nil {
+			return rt.Nothing[JobStatusRecord](), err
+		}
+		return rt.Just(st), nil
 	}))
 }
 
-// JobStatusOf is s as the stdlib `Job.Status`.
-func JobStatusOf(s jobs.Status) JobStatusRecord {
+// JobStatusOf is s as the stdlib `Job.Status`. A state that is none of queued, running, done and
+// dead (a row a newer build or a hand edit wrote) is an error, not reported as any of them.
+func JobStatusOf(s jobs.Status) (JobStatusRecord, error) {
 	out := JobStatusRecord{Attempts: int64(s.Attempts), Error: rt.Nothing[string](), RunAt: rt.Nothing[time.Time]()}
 	switch s.State {
 	case jobs.Queued:
@@ -91,8 +96,10 @@ func JobStatusOf(s jobs.Status) JobStatusRecord {
 		out.State.Tag = JobRunning
 	case jobs.Done:
 		out.State.Tag = JobDone
-	default:
+	case jobs.Dead:
 		out.State.Tag = JobDead
+	default:
+		return out, fmt.Errorf("Job.status: the job's state %q is none of queued, running, done and dead", string(s.State))
 	}
 	if s.Error != nil {
 		out.Error = rt.Just(*s.Error)
@@ -100,7 +107,7 @@ func JobStatusOf(s jobs.Status) JobStatusRecord {
 	if s.RunAt != nil {
 		out.RunAt = rt.Just(*s.RunAt)
 	}
-	return out
+	return out, nil
 }
 
 // JobParse reads a job's stored parameters as a JSON tree: a number without a fraction or an
@@ -201,15 +208,32 @@ func JobEncTagged(tag string, args ...rt.JsonValue) rt.JsonValue {
 // jobKinds names a JsonKind in a decode error.
 var jobKinds = [...]string{rt.JsonNull: "null", rt.JsonBool: "a Bool", rt.JsonInt: "an Int", rt.JsonFloat: "a Float", rt.JsonString: "a Text", rt.JsonArray: "a list", rt.JsonObject: "an object"}
 
-// jobWant is the decode error of v at path, which is not the want it should be.
-func jobWant(path, want string, v rt.JsonValue) error {
-	return fmt.Errorf("%s: expected %s, got %s", path, want, jobKinds[v.Kind])
+// JobWant is the decode error of v at path, which is not the want it should be: "user: expected
+// a Text, got an Int", without the path at the root ("expected an object, got a list").
+func JobWant(path, want string, v rt.JsonValue) error {
+	return jobErr(path, fmt.Sprintf("expected %s, got %s", want, jobKinds[v.Kind]))
+}
+
+// jobErr is a decode error at path: "path: msg", or msg alone at the root (path "").
+func jobErr(path, msg string) error {
+	if path == "" {
+		return errors.New(msg)
+	}
+	return errors.New(path + ": " + msg)
+}
+
+// jobSub is the path of sub inside path: "path.sub", or sub at the root.
+func jobSub(path, sub string) string {
+	if path == "" {
+		return sub
+	}
+	return path + "." + sub
 }
 
 // JobDecInt decodes an Int job parameter at path.
 func JobDecInt(v rt.JsonValue, path string) (int64, error) {
 	if v.Kind != rt.JsonInt {
-		return 0, jobWant(path, "an Int", v)
+		return 0, JobWant(path, "an Int", v)
 	}
 	return v.Int, nil
 }
@@ -222,13 +246,13 @@ func JobDecFloat(v rt.JsonValue, path string) (float64, error) {
 	case rt.JsonInt:
 		return float64(v.Int), nil
 	}
-	return 0, jobWant(path, "a Float", v)
+	return 0, JobWant(path, "a Float", v)
 }
 
 // JobDecBool decodes a Bool.
 func JobDecBool(v rt.JsonValue, path string) (bool, error) {
 	if v.Kind != rt.JsonBool {
-		return false, jobWant(path, "a Bool", v)
+		return false, JobWant(path, "a Bool", v)
 	}
 	return v.Bool, nil
 }
@@ -236,7 +260,7 @@ func JobDecBool(v rt.JsonValue, path string) (bool, error) {
 // JobDecText decodes a Text.
 func JobDecText(v rt.JsonValue, path string) (string, error) {
 	if v.Kind != rt.JsonString {
-		return "", jobWant(path, "a Text", v)
+		return "", JobWant(path, "a Text", v)
 	}
 	return v.Text, nil
 }
@@ -244,7 +268,7 @@ func JobDecText(v rt.JsonValue, path string) (string, error) {
 // JobDecTime decodes a Time from its milliseconds since the epoch.
 func JobDecTime(v rt.JsonValue, path string) (time.Time, error) {
 	if v.Kind != rt.JsonInt {
-		return time.Time{}, jobWant(path, "a Time (milliseconds)", v)
+		return time.Time{}, JobWant(path, "a Time (milliseconds)", v)
 	}
 	return time.UnixMilli(v.Int).UTC(), nil
 }
@@ -256,14 +280,14 @@ func JobDecDate(v rt.JsonValue, path string) (rt.Date, error) {
 			return d.Val, nil
 		}
 	}
-	return rt.Date{}, jobWant(path, "a Date", v)
+	return rt.Date{}, JobWant(path, "a Date", v)
 }
 
 // JobDecList decodes a List whose elements d decodes.
 func JobDecList[T any](d func(rt.JsonValue, string) (T, error)) func(rt.JsonValue, string) ([]T, error) {
 	return func(v rt.JsonValue, path string) ([]T, error) {
 		if v.Kind != rt.JsonArray {
-			return nil, jobWant(path, "a list", v)
+			return nil, JobWant(path, "a list", v)
 		}
 		out := make([]T, len(v.Items))
 		for i, x := range v.Items {
@@ -296,18 +320,15 @@ func JobDecMaybe[T any](d func(rt.JsonValue, string) (T, error)) func(rt.JsonVal
 func JobField[T any](v rt.JsonValue, path, key string, d func(rt.JsonValue, string) (T, error)) (T, error) {
 	var zero T
 	if v.Kind != rt.JsonObject {
-		return zero, jobWant(path, "an object", v)
+		return zero, JobWant(path, "an object", v)
 	}
-	at := key
-	if path != "" {
-		at = path + "." + key
-	}
+	at := jobSub(path, key)
 	for _, m := range v.Members {
 		if m.Key == key {
 			return d(m.Value, at)
 		}
 	}
-	return zero, fmt.Errorf("%s: missing", at)
+	return zero, jobErr(at, "missing")
 }
 
 // JobTagged reads a custom type's value at path: its constructor's name and arguments, of which
@@ -319,19 +340,19 @@ func JobTagged(v rt.JsonValue, path string, n map[string]int) (string, []rt.Json
 	}
 	want, ok := n[tag]
 	if !ok {
-		return "", nil, fmt.Errorf("%s: no constructor %q", path, tag)
+		return "", nil, jobErr(path, fmt.Sprintf("no constructor %q", tag))
 	}
 	var args []rt.JsonValue
 	for _, m := range v.Members {
 		if m.Key == "args" {
 			if m.Value.Kind != rt.JsonArray {
-				return "", nil, jobWant(path+".args", "a list", m.Value)
+				return "", nil, JobWant(jobSub(path, "args"), "a list", m.Value)
 			}
 			args = m.Value.Items
 		}
 	}
 	if len(args) != want {
-		return "", nil, fmt.Errorf("%s: %s takes %d arguments, got %d", path, tag, want, len(args))
+		return "", nil, jobErr(path, fmt.Sprintf("%s takes %d arguments, got %d", tag, want, len(args)))
 	}
 	return tag, args, nil
 }

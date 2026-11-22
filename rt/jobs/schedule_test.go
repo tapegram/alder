@@ -301,36 +301,39 @@ func TestClaimTick_BadCron(t *testing.T) {
 	}
 }
 
-// Housekeeping deletes a queued tick of a kind this build does not know once it is a day old,
-// a tick queued for its retry too (schedule 0 since its claim), and nothing else of that kind;
-// it creates the ticks of the kinds it knows.
+// Housekeeping deletes a queued tick of a kind this build does not know once it is more than a
+// day overdue (its scheduled_for, not its created: ruling R3), a tick queued for its retry too
+// (schedule 0 since its claim), and nothing else of that kind; it creates the ticks of the kinds
+// it knows. A rollback across a new weekly kind keeps that kind's tick, made long ago but not yet
+// due, for the build that knows it.
 func TestHousekeep_UnknownTick(t *testing.T) {
 	st := openFile(t)
 	old, recent := t0.Add(-25*time.Hour), t0.Add(-23*time.Hour)
 	for _, r := range []struct {
 		id, kind      string
-		created       time.Time
-		tick, retried bool // a tick: scheduled_for set; retried: schedule 0, claimed once
+		created, due  time.Time // due: the tick's scheduled_for
+		tick, retried bool      // a tick: scheduled_for set; retried: schedule 0, claimed once
 	}{
-		{"t0000001", "Gone.Tick", old, true, false},
-		{"t0000002", "Fresh.Tick", recent, true, false},
-		{"t0000003", "Gone.Plain", old, false, false},
-		{"t0000004", nightly.Name, old, true, false},
-		{"t0000005", "Gone.Retry", old, true, true},
+		{"t0000001", "Gone.Tick", old, old, true, false},
+		{"t0000002", "Fresh.Tick", old, recent, true, false},
+		{"t0000003", "Gone.Plain", old, old, false, false},
+		{"t0000004", nightly.Name, old, old, true, false},
+		{"t0000005", "Gone.Retry", old, old, true, true},
+		{"t0000006", "New.Weekly", t0.Add(-3 * 24 * time.Hour), t0.Add(4 * 24 * time.Hour), true, false},
 	} {
 		var sched any
 		if r.tick {
-			sched = t0.Add(time.Hour).UnixMilli()
+			sched = r.due.UnixMilli()
 		}
 		if _, err := raw(t, st).ExecContext(context.Background(), `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "schedule", "scheduled_for") VALUES (?, ?, '{}', 'queued', ?, ?, ?, ?)`,
-			r.id, r.kind, t0.Add(time.Hour).UnixMilli(), r.created.UnixMilli(), r.tick && !r.retried, sched); err != nil {
+			r.id, r.kind, r.due.UnixMilli(), r.created.UnixMilli(), r.tick && !r.retried, sched); err != nil {
 			t.Fatal(err)
 		}
 	}
 	lg := &lines{}
 	hourly := scheduled("A.Hourly", time.Hour, "", eff.Pure(struct{}{}))
 	jobs.Housekeeper(st, []jobs.Kind{nightly, hourly}, lg.log)(context.Background(), t0)
-	for id, want := range map[string]bool{"t0000001": false, "t0000002": true, "t0000003": true, "t0000004": true, "t0000005": false} {
+	for id, want := range map[string]bool{"t0000001": false, "t0000002": true, "t0000003": true, "t0000004": true, "t0000005": false, "t0000006": true} {
 		if exists(t, st, id) != want {
 			t.Errorf("row %s kept: %v, want %v", id, !want, want)
 		}
@@ -338,7 +341,7 @@ func TestHousekeep_UnknownTick(t *testing.T) {
 	if queuedTicks(t, st, nightly.Name) != 1 || queuedTicks(t, st, hourly.Name) != 1 {
 		t.Fatalf("ticks: nightly %d, hourly %d", queuedTicks(t, st, nightly.Name), queuedTicks(t, st, hourly.Name))
 	}
-	if len(lg.with("warn", "Gone.Tick")) != 1 || len(lg.with("warn", "Gone.Retry")) != 1 || len(lg.all) != 2 {
+	if len(lg.with("warn", "Gone.Tick")) != 1 || len(lg.with("warn", "Gone.Retry")) != 1 || len(lg.with("warn", "Gone.Plain")) != 1 || len(lg.all) != 3 {
 		t.Fatalf("log %q", lg.all)
 	}
 }

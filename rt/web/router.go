@@ -30,6 +30,7 @@ import (
 	"alder/rt/db"
 	"alder/rt/eff"
 	"alder/rt/html"
+	"alder/rt/jobs"
 	"alder/rt/metrics"
 )
 
@@ -107,6 +108,9 @@ type Options struct {
 	// Jobs, when set, is the state of the app's job workers that /_alder/health answers as
 	// "jobs" (generated: rt/jobs.Health.State): "ok", "off" or "stalled". nil: no "jobs" key.
 	Jobs func(ctx context.Context) string
+	// DevJobs, when set (generated: in development mode, for an app that declares a job), is
+	// what the dev server's Jobs page (/_dev/jobs, devjobs.go) reads and changes. nil: no page.
+	DevJobs *jobs.Panel
 	// SlowAfter, when positive (ALDER_SLOW_MS), marks a request that took at least this long
 	// Slow in its access record (a warn line with its breakdown); 0: none.
 	SlowAfter time.Duration
@@ -309,10 +313,10 @@ func line(w http.ResponseWriter, r *http.Request, what string) string {
 
 // quiet reports whether the request for path answered status is a healthy file — the
 // Datastar script or another runtime file (/_alder/), a static one (/static/) answered 2xx or
-// 304, the dev map (/_dev) answered 200, or a dev endpoint (devFeed: the request ring, the map
+// 304, the dev map (/_dev) or a Jobs page of the dev server (/_dev/jobs…) answered 200, or a dev endpoint (devFeed: the request ring, the map
 // as JSON) answered 2xx — whose access line is Debug, not Info.
 func quiet(path string, status int) bool {
-	if path == "/_dev" {
+	if path == "/_dev" || devJobsPath(path) {
 		return status == http.StatusOK
 	}
 	if devFeed(path) {
@@ -663,6 +667,10 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 	if get && (r.URL.Path == devRequestsPath || strings.HasPrefix(r.URL.Path, devRequestsPath+"/")) && rt.panelOn() {
 		rt.devRequests(w, r)
+		return
+	}
+	if devJobsPath(r.URL.Path) && rt.devOn() && rt.opts.DevJobs != nil {
+		rt.devJobs(w, r)
 		return
 	}
 	if get && r.URL.Path == devMapJSON && rt.devOn() {

@@ -25,12 +25,12 @@ import "embed"
 //go:embed eff/eff.go eff/run.go
 //go:embed fuzz/brands.go fuzz/choices.go fuzz/combinators.go fuzz/derive.go fuzz/draw.go fuzz/literal.go fuzz/shrink.go
 //go:embed html/diff.go html/fragments.go html/html.go html/parse.go html/repair.go html/state.go
-//go:embed jobs/active.go jobs/claim.go jobs/enqueue.go jobs/env.go jobs/housekeep.go jobs/jobsonly.go jobs/observe.go jobs/run.go jobs/schedule.go jobs/table.go jobs/worker.go
+//go:embed jobs/active.go jobs/admin.go jobs/claim.go jobs/enqueue.go jobs/env.go jobs/housekeep.go jobs/jobsonly.go jobs/observe.go jobs/panel.go jobs/run.go jobs/schedule.go jobs/table.go jobs/worker.go
 //go:embed jobs/cron/cron.go
 //go:embed publicurl/publicurl.go
 //go:embed selector/selector.go
 //go:embed testing/bench.go testing/browser.go testing/clock.go testing/jobs.go testing/mutate.go testing/property.go testing/steps.go testing/testing.go
 //go:embed std/bytes.go std/date.go std/dict.go std/effects.go std/file.go std/html.go std/job.go std/json.go std/list.go std/maybe.go std/num.go std/random.go std/response.go std/result.go std/text.go
-//go:embed web/answer.go web/decode.go web/request.go web/router.go web/method.go web/deliver.go web/shown.go web/options.go web/devpanel.go web/devpanel_ui.go web/devrequests.go web/session.go
+//go:embed web/answer.go web/decode.go web/request.go web/router.go web/method.go web/deliver.go web/shown.go web/options.go web/devpanel.go web/devjobs.go web/devpanel_ui.go web/devrequests.go web/session.go
 //go:embed dist/go.mod.txt dist/go.sum.txt
 var Files embed.FS

@@ -190,20 +190,22 @@ func touch(s *db.Stores, key, value string) {
 const HintBatch = 100
 
 // hints reads the silo hints of the shared store when the workers were started with Hints and
-// none of them read them in the last Poll by the clock: each, oldest first and at most
+// the read is due: the first claim's, then one per tick of the pool's Poll ticker (hintTick), the
+// worker that takes the tick reading for them all (an idle worker woken by the tick, work, hands
+// itself the read through hintDue). The throttle is the ticker, not o.Now, so a
+// clock that does not move (a test's) still reads every poll. Each hint, oldest first and at most
 // HintBatch, joins the active set and is deleted, so the claim that follows looks in its silo. A
 // failure is a line of claimed under the name "the silo hints".
 func (p *pool) hints(ctx context.Context, now time.Time) {
 	if !p.o.Hints || p.active == nil {
 		return
 	}
-	p.hintMu.Lock()
-	if !p.hintAt.IsZero() && now.Sub(p.hintAt) < p.o.Poll {
-		p.hintMu.Unlock()
+	select {
+	case <-p.hintDue:
+	case <-p.hintTick:
+	default:
 		return
 	}
-	p.hintAt = now
-	p.hintMu.Unlock()
 	err := p.readHints(ctx)
 	if ctx.Err() == nil {
 		p.claimed("the silo hints", err, now)

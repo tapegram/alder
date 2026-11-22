@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -47,6 +48,20 @@ type cronParse struct {
 
 // scheduledKind reports whether k is scheduled: by interval or by cron.
 func scheduledKind(k Kind) bool { return k.Every > 0 || k.Cron != "" }
+
+// ScheduleText is k's schedule as a job declares it: "every 1h", "every 1d" (whole days in
+// days), `cron "0 3 * * *"`; "" for a kind that is not scheduled.
+func (k Kind) ScheduleText() string {
+	switch {
+	case k.Cron != "":
+		return "cron " + strconv.Quote(k.Cron)
+	case k.Every > 0 && k.Every%day == 0:
+		return "every " + strconv.FormatInt(int64(k.Every/day), 10) + "d"
+	case k.Every > 0:
+		return "every " + durationText(k.Every)
+	}
+	return ""
+}
 
 // Next is when k's tick after `after` is due, in UTC: for k.Cron the first matching minute
 // strictly after `after`; for k.Every, after + Every rounded down to a multiple of Every when

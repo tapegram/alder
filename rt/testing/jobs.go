@@ -87,7 +87,10 @@ func Jobs() eff.Task[[]JobRow] {
 					t := time.UnixMilli(runAt).UTC()
 					s.RunAt = &t
 				}
-				l.r.Status = std.JobStatusOf(s)
+				if l.r.Status, err = std.JobStatusOf(s); err != nil {
+					rows.Close()
+					return nil, err
+				}
 				all = append(all, l)
 			}
 			rows.Close()

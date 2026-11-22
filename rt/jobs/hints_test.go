@@ -181,3 +181,79 @@ func TestHint_ReadErrorRateLimited(t *testing.T) {
 		return len(lg.with("info", "jobs: claiming a job in the silo hints works again")) == 1
 	})
 }
+
+// The hints are read every poll, not every Poll by the injected clock: under a frozen clock a
+// hint written after the workers' first read is still picked up (the read is throttled by poll
+// ticks, so eight workers cost one read a Poll, but a test clock that never moves does not stop
+// it). A's hint is there before the start and is taken by the first read (its job runs); B's
+// silo does not exist at the start scan and is reached only through its later hint.
+func TestHint_ReadEveryPollUnderAFrozenClock(t *testing.T) {
+	dir, shared, s := siloApp(t)
+	idA := runEnqueue(t, orgEnv(t, shared, s, "A"), welcome, nil) // s: no workers here
+	c := rtesting.NewClock(t0)
+	c.Set(t0) // frozen: never moved again
+	lg := &lines{}
+	w := reopened(t, dir, shared)
+	outs, _ := startSilos(t, shared, w, c, lg, jobs.Options{Kinds: []jobs.Kind{kind(insertNote("x"))}, Hints: true})
+	if o := outcome(t, outs); o.ID != idA || o.Err != nil {
+		t.Fatalf("A's outcome %+v", o)
+	}
+	if _, ok := hint(t, shared, "A"); ok {
+		t.Fatal("A's hint is still there after the first read")
+	}
+	idB := runEnqueue(t, orgEnv(t, shared, s, "B"), welcome, nil)
+	if _, ok := hint(t, shared, "B"); !ok {
+		t.Fatal("no hint for B")
+	}
+	if o := outcome(t, outs); o.ID != idB || o.Err != nil {
+		t.Fatalf("B's outcome %+v", o)
+	}
+	if _, ok := hint(t, shared, "B"); ok {
+		t.Fatal("B's hint is still there")
+	}
+}
+
+// A hint tick wakes an idle worker: with a Poll of an hour (its idle wait never ends in the
+// test) and no Wake, a hint written while the worker waits is read and its job run on the next
+// tick, so a hint waits at most one Poll (plus a claim turn) for an idle worker. B's row is kept
+// from the start scan and the first read (done, its hint deleted), then queued and hinted again
+// by hand, as another process's Enqueue would but without its Wake.
+func TestHint_TickWakesAnIdleWorker(t *testing.T) {
+	dir, shared, s := siloApp(t)
+	idA := runEnqueue(t, orgEnv(t, shared, s, "A"), welcome, nil)
+	idB := runEnqueue(t, orgEnv(t, shared, s, "B"), welcome, nil)
+	ctx := context.Background()
+	b := raw(t, siloFile(t, dir, "B"))
+	if _, err := b.ExecContext(ctx, `UPDATE "_alder_jobs" SET "state" = 'done', "finished" = ? WHERE "id" = ?`, t0.UnixMilli(), idB); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw(t, shared).ExecContext(ctx, `DELETE FROM "_alder_jobs_silos" WHERE "value" = 'B'`); err != nil {
+		t.Fatal(err)
+	}
+	c := rtesting.NewClock(t0)
+	c.Set(t0)
+	lg := &lines{}
+	w := reopened(t, dir, shared)
+	outs := make(chan jobs.Outcome, 8)
+	tick := make(chan time.Time, 1)
+	o := jobs.Options{Kinds: []jobs.Kind{kind(insertNote("x"))}, Hints: true, Store: shared, Stores: w, Workers: 1, Now: c.Now, Log: lg.log,
+		Poll: time.Hour, Housekeep: time.Hour, OnAttempt: func(out jobs.Outcome) { outs <- out }}
+	o.Env = func(ctx context.Context, k jobs.Kind) *eff.Env {
+		return &eff.Env{Ctx: ctx, Store: shared, Stores: w, Now: c.Now}
+	}
+	stop := jobs.StartHintTicked(ctx, o, nil, tick)
+	t.Cleanup(func() { stop(0) })
+	if out := outcome(t, outs); out.ID != idA || out.Err != nil {
+		t.Fatalf("A's outcome %+v", out)
+	}
+	if _, err := b.ExecContext(ctx, `UPDATE "_alder_jobs" SET "state" = 'queued', "finished" = NULL WHERE "id" = ?`, idB); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw(t, shared).ExecContext(ctx, `INSERT INTO "_alder_jobs_silos" ("key", "value", "touched") VALUES ('org', 'B', ?)`, t0.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	tick <- t0
+	if out := outcome(t, outs); out.ID != idB || out.Err != nil {
+		t.Fatalf("B's outcome %+v", out)
+	}
+}

@@ -52,7 +52,10 @@ no workers, read and cleared every poll by the `--jobs-only` process. No periodi
   `:454-457` gains the flag). In `pool.work`, before `p.claim` (`rt/jobs/worker.go:313-314`),
   `p.hints(claimCtx, now)`: pool-level, at most once per `o.Poll` (a `sync.Mutex` and a
   `hintAt time.Time` on `pool`, `:201-216`, compared with `o.Now`), so eight workers cost one read a
-  second, not eight. It runs on `db.On(p.o.Store, nil)`:
+  second, not eight. (Amended in PR 6, Task 18b: the throttle is a `time.Ticker` of `o.Poll`
+  plus a first-read token, `pool.hintTick`/`hintDue`, not `o.Now`, so a frozen test clock still
+  reads every poll; a tick also wakes an idle worker, which reads before its claim, so a hint
+  waits at most one `o.Poll` for an idle worker.) It runs on `db.On(p.o.Store, nil)`:
   `SELECT "key", "value" FROM "_alder_jobs_silos" ORDER BY "touched" LIMIT 100` (`HintBatch =
   100`); for each row `p.active.add(siloID{key, value})` (`rt/jobs/active.go:64-73`) then
   `DELETE FROM "_alder_jobs_silos" WHERE "key" = ? AND "value" = ?`. The claim that follows in the
@@ -61,8 +64,10 @@ no workers, read and cleared every poll by the `--jobs-only` process. No periodi
   failure, then one a minute, one line when it works again). No change to the start scan,
   `keepSilos`, `each` or `Health`.
 
-**Exact behaviour.** Enqueue → claim latency on `workers:` deploys: at most one poll (1 s) plus
-one claim turn, instead of "the worker's next start". Cost: one upsert per silo enqueue on the
+**Exact behaviour.** Enqueue → claim latency on `workers:` deploys, with a worker idle: at most
+one poll (1 s: the next tick of the hint ticker wakes an idle worker, which reads the hints) plus
+one claim turn (with every worker busy, the hint is read when the first of them finishes its
+attempt and looks again), instead of "the worker's next start". Cost: one upsert per silo enqueue on the
 web instance (one Hrana round trip inside the request's silo transaction on Turso — milliseconds,
 far under §6a's 2 s mark), one SELECT a second per `--jobs-only` process on the shared store it
 already claims from eight times a second, and nothing per silo. Spurious hints (hint committed,

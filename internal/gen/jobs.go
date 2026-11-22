@@ -225,7 +225,7 @@ func (g *gen) recordDec(c *jobCodecs, typ string, fields []types.Field, module, 
 	if len(fields) > 0 {
 		b.WriteString("var err error\n")
 	} else {
-		b.WriteString("if v.Kind != rt.JsonObject {\nreturn r, fmt.Errorf(\"%s: expected an object\", path)\n}\n")
+		b.WriteString("if v.Kind != rt.JsonObject {\nreturn r, std.JobWant(path, \"an object\", v)\n}\n")
 	}
 	for i, f := range fields {
 		target := "r." + Field(f.Name)

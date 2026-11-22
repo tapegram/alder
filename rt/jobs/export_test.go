@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"alder/rt/db"
@@ -39,7 +40,13 @@ func SiloHousekeeper(s eff.Store, stores *db.Stores, kinds []Kind, now func() ti
 
 // StartHousekept is Start calling housekept after each housekeeping of its workers.
 func StartHousekept(ctx context.Context, o Options, housekept func()) (stop func(grace time.Duration)) {
-	return start(ctx, o, housekept)
+	return start(ctx, o, housekept, nil)
+}
+
+// StartHintTicked is StartHousekept with the hint reads' ticks sent on tick instead of a ticker
+// of o.Poll.
+func StartHintTicked(ctx context.Context, o Options, housekept func(), tick <-chan time.Time) (stop func(grace time.Duration)) {
+	return start(ctx, o, housekept, tick)
 }
 
 // Woken takes Wake's pending signal: whether there was one.
@@ -71,4 +78,23 @@ func StoppedContext() context.Context {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	cancel(errStopped)
 	return ctx
+}
+
+// PanelActive registers with panel a pool of no workers on s and stores whose active set holds
+// the silos ids ("key/value"), busy and due, as Start's workers would: the panel then reads a silo
+// not open through the workers' poll (pool.at), which opens it.
+func PanelActive(panel *Panel, s eff.Store, stores *db.Stores, now func() time.Time, ids ...string) {
+	p := newPool(Options{Store: s, Stores: stores, Now: now, Log: func(string, string) {}})
+	for _, id := range ids {
+		k, v, _ := strings.Cut(id, "/")
+		p.active.add(siloID{k, v})
+	}
+	panel.started(p)
+}
+
+// PanelIdle marks silo id ("key/value") of panel's active set (PanelActive) not busy: its poll no
+// longer opens it.
+func PanelIdle(panel *Panel, id string) {
+	k, v, _ := strings.Cut(id, "/")
+	panel.pool.active.idle(siloID{k, v})
 }

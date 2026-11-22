@@ -2,7 +2,9 @@ package main
 
 import (
 	"database/sql"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +12,9 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"alder/rt/db"
+	"alder/rt/web"
 )
 
 // `app --jobs-only` (#168, spec §7a): the built binary runs its job workers and no listener.
@@ -185,4 +190,94 @@ func TestJobsOnly_Binary(t *testing.T) {
 			t.Fatalf("ALDER_JOBS=x: exit %d; stderr:\n%s", code, p.stderr)
 		}
 	})
+}
+
+// TestJobsOnly_SiloHint: testdata/corpus/silo-ok's binary on one database file, twice — a web
+// instance with ALDER_JOBS=0 (a `workers:` deploy's web service) and `--jobs-only` (its worker).
+// The worker starts first, and its start scan finds no silo with jobs; then POST /reports as a
+// member of org A queues Ping in A's silo (Queue writes the silo), and the web instance, which
+// has no workers, leaves a hint for org/A in the shared database's _alder_jobs_silos. The only
+// way the worker can reach A now is that hint: it runs Ping there and clears the hint.
+func TestJobsOnly_SiloHint(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	if testing.Short() {
+		t.Skip("builds a binary")
+	}
+	dir := tempAppAbs(t, "../../testdata/corpus/silo-ok", "siloapp")
+	tmp := filepath.Dir(dir)
+	os.RemoveAll(filepath.Join(dir, "build"))
+	if code, out, errs := runMigrate(t, dir); code != 0 {
+		t.Fatalf("migrate: %d\n%s%s", code, out, errs)
+	}
+	if code, out, errs := runBuild(t, dir); code != 0 {
+		t.Fatalf("build: %d\n%s%s", code, out, errs)
+	}
+	bin := filepath.Join(testBuildDir(t), "siloapp", "siloapp")
+	// startAppNamed runs build/siloapp/siloapp under tmp
+	exe := filepath.Join(tmp, "build", "siloapp", "siloapp")
+	os.MkdirAll(filepath.Dir(exe), 0o755)
+	if b, err := os.ReadFile(bin); err != nil || os.WriteFile(exe, b, 0o755) != nil {
+		t.Fatalf("copying the binary: %v", err)
+	}
+	data := t.TempDir()
+	appDB := filepath.Join(data, "app.db")
+	siloA := filepath.Join(data, "silos", "org", db.SiloFileName("A"))
+	env := []string{"ALDER_DB=" + appDB, "ALDER_DEV=", "ALDER_SECRET=" + siloSecret}
+
+	app := startAppNamed(t, tmp, "siloapp", append([]string{"ALDER_JOBS=0"}, env...)...) // migrates the file
+	for _, st := range []string{
+		`INSERT INTO "User__User" ("id", "name") VALUES ('me', 'Me')`,
+		`INSERT INTO "Org__Org" ("id", "name") VALUES ('A', 'Org A')`,
+		`INSERT INTO "Membership__Membership" ("id", "user", "org") VALUES ('m1', 'me', 'A')`,
+	} {
+		sqlExec(t, appDB, st)
+	}
+	p := startJobsOnly(t, bin, env...)
+	p.waitLog(t, "jobs: the start scan looked in ")
+	if s := p.stderr.String(); !strings.Contains(s, " silo(s): 0 with jobs") {
+		t.Fatalf("the start scan found jobs:\n%s", s)
+	}
+
+	cookie, err := web.SessionCookie([]byte(siloSecret), siloCodec{}, siloSession{"me", "A"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, "http://"+app.addr+"/reports", strings.NewReader(""))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Referer", "http://"+app.addr+"/reports")
+	req.AddCookie(&http.Cookie{Name: web.CookieName, Value: cookie})
+	c := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	res, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode >= 400 {
+		t.Fatalf("POST /reports: %d\n%s", res.StatusCode, body)
+	}
+	ping := func() string {
+		t.Helper()
+		d, err := sql.Open("sqlite", sqliteDSN(siloA))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer d.Close()
+		var state string
+		if err := d.QueryRow(`SELECT "state" FROM "_alder_jobs" WHERE "kind" = 'Reports.Ping'`).Scan(&state); err != nil {
+			t.Fatal(err)
+		}
+		return state
+	}
+	within(t, 15*time.Second, "the worker to run Ping in A's silo", func() bool { return ping() == "done" })
+	if n := sqlCount(t, appDB, `SELECT COUNT(*) FROM "_alder_jobs_silos"`); n != 0 {
+		t.Fatalf("%d hints left", n)
+	}
+	if n := sqlCount(t, appDB, `SELECT COUNT(*) FROM "_alder_jobs"`); n != 0 {
+		t.Fatalf("%d jobs in the shared database: Ping was not queued in the silo", n)
+	}
+	if code := p.stop(t, syscall.SIGTERM); code != 0 {
+		t.Fatalf("exit %d; stderr:\n%s", code, p.stderr)
+	}
 }

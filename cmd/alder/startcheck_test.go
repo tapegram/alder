@@ -16,6 +16,7 @@ import (
 
 	"alder/internal/tursofake"
 	"alder/rt/db"
+	"alder/rt/jobs"
 )
 
 // TestStartCheck_Binary serves testdata/corpus/silo-ok (the M15 silo fixture, with a home page)
@@ -195,12 +196,24 @@ func TestStartCheck_Binary(t *testing.T) {
 		}
 	})
 
-	// TestJobsOnly_Ahead: v1 --jobs-only on the database v2 migrated claims nothing (a due Ping
-	// stays queued across several polls of a worker that ran) and stops at once on SIGTERM; v2
+	// TestJobsOnly_Ahead: v1 --jobs-only on the database v2 migrated claims nothing (a due Ping,
+	// queued before it starts, stays queued while it runs) and stops at once on SIGTERM; v2
 	// --jobs-only, whose build the database is, runs it. The 10 s re-read is rt/jobs's
-	// TestJobsOnly_Ahead (an injected clock).
+	// TestJobsOnly_Ahead (an injected clock). "Claims nothing" is an absence, so it takes a
+	// bounded wait: a built binary has no clock to drive and logs nothing while AwaitBuild waits.
+	// Workers that started (runJobs skipping AwaitBuild, or AwaitBuild returning at once) would
+	// claim the due Ping in their first loop, right after the start housekeeping that logs
+	// "jobs: the start scan" (rt/jobs pool.work), well within a poll (jobs.DefaultPoll, 1 s): the
+	// test waits two polls and a half after runJobs' first line, then finds Ping unclaimed and no
+	// start-scan line, and finds both still so once v1 has exited.
 	t.Run("JobsOnlyAhead", func(t *testing.T) {
-		f.ExpireStreams() // the Ahead build's, killed: a claim it was making may hold its transaction open
+		// The Ahead build's streams go first (as Turso expires an idle one). Its four workers
+		// (serving runs them even on an ahead database: main's StartJobs) claim every poll in a
+		// transaction of their own on a Hrana stream: BEGIN, then the claim's UPDATE, which takes
+		// the database's write lock, then ROLLBACK when no row is due. Killed (serveBin's Kill)
+		// between the UPDATE and the ROLLBACK, the fake's stream keeps that transaction, and the
+		// INSERT below would wait out the fake's busy_timeout (5 s) and fail with SQLITE_BUSY.
+		f.ExpireStreams()
 		env := append(append([]string{}, base...), "ALDER_DB="+remote)
 		pingState := func() (state string, attempts int) {
 			t.Helper()
@@ -209,14 +222,17 @@ func TestStartCheck_Binary(t *testing.T) {
 			}
 			return state, attempts
 		}
-		p := startJobsOnly(t, v1, env...)
-		p.waitLog(t, "the database is ahead of this build, no job runs until it is not (looked at again every 10 s): a newer build migrated it (to 0002_")
 		if _, err := f.DB("siloapp").Exec(`INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created") VALUES ('0000000c', 'Reports.Ping', '{}', 'queued', 0, 0)`); err != nil {
 			t.Fatal(err)
 		}
-		time.Sleep(2500 * time.Millisecond) // two and a half polls of a worker that ran
-		if state, attempts := pingState(); state != "queued" || attempts != 0 {
-			t.Fatalf("Ping: %s, %d attempts; want queued, never claimed", state, attempts)
+		p := startJobsOnly(t, v1, env...)
+		p.waitLog(t, "the database is ahead of this build, no job runs until it is not (looked at again every 10 s): a newer build migrated it (to 0002_")
+		// runJobs' first line, logged once its SIGTERM handler is in place (Open's line above
+		// comes before it: a SIGTERM then would kill the process instead)
+		p.waitLog(t, "jobs only: 8 job workers, no listener")
+		time.Sleep(2*jobs.DefaultPoll + jobs.DefaultPoll/2) // an absence: see above
+		if state, attempts := pingState(); state != "queued" || attempts != 0 || strings.Contains(p.stderr.String(), "jobs: the start scan") {
+			t.Fatalf("Ping while v1 waits: %s, %d attempts; want queued, never claimed; stderr:\n%s", state, attempts, p.stderr)
 		}
 		start := time.Now()
 		if code := p.stop(t, syscall.SIGTERM); code != 0 || time.Since(start) > 3*time.Second {
@@ -224,6 +240,9 @@ func TestStartCheck_Binary(t *testing.T) {
 		}
 		if strings.Contains(p.stderr.String(), "jobs: the start scan") { // the workers' first housekeeping
 			t.Fatalf("the workers started:\n%s", p.stderr)
+		}
+		if state, attempts := pingState(); state != "queued" || attempts != 0 {
+			t.Fatalf("Ping: %s, %d attempts; want queued, never claimed", state, attempts)
 		}
 		p = startJobsOnly(t, v2, env...)
 		within(t, 15*time.Second, "v2 to run Ping", func() bool { state, _ := pingState(); return state == "done" })
@@ -234,8 +253,11 @@ func TestStartCheck_Binary(t *testing.T) {
 
 	t.Run("Equal", func(t *testing.T) {
 		// a database migrated before the jobs table: the serving binary creates it at open. The
-		// Ahead build's streams go first (as Turso expires an idle one): a claim it was making
-		// when it was stopped may hold its transaction open.
+		// Ahead build's streams go first, for the cause JobsOnlyAhead gives (a claim's transaction
+		// left open on the fake by the kill would make the DROP wait out busy_timeout and fail
+		// with SQLITE_BUSY). After JobsOnlyAhead this finds nothing to drop (both --jobs-only
+		// builds there are stopped by SIGTERM, which ends their claims before they exit); it is
+		// for a -run that keeps Ahead but skips JobsOnlyAhead.
 		f.ExpireStreams()
 		if _, err := f.DB("siloapp").Exec(`DROP TABLE "_alder_jobs"`); err != nil {
 			t.Fatal(err)

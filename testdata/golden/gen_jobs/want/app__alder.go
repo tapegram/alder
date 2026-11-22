@@ -15,7 +15,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -73,7 +72,7 @@ func jobenc__Signup__SendWelcome__Params(v Signup__SendWelcome__Params) rt.JsonV
 func jobdec__Signup__Nightly__Params(v rt.JsonValue, path string) (Signup__Nightly__Params, error) {
 	var r Signup__Nightly__Params
 	if v.Kind != rt.JsonObject {
-		return r, fmt.Errorf("%s: expected an object", path)
+		return r, std.JobWant(path, "an object", v)
 	}
 	return r, nil
 }
@@ -87,7 +86,7 @@ func jobenc__Signup__Nightly__Params(v Signup__Nightly__Params) rt.JsonValue {
 func jobdec__Signup__Weekdays__Params(v rt.JsonValue, path string) (Signup__Weekdays__Params, error) {
 	var r Signup__Weekdays__Params
 	if v.Kind != rt.JsonObject {
-		return r, fmt.Errorf("%s: expected an object", path)
+		return r, std.JobWant(path, "an object", v)
 	}
 	return r, nil
 }
@@ -407,8 +406,9 @@ type App struct {
 	jobLine  func(*applog.Job)           // o.JobLine
 	now      func() time.Time            // the router's clock: web.Options.Now, else time.Now
 	health   *jobs.Health                // the job workers' state, answered by /_alder/health as "jobs"
-	handler  http.Handler
-	jobsOnly bool // o.JobsOnly
+	panel    *jobs.Panel                 // in development mode, the dev server's Jobs page (/_dev/jobs); nil otherwise
+	handler  http.Handler                // the router of Routes on web (web.NewRouter), answered by Handler
+	jobsOnly bool                        // o.JobsOnly: the workers StartJobs starts read the silo hints
 }
 
 // Serve is the app's HTTP handler: Open's Handler. The App is never closed.
@@ -425,7 +425,8 @@ func (a *App) Handler() http.Handler { return a.handler }
 
 // StartJobs starts n job workers on the shared store and, in an app with silos, the silos open
 // in its stores (rt/jobs.Start: the kinds of Jobs(), each attempt on JobEnv's Env, the router's
-// clock, the log with each job's lines under its id, the metrics and the health check's state)
+// clock, the log with each job's lines under its id, the metrics, the health check's state and,
+// in development mode, the dev server's Jobs page, which records each attempt)
 // and returns the function that stops them: it stops claiming at once, waits at most grace for
 // the attempts running, then cancels them and queues their jobs again. n 0 starts none, and
 // /_alder/health answers "jobs": "off" (an app that declares no job has no "jobs" there at all).
@@ -433,7 +434,7 @@ func (a *App) Handler() http.Handler { return a.handler }
 // process without workers write in the shared store (jobs.Options.Hints).
 func (a *App) StartJobs(n int) (stop func(grace time.Duration)) {
 	return jobs.Start(context.Background(), jobs.Options{Store: a.web.Store, Stores: a.web.Stores, Kinds: Jobs(), Env: a.JobEnv, Workers: n, Now: a.now,
-		Log: a.log, LogID: a.logID, Line: a.jobLine, Metrics: a.web.Metrics, Health: a.health, Hints: a.jobsOnly})
+		Log: a.log, LogID: a.logID, Line: a.jobLine, Metrics: a.web.Metrics, Health: a.health, Panel: a.panel, Hints: a.jobsOnly})
 }
 
 // AwaitBuild returns nil at once unless Open found the shared database on Turso ahead of this
@@ -564,16 +565,22 @@ func Open(caps Caps, o Options) (*App, error) {
 	for _, m := range Migrations {
 		w.Migrations = append(w.Migrations, m.Name)
 	}
-	health := &jobs.Health{}
-	if len(Jobs()) > 0 { // an app with no job has no "jobs" in /_alder/health
-		w.Jobs = health.State
+	now := w.Now // the router's clock, the job workers' and the Jobs page's
+	if now == nil {
+		now = time.Now
 	}
-	a := &App{store: store, web: w, log: o.Log, logID: o.LogID, jobLine: o.JobLine, now: w.Now, health: health, handler: web.NewRouter(Routes, w), jobsOnly: o.JobsOnly}
+	health := &jobs.Health{}
+	var panel *jobs.Panel
+	if len(Jobs()) > 0 { // an app with no job has no "jobs" in /_alder/health, and no Jobs page
+		w.Jobs = health.State
+		if o.Dev {
+			panel = &jobs.Panel{Store: w.Store, Stores: w.Stores, Kinds: Jobs(), Now: now}
+			w.DevJobs = panel
+		}
+	}
+	a := &App{store: store, web: w, log: o.Log, logID: o.LogID, jobLine: o.JobLine, now: now, health: health, panel: panel, handler: web.NewRouter(Routes, w), jobsOnly: o.JobsOnly}
 	if a.log == nil {
 		a.log = func(string, string) {}
-	}
-	if a.now == nil {
-		a.now = time.Now
 	}
 	return a, nil
 }
