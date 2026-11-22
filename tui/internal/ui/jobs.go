@@ -14,7 +14,7 @@ import (
 )
 
 // tabJobs is the index of the Jobs tab.
-const tabJobs = 2
+const tabJobs = 5
 
 const (
 	// jobsEvery is how often the shown Jobs screen reads the listing again, besides when a job's

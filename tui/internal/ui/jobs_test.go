@@ -98,9 +98,9 @@ func jobLine(seq int64, level, outcome string) feed.Event {
 func TestJobs_Screen(t *testing.T) {
 	srv := &jobsServer{body: shelfJobs()}
 	m, _ := jobsRoot(srv, fixture(t, "basic")...)
-	runAll(m, key("3"))
+	runAll(m, key("6"))
 	if m.tab != tabJobs {
-		t.Fatalf("3 went to tab %d", m.tab+1)
+		t.Fatalf("6 went to tab %d", m.tab+1)
 	}
 	frame := m.View()
 	lines := strings.Split(frame, "\n")
@@ -135,7 +135,7 @@ func TestJobs_Screen(t *testing.T) {
 func TestJobs_Empty(t *testing.T) {
 	srv := &jobsServer{body: `{"workers":false,"schedules":[],"queued":[],"running":[],"dead":[],"done":[],"missed":["silo org/7: unreadable"]}`}
 	m, _ := jobsRoot(srv)
-	runAll(m, key("3"))
+	runAll(m, key("6"))
 	frame := m.View()
 	for _, want := range []string{"0 queued", "\x1b[33mworkers off\x1b[0m", "no jobs yet", "\x1b[33msilo org/7: unreadable\x1b[0m"} {
 		if !strings.Contains(frame, want) {
@@ -148,13 +148,13 @@ func TestJobs_Empty(t *testing.T) {
 // last read.
 func TestJobs_Errors(t *testing.T) {
 	m, _ := jobsRootOf(options(nil))
-	runAll(m, key("3"))
+	runAll(m, key("6"))
 	if f := m.View(); !strings.Contains(f, "\x1b[33m") || !strings.Contains(f, "no dev server in the tests") {
 		t.Errorf("offline:\n%s", f)
 	}
 	srv := &jobsServer{body: shelfJobs()}
 	m, _ = jobsRoot(srv)
-	runAll(m, key("3"))
+	runAll(m, key("6"))
 	srv.mu.Lock()
 	srv.body = "<html>"
 	srv.mu.Unlock()
@@ -176,7 +176,7 @@ func TestJobs_RefreshOnJobEvent(t *testing.T) {
 	if n, _ := srv.counts(); n != 0 {
 		t.Fatalf("a job line on Logs fetched %d times", n)
 	}
-	runAll(m, key("3"))
+	runAll(m, key("6"))
 	if n, _ := srv.counts(); n != 1 {
 		t.Fatalf("opening fetched %d times, want 1", n)
 	}
@@ -203,7 +203,7 @@ func TestJobs_RefreshOnJobEvent(t *testing.T) {
 func TestJobs_Tick(t *testing.T) {
 	srv := &jobsServer{body: shelfJobs()}
 	m, ticks := jobsRoot(srv)
-	runAll(m, key("3"))
+	runAll(m, key("6"))
 	if len(*ticks) != 1 {
 		t.Fatalf("opening asked for %d ticks, want 1", len(*ticks))
 	}
@@ -217,7 +217,7 @@ func TestJobs_Tick(t *testing.T) {
 	if n, _ := srv.counts(); n != 2 || len(*ticks) != 2 {
 		t.Errorf("a tick while hidden: %d fetches, %d ticks asked, want 2 and 2", n, len(*ticks))
 	}
-	runAll(m, key("3"))
+	runAll(m, key("6"))
 	runAll(m, (*ticks)[1]) // the old chain's tick
 	if n, _ := srv.counts(); n != 3 {
 		t.Errorf("an old chain's tick fetched: %d", n)
@@ -247,7 +247,7 @@ func footerOf(m *root) string {
 func TestJobs_Retry(t *testing.T) {
 	srv := &jobsServer{body: shelfJobs()}
 	m, _ := jobsRoot(srv)
-	runAll(m, key("3"))
+	runAll(m, key("6"))
 	moveTo(t, m, " d1 ")
 	runAll(m, key("r"))
 	if _, posts := srv.counts(); len(posts) != 1 || posts[0] != "/_dev/jobs/d1/retry" {
@@ -273,7 +273,7 @@ func TestJobs_Retry(t *testing.T) {
 func TestJobs_RunNow(t *testing.T) {
 	srv := &jobsServer{body: shelfJobs()}
 	m, _ := jobsRoot(srv)
-	runAll(m, key("3"))
+	runAll(m, key("6"))
 	// A schedule with a tick runs that tick; a queued row runs itself.
 	moveTo(t, m, "every 1h")
 	runAll(m, key("n"))
@@ -303,7 +303,7 @@ func TestJobs_RunNow(t *testing.T) {
 func TestJobs_ActionRefused(t *testing.T) {
 	srv := &jobsServer{body: shelfJobs(), code: http.StatusConflict, text: "job d1 is queued, not dead"}
 	m, _ := jobsRoot(srv)
-	runAll(m, key("3"))
+	runAll(m, key("6"))
 	moveTo(t, m, " d1 ")
 	runAll(m, key("r"))
 	if f := m.View(); !strings.Contains(f, "\x1b[33mretry: job d1 is queued, not dead\x1b[0m") {
@@ -314,7 +314,7 @@ func TestJobs_ActionRefused(t *testing.T) {
 func TestJobs_Keys(t *testing.T) {
 	srv := &jobsServer{body: shelfJobs()}
 	m, _ := jobsRoot(srv)
-	runAll(m, key("3"))
+	runAll(m, key("6"))
 	if f := footerOf(m); !strings.Contains(f, "r retry  n run now  o browser") {
 		t.Errorf("footer = %q", f)
 	}
@@ -332,7 +332,7 @@ func TestJobs_Keys(t *testing.T) {
 func TestJobs_CursorFollowsJob(t *testing.T) {
 	srv := &jobsServer{body: shelfJobs()}
 	m, _ := jobsRoot(srv)
-	runAll(m, key("3"))
+	runAll(m, key("6"))
 	moveTo(t, m, " d1 ")
 	srv.mu.Lock()
 	srv.body = strings.Replace(srv.body, `"queued":[`, `"queued":[{"id":"q0","kind":"A.B","state":"queued","params":"{}","runAt":1,"created":1,"attempts":0},`, 1)

@@ -109,7 +109,7 @@ func TestRun_SignalStopsTests(t *testing.T) {
 				<-exited
 			}()
 
-			if _, err := keys.Write([]byte("5")); err != nil {
+			if _, err := keys.Write([]byte("4")); err != nil {
 				t.Fatal(err)
 			}
 			var pid int

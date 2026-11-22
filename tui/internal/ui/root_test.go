@@ -350,16 +350,16 @@ func TestKeys_Tabs(t *testing.T) {
 	if m.tab != 2 {
 		t.Fatalf("after 3 the tab is %d", m.tab+1)
 	}
-	if _, ok := m.screens[2].(*jobsScreen); !ok {
-		t.Errorf("tab 3 is %T, want the Jobs screen", m.screens[2])
+	if _, ok := m.screens[2].(*dataScreen); !ok {
+		t.Errorf("tab 3 is %T, want the Data screen", m.screens[2])
 	}
-	press(m, "4")
-	if _, ok := m.screens[3].(*dataScreen); !ok {
-		t.Errorf("tab 4 is %T, want the Data screen", m.screens[3])
+	press(m, "6")
+	if _, ok := m.screens[5].(*jobsScreen); !ok {
+		t.Errorf("tab 6 is %T, want the Jobs screen", m.screens[5])
 	}
-	press(m, "tab", "tab", "tab")
+	press(m, "tab")
 	if m.tab != 0 {
-		t.Errorf("tab from Routes goes to %d, want 1", m.tab+1)
+		t.Errorf("tab from Jobs goes to %d, want 1", m.tab+1)
 	}
 	press(m, "shift+tab")
 	if m.tab != 5 {

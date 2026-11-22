@@ -1,4 +1,4 @@
- shelf  [32m● ok[0m  localhost:8080  alder v0.15.0        1 Requests 2 Logs [1m3 Jobs[0m 4 Data 5 Tests 6 Routes
+ shelf  [32m● ok[0m  localhost:8080  alder v0.15.0        1 Requests 2 Logs 3 Data 4 Tests 5 Routes [1m6 Jobs[0m
  2 queued  1 running  [31m1 dead[0m  1 done  workers on
  ──────────────────────────────────────────────────────────────────────────────────────────────────
  [1mSchedules[0m

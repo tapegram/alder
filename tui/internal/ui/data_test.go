@@ -115,12 +115,12 @@ func runAll(m *root, msg tea.Msg) {
 	}
 }
 
-func dataScreenOf(m *root) *dataScreen { return m.screens[3].(*dataScreen) }
+func dataScreenOf(m *root) *dataScreen { return m.screens[2].(*dataScreen) }
 
 func TestData_Screen(t *testing.T) {
 	o, _ := dataApp(t, strings.Replace(shelfMap, "%s", "", 1))
 	m := newRoot(o)
-	press(m, "4")
+	press(m, "3")
 	frame := m.View()
 	for _, want := range []string{"> Books.Book    3", "  Lending.Loan  1", "0001_init.sql", "0002_loans.sql",
 		"b1  Middlemarch  1871", "b3  Beloved      1987"} {
@@ -164,7 +164,7 @@ func TestData_Screen(t *testing.T) {
 func TestData_Prompt(t *testing.T) {
 	o, _ := dataApp(t, strings.Replace(shelfMap, "%s", "", 1))
 	m := newRoot(o)
-	press(m, "4", ":", "delete from x")
+	press(m, "3", ":", "delete from x")
 	lines := strings.Split(m.View(), "\n")
 	if want := "\x1b[2msqlite3 build/shelf/dev.db 'delete from x'\x1b[0m"; !strings.HasSuffix(lines[len(lines)-1], want) {
 		t.Errorf("footer with the prompt = %q, want the SQL", lines[len(lines)-1])
@@ -198,7 +198,7 @@ func TestData_Prompt(t *testing.T) {
 func TestData_ErrorRow(t *testing.T) {
 	o, _ := dataApp(t, strings.Replace(shelfMap, "%s", goneTable, 1))
 	m := newRoot(o)
-	press(m, "4")
+	press(m, "3")
 	frame := m.View()
 	if r := rowOf(frame, "Books.Shelf"); !strings.Contains(r, "\x1b[1;31mno such table") {
 		t.Errorf("the missing table's row is %q, want its error in red", r)
@@ -238,7 +238,7 @@ func TestData_WroteRefresh(t *testing.T) {
 		waits, fired = append(waits, d), append(fired, msg)
 		return nil
 	}
-	press(m, "4")
+	press(m, "3")
 	execDB(t, path, `INSERT INTO "Books__Book" VALUES ('b4', 'Emma', 1815)`)
 
 	// A GET that ran statements, and a PUT that ran none, did not write.
@@ -273,7 +273,7 @@ func TestData_RefreshOnBuild(t *testing.T) {
 	o, _ := dataApp(t, "")
 	o.HTTP = serve(func() string { return served })
 	m := newRoot(o)
-	press(m, "4")
+	press(m, "3")
 	served = strings.Replace(shelfMap, "%s", goneTable, 1)
 	runAll(m, eventMsg(buildEvent("building")))
 	if rowOf(m.View(), "Books.Shelf") != "" {
@@ -290,7 +290,7 @@ func TestData_NoMap(t *testing.T) {
 	o := options(nil)
 	o.Addr = "127.0.0.1:1"
 	m := newRoot(o)
-	press(m, "4", "j", "enter", "s", "]", "[")
+	press(m, "3", "j", "enter", "s", "]", "[")
 	if f := m.View(); rowOf(f, "no map") == "" {
 		t.Errorf("no reason shown:\n%s", f)
 	}
@@ -302,7 +302,7 @@ func TestData_RowUnfold(t *testing.T) {
 	long := strings.Repeat("overdue ", 30) + "end\nsecond line"
 	execDB(t, path, `UPDATE "Lending__Loan" SET note = '`+long+`'`)
 	m := newRoot(o)
-	press(m, "4", "j", "enter", "enter")
+	press(m, "3", "j", "enter", "enter")
 	f := ansi.Strip(m.View())
 	if !strings.Contains(f, "end") || rowOf(f, "second line") == "" || strings.Contains(f, "…") {
 		t.Errorf("the note is not unfolded:\n%s", f)
@@ -327,7 +327,7 @@ func TestData_Silos(t *testing.T) {
 	execDB(t, silo, `CREATE TABLE "Issues__Issue" ("id" TEXT PRIMARY KEY)`, `INSERT INTO "Issues__Issue" VALUES ('i1'), ('i2')`)
 	m := newRoot(o)
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	press(m, "4")
+	press(m, "3")
 	f := ansi.Strip(m.View())
 	if rowOf(f, "database shared") == "" || rowOf(f, "Issues.Issue") != "" || rowOf(f, "Books.Book    3") == "" {
 		t.Errorf("the shared database's view:\n%s", f)
@@ -352,7 +352,7 @@ func TestData_Silos(t *testing.T) {
 func TestData_NoEnterAfterRefused(t *testing.T) {
 	o, _ := dataApp(t, strings.Replace(shelfMap, "%s", "", 1))
 	m := newRoot(o)
-	press(m, "4", ":", "delete from x", "enter")
+	press(m, "3", ":", "delete from x", "enter")
 	if f := wideFooter(m); strings.Contains(f, "enter row") || !strings.Contains(f, "esc back") {
 		t.Errorf("footer after a refused query = %q", f)
 	}
@@ -383,7 +383,7 @@ func TestData_ViewPure(t *testing.T) {
 	manyBooks(t, path, 40)
 	m := newRoot(o)
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
-	press(m, "4", "enter")
+	press(m, "3", "enter")
 	s := dataScreenOf(m)
 	for range 12 {
 		press(m, "j")
@@ -432,7 +432,7 @@ func TestData_MapRefetchError(t *testing.T) {
 		_, _ = w.Write([]byte(strings.Replace(shelfMap, "%s", "", 1)))
 	})}
 	m := newRoot(o)
-	press(m, "4")
+	press(m, "3")
 	fail = true
 	runAll(m, eventMsg(buildEvent("ok")))
 	frame := m.View()
@@ -459,7 +459,7 @@ func TestQuery_Exactly1000(t *testing.T) {
 	count := func(n int) string {
 		return "with recursive n(i) as (select 1 union all select i+1 from n where i < " + strconv.Itoa(n) + ") select i from n"
 	}
-	press(m, "4", ":", count(1000), "enter")
+	press(m, "3", ":", count(1000), "enter")
 	if f := m.View(); rowOf(f, "1000 rows") == "" || rowOf(f, "the first") != "" {
 		t.Errorf("1000 rows:\n%s", f)
 	}
@@ -476,7 +476,7 @@ func TestData_RowViewScrollsToEnd(t *testing.T) {
 	m := newRoot(o)
 	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
 	// One unbroken value, the only column, so the number of lines it wraps to depends on the width.
-	press(m, "4", ":", "select '"+strings.Repeat("x", 495)+"END' as v", "enter", "enter")
+	press(m, "3", ":", "select '"+strings.Repeat("x", 495)+"END' as v", "enter", "enter")
 	for range 80 {
 		press(m, "j")
 	}
@@ -490,7 +490,7 @@ func TestData_QueryScrollsToEnd(t *testing.T) {
 	o, _ := dataApp(t, strings.Replace(shelfMap, "%s", "", 1))
 	m := newRoot(o)
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
-	press(m, "4", ":", "with recursive n(i) as (select 1 union all select i+1 from n where i < 50) select i from n", "enter")
+	press(m, "3", ":", "with recursive n(i) as (select 1 union all select i+1 from n where i < 50) select i from n", "enter")
 	for range 60 {
 		press(m, "j")
 	}

@@ -56,7 +56,7 @@ func TestTests_Screen(t *testing.T) {
 	if len(f.Calls()) != 0 {
 		t.Fatalf("the suite ran before the Tests tab was opened: %q", f.Calls())
 	}
-	press(m, "5")
+	press(m, "4")
 	if want := []string{"test --json"}; !reflect.DeepEqual(f.Calls(), want) {
 		t.Fatalf("opening Tests called %q, want %q", f.Calls(), want)
 	}
@@ -79,7 +79,7 @@ func TestTests_Screen(t *testing.T) {
 		t.Errorf("footer = %q", lines[len(lines)-1])
 	}
 	// Leaving and coming back does not run the suite again; r does.
-	press(m, "1", "5")
+	press(m, "1", "4")
 	if len(f.Calls()) != 1 {
 		t.Errorf("reopening Tests ran the suite again: %q", f.Calls())
 	}
@@ -95,7 +95,7 @@ func TestTests_Unfold(t *testing.T) {
 	one := `test --json -run ^Books "lend \(twice\)"$`
 	f.On(one, passTwice, 0)
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5", "enter")
+	press(m, "4", "enter")
 	if strings.Contains(m.View(), "left:") {
 		t.Errorf("enter on a passing test unfolds it:\n%s", m.View())
 	}
@@ -131,7 +131,7 @@ func TestTests_SavedCase(t *testing.T) {
 	dir := t.TempDir()
 	o, _ := testsOptions(dir)
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5", "j", "j", "enter")
+	press(m, "4", "j", "j", "enter")
 	frame := m.View()
 	if want := `property: runs 100 seed 4242 shrinks 3 case finds by title ""`; !strings.Contains(frame, want) {
 		t.Errorf("no %q in\n%s", want, frame)
@@ -155,8 +155,8 @@ func TestTests_SavedCase(t *testing.T) {
 func TestTests_WatchQueues(t *testing.T) {
 	o, f := testsOptions(t.TempDir())
 	m := newRoot(o)
-	s := m.screens[4].(*testsScreen)
-	_, cmd := m.Update(key("5"))
+	s := m.screens[3].(*testsScreen)
+	_, cmd := m.Update(key("4"))
 	m.Update(key("w")) // the watch's next signal is read by the command dropped here
 	if !s.watching {
 		t.Fatal("w does not turn the watch on")
@@ -192,7 +192,7 @@ func TestTests_Mutate(t *testing.T) {
 	o, f := testsOptions("")
 	f.On("test --json --mutate", strings.Join([]string{passLend, passTwice, passProp, passEmpty, mutantsLine, scoreLine}, "\n"), 0)
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5", "m")
+	press(m, "4", "m")
 	if want := []string{"test --json", "test --json --mutate"}; !reflect.DeepEqual(f.Calls(), want) {
 		t.Fatalf("calls %q, want %q", f.Calls(), want)
 	}
@@ -246,7 +246,7 @@ func TestTests_ScrollPastList(t *testing.T) {
 	f.On("test --json", strings.Join(append(lines[:29:29], long), "\n"), 1)
 	m := newRoot(o, fixture(t, "basic")...)
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	press(m, "5", "m")
+	press(m, "4", "m")
 	frame := m.View()
 	if strings.Contains(frame, "score 0.50") {
 		t.Fatalf("the mutation block fits at 80x24 already; the test needs a longer list:\n%s", frame)
@@ -292,7 +292,7 @@ func TestTests_RerunKeepsScore(t *testing.T) {
 	f.On("test --json --mutate", strings.Join([]string{diag, passLend, failTwice, passProp, passEmpty, mutantsLine, scoreLine}, "\n"), 1)
 	f.On(`test --json -run ^Books "lend \(twice\)"$`, passTwice, 0)
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5", "m", "j", "enter", "enter")
+	press(m, "4", "m", "j", "enter", "enter")
 	if want := []string{"test --json", "test --json --mutate", `test --json -run ^Books "lend \(twice\)"$`}; !reflect.DeepEqual(f.Calls(), want) {
 		t.Fatalf("calls %q, want %q", f.Calls(), want)
 	}
@@ -315,7 +315,7 @@ func TestTests_Empty(t *testing.T) {
 	o, f := testsOptions("")
 	f.On("test --json", "", 0)
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5")
+	press(m, "4")
 	if frame := m.View(); !strings.Contains(frame, "no tests") {
 		t.Errorf("an empty run does not say no tests:\n%s", frame)
 	}
@@ -324,7 +324,7 @@ func TestTests_Empty(t *testing.T) {
 	if len(f.Calls()) != 1 {
 		t.Errorf("enter on an empty list ran %q", f.Calls())
 	}
-	if k := m.screens[4].Keys()[0]; k != (Key{"enter", "unfold"}) {
+	if k := m.screens[3].Keys()[0]; k != (Key{"enter", "unfold"}) {
 		t.Errorf("enter key on an empty list = %+v", k)
 	}
 }
@@ -334,7 +334,7 @@ func TestTests_Error(t *testing.T) {
 		o, f := testsOptions("")
 		f.OnStderr("test --json", "alder: no app.al in /Users/dev/shelf\n", 1)
 		m := newRoot(o, fixture(t, "basic")...)
-		press(m, "5")
+		press(m, "4")
 		if frame := m.View(); !strings.Contains(frame, "alder: no app.al in /Users/dev/shelf") {
 			t.Errorf("a run that failed with only stderr does not show it:\n%s", frame)
 		}
@@ -343,7 +343,7 @@ func TestTests_Error(t *testing.T) {
 		o, _ := testsOptions("")
 		o.Runner, o.Dir = runner.Exec("/nonexistent/alder"), t.TempDir()
 		m := newRoot(o, fixture(t, "basic")...)
-		press(m, "5")
+		press(m, "4")
 		if frame := m.View(); !strings.Contains(frame, "/nonexistent/alder") || strings.Contains(frame, "running") {
 			t.Errorf("a missing alder does not show why:\n%s", frame)
 		}
@@ -355,8 +355,8 @@ func TestTests_StopCancels(t *testing.T) {
 	streaming := func(t *testing.T) (*root, *testsScreen) {
 		o, _ := testsOptions("")
 		m := newRoot(o, fixture(t, "basic")...)
-		s := m.screens[4].(*testsScreen)
-		_, cmd := m.Update(key("5"))
+		s := m.screens[3].(*testsScreen)
+		_, cmd := m.Update(key("4"))
 		m.Update(cmd())
 		if s.stream == nil {
 			t.Fatal("no stream open after opening Tests")
