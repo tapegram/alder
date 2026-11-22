@@ -196,11 +196,13 @@ func TestFrame_Mismatch(t *testing.T) {
 	teatest.RequireEqualOutput(t, frame)
 }
 
-// With a version mismatch at 100 columns the warning is short enough that all five tabs show.
-func TestStatusBar_Mismatch100(t *testing.T) {
+// With a version mismatch at 110 columns the warning is short enough that all six tabs show (at
+// 100 only the current tab does).
+func TestStatusBar_Mismatch110(t *testing.T) {
 	o := options(nil)
 	o.Version = "v0.9.0"
 	m := newRoot(o, fixture(t, "basic")[0])
+	m.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
 	bar := ansi.Strip(m.statusBar())
 	if !strings.Contains(bar, "≠ tui v0.9.0") {
 		t.Fatalf("no mismatch warning in %q", bar)
@@ -210,8 +212,8 @@ func TestStatusBar_Mismatch100(t *testing.T) {
 			t.Errorf("tab %q is not in %q", label, bar)
 		}
 	}
-	if w := ansi.StringWidth(m.statusBar()); w > 100 {
-		t.Errorf("status bar is %d cols, want at most 100", w)
+	if w := ansi.StringWidth(m.statusBar()); w > 110 {
+		t.Errorf("status bar is %d cols, want at most 110", w)
 	}
 }
 
@@ -334,6 +336,7 @@ func newRoot(o Options, evs ...feed.Event) *root {
 	// The strip's clock would make press and run wait a second and then loop; tests that want it
 	// set their own seam.
 	m.screens[0].(*requestsScreen).after = func(time.Duration, tea.Msg) tea.Cmd { return nil }
+	m.screens[tabJobs].(*jobsScreen).after = func(time.Duration, tea.Msg) tea.Cmd { return nil }
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	for _, ev := range evs {
 		m.Update(eventMsg(ev))
@@ -347,16 +350,20 @@ func TestKeys_Tabs(t *testing.T) {
 	if m.tab != 2 {
 		t.Fatalf("after 3 the tab is %d", m.tab+1)
 	}
-	if _, ok := m.screens[2].(*dataScreen); !ok {
-		t.Errorf("tab 3 is %T, want the Data screen", m.screens[2])
+	if _, ok := m.screens[2].(*jobsScreen); !ok {
+		t.Errorf("tab 3 is %T, want the Jobs screen", m.screens[2])
+	}
+	press(m, "4")
+	if _, ok := m.screens[3].(*dataScreen); !ok {
+		t.Errorf("tab 4 is %T, want the Data screen", m.screens[3])
 	}
 	press(m, "tab", "tab", "tab")
 	if m.tab != 0 {
 		t.Errorf("tab from Routes goes to %d, want 1", m.tab+1)
 	}
 	press(m, "shift+tab")
-	if m.tab != 4 {
-		t.Errorf("shift+tab from Requests goes to %d, want 5", m.tab+1)
+	if m.tab != 5 {
+		t.Errorf("shift+tab from Requests goes to %d, want 6", m.tab+1)
 	}
 }
 

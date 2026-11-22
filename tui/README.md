@@ -34,7 +34,17 @@ command that prints the same data (`F` focuses it, then `y` copies it).
   request id (from Requests' `l`) and a regexp; the strip under the status bar shows the
   filters in force.
 
-- **Data** (`3`): the app's tables, by their Alder names, each with its row count, and the
+- **Jobs** (`3`): the app's background jobs, from `GET /_dev/jobs.json` on the dev server: a
+  summary (how many are queued, running, dead and done, and whether workers run in the app's
+  process), each schedule with its next tick, and the queued, running, dead and last done jobs
+  with their kind, id, attempts and, for a dead one, the first line of its error. It reads the
+  listing when the tab is opened, when a job's line arrives on the feed and every two seconds
+  while it is shown. `r` retries the dead job under the cursor and `n` runs the queued job (or the
+  schedule's queued tick) now, as the dev server's Jobs page does, and the footer says how it
+  went. A job's attempts are also set apart in Logs, where `job <Kind>` is cyan. The footer
+  names `alder jobs`.
+
+- **Data** (`4`): the app's tables, by their Alder names, each with its row count, and the
   migrations applied, on the left; the selected table's rows on the right, a page of 100 at a
   time.
 
@@ -48,7 +58,7 @@ command that prints the same data (`F` focuses it, then `y` copies it).
   with `SELECT`, `WITH` or `EXPLAIN`) and shows its rows in place of the table's. The footer
   names `sqlite3 build/<app>/dev.db`, with the statement when there is one.
 
-- **Tests** (`4`): runs `alder test --json` when the tab is first opened and shows a summary
+- **Tests** (`5`): runs `alder test --json` when the tab is first opened and shows a summary
   line and a row per test (module, name, time, `ok` or `FAIL`).
 
   `enter` on a failure unfolds
@@ -60,7 +70,7 @@ command that prints the same data (`F` focuses it, then `y` copies it).
   change during one queues a rerun for when it ends. The footer names the command of the last
   run.
 
-- **Routes** (`5`): the app's routes from `alder routes --json`, one row each (page or msg, path,
+- **Routes** (`6`): the app's routes from `alder routes --json`, one row each (page or msg, path,
   `module.name`, `file:line`, and how many requests it answered this session). `enter` shows
   that route's requests in Requests; `o` opens a page with no parameter in the browser. The
   footer names `alder routes --json`.
@@ -71,7 +81,7 @@ Everywhere (except while a text input is open):
 
 | Key | |
 |---|---|
-| `1`–`5`, `tab`, `shift-tab` | switch tabs |
+| `1`–`6`, `tab`, `shift-tab` | switch tabs |
 | `p` | problems: the last build's diagnostics, or the app's exit (`enter` copies `file:line:col`) |
 | `R` | restart the app (`POST /_dev/restart`) |
 | `o` | open the app in the browser |
@@ -109,6 +119,14 @@ Logs:
 | `/` | set the regexp (`enter` applies it; an invalid one shows its error and keeps the old one) |
 | `x` | clear the request id and the regexp |
 | `enter` | open the request of the line, if it has one |
+
+Jobs:
+
+| Key | |
+|---|---|
+| `j`/`k`, arrows | move |
+| `r` | retry the dead job under the cursor |
+| `n` | run the queued job, or the schedule's queued tick, under the cursor now |
 
 Data:
 

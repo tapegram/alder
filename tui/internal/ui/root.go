@@ -155,7 +155,7 @@ type root struct {
 	start   *startQueue // what Options.Open reports, while it runs
 }
 
-// New is the program's model for o. Its screens are Requests, Logs, Data, Tests and Routes.
+// New is the program's model for o. Its screens are Requests, Logs, Jobs, Data, Tests and Routes.
 func New(o Options) tea.Model {
 	if o.HTTP == nil {
 		o.HTTP = http.DefaultClient
@@ -169,6 +169,7 @@ func New(o Options) tea.Model {
 		screens: []Screen{
 			newRequestsScreen(),
 			newLogsScreen(),
+			newJobsScreen(),
 			newDataScreen(),
 			newTestsScreen(),
 			newRoutesScreen(),
@@ -466,7 +467,7 @@ func (m *root) key(msg tea.KeyMsg) tea.Cmd {
 		return m.toCurrent(msg)
 	}
 	switch k {
-	case "1", "2", "3", "4", "5":
+	case "1", "2", "3", "4", "5", "6":
 		m.tab = int(k[0] - '1')
 	case "tab":
 		m.tab = (m.tab + 1) % len(m.screens)

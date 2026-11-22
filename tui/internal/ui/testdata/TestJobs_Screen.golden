@@ -1,0 +1,30 @@
+ shelf  [32m● ok[0m  localhost:8080  alder v0.15.0        1 Requests 2 Logs [1m3 Jobs[0m 4 Data 5 Tests 6 Routes
+ 2 queued  1 running  [31m1 dead[0m  1 done  workers on
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ [1mSchedules[0m
+ > Reports.Nightly  every 1h          next in 38m
+   Cleanup.Sweep    cron "0 3 * * *"  [2mno tick queued[0m
+ [1mQueued[0m
+   Signup.SendWelcome  q1  due now
+   Reports.Nightly     t1  due in 38m  [2mtick[0m
+ [1mRunning[0m
+   Signup.SendWelcome  r1  [2mattempts 1[0m
+ [1mDead[0m
+   Signup.SendWelcome [2m[org/42][0m  d1  [2mattempts 5[0m  [31msmtp: timeout[0m
+ [1mDone[0m
+   Reports.Nightly  x1  [2mattempts 1[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ r retry  n run now  o browser  R restart  ? keys                                        [2malder jobs[0m

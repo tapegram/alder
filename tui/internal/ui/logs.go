@@ -148,7 +148,7 @@ func (s *logsScreen) listKey(k string, c *Ctx) tea.Cmd {
 		s.follow, s.sel = next == n-1, s.idx[next]
 	case "enter":
 		ln, _ := c.Logs.Get(s.idx[cur], c.LogFilter)
-		if ln.Rid == "" {
+		if ln.Rid == "" || ln.Job { // a job's line has no request; its id is not a request's
 			return nil
 		}
 		r, ok := c.Requests.ByRid(ln.Rid)
@@ -232,8 +232,8 @@ func (s *logsScreen) View(width, height int, c *Ctx) string {
 // renderLine is a line as `alder run` shows it on a terminal, cut to about width cells first so
 // that a huge line costs no more than a short one: a run line dim, after `alder run: ` when it
 // does not start with it; an effect line and a gap marker dim; any other line with its stamp dim
-// and its level word coloured, `info:` green, `warn:` yellow, `error:` red. The app's text is
-// cleaned of control characters before it is styled.
+// and its level word coloured, `info:` green, `warn:` yellow, `error:` red, and a job attempt's
+// `job <Kind>` cyan. The app's text is cleaned of control characters before it is styled.
 func renderLine(ln store.Line, width int) string {
 	text := ln.Text
 	text = cutRunes(text, 4*width+64)
@@ -260,7 +260,27 @@ func renderLine(ln store.Line, width int) string {
 	case "error:":
 		level = look.Palette.Red(level)
 	}
-	return look.Palette.Dim(m[1]) + level + m[3]
+	rest := m[3]
+	if ln.Job {
+		if k, ok := jobMarker(rest); ok {
+			rest = " " + look.Palette.Cyan(k) + rest[1+len(k):]
+		}
+	}
+	return look.Palette.Dim(m[1]) + level + rest
+}
+
+// jobMarker is the `job <Kind>` a job attempt's text starts with (after the level's space), which
+// the Logs screen colours to set the line apart from a request's.
+func jobMarker(text string) (string, bool) {
+	t, ok := strings.CutPrefix(text, " job ")
+	if !ok {
+		return "", false
+	}
+	kind, _, _ := strings.Cut(t, " ")
+	if kind == "" {
+		return "", false
+	}
+	return "job " + kind, true
 }
 
 // cutRunes is s cut to at most limit bytes, backed up to a rune boundary so that the result is

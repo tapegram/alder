@@ -38,7 +38,7 @@ func buildEvent(state string) feed.Event {
 func TestRoutes_Screen(t *testing.T) {
 	o, f := routesOptions()
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5")
+	press(m, "6")
 	if want := []string{"routes --json"}; !reflect.DeepEqual(f.Calls(), want) {
 		t.Fatalf("opening Routes called %q, want %q", f.Calls(), want)
 	}
@@ -70,7 +70,7 @@ func TestRoutes_Screen(t *testing.T) {
 func TestRoutes_HitsFollowTheFeed(t *testing.T) {
 	o, _ := routesOptions()
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5")
+	press(m, "6")
 	m.Update(eventMsg(access(14, clock, "5f3a2c24", "/books/7")))
 	if r := rowOf(m.View(), "/books/{id}"); !strings.HasSuffix(r, " 3") {
 		t.Errorf("after a request the row is %q, want 3 hits", r)
@@ -84,7 +84,7 @@ func TestRoutes_HitsFollowTheFeed(t *testing.T) {
 func TestRoutes_RefreshOnBuild(t *testing.T) {
 	o, f := routesOptions()
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5")
+	press(m, "6")
 	if len(f.Calls()) != 1 {
 		t.Fatalf("calls = %q", f.Calls())
 	}
@@ -112,7 +112,7 @@ func TestRoutes_LoadsOnStart(t *testing.T) {
 	if len(f.Calls()) != 1 {
 		t.Fatalf("starting called %q, want one routes --json", f.Calls())
 	}
-	press(m, "5")
+	press(m, "6")
 	if len(f.Calls()) != 1 {
 		t.Errorf("opening the loaded tab called again: %q", f.Calls())
 	}
@@ -121,7 +121,7 @@ func TestRoutes_LoadsOnStart(t *testing.T) {
 func TestRoutes_Jump(t *testing.T) {
 	o, _ := routesOptions()
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5", "j", "j", "j")
+	press(m, "6", "j", "j", "j")
 	if c := rowOf(m.View(), " > "); !strings.Contains(c, "/books/{id}") {
 		t.Fatalf("the cursor is on %q", c)
 	}
@@ -155,7 +155,7 @@ func TestRoutes_Jump(t *testing.T) {
 func TestRoutes_FilterSurvivesReload(t *testing.T) {
 	o, f := routesOptions()
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5", "j", "j", "j", "enter")
+	press(m, "6", "j", "j", "j", "enter")
 	if rowOf(m.View(), "/books/42") == "" {
 		t.Fatalf("no filtered rows before the reload:\n%s", m.View())
 	}
@@ -170,7 +170,7 @@ func TestRoutes_FilterSurvivesReload(t *testing.T) {
 func TestRoutes_FilterWithText(t *testing.T) {
 	o, _ := routesOptions()
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5", "j", "j", "j", "enter", "/", "9", "9", "enter")
+	press(m, "6", "j", "j", "j", "enter", "/", "9", "9", "enter")
 	frame := m.View()
 	if rowOf(frame, "/books/999") == "" || rowOf(frame, "/books/42") != "" {
 		t.Errorf("text and route filters do not combine:\n%s", frame)
@@ -179,7 +179,7 @@ func TestRoutes_FilterWithText(t *testing.T) {
 	if rowOf(m.View(), "/search") == "" {
 		t.Errorf("esc left a filter on:\n%s", m.View())
 	}
-	press(m, "5", "k", "enter") // the cursor was on /books/{id}; /books/new is above it
+	press(m, "6", "k", "enter") // the cursor was on /books/{id}; /books/new is above it
 	if f := m.View(); !strings.Contains(f, "no requests match route /books/new") {
 		t.Errorf("an empty filtered table says nothing about the route:\n%s", f)
 	}
@@ -190,7 +190,7 @@ func TestRoutes_OpenInBrowser(t *testing.T) {
 	o, _ := routesOptions()
 	o.OpenURL = func(u string) error { opened = append(opened, u); return nil }
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5", "j", "j", "j", "j", "o") // /search, a page with no parameter
+	press(m, "6", "j", "j", "j", "j", "o") // /search, a page with no parameter
 	press(m, "k", "o")                     // /books/{id}: not openable, so o opens the app
 	press(m, "k", "k", "o")                // the message /_m/Books/lend: likewise
 	want := []string{"http://localhost:8080/search", "http://localhost:8080/", "http://localhost:8080/"}
@@ -205,13 +205,13 @@ func TestRoutes_Failure(t *testing.T) {
 	o := options(nil)
 	o.Runner = f
 	m := newRoot(o)
-	press(m, "5")
+	press(m, "6")
 	if frame := m.View(); !strings.Contains(frame, "alder routes --json failed (exit 1)") {
 		t.Errorf("a failed run is not reported:\n%s", frame)
 	}
 	o.Runner = nil
 	m = newRoot(o)
-	press(m, "5") // no runner must not panic
+	press(m, "6") // no runner must not panic
 	if frame := m.View(); !strings.Contains(frame, "no alder to run") {
 		t.Errorf("no runner is not reported:\n%s", frame)
 	}
@@ -222,7 +222,7 @@ func TestRoutes_Failure(t *testing.T) {
 func TestRoutes_RestartByBoot(t *testing.T) {
 	o, _ := routesOptions()
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5")
+	press(m, "6")
 	if s := strings.Split(m.View(), "\n")[1]; s != " 5 routes  4 hits" {
 		t.Fatalf("summary = %q", s)
 	}
@@ -244,7 +244,7 @@ func TestRoutes_Narrow60(t *testing.T) {
 	o, _ := routesOptions()
 	m := newRoot(o, fixture(t, "basic")...)
 	m.Update(tea.WindowSizeMsg{Width: 60, Height: 30})
-	press(m, "5")
+	press(m, "6")
 	for _, l := range strings.Split(m.View(), "\n") {
 		if w := ansi.StringWidth(l); w > 60 {
 			t.Errorf("line is %d wide: %q", w, l)
@@ -255,7 +255,7 @@ func TestRoutes_Narrow60(t *testing.T) {
 func TestRoutes_OpenHint(t *testing.T) {
 	o, _ := routesOptions()
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5") // "/", a page
+	press(m, "6") // "/", a page
 	if f := wideFooter(m); !strings.Contains(f, "o open") {
 		t.Errorf("no o hint on an openable route: %q", f)
 	}
@@ -269,7 +269,7 @@ func TestRoutes_OpenHint(t *testing.T) {
 func TestFooter_ShadowedGlobal(t *testing.T) {
 	o, _ := routesOptions()
 	m := newRoot(o, fixture(t, "basic")...)
-	press(m, "5") // an openable route
+	press(m, "6") // an openable route
 	if f := wideFooter(m); !strings.Contains(f, "o open") || strings.Contains(f, "o browser") {
 		t.Errorf("footer = %q, want o open and no o browser", f)
 	}

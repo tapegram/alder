@@ -82,7 +82,9 @@ type Log struct {
 
 // Record is a JSON log record of the app. Level is the record's own name (DEBUG, INFO, WARN or
 // ERROR). The access fields are zero when the record does not carry them; HasAccess is true
-// when it carries rid, status, method and path, the record of one answered request.
+// when it carries rid, status, method and path, the record of one answered request. The job
+// fields likewise: HasJob is true when it carries rid (the job's id), job (its kind), outcome
+// and attempt, the record of one attempt of a job (rt/applog/job.go); Ms is then its time.
 type Record struct {
 	Time                            time.Time
 	Level, Msg, Rid, Method, Path   string
@@ -92,6 +94,9 @@ type Record struct {
 	Bytes                           int64
 	Slow                            bool
 	HasAccess                       bool
+	Job, Outcome                    string // a job attempt's kind and outcome (done, failed, dead or stopped)
+	Attempt                         int
+	HasJob                          bool
 }
 
 // Gap is a gap event: the client reconnected to the same dev server, but the oldest event its
@@ -152,6 +157,9 @@ type record struct {
 	DBMs    float64   `json:"db_ms"`
 	Repeats int       `json:"repeats"`
 	Slow    bool      `json:"slow"`
+	Job     *string   `json:"job"`
+	Outcome *string   `json:"outcome"`
+	Attempt *int      `json:"attempt"`
 }
 
 // Decode is the event whose JSON is line. It fails when line is not a JSON object with a type. A
@@ -197,6 +205,10 @@ func Decode(line []byte) (Event, error) {
 				HasAccess: r.Rid != nil && r.Status != nil && r.Method != nil && r.Path != nil}
 			if r.Status != nil {
 				ev.Log.Record.Status = *r.Status
+			}
+			if r.Rid != nil && r.Job != nil && r.Outcome != nil && r.Attempt != nil {
+				rec := ev.Log.Record
+				rec.HasJob, rec.Job, rec.Outcome, rec.Attempt = true, *r.Job, *r.Outcome, *r.Attempt
 			}
 		}
 	}
