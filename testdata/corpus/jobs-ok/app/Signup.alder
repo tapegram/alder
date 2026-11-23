@@ -106,14 +106,15 @@ Start.update p session = {
   Task.succeed (Response.redirect (Export { job: id }))
 }
 
-Export.load : Export.Params -> Session -> Query (Maybe Job.Status)
-Export.load p session = Job.status p.job
+Export.load : Export.Params -> Session -> Query { id: Job.Id, status: Maybe Job.Status }
+Export.load p session =
+  Job.status p.job |> Query.map (\status -> { id: p.job, status: status })
 
-Export.view : Maybe Job.Status -> Session -> Html
+Export.view : { id: Job.Id, status: Maybe Job.Status } -> Session -> Html
 Export.view model session =
   <html><body>
-    {match model {
-      Just status -> <p id="state">{match status.state {
+    {match model.status {
+      Just status -> <p id="state" load={Export { job: model.id }} every="2s">{match status.state {
         Queued -> "Queued",
         Running -> "Running",
         Done -> "Done",

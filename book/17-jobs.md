@@ -265,20 +265,21 @@ Start.update p session = {
   Task.succeed (Response.redirect (Export { job: id }))
 }
 
-Export.load : Export.Params -> Session -> Query (Maybe Job.Status)
-Export.load p session = Job.status p.job
+Export.load : Export.Params -> Session -> Query { id: Job.Id, status: Maybe Job.Status }
+Export.load p session =
+  Job.status p.job |> Query.map (\status -> { id: p.job, status: status })
 
-Export.view : Maybe Job.Status -> Session -> Html
+Export.view : { id: Job.Id, status: Maybe Job.Status } -> Session -> Html
 Export.view model session =
   <html><body>
-    {match model {
-      Just status -> <p>{match status.state {
+    {match model.status {
+      Just status -> <p id="state" load={Export { job: model.id }} every="2s">{match status.state {
         Queued -> "Waiting for a worker",
         Running -> "Working",
         Done -> "Ready",
         Dead -> "Failed",
       }}</p>,
-      Nothing -> <p>No such job</p>,
+      Nothing -> <p id="state">No such job</p>,
     }}
   </body></html>
 ```
@@ -288,9 +289,11 @@ into the address bar: it names no job, `Job.status` is `Nothing`, and
 the page says so, as it would for a job removed after it finished. The
 view is the place for that case. (Only inside a `test` may code
 write `Job.Id "00000000"` to make such an id; app code gets its ids from
-`Job.enqueue`, a URL or a column.) An element with
-an `id` can poll the page with `load={Export { job: p.job }}
-every="2s"` (chapter 6, "Patterns").
+`Job.enqueue`, a URL or a column.) The model carries the
+id because the view has no route parameters: it is how the `<p>` names
+its own page in `load={Export { job: model.id }} every="2s"`, which
+fetches the page again every two seconds while the element is shown
+(chapter 6, "Patterns").
 
 When the thing outlives the run, put the id on the row the job is about
 instead, and let any page that shows the row look the job up:
