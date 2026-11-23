@@ -546,7 +546,7 @@ func TestTest_Jobs(t *testing.T) {
 	copyDir(t, src, dir)
 	code, stdout, stderr := runTest(t, dir)
 	want := "FAIL Signup \"a job that enqueues itself forever\"\n  error: Test.work: jobs keep enqueueing jobs\n"
-	if code == 0 || !strings.Contains(stdout, want) || !strings.Contains(stdout, "9 passed, 1 failed\n") {
+	if code == 0 || !strings.Contains(stdout, want) || !strings.Contains(stdout, "10 passed, 1 failed\n") {
 		t.Fatalf("exit %d, want %q\nstdout:\n%s\nstderr:\n%s", code, want, stdout, stderr)
 	}
 }

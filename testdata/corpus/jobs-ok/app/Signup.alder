@@ -222,3 +222,5 @@ test "enqueueIn is due after its delay" = {
   let later <- Test.work
   Task.succeed (List.isEmpty early && List.length later == 1)
 }
+
+test "any job id" = \(id : Job.Id) -> id == id

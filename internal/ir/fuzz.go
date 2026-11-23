@@ -336,7 +336,7 @@ func (b *genBuild) tree(t types.Type) *GenTree {
 		if _, std := StdBrandFunc[k]; std {
 			g.Kind, g.Brand = GenStdBrand, k
 		} else { // its base, kept when it passes the check; printed with its constructor
-			g.Kind, g.Brand, g.Check = GenBrand, k, x.HasCheck
+			g.Kind, g.Brand, g.Check = GenBrand, k, b.l.checked(x)
 			g.Elems = []*GenTree{b.tree(x.Base)}
 		}
 	case *types.App:
@@ -428,3 +428,16 @@ func BrandName(brand string) string { return brand[strings.LastIndex(brand, ".")
 
 // BrandModule is the module of brand "Module.Name".
 func BrandModule(brand string) string { return brand[:max(strings.LastIndex(brand, "."), 0)] }
+
+// checked reports whether brand b has a check lowered (checks are lowered after the bodies, so
+// this reads the pending ones): a stdlib brand's check is never lowered, and gen emits no
+// check__ function for it.
+func (l *lowerer) checked(b *types.Brand) bool {
+	br := l.brand(b)
+	for _, c := range l.checks {
+		if c.brand == br {
+			return true
+		}
+	}
+	return false
+}
