@@ -71,6 +71,7 @@ func jobsFixture(t *testing.T) (*db.SQLite, *jobs.Panel, *router) {
 	insertJob(t, st, "queued01", sendKind.Name, `{"user":"u1"}`, "queued", devJobsT0.Add(5*time.Minute), 0, time.Time{}, "")
 	insertJob(t, st, "runnin01", sendKind.Name, `{"user":"u2"}`, "running", devJobsT0.Add(-time.Minute), 1, time.Time{}, "")
 	insertJob(t, st, "deadjob1", sendKind.Name, `{"user":"u3"}`, "dead", devJobsT0.Add(-time.Hour), 5, devJobsT0.Add(-30*time.Minute), jobs.LostError)
+	insertJob(t, st, "cancel01", sendKind.Name, `{"user":"u5"}`, "cancelled", devJobsT0.Add(-time.Hour), 2, devJobsT0.Add(-20*time.Minute), "")
 	insertJob(t, st, "queued02", sendKind.Name, `{"user":"u4"}`, "queued", devJobsT0.Add(10*time.Minute), 0, time.Time{}, "")
 	q, err := db.On(st, nil)
 	if err != nil {
@@ -158,6 +159,27 @@ func TestDevJobs_JSON(t *testing.T) {
 	}
 }
 
+// The JSON has a cancelled array, the page a Cancelled section, and a cancelled row's page a
+// Retry form.
+func TestDevJobs_Cancelled(t *testing.T) {
+	_, _, h := jobsFixture(t)
+	var v JobsView
+	if w := serve(h, httptest.NewRequest("GET", "/_dev/jobs.json", nil)); json.Unmarshal(w.Body.Bytes(), &v) != nil || len(v.Cancelled) != 1 || v.Cancelled[0].ID != "cancel01" {
+		t.Errorf("cancelled = %+v", v.Cancelled)
+	}
+	body := serve(h, httptest.NewRequest("GET", "/_dev/jobs", nil)).Body.String()
+	if !strings.Contains(body, "<h2>Cancelled (1)</h2>") || !strings.Contains(body, `href="/_dev/jobs/cancel01"`) || strings.Index(body, "<h2>Cancelled") < strings.Index(body, "<h2>Dead") {
+		t.Errorf("/_dev/jobs lacks a Cancelled section after Dead:\n%s", body)
+	}
+	body = serve(h, httptest.NewRequest("GET", "/_dev/jobs/cancel01", nil)).Body.String()
+	if !strings.Contains(body, `action="/_dev/jobs/cancel01/retry"`) {
+		t.Errorf("a cancelled row's page has no Retry form:\n%s", body)
+	}
+	if w := serve(h, httptest.NewRequest("POST", "/_dev/jobs/cancel01/retry", nil)); w.Code != 303 {
+		t.Errorf("retry of a cancelled row: %d %s", w.Code, w.Body.String())
+	}
+}
+
 // POST Retry on a dead row queues it again with attempts 0 and no error; Run now on a queued
 // row makes it due now. Each answers 303 to the row's page; a row in another state is 409.
 func TestDevJobs_Retry(t *testing.T) {
@@ -178,7 +200,7 @@ func TestDevJobs_Retry(t *testing.T) {
 	if r, _ := p.Get(context.Background(), "queued01"); r == nil || r.RunAt != devJobsT0.UnixMilli() || r.State != "queued" {
 		t.Fatalf("after run now: %+v", r)
 	}
-	if w := post("/_dev/jobs/done0001/retry"); w.Code != 409 || !strings.Contains(w.Body.String(), "only a dead job is retried") {
+	if w := post("/_dev/jobs/done0001/retry"); w.Code != 409 || !strings.Contains(w.Body.String(), "only a dead or cancelled job is retried") {
 		t.Errorf("retry of a done row: %d %s", w.Code, w.Body.String())
 	}
 	if w := post("/_dev/jobs/runnin01/run"); w.Code != 409 {
@@ -397,7 +419,7 @@ func TestDevJobs_SiloRow(t *testing.T) {
 	if body := serve(h, httptest.NewRequest("GET", "/_dev/jobs", nil)).Body.String(); !strings.Contains(body, "silo org/A") {
 		t.Errorf("/_dev/jobs does not show the row's silo:\n%s", body)
 	}
-	if w := serve(h, httptest.NewRequest("POST", "/_dev/jobs/doneA001/retry", nil)); w.Code != 409 || !strings.Contains(w.Body.String(), "only a dead job is retried") {
+	if w := serve(h, httptest.NewRequest("POST", "/_dev/jobs/doneA001/retry", nil)); w.Code != 409 || !strings.Contains(w.Body.String(), "only a dead or cancelled job is retried") {
 		t.Errorf("retry of a done silo row: %d %s", w.Code, w.Body.String())
 	}
 	if w := serve(h, httptest.NewRequest("POST", "/_dev/jobs/deadA001/retry", nil)); w.Code != 303 {

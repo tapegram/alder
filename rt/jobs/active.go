@@ -300,7 +300,7 @@ func (p *pool) each(ctx context.Context, f func(db.Execer) error) error {
 }
 
 // scan is the start scan (spec §7): every silo database whose jobs table has a row queued or
-// running, or one housekeeping prunes now (a done row older than KeepDone, a dead one older than
+// running, or one housekeeping prunes now (a done or cancelled row older than KeepDone, a dead one older than
 // KeepDead), joins the active set. Stores.ScanSilos opens each silo
 // database read-only, without the migration check and not as a use of the silo, and closes it
 // after this look; a silo with nothing there does not join the served pool. Once per Start.
@@ -314,7 +314,7 @@ func (p *pool) scan(ctx context.Context, now time.Time) {
 		var one int
 		err := q.QueryRowContext(ctx, `SELECT 1 FROM sqlite_schema WHERE "type" = 'table' AND "name" = '_alder_jobs'`).Scan(&one)
 		if err == nil {
-			err = q.QueryRowContext(ctx, `SELECT 1 FROM "_alder_jobs" WHERE "state" IN ('queued', 'running') OR ("state" = 'done' AND COALESCE("finished", "created") < ?) OR ("state" = 'dead' AND COALESCE("finished", "created") < ?) LIMIT 1`,
+			err = q.QueryRowContext(ctx, `SELECT 1 FROM "_alder_jobs" WHERE "state" IN ('queued', 'running') OR ("state" IN ('done', 'cancelled') AND COALESCE("finished", "created") < ?) OR ("state" = 'dead' AND COALESCE("finished", "created") < ?) LIMIT 1`,
 				now.Add(-KeepDone).UnixMilli(), now.Add(-KeepDead).UnixMilli()).Scan(&one)
 		}
 		if errors.Is(err, sql.ErrNoRows) { // no such row, or no jobs table: not opened since it came

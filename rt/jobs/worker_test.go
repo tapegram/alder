@@ -494,6 +494,21 @@ func TestHousekeep_Prune(t *testing.T) {
 	}
 }
 
+// A cancelled row is pruned with the done rows: KeepDone, not KeepDead.
+func TestHousekeep_PrunesCancelledWithDone(t *testing.T) {
+	st := openFile(t)
+	day := 24 * time.Hour
+	at := func(d time.Duration) *time.Time { x := t0.Add(-d); return &x }
+	insertRow(t, st, "c0000008", welcome.Kind, "cancelled", t0.Add(-9*day), 0, at(8*day), nil)
+	insertRow(t, st, "c0000006", welcome.Kind, "cancelled", t0.Add(-9*day), 0, at(6*day), nil)
+	jobs.Housekeeper(st, []jobs.Kind{kind(eff.Pure(struct{}{}))}, (&lines{}).log)(context.Background(), t0)
+	for id, want := range map[string]bool{"c0000008": false, "c0000006": true} {
+		if exists(t, st, id) != want {
+			t.Errorf("row %s kept: %v, want %v", id, !want, want)
+		}
+	}
+}
+
 func TestHousekeep_Unclaimable(t *testing.T) {
 	st := openFile(t)
 	insertRow(t, st, "u0000001", "Gone.Job", "queued", t0.Add(-25*time.Hour), 0, nil, nil)

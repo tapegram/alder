@@ -14,7 +14,7 @@ const (
 	// LostError is the error of a row whose lease ran out while it was running: the process
 	// that claimed it stopped without recording how the attempt ended.
 	LostError = "lost: the process stopped"
-	// KeepDone and KeepDead are how long a done and a dead row are kept before housekeeping
+	// KeepDone and KeepDead are how long a done (or cancelled) and a dead row are kept before housekeeping
 	// deletes them.
 	KeepDone = 7 * 24 * time.Hour
 	KeepDead = 30 * 24 * time.Hour
@@ -49,7 +49,7 @@ func newHousekeeper(s eff.Store, kinds []Kind, log func(level, msg string)) *hou
 // run keeps the table as of now, unless another worker is keeping it already:
 //   - a running row past its lease is re-queued with LostError (due after the backoff, its
 //     attempt counted), or made dead when that attempt was its last;
-//   - done rows finished more than KeepDone ago and dead ones more than KeepDead ago are deleted;
+//   - done and cancelled rows finished more than KeepDone ago and dead ones more than KeepDead ago are deleted;
 //   - a queued tick of a kind this build does not know (its kind's queued tick, or a tick
 //     queued for its retry: scheduled_for is set), due (scheduled_for) more than Unclaimable
 //     ago, is deleted with a warn line (a job renamed or removed: the new name has its own
@@ -96,10 +96,10 @@ func (h *housekeeper) run(ctx context.Context, now time.Time) {
 	})
 }
 
-// prune deletes the done rows finished more than KeepDone before now and the dead ones more
+// prune deletes the done and cancelled rows finished more than KeepDone before now and the dead ones more
 // than KeepDead before.
 func prune(ctx context.Context, q db.Execer, now time.Time) error {
-	_, err := q.ExecContext(ctx, `DELETE FROM "_alder_jobs" WHERE ("state" = 'done' AND COALESCE("finished", "created") < ?) OR ("state" = 'dead' AND COALESCE("finished", "created") < ?)`,
+	_, err := q.ExecContext(ctx, `DELETE FROM "_alder_jobs" WHERE ("state" IN ('done', 'cancelled') AND COALESCE("finished", "created") < ?) OR ("state" = 'dead' AND COALESCE("finished", "created") < ?)`,
 		now.Add(-KeepDone).UnixMilli(), now.Add(-KeepDead).UnixMilli())
 	return err
 }

@@ -3,6 +3,7 @@ package jobs_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -35,7 +36,7 @@ func TestAdmin_RetryAndRunNow(t *testing.T) {
 		t.Errorf("retry of a key held: %v", err)
 	}
 	var se *jobs.StateError
-	if err := jobs.Retry(ctx, q, "done0001", now); !errors.As(err, &se) || err.Error() != "job done0001 is done: only a dead job is retried" {
+	if err := jobs.Retry(ctx, q, "done0001", now); !errors.As(err, &se) || err.Error() != "job done0001 is done: only a dead or cancelled job is retried" {
 		t.Errorf("retry of a done row: %v", err)
 	}
 	if err := jobs.Retry(ctx, q, "nosuch01", now); !errors.Is(err, jobs.ErrNoJob) {
@@ -60,6 +61,71 @@ func TestAdmin_RetryAndRunNow(t *testing.T) {
 	l, err := jobs.List(ctx, q)
 	if err != nil || len(l.Queued) != 2 || len(l.Dead) != 1 || len(l.Done) != 1 || len(l.Running) != 0 {
 		t.Errorf("list: %+v %v", l, err)
+	}
+}
+
+// Retry takes a cancelled row as it takes a dead one, and a key a live row holds still blocks it.
+func TestAdmin_RetryCancelled(t *testing.T) {
+	st := open(t)
+	ctx := context.Background()
+	q, err := db.On(st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
+	for _, r := range []struct{ id, state, key string }{{"canc0001", "cancelled", ""}, {"canc0002", "cancelled", "k"}, {"live0001", "queued", "k"}, {"live0002", "queued", ""}} {
+		var key any
+		if r.key != "" {
+			key = r.key
+		}
+		if _, err := q.ExecContext(ctx, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "key", "state", "run_at", "created", "attempts", "error", "finished") VALUES (?, 'K.J', '{}', ?, ?, ?, ?, 2, 'boom', ?)`,
+			r.id, key, r.state, t0.UnixMilli(), t0.UnixMilli(), t0.UnixMilli()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := t0.Add(time.Hour)
+	if err := jobs.Retry(ctx, q, "canc0001", now); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := jobs.Get(ctx, q, "canc0001"); r.State != "queued" || r.Attempts != 0 || r.Error != nil || r.RunAt != now.UnixMilli() || r.Finished != nil {
+		t.Errorf("retried: %+v", r)
+	}
+	var se *jobs.StateError
+	if err := jobs.Retry(ctx, q, "live0002", now); !errors.As(err, &se) || err.Error() != "job live0002 is queued: only a dead or cancelled job is retried" {
+		t.Errorf("retry of a queued row: %v", err)
+	}
+	var kh *jobs.KeyHeldError
+	if err := jobs.Retry(ctx, q, "canc0002", now); !errors.As(err, &kh) || kh.Holder != "live0001" {
+		t.Errorf("retry with the key held: %v", err)
+	}
+	if r, _ := jobs.Get(ctx, q, "canc0002"); r.State != "cancelled" {
+		t.Errorf("the refused retry changed the row: %+v", r)
+	}
+}
+
+// List keeps the last ShownDone cancelled rows, the last finished first; Counts counts them.
+func TestAdmin_ListCancelled(t *testing.T) {
+	st := open(t)
+	ctx := context.Background()
+	q, err := db.On(st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
+	for i := range 60 {
+		at := t0.Add(time.Duration(i) * time.Minute).UnixMilli()
+		if _, err := q.ExecContext(ctx, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "finished") VALUES (?, 'K.J', '{}', 'cancelled', ?, ?, ?)`,
+			fmt.Sprintf("canc%04d", i), at, at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	l, err := jobs.List(ctx, q)
+	if err != nil || len(l.Cancelled) != jobs.ShownDone || l.Cancelled[0].ID != "canc0059" || l.Cancelled[jobs.ShownDone-1].ID != "canc0010" {
+		t.Fatalf("cancelled: %d rows %v", len(l.Cancelled), err)
+	}
+	c, err := jobs.Counts(ctx, q)
+	if err != nil || c[jobs.Cancelled] != 60 {
+		t.Errorf("counts: %v %v", c, err)
 	}
 }
 

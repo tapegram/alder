@@ -27,7 +27,7 @@ const rowCols = `"id", "kind", "params", "key", "state", "run_at", "created", "s
 // looked in, or pruned).
 var ErrNoJob = errors.New("no such job")
 
-// StateError is an operation refused because of the job's state: only a dead job is retried,
+// StateError is an operation refused because of the job's state: only a dead or cancelled job is retried,
 // only a queued one is run now.
 type StateError struct {
 	ID    string
@@ -36,11 +36,14 @@ type StateError struct {
 }
 
 func (e *StateError) Error() string {
-	op := "retried"
-	if e.Want == Queued {
+	want, op := string(e.Want), "retried"
+	switch e.Want {
+	case Queued:
 		op = "run now"
+	case Dead:
+		want = "dead or cancelled"
 	}
-	return fmt.Sprintf("job %s is %s: only a %s job is %s", e.ID, e.State, e.Want, op)
+	return fmt.Sprintf("job %s is %s: only a %s job is %s", e.ID, e.State, want, op)
 }
 
 // KeyHeldError is a retry refused because a queued or running job of the kind (Holder) holds the
@@ -60,13 +63,15 @@ type Listing struct {
 	Running []Row // by started
 	Dead    []Row // the last finished first
 	Done    []Row // the ShownDone finished last, the last first
+	// Cancelled is the ShownDone cancelled rows finished last, the last first.
+	Cancelled []Row
 	// Missed names the stores that could not be read, each with its error ("silo org/42: …"):
 	// their rows are not in the listing.
 	Missed []string
 }
 
 // List is the rows of q's jobs table: every queued, running and dead row and the ShownDone done
-// rows finished last.
+// and the ShownDone cancelled rows finished last.
 func List(ctx context.Context, q db.Execer) (Listing, error) {
 	var l Listing
 	var err error
@@ -79,7 +84,10 @@ func List(ctx context.Context, q db.Execer) (Listing, error) {
 	if l.Dead, err = rowsWhere(ctx, q, `"state" = 'dead' ORDER BY "finished" DESC, "created" DESC`); err != nil {
 		return l, err
 	}
-	l.Done, err = rowsWhere(ctx, q, fmt.Sprintf(`"state" = 'done' ORDER BY "finished" DESC, "created" DESC LIMIT %d`, ShownDone))
+	if l.Done, err = rowsWhere(ctx, q, fmt.Sprintf(`"state" = 'done' ORDER BY "finished" DESC, "created" DESC LIMIT %d`, ShownDone)); err != nil {
+		return l, err
+	}
+	l.Cancelled, err = rowsWhere(ctx, q, fmt.Sprintf(`"state" = 'cancelled' ORDER BY "finished" DESC, "created" DESC LIMIT %d`, ShownDone))
 	return l, err
 }
 
@@ -92,12 +100,12 @@ func Get(ctx context.Context, q db.Execer, id string) (*Row, error) {
 	return r, err
 }
 
-// Retry queues dead job id again in q's jobs table, due at now, as if it had never run: its
+// Retry queues dead or cancelled job id again in q's jobs table, due at now, as if it had never run: its
 // attempts 0, its error, started, finished, lease and worker cleared (spec §6: "attempts reset to
 // 0, state queued"). A schedule tick keeps its scheduled_for; its claim set its schedule to 0, so
 // the retry runs it once and inserts no next tick (ClaimedTick does nothing for it), and the
 // kind's queued tick is left as it is. ErrNoJob when there is no such row, a *StateError when it
-// is not dead, and a *KeyHeldError when it has a key that a queued or running job of its kind
+// is neither dead nor cancelled, and a *KeyHeldError when it has a key that a queued or running job of its kind
 // holds now (enqueueOnce's: the retry would be a second job with that key).
 func Retry(ctx context.Context, q db.Execer, id string, now time.Time) error {
 	r, err := Get(ctx, q, id)
@@ -107,7 +115,7 @@ func Retry(ctx context.Context, q db.Execer, id string, now time.Time) error {
 	if r == nil {
 		return fmt.Errorf("%w %s", ErrNoJob, id)
 	}
-	if State(r.State) != Dead {
+	if s := State(r.State); s != Dead && s != Cancelled {
 		return &StateError{ID: id, State: State(r.State), Want: Dead}
 	}
 	if r.Key != nil {
@@ -120,7 +128,7 @@ func Retry(ctx context.Context, q db.Execer, id string, now time.Time) error {
 			return err
 		}
 	}
-	return update(ctx, q, id, Dead, `UPDATE "_alder_jobs" SET "state" = 'queued', "attempts" = 0, "error" = NULL, "run_at" = ?, "started" = NULL, "finished" = NULL, "lease_until" = NULL, "worker" = NULL WHERE "id" = ? AND "state" = 'dead'`, now.UnixMilli(), id)
+	return update(ctx, q, id, Dead, `UPDATE "_alder_jobs" SET "state" = 'queued', "attempts" = 0, "error" = NULL, "run_at" = ?, "started" = NULL, "finished" = NULL, "lease_until" = NULL, "worker" = NULL WHERE "id" = ? AND "state" IN ('dead', 'cancelled')`, now.UnixMilli(), id)
 }
 
 // RunNow makes queued job id in q's jobs table due at now. A queued schedule tick run so runs in
@@ -250,7 +258,7 @@ func rowsWhere(ctx context.Context, q db.Execer, where string) ([]Row, error) {
 
 // merge adds l's rows to m, each with its store's place in.
 func (m *Listing) merge(l Listing, in db.Place) {
-	for _, part := range []struct{ to, from *[]Row }{{&m.Queued, &l.Queued}, {&m.Running, &l.Running}, {&m.Dead, &l.Dead}, {&m.Done, &l.Done}} {
+	for _, part := range []struct{ to, from *[]Row }{{&m.Queued, &l.Queued}, {&m.Running, &l.Running}, {&m.Dead, &l.Dead}, {&m.Done, &l.Done}, {&m.Cancelled, &l.Cancelled}} {
 		for _, r := range *part.from {
 			r.In = in
 			*part.to = append(*part.to, r)
@@ -277,7 +285,11 @@ func (m *Listing) sort() {
 	}
 	slices.SortStableFunc(m.Dead, last)
 	slices.SortStableFunc(m.Done, last)
+	slices.SortStableFunc(m.Cancelled, last)
 	if len(m.Done) > ShownDone {
 		m.Done = m.Done[:ShownDone]
+	}
+	if len(m.Cancelled) > ShownDone {
+		m.Cancelled = m.Cancelled[:ShownDone]
 	}
 }

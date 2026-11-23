@@ -117,6 +117,7 @@ func jobsFixture(t *testing.T) (dir, bd, dev, silo string) {
 		jobsRow{id: "dead0001", kind: "Signup.SendWelcome", state: "dead", attempts: 5, err: "smtp: timeout\nat line 2", finished: 2 * time.Minute},
 		jobsRow{id: "dead0002", kind: "Signup.Nightly", state: "dead", attempts: 5, err: "boom", finished: time.Minute, scheduledFor: "2026-11-16 03:00"},
 		jobsRow{id: "done0001", kind: "Signup.First", state: "done", attempts: 1, finished: time.Minute},
+		jobsRow{id: "canc0001", kind: "Signup.First", state: "cancelled", finished: time.Minute},
 	)
 	silo = filepath.Join(bd, "jobsapp", "silos", "org", db.SiloFileName("o1"))
 	jobsDB(t, silo, jobsRow{id: "dead0003", kind: "Reports.Digest", state: "dead", attempts: 1, err: "x", finished: 3 * time.Minute})
@@ -133,6 +134,7 @@ func TestJobs_List(t *testing.T) {
   queued 2
   running 1
   dead 3
+  cancelled 1
   done 1
 next schedule ticks:
   Signup.Nightly 2026-11-17 03:00 UTC priority 3
@@ -172,8 +174,15 @@ func TestJobs_RetryID(t *testing.T) {
 	if r := jobsGet(t, silo, "dead0003"); r.State != "queued" || r.Attempts != 0 {
 		t.Fatalf("retried silo row: %+v", r)
 	}
+	code, out = runCmd(t, runJobsTo, "retry", "canc0001", dir, "--build-dir", bd)
+	if code != 0 || !strings.Contains(out, "queued job canc0001 (Signup.First) again") {
+		t.Fatalf("retry of a cancelled row: exit %d\n%s", code, out)
+	}
+	if r := jobsGet(t, dev, "canc0001"); r.State != "queued" || r.Attempts != 0 {
+		t.Fatalf("retried cancelled row: %+v", r)
+	}
 	code, out = runCmd(t, runJobsTo, "retry", "done0001", dir, "--build-dir", bd)
-	if code != 1 || !strings.Contains(out, "job done0001 is done: only a dead job is retried") {
+	if code != 1 || !strings.Contains(out, "job done0001 is done: only a dead or cancelled job is retried") {
 		t.Fatalf("retry of a done row: exit %d\n%s", code, out)
 	}
 	code, out = runCmd(t, runJobsTo, "retry", "nosuch01", dir, "--build-dir", bd)

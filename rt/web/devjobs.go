@@ -59,7 +59,7 @@ type JobSchedule struct {
 }
 
 // JobsView is what /_dev/jobs shows and /_dev/jobs.json encodes (jobs.Panel.List): the queued
-// rows by due time, the running, the dead (the last finished first), the last fifty done, each
+// rows by due time, the running, the dead (the last finished first), the last fifty done and the last fifty cancelled, each
 // scheduled kind with its next tick, and whether workers run in this process.
 type JobsView struct {
 	Workers   bool          `json:"workers"`
@@ -68,6 +68,7 @@ type JobsView struct {
 	Running   []JobRow      `json:"running"`
 	Dead      []JobRow      `json:"dead"`
 	Done      []JobRow      `json:"done"`
+	Cancelled []JobRow      `json:"cancelled"`
 	Missed    []string      `json:"missed"` // stores not read, each with its error
 }
 
@@ -122,7 +123,7 @@ func (rt *router) jobsView(r *http.Request) (JobsView, error) {
 		return JobsView{}, err
 	}
 	v := JobsView{Workers: p.Workers(), Schedules: []JobSchedule{}, Queued: jobRows(l.Queued), Running: jobRows(l.Running),
-		Dead: jobRows(l.Dead), Done: jobRows(l.Done), Missed: append([]string{}, l.Missed...)}
+		Dead: jobRows(l.Dead), Done: jobRows(l.Done), Cancelled: jobRows(l.Cancelled), Missed: append([]string{}, l.Missed...)}
 	for _, k := range p.Kinds {
 		rule := k.ScheduleText()
 		if rule == "" {
@@ -178,7 +179,7 @@ func (rt *router) devJobs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// devJob serves job id's page: its row, params and error; Retry (dead) or Run now (queued); and
+// devJob serves job id's page: its row, params and error; Retry (dead or cancelled) or Run now (queued); and
 // the last attempt this process ran of it, with its trace, marked when it held the write lock
 // above applog.LockMark (spec §6a).
 func (rt *router) devJob(w http.ResponseWriter, r *http.Request, id string) {
@@ -323,6 +324,10 @@ var devJobsPage = template.Must(template.New("jobs").Funcs(devJobsFuncs).Parse(`
 <table><tr><th>id</th><th>kind</th><th>finished</th><th>attempts</th><th>error</th></tr>
 {{range .Dead}}<tr><td><a href="/_dev/jobs/{{.ID}}">{{.ID}}</a></td><td><code>{{.Kind}}</code>{{if .Silo}} <small>silo {{.Silo}}</small>{{end}}</td><td>{{ms .Finished}}</td><td>{{.Attempts}}</td><td>{{with .Error}}{{.}}{{end}}</td></tr>
 {{end}}</table>
+<h2>Cancelled ({{len .Cancelled}})</h2>
+<table><tr><th>id</th><th>kind</th><th>finished</th><th>attempts</th></tr>
+{{range .Cancelled}}<tr><td><a href="/_dev/jobs/{{.ID}}">{{.ID}}</a></td><td><code>{{.Kind}}</code>{{if .Silo}} <small>silo {{.Silo}}</small>{{end}}</td><td>{{ms .Finished}}</td><td>{{.Attempts}}</td></tr>
+{{end}}</table>
 <h2>Done (last 50)</h2>
 <table><tr><th>id</th><th>kind</th><th>finished</th><th>attempts</th></tr>
 {{range .Done}}<tr><td><a href="/_dev/jobs/{{.ID}}">{{.ID}}</a></td><td><code>{{.Kind}}</code>{{if .Silo}} <small>silo {{.Silo}}</small>{{end}}</td><td>{{ms .Finished}}</td><td>{{.Attempts}}</td></tr>
@@ -351,7 +356,7 @@ var devJobPage = template.Must(template.New("job").Funcs(devJobsFuncs).Parse(`<!
 <pre>{{.Row.Params}}</pre>
 {{with .Row.Error}}<h2>Error</h2>
 <pre>{{.}}</pre>{{end}}
-{{if eq .Row.State "dead"}}<form method="post" action="/_dev/jobs/{{.Row.ID}}/retry"><button>Retry</button> queues it again, due now, with attempts 0.{{if .DeadTick}} A retried tick runs once, now, and inserts no next tick: its schedule's next tick is a row of its own.{{end}}</form>{{end}}
+{{if or (eq .Row.State "dead") (eq .Row.State "cancelled")}}<form method="post" action="/_dev/jobs/{{.Row.ID}}/retry"><button>Retry</button> queues it again, due now, with attempts 0.{{if .DeadTick}} A retried tick runs once, now, and inserts no next tick: its schedule's next tick is a row of its own.{{end}}</form>{{end}}
 {{if eq .Row.State "queued"}}<form method="post" action="/_dev/jobs/{{.Row.ID}}/run"><button>Run now</button> makes it due now.{{if .Row.Tick}} This tick runs in place of its slot: the next tick is the first after the later of {{ms .Row.ScheduledFor}} and the time it is claimed.{{end}}{{if not .Workers}} No job worker runs in this process to claim it.{{end}}</form>{{end}}
 <h2>Last attempt</h2>
 {{with .Last}}<p{{if .Marked}} data-lock{{end}}><code>{{.Line}}</code></p>

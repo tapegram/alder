@@ -26,6 +26,17 @@ func TestJobStatusOf_UnknownState(t *testing.T) {
 	}
 }
 
+// A cancelled row is the stdlib's Cancelled, with no due time.
+func TestJobStatusOf_Cancelled(t *testing.T) {
+	s, err := JobStatusOf(jobs.Status{State: "cancelled"})
+	if err != nil || s.State.Tag != JobCancelled || s.RunAt != rt.Nothing[time.Time]() {
+		t.Fatalf("%+v, %v", s, err)
+	}
+	if got := rt.Show(s.State); got != "Cancelled" {
+		t.Errorf("Show = %q", got)
+	}
+}
+
 // A decode error names its path; at the root (the parameters themselves) it names none.
 func TestJobWant_Path(t *testing.T) {
 	list := rt.JsonValue{Kind: rt.JsonArray}

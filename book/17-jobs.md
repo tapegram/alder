@@ -173,8 +173,8 @@ Job.status      : Job.Id -> Query (Maybe Job.Status)
   the same key is queued or running; then nothing is added, and that
   job's id comes back. The key belongs to the kind, so `SendWelcome` and
   `Digest` may both use `"u1"`, and a job that is done or dead frees it.
-- **`Job.status id`** is the job's state (`Queued`, `Running`, `Done`
-  or `Dead`), its attempts so far, its last error, and while it is
+- **`Job.status id`** is the job's state (`Queued`, `Running`, `Done`,
+  `Dead` or `Cancelled`), its attempts so far, its last error, and while it is
   queued, when it is due; `Nothing` when there is no such job.
 
 The first four give back the job's `Job.Id`, eight hex characters like a
@@ -279,6 +279,7 @@ Export.view model session =
         Running -> "Working",
         Done -> "Ready",
         Dead -> "Failed",
+        Cancelled -> "Cancelled",
       }}</p>,
       Nothing -> <p id="state">No such job</p>,
     }}

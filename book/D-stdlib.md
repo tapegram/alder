@@ -2399,13 +2399,14 @@ which store the job is in. In a `test`, `Job.Id "x"` is an id that names no job,
 ### `Job.State`
 
 ```alder fragment
-type State = Queued | Running | Done | Dead
+type State = Queued | Running | Done | Dead | Cancelled
 ```
 
 Where a job stands: waiting, running, finished, or given up.
 
 `Queued` waits for its time and a free worker, `Running` is being run, `Done` finished, and
 `Dead` failed on every attempt its `retries` allow, or had parameters this build cannot read.
+`Cancelled` was taken back by `Job.cancel`, the Jobs page or `alder jobs cancel`.
 The constructors are written bare, like `Just`. A constructor of the same name that the
 module declares, or one of a module it imports, comes first; one of a module it does not
 import does not.

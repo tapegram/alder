@@ -124,6 +124,7 @@ Export.view model session =
         Running -> "Running",
         Done -> "Done",
         Dead -> "Dead",
+        Cancelled -> "Cancelled",
       }}</p>,
       Nothing -> <p id="state">No such job</p>,
     }}

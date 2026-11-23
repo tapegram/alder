@@ -29,9 +29,10 @@ const (
 	JobRunning
 	JobDone
 	JobDead
+	JobCancelled
 )
 
-// JobState is the stdlib `Job.State`: Queued | Running | Done | Dead.
+// JobState is the stdlib `Job.State`: Queued | Running | Done | Dead | Cancelled.
 type JobState struct{ Tag JobStateTag }
 
 // JobStatusRecord is the stdlib `Job.Status` (fields as gen's Field names them).
@@ -43,7 +44,7 @@ type JobStatusRecord struct {
 }
 
 func init() {
-	rt.RegisterUnion(reflect.TypeOf(JobStateTag(0)), []string{"Queued", "Running", "Done", "Dead"})
+	rt.RegisterUnion(reflect.TypeOf(JobStateTag(0)), []string{"Queued", "Running", "Done", "Dead", "Cancelled"})
 }
 
 // JobEnqueue is Job.enqueue: j, due now, in the running Task's transaction (jobs.Enqueue). It is
@@ -93,8 +94,8 @@ func JobStatus(id string) eff.Query[rt.Maybe[JobStatusRecord]] {
 	}))
 }
 
-// JobStatusOf is s as the stdlib `Job.Status`. A state that is none of queued, running, done and
-// dead (a row a newer build or a hand edit wrote) is an error, not reported as any of them.
+// JobStatusOf is s as the stdlib `Job.Status`. A state that is none of queued, running, done,
+// dead and cancelled (a row a newer build or a hand edit wrote) is an error, not reported as any of them.
 func JobStatusOf(s jobs.Status) (JobStatusRecord, error) {
 	out := JobStatusRecord{Attempts: int64(s.Attempts), Error: rt.Nothing[string](), RunAt: rt.Nothing[time.Time]()}
 	switch s.State {
@@ -106,8 +107,10 @@ func JobStatusOf(s jobs.Status) (JobStatusRecord, error) {
 		out.State.Tag = JobDone
 	case jobs.Dead:
 		out.State.Tag = JobDead
+	case jobs.Cancelled:
+		out.State.Tag = JobCancelled
 	default:
-		return out, fmt.Errorf("Job.status: the job's state %q is none of queued, running, done and dead", string(s.State))
+		return out, fmt.Errorf("Job.status: the job's state %q is none of queued, running, done, dead and cancelled", string(s.State))
 	}
 	if s.Error != nil {
 		out.Error = rt.Just(*s.Error)

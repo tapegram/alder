@@ -32,7 +32,7 @@ const jobsHelpNote = `
 alder jobs lists the jobs in the app's dev database (build/<app>/dev.db, or the file --db names)
 and in its silo databases (silos/<key>/*.db beside it): the count in each state, each scheduled
 job's next tick, and the dead jobs with their attempts and error.
-  alder jobs retry <id>     queue a dead job again, due now: attempts 0, its error cleared
+  alder jobs retry <id>     queue a dead or cancelled job again, due now: attempts 0, its error cleared
   alder jobs retry --dead   the same for every dead job
   alder jobs run <Kind>     queue a run of a job without parameters, due now, beside its schedule
 A retried schedule tick runs once: no next tick is queued after it (the job's queued tick stays).
@@ -46,7 +46,7 @@ type jobsStore struct {
 }
 
 // runJobsTo is `alder jobs [retry <id> | retry --dead | run <Kind>] [dir] [--db FILE]
-// [--build-dir DIR]`. Exit 0; 1 when an operation is refused (an unknown id, a job not dead, a
+// [--build-dir DIR]`. Exit 0; 1 when an operation is refused (an unknown id, a job neither dead nor cancelled, a
 // key held, an app with errors); 2 for usage, a database that cannot be read, and `run` of a
 // kind the app lacks or one with parameters.
 func runJobsTo(args []string, stdout, stderr io.Writer) int {
@@ -286,7 +286,7 @@ func jobsList(ctx context.Context, path string, stores []jobsStore, stdout, stde
 	})
 	fmt.Fprintf(stdout, "jobs in %s%s:\n", path, siloCount(stores, "and"))
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	for _, st := range []jobs.State{jobs.Queued, jobs.Running, jobs.Dead, jobs.Done} {
+	for _, st := range []jobs.State{jobs.Queued, jobs.Running, jobs.Dead, jobs.Cancelled, jobs.Done} {
 		fmt.Fprintf(tw, "  %s\t%d\n", st, counts[st])
 	}
 	tw.Flush()

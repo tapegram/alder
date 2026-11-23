@@ -48,6 +48,8 @@ const (
 	Running State = "running" // claimed by a worker
 	Done    State = "done"    // its attempt committed
 	Dead    State = "dead"    // failed past its retries, or its parameters cannot be decoded
+	// Cancelled was taken back by Job.cancel, the Jobs page or `alder jobs cancel`.
+	Cancelled State = "cancelled"
 )
 
 // on is where the running effect of env writes the jobs table: its Task's transaction (begun

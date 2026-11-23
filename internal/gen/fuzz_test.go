@@ -329,13 +329,13 @@ func TestJobFuzz(t *testing.T) {
 	for seed := range uint64(200) {
 		seen[J__states(fuzz.Fresh(seed)).Tag] = true
 	}
-	if len(seen) != 4 {
-		t.Fatalf("drew states %v, want all four", seen)
+	if len(seen) != 5 {
+		t.Fatalf("drew states %v, want all five", seen)
 	}
 	p := Tests[0].Prop
 	for seed := range uint64(50) {
 		s := p.Draw(fuzz.Fresh(seed))[0].(std.JobStatusRecord)
-		if s.State.Tag > std.JobDead {
+		if s.State.Tag > std.JobCancelled {
 			t.Fatalf("status state %v", s.State.Tag)
 		}
 	}
