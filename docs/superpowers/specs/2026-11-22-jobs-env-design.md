@@ -6,7 +6,7 @@ each with a recommendation. Builds on the jobs design (`2026-11-15-background-jo
 §7, §7a, §9), the silo hints (`2026-11-21-jobs-silo-hints.md`), the deploy targets (book 16) and
 the silo commands (`cmd/alder/silos.go`, `internal/deploy/ssh_silos.go`).
 
-## Open questions for the user
+## Decisions (open questions ruled by the user 2026-11-22: every recommendation accepted)
 
 1. **Render: open Turso from this machine, or run the build's binary here?** The CLI opening the
    shared database and the silo children directly over Turso's URL and a minted token (as every

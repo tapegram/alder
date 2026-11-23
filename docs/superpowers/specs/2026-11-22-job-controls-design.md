@@ -5,7 +5,7 @@ Design for #283, the follow-up filed when #168 landed (spec `2026-11-15-backgrou
 every choice is the author's, and the ones a reader would most plausibly overturn are listed first.
 Line references are to main at the time of writing (98b36736 plus the silo-hints PR).
 
-## Open questions for the user
+## Decisions (open questions ruled by the user 2026-11-22: every recommendation accepted)
 
 1. **A fifth `Job.State`, `Cancelled`.** A cancelled job is a row that says so, in the panel and
    in `Job.status`. Adding a constructor to a stdlib union is breaking: an app's exhaustive
