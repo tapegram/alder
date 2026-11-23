@@ -165,7 +165,7 @@ type RouteDecl struct {
 	Guard
 }
 
-// JobDecl is `job NAME = { params } [every "…"] [cron "…"] [retries N] [timeout "…"] [silo KEY]`,
+// JobDecl is `job NAME = { params } [every "…"] [cron "…"] [retries N] [timeout "…"] [silo KEY] [priority N]`,
 // the options in any order, each at most once. The options are words after the record, not
 // keywords; Options keeps the order they were written in. The literals are as written, unparsed.
 type JobDecl struct {
@@ -178,7 +178,11 @@ type JobDecl struct {
 	Retries  *IntLit
 	Timeout  *StringLit
 	Silo     string // "" when absent
-	Options  []JobOption
+	// Priority is `priority N` with its sign applied; nil when absent or when the number is not
+	// whole, which keeps the literal as written in PriorityText for the checker (E0050).
+	Priority     *IntLit
+	PriorityText string
+	Options      []JobOption
 }
 
 // JobOption is one option of a job declaration, by name and place.

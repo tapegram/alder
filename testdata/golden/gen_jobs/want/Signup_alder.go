@@ -106,6 +106,8 @@ type Signup__Everything__Params struct {
 	Outcome rt.Result[string, int64]
 }
 
+type Signup__Urgent__Params struct{}
+
 func Signup__SendWelcome__run(p Signup__SendWelcome__Params) eff.Task[struct{}] {
 	return eff.Bind(eff.Call("Db.get User", false, func(_e1 *eff.Env) (rt.Maybe[Table__User__User], error) {
 		return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Table__User__User, p.User)
@@ -172,3 +174,9 @@ func Signup__Everything__run(p Signup__Everything__Params) eff.Task[struct{}] {
 func Signup__welcome(u string) rt.Job {
 	return rt.Job{Kind: "Signup.SendWelcome", Params: rt.JsonEncode(jobenc__Signup__SendWelcome__Params(Signup__SendWelcome__Params{User: u}))}
 }
+
+func Signup__Urgent__run(p Signup__Urgent__Params) eff.Task[struct{}] {
+	return eff.Pure(struct{}{})
+}
+
+var Signup__urgent rt.Job = rt.Job{Kind: "Signup.Urgent", Params: rt.JsonEncode(jobenc__Signup__Urgent__Params(Signup__Urgent__Params{})), Priority: 10}

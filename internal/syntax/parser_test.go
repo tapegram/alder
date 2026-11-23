@@ -765,12 +765,16 @@ func TestParse_JobDecl(t *testing.T) {
 		"job Hourly      = {} every \"1h\"\n" +
 		"job Nightly     = {} cron \"0 3 * * *\"\n" +
 		"job Charge      = { invoice: Invoice.InvoiceId } retries 0 timeout \"30s\"\n" +
-		"job Mixed       = {} timeout \"5s\" silo org retries 2 every \"2m\" cron \"* * * * *\"\n"
+		"job Mixed       = {} timeout \"5s\" silo org retries 2 every \"2m\" cron \"* * * * *\"\n" +
+		"job Urgent      = {} priority 10\n" +
+		"job Low         = {} priority -5\n" +
+		"job Frac        = {} priority 1.5\n" +
+		"job Ordered     = {} retries 2 priority 1 silo org\n"
 	m, diags := ParseFile("m.alder", []byte(src))
 	if len(diags) != 0 {
 		t.Fatal(diags)
 	}
-	if len(m.Decls) != 6 {
+	if len(m.Decls) != 10 {
 		t.Fatalf("%d decls", len(m.Decls))
 	}
 	job := func(i int) *JobDecl { return m.Decls[i].(*JobDecl) }
@@ -793,6 +797,18 @@ func TestParse_JobDecl(t *testing.T) {
 	if d.Timeout.Text != "5s" || d.Silo != "org" || d.Retries.Value != 2 || d.Every.Text != "2m" || d.Cron.Text != "* * * * *" {
 		t.Errorf("%+v", d)
 	}
+	if u := job(6); u.Priority == nil || u.Priority.Value != 10 || u.PriorityText != "" || job(0).Priority != nil {
+		t.Errorf("priority 10: %+v", u)
+	}
+	if l := job(7); l.Priority == nil || l.Priority.Value != -5 {
+		t.Errorf("priority -5: %+v", l)
+	}
+	if f := job(8); f.Priority != nil || f.PriorityText != "1.5" {
+		t.Errorf("priority 1.5: %+v", f)
+	}
+	if o := job(9); o.Priority == nil || o.Priority.Value != 1 || o.Retries.Value != 2 || o.Silo != "org" {
+		t.Errorf("any order: %+v", o)
+	}
 	var names []string
 	for _, o := range d.Options {
 		names = append(names, o.Name)
@@ -814,9 +830,12 @@ func TestParse_JobDecl_Errors(t *testing.T) {
 		"job A = {} every \"1h\" every \"2h\"": "every",
 		"job A = {} retries \"x\"":             "retries",
 		"job A = {} cron 5":                    "cron",
+		"job A = {} priority \"high\"":         "expected a whole number after `priority`",
+		"job A = {} priority":                  "expected a whole number after `priority`",
+		"job A = {} priority 1 priority 2":     "given more than once",
 	} {
 		_, diags := ParseFile("m.alder", []byte("module M\n\n"+src+"\n"))
-		if len(diags) == 0 || !strings.Contains(diags[0].Message, "`"+want+"`") {
+		if len(diags) == 0 || !(strings.Contains(diags[0].Message, "`"+want+"`") || strings.Contains(diags[0].Message, want)) {
 			t.Errorf("%s: want an error naming `%s`, got %v", src, want, diags)
 		}
 	}

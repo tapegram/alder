@@ -304,6 +304,20 @@ func jobenc__Signup__Everything__Params(v Signup__Everything__Params) rt.JsonVal
 	})}, {Key: "tree", Value: jobenc__Signup__Tree(v.Tree)}, {Key: "outcome", Value: jobenc__rt_Result_string_int64(v.Outcome)}}}
 }
 
+// jobdec__Signup__Urgent__Params reads a Signup__Urgent__Params from a job's parameters' JSON at path.
+func jobdec__Signup__Urgent__Params(v rt.JsonValue, path string) (Signup__Urgent__Params, error) {
+	var r Signup__Urgent__Params
+	if v.Kind != rt.JsonObject {
+		return r, std.JobWant(path, "an object", v)
+	}
+	return r, nil
+}
+
+// jobenc__Signup__Urgent__Params is a Signup__Urgent__Params as a job's parameters' JSON.
+func jobenc__Signup__Urgent__Params(v Signup__Urgent__Params) rt.JsonValue {
+	return rt.JsonValue{Kind: rt.JsonObject}
+}
+
 // Jobs are the app's jobs (#168), in module order then declaration order: each kind's
 // qualified name, its options, and Run, which decodes a row's parameters and gives its `run`.
 func Jobs() []jobs.Kind {
@@ -369,6 +383,22 @@ func Jobs() []jobs.Kind {
 		},
 		Retries: 0,
 		Timeout: 30000000000, // 30s
+	}, {
+		Name: "Signup.Urgent",
+		Run: func(e *eff.Env, params string) (eff.Task[struct{}], error) {
+			v, err := std.JobParse(params)
+			if err != nil {
+				return eff.Task[struct{}]{}, err
+			}
+			p, err := jobdec__Signup__Urgent__Params(v, "")
+			if err != nil {
+				return eff.Task[struct{}]{}, err
+			}
+			return Signup__Urgent__run(p), nil
+		},
+		Retries:  4,
+		Timeout:  300000000000, // 5m0s
+		Priority: 10,
 	}}
 }
 

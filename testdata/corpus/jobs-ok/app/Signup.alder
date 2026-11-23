@@ -85,6 +85,11 @@ job Second = {}
 Second.run : Second.Params -> Task Unit
 Second.run p = Task.succeed ()
 
+job Urgent = {} priority 10
+
+Urgent.run : Urgent.Params -> Task Unit
+Urgent.run p = Task.succeed ()
+
 job Forever = {}
 
 Forever.run : Forever.Params -> Task Unit
@@ -224,3 +229,10 @@ test "enqueueIn is due after its delay" = {
 }
 
 test "any job id" = \(id : Job.Id) -> id == id
+
+test "the higher priority runs first" = {
+  let _ <- Job.enqueue (Second {})
+  let _ <- Job.enqueue (Urgent {})
+  let runs <- Test.work
+  Task.succeed (List.map (\r -> r.job) runs == [Urgent {}, Second {}])
+}

@@ -417,3 +417,20 @@ test "a Job.Id of any text" = Job.Id "x" == Job.Id "x"
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestJob_Priority(t *testing.T) {
+	_, got := checkFiles(t, jobApp(t, jobModule("job J = {} priority 1.5\n\n"+runArm("J"))))
+	wantJobDiag(t, got, diag.JobSchedule, "`priority 1.5`", "a priority is a whole number, as in `priority 10`")
+	res, got := checkFiles(t, jobApp(t, jobModule("job J = {} priority -5\n\n"+runArm("J"))))
+	if len(got) != 0 || res.Jobs["Signup"][0].Priority != -5 {
+		t.Fatalf("priority -5: got %q, jobs %+v", got, res.Jobs["Signup"])
+	}
+	res, got = checkFiles(t, jobApp(t, jobModule("job J = {} priority 10 retries 2\n\n"+runArm("J"))))
+	if len(got) != 0 || res.Jobs["Signup"][0].Priority != 10 {
+		t.Fatalf("priority 10: got %q, jobs %+v", got, res.Jobs["Signup"])
+	}
+	res, _ = checkFiles(t, jobApp(t, jobModule("job J = {}\n\n"+runArm("J"))))
+	if p := res.Jobs["Signup"][0].Priority; p != 0 {
+		t.Errorf("no priority: %d", p)
+	}
+}

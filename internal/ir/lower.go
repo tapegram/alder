@@ -647,7 +647,7 @@ func (l *lowerer) declareTypes() {
 				fields = info.Decl.Params.Fields
 			}
 			j := &Job{Module: name, Name: info.Name, Params: addRecord(info.Params.Name, info.Params, fields), Retries: info.Retries,
-				Timeout: info.Timeout, Every: info.Every, Cron: info.Cron, SiloParam: info.Silo}
+				Timeout: info.Timeout, Every: info.Every, Cron: info.Cron, SiloParam: info.Silo, Priority: info.Priority}
 			l.jobs[key(name, info.Name)] = j
 			l.out.Jobs = append(l.out.Jobs, j)
 		}

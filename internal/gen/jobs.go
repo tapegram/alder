@@ -71,6 +71,9 @@ func (g *gen) jobsSource(p *ir.Program) string {
 		if j.SiloParam != "" {
 			k += "SiloParam: " + strconv.Quote(j.SiloParam) + ",\n"
 		}
+		if j.Priority != 0 {
+			k += fmt.Sprintf("Priority: %d,\n", j.Priority)
+		}
 		kinds = append(kinds, k+"}")
 	}
 	var b strings.Builder
@@ -89,7 +92,11 @@ func (g *gen) jobsSource(p *ir.Program) string {
 func (f *fn) jobRef(x *ir.JobRef, s *scope) string {
 	j := x.Job
 	enc := "jobenc__" + jobFuncName(GoName(j.Params.Module, j.Params.Name))
-	return "rt.Job{Kind: " + strconv.Quote(j.Module+"."+j.Name) + ", Params: rt.JsonEncode(" + enc + "(" + f.code(x.Params, s) + "))}"
+	prio := ""
+	if j.Priority != 0 {
+		prio = ", Priority: " + strconv.Itoa(j.Priority)
+	}
+	return "rt.Job{Kind: " + strconv.Quote(j.Module+"."+j.Name) + ", Params: rt.JsonEncode(" + enc + "(" + f.code(x.Params, s) + "))" + prio + "}"
 }
 
 // jobFuncName makes the Go type typ an identifier: every run of other characters one '_'.

@@ -11,7 +11,7 @@ import (
 // value's == and Show are those of its kind and parameters, and Open's App serves, gives a job
 // its Env (JobEnv), starts and stops its workers and closes.
 func TestJobCodec_RoundTrip(t *testing.T) {
-	runE2E(t, "../../testdata/golden/gen_jobs", "testdata/e2e_jobs_test.go.txt", "TestJobCodec_RoundTrip", "TestJobCodec_Drift", "TestJobValue_Eq", "TestApp_Open")
+	runE2E(t, "../../testdata/golden/gen_jobs", "testdata/e2e_jobs_test.go.txt", "TestJobCodec_RoundTrip", "TestJobCodec_Drift", "TestJobValue_Eq", "TestJobValue_Priority", "TestApp_Open")
 }
 
 // An app without jobs has an empty Jobs().

@@ -33,6 +33,7 @@ type JobInfo struct {
 	Every        time.Duration // 0 without `every`
 	Cron         string        // "" without `cron`; read in rt/jobs (Task 11)
 	Silo         string        // the `silo k` key when it is valid, else ""
+	Priority     int           // `priority N`, 0 without it
 }
 
 // job is job name of module, nil when there is none.
@@ -163,6 +164,12 @@ func (mc *modCtx) jobOptions(jd *syntax.JobDecl, info *JobInfo) {
 	}
 	if jd.Retries != nil { // the parser takes a whole number only: `retries -1` is E0001
 		info.Retries = int(jd.Retries.Value)
+	}
+	if jd.Priority != nil {
+		info.Priority = int(jd.Priority.Value)
+	}
+	if jd.PriorityText != "" { // the parser keeps a number that is not whole as written
+		c.errorf(diag.JobSchedule, jd.Span, "`priority %s`: a priority is a whole number, as in `priority 10`", jd.PriorityText)
 	}
 	if jd.Silo != "" {
 		info.Silo = mc.jobSilo(jd, info.Params)

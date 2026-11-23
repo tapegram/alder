@@ -339,6 +339,7 @@ type Job struct {
 	Every        time.Duration
 	Cron         string
 	SiloParam    string
+	Priority     int // `priority N`, 0 without it
 }
 
 // Capability is a `capability` declaration: Entries are its functions with their types.

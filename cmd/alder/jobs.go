@@ -428,12 +428,14 @@ func jobsRun(ctx context.Context, dir, path, kind string, stdout, stderr io.Writ
 	}
 	var all, match []string
 	params := map[string][]string{}
+	priority := map[string]int{}
 	for _, mod := range slices.Sorted(maps.Keys(res.Jobs)) {
 		for _, j := range res.Jobs[mod] {
 			q := j.Module + "." + j.Name
 			all = append(all, q)
 			if kind == j.Name || kind == q {
 				match = append(match, q)
+				priority[q] = j.Priority
 				var names []string
 				for _, f := range j.Params.Fields {
 					names = append(names, f.Name)
@@ -465,8 +467,7 @@ func jobsRun(ctx context.Context, dir, path, kind string, stdout, stderr io.Writ
 		err = jobs.EnsureTable(ctx, q)
 	}
 	if err == nil {
-		// Task 6: the priority becomes the checker's JobInfo.Priority.
-		id, err = jobs.Manual(ctx, q, jobs.Kind{Name: name, Priority: 0}, time.Now())
+		id, err = jobs.Manual(ctx, q, jobs.Kind{Name: name, Priority: priority[name]}, time.Now())
 	}
 	if err != nil {
 		return fail(2, "%s: %v", path, err)

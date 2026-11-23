@@ -76,3 +76,12 @@ Everything.run p = {
 -- A job value, built in Alder (TestJobValue_Eq).
 welcome : User.UserId -> Job
 welcome u = SendWelcome { user: u }
+
+-- A job with a priority (TestJobValue_Priority).
+job Urgent = {} priority 10
+
+Urgent.run : Urgent.Params -> Task Unit
+Urgent.run p = Task.succeed ()
+
+urgent : Job
+urgent = Urgent {}

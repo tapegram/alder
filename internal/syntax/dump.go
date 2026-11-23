@@ -109,6 +109,12 @@ func dump(sb *strings.Builder, n any) {
 				}
 			case "silo":
 				sb.WriteString(" " + x.Silo)
+			case "priority":
+				if x.Priority != nil {
+					fmt.Fprintf(sb, " %d", x.Priority.Value)
+				} else {
+					sb.WriteString(" " + x.PriorityText)
+				}
 			}
 		}
 		sb.WriteByte(')')

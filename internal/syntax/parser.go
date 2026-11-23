@@ -380,7 +380,7 @@ func (p *Parser) checkModSegment(t Token) {
 var routeMethods = map[string]bool{"GET": true, "POST": true, "PUT": true, "PATCH": true, "DELETE": true}
 
 // parseJobDecl reads `job NAME = { params } options`; the options are the words every, cron,
-// retries, timeout and silo, in any order, each at most once.
+// retries, timeout, silo and priority, in any order, each at most once.
 func (p *Parser) parseJobDecl(start Token) Decl {
 	p.advance()
 	d := &JobDecl{}
@@ -394,9 +394,9 @@ func (p *Parser) parseJobDecl(start Token) Decl {
 	for p.at(LIdent) {
 		ot := p.tok
 		switch ot.Text {
-		case "every", "cron", "retries", "timeout", "silo":
+		case "every", "cron", "retries", "timeout", "silo", "priority":
 		default:
-			p.errorAt(ot, "unknown job option `"+ot.Text+"`; the options are every, cron, retries, timeout and silo")
+			p.errorAt(ot, "unknown job option `"+ot.Text+"`; the options are every, cron, retries, timeout, silo and priority")
 			p.skipLine()
 			d.Span = p.spanFrom(start)
 			return d
@@ -426,10 +426,40 @@ func (p *Parser) parseJobDecl(start Token) Decl {
 			}
 		case "silo":
 			d.Silo = p.expect(LIdent, "silo key").Text
+		case "priority":
+			p.parsePriority(d)
 		}
 	}
 	d.Span = p.spanFrom(start)
 	return d
+}
+
+// parsePriority reads the number after `priority`: `-`? and then an Int, which is d.Priority, or a
+// Float, kept as written in d.PriorityText for the checker to refuse (E0050).
+func (p *Parser) parsePriority(d *JobDecl) {
+	first := p.tok
+	neg := p.at(Minus)
+	if neg {
+		p.advance()
+	}
+	it := p.tok
+	switch {
+	case p.at(Int):
+		p.advance()
+		d.Priority = p.intLit(it, false)
+		if neg {
+			d.Priority.Value = -d.Priority.Value
+			d.Priority.Span.Start = p.posOf(first)
+		}
+	case p.at(Float):
+		p.advance()
+		d.PriorityText = it.Text
+		if neg {
+			d.PriorityText = "-" + it.Text
+		}
+	default:
+		p.errorAt(it, "expected a whole number after `priority`, got "+describe(it))
+	}
 }
 
 // parseOptionString reads the string literal after a job option, its text kept as written.

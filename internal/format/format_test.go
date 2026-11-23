@@ -241,12 +241,17 @@ func TestFormat_Job(t *testing.T) {
 		"job Digest      = { org: Org.OrgId } silo org\n" +
 		"job Hourly      = {} every \"1h\"\n" +
 		"job Nightly     = {} cron \"0 3 * * *\"\n" +
-		"job Charge      = { invoice: Invoice.InvoiceId } retries 0 timeout \"30s\"\n"
+		"job Charge      = { invoice: Invoice.InvoiceId } retries 0 timeout \"30s\"\n" +
+		"job BuildExport = { user: User.UserId } priority 10\n"
 	if got := string(format(t, "m.alder", []byte(block))); got != block {
 		t.Fatalf("not a fixed point\n--- got:\n%s\n--- want:\n%s", got, block)
 	}
 	got := string(format(t, "m.alder", []byte("module M\n\njob   A={}  retries 2\n")))
 	if want := "module M\n\njob A = {} retries 2\n"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	got = string(format(t, "m.alder", []byte("module M\n\njob A={}  priority   -5\n")))
+	if want := "module M\n\njob A = {} priority -5\n"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 	// options keep their source order

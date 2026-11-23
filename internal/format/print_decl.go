@@ -350,6 +350,12 @@ func (p *printer) jobLines(js []*syntax.JobDecl) Doc {
 				line += " retries " + strconv.FormatInt(j.Retries.Value, 10)
 			case "silo":
 				line += " silo " + j.Silo
+			case "priority":
+				if j.Priority != nil {
+					line += " priority " + strconv.FormatInt(j.Priority.Value, 10)
+				} else {
+					line += " priority " + j.PriorityText
+				}
 			}
 		}
 		out = append(out, p.lead(j, true), Text(line), p.trail(j))

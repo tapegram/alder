@@ -143,6 +143,26 @@ func TestJobValue_Eq(t *testing.T) {
 	}
 }
 
+// TestJobValue_Priority: the constructor of `job Urgent = {} priority 10` gives Priority 10 (so
+// it equals a Test.work row), and Jobs() has the kind's Priority; the other jobs give 0.
+func TestJobValue_Priority(t *testing.T) {
+	if u := Signup__urgent; u.Kind != "Signup.Urgent" || u.Priority != 10 {
+		t.Errorf("urgent = %+v, want Priority 10", u)
+	}
+	if w := Signup__welcome("u1"); w.Priority != 0 {
+		t.Errorf("welcome = %+v, want Priority 0", w)
+	}
+	for _, k := range Jobs() {
+		want := 0
+		if k.Name == "Signup.Urgent" {
+			want = 10
+		}
+		if k.Priority != want {
+			t.Errorf("%s: Priority %d, want %d", k.Name, k.Priority, want)
+		}
+	}
+}
+
 type mailer struct{}
 
 func (mailer) Send(context.Context, Args__Email__Email__Send) (struct{}, error) {

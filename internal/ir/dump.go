@@ -178,7 +178,7 @@ func routeForm(p *Program, r *Route) *sx {
 }
 
 // jobForm is (job M.J (params T) (run M.J.run)? (retries N) (timeout D) (every D)? (cron "c")?
-// (silo k)?).
+// (silo k)? (priority N)?).
 func jobForm(j *Job) *sx {
 	d := &dumper{home: j.Module}
 	x := list(2, atom("job"), atom(j.Module+"."+j.Name), atoms("params", d.rt(j.Params)))
@@ -194,6 +194,9 @@ func jobForm(j *Job) *sx {
 	}
 	if j.SiloParam != "" {
 		x.items = append(x.items, atoms("silo", j.SiloParam))
+	}
+	if j.Priority != 0 {
+		x.items = append(x.items, atoms("priority", strconv.Itoa(j.Priority)))
 	}
 	return x
 }
