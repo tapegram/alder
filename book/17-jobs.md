@@ -162,6 +162,7 @@ Job.enqueue     : Job -> Task Job.Id
 Job.enqueueAt   : Time -> Job -> Task Job.Id
 Job.enqueueIn   : Int -> Job -> Task Job.Id
 Job.enqueueOnce : Text -> Job -> Task Job.Id
+Job.cancel      : Job.Id -> Task Bool
 Job.status      : Job.Id -> Query (Maybe Job.Status)
 ```
 
@@ -172,7 +173,12 @@ Job.status      : Job.Id -> Query (Maybe Job.Status)
 - **`Job.enqueueOnce key`** queues it unless a job of the same kind with
   the same key is queued or running; then nothing is added, and that
   job's id comes back. The key belongs to the kind, so `SendWelcome` and
-  `Digest` may both use `"u1"`, and a job that is done or dead frees it.
+  `Digest` may both use `"u1"`, and a job that is done, dead or
+  cancelled frees it.
+- **`Job.cancel id`** takes a job back: `True` when it was queued or
+  running and is now `Cancelled`, `False` when there is no such job, it
+  is finished, or it is a schedule's queued tick (to stop a schedule,
+  remove it from the job).
 - **`Job.status id`** is the job's state (`Queued`, `Running`, `Done`,
   `Dead` or `Cancelled`), its attempts so far, its last error, and while it is
   queued, when it is due; `Nothing` when there is no such job.
@@ -207,6 +213,17 @@ not exist, and a user is never created without the job.
 
 A job may queue jobs too, itself included: `Job.enqueue` is a `Task`
 step like any other.
+
+A cancel is a statement in the `Task`'s transaction too, so a `Task`
+that fails after it takes the cancel back. A queued job that is
+cancelled never runs. A running one is stopped at its next step in the
+process that runs it, and within a second (the workers' poll) in
+another process; its writes are undone, and its log line
+says `cancelled`. The job stays as a row marked `Cancelled`, with its
+attempts and last error as they were, so `Job.status` and the Jobs page
+can say what happened. A job that cancels itself rolls the cancel back
+with its own writes, so to stop early a job returns
+`Task.succeed ()`.
 
 Waiting is done with `enqueueIn`, not with a sleep:
 
@@ -251,7 +268,7 @@ redirects to a page whose route takes a `Job.Id`, and that page reads
 the job with `Job.status`:
 
 ```alder
-job BuildExport = {}
+job BuildExport = {} priority 10
 
 BuildExport.run : BuildExport.Params -> Task Unit
 BuildExport.run p = Task.succeed ()
@@ -260,10 +277,18 @@ route Start = POST "/exports" { }
 
 route Export = GET "/exports/{job}" { job: Job.Id }
 
+route Stop = DELETE "/exports/{job}" { job: Job.Id }
+
 Start.update : Start.Params -> Session -> Task Response
 Start.update p session = {
   let id <- Job.enqueue (BuildExport {})
   Task.succeed (Response.redirect (Export { job: id }))
+}
+
+Stop.update : Stop.Params -> Session -> Task Response
+Stop.update p session = {
+  let _ <- Job.cancel p.job
+  Task.succeed (Response.redirect (Export { job: p.job }))
 }
 
 Export.load : Export.Params -> Session -> Query { id: Job.Id, status: Maybe Job.Status }
@@ -283,6 +308,7 @@ Export.view model session =
       }}</p>,
       Nothing -> <p id="state">No such job</p>,
     }}
+    <button click={Stop { job: model.id }}>Stop</button>
   </body></html>
 ```
 
@@ -295,7 +321,10 @@ write `Job.Id "00000000"` to make such an id; app code gets its ids from
 id because the view has no route parameters: it is how the `<p>` names
 its own page in `load={Export { job: model.id }} every="2s"`, which
 fetches the page again every two seconds while the element is shown
-(chapter 6, "Patterns").
+(chapter 6, "Patterns"). The Stop button sends `Stop`, which cancels
+the job and redirects back to the page, and the next fetch shows
+`Cancelled`; for a finished job `Job.cancel` is `False`, the redirect is
+the same, and the page shows what the job came to.
 
 When the thing outlives the run, put the id on the row the job is about
 instead, and let any page that shows the row look the job up:
@@ -489,8 +518,8 @@ its workers look in):
 - a running row past its lease is queued again with the error
   `lost: the process stopped`, and the attempt counts, so a job that
   crashes its process every time still goes dead;
-- done rows are deleted a week after they finished, dead rows after 30
-  days;
+- done and cancelled rows are deleted a week after they finished, dead
+  rows after 30 days;
 - each scheduled job gets its next tick if it has none ("Schedules");
 - a job of a kind no running build knows, due for more than a day, is a
   warn line (once per kind).
@@ -524,6 +553,12 @@ it stays in the table with its error and is not tried again until
 someone retries it by hand (the Jobs page or `alder jobs retry`, below).
 `retries 0` runs a job once: the first failure is dead.
 
+A **cancelled** job is final too, and is kept a week after it was
+cancelled, as a done one is. It is not retried by itself: retry it by
+hand, the same way as a dead one (the Jobs page or `alder jobs retry`),
+which queues it again with its attempts at 0. Anything else is refused
+with `only a dead or cancelled job is retried`.
+
 The error is the text of what failed: the `Task.fail` message, the
 capability's error, `timed out after 5m`, `lost: the process stopped`,
 the first line of a panic (the whole stack is in the log), or
@@ -552,7 +587,10 @@ transaction begins at the job's first write and ends with the `Task`.
 So a job that marks a row "started", then calls an AI model for forty
 seconds, holds the write lock for forty seconds. Every request that
 writes waits, and one that waits more than five seconds (the database's
-busy timeout) fails.
+busy timeout) fails. A `Job.cancel` of a job that is in the middle of
+writing waits for that transaction in the same way: it fails, after five
+seconds, if the job has not finished. A job that is only reading or
+calling holds no lock, and the cancel lands at once.
 
 The shape that avoids it: **read and call first, write last.** And for a
 batch, **fan out**: one job reads the ids and queues one small job per
@@ -712,6 +750,11 @@ transaction as usual. When they differ, the mark is a second short
 transaction after the job's commit. A crash between the two runs the
 job again: the same advice as above, for a window that is rare.
 
+A `Job.cancel` follows the `Task`'s store for a job stored there. For a
+job stored in the shared store, from a `Task` bound to a silo, the cancel
+is its own statement, committed at once and not part of the `Task`'s
+transaction: a `Task` that fails afterwards does not take it back.
+
 **Where the workers look.** The shared store always. A silo only while
 it is in the workers' **active set**: every silo that has jobs when the
 workers start (one pass that opens each silo database read-only,
@@ -730,13 +773,15 @@ the test's transaction, so it is there for the test to see and gone
 with the test. Two steps run and read the queue:
 
 - **`Test.jobs`** lists every job in the test's database, oldest first,
-  with its status.
+  with its status: `Queued`, `Done`, `Dead` or `Cancelled`.
 
-- **`Test.work`** runs every job due at the test's clock, oldest first,
-  each as its own `Task` (a failed one has its writes undone, and its
+- **`Test.work`** runs every job due at the test's clock, highest
+  priority first and then oldest, each as its own `Task` (a failed one has its writes undone, and its
   row records the attempt as a worker's would), and goes on while the
   jobs it ran queued more that are due. It gives each run with its
-  `result`: `Ok ()`, or `Err` with the error.
+  `result`: `Ok ()`, or `Err` with the error. It runs queued rows only,
+  so a cancelled job does not run. `Job.cancel` in a test is the same
+  statement in the test's transaction.
 
 A failure, the wait before the retry, and the death, on a set clock:
 
@@ -801,6 +846,7 @@ Each attempt is one line that names the job and its id, so
 job Signup.SendWelcome a1b2c3d4 done 120ms attempt 1
 job Signup.SendWelcome a1b2c3d4 failed attempt 2/5 "smtp: timeout", next in 1m
 job Signup.SendWelcome a1b2c3d4 failed attempt 5/5 "smtp: timeout", dead
+job Signup.SendWelcome a1b2c3d4 cancelled 120ms attempt 1
 job Signup.SendWelcome a1b2c3d4 stopped, queued again
 ```
 
@@ -816,7 +862,8 @@ The metrics (`alder_jobs_total`, `alder_job_duration_seconds`,
 
 Under `alder run` (development mode only), `/_dev/jobs` lists the
 app's jobs: each scheduled job with its next tick, then the queued,
-running and dead jobs, and the last fifty done. It reads the shared
+running and dead jobs, and the last fifty done and the last fifty
+cancelled. It reads the shared
 database and the silos the process has open or its workers look in. A
 silo of the active set that is closed with nothing due is not opened
 for the page: it is listed as a line, "closed with nothing due, or
@@ -825,11 +872,17 @@ under maintenance; its jobs are read again when one is due".
 A job's own page, `/_dev/jobs/<id>`, shows its row, its parameters and
 its error, and:
 
-- **Retry**, on a dead job: it is queued again, due now, with its
+- **Retry**, on a dead or cancelled job: it is queued again, due now, with its
   attempts at 0 and its error, start, finish, lease and worker cleared.
   A retried tick runs once and queues no next tick (its schedule's next
   tick is a row of its own). A dead job with an `enqueueOnce` key is
   refused while another job holds the key.
+
+- **Cancel**, on a queued or running job (a schedule's queued tick has
+  none: remove its schedule instead). A queued job never runs; a running
+  job is stopped at its next step in this process, within a second in
+  another, and its writes are undone. Retry takes a cancelled job as it
+  takes a dead one.
 
 - **Run now**, on a queued job: it only makes the job due now and wakes
   this process's workers. Without workers in the process
@@ -849,10 +902,11 @@ JSON, for tools.
 
 `alder jobs` reads the dev database (`build/<app>/dev.db`, or the file
 `--db` names) and the silo databases beside it (`silos/<key>/*.db`),
-and prints the number of jobs in each state, each scheduled job's next
+and prints the number of jobs in each state (cancelled included), each scheduled job's next
 tick, and the dead jobs with their errors:
 
-- `alder jobs retry <id>` retries a dead job, as the page's Retry does;
+- `alder jobs retry <id>` retries a dead or cancelled job, as the page's Retry does;
+- `alder jobs cancel <id>` cancels a queued or running job, as the page's Cancel does; a running app's workers stop a running attempt within a poll while its silo is in their active set, and a schedule's queued tick is refused;
 - `alder jobs retry --dead` retries every dead job;
 - `alder jobs run <Kind>` queues a run of a job without parameters, due
   now, apart from its schedule. It reads the app to find the job, so the
@@ -980,7 +1034,9 @@ quietly:
 
 ## What is not there yet
 
-- `Job.cancel`, and a queue per job.
+- `Job.enqueueWith`, a call that takes the time, the key and a priority together; a priority is a kind's for now.
+- Skipping a schedule's next tick; `Job.cancel` refuses a queued tick.
+- A queue per job.
 - `alder jobs --env <name>`, against a deployed environment.
 - Worker machines on `Fly` (they need a shared database there first).
 - A streaming read for a job over a very large table; fan out instead.

@@ -2478,7 +2478,7 @@ enqueueOnce : Text -> Job -> Task Id
 Queues a job unless one of its kind with the same key is queued or running.
 
 When such a job exists, nothing is added and its id comes back. A key belongs to the job's
-kind, so two kinds of job may use the same key, and a job that is `Done` or `Dead` frees it.
+kind, so two kinds of job may use the same key, and a job that is `Done`, `Dead` or `Cancelled` frees it.
 
 ```alder fragment
 Job.enqueueOnce "nightly" (Jobs.Nightly.Nightly {})

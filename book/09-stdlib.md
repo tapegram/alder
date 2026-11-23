@@ -810,6 +810,7 @@ Job.enqueue     : Job -> Task Job.Id                  -- due now
 Job.enqueueAt   : Time -> Job -> Task Job.Id          -- not before the time
 Job.enqueueIn   : Int -> Job -> Task Job.Id           -- not before this many milliseconds from now; 0 or less is now
 Job.enqueueOnce : Text -> Job -> Task Job.Id          -- unless one of its kind with that key is queued or running
+Job.cancel      : Job.Id -> Task Bool                 -- True when it was queued or running and now is Cancelled
 Job.status      : Job.Id -> Query (Maybe Job.Status)
 ```
 
@@ -820,13 +821,18 @@ Job.status      : Job.Id -> Query (Maybe Job.Status)
   id, and one that names no job gives `Nothing` from `Job.status`.
 - `Job.enqueueOnce` gives back the id of the job that holds the key
   when there is one, and adds nothing.
+- `Job.cancel` is `True` when the job was queued or running and is now
+  `Cancelled`, and `False` for no such job, a finished one, or a
+  schedule's queued tick. It is a statement in the `Task`'s transaction,
+  so a `Task` that fails afterwards takes it back; a running job is
+  stopped at its next step and its writes are undone.
 - `Job.Status` is `{ state: Job.State, attempts: Int, error: Maybe Text,
   runAt: Maybe Time }`, and `Job.State` is `Queued | Running | Done |
-  Dead`, written bare like `Just`. `runAt` is set only while the job is
+  Dead | Cancelled`, written bare like `Just`. `runAt` is set only while the job is
   queued.
 - `Job.status` is `Nothing` for a job it does not find: one in another
   silo, or one removed after it finished (no sooner than a week after
-  `Done`, 30 days after `Dead`).
+  `Done` or `Cancelled`, 30 days after `Dead`).
 - A job's parameters take at most 64 KB as JSON; a larger one fails the
   `Task` that queues it.
 
@@ -877,7 +883,7 @@ reach, such as a route's `view`, each is E0040 "… is only available in a
   `Test.jobs` and `Test.work`").
 
 - `Test.work : Task (List { id: Job.Id, job: Job, result: Result Text Unit })`
-  runs every job due at the test's clock, oldest first, as a worker
+  runs every job due at the test's clock, highest priority first and then oldest, as a worker
   would, and the due jobs they queue; past 1000 runs in one call the test
   fails.
 

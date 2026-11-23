@@ -577,11 +577,12 @@ Test.work : Task (List { id: Job.Id, job: Job, result: Result Text Unit })
 ```
 
 - **`Test.jobs`** lists every job, oldest first, with its status. A job
-  that ran stays, `Done` or `Dead`; a failed one is `Queued` again, with
+  that ran stays, `Done` or `Dead`, and one cancelled with `Job.cancel` is `Cancelled`; a failed one is `Queued` again, with
   its `error` and the `runAt` of its retry.
 
-- **`Test.work`** runs every job due at the test's clock, oldest first,
-  each as its own `Task`. A job that fails has its writes undone, and is
+- **`Test.work`** runs every job due at the test's clock, highest
+  priority first and then oldest, each as its own `Task`. A cancelled
+  job is not due and does not run. A job that fails has its writes undone, and is
   retried at the clock's time plus the wait a worker uses, or is `Dead`
   past its `retries`; its `result` is `Err` with the error. The jobs that
   the jobs queue run in the same call when they are due. After 1000 runs
