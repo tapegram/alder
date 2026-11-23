@@ -201,10 +201,9 @@ func TestHint_ReadEveryPollUnderAFrozenClock(t *testing.T) {
 	if _, ok := hint(t, shared, "A"); ok {
 		t.Fatal("A's hint is still there after the first read")
 	}
+	// B's hint is not checked here: a worker's read may take it before the test looks
+	// (TestHint_WrittenWithoutWorkers covers the write); B's job running is the proof.
 	idB := runEnqueue(t, orgEnv(t, shared, s, "B"), welcome, nil)
-	if _, ok := hint(t, shared, "B"); !ok {
-		t.Fatal("no hint for B")
-	}
 	if o := outcome(t, outs); o.ID != idB || o.Err != nil {
 		t.Fatalf("B's outcome %+v", o)
 	}
