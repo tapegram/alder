@@ -2,6 +2,7 @@ package jobs_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -140,6 +141,17 @@ func TestJobLog_LockHeld(t *testing.T) {
 	out.LockHeld = 1900 * time.Millisecond
 	if j := out.Line(); strings.Contains(j.Text(), "write lock") || j.Level() != applog.Info {
 		t.Fatalf("1.9 s: %s %q", j.Level(), j.Text())
+	}
+}
+
+// Spec §6: a cut-off attempt's line is "cancelled", at info, with no error (Err is the
+// cancellation, which is no failure).
+func TestJobLog_Cancelled(t *testing.T) {
+	out := jobs.Outcome{ID: "a1b2c3d4", Kind: "Signup.SendWelcome", Err: errors.New("cancelled"), Cancelled: true, Attempt: 1, Attempts: 5, Took: 120 * time.Millisecond}
+	j := out.Line()
+	if j.Outcome != "cancelled" || j.Err != "" || j.Next != 0 || j.Level() != applog.Info ||
+		j.Text() != "job Signup.SendWelcome a1b2c3d4 cancelled 120ms attempt 1" {
+		t.Fatalf("%+v %s %q", j, j.Level(), j.Text())
 	}
 }
 

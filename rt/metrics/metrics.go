@@ -36,7 +36,7 @@ var methods = [...]string{"GET", "POST", "HEAD", "PUT", "PATCH", "DELETE", "othe
 var classes = [...]string{"1xx", "2xx", "3xx", "4xx", "5xx"}
 
 // outcomes are a job attempt's outcome label's values (Collector.Job).
-var outcomes = [...]string{"done", "failed", "dead"}
+var outcomes = [...]string{"done", "failed", "dead", "cancelled"}
 
 // MaxSteps bounds the effect-name series: a name past this many distinct ones is counted as
 // "(other)". The names are the generated code's Call names, so an app never reaches it; it is
@@ -132,7 +132,8 @@ func (h *histogram) observe(sec float64) {
 }
 
 // Job counts one job attempt ended: kind (the job's qualified name, which the build declares),
-// outcome ("done", "failed" or "dead"; anything else is not counted) and how long it took.
+// outcome ("done", "failed", "dead" or "cancelled"; anything else is not counted) and how long
+// it took.
 func (c *Collector) Job(kind, outcome string, d time.Duration) {
 	o := slices.Index(outcomes[:], outcome)
 	if o < 0 {

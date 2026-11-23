@@ -361,6 +361,7 @@ func TestMetrics_Jobs(t *testing.T) {
 	}
 	c.Job("Signup.SendWelcome", "done", 30*time.Millisecond)
 	c.Job("Signup.SendWelcome", "failed", 2*time.Second)
+	c.Job("Digest.Send", "cancelled", 40*time.Millisecond)
 	c.JobRunning(1)
 	c.JobRunning(1)
 	c.JobRunning(-1)
@@ -368,6 +369,7 @@ func TestMetrics_Jobs(t *testing.T) {
 	for series, want := range map[string]float64{
 		`alder_jobs_total{kind="Signup.SendWelcome",outcome="done"}`:             1,
 		`alder_jobs_total{kind="Signup.SendWelcome",outcome="failed"}`:           1,
+		`alder_jobs_total{kind="Digest.Send",outcome="cancelled"}`:               1,
 		`alder_job_duration_seconds_bucket{kind="Signup.SendWelcome",le="0.05"}`: 1,
 		`alder_job_duration_seconds_bucket{kind="Signup.SendWelcome",le="2.5"}`:  2,
 		`alder_job_duration_seconds_bucket{kind="Signup.SendWelcome",le="+Inf"}`: 2,

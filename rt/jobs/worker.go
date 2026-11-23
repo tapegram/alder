@@ -113,6 +113,8 @@ var errStopped = errors.New("jobs: the workers stopped")
 // only when a row there comes due (housekeeping records when). The queued gauge and Health read the active silos
 // beside the shared store, by the same rule. A store whose claims keep failing is one warn line, then at most one every
 // ClaimLogEvery, and one line when they work again.
+// While attempts run, a watcher reads once every o.Poll which of their rows are cancelled (by
+// another process, or alder jobs cancel) and cuts those attempts off (spec §3).
 // With no workers or no store it starts nothing, and stop does nothing.
 //
 // stop(grace) stops claiming at once, waits up to grace for the running attempts (grace <= 0:
@@ -171,10 +173,16 @@ func start(ctx context.Context, o Options, housekept func(), hintTick <-chan tim
 	claimCtx, quit := context.WithCancel(ctx)
 	runCtx, cancelRuns := context.WithCancelCause(ctx)
 	ticker := time.NewTicker(o.Housekeep)
+	watchTicker := time.NewTicker(o.Poll)
 	host, err := os.Hostname()
 	if err != nil {
 		host = "localhost"
 	}
+	watched := make(chan struct{})
+	go func() {
+		defer close(watched)
+		p.watch(runCtx, watchTicker.C)
+	}()
 	var wg sync.WaitGroup
 	for n := 1; n <= o.Workers; n++ {
 		wg.Add(1)
@@ -201,6 +209,7 @@ func start(ctx context.Context, o Options, housekept func(), hintTick <-chan tim
 			}
 			quit()
 			ticker.Stop()
+			watchTicker.Stop()
 			hintStop()
 			done := make(chan struct{})
 			go func() { wg.Wait(); close(done) }()
@@ -218,6 +227,12 @@ func start(ctx context.Context, o Options, housekept func(), hintTick <-chan tim
 			case <-done:
 			case <-t.C:
 				o.Log("warn", "jobs: an attempt did not stop when cancelled; its lease re-queues it")
+			}
+			t.Stop()
+			t = time.NewTimer(stopWait)
+			select {
+			case <-watched: // its read, if any, ends with runCtx
+			case <-t.C:
 			}
 			t.Stop()
 		})
@@ -244,6 +259,9 @@ type pool struct {
 	// set by start, each later one: whichever worker takes the token reads, the others skip
 	hintDue  chan struct{}
 	hintTick <-chan time.Time
+	// attempts holds the Place of each attempt running (its row's In), by job id, for the
+	// watcher
+	attempts sync.Map
 }
 
 // newPool is the pool of the workers of o (its Now and Log set).
@@ -385,6 +403,15 @@ func (p *pool) run(ctx context.Context, row Row) {
 		if v := recover(); v != nil {
 			p.o.Log("error", fmt.Sprintf("job %s %s: worker: panic: %v\n%s", row.Kind, row.ID, v, debug.Stack()))
 		}
+	}()
+	// the attempt's own context: Job.cancel here (running) or elsewhere (watch) cuts it off
+	ctx, cut := context.WithCancelCause(ctx)
+	running.Store(row.ID, cut)
+	p.attempts.Store(row.ID, row.In)
+	defer func() {
+		running.Delete(row.ID)
+		p.attempts.Delete(row.ID)
+		cut(nil)
 	}()
 	k := p.kinds[row.Kind]
 	env := p.o.Env(ctx, k)

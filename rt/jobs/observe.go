@@ -17,11 +17,14 @@ const StallAfter = 5 * time.Minute
 // readTimeout bounds the statements Health and the queued gauge run for a check or a scrape.
 const readTimeout = 5 * time.Second
 
-// outcome is o's outcome label: "done", "failed", "dead" or "stopped".
+// outcome is o's outcome label: "stopped", "cancelled", "done", "dead" or "failed", the first
+// that holds.
 func (o Outcome) outcome() string {
 	switch {
 	case o.Stopped:
 		return "stopped"
+	case o.Cancelled:
+		return "cancelled"
 	case o.Err == nil:
 		return "done"
 	case o.Dead:
@@ -31,11 +34,12 @@ func (o Outcome) outcome() string {
 }
 
 // Line is o's log line (spec §9): its kind, id, outcome, time and attempt; a failure's error
-// (cut to MaxError, as the row keeps it) and the wait before its retry (Backoff); and how long
-// it held the write transaction, which marks the line above applog.LockMark (§6a).
+// (cut to MaxError, as the row keeps it; a stopped or cancelled attempt has none) and the wait
+// before its retry (Backoff); and how long it held the write transaction, which marks the line
+// above applog.LockMark (§6a).
 func (o Outcome) Line() *applog.Job {
 	j := &applog.Job{ID: o.ID, Kind: o.Kind, Outcome: o.outcome(), Dur: o.Took, Attempt: o.Attempt, Attempts: o.Attempts, LockHeld: o.LockHeld}
-	if o.Err != nil && !o.Stopped {
+	if o.Err != nil && !o.Stopped && !o.Cancelled {
 		j.Err = clip(o.Err.Error())
 		if !o.Dead {
 			j.Next = Backoff(o.Attempt)

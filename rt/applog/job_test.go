@@ -23,6 +23,8 @@ func TestJob_Text(t *testing.T) {
 			Error, `job Signup.SendWelcome a1b2c3d4 failed attempt 5/5 "smtp: timeout\nat line 2", dead`},
 		{Job{ID: "a1b2c3d4", Kind: "Signup.SendWelcome", Outcome: "stopped", Attempt: 1, Attempts: 5},
 			Info, "job Signup.SendWelcome a1b2c3d4 stopped, queued again"},
+		{Job{ID: "a1b2c3d4", Kind: "Signup.SendWelcome", Outcome: "cancelled", Dur: 120 * time.Millisecond, Attempt: 1, Attempts: 5},
+			Info, "job Signup.SendWelcome a1b2c3d4 cancelled 120ms attempt 1"},
 		{Job{ID: "a1b2c3d4", Kind: "Digest.Send", Outcome: "done", Dur: 41500 * time.Millisecond, Attempt: 1, Attempts: 5, LockHeld: 41 * time.Second},
 			Warn, "job Digest.Send a1b2c3d4 done 41500ms attempt 1, held the write lock 41 s: write last, or fan out — book 17"},
 		{Job{ID: "a1b2c3d4", Kind: "Digest.Send", Outcome: "done", Dur: 2 * time.Second, Attempt: 1, Attempts: 5, LockHeld: LockMark},

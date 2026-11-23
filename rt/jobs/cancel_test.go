@@ -4,7 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
+	"alder/rt/db"
 	"alder/rt/eff"
 	"alder/rt/jobs"
 )
@@ -139,5 +141,142 @@ func TestCancel_SiloTaskSharedRow(t *testing.T) {
 	}
 	if r := read(t, shared, id); r.state != "cancelled" {
 		t.Fatalf("row %+v: the shared row's cancel was rolled back with the silo's Task", r)
+	}
+}
+
+// A running attempt cut off (spec §3): the job's writes are in a store of their own (its Env's),
+// so the jobs table stays free while the job holds its write transaction. noteThenBlock inserts a
+// note and blocks until its context ends; started is told once it has inserted.
+func noteThenBlock(started chan<- struct{}) jobs.Kind {
+	return kind(eff.Bind(insertNote("cut off"), func(struct{}) eff.Task[struct{}] {
+		return eff.Call("Block", false, func(e *eff.Env) (struct{}, error) {
+			started <- struct{}{}
+			<-e.Ctx.Done()
+			return struct{}{}, e.Ctx.Err()
+		})
+	}))
+}
+
+// cutWorkers starts one worker on the jobs table of jobsSt (and the silos of s, when set) whose
+// attempts write to app; outs gets each attempt's Outcome.
+func cutWorkers(t *testing.T, jobsSt, app *db.SQLite, s *db.Stores, poll time.Duration, k jobs.Kind) (outs chan jobs.Outcome, stop func(time.Duration)) {
+	t.Helper()
+	outs = make(chan jobs.Outcome, 4)
+	stop = jobs.Start(context.Background(), jobs.Options{
+		Store: jobsSt, Stores: s, Kinds: []jobs.Kind{k}, Workers: 1, Poll: poll, Housekeep: time.Hour,
+		Now:       func() time.Time { return t0 },
+		Env:       func(ctx context.Context, k jobs.Kind) *eff.Env { return &eff.Env{Ctx: ctx, Store: app} },
+		OnAttempt: func(o jobs.Outcome) { outs <- o },
+	})
+	t.Cleanup(func() { stop(0) })
+	return outs, stop
+}
+
+// waitStarted waits for the job to have inserted its note.
+func waitStarted(t *testing.T, started <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the job did not start")
+	}
+}
+
+// cutOffWithin checks that the attempt of id ends Cancelled within d, its note rolled back, its
+// row in st cancelled with one attempt, and nothing else recorded.
+func cutOffWithin(t *testing.T, outs <-chan jobs.Outcome, d time.Duration, st, app *db.SQLite, id string) {
+	t.Helper()
+	select {
+	case o := <-outs:
+		if o.ID != id || !o.Cancelled || o.Stopped || o.Dead {
+			t.Fatalf("outcome %+v", o)
+		}
+	case <-time.After(d):
+		t.Fatalf("the attempt was not cut off within %v", d)
+	}
+	if n := notes(t, app); n != 0 {
+		t.Fatalf("notes %d: the cut-off attempt's write was kept", n)
+	}
+	if r := read(t, st, id); r.state != "cancelled" || r.attempts != 1 || r.err != nil {
+		t.Fatalf("row %+v", r)
+	}
+	select {
+	case o := <-outs:
+		t.Fatalf("a second outcome %+v", o)
+	default:
+	}
+}
+
+// Job.cancel in the process that runs the attempt cuts it off at once (the registry; no poll).
+func TestWorker_CancelInProcess(t *testing.T) {
+	st, app := openFile(t), openFile(t)
+	env, _ := newEnv(st)
+	id := runEnqueue(t, env, welcome, nil)
+	started := make(chan struct{}, 1)
+	outs, _ := cutWorkers(t, st, app, nil, time.Hour, noteThenBlock(started))
+	waitStarted(t, started)
+	if r := read(t, st, id); r.state != "running" {
+		t.Fatalf("row %+v", r)
+	}
+	if !runCancel(t, env, id) {
+		t.Fatal("Cancel of a running row: false")
+	}
+	cutOffWithin(t, outs, time.Second, st, app, id)
+}
+
+// A row cancelled behind the pool's back (another process, alder jobs cancel) is cut off by the
+// watcher within a few polls.
+func TestWorker_CancelFromElsewhere(t *testing.T) {
+	st, app := openFile(t), openFile(t)
+	env, _ := newEnv(st)
+	id := runEnqueue(t, env, welcome, nil)
+	started := make(chan struct{}, 1)
+	outs, _ := cutWorkers(t, st, app, nil, 20*time.Millisecond, noteThenBlock(started))
+	waitStarted(t, started)
+	if _, err := raw(t, st).ExecContext(context.Background(), `UPDATE "_alder_jobs" SET "state" = 'cancelled' WHERE "id" = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	cutOffWithin(t, outs, time.Second, st, app, id)
+}
+
+// The watcher reads a silo's table too (pool.at): a silo row cancelled there is cut off.
+func TestWorker_CancelInSilo(t *testing.T) {
+	_, shared, s := siloApp(t)
+	env := orgEnv(t, shared, s, "A")
+	silo := env.Store.(*db.SQLite)
+	id := runEnqueue(t, env, welcome, nil)
+	app := openFile(t)
+	started := make(chan struct{}, 1)
+	outs, _ := cutWorkers(t, shared, app, s, 20*time.Millisecond, noteThenBlock(started))
+	waitStarted(t, started)
+	if _, err := raw(t, silo).ExecContext(context.Background(), `UPDATE "_alder_jobs" SET "state" = 'cancelled' WHERE "id" = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	cutOffWithin(t, outs, time.Second, silo, app, id)
+}
+
+// stop still re-queues an attempt it cancels: the attempt's own cancel does not hide stop's
+// cause.
+func TestWorker_StopStillRequeues(t *testing.T) {
+	st, app := openFile(t), openFile(t)
+	env, _ := newEnv(st)
+	id := runEnqueue(t, env, welcome, nil)
+	started := make(chan struct{}, 1)
+	outs, stop := cutWorkers(t, st, app, nil, time.Hour, noteThenBlock(started))
+	waitStarted(t, started)
+	stop(0)
+	select {
+	case o := <-outs:
+		if !o.Stopped || o.Cancelled {
+			t.Fatalf("outcome %+v", o)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no outcome after stop")
+	}
+	if r := read(t, st, id); r.state != "queued" || r.attempts != 0 {
+		t.Fatalf("row %+v", r)
+	}
+	if n := notes(t, app); n != 0 {
+		t.Fatalf("notes %d", n)
 	}
 }

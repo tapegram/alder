@@ -16,7 +16,8 @@ const LockMark = 2 * time.Second
 type Job struct {
 	ID, Kind string // the job's id (the line's id, as a request's) and its kind, "Signup.SendWelcome"
 	// Outcome is "done", "failed" (queued again for a retry), "dead" (past its retries, or its
-	// params cannot be decoded) or "stopped" (the workers stopped; queued again, not counted).
+	// params cannot be decoded), "stopped" (the workers stopped; queued again, not counted) or
+	// "cancelled" (its row was cancelled, Job.cancel: cut off, its writes rolled back).
 	Outcome  string
 	Dur      time.Duration // the attempt's time
 	Attempt  int           // this attempt, 1 for the first
@@ -26,7 +27,7 @@ type Job struct {
 	LockHeld time.Duration // how long the attempt held the write transaction; above LockMark the line is marked
 }
 
-// Level is the line's level: done and stopped at Info, failed at Warn, dead at Error; a line
+// Level is the line's level: done, stopped and cancelled at Info, failed at Warn, dead at Error; a line
 // that is marked (LockHeld above LockMark) is at least Warn.
 func (j *Job) Level() Level {
 	lv := Info
@@ -48,6 +49,7 @@ func (j *Job) Level() Level {
 //	job Signup.SendWelcome a1b2c3d4 failed attempt 2/5 "smtp: timeout", next in 1m
 //	job Signup.SendWelcome a1b2c3d4 failed attempt 5/5 "smtp: timeout", dead
 //	job Signup.SendWelcome a1b2c3d4 stopped, queued again
+//	job Signup.SendWelcome a1b2c3d4 cancelled 120ms attempt 1
 //
 // followed, when LockHeld is above LockMark, by ", held the write lock 41 s: write last, or fan
 // out — book 17". The error is quoted (Go syntax: a line break in it is \n).
@@ -58,8 +60,10 @@ func (j *Job) Text() string {
 	b = append(b, ' ')
 	b = append(b, j.ID...)
 	switch j.Outcome {
-	case "done":
-		b = append(b, " done "...)
+	case "done", "cancelled":
+		b = append(b, ' ')
+		b = append(b, j.Outcome...)
+		b = append(b, ' ')
 		b = strconv.AppendInt(b, j.Dur.Milliseconds(), 10)
 		b = append(b, "ms attempt "...)
 		b = strconv.AppendInt(b, int64(j.Attempt), 10)
