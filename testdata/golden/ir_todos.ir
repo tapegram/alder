@@ -275,41 +275,41 @@
 (test "the nightly job runs at 03:00 UTC, and once after an outage" task
   (bind task _
     (call (std Test.setClock) (global Jobs.Nightly.beforeThree))
-    (bind task start : List { id: Job.Id, job: Job, result: Result Text Unit }
+    (bind task start : List { id: Text, job: Job, result: Result Text Unit }
       (std Test.work)
       (bind task _
         (call (std Test.advance) 120000)
-        (bind task first : List { id: Job.Id, job: Job, result: Result Text Unit }
+        (bind task first : List { id: Text, job: Job, result: Result Text Unit }
           (std Test.work)
           (bind task _
             (call (std Test.advance) (* 3 86400000))
-            (bind task late : List { id: Job.Id, job: Job, result: Result Text Unit }
+            (bind task late : List { id: Text, job: Job, result: Result Text Unit }
               (std Test.work)
               (let job : Job
                 (job-ref Jobs.Nightly.Nightly (record Nightly.Params))
-                (let ownStart : List { id: Job.Id, job: Job, result: Result Text Unit }
+                (let ownStart : List { id: Text, job: Job, result: Result Text Unit }
                   (call (std List.filter)
-                    (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit })
+                    (lambda (r : { id: Text, job: Job, result: Result Text Unit })
                       (== : Job (field job (var r)) (var job)))
                     (var start))
-                  (let ownFirst : List { id: Job.Id, job: Job, result: Result Text Unit }
+                  (let ownFirst : List { id: Text, job: Job, result: Result Text Unit }
                     (call (std List.filter)
-                      (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit })
+                      (lambda (r : { id: Text, job: Job, result: Result Text Unit })
                         (== : Job (field job (var r)) (var job)))
                       (var first))
-                    (let ownLate : List { id: Job.Id, job: Job, result: Result Text Unit }
+                    (let ownLate : List { id: Text, job: Job, result: Result Text Unit }
                       (call (std List.filter)
-                        (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit })
+                        (lambda (r : { id: Text, job: Job, result: Result Text Unit })
                           (== : Job (field job (var r)) (var job)))
                         (var late))
                       (pure task
                         (&&
                           (&&
                             (call (std List.isEmpty) (var ownStart))
-                            (== : List (Result Text Unit) (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field result (var r))) (var ownFirst))
+                            (== : List (Result Text Unit) (call (std List.map) (lambda (r : { id: Text, job: Job, result: Result Text Unit }) (field result (var r))) (var ownFirst))
                               (list
                                 (ctor Prelude.Result.Ok (record (value ()))))))
-                          (== : List (Result Text Unit) (call (std List.map) (lambda (r : { id: Job.Id, job: Job, result: Result Text Unit }) (field result (var r))) (var ownLate))
+                          (== : List (Result Text Unit) (call (std List.map) (lambda (r : { id: Text, job: Job, result: Result Text Unit }) (field result (var r))) (var ownLate))
                             (list (ctor Prelude.Result.Ok (record (value ()))))))))))))))))))
 (module Table.Todo)
 (union Table.Todo.Filter (All) (Active) (Completed))
