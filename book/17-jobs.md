@@ -159,12 +159,15 @@ The `Job` module puts a `Job` value on the queue:
 ```alder
 Job.enqueue     : Job -> Task Job.Id
 Job.enqueueAt   : Time -> Job -> Task Job.Id
+Job.enqueueIn   : Int -> Job -> Task Job.Id
 Job.enqueueOnce : Text -> Job -> Task Job.Id
 Job.status      : Job.Id -> Query (Maybe Job.Status)
 ```
 
 - **`Job.enqueue`** queues the job, due now.
 - **`Job.enqueueAt t`** queues it not before the time `t`.
+- **`Job.enqueueIn ms`** queues it not before `ms` milliseconds from
+  now; zero or less is now.
 - **`Job.enqueueOnce key`** queues it unless a job of the same kind with
   the same key is queued or running; then nothing is added, and that
   job's id comes back. The key belongs to the kind, so `SendWelcome` and
@@ -173,8 +176,9 @@ Job.status      : Job.Id -> Query (Maybe Job.Status)
   or `Dead`), its attempts so far, its last error, and while it is
   queued, when it is due; `Nothing` when there is no such job.
 
-The first three give back the job's `Job.Id`, eight hex characters like a
-request's id.
+The first four give back the job's `Job.Id`, eight hex characters like a
+request's id. A `Job.Id` is a brand of `Text` (chapter 4), so a route
+parameter, a table column or another job's parameter may carry one.
 
 The usual place is a write route's `update`:
 
@@ -203,15 +207,11 @@ not exist, and a user is never created without the job.
 A job may queue jobs too, itself included: `Job.enqueue` is a `Task`
 step like any other.
 
-Waiting is done with `enqueueAt` and `Time.addMillis`, not with a
-sleep:
+Waiting is done with `enqueueIn`, not with a sleep:
 
 ```alder
 remindTomorrow : Task Job.Id
-remindTomorrow = {
-  let now <- Time.now
-  Job.enqueueAt (Time.addMillis 86400000 now) (Jobs.Nightly.Nightly {})
-}
+remindTomorrow = Job.enqueueIn 86400000 (Jobs.Nightly.Nightly {})
 ```
 
 A job's parameters take at most 64 KB as JSON; a larger job fails the
@@ -237,6 +237,74 @@ shared store. A page that requires what the queueing route required
 finds the job. A job in another silo is `Nothing`, and so is a job
 removed after it finished: no sooner than a week after it is done, 30
 days after it went dead ("Housekeeping", below).
+
+### A page that waits for its job
+
+A person who starts a job usually wants to see it finish: an export
+that takes a minute, a report that is being built. The id that
+`Job.enqueue` gives back is how the next page finds the job, and it can
+travel in two ways.
+
+For a page about one run, put the id in the URL. The write route
+redirects to a page whose route takes a `Job.Id`, and that page reads
+the job with `Job.status`:
+
+```alder
+job BuildExport = {}
+
+BuildExport.run : BuildExport.Params -> Task Unit
+BuildExport.run p = Task.succeed ()
+
+route Start = POST "/exports" { }
+
+route Export = GET "/exports/{job}" { job: Job.Id }
+
+Start.update : Start.Params -> Session -> Task Response
+Start.update p session = {
+  let id <- Job.enqueue (BuildExport {})
+  Task.succeed (Response.redirect (Export { job: id }))
+}
+
+Export.load : Export.Params -> Session -> Query (Maybe Job.Status)
+Export.load p session = Job.status p.job
+
+Export.view : Maybe Job.Status -> Session -> Html
+Export.view model session =
+  <html><body>
+    {match model {
+      Just status -> <p>{match status.state {
+        Queued -> "Waiting for a worker",
+        Running -> "Working",
+        Done -> "Ready",
+        Dead -> "Failed",
+      }}</p>,
+      Nothing -> <p>No such job</p>,
+    }}
+  </body></html>
+```
+
+Any text is a valid `Job.Id`, so a person can type `/exports/abcd1234`
+into the address bar: it names no job, `Job.status` is `Nothing`, and
+the page says so, as it would for a job removed after it finished. The
+view is the place for that case. (Only inside a `test` may code
+write `Job.Id "00000000"` to make such an id; app code gets its ids from
+`Job.enqueue`, a URL or a column.) An element with
+an `id` can poll the page with `load={Export { job: p.job }}
+every="2s"` (chapter 6, "Patterns").
+
+When the thing outlives the run, put the id on the row the job is about
+instead, and let any page that shows the row look the job up:
+
+```alder fragment
+table Export {
+  id: ExportId @id,
+  owner: User.UserId,
+  job: Maybe Job.Id,
+}
+```
+
+`Maybe`, because the row exists before the job is queued, or when none
+is.
 
 ## What a job may do
 
@@ -853,9 +921,6 @@ quietly:
 ## What is not there yet
 
 - `Job.cancel`, and a priority or a queue per job.
-- `Job.enqueueIn`: write `Time.addMillis` on `Time.now` with
-  `enqueueAt`.
-- A job's id on the response, for a page that waits for its job.
 - `alder jobs --env <name>`, against a deployed environment.
 - Worker machines on `Fly` (they need a shared database there first).
 - A streaming read for a job over a very large table; fan out instead.

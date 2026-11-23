@@ -48,6 +48,7 @@ Index.view model session =
   <html><body>
     <form submit={Create}><Input field="email" /><Input field="name" /><Errors form /><button>Sign up</button></form>
     <form submit={Refuse}><Input field="email" /><Input field="name" /><Errors form /><button>Try</button></form>
+    <form submit={Start}><Input field="email" /><Input field="name" /><Errors form /><button>Export</button></form>
   </body></html>
 
 Create.update : Create.Params -> Session -> Task Response
@@ -88,6 +89,39 @@ job Forever = {}
 
 Forever.run : Forever.Params -> Task Unit
 Forever.run p = Job.enqueue (Forever {}) |> Task.map (\id -> ())
+
+-- A page that waits for its job: Start queues the job and redirects to the page for its id.
+job BuildExport = { user: User.UserId }
+
+BuildExport.run : BuildExport.Params -> Task Unit
+BuildExport.run p = Task.succeed ()
+
+route Start = POST "/exports" { } form NewUser
+route Export = GET "/exports/{job}" { job: Job.Id }
+
+Start.update : Start.Params -> Session -> Task Response
+Start.update p session = {
+  let user <- Db.insert User.User { email: p.form.email, name: p.form.name }
+  let id <- Job.enqueue (BuildExport { user: user })
+  Task.succeed (Response.redirect (Export { job: id }))
+}
+
+Export.load : Export.Params -> Session -> Query (Maybe Job.Status)
+Export.load p session = Job.status p.job
+
+Export.view : Maybe Job.Status -> Session -> Html
+Export.view model session =
+  <html><body>
+    {match model {
+      Just status -> <p id="state">{match status.state {
+        Queued -> "Queued",
+        Running -> "Running",
+        Done -> "Done",
+        Dead -> "Dead",
+      }}</p>,
+      Nothing -> <p id="state">No such job</p>,
+    }}
+  </body></html>
 
 -- 2026-03-04T05:06:07Z
 march : Time
@@ -156,4 +190,34 @@ test "the trace names the job" = {
   let r <- Test.run (Job.enqueue (SendWelcome { user: user }))
   let steps <- Test.trace
   Task.succeed (List.member "Job.enqueue SendWelcome" r.trace && List.member "Job.enqueue SendWelcome" steps)
+}
+
+test "a page finds its job by the id in its URL" = {
+  let _ <- Test.get (Index {})
+  let _ <- Test.submit Start { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+  let jobs <- Test.jobs
+  let ids = List.map (\r -> r.id) jobs
+  match ids {
+    [id] -> {
+      let waiting <- Test.open (Export { job: id })
+      let _ <- Test.work
+      let finished <- Test.open (Export { job: id })
+      Task.succeed (Test.text "#state" waiting.doc == Just "Queued" && Test.text "#state" finished.doc == Just "Done")
+    },
+    _ -> Task.succeed False,
+  }
+}
+
+test "an id that names no job shows none" = {
+  let page <- Test.open (Export { job: Job.Id "00000000" })
+  Task.succeed (Test.text "#state" page.doc == Just "No such job")
+}
+
+test "enqueueIn is due after its delay" = {
+  let _ <- Test.setClock march
+  let _ <- Job.enqueueIn 60000 (Second {})
+  let early <- Test.work
+  let _ <- Test.advance 60000
+  let later <- Test.work
+  Task.succeed (List.isEmpty early && List.length later == 1)
 }

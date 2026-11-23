@@ -532,8 +532,9 @@ func TestTest_Clock(t *testing.T) {
 
 // TestTest_Jobs runs jobs-ok (#168): the spec's welcome-mail test, Test.work on the test's
 // clock (not due, retried after a failure with its writes undone, jobs that queue jobs), a
-// failed request queueing nothing, the trace naming the job, and a job that queues itself
-// forever failing its test at the cap.
+// failed request queueing nothing, the trace naming the job, a page that finds its job by
+// the id in its URL, enqueueIn on the test's clock, and a job that queues itself forever
+// failing its test at the cap.
 func TestTest_Jobs(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
@@ -545,7 +546,7 @@ func TestTest_Jobs(t *testing.T) {
 	copyDir(t, src, dir)
 	code, stdout, stderr := runTest(t, dir)
 	want := "FAIL Signup \"a job that enqueues itself forever\"\n  error: Test.work: jobs keep enqueueing jobs\n"
-	if code == 0 || !strings.Contains(stdout, want) || !strings.Contains(stdout, "6 passed, 1 failed\n") {
+	if code == 0 || !strings.Contains(stdout, want) || !strings.Contains(stdout, "9 passed, 1 failed\n") {
 		t.Fatalf("exit %d, want %q\nstdout:\n%s\nstderr:\n%s", code, want, stdout, stderr)
 	}
 }

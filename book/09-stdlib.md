@@ -808,12 +808,16 @@ value, which these put on the queue:
 ```alder
 Job.enqueue     : Job -> Task Job.Id                  -- due now
 Job.enqueueAt   : Time -> Job -> Task Job.Id          -- not before the time
+Job.enqueueIn   : Int -> Job -> Task Job.Id           -- not before this many milliseconds from now; 0 or less is now
 Job.enqueueOnce : Text -> Job -> Task Job.Id          -- unless one of its kind with that key is queued or running
 Job.status      : Job.Id -> Query (Maybe Job.Status)
 ```
 
 - The job is stored in the running `Task`'s transaction: kept when the
   `Task` succeeds, dropped with its writes when it fails.
+- `Job.Id` is a brand of `Text`: a route parameter, a table
+  column or a job's parameter may carry one. Any text is a valid
+  id, and one that names no job gives `Nothing` from `Job.status`.
 - `Job.enqueueOnce` gives back the id of the job that holds the key
   when there is one, and adds nothing.
 - `Job.Status` is `{ state: Job.State, attempts: Int, error: Maybe Text,
