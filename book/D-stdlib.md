@@ -2386,13 +2386,15 @@ write for the rule that a `Task` writes one store (E0031).
 ### `Job.Id`
 
 ```alder fragment
-type Id
+type Id = brand Text where True
 ```
 
-A queued job's id, 8 hex characters long like a request's.
+A job's id: 8 lowercase hex characters, a brand of `Text`.
 
-`Job.enqueue` and its variants give it back, and `Job.status` takes it. It does not say which
-store the job is in.
+`Job.enqueue` and its variants give it back, and `Job.status` takes it. Being a brand of
+`Text`, a route, a session field, a table column or another job can carry it. It does not say
+which store the job is in. In a `test`, `Job.Id "x"` is an id that names no job, and
+`Job.status` of it is `Nothing`.
 
 ### `Job.State`
 
@@ -2449,6 +2451,21 @@ the next free worker takes it when it next looks for work (an idle worker looks 
 
 ```alder fragment
 Job.enqueueAt (Time.fromMillis 86400000) (Jobs.Nightly.Nightly {})
+```
+
+### `Job.enqueueIn`
+
+```alder fragment
+enqueueIn : Int -> Job -> Task Id
+```
+
+Queues a job that does not run before the given number of milliseconds from now.
+
+It is `Job.enqueueAt` with the due time worked out from the clock the `Task` runs on, as
+`Time.now` reads it: a number of 0 or less is now, the same as `Job.enqueue`.
+
+```alder fragment
+Job.enqueueIn 3600000 (Jobs.Nightly.Nightly {})
 ```
 
 ### `Job.enqueueOnce`

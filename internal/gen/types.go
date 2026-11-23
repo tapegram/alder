@@ -13,7 +13,7 @@ import (
 //
 //	Int Float Bool Text Unit         int64 float64 bool string struct{}
 //	Date Time Route Error Never      rt.Date time.Time rt.Route error struct{}
-//	Job, Job.Id                      rt.Job, string
+//	Job                              rt.Job
 //	Job.State, Job.Status            std.JobState, std.JobStatusRecord
 //	File, Bytes                      rt.File, []byte
 //	HttpError                        rt.HttpError
@@ -60,10 +60,6 @@ func GoType(t types.Type) string {
 		case "Job":
 			if t.Module == "" {
 				return "rt.Job"
-			}
-		case "Id":
-			if t.Module == "Job" {
-				return "string"
 			}
 		case "Response":
 			return "rt.Response"

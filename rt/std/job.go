@@ -1,6 +1,6 @@
 package std
 
-// The Job module (#168): Job.enqueue, enqueueAt, enqueueOnce and status as effect values over
+// The Job module (#168): Job.enqueue, enqueueAt, enqueueIn, enqueueOnce and status as effect values over
 // rt/jobs, the Go types of Job.State and Job.Status, and the pieces the generated job codecs
 // are made of (gen's jobs.go): a job's parameters are JSON (rt.JsonValue), a record as an
 // object of its fields, Maybe as null or the value, a custom type as {"tag": …, "args": […]},
@@ -55,6 +55,14 @@ func JobEnqueue(j rt.Job) eff.Task[string] {
 // JobEnqueueAt is Job.enqueueAt: j, not due before at.
 func JobEnqueueAt(at time.Time, j rt.Job) eff.Task[string] {
 	return eff.Call(jobStep("Job.enqueueAt", j), true, func(e *eff.Env) (string, error) { return jobs.Enqueue(e, j, at, nil) })
+}
+
+// JobEnqueueIn is Job.enqueueIn: j, not due before ms milliseconds after the Env's clock; ms of
+// 0 or less is now.
+func JobEnqueueIn(ms int64, j rt.Job) eff.Task[string] {
+	return eff.Call(jobStep("Job.enqueueIn", j), true, func(e *eff.Env) (string, error) {
+		return jobs.Enqueue(e, j, now(e).Add(time.Duration(max(ms, 0))*time.Millisecond), nil)
+	})
 }
 
 // JobEnqueueOnce is Job.enqueueOnce: j, due now, unless a job of its kind with key is queued or

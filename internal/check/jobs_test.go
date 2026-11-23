@@ -394,3 +394,26 @@ func TestJob_StateConstructors(t *testing.T) {
 		t.Fatalf("own Done as Job.State: got %q", got)
 	}
 }
+
+// Job.Id is a brand of Text (#283): a route parameter, a session field, a table column and a
+// job parameter, and a test can write `Job.Id "x"` (outside a test the brand constructor is the module's own).
+func TestJob_IdIsABrand(t *testing.T) {
+	files := jobApp(t, jobModule(`job Report = { of: Job.Id }
+
+`+runArm("Report")+`
+route Show = GET "/exports/{job}" { job: Job.Id }
+
+Show.load : Show.Params -> Session -> Query (Maybe Job.Status)
+Show.load p session = Job.status p.job
+
+Show.view : Maybe Job.Status -> Session -> Html
+Show.view s session = <p>export</p>
+
+test "a Job.Id of any text" = Job.Id "x" == Job.Id "x"
+`))
+	files["Export.alder"] = "module Export\n\ntype ExportId = brand Text\n\ntable Export {\n  id: ExportId @id,\n  job: Maybe Job.Id,\n}\n"
+	files["App.alder"] = strings.Replace(files["App.alder"], "role: User.Role = Reader,", "role: User.Role = Reader,\n  export: Maybe Job.Id,", 1)
+	if _, got := checkFiles(t, files); len(got) != 0 {
+		t.Fatalf("got %q", got)
+	}
+}
