@@ -114,6 +114,17 @@ func (p *Panel) RunNow(ctx context.Context, id string) error {
 	return p.change(ctx, id, RunNow)
 }
 
+// Cancel is CancelRow of job id in its store (Get), at the panel's clock, as Retry is; then an
+// attempt of it running in this process is cut off (cutOff): its next effect step ends it and its
+// writes are undone. One in another process is cut off by that process's watcher.
+func (p *Panel) Cancel(ctx context.Context, id string) error {
+	if err := p.change(ctx, id, CancelRow); err != nil {
+		return err
+	}
+	cutOff(id)
+	return nil
+}
+
 // change runs op on job id in the first store that has it: op's error (a *StateError, a key
 // held, a failed statement) is change's, whichever store the row is in. ErrNoJob when no store
 // has it and every store was read; notRead's error when one could not be read.

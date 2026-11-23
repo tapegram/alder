@@ -15,7 +15,7 @@ import (
 )
 
 // devJobsRoot is the dev server's Jobs page (spec §9): the rows of the app's jobs tables. A
-// row's page is devJobsRoot + "/" + its id, its actions that + "/retry" and "/run" (POST).
+// row's page is devJobsRoot + "/" + its id, its actions that + "/retry", "/run" and "/cancel" (POST).
 const devJobsRoot = "/_dev/jobs"
 
 // devJobsJSON is the Jobs page's rows as JSON, for the dev server's tools (alder-tui).
@@ -143,7 +143,7 @@ func (rt *router) jobsView(r *http.Request) (JobsView, error) {
 }
 
 // devJobs serves the Jobs page and its JSON (GET), a row's page (GET /_dev/jobs/{id}) and its
-// actions (POST /_dev/jobs/{id}/retry, /run: 303 to the row's page). Dev server only (rt.devOn())
+// actions (POST /_dev/jobs/{id}/retry, /run, /cancel: 303 to the row's page). Dev server only (rt.devOn())
 // and only for an app with jobs (Options.DevJobs).
 func (rt *router) devJobs(w http.ResponseWriter, r *http.Request) {
 	get := r.Method == http.MethodGet || r.Method == http.MethodHead
@@ -179,7 +179,7 @@ func (rt *router) devJobs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// devJob serves job id's page: its row, params and error; Retry (dead or cancelled) or Run now (queued); and
+// devJob serves job id's page: its row, params and error; Retry (dead or cancelled), Run now (queued) or Cancel (queued, not a tick, or running); and
 // the last attempt this process ran of it, with its trace, marked when it held the write lock
 // above applog.LockMark (spec §6a).
 func (rt *router) devJob(w http.ResponseWriter, r *http.Request, id string) {
@@ -217,8 +217,8 @@ func (rt *router) devJob(w http.ResponseWriter, r *http.Request, id string) {
 	writeDevPage(w, devJobPage, v)
 }
 
-// devJobAction runs POST /_dev/jobs/{id}/retry or /run (jobs.Panel.Retry, RunNow) and answers
-// 303 to the row's page; no such row is 404, a row in another state or a retry whose key is held 409. A cross-origin POST
+// devJobAction runs POST /_dev/jobs/{id}/retry, /run or /cancel (jobs.Panel.Retry, RunNow, Cancel) and answers
+// 303 to the row's page; no such row is 404, a row in another state, a tick to cancel or a retry whose key is held 409. A cross-origin POST
 // (another site's form) is refused with 403.
 func (rt *router) devJobAction(w http.ResponseWriter, r *http.Request, rest string) {
 	if err := http.NewCrossOriginProtection().Check(r); err != nil {
@@ -233,6 +233,8 @@ func (rt *router) devJobAction(w http.ResponseWriter, r *http.Request, rest stri
 		err = p.Retry(r.Context(), id)
 	case "run":
 		err = p.RunNow(r.Context(), id)
+	case "cancel":
+		err = p.Cancel(r.Context(), id)
 	default:
 		http.NotFound(w, r)
 		return
@@ -240,11 +242,12 @@ func (rt *router) devJobAction(w http.ResponseWriter, r *http.Request, rest stri
 	var (
 		se *jobs.StateError
 		ke *jobs.KeyHeldError
+		te *jobs.TickError
 	)
 	switch {
 	case errors.Is(err, jobs.ErrNoJob):
 		http.Error(w, err.Error(), http.StatusNotFound)
-	case errors.As(err, &se), errors.As(err, &ke):
+	case errors.As(err, &se), errors.As(err, &ke), errors.As(err, &te):
 		http.Error(w, err.Error(), http.StatusConflict)
 	case err != nil:
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -358,6 +361,7 @@ var devJobPage = template.Must(template.New("job").Funcs(devJobsFuncs).Parse(`<!
 <pre>{{.}}</pre>{{end}}
 {{if or (eq .Row.State "dead") (eq .Row.State "cancelled")}}<form method="post" action="/_dev/jobs/{{.Row.ID}}/retry"><button>Retry</button> queues it again, due now, with attempts 0.{{if .DeadTick}} A retried tick runs once, now, and inserts no next tick: its schedule's next tick is a row of its own.{{end}}</form>{{end}}
 {{if eq .Row.State "queued"}}<form method="post" action="/_dev/jobs/{{.Row.ID}}/run"><button>Run now</button> makes it due now.{{if .Row.Tick}} This tick runs in place of its slot: the next tick is the first after the later of {{ms .Row.ScheduledFor}} and the time it is claimed.{{end}}{{if not .Workers}} No job worker runs in this process to claim it.{{end}}</form>{{end}}
+{{if or (eq .Row.State "running") (and (eq .Row.State "queued") (not .Row.Tick))}}<form method="post" action="/_dev/jobs/{{.Row.ID}}/cancel"><button>Cancel</button> a queued job never runs; a running job is stopped at its next step in this process, within a second in another, and its writes are undone.</form>{{end}}
 <h2>Last attempt</h2>
 {{with .Last}}<p{{if .Marked}} data-lock{{end}}><code>{{.Line}}</code></p>
 <p>started {{ms .Start}}</p>

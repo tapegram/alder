@@ -479,3 +479,45 @@ func TestJobs_Schema1Store(t *testing.T) {
 		}
 	})
 }
+
+// `alder jobs cancel <id>` cancels a queued or running row (in a silo too), refuses a tick and a
+// final row with the panel's wording (exit 1), and an unknown id (exit 1).
+func TestJobs_Cancel(t *testing.T) {
+	t.Parallel()
+	dir, bd, dev, silo := jobsFixture(t)
+	code, out := runCmd(t, runJobsTo, "cancel", "q0000001", dir, "--build-dir", bd)
+	if code != 0 || !strings.Contains(out, "cancelled job q0000001 (Signup.First)\n") || !strings.Contains(out, "a running app's workers stop it within a poll if it is running there") {
+		t.Fatalf("cancel: exit %d\n%s", code, out)
+	}
+	if r := jobsGet(t, dev, "q0000001"); r.State != "cancelled" {
+		t.Fatalf("cancelled row: %+v", r)
+	}
+	code, out = runCmd(t, runJobsTo, "cancel", "run00001", dir, "--build-dir", bd)
+	if code != 0 || !strings.Contains(out, "cancelled job run00001 (Signup.Second)") {
+		t.Fatalf("cancel of a running row: exit %d\n%s", code, out)
+	}
+	code, out = runCmd(t, runJobsTo, "cancel", "tick0001", dir, "--build-dir", bd)
+	if code != 1 || !strings.Contains(out, "job tick0001: it is `Nightly`'s queued tick; remove its schedule to stop it") {
+		t.Fatalf("cancel of a tick: exit %d\n%s", code, out)
+	}
+	if r := jobsGet(t, dev, "tick0001"); r.State != "queued" {
+		t.Fatalf("tick: %+v", r)
+	}
+	code, out = runCmd(t, runJobsTo, "cancel", "done0001", dir, "--build-dir", bd)
+	if code != 1 || !strings.Contains(out, "job done0001 is done: only a queued or running job is cancelled") {
+		t.Fatalf("cancel of a done row: exit %d\n%s", code, out)
+	}
+	code, out = runCmd(t, runJobsTo, "cancel", "nosuch01", dir, "--build-dir", bd)
+	if code != 1 || !strings.Contains(out, "no job nosuch01 in "+dev+" or its 1 silo database") {
+		t.Fatalf("cancel of an unknown id: exit %d\n%s", code, out)
+	}
+	code, _ = runCmd(t, runJobsTo, "cancel", dir, "--build-dir", bd)
+	if code != 2 {
+		t.Errorf("cancel without an id: exit %d", code)
+	}
+	_ = silo
+	var help strings.Builder
+	if !helpTo([]string{"jobs", "--help"}, &help) || !strings.Contains(help.String(), "cancel <id>") {
+		t.Fatalf("help:\n%s", help.String())
+	}
+}

@@ -484,3 +484,54 @@ func TestDevJobs_RunNowTickNote(t *testing.T) {
 		t.Errorf("tick note:\n%s", body)
 	}
 }
+
+// POST /_dev/jobs/{id}/cancel cancels a queued or running row (303 back); a tick and a final row
+// are 409, another site's form 403; the row's page has the Cancel form on a queued row, none on a
+// tick.
+func TestDevJobs_Cancel(t *testing.T) {
+	_, p, h := jobsFixture(t)
+	post := func(path string) *httptest.ResponseRecorder {
+		return serve(h, httptest.NewRequest("POST", path, nil))
+	}
+	const note = "a running job is stopped at its next step in this process, within a second in another, and its writes are undone"
+	page := serve(h, httptest.NewRequest("GET", "/_dev/jobs/queued01", nil)).Body.String()
+	if !strings.Contains(page, `action="/_dev/jobs/queued01/cancel"`) || !strings.Contains(page, note) {
+		t.Errorf("a queued row's page:\n%s", page)
+	}
+	if page := serve(h, httptest.NewRequest("GET", "/_dev/jobs/runnin01", nil)).Body.String(); !strings.Contains(page, `action="/_dev/jobs/runnin01/cancel"`) {
+		t.Errorf("a running row's page has no Cancel form:\n%s", page)
+	}
+	for _, id := range []string{"queued01", "runnin01"} {
+		if w := post("/_dev/jobs/" + id + "/cancel"); w.Code != 303 || w.Header().Get("Location") != "/_dev/jobs/"+id {
+			t.Fatalf("cancel %s: %d %q %s", id, w.Code, w.Header().Get("Location"), w.Body.String())
+		}
+		if r, err := p.Get(context.Background(), id); err != nil || r == nil || r.State != "cancelled" {
+			t.Errorf("after cancel %s: %+v %v", id, r, err)
+		}
+	}
+	var v JobsView
+	if err := json.Unmarshal(serve(h, httptest.NewRequest("GET", "/_dev/jobs.json", nil)).Body.Bytes(), &v); err != nil {
+		t.Fatal(err)
+	}
+	tick := v.Schedules[0].ID
+	if w := post("/_dev/jobs/" + tick + "/cancel"); w.Code != 409 || !strings.Contains(w.Body.String(), "`Nightly`'s queued tick; remove its schedule to stop it") {
+		t.Errorf("cancel of a tick: %d %s", w.Code, w.Body.String())
+	}
+	if page := serve(h, httptest.NewRequest("GET", "/_dev/jobs/"+tick, nil)).Body.String(); strings.Contains(page, "/cancel") {
+		t.Errorf("a tick's page has a Cancel form:\n%s", page)
+	}
+	if w := post("/_dev/jobs/done0001/cancel"); w.Code != 409 || !strings.Contains(w.Body.String(), "only a queued or running job is cancelled") {
+		t.Errorf("cancel of a done row: %d %s", w.Code, w.Body.String())
+	}
+	if w := post("/_dev/jobs/nosuch01/cancel"); w.Code != 404 {
+		t.Errorf("cancel of no row: %d", w.Code)
+	}
+	req := httptest.NewRequest("POST", "/_dev/jobs/queued02/cancel", nil)
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	if w := serve(h, req); w.Code != 403 {
+		t.Errorf("a cross-site POST: %d", w.Code)
+	}
+	if r, _ := p.Get(context.Background(), "queued02"); r == nil || r.State != "queued" {
+		t.Errorf("the refused POST cancelled the row: %+v", r)
+	}
+}

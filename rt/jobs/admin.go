@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"alder/rt/db"
@@ -28,7 +29,7 @@ const rowCols = `"id", "kind", "params", "key", "state", "run_at", "created", "s
 var ErrNoJob = errors.New("no such job")
 
 // StateError is an operation refused because of the job's state: only a dead or cancelled job is retried,
-// only a queued one is run now.
+// only a queued one is run now, only a queued or running one is cancelled.
 type StateError struct {
 	ID    string
 	State State // the row's
@@ -42,8 +43,27 @@ func (e *StateError) Error() string {
 		op = "run now"
 	case Dead:
 		want = "dead or cancelled"
+	case Cancelled:
+		want, op = "queued or running", "cancelled"
 	}
 	return fmt.Sprintf("job %s is %s: only a %s job is %s", e.ID, e.State, want, op)
+}
+
+// TickError is a cancel refused because the row is a schedule's queued tick (spec §3): the way to
+// stop a schedule is to remove it from the job.
+type TickError struct{ ID, Kind string }
+
+func (e *TickError) Error() string {
+	_, short := cutLast(e.Kind, ".")
+	return fmt.Sprintf("job %s: it is `%s`'s queued tick; remove its schedule to stop it", e.ID, short)
+}
+
+// cutLast cuts s around the last sep: before is "" when s has none.
+func cutLast(s, sep string) (before, after string) {
+	if i := strings.LastIndex(s, sep); i >= 0 {
+		return s[:i], s[i+len(sep):]
+	}
+	return "", s
 }
 
 // KeyHeldError is a retry refused because a queued or running job of the kind (Holder) holds the
@@ -146,6 +166,27 @@ func RunNow(ctx context.Context, q db.Execer, id string, now time.Time) error {
 		return &StateError{ID: id, State: State(r.State), Want: Queued}
 	}
 	return update(ctx, q, id, Queued, `UPDATE "_alder_jobs" SET "run_at" = ? WHERE "id" = ? AND "state" = 'queued'`, now.UnixMilli(), id)
+}
+
+// CancelRow cancels queued or running job id in q's jobs table (cancelStmt), finished at now.
+// ErrNoJob when there is no such row, a *TickError when it is a schedule's queued tick, a
+// *StateError when it is final. It only marks the row: an attempt running in this process is cut
+// off by Panel.Cancel (cutOff), one in another by that process's watcher (watch).
+func CancelRow(ctx context.Context, q db.Execer, id string, now time.Time) error {
+	r, err := Get(ctx, q, id)
+	if err != nil {
+		return err
+	}
+	if r == nil {
+		return fmt.Errorf("%w %s", ErrNoJob, id)
+	}
+	switch s := State(r.State); {
+	case s == Queued && r.Schedule:
+		return &TickError{ID: id, Kind: r.Kind}
+	case s != Queued && s != Running:
+		return &StateError{ID: id, State: s, Want: Cancelled}
+	}
+	return update(ctx, q, id, Cancelled, cancelStmt, now.UnixMilli(), id)
 }
 
 // Counts is the number of rows of q's jobs table in each state (a state with none is absent).

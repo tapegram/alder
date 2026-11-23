@@ -360,3 +360,50 @@ func TestList_QueuedInClaimOrder(t *testing.T) {
 		t.Fatalf("queued %v, want ten zero neg", ids)
 	}
 }
+
+// CancelRow cancels a queued or running row, refuses a schedule's queued tick and a final row with
+// their wording, and does not touch what it refuses.
+func TestAdmin_CancelRow(t *testing.T) {
+	st := open(t)
+	ctx := context.Background()
+	q, err := db.On(st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
+	for _, r := range []struct {
+		id, kind, state string
+		schedule        int
+	}{{"queu0001", "K.J", "queued", 0}, {"runn0001", "K.J", "running", 0}, {"done0001", "K.J", "done", 0}, {"tick0001", "Jobs.Nightly", "queued", 1}} {
+		if _, err := q.ExecContext(ctx, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "schedule") VALUES (?, ?, '{}', ?, ?, ?, ?)`,
+			r.id, r.kind, r.state, t0.UnixMilli(), t0.UnixMilli(), r.schedule); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := t0.Add(time.Hour)
+	for _, id := range []string{"queu0001", "runn0001"} {
+		if err := jobs.CancelRow(ctx, q, id, now); err != nil {
+			t.Fatalf("cancel %s: %v", id, err)
+		}
+		if r, _ := jobs.Get(ctx, q, id); r.State != "cancelled" || r.Finished == nil || *r.Finished != now.UnixMilli() {
+			t.Errorf("cancelled %s: %+v", id, r)
+		}
+	}
+	var se *jobs.StateError
+	if err := jobs.CancelRow(ctx, q, "done0001", now); !errors.As(err, &se) || err.Error() != "job done0001 is done: only a queued or running job is cancelled" {
+		t.Errorf("cancel of a done row: %v", err)
+	}
+	if err := jobs.CancelRow(ctx, q, "queu0001", now); !errors.As(err, &se) || err.Error() != "job queu0001 is cancelled: only a queued or running job is cancelled" {
+		t.Errorf("cancel of a cancelled row: %v", err)
+	}
+	var te *jobs.TickError
+	if err := jobs.CancelRow(ctx, q, "tick0001", now); !errors.As(err, &te) || !strings.Contains(err.Error(), "`Nightly`'s queued tick; remove its schedule to stop it") || err.Error() != "job tick0001: it is `Nightly`'s queued tick; remove its schedule to stop it" {
+		t.Errorf("cancel of a tick: %v", err)
+	}
+	if r, _ := jobs.Get(ctx, q, "tick0001"); r.State != "queued" {
+		t.Errorf("the refused cancel changed the tick: %+v", r)
+	}
+	if err := jobs.CancelRow(ctx, q, "nosuch01", now); !errors.Is(err, jobs.ErrNoJob) {
+		t.Errorf("cancel of no row: %v", err)
+	}
+}

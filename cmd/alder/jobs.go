@@ -25,7 +25,7 @@ import (
 // files; a running app's workers see a change at their next look. The operations are rt/jobs's
 // admin ones (admin.go), which the dev panel's Jobs page uses too.
 
-const jobsUsage = "usage: alder jobs [retry <id> | retry --dead | run <Kind>] [dir] [--db FILE] [--build-dir DIR]"
+const jobsUsage = "usage: alder jobs [retry <id> | retry --dead | run <Kind> | cancel <id>] [dir] [--db FILE] [--build-dir DIR]"
 
 // jobsHelpNote follows `alder jobs --help`'s usage line.
 const jobsHelpNote = `
@@ -35,6 +35,7 @@ job's next tick, and the dead jobs with their attempts and error.
   alder jobs retry <id>     queue a dead or cancelled job again, due now: attempts 0, its error cleared
   alder jobs retry --dead   the same for every dead job
   alder jobs run <Kind>     queue a run of a job without parameters, due now, beside its schedule
+  alder jobs cancel <id>    cancel a queued or running job (not a schedule's queued tick)
 A retried schedule tick runs once: no next tick is queued after it (the job's queued tick stays).
 The file is changed directly: a running app's workers find a job at their next look, in a silo
 only while the silo is in their active set (a job queued or running there in the last hour) or
@@ -45,9 +46,9 @@ type jobsStore struct {
 	path, silo string // silo: "org/42"
 }
 
-// runJobsTo is `alder jobs [retry <id> | retry --dead | run <Kind>] [dir] [--db FILE]
-// [--build-dir DIR]`. Exit 0; 1 when an operation is refused (an unknown id, a job neither dead nor cancelled, a
-// key held, an app with errors); 2 for usage, a database that cannot be read, and `run` of a
+// runJobsTo is `alder jobs [retry <id> | retry --dead | run <Kind> | cancel <id>] [dir] [--db FILE]
+// [--build-dir DIR]`. Exit 0; 1 when an operation is refused (an unknown id, a job neither dead nor cancelled
+// (retry) or neither queued nor running (cancel), a schedule's queued tick, a key held, an app with errors); 2 for usage, a database that cannot be read, and `run` of a
 // kind the app lacks or one with parameters.
 func runJobsTo(args []string, stdout, stderr io.Writer) int {
 	fail := func(code int, format string, a ...any) int {
@@ -85,14 +86,14 @@ func runJobsTo(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	op := ""
-	if len(pos) > 0 && (pos[0] == "retry" || pos[0] == "run") {
+	if len(pos) > 0 && (pos[0] == "retry" || pos[0] == "run" || pos[0] == "cancel") {
 		op, pos = pos[0], pos[1:]
 	}
-	var target string // retry's id, run's kind
+	var target string // retry's and cancel's id, run's kind
 	switch {
 	case dead && op != "retry":
 		return usage()
-	case op != "" && !dead: // retry <id>, run <Kind>
+	case op != "" && !dead: // retry <id>, run <Kind>, cancel <id>
 		if len(pos) == 0 {
 			return usage()
 		}
@@ -129,6 +130,8 @@ func runJobsTo(args []string, stdout, stderr io.Writer) int {
 		return jobsRetryDead(ctx, stores, stdout, stderr)
 	case op == "retry":
 		return jobsRetry(ctx, dbPath, stores, target, stdout, stderr)
+	case op == "cancel":
+		return jobsCancel(ctx, dbPath, stores, target, stdout, stderr)
 	}
 	return jobsRun(ctx, dir, dbPath, target, stdout, stderr)
 }
@@ -379,6 +382,52 @@ func jobsRetry(ctx context.Context, path string, stores []jobsStore, id string, 
 		fmt.Fprintf(stdout, "queued job %s (%s) again%s, due now: attempts 0, its error cleared\n", id, row.Kind, in)
 		for _, note := range retriedNotes(*row, s.silo) {
 			fmt.Fprintln(stdout, "  "+note)
+		}
+		return 0
+	}
+	fmt.Fprintf(stderr, "%s no job %s in %s%s\n", errTag(stderr, "alder jobs:"), id, path, siloCount(stores, "or its"))
+	return 1
+}
+
+// jobsCancel is `alder jobs cancel <id>`: the store that has row id cancels it (jobs.CancelRow). The
+// file is all this changes: a running app's workers cut off a running attempt when their watcher
+// next reads its row (every poll, while the row's silo is in their active set), else at its end.
+func jobsCancel(ctx context.Context, path string, stores []jobsStore, id string, stdout, stderr io.Writer) int {
+	for _, s := range stores {
+		var row *jobs.Row
+		_, err := withJobs(ctx, s, true, func(q db.Execer) error {
+			r, err := jobs.Get(ctx, q, id)
+			if err != nil || r == nil {
+				return err
+			}
+			row = r
+			return jobs.CancelRow(ctx, q, id, time.Now())
+		})
+		if err == nil && row == nil { // not in this store
+			continue
+		}
+		var (
+			se *jobs.StateError
+			te *jobs.TickError
+		)
+		switch {
+		case errors.As(err, &se), errors.As(err, &te), errors.Is(err, jobs.ErrNoJob):
+			fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder jobs:"), err)
+			return 1
+		case err != nil:
+			fmt.Fprintf(stderr, "%s %s: %v\n", errTag(stderr, "alder jobs:"), s.where(), err)
+			return 2
+		}
+		in := ""
+		if s.silo != "" {
+			in = " in silo " + s.silo
+		}
+		fmt.Fprintf(stdout, "cancelled job %s (%s)%s\n", id, row.Kind, in)
+		fmt.Fprintln(stdout, "  a running app's workers stop it within a poll if it is running there")
+		if s.silo != "" {
+			for _, note := range retriedNotes(jobs.Row{}, s.silo) {
+				fmt.Fprintln(stdout, "  "+note)
+			}
 		}
 		return 0
 	}
