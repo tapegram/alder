@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"runtime/debug"
@@ -37,12 +38,15 @@ type Outcome struct {
 	Dead     bool  // the row is dead: past its retries, or its params cannot be decoded
 	// Stopped: the workers' stop cancelled the attempt; the row is queued as before its claim
 	// (the attempt is not counted, no error) and Err is the cancellation.
-	Stopped  bool
-	Attempt  int       // this attempt, 1 for the first (the row's attempts, counting it)
-	Attempts int       // the most the job may have: its kind's retries plus one
-	Next     time.Time // the retry's run_at when Err != nil && !Dead
-	Took     time.Duration
-	LockHeld time.Duration // how long the attempt's write transaction was open
+	Stopped bool
+	// Cancelled: the attempt ended because its row was cancelled (Job.cancel); Err is the
+	// cancellation ("cancelled"), nothing is recorded, and Dead and Next are zero.
+	Cancelled bool
+	Attempt   int       // this attempt, 1 for the first (the row's attempts, counting it)
+	Attempts  int       // the most the job may have: its kind's retries plus one
+	Next      time.Time // the retry's run_at when Err != nil && !Dead
+	Took      time.Duration
+	LockHeld  time.Duration // how long the attempt's write transaction was open
 }
 
 // Backoff is the wait before the retry after a failed attempt (1 for the first): 10 s, 1 min,
@@ -78,6 +82,12 @@ func Backoff(attempt int) time.Duration {
 // attempts not counted, its error, started and worker cleared (Outcome.Stopped) — only while it
 // is still running under row.Worker: an attempt that outlived its lease, whose row was re-queued
 // and claimed again elsewhere, leaves that claim alone.
+//
+// A cancelled row (Job.cancel, spec §3) is not recorded over: the in-store done mark is guarded
+// by `"state" = 'running'` and refuses a cancelled row with errCancelled, so the job's writes
+// roll back; a failure's record is guarded by `"state" <> 'cancelled'`; either is
+// Outcome.Cancelled, as is an attempt whose context was cut off with errCancelled. The mark made
+// apart finds a row cancelled after the job's commit and logs that the job's writes stand.
 //
 // On a failure (Task.fail, a not found, a capability's error, a panic, the timeout, a silo that is
 // not served) the Task's transaction is rolled back and a second short transaction in the row's
@@ -116,6 +126,7 @@ func RunOne(env *eff.Env, k Kind, row Row) Outcome {
 	// that came after the timeout
 	timedOut := context.Cause(ctx) == errTimedOut && errors.Is(err, context.DeadlineExceeded)
 	stopped := context.Cause(base) == errStopped
+	cancelled := context.Cause(base) == errCancelled || errors.Is(err, errCancelled)
 	cancel()
 	env.Ctx, env.OnBegin = prevCtx, prevBegin
 	out.Took = end.Sub(start)
@@ -124,18 +135,29 @@ func RunOne(env *eff.Env, k Kind, row Row) Outcome {
 	}
 	if err == nil {
 		if apart {
-			if merr := record(reg, at, base, `UPDATE "_alder_jobs" SET "state" = 'done', "finished" = ?, "lease_until" = NULL WHERE "id" = ? AND "state" = 'running' AND "worker" IS ?`, env.Now().UnixMilli(), row.ID, workerArg(row)); merr != nil && env.Log != nil {
+			n, merr := record(reg, at, base, `UPDATE "_alder_jobs" SET "state" = 'done', "finished" = ?, "lease_until" = NULL WHERE "id" = ? AND "state" = 'running' AND "worker" IS ?`, env.Now().UnixMilli(), row.ID, workerArg(row))
+			if merr == nil && n == 0 {
+				// the row was cancelled after the job's commit: spec §3's window
+				if state, serr := stateIn(reg, at, base, row.ID); serr == nil && state == Cancelled && env.Log != nil {
+					env.Log("warn", fmt.Sprintf("job %s %s ran to its end before the cancel was seen; its writes stand", row.Kind, row.ID))
+				}
+			}
+			if merr != nil && env.Log != nil {
 				env.Log("warn", fmt.Sprintf("job %s %s: marking it done in its store: %v (it ran; its lease runs it again)", row.Kind, row.ID, merr))
 			}
 		}
 		return out
 	}
 	switch {
+	case cancelled:
+		// the row is cancelled already: nothing to record
+		out.Err, out.Cancelled = errCancelled, true
+		return out
 	case decode:
 		err = &failure{"cannot decode the parameters: " + err.Error(), err}
 	case stopped:
 		out.Err, out.Stopped = err, true
-		if rerr := record(reg, at, base, `UPDATE "_alder_jobs" SET "state" = 'queued', "attempts" = "attempts" - 1, "error" = NULL, "lease_until" = NULL, "started" = NULL, "worker" = NULL WHERE "id" = ? AND "state" = 'running' AND "worker" IS ?`, row.ID, workerArg(row)); rerr != nil {
+		if _, rerr := record(reg, at, base, `UPDATE "_alder_jobs" SET "state" = 'queued', "attempts" = "attempts" - 1, "error" = NULL, "lease_until" = NULL, "started" = NULL, "worker" = NULL WHERE "id" = ? AND "state" = 'running' AND "worker" IS ?`, row.ID, workerArg(row)); rerr != nil {
 			out.Err = errors.Join(err, fmt.Errorf("jobs: re-queueing the stopped attempt: %w", rerr))
 		}
 		return out
@@ -146,12 +168,23 @@ func RunOne(env *eff.Env, k Kind, row Row) Outcome {
 	out.Dead = decode || row.Attempts > k.Retries
 	now := env.Now()
 	msg := clip(err.Error())
-	var rerr error
+	var (
+		n    int64
+		rerr error
+	)
 	if out.Dead {
-		rerr = record(reg, at, base, `UPDATE "_alder_jobs" SET "state" = 'dead', "error" = ?, "finished" = ?, "lease_until" = NULL WHERE "id" = ?`, msg, now.UnixMilli(), row.ID)
+		n, rerr = record(reg, at, base, `UPDATE "_alder_jobs" SET "state" = 'dead', "error" = ?, "finished" = ?, "lease_until" = NULL WHERE "id" = ? AND "state" <> 'cancelled'`, msg, now.UnixMilli(), row.ID)
 	} else {
 		out.Next = now.Add(Backoff(row.Attempts))
-		rerr = record(reg, at, base, `UPDATE "_alder_jobs" SET "state" = 'queued', "run_at" = ?, "error" = ?, "lease_until" = NULL WHERE "id" = ?`, out.Next.UnixMilli(), msg, row.ID)
+		n, rerr = record(reg, at, base, `UPDATE "_alder_jobs" SET "state" = 'queued', "run_at" = ?, "error" = ?, "lease_until" = NULL WHERE "id" = ? AND "state" <> 'cancelled'`, out.Next.UnixMilli(), msg, row.ID)
+	}
+	if rerr == nil && n == 0 {
+		// cancelled while it ran (by another process, or before a cut-off was seen): the failure
+		// is not recorded over the cancel
+		if state, serr := stateIn(reg, at, base, row.ID); serr == nil && state == Cancelled {
+			out.Err, out.Cancelled, out.Dead, out.Next = errCancelled, true, false, time.Time{}
+			return out
+		}
 	}
 	if rerr != nil {
 		out.Err = errors.Join(err, fmt.Errorf("jobs: recording the failure: %w", rerr))
@@ -194,7 +227,24 @@ func attempt(env *eff.Env, k Kind, row Row, at db.Place) (err error, decode, apa
 		if err != nil {
 			return struct{}{}, err
 		}
-		_, err = q.ExecContext(ctxOf(e), `UPDATE "_alder_jobs" SET "state" = 'done', "finished" = ?, "lease_until" = NULL WHERE "id" = ?`, e.Now().UnixMilli(), row.ID)
+		ctx, now := ctxOf(e), e.Now().UnixMilli()
+		res, err := q.ExecContext(ctx, `UPDATE "_alder_jobs" SET "state" = 'done', "finished" = ?, "lease_until" = NULL WHERE "id" = ? AND "state" = 'running'`, now, row.ID)
+		if err != nil {
+			return struct{}{}, err
+		}
+		if n, err := res.RowsAffected(); err != nil || n == 1 {
+			return struct{}{}, err
+		}
+		// not running: a cancel refuses the mark (the backstop), and the Task rolls back; any
+		// other state (a lease expiry re-queued the row) is marked as before, since the job ran
+		var state string
+		if err := q.QueryRowContext(ctx, `SELECT "state" FROM "_alder_jobs" WHERE "id" = ?`, row.ID).Scan(&state); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return struct{}{}, err
+		}
+		if State(state) == Cancelled {
+			return struct{}{}, errCancelled
+		}
+		_, err = q.ExecContext(ctx, `UPDATE "_alder_jobs" SET "state" = 'done', "finished" = ?, "lease_until" = NULL WHERE "id" = ?`, now, row.ID)
 		return struct{}{}, err
 	})
 	_, err = eff.Run(env, eff.KTask, eff.Bind(task, func(struct{}) eff.Task[struct{}] { return done }))
@@ -204,40 +254,76 @@ func attempt(env *eff.Env, k Kind, row Row, at db.Place) (err error, decode, apa
 // record runs one statement on the jobs table of at's store: in at.Tx when it is set (a test's
 // transaction), else in a transaction of its own, on ctx without its cancellation: a failure is
 // recorded even when the attempt was cancelled. A silo's store is the one open now (reg.Place),
-// not the one the row was claimed from, which the idle sweep may have closed since.
-func record(reg *db.Stores, at db.Place, ctx context.Context, stmt string, args ...any) error {
+// not the one the row was claimed from, which the idle sweep may have closed since. It gives the
+// rows the statement changed.
+func record(reg *db.Stores, at db.Place, ctx context.Context, stmt string, args ...any) (int64, error) {
 	ctx = context.WithoutCancel(ctx)
-	if at.Key != "" && at.Tx == nil && reg != nil {
-		live, err := reg.Place(ctx, at.Key, at.Value)
-		if err != nil {
-			return err
-		}
-		at = live
+	at, err := livePlace(reg, at, ctx)
+	if err != nil {
+		return 0, err
 	}
 	if at.Tx != nil {
 		q, err := db.On(at.Store, at.Tx)
 		if err != nil {
-			return err
+			return 0, err
 		}
-		_, err = q.ExecContext(ctx, stmt, args...)
-		return err
+		return execRows(q.ExecContext(ctx, stmt, args...))
 	}
 	if at.Store == nil {
-		return errors.New("jobs: no store")
+		return 0, errors.New("jobs: no store")
 	}
 	tx, err := at.Store.Begin(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
+	var n int64
 	q, err := db.On(at.Store, tx)
 	if err == nil {
-		_, err = q.ExecContext(ctx, stmt, args...)
+		n, err = execRows(q.ExecContext(ctx, stmt, args...))
 	}
 	if err != nil {
 		tx.Rollback()
-		return err
+		return 0, err
 	}
-	return tx.Commit()
+	return n, tx.Commit()
+}
+
+// livePlace is at with a silo's store as it is open now (reg.Place) when at has no transaction.
+func livePlace(reg *db.Stores, at db.Place, ctx context.Context) (db.Place, error) {
+	if at.Key != "" && at.Tx == nil && reg != nil {
+		return reg.Place(ctx, at.Key, at.Value)
+	}
+	return at, nil
+}
+
+// execRows is the rows a statement changed.
+func execRows(res sql.Result, err error) (int64, error) {
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// stateIn is the state of row id in at's store, read as record writes it ("" when there is no
+// such row).
+func stateIn(reg *db.Stores, at db.Place, ctx context.Context, id string) (State, error) {
+	ctx = context.WithoutCancel(ctx)
+	at, err := livePlace(reg, at, ctx)
+	if err != nil {
+		return "", err
+	}
+	if at.Store == nil {
+		return "", errors.New("jobs: no store")
+	}
+	q, err := db.On(at.Store, at.Tx)
+	if err != nil {
+		return "", err
+	}
+	var state string
+	if err := q.QueryRowContext(ctx, `SELECT "state" FROM "_alder_jobs" WHERE "id" = ?`, id).Scan(&state); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	return State(state), nil
 }
 
 // workerArg is the worker a guarded statement expects to hold row: row.Worker, or NULL for a row

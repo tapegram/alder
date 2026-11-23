@@ -280,3 +280,78 @@ func TestRunOne_TimeoutCause(t *testing.T) {
 		t.Fatalf("own failure after the timeout: %v", out.Err)
 	}
 }
+
+// cancelRaw cancels row id the way another process does: a statement on its own connection,
+// outside the job's transaction.
+func cancelRaw(t *testing.T, q db.Execer, id string) eff.Task[struct{}] {
+	return eff.Call("cancel elsewhere", false, func(*eff.Env) (struct{}, error) {
+		_, err := q.ExecContext(context.Background(), `UPDATE "_alder_jobs" SET "state" = 'cancelled', "finished" = 1, "lease_until" = NULL WHERE "id" = ?`, id)
+		return struct{}{}, err
+	})
+}
+
+// The backstop: a row cancelled while its job runs refuses the done mark, so the job's writes
+// roll back, the row stays cancelled, and the attempt is Cancelled.
+func TestRunOne_Backstop(t *testing.T) {
+	st := open(t)
+	env, _ := newEnv(st)
+	id := runEnqueue(t, env, welcome, nil)
+	out := jobs.RunOne(env, kind(then(cancelRaw(t, raw(t, st), id), insertNote("late"))), claim(t, st, id))
+	if !out.Cancelled || out.Err == nil || out.Err.Error() != "cancelled" || out.Dead || !out.Next.IsZero() || out.Stopped {
+		t.Fatalf("outcome %+v", out)
+	}
+	if n := notes(t, st); n != 0 {
+		t.Fatalf("notes %d: the cancelled job's write was kept", n)
+	}
+	if r := read(t, st, id); r.state != "cancelled" {
+		t.Fatalf("row %+v", r)
+	}
+}
+
+// A job that fails on its own after another process cancelled its row: the failure is not
+// recorded over the cancel, for a retry or a death (review focus 1).
+func TestRunOne_FailureAfterCancelKeepsCancelled(t *testing.T) {
+	for _, retries := range []int{4, 0} {
+		st := open(t)
+		env, _ := newEnv(st)
+		id := runEnqueue(t, env, welcome, nil)
+		k := kind(then(cancelRaw(t, raw(t, st), id), eff.Fail[struct{}]("smtp down")))
+		k.Retries = retries
+		out := jobs.RunOne(env, k, claim(t, st, id))
+		if !out.Cancelled || out.Err == nil || out.Err.Error() != "cancelled" || out.Dead || !out.Next.IsZero() {
+			t.Fatalf("retries %d: outcome %+v", retries, out)
+		}
+		if r := read(t, st, id); r.state != "cancelled" || r.err != nil {
+			t.Fatalf("retries %d: row %+v", retries, r)
+		}
+	}
+}
+
+// A row in another store than the run's, cancelled while its job runs: the job has committed by
+// the mark, so its writes stand, and the mark's refusal is a warn line.
+func TestRunOne_ApartMarkAfterCancelWarns(t *testing.T) {
+	_, shared, s := siloApp(t)
+	env := orgEnv(t, shared, s, "A")
+	silo := env.Store.(*db.SQLite)
+	id := runEnqueue(t, env, welcome, nil)
+	k := kind(then(cancelRaw(t, raw(t, silo), id), insertNote("stands")))
+	run := sharedEnv(shared, s)
+	var lines []string
+	run.Log = func(level, msg string) {
+		if level != "effect" {
+			lines = append(lines, level+" "+msg)
+		}
+	}
+	if out := jobs.RunOne(run, k, claimOn(t, placeOf(env), []jobs.Kind{k}, id)); out.Err != nil || out.Cancelled {
+		t.Fatalf("outcome %+v", out)
+	}
+	if n := notes(t, shared); n != 1 {
+		t.Fatalf("notes %d: the job's own commit is kept", n)
+	}
+	if r := read(t, silo, id); r.state != "cancelled" {
+		t.Fatalf("row %+v", r)
+	}
+	if len(lines) != 1 || !strings.HasPrefix(lines[0], "warn ") || !strings.Contains(lines[0], "ran to its end before the cancel was seen; its writes stand") {
+		t.Fatalf("log %q", lines)
+	}
+}

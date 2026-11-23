@@ -468,3 +468,68 @@ func TestJobs_RowsCarryPriority(t *testing.T) {
 		t.Fatalf("listed %+v runs %+v", listed, runs)
 	}
 }
+
+// A job that cancels itself (spec §3): the cancel is in its own transaction, the done mark
+// refuses, and the Task fails "cancelled" and rolls back, cancel included: the row is running.
+func TestJobs_WorkSelfCancel(t *testing.T) {
+	var id string
+	kinds := []jobs.Kind{jobKind(welcomeJob.Kind, func() eff.Task[struct{}] {
+		return then(insertUnit("half"), eff.Map(func(bool) struct{} { return struct{}{} }, std.JobCancel(id)))
+	})}
+	var runs []JobRun
+	var left []JobRow
+	var n int64 = -1
+	task := eff.Bind(std.JobEnqueue(welcomeJob), func(got string) eff.Task[bool] {
+		id = got
+		return eff.Bind(Work(kinds), func(rs []JobRun) eff.Task[bool] {
+			runs = rs
+			return eff.Bind(Jobs(), func(js []JobRow) eff.Task[bool] {
+				left = js
+				return eff.Map(func(c int64) bool { n = c; return true }, countStep())
+			})
+		})
+	})
+	if r := runJobs(t, task); !r.OK {
+		t.Fatalf("%+v", r)
+	}
+	if len(runs) != 1 || runs[0].Result.IsOk || runs[0].Result.Err != "cancelled" {
+		t.Fatalf("runs %+v", runs)
+	}
+	if n != 0 {
+		t.Fatalf("the self-cancelled job's write was kept: %d rows", n)
+	}
+	if len(left) != 1 || left[0].Status.State.Tag != std.JobRunning {
+		t.Fatalf("left %+v", left)
+	}
+}
+
+// A job that cancels another queued job: that row is Cancelled and Test.work does not run it.
+func TestJobs_WorkCancelQueuedFromRun(t *testing.T) {
+	b := rt.Job{Kind: "Signup.B", Params: `{}`}
+	a := rt.Job{Kind: "Signup.A", Params: `{}`}
+	var bID string
+	kinds := []jobs.Kind{
+		jobKind(a.Kind, func() eff.Task[struct{}] {
+			return eff.Map(func(bool) struct{} { return struct{}{} }, std.JobCancel(bID))
+		}),
+		jobKind(b.Kind, func() eff.Task[struct{}] { return insertUnit("b ran") }),
+	}
+	var runs []JobRun
+	var left []JobRow
+	task := then(std.JobEnqueue(a), eff.Bind(std.JobEnqueue(b), func(got string) eff.Task[bool] {
+		bID = got
+		return eff.Bind(Work(kinds), func(rs []JobRun) eff.Task[bool] {
+			runs = rs
+			return eff.Map(func(js []JobRow) bool { left = js; return true }, Jobs())
+		})
+	}))
+	if r := runJobs(t, task); !r.OK {
+		t.Fatalf("%+v", r)
+	}
+	if len(runs) != 1 || runs[0].Job != a || !runs[0].Result.IsOk {
+		t.Fatalf("runs %+v", runs)
+	}
+	if len(left) != 2 || left[1].Id != bID || left[1].Status.State.Tag != std.JobCancelled {
+		t.Fatalf("left %+v", left)
+	}
+}

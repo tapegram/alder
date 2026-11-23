@@ -270,6 +270,7 @@ var StdCalls = map[string]string{
 	"Http.get":    "std.HttpGet",
 	"Http.post":   "std.HttpPost",
 	// Job (#168): enqueue* are writes (in the Task's transaction), status a read
+	"Job.cancel":      "std.JobCancel",
 	"Job.enqueue":     "std.JobEnqueue",
 	"Job.enqueueAt":   "std.JobEnqueueAt",
 	"Job.enqueueIn":   "std.JobEnqueueIn",

@@ -1,6 +1,6 @@
 package std
 
-// The Job module (#168): Job.enqueue, enqueueAt, enqueueIn, enqueueOnce and status as effect values over
+// The Job module (#168): Job.enqueue, enqueueAt, enqueueIn, enqueueOnce, cancel and status as effect values over
 // rt/jobs, the Go types of Job.State and Job.Status, and the pieces the generated job codecs
 // are made of (gen's jobs.go): a job's parameters are JSON (rt.JsonValue), a record as an
 // object of its fields, Maybe as null or the value, a custom type as {"tag": …, "args": […]},
@@ -70,6 +70,13 @@ func JobEnqueueIn(ms int64, j rt.Job) eff.Task[string] {
 // running, whose id it gives instead.
 func JobEnqueueOnce(key string, j rt.Job) eff.Task[string] {
 	return eff.Call(jobStep("Job.enqueueOnce", j), true, func(e *eff.Env) (string, error) { return jobs.Enqueue(e, j, now(e), &key) })
+}
+
+// JobCancel is Job.cancel: it cancels job id, queued or running, where Job.status finds it
+// (jobs.Cancel), and is true when it did. It is a write: it never runs inside a Query. The trace
+// names the id: "Job.cancel a1b2c3d4".
+func JobCancel(id string) eff.Task[bool] {
+	return eff.Call("Job.cancel "+id, true, func(e *eff.Env) (bool, error) { return jobs.Cancel(e, id) })
 }
 
 // jobStep is the trace name of an enqueue step: the step and the job's name without its module

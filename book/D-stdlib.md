@@ -2484,6 +2484,23 @@ kind, so two kinds of job may use the same key, and a job that is `Done` or `Dea
 Job.enqueueOnce "nightly" (Jobs.Nightly.Nightly {})
 ```
 
+### `Job.cancel`
+
+```alder fragment
+cancel : Id -> Task Bool
+```
+
+Cancels a job, and says whether it did.
+
+`True` when the job was queued or running and is now cancelled; `False` when there is no such
+job, it is finished, or it is a schedule's queued tick. A running job is stopped at its next
+step and its writes are undone. In a silo-bound `Task`, a job in the shared store is cancelled
+at once, apart from the `Task`'s transaction.
+
+```alder fragment
+\(id : Job.Id) -> Job.cancel id
+```
+
 ### `Job.status`
 
 ```alder fragment

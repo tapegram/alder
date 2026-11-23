@@ -67,6 +67,16 @@ enqueueIn : Int -> Job -> Task Id
 --     Job.enqueueOnce "nightly" (Jobs.Nightly.Nightly {})
 enqueueOnce : Text -> Job -> Task Id
 
+-- Cancels a job, and says whether it did.
+--
+-- `True` when the job was queued or running and is now cancelled; `False` when there is no such
+-- job, it is finished, or it is a schedule's queued tick. A running job is stopped at its next
+-- step and its writes are undone. In a silo-bound `Task`, a job in the shared store is cancelled
+-- at once, apart from the `Task`'s transaction.
+--
+--     \(id : Job.Id) -> Job.cancel id
+cancel : Id -> Task Bool
+
 -- The status of the job with this id, `Nothing` when there is no such job.
 --
 -- A job is stored where the `Task` that queued it writes: in an app with silos, the silo a
