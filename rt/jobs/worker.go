@@ -259,8 +259,7 @@ type pool struct {
 	// set by start, each later one: whichever worker takes the token reads, the others skip
 	hintDue  chan struct{}
 	hintTick <-chan time.Time
-	// attempts holds the Place of each attempt running (its row's In), by job id, for the
-	// watcher
+	// attempts holds each attempt running (*live), by job id, for the watcher
 	attempts sync.Map
 }
 
@@ -404,15 +403,8 @@ func (p *pool) run(ctx context.Context, row Row) {
 			p.o.Log("error", fmt.Sprintf("job %s %s: worker: panic: %v\n%s", row.Kind, row.ID, v, debug.Stack()))
 		}
 	}()
-	// the attempt's own context: Job.cancel here (running) or elsewhere (watch) cuts it off
-	ctx, cut := context.WithCancelCause(ctx)
-	running.Store(row.ID, cut)
-	p.attempts.Store(row.ID, row.In)
-	defer func() {
-		running.Delete(row.ID)
-		p.attempts.Delete(row.ID)
-		cut(nil)
-	}()
+	ctx, end := p.begin(ctx, row)
+	defer end()
 	k := p.kinds[row.Kind]
 	env := p.o.Env(ctx, k)
 	if env.Log == nil {

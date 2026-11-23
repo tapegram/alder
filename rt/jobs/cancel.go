@@ -98,9 +98,31 @@ func cancelAt(ctx context.Context, p db.Place, id string, now int64) (kind strin
 	return kind, State(state), nil
 }
 
-// running holds the cancel of each attempt running in this process, by its job id (pool.run
-// stores it for the attempt's duration): cutOff calls it.
-var running sync.Map // job id → context.CancelCauseFunc
+// running holds each attempt running in this process, by its job id (pool.begin stores it for
+// the attempt's duration): cutOff calls its cut.
+var running sync.Map // job id → *live
+
+// live is a running attempt as running and pool.attempts hold it.
+type live struct {
+	cut context.CancelCauseFunc
+	in  db.Place // its row's In
+}
+
+// begin registers the attempt of row about to run (running, p.attempts) and gives its own
+// context, which Job.cancel here (cutOff) or elsewhere (watch) cuts off; end releases the
+// context and unregisters the attempt, unless a newer attempt of the same id has replaced it
+// (a row re-queued at its lease's end and claimed again while this attempt still ran).
+func (p *pool) begin(ctx context.Context, row Row) (_ context.Context, end func()) {
+	ctx, cut := context.WithCancelCause(ctx)
+	a := &live{cut: cut, in: row.In}
+	running.Store(row.ID, a)
+	p.attempts.Store(row.ID, a)
+	return ctx, func() {
+		running.CompareAndDelete(row.ID, a)
+		p.attempts.CompareAndDelete(row.ID, a)
+		cut(nil)
+	}
+}
 
 // cutOff cancels the attempt of job id running in this process with errCancelled: its next
 // effect step sees the context ended, eff.Run rolls its writes back, and RunOne makes it
@@ -108,7 +130,7 @@ var running sync.Map // job id → context.CancelCauseFunc
 func cutOff(id string) bool {
 	c, ok := running.Load(id)
 	if ok {
-		c.(context.CancelCauseFunc)(errCancelled)
+		c.(*live).cut(errCancelled)
 	}
 	return ok
 }
@@ -126,7 +148,7 @@ func (p *pool) watch(ctx context.Context, tick <-chan time.Time) {
 		}
 		ids := map[siloID][]any{} // the shared store is siloID{}
 		p.attempts.Range(func(k, v any) bool {
-			pl := v.(db.Place)
+			pl := v.(*live).in
 			s := siloID{pl.Key, pl.Value}
 			ids[s] = append(ids[s], k)
 			return true
