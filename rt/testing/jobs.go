@@ -63,7 +63,7 @@ func Jobs() eff.Task[[]JobRow] {
 			if err != nil {
 				return nil, err
 			}
-			rows, err := q.QueryContext(e.Ctx, `SELECT "id", "kind", "params", "state", "attempts", "error", "run_at", "created", "rowid" FROM "_alder_jobs"`)
+			rows, err := q.QueryContext(e.Ctx, `SELECT "id", "kind", "params", "state", "attempts", "error", "run_at", "created", "priority", "rowid" FROM "_alder_jobs"`)
 			if err != nil {
 				return nil, err
 			}
@@ -75,7 +75,7 @@ func Jobs() eff.Task[[]JobRow] {
 					errTxt sql.NullString
 					runAt  int64
 				)
-				if err := rows.Scan(&l.r.Id, &l.r.Job.Kind, &l.r.Job.Params, &state, &s.Attempts, &errTxt, &runAt, &l.created, &l.rowid); err != nil {
+				if err := rows.Scan(&l.r.Id, &l.r.Job.Kind, &l.r.Job.Params, &state, &s.Attempts, &errTxt, &runAt, &l.created, &l.r.Job.Priority, &l.rowid); err != nil {
 					rows.Close()
 					return nil, err
 				}
@@ -109,10 +109,10 @@ func Jobs() eff.Task[[]JobRow] {
 	})
 }
 
-// Work is Test.work: it runs every job of kinds due at the test clock's time, oldest first
-// (run_at, then created) across the test's stores — the shared one and, in an app with silos,
-// every test silo (spec §8) — and goes round again while a round ran something, so the jobs those
-// jobs enqueued run too. Each is claimed as the worker claims a row (attempts + 1, running) in the
+// Work is Test.work: it runs every job of kinds due at the test clock's time, highest priority
+// first, then oldest (run_at, then created), across the test's stores — the shared one and, in an
+// app with silos, every test silo (spec §8). It runs the first due row and reads again, so a job a
+// run enqueues is in the next read and a higher-priority one runs next, as with the worker. Each is claimed as the worker claims a row (attempts + 1, running) in the
 // store it is in and run by jobs.RunOne on an Env that is the test's (its store and stores,
 // capabilities with Test.fake's fakes, clock, log and session check, no session) Within the
 // test's transaction, so its Task runs under a savepoint: a failure undoes its writes to the
@@ -157,22 +157,21 @@ func Work(kinds []jobs.Kind) eff.Task[[]JobRun] {
 			if len(due) == 0 {
 				return out, nil
 			}
-			for _, row := range due {
-				if len(out) == MaxWorkRuns {
-					return nil, errKeepEnqueueing
-				}
-				if err := claim(e, byName[row.Kind], &row); err != nil {
-					return nil, err
-				}
-				je := &eff.Env{Ctx: e.Ctx, Store: e.Store, Caps: e.Caps, Now: e.Now, Sleep: e.Sleep, Log: e.Log, Within: within,
-					Stores: e.Stores, CheckSession: e.CheckSession}
-				o := jobs.RunOne(je, byName[row.Kind], row)
-				run := JobRun{Id: row.ID, Job: rt.Job{Kind: row.Kind, Params: row.Params}, Result: rt.Ok[string](struct{}{})}
-				if o.Err != nil {
-					run.Result = rt.Err[string, struct{}](o.Err.Error())
-				}
-				out = append(out, run)
+			if len(out) == MaxWorkRuns {
+				return nil, errKeepEnqueueing
 			}
+			row := due[0]
+			if err := claim(e, byName[row.Kind], &row); err != nil {
+				return nil, err
+			}
+			je := &eff.Env{Ctx: e.Ctx, Store: e.Store, Caps: e.Caps, Now: e.Now, Sleep: e.Sleep, Log: e.Log, Within: within,
+				Stores: e.Stores, CheckSession: e.CheckSession}
+			o := jobs.RunOne(je, byName[row.Kind], row)
+			run := JobRun{Id: row.ID, Job: rt.Job{Kind: row.Kind, Params: row.Params, Priority: row.Priority}, Result: rt.Ok[string](struct{}{})}
+			if o.Err != nil {
+				run.Result = rt.Err[string, struct{}](o.Err.Error())
+			}
+			out = append(out, run)
 		}
 	})
 }
@@ -199,7 +198,8 @@ func places(e *eff.Env) ([]db.Place, error) {
 }
 
 // dueRows is the queued rows of kinds byName due at the test clock's time in every store of the
-// test, oldest first (run_at, created; a tie in the order of the stores, then of the rows), each
+// test in the worker's claim order (priority, highest first; then run_at, created; a tie in the
+// order of the stores, then of the rows), each
 // with the store it is in (Row.In).
 func dueRows(e *eff.Env, byName map[string]jobs.Kind) ([]jobs.Row, error) {
 	ps, err := places(e)
@@ -217,14 +217,14 @@ func dueRows(e *eff.Env, byName map[string]jobs.Kind) ([]jobs.Row, error) {
 		if err != nil {
 			return nil, err
 		}
-		rows, err := q.QueryContext(e.Ctx, `SELECT "id", "kind", "params", "attempts", "run_at", "created", "schedule", "scheduled_for", "rowid" FROM "_alder_jobs" WHERE "state" = 'queued' AND "run_at" <= ?`, e.Now().UnixMilli())
+		rows, err := q.QueryContext(e.Ctx, `SELECT "id", "kind", "params", "attempts", "run_at", "created", "schedule", "scheduled_for", "priority", "rowid" FROM "_alder_jobs" WHERE "state" = 'queued' AND "run_at" <= ?`, e.Now().UnixMilli())
 		if err != nil {
 			return nil, err
 		}
 		for rows.Next() {
 			f := found{r: jobs.Row{State: string(jobs.Queued), In: p}, at: i}
 			var schedAt sql.NullInt64
-			if err := rows.Scan(&f.r.ID, &f.r.Kind, &f.r.Params, &f.r.Attempts, &f.r.RunAt, &f.r.Created, &f.r.Schedule, &schedAt, &f.rowid); err != nil {
+			if err := rows.Scan(&f.r.ID, &f.r.Kind, &f.r.Params, &f.r.Attempts, &f.r.RunAt, &f.r.Created, &f.r.Schedule, &schedAt, &f.r.Priority, &f.rowid); err != nil {
 				rows.Close()
 				return nil, err
 			}
@@ -241,7 +241,7 @@ func dueRows(e *eff.Env, byName map[string]jobs.Kind) ([]jobs.Row, error) {
 		}
 	}
 	slices.SortStableFunc(all, func(a, b found) int {
-		return cmp.Or(cmp.Compare(a.r.RunAt, b.r.RunAt), cmp.Compare(a.r.Created, b.r.Created), cmp.Compare(a.at, b.at), cmp.Compare(a.rowid, b.rowid))
+		return cmp.Or(cmp.Compare(b.r.Priority, a.r.Priority), cmp.Compare(a.r.RunAt, b.r.RunAt), cmp.Compare(a.r.Created, b.r.Created), cmp.Compare(a.at, b.at), cmp.Compare(a.rowid, b.rowid))
 	})
 	var out []jobs.Row
 	for _, f := range all {

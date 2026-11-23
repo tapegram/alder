@@ -416,3 +416,55 @@ func TestJobs_WorkAcrossSilos(t *testing.T) {
 		t.Fatalf("silo A holds %d rows, %d of them the request's, done: want only that one (no tick)", siloAll, siloDone)
 	}
 }
+
+// Test.work runs the highest priority first, as the worker's claim does.
+func TestJobs_WorkPriorityOrder(t *testing.T) {
+	low := rt.Job{Kind: "Q.Low", Params: `{}`}
+	high := rt.Job{Kind: "Q.High", Params: `{}`, Priority: 10}
+	noop := func() eff.Task[struct{}] { return eff.Pure(struct{}{}) }
+	kinds := []jobs.Kind{jobKind(low.Kind, noop), jobKind(high.Kind, noop)}
+	var runs []JobRun
+	task := then(std.JobEnqueue(low), then(std.JobEnqueue(high), eff.Map(func(rs []JobRun) bool { runs = rs; return true }, Work(kinds))))
+	if r := runJobs(t, task); !r.OK {
+		t.Fatalf("%+v", r)
+	}
+	if len(runs) != 2 || runs[0].Job != high || runs[1].Job != low {
+		t.Fatalf("runs %+v", runs)
+	}
+}
+
+// A job a run enqueues is in the next read: a higher-priority one runs before the jobs already due.
+func TestJobs_WorkEnqueuedHigherRunsNext(t *testing.T) {
+	first := rt.Job{Kind: "Q.First", Params: `{}`}
+	other := rt.Job{Kind: "Q.Other", Params: `{}`}
+	urgent := rt.Job{Kind: "Q.Urgent", Params: `{}`, Priority: 10}
+	noop := func() eff.Task[struct{}] { return eff.Pure(struct{}{}) }
+	kinds := []jobs.Kind{
+		jobKind(first.Kind, func() eff.Task[struct{}] { return enqueueUnit(urgent) }),
+		jobKind(other.Kind, noop), jobKind(urgent.Kind, noop),
+	}
+	var runs []JobRun
+	task := then(std.JobEnqueue(first), then(std.JobEnqueue(other), eff.Map(func(rs []JobRun) bool { runs = rs; return true }, Work(kinds))))
+	if r := runJobs(t, task); !r.OK {
+		t.Fatalf("%+v", r)
+	}
+	if len(runs) != 3 || runs[0].Job != first || runs[1].Job != urgent || runs[2].Job != other {
+		t.Fatalf("runs %+v", runs)
+	}
+}
+
+// The rt.Job values of Test.jobs and Test.work carry the row's priority.
+func TestJobs_RowsCarryPriority(t *testing.T) {
+	j := rt.Job{Kind: "Q.High", Params: `{}`, Priority: 10}
+	kinds := []jobs.Kind{jobKind(j.Kind, func() eff.Task[struct{}] { return eff.Pure(struct{}{}) })}
+	var listed []JobRow
+	var runs []JobRun
+	task := then(std.JobEnqueue(j), then(eff.Map(func(js []JobRow) bool { listed = js; return true }, Jobs()),
+		eff.Map(func(rs []JobRun) bool { runs = rs; return true }, Work(kinds))))
+	if r := runJobs(t, task); !r.OK {
+		t.Fatalf("%+v", r)
+	}
+	if len(listed) != 1 || listed[0].Job != j || len(runs) != 1 || runs[0].Job != j {
+		t.Fatalf("listed %+v runs %+v", listed, runs)
+	}
+}
