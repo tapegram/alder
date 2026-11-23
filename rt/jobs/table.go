@@ -19,7 +19,7 @@ import (
 const Table = db.JobsTable
 
 // EnsureTable creates the jobs table and its indexes when they do not exist and records
-// jobs_schema = 1 in _alder_meta. It is idempotent; db.Ensure and db.Migrate run it.
+// jobs_schema = 2 in _alder_meta. It is idempotent; db.Ensure and db.Migrate run it.
 func EnsureTable(ctx context.Context, x db.Execer) error { return db.EnsureJobsTable(ctx, x) }
 
 // Row is a row of the jobs table. Times are milliseconds since the epoch; a nil pointer is NULL.

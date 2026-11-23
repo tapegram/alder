@@ -23,7 +23,7 @@ func TestEnsureTable_ByEnsureAndMigrate(t *testing.T) {
 	if ok, err := tableExists(ctx, m.db, JobsTable); err != nil || !ok {
 		t.Fatalf("after Migrate: %v %v", ok, err)
 	}
-	if v, err := metaValue(ctx, m.db, "jobs_schema"); err != nil || v != "1" {
+	if v, err := metaValue(ctx, m.db, "jobs_schema"); err != nil || v != "2" {
 		t.Fatalf("jobs_schema after Migrate: %q %v", v, err)
 	}
 }

@@ -507,3 +507,36 @@ func TestTurso_CreatesJobsTable(t *testing.T) {
 		t.Fatal("opening the store left no _alder_jobs")
 	}
 }
+
+// On Turso, a schema-1 jobs table is upgraded where it is ensured: the shared database through
+// EnsureRuntimeTables, a silo child when it is opened.
+func TestTurso_UpgradesJobsTable(t *testing.T) {
+	f := tursofake.New(t, "acme")
+	path := tursoEnv(t, f)
+	ctx := context.Background()
+	s, _ := openTursoApp(t, path, 1)
+	shared := f.DB("blog")
+	toSchema1(t, shared)
+	if err := EnsureRuntimeTables(ctx, s.shared); err != nil {
+		t.Fatal(err)
+	}
+	if got := shapeOf(t, shared); got != schema2Shape {
+		t.Fatalf("shared %+v", got)
+	}
+	id, err := s.shared.Insert(ctx, nil, "Org.Org", orgDesc.Columns, "id", "", "", []any{nil, "A"}, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.silo(ctx, "org", id); err != nil {
+		t.Fatal(err)
+	}
+	child := f.DB(ChildName("blog", "org", id))
+	toSchema1(t, child) // a child an older build made
+	again, _ := openTursoApp(t, path, 1)
+	if _, err := again.silo(ctx, "org", id); err != nil {
+		t.Fatal(err)
+	}
+	if got := shapeOf(t, child); got != schema2Shape {
+		t.Fatalf("child %+v", got)
+	}
+}

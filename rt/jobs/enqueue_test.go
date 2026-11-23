@@ -92,7 +92,7 @@ func TestEnsureTable_Idempotent(t *testing.T) {
 		}
 	}
 	var v string
-	if err := raw(t, st).QueryRowContext(context.Background(), `SELECT "value" FROM "_alder_meta" WHERE "key" = 'jobs_schema'`).Scan(&v); err != nil || v != "1" {
+	if err := raw(t, st).QueryRowContext(context.Background(), `SELECT "value" FROM "_alder_meta" WHERE "key" = 'jobs_schema'`).Scan(&v); err != nil || v != "2" {
 		t.Fatalf("jobs_schema: %q %v", v, err)
 	}
 }

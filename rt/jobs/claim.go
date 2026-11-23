@@ -15,7 +15,7 @@ import (
 // running and gives it. LEASE becomes a CASE giving the claimed row's own kind's lease (each
 // kind's WHEN ? THEN ?), KINDS the kinds' placeholders; the claim also records when the attempt
 // started.
-const claimStmt = `UPDATE _alder_jobs SET state='running', attempts=attempts+1, lease_until=LEASE, worker=?, started=? WHERE id = (SELECT id FROM _alder_jobs WHERE state='queued' AND run_at <= ? AND kind IN (KINDS) ORDER BY run_at, created LIMIT 1) RETURNING *`
+const claimStmt = `UPDATE _alder_jobs SET state='running', attempts=attempts+1, lease_until=LEASE, worker=?, started=? WHERE id = (SELECT id FROM _alder_jobs WHERE state='queued' AND run_at <= ? AND kind IN (KINDS) ORDER BY run_at, created LIMIT 1) RETURNING ` + rowCols
 
 // Lease is how long a claimed row of kind k is leased: its timeout (maxTimeout for a kind with
 // none) plus LeaseMargin. Past it, housekeeping takes the row for lost.
@@ -91,8 +91,7 @@ func Claim(ctx context.Context, s eff.Store, kinds []Kind, now time.Time, worker
 	return r, nil
 }
 
-// scanRow reads a whole row of the jobs table, its columns in the table's order (SELECT *,
-// RETURNING *).
+// scanRow reads a row of the jobs table, its columns in rowCols' order.
 func scanRow(sc interface{ Scan(...any) error }) (*Row, error) {
 	var (
 		r              Row

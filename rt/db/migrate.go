@@ -866,14 +866,15 @@ const JobsTable = "_alder_jobs"
 const SiloHintsTable = "_alder_jobs_silos"
 
 // jobsSchema is the jobs table's version, the jobs_schema row of _alder_meta.
-const jobsSchema = "1"
+const jobsSchema = "2"
 
-// createJobs is the jobs table and its indexes: the due index the claim reads, the key of
-// Job.enqueueOnce (unique while a row with it is queued or running) and the one queued tick of
-// a schedule; then the silo hints table (SiloHintsTable: one row per silo, touched when the
-// enqueuer last wrote it), which jobs_schema does not count: it is only ever created if missing,
-// and the drift check leaves every _alder_ table to the runtime. Times are milliseconds since the
-// epoch.
+// createJobs is the jobs table and its indexes: the key of Job.enqueueOnce (unique while a row
+// with it is queued or running) and the one queued tick of a schedule; then the silo hints
+// table (SiloHintsTable: one row per silo, touched when the enqueuer last wrote it), which
+// jobs_schema does not count: it is only ever created if missing, and the drift check leaves
+// every _alder_ table to the runtime. Times are milliseconds since the epoch. The claim's index
+// (createJobsClaimIndex) is not here: it names "priority", which a schema-1 table has only once
+// upgradeJobs added it.
 var createJobs = []string{
 	`CREATE TABLE IF NOT EXISTS "_alder_jobs" (
   "id"            TEXT    NOT NULL PRIMARY KEY,
@@ -890,9 +891,9 @@ var createJobs = []string{
   "lease_until"   INTEGER,
   "worker"        TEXT,
   "schedule"      INTEGER NOT NULL DEFAULT 0,
-  "scheduled_for" INTEGER
+  "scheduled_for" INTEGER,
+  "priority"      INTEGER NOT NULL DEFAULT 0
 ) STRICT`,
-	`CREATE INDEX IF NOT EXISTS "_alder_jobs_due" ON "_alder_jobs" ("state", "run_at")`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS "_alder_jobs_once" ON "_alder_jobs" ("kind", "key") WHERE "key" IS NOT NULL AND "state" IN ('queued', 'running')`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS "_alder_jobs_tick" ON "_alder_jobs" ("kind") WHERE "schedule" = 1 AND "state" = 'queued'`,
 	`CREATE TABLE IF NOT EXISTS "_alder_jobs_silos" (
@@ -903,16 +904,71 @@ var createJobs = []string{
 ) STRICT`,
 }
 
-// EnsureJobsTable creates the jobs table and its indexes when they do not exist and records
-// jobs_schema in _alder_meta (made too, when missing). It is idempotent.
+// createJobsClaimIndex is the index the claim reads (rt/jobs: the oldest due row of the highest
+// priority), made after upgradeJobs so a schema-1 table has the column first.
+const createJobsClaimIndex = `CREATE INDEX IF NOT EXISTS "_alder_jobs_claim" ON "_alder_jobs" ("state", "priority" DESC, "run_at", "created")`
+
+// EnsureJobsTable creates the jobs table and its indexes when they do not exist, records
+// jobs_schema in _alder_meta (made too, when missing) and upgrades a schema-1 table
+// (upgradeJobs). It is idempotent, and leaves a table a newer build made as it is.
 func EnsureJobsTable(ctx context.Context, q Execer) error {
 	for _, st := range append([]string{createMetaTable}, createJobs...) {
 		if _, err := q.ExecContext(ctx, st); err != nil {
 			return err
 		}
 	}
-	_, err := q.ExecContext(ctx, `INSERT INTO "_alder_meta" ("key", "value") VALUES ('jobs_schema', ?) ON CONFLICT ("key") DO NOTHING`, jobsSchema)
+	if _, err := q.ExecContext(ctx, `INSERT INTO "_alder_meta" ("key", "value") VALUES ('jobs_schema', ?) ON CONFLICT ("key") DO NOTHING`, jobsSchema); err != nil {
+		return err
+	}
+	if err := upgradeJobs(ctx, q); err != nil {
+		return err
+	}
+	_, err := q.ExecContext(ctx, createJobsClaimIndex)
 	return err
+}
+
+// upgradeJobs brings a schema-1 jobs table to schema 2 (#283): the priority column (guarded
+// for a table a hand edit already widened), the due index dropped (the claim index replaces
+// it) and jobs_schema 2. On a *sql.DB or *sql.Conn it runs in a transaction of its own (BEGIN
+// IMMEDIATE on a file or Turso), which re-reads jobs_schema, so a second process opening at
+// once finds 2 and does nothing; on a *sql.Tx it runs in the caller's transaction. Any other
+// jobs_schema (2, or a newer build's) leaves the table alone.
+func upgradeJobs(ctx context.Context, q Execer) error {
+	if v, err := metaValue(ctx, q, "jobs_schema"); err != nil || v != "1" {
+		return err
+	}
+	if b, ok := q.(interface {
+		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	}); ok {
+		tx, err := b.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if err := upgradeJobs(ctx, tx); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	var has int
+	err := q.QueryRowContext(ctx, `SELECT 1 FROM pragma_table_info('_alder_jobs') WHERE name = 'priority'`).Scan(&has)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		if _, err := q.ExecContext(ctx, `ALTER TABLE "_alder_jobs" ADD COLUMN "priority" INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	case err != nil:
+		return err
+	}
+	for _, st := range []string{
+		`DROP INDEX IF EXISTS "_alder_jobs_due"`,
+		`UPDATE "_alder_meta" SET "value" = '2' WHERE "key" = 'jobs_schema'`,
+	} {
+		if _, err := q.ExecContext(ctx, st); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // metaValue is _alder_meta's value for key, "" when absent.

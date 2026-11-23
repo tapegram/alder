@@ -864,7 +864,218 @@ func TestEnsureJobsTable_SiloHints(t *testing.T) {
 	if err != nil || slices.Contains(got, SiloHintsTable) {
 		t.Fatalf("appTables %q %v", got, err)
 	}
-	if v, err := metaValue(ctx, s.db, "jobs_schema"); err != nil || v != "1" {
+	if v, err := metaValue(ctx, s.db, "jobs_schema"); err != nil || v != "2" {
 		t.Fatalf("jobs_schema %q %v", v, err)
+	}
+}
+
+// schema1Jobs is the jobs table as jobs_schema 1 made it (before #283's priority column and
+// claim index), verbatim, for the upgrade tests.
+var schema1Jobs = []string{
+	`CREATE TABLE IF NOT EXISTS "_alder_jobs" (
+  "id"            TEXT    NOT NULL PRIMARY KEY,
+  "kind"          TEXT    NOT NULL,
+  "params"        TEXT    NOT NULL,
+  "key"           TEXT,
+  "state"         TEXT    NOT NULL,
+  "run_at"        INTEGER NOT NULL,
+  "created"       INTEGER NOT NULL,
+  "started"       INTEGER,
+  "finished"      INTEGER,
+  "attempts"      INTEGER NOT NULL DEFAULT 0,
+  "error"         TEXT,
+  "lease_until"   INTEGER,
+  "worker"        TEXT,
+  "schedule"      INTEGER NOT NULL DEFAULT 0,
+  "scheduled_for" INTEGER
+) STRICT`,
+	`CREATE INDEX IF NOT EXISTS "_alder_jobs_due" ON "_alder_jobs" ("state", "run_at")`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS "_alder_jobs_once" ON "_alder_jobs" ("kind", "key") WHERE "key" IS NOT NULL AND "state" IN ('queued', 'running')`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS "_alder_jobs_tick" ON "_alder_jobs" ("kind") WHERE "schedule" = 1 AND "state" = 'queued'`,
+	`CREATE TABLE IF NOT EXISTS "_alder_jobs_silos" (
+  "key"     TEXT    NOT NULL,
+  "value"   TEXT    NOT NULL,
+  "touched" INTEGER NOT NULL,
+  PRIMARY KEY ("key", "value")
+) STRICT`,
+}
+
+// toSchema1 makes d's jobs table the one jobs_schema 1 made (dropping one there is), with
+// jobs_schema = '1' and one queued row.
+func toSchema1(t *testing.T, d *sql.DB) {
+	t.Helper()
+	stmts := append([]string{`DROP TABLE IF EXISTS "_alder_jobs"`, createMetaTable}, schema1Jobs...)
+	stmts = append(stmts,
+		`INSERT INTO "_alder_meta" ("key", "value") VALUES ('jobs_schema', '1') ON CONFLICT ("key") DO UPDATE SET "value" = '1'`,
+		`INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created") VALUES ('j1', 'Signup.SendWelcome', '{}', 'queued', 1, 1)`)
+	for _, st := range stmts {
+		if _, err := d.Exec(st); err != nil {
+			t.Fatalf("%s: %v", st, err)
+		}
+	}
+}
+
+// jobsShape is what the upgrade tests look at: jobs_schema, the priority column's default
+// ("" when the column is absent), the claim and due indexes' presence.
+type jobsShape struct {
+	schema, priority string
+	claim, due       bool
+}
+
+func shapeOf(t *testing.T, q querier) jobsShape {
+	t.Helper()
+	ctx := context.Background()
+	var sh jobsShape
+	var err error
+	if sh.schema, err = metaValue(ctx, q, "jobs_schema"); err != nil {
+		t.Fatal(err)
+	}
+	var dflt sql.NullString
+	err = q.QueryRowContext(ctx, `SELECT "dflt_value" FROM pragma_table_info('_alder_jobs') WHERE "name" = 'priority'`).Scan(&dflt)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal(err)
+	}
+	sh.priority = dflt.String
+	index := func(name string) bool {
+		var n int
+		if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_schema WHERE "type" = 'index' AND "name" = ?`, name).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n > 0
+	}
+	sh.claim, sh.due = index("_alder_jobs_claim"), index("_alder_jobs_due")
+	return sh
+}
+
+var schema2Shape = jobsShape{schema: "2", priority: "0", claim: true}
+
+// A fresh jobs table is schema 2: the priority column (default 0) and the claim index, no due
+// index.
+func TestEnsureJobsTable_Fresh(t *testing.T) {
+	s := openMem(t)
+	if err := EnsureJobsTable(context.Background(), s.db); err != nil {
+		t.Fatal(err)
+	}
+	if got := shapeOf(t, s.db); got != schema2Shape {
+		t.Fatalf("shape %+v", got)
+	}
+}
+
+// A schema-1 table is upgraded at open (spec §5): the column added (its rows get 0), the due
+// index swapped for the claim index, jobs_schema 2. A second open changes nothing.
+func TestEnsureJobsTable_UpgradesSchema1(t *testing.T) {
+	ctx := context.Background()
+	s := openMem(t)
+	toSchema1(t, s.db)
+	if got := shapeOf(t, s.db); got != (jobsShape{schema: "1", due: true}) {
+		t.Fatalf("before %+v", got)
+	}
+	for range 2 {
+		if err := EnsureJobsTable(ctx, s.db); err != nil {
+			t.Fatal(err)
+		}
+		if got := shapeOf(t, s.db); got != schema2Shape {
+			t.Fatalf("shape %+v", got)
+		}
+		var p int64
+		if err := s.db.QueryRow(`SELECT "priority" FROM "_alder_jobs" WHERE "id" = 'j1'`).Scan(&p); err != nil || p != 0 {
+			t.Fatalf("priority %d %v", p, err)
+		}
+	}
+}
+
+// Opened inside a caller's transaction (prepare, the silo recreate), the upgrade runs in it
+// (no BEGIN of its own) and commits with it.
+func TestEnsureJobsTable_UpgradeInCallersTx(t *testing.T) {
+	ctx := context.Background()
+	s, err := OpenSQLite(t.TempDir() + "/app.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	toSchema1(t, s.db)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err := EnsureJobsTable(ctx, tx); err != nil {
+		t.Fatal(err)
+	}
+	if got := shapeOf(t, tx); got != schema2Shape {
+		t.Fatalf("in the transaction %+v", got)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if got := shapeOf(t, s.db); got != schema2Shape {
+		t.Fatalf("after the commit %+v", got)
+	}
+}
+
+// A schema-1 table a hand edit already widened upgrades without an ALTER error.
+func TestEnsureJobsTable_UpgradeAlreadyWidened(t *testing.T) {
+	s := openMem(t)
+	toSchema1(t, s.db)
+	exec(t, s, `ALTER TABLE "_alder_jobs" ADD COLUMN "priority" INTEGER NOT NULL DEFAULT 0`)
+	if err := EnsureJobsTable(context.Background(), s.db); err != nil {
+		t.Fatal(err)
+	}
+	if got := shapeOf(t, s.db); got != schema2Shape {
+		t.Fatalf("shape %+v", got)
+	}
+}
+
+// Two processes opening one schema-1 file at once: both succeed, the column is added once.
+func TestEnsureJobsTable_TwoOpeners(t *testing.T) {
+	path := t.TempDir() + "/app.db"
+	var sts [2]*SQLite
+	for i := range sts {
+		st, err := OpenSQLite(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer st.Close()
+		sts[i] = st
+	}
+	toSchema1(t, sts[0].db)
+	errs := make(chan error, len(sts))
+	start := make(chan struct{})
+	for _, st := range sts {
+		go func() {
+			<-start
+			errs <- EnsureJobsTable(context.Background(), st.db)
+		}()
+	}
+	close(start)
+	for range sts {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := shapeOf(t, sts[1].db); got != schema2Shape {
+		t.Fatalf("shape %+v", got)
+	}
+	var n int
+	if err := sts[0].db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('_alder_jobs') WHERE "name" = 'priority'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("priority columns %d %v", n, err)
+	}
+}
+
+// A jobs table a newer build made (jobs_schema 3) is left as it is.
+func TestEnsureJobsTable_NewerSchemaLeftAlone(t *testing.T) {
+	ctx := context.Background()
+	s := openMem(t)
+	if err := EnsureJobsTable(ctx, s.db); err != nil {
+		t.Fatal(err)
+	}
+	exec(t, s, `UPDATE "_alder_meta" SET "value" = '3' WHERE "key" = 'jobs_schema'`)
+	if err := EnsureJobsTable(ctx, s.db); err != nil {
+		t.Fatal(err)
+	}
+	want := schema2Shape
+	want.schema = "3"
+	if got := shapeOf(t, s.db); got != want {
+		t.Fatalf("shape %+v", got)
 	}
 }
