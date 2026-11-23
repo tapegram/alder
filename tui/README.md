@@ -65,13 +65,23 @@ command that prints the same data (`F` focuses it, then `y` copies it).
   that route's requests in Requests; `o` opens a page with no parameter in the browser. The
   footer names `alder routes --json`.
 
+- **Jobs** (`6`): the app's background jobs, from `GET /_dev/jobs.json` on the dev server: a
+  summary (how many are queued, running, dead and done, and whether workers run in the app's
+  process), each schedule with its next tick, and the queued, running, dead and last done jobs
+  with their kind, id, attempts and, for a dead one, the first line of its error. It reads the
+  listing when the tab is opened, when a job's line arrives on the feed and every two seconds
+  while it is shown. `r` retries the dead job under the cursor and `n` runs the queued job (or the
+  schedule's queued tick) now, as the dev server's Jobs page does, and the footer says how it
+  went. A job's attempts are also set apart in Logs, where `job <Kind>` is cyan. The footer
+  names `alder jobs`.
+
 ## Keys
 
 Everywhere (except while a text input is open):
 
 | Key | |
 |---|---|
-| `1`–`5`, `tab`, `shift-tab` | switch tabs |
+| `1`–`6`, `tab`, `shift-tab` | switch tabs |
 | `p` | problems: the last build's diagnostics, or the app's exit (`enter` copies `file:line:col`) |
 | `R` | restart the app (`POST /_dev/restart`) |
 | `o` | open the app in the browser |
@@ -109,6 +119,14 @@ Logs:
 | `/` | set the regexp (`enter` applies it; an invalid one shows its error and keeps the old one) |
 | `x` | clear the request id and the regexp |
 | `enter` | open the request of the line, if it has one |
+
+Jobs:
+
+| Key | |
+|---|---|
+| `j`/`k`, arrows | move |
+| `r` | retry the dead job under the cursor |
+| `n` | run the queued job, or the schedule's queued tick, under the cursor now |
 
 Data:
 

@@ -13,7 +13,7 @@ type Key struct {
 
 // globalKeys are the keys the frame answers on every screen.
 var globalKeys = []Key{
-	{"1–5", "switch tabs"},
+	{"1–6", "switch tabs"},
 	{"tab", "next tab"},
 	{"shift-tab", "previous tab"},
 	{"p", "problems: the last build's diagnostics, or the app's exit"},

@@ -18,8 +18,9 @@ const stampLayout = "2006/01/02 15:04:05"
 // the level, then the message, or for an access line the text logger's form. Level is the
 // lower-case level name (debug, info, warn or error); a run line and a raw line are info. Effect
 // marks an effect step, Run one of the dev server's own status lines, Access the line of an
-// answered request and Gap the marker of events the feed lost (at level error, so that every
-// level filter shows it). Rid is the request the line belongs to, if any.
+// answered request, Job the line of one attempt of a job and Gap the marker of events the feed
+// lost (at level error, so that every level filter shows it). Rid is the request the line
+// belongs to, if any, or the job's id for a Job line.
 type Line struct {
 	Seq                 int64
 	T                   time.Time
@@ -27,6 +28,7 @@ type Line struct {
 	Text                string
 	Rid                 string
 	Effect, Run, Access bool
+	Job                 bool
 	Gap                 bool
 
 	rec *feed.Record // the record behind the line, to render an access line again at debug
@@ -73,7 +75,7 @@ func LineOf(e feed.Event) (Line, bool) {
 		r := e.Log.Record
 		lv := strings.ToLower(r.Level)
 		ln := Line{Seq: e.Seq, T: r.Time, Level: lv, Rid: r.Rid, rec: r,
-			Effect: lv == "debug" && strings.HasPrefix(r.Msg, "effect "), Access: r.HasAccess}
+			Effect: lv == "debug" && strings.HasPrefix(r.Msg, "effect "), Access: r.HasAccess, Job: r.HasJob}
 		ln.Text = renderText(r, false)
 		return ln, true
 	case e.Type == "log" && e.Log != nil:

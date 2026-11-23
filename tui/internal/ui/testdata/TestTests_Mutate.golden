@@ -1,4 +1,4 @@
- shelf  [32m● ok[0m  localhost:8080  alder v0.15.0               1 Requests 2 Logs 3 Data [1m4 Tests[0m 5 Routes
+ shelf  [32m● ok[0m  localhost:8080  alder v0.15.0        1 Requests 2 Logs 3 Data [1m4 Tests[0m 5 Routes 6 Jobs
  4 passed, 0 failed  0.04s
  ──────────────────────────────────────────────────────────────────────────────────────────────────
  > Books   "lend a book"     1.2ms   [32mok[0m
