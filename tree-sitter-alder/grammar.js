@@ -328,7 +328,7 @@ module.exports = grammar({
       ),
     route_method: () => choice('GET', 'POST', 'PUT', 'PATCH', 'DELETE'),
 
-    // `job Nightly = { } every "1d" retries 3 timeout "5m" silo org` (parser.go parseJobDecl): the
+    // `job Nightly = { } every "1d" retries 3 timeout "5m" silo org priority 5` (parser.go parseJobDecl): the
     // options follow the params on the same line, in any order; the checker rejects repeats.
     // Its `Nightly.run` arms are ordinary qualified declarations.
     job_decl: ($) =>
@@ -337,6 +337,7 @@ module.exports = grammar({
       choice(
         seq(choice('every', 'cron', 'timeout'), field('value', $.string)),
         seq('retries', field('value', $.integer)),
+        seq('priority', field('value', choice($.integer, $.float, $.negative_number))),
         seq('silo', field('key', $.identifier)),
       ),
 

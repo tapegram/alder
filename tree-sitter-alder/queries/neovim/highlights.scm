@@ -79,7 +79,7 @@
 (route_method) @constructor
 ; the option words are keywords in a job's line only (the lexer reads them as names, as the server
 ; does: internal/semtok's JobDecl rule)
-(job_option ["every" "cron" "retries" "timeout" "silo"] @keyword)
+(job_option ["every" "cron" "retries" "timeout" "silo" "priority"] @keyword)
 (job_option key: (identifier) @variable.member)
 (job_option value: (string) @string)
 (session_key) @variable.member

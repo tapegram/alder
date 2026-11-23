@@ -1,6 +1,6 @@
 // Package langdoc documents what no `.alder` file declares: the operators, `<-` in an effect
 // block, the typed hole `?name`, the keywords, and the words that are keywords only in a job's
-// line (`every`, `cron`, `retries`, `timeout`, `silo`). Each entry's doc is in the doc comment
+// line (`every`, `cron`, `retries`, `timeout`, `silo`, `priority`). Each entry's doc is in the doc comment
 // format (internal/doc), so the stdlib's tests, renderer and hover take it as they take a
 // declaration's.
 package langdoc
@@ -376,7 +376,7 @@ declared under its name in the same module: ˋSendWelcome.run : SendWelcome.Para
 parameters are stored as JSON: use table-column types, records, lists, ˋMaybeˋ and the app's own
 types without functions. Any other parameter is E0049, "A job parameter that cannot be stored".
 Options follow the parameters on the same line, in any order and each at most once: ˋeveryˋ,
-ˋcronˋ, ˋretriesˋ, ˋtimeoutˋ and ˋsiloˋ.
+ˋcronˋ, ˋretriesˋ, ˋtimeoutˋ, ˋsiloˋ and ˋpriorityˋ.
 
 Book: chapter 17, "Declaring a job"`},
 	{"let", "", `
@@ -414,6 +414,15 @@ Name the module a file holds, on the file's first line.
 The name is the file's path: ˋmodule Todos.Indexˋ lives in ˋapp/Todos/Index.alderˋ.
 
 Book: chapter 3, "Files and modules"`},
+	{"priority", "", `
+In a job's declaration, set which queued runs are claimed first.
+
+ˋpriority Nˋ is an integer, 0 by default and negative allowed: ˋjob Charge = { … } priority 10ˋ.
+A run is claimed before every run of a lower priority, and higher goes first. The order is
+strict: a lower priority waits while a higher one is queued, and it is per store, so each silo
+orders its own queue. Among runs of equal priority, the one due first is claimed first.
+
+Book: chapter 17, "Priorities"`},
 	{"requires", "", `
 Serve a route only to a session that has a field set.
 

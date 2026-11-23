@@ -680,7 +680,7 @@ func TestHover_OperatorInString(t *testing.T) {
 func jobsCopy(t *testing.T) string {
 	t.Helper()
 	root := copyExample(t, "todos")
-	src := "module Jobs.SendWelcome\n\njob SendWelcome = { email: Text } retries 2 timeout \"30s\"\n\nSendWelcome.run : SendWelcome.Params -> Task Unit\nSendWelcome.run p = Log.info p.email\n\ncron : Int\ncron = 1\n\nwelcome : Task Unit\nwelcome = {\n  let _ <- Job.enqueue (SendWelcome { email: \"a@b.c\" })\n  Task.succeed ()\n}\n"
+	src := "module Jobs.SendWelcome\n\njob SendWelcome = { email: Text } retries 2 timeout \"30s\" priority -5\n\nSendWelcome.run : SendWelcome.Params -> Task Unit\nSendWelcome.run p = Log.info p.email\n\ncron : Int\ncron = 1\n\nwelcome : Task Unit\nwelcome = {\n  let _ <- Job.enqueue (SendWelcome { email: \"a@b.c\" })\n  Task.succeed ()\n}\n"
 	if err := os.WriteFile(filepath.Join(root, "app", "Jobs", "SendWelcome.alder"), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -700,7 +700,7 @@ func TestHover_JobKeywords(t *testing.T) {
 	if got := hover(t, c, nightly, c.at(nightly, `cron "0 3`, 2)); !strings.Contains(got, "five fields") {
 		t.Fatalf("hover on cron %q", got)
 	}
-	for _, w := range []string{"retries", "timeout"} {
+	for _, w := range []string{"retries", "timeout", "priority"} {
 		if got := hover(t, c, welcome, c.at(welcome, w+" ", 0)); !strings.Contains(got, "*Book: ") || strings.Contains(got, "```alder") {
 			t.Fatalf("hover on %s %q", w, got)
 		}

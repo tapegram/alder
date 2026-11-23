@@ -129,7 +129,7 @@ func TestMarkdown(t *testing.T) {
 
 // jobOptions are the words that are keywords in a job declaration only (the lexer reads them as
 // names): each has an entry, which hover shows on the word in a job's line.
-var jobOptions = []string{"every", "cron", "retries", "timeout", "silo"}
+var jobOptions = []string{"every", "cron", "retries", "timeout", "silo", "priority"}
 
 func TestJobOptions(t *testing.T) {
 	keywords := map[string]bool{}

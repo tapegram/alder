@@ -9,6 +9,14 @@ job Digest = { org: Text } cron "0 3 * * *" silo org
 --                         ^ keyword
 --                                          ^ keyword
 
+job Urgent = {} priority -5 retries 1
+--                 ^ keyword
+--                             ^ keyword
+
 every : Int
 -- <- !keyword
 every = 1
+
+priority : Int
+-- <- !keyword
+priority = 1

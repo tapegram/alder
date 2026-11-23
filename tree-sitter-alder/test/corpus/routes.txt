@@ -632,7 +632,8 @@ jobs: options in any order and a run arm
 module Jobs
 
 job Nightly = { id: Text } every "1d" retries 3 timeout "5m" silo org
-job Cleanup = {} cron "0 3 * * *"
+job Cleanup = {} cron "0 3 * * *" priority 10
+job Urgent = {} priority -5
 
 Nightly.run : Nightly.Params -> Task Unit
 Nightly.run p = Log.info "ran"
@@ -662,7 +663,15 @@ Nightly.run p = Log.info "ran"
     (constructor)
     (record_type)
     (job_option
-      (string)))
+      (string))
+    (job_option
+      (integer)))
+  (job_decl
+    (constructor)
+    (record_type)
+    (job_option
+      (negative_number
+        (integer))))
   (value_decl
     (signature
       (qualified_decl_name

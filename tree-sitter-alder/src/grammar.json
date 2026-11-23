@@ -1539,6 +1539,36 @@
           "members": [
             {
               "type": "STRING",
+              "value": "priority"
+            },
+            {
+              "type": "FIELD",
+              "name": "value",
+              "content": {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "integer"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "float"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "negative_number"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
               "value": "silo"
             },
             {

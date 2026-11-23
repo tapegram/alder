@@ -4479,7 +4479,15 @@
         "required": false,
         "types": [
           {
+            "type": "float",
+            "named": true
+          },
+          {
             "type": "integer",
+            "named": true
+          },
+          {
+            "type": "negative_number",
             "named": true
           },
           {
@@ -7863,6 +7871,10 @@
   },
   {
     "type": "module",
+    "named": false
+  },
+  {
+    "type": "priority",
     "named": false
   },
   {
