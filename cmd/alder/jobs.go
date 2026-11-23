@@ -267,7 +267,11 @@ func jobsList(ctx context.Context, path string, stores []jobsStore, stdout, stde
 	if len(ticks) > 0 {
 		fmt.Fprintln(stdout, "next schedule ticks:")
 		for _, r := range ticks {
-			fmt.Fprintf(tw, "  %s\t%s\n", r.Kind, utcMinute(r.RunAt))
+			prio := ""
+			if r.Priority != 0 {
+				prio = fmt.Sprintf(" priority %d", r.Priority)
+			}
+			fmt.Fprintf(tw, "  %s\t%s%s\n", r.Kind, utcMinute(r.RunAt), prio)
 		}
 		tw.Flush()
 	}

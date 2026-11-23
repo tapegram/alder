@@ -116,3 +116,41 @@ capacity will see multi-second waits with or without jobs.
 
 Book chapter 17 (Task 21) quotes this file's single-worker number (about 2,800 jobs a second for a
 job that inserts one row, at a load near 2), not River's.
+
+## Schema 2 (#283)
+
+Schema 2 adds the `priority` column and replaces the index `_alder_jobs_due ("state", "run_at")`
+with `_alder_jobs_claim ("state", "priority" DESC, "run_at", "created")`, and the claim becomes
+`ORDER BY "priority" DESC, run_at, created LIMIT 1` with `RETURNING` naming its columns. The same
+command, `go test ./rt/jobs -run '^$' -bench BenchmarkJobs -benchtime=2000x -count 5 -timeout 20m`,
+was run on `main` at e0406ceb (before schema 2) and on `job-controls-pr2` (the commit that adds this
+section), the same machine and settings as above, one after the other:
+
+```
+22:23  up 45 days, 14:27, 4 users, load averages: 1.06 4.87 8.81   (before main's run)
+22:24  up 45 days, 14:29, 4 users, load averages: 1.73 4.14 8.15   (after it; before the branch's run)
+22:26  up 45 days, 14:30, 4 users, load averages: 1.96 3.67 7.64   (after the branch's run)
+```
+
+Medians of 5 runs; `jobs/s` is the drain of 2,000 queued no-op jobs, `req failures` was 0 in all 70 runs.
+
+| benchmark | main jobs/s | schema 2 jobs/s | change |
+|---|---:|---:|---:|
+| claim-finish, workers=1 | 2,835 | 9,574 | +238 % |
+| claim-finish, workers=4 | 2,817 | 9,694 | +244 % |
+| claim-finish, workers=8 | 2,461 | 9,202 | +274 % |
+| with-requests, 4 workers, writers=4 | 1,282 | 6,463 | noisy (raw 878 to 9,316; main 766 to 2,763) |
+| with-requests, 4 workers, writers=16 | 971 | 2,179 | noisy (raw 969 to 6,780; main 653 to 2,176) |
+
+The request writers were unaffected: requests-only 47,684 and 46,974 writes/s on main, 47,487 and
+46,580 on schema 2 (writers 4 and 16), p50 0.016 ms in all rows.
+
+**The claim did not lose throughput, so the old index is not kept** (the limit was a loss of more
+than 10 %). It gained: the claim-finish rows run about 3.4 times faster. This file does not explain
+the gain with a measurement; the likely cause is the two changes together, an index that now
+serves the claim's `ORDER BY` in full (the old plan found due rows through `("state", "run_at")`
+and then ordered by `created`) and a `RETURNING` of named columns instead of `*`. Treat the size of
+the gain as this machine's and this benchmark's: it fills the table once with 2,000 rows at one
+priority, so it says nothing about a table with many priorities or many not-yet-due rows (the
+cost the spec bounds by the queued-but-future rows at higher priorities). The with-requests rows
+vary too much between runs (the lock's fairness, above) to compare.

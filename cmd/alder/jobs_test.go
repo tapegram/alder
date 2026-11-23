@@ -22,6 +22,7 @@ type jobsRow struct {
 	id, kind, state, err string
 	key                  string // "": none
 	attempts             int
+	priority             int
 	finished             time.Duration // after jobsT0; 0: none
 	schedule             bool
 	scheduledFor         string // "2006-01-02 15:04" UTC; "": none
@@ -69,8 +70,8 @@ func jobsDB(t *testing.T, path string, rows ...jobsRow) {
 		if s, ok := sched.(int64); ok {
 			runAt = s
 		}
-		if _, err := q.ExecContext(ctx, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "attempts", "error", "finished", "schedule", "scheduled_for", "key") VALUES (?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			r.id, r.kind, r.state, runAt, jobsT0.UnixMilli(), r.attempts, errText, finished, r.schedule, sched, key); err != nil {
+		if _, err := q.ExecContext(ctx, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "attempts", "error", "finished", "schedule", "scheduled_for", "key", "priority") VALUES (?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			r.id, r.kind, r.state, runAt, jobsT0.UnixMilli(), r.attempts, errText, finished, r.schedule, sched, key, r.priority); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -106,12 +107,12 @@ func squash(out string) string {
 func jobsFixture(t *testing.T) (dir, bd, dev, silo string) {
 	t.Helper()
 	dir = tempAppAbs(t, "../../testdata/corpus/jobs-ok", "jobsapp")
-	editApp(t, dir, "Signup.alder", "job First = {}\n", "job Nightly = {} cron \"0 3 * * *\"\n\nNightly.run : Nightly.Params -> Task Unit\nNightly.run p = Task.succeed ()\n\njob First = {}\n")
+	editApp(t, dir, "Signup.alder", "job First = {}\n", "job Nightly = {} cron \"0 3 * * *\" priority 3\n\nNightly.run : Nightly.Params -> Task Unit\nNightly.run p = Task.succeed ()\n\njob First = {}\n")
 	bd = t.TempDir()
 	dev = filepath.Join(bd, "jobsapp", "dev.db")
 	jobsDB(t, dev,
 		jobsRow{id: "q0000001", kind: "Signup.First", state: "queued"},
-		jobsRow{id: "tick0001", kind: "Signup.Nightly", state: "queued", schedule: true, scheduledFor: "2026-11-17 03:00"},
+		jobsRow{id: "tick0001", kind: "Signup.Nightly", state: "queued", schedule: true, scheduledFor: "2026-11-17 03:00", priority: 3},
 		jobsRow{id: "run00001", kind: "Signup.Second", state: "running", attempts: 1},
 		jobsRow{id: "dead0001", kind: "Signup.SendWelcome", state: "dead", attempts: 5, err: "smtp: timeout\nat line 2", finished: 2 * time.Minute},
 		jobsRow{id: "dead0002", kind: "Signup.Nightly", state: "dead", attempts: 5, err: "boom", finished: time.Minute, scheduledFor: "2026-11-16 03:00"},
@@ -134,7 +135,7 @@ func TestJobs_List(t *testing.T) {
   dead 3
   done 1
 next schedule ticks:
-  Signup.Nightly 2026-11-17 03:00 UTC
+  Signup.Nightly 2026-11-17 03:00 UTC priority 3
 dead jobs, the last finished first:
   dead0003  Reports.Digest      1 attempt   x (in silo org/o1)
   dead0001  Signup.SendWelcome  5 attempts  smtp: timeout …

@@ -33,6 +33,7 @@ type JobRow struct {
 	ID           string  `json:"id"`
 	Kind         string  `json:"kind"`
 	Silo         string  `json:"silo,omitempty"`
+	Priority     int     `json:"priority"`
 	State        string  `json:"state"`
 	Params       string  `json:"params"`
 	Key          *string `json:"key,omitempty"`
@@ -71,7 +72,7 @@ type JobsView struct {
 }
 
 func jobRow(r jobs.Row) JobRow {
-	out := JobRow{ID: r.ID, Kind: r.Kind, State: r.State, Params: maskParams(r.Params), Key: r.Key, RunAt: r.RunAt, Created: r.Created,
+	out := JobRow{ID: r.ID, Kind: r.Kind, State: r.State, Params: maskParams(r.Params), Priority: r.Priority, Key: r.Key, RunAt: r.RunAt, Created: r.Created,
 		Started: r.Started, Finished: r.Finished, Attempts: r.Attempts, Error: r.Error, LeaseUntil: r.LeaseUntil,
 		Worker: r.Worker, Tick: r.Schedule && r.State == string(jobs.Queued), ScheduledFor: r.ScheduledFor}
 	if r.In.Key != "" {
@@ -312,7 +313,7 @@ var devJobsPage = template.Must(template.New("jobs").Funcs(devJobsFuncs).Parse(`
 <ul>{{range .Schedules}}<li><code>{{.Kind}}</code> {{.Rule}}: next {{if .Next}}<a href="/_dev/jobs/{{.ID}}">{{ms .Next}}</a>{{else}}none queued yet{{end}}</li>{{else}}<li>none</li>{{end}}</ul>
 <h2>Queued ({{len .Queued}})</h2>
 <table><tr><th>id</th><th>kind</th><th>due</th><th>attempts</th><th>last error</th></tr>
-{{range .Queued}}<tr><td><a href="/_dev/jobs/{{.ID}}">{{.ID}}</a>{{if .Tick}} <small>tick</small>{{end}}</td><td><code>{{.Kind}}</code>{{if .Silo}} <small>silo {{.Silo}}</small>{{end}}</td><td>{{ms .RunAt}}</td><td>{{.Attempts}}</td><td>{{with .Error}}{{.}}{{end}}</td></tr>
+{{range .Queued}}<tr><td><a href="/_dev/jobs/{{.ID}}">{{.ID}}</a>{{if .Tick}} <small>tick</small>{{end}}</td><td><code>{{.Kind}}</code>{{if .Priority}} <small>priority {{.Priority}}</small>{{end}}{{if .Silo}} <small>silo {{.Silo}}</small>{{end}}</td><td>{{ms .RunAt}}</td><td>{{.Attempts}}</td><td>{{with .Error}}{{.}}{{end}}</td></tr>
 {{end}}</table>
 <h2>Running ({{len .Running}})</h2>
 <table><tr><th>id</th><th>kind</th><th>started</th><th>attempt</th><th>worker</th></tr>

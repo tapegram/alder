@@ -419,7 +419,7 @@ In a job's declaration, set which queued runs are claimed first.
 
 ˋpriority Nˋ is an integer, 0 by default and negative allowed: ˋjob Charge = { … } priority 10ˋ.
 A run is claimed before every run of a lower priority, and higher goes first. The order is
-strict: a lower priority waits while a higher one is queued, and it is per store, so each silo
+strict: a lower priority waits while a higher one is due, and it is per store, so each silo
 orders its own queue. Among runs of equal priority, the one due first is claimed first.
 
 Book: chapter 17, "Priorities"`},

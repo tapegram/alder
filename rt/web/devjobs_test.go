@@ -71,6 +71,14 @@ func jobsFixture(t *testing.T) (*db.SQLite, *jobs.Panel, *router) {
 	insertJob(t, st, "queued01", sendKind.Name, `{"user":"u1"}`, "queued", devJobsT0.Add(5*time.Minute), 0, time.Time{}, "")
 	insertJob(t, st, "runnin01", sendKind.Name, `{"user":"u2"}`, "running", devJobsT0.Add(-time.Minute), 1, time.Time{}, "")
 	insertJob(t, st, "deadjob1", sendKind.Name, `{"user":"u3"}`, "dead", devJobsT0.Add(-time.Hour), 5, devJobsT0.Add(-30*time.Minute), jobs.LostError)
+	insertJob(t, st, "queued02", sendKind.Name, `{"user":"u4"}`, "queued", devJobsT0.Add(10*time.Minute), 0, time.Time{}, "")
+	q, err := db.On(st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.ExecContext(context.Background(), `UPDATE "_alder_jobs" SET "priority" = 10 WHERE "id" = 'queued02'`); err != nil {
+		t.Fatal(err)
+	}
 	for i := range 55 {
 		at := devJobsT0.Add(-time.Duration(60-i) * time.Minute)
 		insertJob(t, st, fmt.Sprintf("done%04d", i), sendKind.Name, `{"user":"u"}`, "done", at, 1, at.Add(time.Second), "")
@@ -103,6 +111,12 @@ func TestDevJobs_List(t *testing.T) {
 			t.Errorf("/_dev/jobs lacks %q:\n%s", want, body)
 		}
 	}
+	if !strings.Contains(body, "priority 10") || strings.Count(body, "priority ") != 1 {
+		t.Errorf("/_dev/jobs does not show priority 10 once (and no priority 0):\n%s", body)
+	}
+	if i, j := strings.Index(body, `href="/_dev/jobs/queued02"`), strings.Index(body, `href="/_dev/jobs/queued01"`); i < 0 || j < 0 || i > j {
+		t.Errorf("the priority 10 row is not before the priority 0 row (%d, %d)", i, j)
+	}
 	if strings.Contains(body, `href="/_dev/jobs/done0004"`) {
 		t.Errorf("/_dev/jobs shows more than the last fifty done rows")
 	}
@@ -122,7 +136,8 @@ func TestDevJobs_JSON(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &v); err != nil {
 		t.Fatalf("%v: %s", err, w.Body.String())
 	}
-	if len(v.Queued) != 2 || v.Queued[0].ID != "queued01" || v.Queued[0].RunAt != devJobsT0.Add(5*time.Minute).UnixMilli() || !v.Queued[1].Tick {
+	if len(v.Queued) != 3 || v.Queued[0].ID != "queued02" || v.Queued[0].Priority != 10 || v.Queued[1].ID != "queued01" || v.Queued[1].Priority != 0 ||
+		v.Queued[1].RunAt != devJobsT0.Add(5*time.Minute).UnixMilli() || !v.Queued[2].Tick {
 		t.Errorf("queued = %+v", v.Queued)
 	}
 	if len(v.Running) != 1 || v.Running[0].ID != "runnin01" || v.Running[0].Started == nil {
@@ -135,7 +150,7 @@ func TestDevJobs_JSON(t *testing.T) {
 		t.Errorf("done: %d rows, first %+v", len(v.Done), v.Done[0])
 	}
 	if len(v.Schedules) != 1 || v.Schedules[0].Kind != "Signup.Nightly" || v.Schedules[0].Rule != "every 1h" ||
-		v.Schedules[0].Next == nil || *v.Schedules[0].Next != devJobsT0.Add(time.Hour).UnixMilli() || v.Schedules[0].ID != v.Queued[1].ID {
+		v.Schedules[0].Next == nil || *v.Schedules[0].Next != devJobsT0.Add(time.Hour).UnixMilli() || v.Schedules[0].ID != v.Queued[2].ID {
 		t.Errorf("schedules = %+v", v.Schedules)
 	}
 	if v.Workers {

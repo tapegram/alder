@@ -138,6 +138,7 @@ most once:
 | `retries 2` | the attempts after the first | 4 (five attempts) |
 | `timeout "30s"` | the most one attempt may take, at most `1h` | `5m` |
 | `silo org` | run in the silo the parameter `org` names ("Silos") | the shared store |
+| `priority 10` | claimed before lower ("Priorities", below) | 0 |
 
 A duration is a whole number and a unit, `ms`, `s`, `m`, `h` or `d`.
 `timeout` longer than `1h` is E0050, and so is `every` shorter than
@@ -356,11 +357,14 @@ lease_until   INTEGER  while running: when the worker is presumed gone
 worker        TEXT     while running: "<host>:<pid>:<n>"
 schedule      INTEGER  1 while the row is its kind's queued tick
 scheduled_for INTEGER  for a tick: the time it stands for
+priority      INTEGER  the kind's priority; higher is claimed first (0)
 ```
 
 Three indexes do the work:
 
-- `("state", "run_at")` finds the due rows.
+- `("state", "priority" DESC, "run_at", "created")` finds the due rows
+  in the order they are claimed: the highest priority first, the
+  oldest due first among equals.
 - A unique index on `("kind", "key")`, only over the rows queued or
   running, is `enqueueOnce`: a second insert with the same key conflicts
   and is ignored, and the existing row's id comes back.
@@ -384,13 +388,14 @@ IMMEDIATE`, so it takes the write lock at once):
 UPDATE _alder_jobs SET state='running', attempts=attempts+1, lease_until=?, worker=?, started=?
 WHERE id = (SELECT id FROM _alder_jobs
             WHERE state='queued' AND run_at <= ? AND kind IN (…the kinds this build knows…)
-            ORDER BY run_at, created LIMIT 1)
-RETURNING *
+            ORDER BY priority DESC, run_at, created LIMIT 1)
+RETURNING id, kind, params, …
 ```
 
 (Simplified: `lease_until` is a `CASE` over the kinds, since each kind
-has its own timeout; `rt/jobs/claim.go` has the real text.) It marks the
-oldest due row running and hands it back. Because it is
+has its own timeout, and `RETURNING` names every column; `rt/jobs/claim.go`
+has the real text.) It marks the due row of the highest priority, the
+oldest among those, running and hands it back. Because it is
 one statement under the write lock, two workers never claim the same
 row, whether they are in one process or in several processes on one
 database. No worker is in charge; none needs to be.
@@ -402,6 +407,42 @@ waits for a build that knows it.
 The **lease** is the claim's promise to finish: the job's timeout plus
 30 seconds. A process that dies with a job running cannot say so; past
 its lease, housekeeping takes the job for lost and queues it again.
+
+### Priorities
+
+`priority N` on a job's declaration orders the queue: a run of a higher
+priority is claimed before every run of a lower one, whatever it waited.
+A priority is a whole number, 0 by default, negative allowed, and it
+belongs to the kind, not to a call of `Job.enqueue`. Among equal
+priorities the run due first goes first, as before.
+
+```text
+job SendWelcome = { user: User.UserId } priority 10
+job NightlyDigest = {} cron "0 3 * * *"
+```
+
+With these, a welcome mail queued while the digest's run is waiting is
+sent first. That is what priority is for: a mail a person is waiting for
+before a report nobody is.
+
+- **It is strict.** There is no ageing: while runs of a higher priority
+  keep falling due, the workers never get to a lower one. A queue that
+  always has a priority-10 run due starves its priority-0 runs. If that
+  can happen to you, the fix is a worker's capacity (`ALDER_JOBS`, or
+  worker machines), not a priority.
+- **It orders one store's queue.** The workers look in the shared store
+  and in each silo in turn, so a silo's priority-0 run can be claimed
+  before the shared store's priority-10 one. Within one store the order
+  is strict.
+- **It is only about which due run goes next.** A run that is not due
+  yet (`enqueueAt`, a retry waiting out its backoff) does not hold a
+  lower priority back. `retries`, `timeout` and the backoff ignore the
+  priority, and a schedule's tick takes its kind's.
+- **The dev panel, `alder jobs` and `Test.work` show the same order.**
+  The Jobs page lists the queued runs in claim order, with `priority N`
+  next to a kind that has one, so a starved run is at the bottom;
+  `alder jobs` prints it after a schedule tick's time; `Test.work` runs
+  the due jobs highest priority first.
 
 ### Running a job
 
@@ -915,6 +956,17 @@ quietly:
   refuses it with no migrations too; on a file, an app with no
   migrations does not notice). The rollback's health check fails and
   nothing is switched (chapter 16, "Status, rollback and logs").
+
+- **To a build older than priorities.** The runtime moves a jobs table
+  to schema 2 (the `priority` column and a new index) when it opens the
+  database, and does not move it back. Everything an older build does
+  with the table works but one statement: its claim says `RETURNING *`,
+  which now returns a column it does not read, so every claim fails.
+  The worker logs a warning, then one a minute, and claims nothing, until
+  the build is replaced: during an Ssh drain or a Render roll that is about thirty seconds,
+  after a rollback it is until the next deploy, and `/_alder/health` says
+  `"jobs": "stalled"` after five minutes. Enqueueing and the queue's
+  contents are not harmed.
 
 - **To a build older than `--jobs-only`, with `workers`.** The worker
   service runs the image with `--jobs-only`, which that build does not
