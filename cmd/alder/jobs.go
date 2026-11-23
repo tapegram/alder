@@ -162,7 +162,10 @@ func jobsStores(path string) ([]jobsStore, error) {
 }
 
 // withJobs opens s (read-only unless write) and calls f with its jobs table; a database without
-// one (an app that never ran with a job, a silo with none yet) is not f's: ok false.
+// one (an app that never ran with a job, a silo with none yet) is not f's: ok false, and is left
+// without one. A jobs table an older build made (schema 1) is upgraded first, as the app's open
+// does (jobs.EnsureTable, in a transaction of its own), for a read as for a write: every read
+// names the current columns.
 func withJobs(ctx context.Context, s jobsStore, write bool, f func(q db.Execer) error) (ok bool, err error) {
 	open := db.OpenSQLiteReader
 	if write {
@@ -185,7 +188,30 @@ func withJobs(ctx context.Context, s jobsStore, write bool, f func(q db.Execer) 
 	if err != nil {
 		return false, err
 	}
+	old, err := db.JobsTableOld(ctx, q)
+	if err != nil {
+		return false, err
+	}
+	if old {
+		if err := upgradeJobs(ctx, s.path); err != nil {
+			return false, err
+		}
+	}
 	return true, f(q)
+}
+
+// upgradeJobs moves the schema-1 jobs table of the database file path to the current schema.
+func upgradeJobs(ctx context.Context, path string) error {
+	st, err := db.OpenSQLite(path)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	q, err := db.On(st, nil)
+	if err != nil {
+		return err
+	}
+	return jobs.EnsureTable(ctx, q)
 }
 
 // where names s for an error: its file, and its silo.

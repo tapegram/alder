@@ -414,7 +414,11 @@ its lease, housekeeping takes the job for lost and queues it again.
 priority is claimed before every run of a lower one, whatever it waited.
 A priority is a whole number, 0 by default, negative allowed, and it
 belongs to the kind, not to a call of `Job.enqueue`. Among equal
-priorities the run due first goes first, as before.
+priorities the run due first goes first, as before. A run is given its
+kind's priority when it is queued and keeps it, so changing a kind's
+`priority` reaches only the runs queued after the change: the runs
+already queued, a schedule's next tick among them, keep the priority
+they were queued with.
 
 ```text
 job SendWelcome = { user: User.UserId } priority 10

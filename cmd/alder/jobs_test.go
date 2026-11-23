@@ -358,3 +358,115 @@ func TestJobs_Help(t *testing.T) {
 		t.Fatalf("help:\n%s", out.String())
 	}
 }
+
+// schema1Jobs is the jobs table as jobs_schema 1 made it (before #283's priority column and
+// claim index), verbatim as rt/db's upgrade tests keep it.
+var schema1Jobs = []string{
+	`CREATE TABLE IF NOT EXISTS "_alder_meta" ("key" TEXT NOT NULL PRIMARY KEY, "value" TEXT NOT NULL)`,
+	`CREATE TABLE IF NOT EXISTS "_alder_jobs" (
+  "id"            TEXT    NOT NULL PRIMARY KEY,
+  "kind"          TEXT    NOT NULL,
+  "params"        TEXT    NOT NULL,
+  "key"           TEXT,
+  "state"         TEXT    NOT NULL,
+  "run_at"        INTEGER NOT NULL,
+  "created"       INTEGER NOT NULL,
+  "started"       INTEGER,
+  "finished"      INTEGER,
+  "attempts"      INTEGER NOT NULL DEFAULT 0,
+  "error"         TEXT,
+  "lease_until"   INTEGER,
+  "worker"        TEXT,
+  "schedule"      INTEGER NOT NULL DEFAULT 0,
+  "scheduled_for" INTEGER
+) STRICT`,
+	`CREATE INDEX IF NOT EXISTS "_alder_jobs_due" ON "_alder_jobs" ("state", "run_at")`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS "_alder_jobs_once" ON "_alder_jobs" ("kind", "key") WHERE "key" IS NOT NULL AND "state" IN ('queued', 'running')`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS "_alder_jobs_tick" ON "_alder_jobs" ("kind") WHERE "schedule" = 1 AND "state" = 'queued'`,
+	`CREATE TABLE IF NOT EXISTS "_alder_jobs_silos" (
+  "key"     TEXT    NOT NULL,
+  "value"   TEXT    NOT NULL,
+  "touched" INTEGER NOT NULL,
+  PRIMARY KEY ("key", "value")
+) STRICT`,
+	`INSERT INTO "_alder_meta" ("key", "value") VALUES ('jobs_schema', '1')`,
+}
+
+// schema1DB makes the database file path a store an older build left: a schema-1 jobs table
+// with two dead rows.
+func schema1DB(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range schema1Jobs {
+		sqlExec(t, path, st)
+	}
+	sqlExec(t, path, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "attempts", "error", "finished") VALUES
+  ('dead0001', 'A.B', '{}', 'dead', 1, 1, 5, 'e1', 3),
+  ('dead0002', 'A.B', '{}', 'dead', 1, 1, 5, 'e2', 2)`)
+}
+
+// jobsSchemaOf is the jobs_schema row of the database file path.
+func jobsSchemaOf(t *testing.T, path string) int {
+	t.Helper()
+	return sqlCount(t, path, `SELECT CAST("value" AS INTEGER) FROM "_alder_meta" WHERE "key" = 'jobs_schema'`)
+}
+
+// `alder jobs`, `retry <id>` and `retry --dead` on a store whose jobs table is still schema 1
+// (the app has not opened it since the upgrade) move it to schema 2 first, as the app does, and
+// then work; a store with no jobs table is still left without one.
+func TestJobs_Schema1Store(t *testing.T) {
+	t.Parallel()
+	t.Run("List", func(t *testing.T) {
+		dev := filepath.Join(t.TempDir(), "dev.db")
+		schema1DB(t, dev)
+		code, out := runCmd(t, runJobsTo, "--db", dev)
+		if code != 0 || !strings.Contains(squash(out), "dead 2") || !strings.Contains(out, "dead0001") {
+			t.Fatalf("exit %d\n%s", code, out)
+		}
+		if v := jobsSchemaOf(t, dev); v != 2 {
+			t.Fatalf("jobs_schema %d", v)
+		}
+		if n := sqlCount(t, dev, `SELECT COUNT(*) FROM pragma_table_info('_alder_jobs') WHERE "name" = 'priority'`); n != 1 {
+			t.Fatal("no priority column")
+		}
+	})
+	t.Run("RetryID", func(t *testing.T) {
+		dev := filepath.Join(t.TempDir(), "dev.db")
+		schema1DB(t, dev)
+		code, out := runCmd(t, runJobsTo, "retry", "dead0001", "--db", dev)
+		if code != 0 || !strings.Contains(out, "queued job dead0001 (A.B) again") {
+			t.Fatalf("exit %d\n%s", code, out)
+		}
+		if r := jobsGet(t, dev, "dead0001"); r.State != "queued" || r.Attempts != 0 || r.Priority != 0 {
+			t.Fatalf("retried row: %+v", r)
+		}
+		if v := jobsSchemaOf(t, dev); v != 2 {
+			t.Fatalf("jobs_schema %d", v)
+		}
+	})
+	t.Run("RetryDead", func(t *testing.T) {
+		dev := filepath.Join(t.TempDir(), "dev.db")
+		schema1DB(t, dev)
+		var so, se strings.Builder
+		code := runJobsTo([]string{"retry", "--dead", "--db", dev}, &so, &se)
+		if code != 0 || so.String() != "queued 2 dead jobs again, due now: dead0001, dead0002\n" {
+			t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, so.String(), se.String())
+		}
+		if v := jobsSchemaOf(t, dev); v != 2 {
+			t.Fatalf("jobs_schema %d", v)
+		}
+	})
+	t.Run("NoJobsTable", func(t *testing.T) {
+		dev := filepath.Join(t.TempDir(), "dev.db")
+		sqlExec(t, dev, `CREATE TABLE "t" ("x" INTEGER)`)
+		code, out := runCmd(t, runJobsTo, "--db", dev)
+		if code != 0 {
+			t.Fatalf("exit %d\n%s", code, out)
+		}
+		if n := sqlCount(t, dev, `SELECT COUNT(*) FROM sqlite_schema WHERE "name" = '_alder_jobs'`); n != 0 {
+			t.Fatal("a jobs table was made")
+		}
+	})
+}

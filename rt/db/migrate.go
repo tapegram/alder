@@ -927,6 +927,14 @@ func EnsureJobsTable(ctx context.Context, q Execer) error {
 	return err
 }
 
+// JobsTableOld reports whether the jobs table's jobs_schema is one EnsureJobsTable upgrades
+// (schema 1): an opener that only reads, like `alder jobs`, upgrades the table first, since every
+// read names the schema-2 columns.
+func JobsTableOld(ctx context.Context, q Execer) (bool, error) {
+	v, err := metaValue(ctx, q, "jobs_schema")
+	return v == "1", err
+}
+
 // upgradeJobs brings a schema-1 jobs table to schema 2 (#283): the priority column (guarded
 // for a table a hand edit already widened), the due index dropped (the claim index replaces
 // it) and jobs_schema 2. On a *sql.DB or *sql.Conn it runs in a transaction of its own (BEGIN

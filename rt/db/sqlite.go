@@ -178,7 +178,7 @@ func On(st eff.Store, tx eff.Tx) (Execer, error) {
 // on is tx's *sql.Tx, or the database itself when tx is nil.
 func (s *SQLite) on(tx Tx) (querier, error) {
 	if tx == nil {
-		return recQ{s.db}, nil
+		return recDB{recQ{s.db}, s.db}, nil
 	}
 	if err := txErr(tx); err != nil {
 		return nil, err
@@ -863,6 +863,20 @@ func rowsRead(ctx context.Context, stmt string, n int) {
 // recorded with its arguments and duration, and when it has Stats (eff.Env.Stats: metrics or the
 // slow-request threshold) each is counted and timed; with neither it is a plain pass-through.
 type recQ struct{ q querier }
+
+// recDB is the recQ of a database (On with no transaction): it also begins transactions, so
+// EnsureJobsTable's upgradeJobs, handed On(st, nil) (`alder jobs`, `alder jobs run`), runs in a
+// BEGIN IMMEDIATE transaction of its own rather than as autocommit statements. A recQ of a
+// *sql.Tx has no BeginTx, so an upgrade there stays in the caller's transaction.
+type recDB struct {
+	recQ
+	db *sql.DB
+}
+
+// BeginTx begins a transaction on the database (BEGIN IMMEDIATE on a file: _txlock=immediate).
+func (r recDB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return r.db.BeginTx(ctx, opts)
+}
 
 func rec(ctx context.Context) *eff.Recorder {
 	if e := eff.EnvFrom(ctx); e != nil {

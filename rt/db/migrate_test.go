@@ -1079,3 +1079,66 @@ func TestEnsureJobsTable_NewerSchemaLeftAlone(t *testing.T) {
 		t.Fatalf("shape %+v", got)
 	}
 }
+
+// On(st, nil) — what `alder jobs run` and `alder jobs`/`retry` hand EnsureJobsTable — begins
+// transactions of its own, so upgradeJobs runs in one BEGIN IMMEDIATE (two openers at once: the
+// second finds schema 2, no "duplicate column"); On(st, tx) does not, so an upgrade there runs in
+// the caller's transaction.
+func TestEnsureJobsTable_OnBeginsTx(t *testing.T) {
+	type beginner interface {
+		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	}
+	path := t.TempDir() + "/app.db"
+	var sts [2]*SQLite
+	for i := range sts {
+		st, err := OpenSQLite(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer st.Close()
+		sts[i] = st
+	}
+	ctx := context.Background()
+	q, err := On(sts[0], nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := q.(beginner); !ok {
+		t.Fatalf("On(st, nil) is %T: no BeginTx", q)
+	}
+	tx, err := sts[0].Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	qt, err := On(sts[0], tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := qt.(beginner); ok {
+		t.Fatalf("On(st, tx) is %T: has BeginTx", qt)
+	}
+	tx.Rollback()
+
+	toSchema1(t, sts[0].db)
+	errs := make(chan error, len(sts))
+	start := make(chan struct{})
+	for _, st := range sts {
+		go func() {
+			<-start
+			q, err := On(st, nil)
+			if err == nil {
+				err = EnsureJobsTable(ctx, q)
+			}
+			errs <- err
+		}()
+	}
+	close(start)
+	for range sts {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := shapeOf(t, sts[1].db); got != schema2Shape {
+		t.Fatalf("shape %+v", got)
+	}
+}
