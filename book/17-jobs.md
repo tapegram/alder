@@ -963,7 +963,7 @@ quietly:
   with the table works but one statement: its claim says `RETURNING *`,
   which now returns a column it does not read, so every claim fails.
   The worker logs a warning, then one a minute, and claims nothing, until
-  the build is replaced: during an Ssh drain or a Render roll that is about thirty seconds,
+  the build is replaced: during an Ssh drain (30 seconds by default) or a Render roll (as long as Render takes),
   after a rollback it is until the next deploy, and `/_alder/health` says
   `"jobs": "stalled"` after five minutes. Enqueueing and the queue's
   contents are not harmed.
@@ -975,7 +975,7 @@ quietly:
 
 ## What is not there yet
 
-- `Job.cancel`, and a priority or a queue per job.
+- `Job.cancel`, and a queue per job.
 - `alder jobs --env <name>`, against a deployed environment.
 - Worker machines on `Fly` (they need a shared database there first).
 - A streaming read for a job over a very large table; fan out instead.
