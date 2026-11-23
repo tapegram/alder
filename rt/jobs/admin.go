@@ -21,7 +21,7 @@ import (
 const ShownDone = 50
 
 // rowCols are the jobs table's columns in the order scanRow reads them.
-const rowCols = `"id", "kind", "params", "key", "state", "run_at", "created", "started", "finished", "attempts", "error", "lease_until", "worker", "schedule", "scheduled_for"`
+const rowCols = `"id", "kind", "params", "key", "state", "run_at", "created", "started", "finished", "attempts", "error", "lease_until", "worker", "schedule", "scheduled_for", "priority"`
 
 // ErrNoJob is the error of an operation on a job id no row has (never enqueued in the stores
 // looked in, or pruned).
@@ -56,7 +56,7 @@ func (e *KeyHeldError) Error() string {
 // Listing is the rows of a jobs table as the Jobs page lists them. A row's In is its store when
 // the listing covers several (Panel.List); List of one store leaves it zero.
 type Listing struct {
-	Queued  []Row // by run_at, then created; a kind's queued schedule tick (Schedule) among them
+	Queued  []Row // in claim order: priority (highest first), run_at, created; a kind's queued schedule tick (Schedule) among them
 	Running []Row // by started
 	Dead    []Row // the last finished first
 	Done    []Row // the ShownDone finished last, the last first
@@ -70,7 +70,7 @@ type Listing struct {
 func List(ctx context.Context, q db.Execer) (Listing, error) {
 	var l Listing
 	var err error
-	if l.Queued, err = rowsWhere(ctx, q, `"state" = 'queued' ORDER BY "run_at", "created"`); err != nil {
+	if l.Queued, err = rowsWhere(ctx, q, `"state" = 'queued' ORDER BY "priority" DESC, "run_at", "created"`); err != nil {
 		return l, err
 	}
 	if l.Running, err = rowsWhere(ctx, q, `"state" = 'running' ORDER BY "started", "created"`); err != nil {
@@ -188,17 +188,17 @@ func RetryDead(ctx context.Context, q db.Execer, now time.Time) (retried []Row, 
 	return retried, refused, nil
 }
 
-// Manual queues a run of kind by hand (`alder jobs run`, spec §4) in q's jobs table: a row with
-// the parameters `{}`, due and created at now, with no key and not a schedule tick (schedule 0,
+// Manual queues a run of kind k by hand (`alder jobs run`, spec §4) in q's jobs table: a row of
+// k's name and priority with the parameters `{}`, due and created at now, with no key and not a schedule tick (schedule 0,
 // no scheduled_for), so a scheduled kind's ticks are left as they are. It returns the row's id
 // (NewID; an id another row has is drawn again, up to idTries times). The caller checks that kind
 // takes no parameters.
-func Manual(ctx context.Context, q db.Execer, kind string, now time.Time) (string, error) {
+func Manual(ctx context.Context, q db.Execer, k Kind, now time.Time) (string, error) {
 	var id string
 	for range idTries {
 		id = newID()
-		res, err := q.ExecContext(ctx, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created") VALUES (?, ?, '{}', 'queued', ?, ?) ON CONFLICT DO NOTHING`,
-			id, kind, now.UnixMilli(), now.UnixMilli())
+		res, err := q.ExecContext(ctx, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "priority") VALUES (?, ?, '{}', 'queued', ?, ?, ?) ON CONFLICT DO NOTHING`,
+			id, k.Name, now.UnixMilli(), now.UnixMilli(), k.Priority)
 		if err != nil {
 			return "", err
 		}
@@ -266,7 +266,9 @@ func (m *Listing) sort() {
 		}
 		return *p
 	}
-	slices.SortStableFunc(m.Queued, func(a, b Row) int { return cmp.Or(cmp.Compare(a.RunAt, b.RunAt), cmp.Compare(a.Created, b.Created)) })
+	slices.SortStableFunc(m.Queued, func(a, b Row) int {
+		return cmp.Or(cmp.Compare(b.Priority, a.Priority), cmp.Compare(a.RunAt, b.RunAt), cmp.Compare(a.Created, b.Created))
+	})
 	slices.SortStableFunc(m.Running, func(a, b Row) int {
 		return cmp.Or(cmp.Compare(at(a.Started), at(b.Started)), cmp.Compare(a.Created, b.Created))
 	})

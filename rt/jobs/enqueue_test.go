@@ -278,3 +278,12 @@ func TestEnqueue_InSilo(t *testing.T) {
 		t.Fatalf("the shared store holds %d job rows", n)
 	}
 }
+
+func TestEnqueue_WritesPriority(t *testing.T) {
+	st := open(t)
+	env, _ := newEnv(st)
+	id := runEnqueue(t, env, rt.Job{Kind: "A.B", Params: "{}", Priority: 10}, nil)
+	if n := count(t, st, `SELECT "priority" FROM "_alder_jobs" WHERE "id" = ?`, id); n != 10 {
+		t.Fatalf("priority %d, want 10", n)
+	}
+}

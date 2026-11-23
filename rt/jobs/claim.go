@@ -11,11 +11,12 @@ import (
 	"alder/rt/eff"
 )
 
-// claimStmt is spec §3's claim: one statement that marks the oldest due row of a known kind
-// running and gives it. LEASE becomes a CASE giving the claimed row's own kind's lease (each
+// claimStmt is spec §3's claim: one statement that marks the due row of a known kind of the
+// highest priority, the oldest among those, running and gives it (#283; the index
+// _alder_jobs_claim serves its order). LEASE becomes a CASE giving the claimed row's own kind's lease (each
 // kind's WHEN ? THEN ?), KINDS the kinds' placeholders; the claim also records when the attempt
 // started.
-const claimStmt = `UPDATE _alder_jobs SET state='running', attempts=attempts+1, lease_until=LEASE, worker=?, started=? WHERE id = (SELECT id FROM _alder_jobs WHERE state='queued' AND run_at <= ? AND kind IN (KINDS) ORDER BY run_at, created LIMIT 1) RETURNING ` + rowCols
+const claimStmt = `UPDATE _alder_jobs SET state='running', attempts=attempts+1, lease_until=LEASE, worker=?, started=? WHERE id = (SELECT id FROM _alder_jobs WHERE state='queued' AND run_at <= ? AND kind IN (KINDS) ORDER BY "priority" DESC, run_at, created LIMIT 1) RETURNING ` + rowCols
 
 // Lease is how long a claimed row of kind k is leased: its timeout (maxTimeout for a kind with
 // none) plus LeaseMargin. Past it, housekeeping takes the row for lost.
@@ -27,7 +28,8 @@ func Lease(k Kind) time.Duration {
 	return t + LeaseMargin
 }
 
-// Claim claims the oldest row of s due at now whose kind is one of kinds: it is marked running
+// Claim claims the row of s due at now whose kind is one of kinds, of the highest priority and
+// the oldest among those: it is marked running
 // by worker, started now, its attempts count one more, and its lease runs until now + Lease of
 // its kind. The claim is one statement in a transaction of its own (BEGIN IMMEDIATE on a file
 // database), so two workers, in one process or several on one database, never claim the same
@@ -101,7 +103,7 @@ func scanRow(sc interface{ Scan(...any) error }) (*Row, error) {
 		lease, schedAt sql.NullInt64
 	)
 	if err := sc.Scan(&r.ID, &r.Kind, &r.Params, &key, &r.State, &r.RunAt, &r.Created, &started, &fin,
-		&r.Attempts, &errTxt, &lease, &worker, &r.Schedule, &schedAt); err != nil {
+		&r.Attempts, &errTxt, &lease, &worker, &r.Schedule, &schedAt, &r.Priority); err != nil {
 		return nil, err
 	}
 	r.Key, r.Error, r.Worker = str(key), str(errTxt), worker.String

@@ -24,6 +24,7 @@ type Kind struct {
 	Every     time.Duration // 0 when not scheduled by interval
 	Cron      string        // "" when not scheduled by cron
 	SiloParam string        // "" when the job runs on the shared store
+	Priority  int           // its rows' priority: higher is claimed first; 0 by default
 }
 
 // MaxError is the most bytes of a failure's text the row keeps (4 KB).

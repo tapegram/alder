@@ -423,3 +423,22 @@ func TestEnsureTicks_StaleNowLeavesNextAlone(t *testing.T) {
 		t.Fatalf("nightly rows %+v, want the next tick still on 11-17", rows)
 	}
 }
+
+// A kind's ticks, the first (EnsureTicksOn) and the next a claim inserts (ClaimedTick), take its
+// priority.
+func TestTicks_TakeKindPriority(t *testing.T) {
+	st := openFile(t)
+	k := scheduled("A.Hourly", time.Hour, "", eff.Pure(struct{}{}))
+	k.Priority = 3
+	kinds := []jobs.Kind{k}
+	ensure(t, st, kinds, utc(t, "2026-11-16 10:17:00"))
+	if n := count(t, st, `SELECT COUNT(*) FROM "_alder_jobs" WHERE "kind" = ? AND "schedule" = 1 AND "priority" = 3`, k.Name); n != 1 {
+		t.Fatalf("%d queued ticks of priority 3, want 1", n)
+	}
+	if r := claimAt(t, st, kinds, utc(t, "2026-11-16 11:00:00")); r.Priority != 3 {
+		t.Fatalf("claimed tick's priority %d", r.Priority)
+	}
+	if n := count(t, st, `SELECT COUNT(*) FROM "_alder_jobs" WHERE "kind" = ? AND "schedule" = 1 AND "state" = 'queued' AND "priority" = 3`, k.Name); n != 1 {
+		t.Fatalf("%d next ticks of priority 3, want 1", n)
+	}
+}

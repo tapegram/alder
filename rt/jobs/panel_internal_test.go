@@ -27,3 +27,21 @@ func TestAttemptRing(t *testing.T) {
 		}
 	}
 }
+
+// The panel's merged listing sorts queued rows in claim order, as List does.
+func TestList_QueuedInClaimOrderMerged(t *testing.T) {
+	l := Listing{Queued: []Row{
+		{ID: "neg", Priority: -5, RunAt: 0},
+		{ID: "zero", Priority: 0, RunAt: 1},
+		{ID: "ten-late", Priority: 10, RunAt: 9, Created: 1},
+		{ID: "ten", Priority: 10, RunAt: 9},
+	}}
+	l.sort()
+	var ids []string
+	for _, r := range l.Queued {
+		ids = append(ids, r.ID)
+	}
+	if got := fmt.Sprint(ids); got != "[ten ten-late zero neg]" {
+		t.Fatalf("queued %s", got)
+	}
+}

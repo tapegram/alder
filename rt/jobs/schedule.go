@@ -132,7 +132,7 @@ func EnsureTicksOn(ctx context.Context, q db.Execer, kinds []Kind, now time.Time
 			after, err = Next(k, at)
 		}
 		if err == nil {
-			err = insertTick(ctx, q, k.Name, at, now)
+			err = insertTick(ctx, q, k, at, now)
 		}
 		if err == nil {
 			_, err = q.ExecContext(ctx, `UPDATE "_alder_jobs" SET "run_at" = ?, "scheduled_for" = ? WHERE "kind" = ? AND "schedule" = 1 AND "state" = 'queued' AND "scheduled_for" > ?`,
@@ -173,17 +173,17 @@ func ClaimedTick(ctx context.Context, q db.Execer, k Kind, row Row, now time.Tim
 	if err != nil {
 		return err
 	}
-	return insertTick(ctx, q, k.Name, at, now)
+	return insertTick(ctx, q, k, at, now)
 }
 
-// insertTick inserts kind's queued tick due at `at`, created now, unless one is queued already.
-// An id another row has is drawn again, up to idTries times, as Enqueue does.
-func insertTick(ctx context.Context, q db.Execer, kind string, at, now time.Time) error {
+// insertTick inserts kind k's queued tick due at `at`, created now, of k's priority, unless one
+// is queued already. An id another row has is drawn again, up to idTries times, as Enqueue does.
+func insertTick(ctx context.Context, q db.Execer, k Kind, at, now time.Time) error {
 	var id string
 	for range idTries {
 		id = newID()
-		res, err := q.ExecContext(ctx, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "schedule", "scheduled_for") VALUES (?, ?, '{}', 'queued', ?, ?, 1, ?) ON CONFLICT DO NOTHING`,
-			id, kind, at.UnixMilli(), now.UnixMilli(), at.UnixMilli())
+		res, err := q.ExecContext(ctx, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "schedule", "scheduled_for", "priority") VALUES (?, ?, '{}', 'queued', ?, ?, 1, ?, ?) ON CONFLICT DO NOTHING`,
+			id, k.Name, at.UnixMilli(), now.UnixMilli(), at.UnixMilli(), k.Priority)
 		if err != nil {
 			return err
 		}
@@ -195,7 +195,7 @@ func insertTick(ctx context.Context, q db.Execer, kind string, at, now time.Time
 			return nil
 		}
 		var old string
-		err = q.QueryRowContext(ctx, `SELECT "id" FROM "_alder_jobs" WHERE "kind" = ? AND "schedule" = 1 AND "state" = 'queued'`, kind).Scan(&old)
+		err = q.QueryRowContext(ctx, `SELECT "id" FROM "_alder_jobs" WHERE "kind" = ? AND "schedule" = 1 AND "state" = 'queued'`, k.Name).Scan(&old)
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err // nil: the kind's tick is queued already
 		}

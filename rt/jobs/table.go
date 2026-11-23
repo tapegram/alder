@@ -29,6 +29,7 @@ type Row struct {
 	RunAt, Created                              int64
 	Started, Finished, LeaseUntil, ScheduledFor *int64
 	Attempts                                    int
+	Priority                                    int // higher is claimed first (claimStmt)
 	Error                                       *string
 	// Schedule: the row is its kind's queued schedule tick, or was until this claim (ClaimedTick
 	// clears it in the table; a tick keeps its ScheduledFor).

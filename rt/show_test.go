@@ -262,3 +262,11 @@ func TestEqKey_UnderscoreFields(t *testing.T) {
 		t.Errorf("Key: %q != %q", rt.Key(x), rt.Key(y))
 	}
 }
+
+// A Job prints as its kind and params; its priority, a function of its kind, is not shown.
+func TestShow_JobIgnoresPriority(t *testing.T) {
+	got := rt.Show(rt.Job{Kind: "A.B", Params: "{}", Priority: 10})
+	if want := rt.Show(rt.Job{Kind: "A.B", Params: "{}"}); got != want || got != `{ kind: "A.B", params: "\{}" }` {
+		t.Fatalf("Show: %s, want %s", got, want)
+	}
+}

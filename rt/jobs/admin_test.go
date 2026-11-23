@@ -3,6 +3,7 @@ package jobs_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -210,7 +211,7 @@ func TestAdmin_CountsRetryDeadManual(t *testing.T) {
 		}
 	}
 	defer jobs.SetNewID(func() string { return "man00001" })()
-	id, err := jobs.Manual(ctx, q, "K.Nightly", now)
+	id, err := jobs.Manual(ctx, q, jobs.Kind{Name: "K.Nightly"}, now)
 	if err != nil || id != "man00001" {
 		t.Fatalf("manual: %q %v", id, err)
 	}
@@ -247,5 +248,49 @@ func TestPanel_ClosedIdleSilo(t *testing.T) {
 	}
 	if err := p.Retry(ctx, "nosuch01"); !errors.Is(err, jobs.ErrNoJob) {
 		t.Errorf("retry of no row: %v", err)
+	}
+}
+
+// Manual writes the kind's priority; Retry keeps a dead row's.
+func TestAdmin_ManualPriority(t *testing.T) {
+	st := open(t)
+	ctx := context.Background()
+	q := raw(t, st)
+	defer jobs.SetNewID(func() string { return "man00002" })()
+	id, err := jobs.Manual(ctx, q, jobs.Kind{Name: "A.B", Priority: 2}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, err := jobs.Get(ctx, q, id); err != nil || r.Kind != "A.B" || r.Priority != 2 {
+		t.Fatalf("manual row: %+v %v", r, err)
+	}
+	if _, err := q.ExecContext(ctx, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "attempts", "finished", "priority") VALUES ('dead0009', 'A.B', '{}', 'dead', ?, ?, 3, ?, -4)`,
+		t0.UnixMilli(), t0.UnixMilli(), t0.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if err := jobs.Retry(ctx, q, "dead0009", t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := jobs.Get(ctx, q, "dead0009"); err != nil || r.State != "queued" || r.Priority != -4 {
+		t.Fatalf("retried row: %+v %v", r, err)
+	}
+}
+
+// List's queued rows are in claim order: priority, highest first, then run_at, then created.
+func TestList_QueuedInClaimOrder(t *testing.T) {
+	st := open(t)
+	insertPri(t, st, "neg", -5, t0, t0)
+	insertPri(t, st, "zero", 0, t0.Add(time.Second), t0)
+	insertPri(t, st, "ten", 10, t0.Add(time.Minute), t0)
+	l, err := jobs.List(context.Background(), raw(t, st))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, r := range l.Queued {
+		ids = append(ids, r.ID)
+	}
+	if strings.Join(ids, " ") != "ten zero neg" {
+		t.Fatalf("queued %v, want ten zero neg", ids)
 	}
 }

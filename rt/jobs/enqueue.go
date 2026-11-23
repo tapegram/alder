@@ -62,8 +62,8 @@ func Enqueue(env *eff.Env, j rt.Job, runAt time.Time, key *string) (string, erro
 	var id string
 	for range idTries {
 		id = newID()
-		res, err := q.ExecContext(ctx, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "key", "state", "run_at", "created") VALUES (?, ?, ?, ?, 'queued', ?, ?) ON CONFLICT DO NOTHING`,
-			id, j.Kind, j.Params, key, runAt.UnixMilli(), env.Now().UnixMilli())
+		res, err := q.ExecContext(ctx, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "key", "state", "run_at", "created", "priority") VALUES (?, ?, ?, ?, 'queued', ?, ?, ?) ON CONFLICT DO NOTHING`,
+			id, j.Kind, j.Params, key, runAt.UnixMilli(), env.Now().UnixMilli(), j.Priority)
 		if err != nil {
 			return "", err
 		}

@@ -465,7 +465,8 @@ func jobsRun(ctx context.Context, dir, path, kind string, stdout, stderr io.Writ
 		err = jobs.EnsureTable(ctx, q)
 	}
 	if err == nil {
-		id, err = jobs.Manual(ctx, q, name, time.Now())
+		// Task 6: the priority becomes the checker's JobInfo.Priority.
+		id, err = jobs.Manual(ctx, q, jobs.Kind{Name: name, Priority: 0}, time.Now())
 	}
 	if err != nil {
 		return fail(2, "%s: %v", path, err)
