@@ -40,7 +40,7 @@ func (f *Fly) Jobs(ctx context.Context, args ...string) (string, int, error) {
 }
 
 // JobStore is one database that holds jobs: the shared database (Key "") or the silo database of
-// Key/Value. Open opens it from this machine (a reader: read-only).
+// Key/Value. Open opens it from this machine, read-only when reader is true.
 type JobStore struct {
 	Key, Value string
 	Open       func(ctx context.Context, reader bool) (*db.SQLite, error)

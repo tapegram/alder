@@ -928,8 +928,8 @@ func EnsureJobsTable(ctx context.Context, q Execer) error {
 }
 
 // JobsTableOld reports whether the jobs table's jobs_schema is one EnsureJobsTable upgrades
-// (schema 1): an opener that only reads, like `alder jobs`, upgrades the table first, since every
-// read names the schema-2 columns.
+// (schema 1). The local `alder jobs` upgrades the table first, since every read names the schema-2
+// columns; on Render, `alder jobs --env` list reads an old table without upgrading it.
 func JobsTableOld(ctx context.Context, q Execer) (bool, error) {
 	v, err := metaValue(ctx, q, "jobs_schema")
 	return v == "1", err

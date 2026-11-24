@@ -278,6 +278,9 @@ func runJobsStores(ctx context.Context, js deploy.JobStorer, r *deployRunner, t 
 				question = fmt.Sprintf("queue the 1 dead job at %s again, due now? type yes: ", t.Describe())
 			}
 		}
+		// The orphan check and the reads above happen before the question, and take no lock. The
+		// lock (Render.Lock runs Turso.Preflight, which would create a missing database) is
+		// reached only after JobStores found the database.
 		if err := markOrphans(ctx, stores, r.prog); err != nil {
 			return fail(2, "%s: %v", stores[0].where, err)
 		}
