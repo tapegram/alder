@@ -48,11 +48,14 @@ or Render; Fly has none).`
 // jobsStore is one database of `alder jobs`: the shared one (silo "") or a silo's. where names it
 // for an error (its file, and its silo); open opens it, read-only unless write. orphaned: the
 // silo's key row is gone from the shared store (marked on Render only, markOrphans), so a retry
-// there is refused.
+// there is refused. readOld: a read leaves a schema-1 jobs table as it is (schema1Reader) rather
+// than upgrading it; only a write upgrades it (Render: a deployed database is changed only after
+// the question and under the lock).
 type jobsStore struct {
 	silo, where string // silo: "org/42"
 	open        func(ctx context.Context, write bool) (*db.SQLite, error)
 	orphaned    bool
+	readOld     bool
 }
 
 // placed is a job row and where it was found: its silo ("org/42", "" for the shared store) and,
@@ -247,7 +250,8 @@ func fileStore(path, silo, where string) jobsStore {
 // one (an app that never ran with a job, a silo with none yet) is not f's: ok false, and is left
 // without one. A jobs table an older build made (schema 1) is upgraded first, as the app's open
 // does (jobs.EnsureTable, in a transaction of its own), for a read as for a write: every read
-// names the current columns.
+// names the current columns. A store marked readOld is read as it is (schema1Reader), and
+// upgraded only for a write.
 func withJobs(ctx context.Context, s jobsStore, write bool, f func(q db.Execer) error) (ok bool, err error) {
 	st, err := s.open(ctx, write)
 	if err != nil {
@@ -270,12 +274,29 @@ func withJobs(ctx context.Context, s jobsStore, write bool, f func(q db.Execer) 
 	if err != nil {
 		return false, err
 	}
+	if old && !write && s.readOld {
+		return true, f(schema1Reader{q})
+	}
 	if old {
 		if err := upgradeJobs(ctx, s); err != nil {
 			return false, err
 		}
 	}
 	return true, f(q)
+}
+
+// schema1Reader reads a schema-1 jobs table through the current schema's queries: the column
+// schema 2 added (#283's "priority") reads as its default, 0 (an expression: a bare 0 in ORDER BY
+// would name a result column). A cancelled state needs no column, so a schema-1 table simply has
+// no cancelled row.
+type schema1Reader struct{ db.Execer }
+
+func (r schema1Reader) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return r.Execer.QueryContext(ctx, strings.ReplaceAll(query, `"priority"`, `CAST(0 AS INTEGER)`), args...)
+}
+
+func (r schema1Reader) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return r.Execer.QueryRowContext(ctx, strings.ReplaceAll(query, `"priority"`, `CAST(0 AS INTEGER)`), args...)
 }
 
 // upgradeJobs moves the schema-1 jobs table of s to the current schema.

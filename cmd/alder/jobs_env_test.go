@@ -350,6 +350,59 @@ func TestJobs_EnvRender(t *testing.T) {
 		t.Fatalf("retry with no jobs table: %d\n%s%s", code, so, se)
 	}
 
+	// a schema-1 jobs table (an older build's), shared and in silo A: list reads it as it is and
+	// changes nothing; a confirmed retry upgrades the store it writes, under the lock
+	if err := f.turso.Exec(childA, `DROP TABLE "_alder_jobs"`); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"blog", childA} {
+		for _, st := range []string{`DROP TABLE IF EXISTS "_alder_jobs_silos"`, `DELETE FROM "_alder_meta" WHERE "key" = 'jobs_schema'`} {
+			if err := f.turso.Exec(name, st); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, st := range schema1Jobs {
+			if err := f.turso.Exec(name, st); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := f.turso.Exec("blog", `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "attempts", "error", "finished") VALUES
+  ('old00001', 'Reports.Ping', '{}', 'dead', 1, 1, 5, 'e1', 3), ('old00002', 'Reports.Ping', '{}', 'queued', 1, 1, 0, NULL, NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.turso.Exec(childA, `INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "attempts", "error", "finished") VALUES
+  ('oldA0001', 'Reports.Digest', '{}', 'dead', 1, 1, 2, 'e2', 2)`); err != nil {
+		t.Fatal(err)
+	}
+	schema1 := func(d *sql.DB) (string, int) {
+		var v string
+		var cols int
+		d.QueryRow(`SELECT "value" FROM "_alder_meta" WHERE "key" = 'jobs_schema'`).Scan(&v)
+		d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('_alder_jobs') WHERE "name" = 'priority'`).Scan(&cols)
+		return v, cols
+	}
+	code, so, se = run()
+	if code != 0 || !strings.Contains(squash(so), "queued 1") || !strings.Contains(squash(so), "old00001 Reports.Ping 5 attempts e1") ||
+		!strings.Contains(squash(so), "oldA0001 Reports.Digest 2 attempts e2 (in silo org/A)") {
+		t.Fatalf("list of schema-1 tables: %d\n%s%s", code, so, se)
+	}
+	for _, name := range []string{"blog", childA} {
+		if v, cols := schema1(f.turso.DB(name)); v != "1" || cols != 0 {
+			t.Fatalf("%s after list: jobs_schema %q, priority columns %d", name, v, cols)
+		}
+	}
+	code, so, se = run("retry", "old00001", "--yes")
+	if code != 0 || !strings.Contains(so, "queued job old00001 (Reports.Ping) again, due now") || state(shared, "old00001") != "queued" {
+		t.Fatalf("retry on schema 1: %d\n%s%s", code, so, se)
+	}
+	if v, cols := schema1(shared); v != db.JobsSchema || cols != 1 {
+		t.Fatalf("shared after retry: jobs_schema %q, priority columns %d", v, cols)
+	}
+	if v, cols := schema1(f.turso.DB(childA)); v != "1" || cols != 0 {
+		t.Fatalf("silo A after a shared retry: jobs_schema %q, priority columns %d", v, cols)
+	}
+
 	// a service whose database does not exist: not deployed, and nothing is created
 	before := strings.Join(f.turso.Names(), ",")
 	for _, args := range [][]string{{"--env", "staging", dir}, {"retry", "x", "--env", "staging", dir, "--yes"}, {"run", "Ping", "--env", "staging", dir, "--yes"}} {

@@ -235,7 +235,7 @@ func runJobsStores(ctx context.Context, js deploy.JobStorer, r *deployRunner, t 
 			where = "silo " + silo
 		}
 		open := s.Open
-		stores[i] = jobsStore{silo: silo, where: where, open: func(ctx context.Context, write bool) (*db.SQLite, error) { return open(ctx, !write) }}
+		stores[i] = jobsStore{silo: silo, where: where, readOld: true, open: func(ctx context.Context, write bool) (*db.SQLite, error) { return open(ctx, !write) }}
 	}
 	has, schema, err := jobsTableOf(ctx, stores[0])
 	switch {
