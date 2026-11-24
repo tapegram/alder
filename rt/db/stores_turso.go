@@ -156,12 +156,19 @@ func (s *Stores) orphans(ctx context.Context) (func(key, value string) bool, fun
 	if err != nil {
 		return nil, func() {}, err
 	}
+	return Orphans(ctx, shared, s.cfg.Silos, s.cfg.Tables), func() { shared.Close() }, nil
+}
+
+// Orphans is the function orphans returns, over an open shared store: whether silo key/value
+// is orphaned (its key row is gone from shared), false for a key with no Ref in tables. ctx
+// is the context of each of its queries.
+func Orphans(ctx context.Context, shared *SQLite, silos []Silo, tables []TableDesc) func(key, value string) bool {
 	byName := map[string]TableDesc{}
-	for _, d := range s.cfg.Tables {
+	for _, d := range tables {
 		byName[d.Name] = d
 	}
 	refs := map[string]TableDesc{}
-	for _, si := range s.cfg.Silos {
+	for _, si := range silos {
 		if d, ok := byName[si.Ref]; ok {
 			refs[si.Key] = d
 		}
@@ -174,7 +181,7 @@ func (s *Stores) orphans(ctx context.Context) (func(key, value string) bool, fun
 		var n int
 		err := shared.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+quote(SQLName(d.Name))+" WHERE "+quote(d.ID)+" = ?", value).Scan(&n)
 		return err == nil && n == 0
-	}, func() { shared.Close() }, nil
+	}
 }
 
 func orphanDetail(s *Stores, key string) string {
@@ -403,6 +410,52 @@ func PruneSilos(ctx context.Context, cfg StoresConfig, names []string, out io.Wr
 		fmt.Fprintf(out, "%s: removed\n", what)
 	}
 	return kept, nil
+}
+
+// SiloDB is one silo database of an app (SiloDBs): its key and value, whether its key row is
+// gone (Orphaned), how to open it and how to look at its state.
+type SiloDB struct {
+	Key, Value string
+	// Orphaned: the key row is gone from the shared database (false when that cannot be told).
+	Orphaned bool
+	// Open opens the database (reader: read-only); the caller closes it.
+	Open func(ctx context.Context, reader bool) (*SQLite, error)
+	// Check is the database st's state as --silo-status reports it, changing nothing.
+	Check func(ctx context.Context, st *SQLite) (SiloState, string, error)
+}
+
+// SiloDBs lists every silo database of every key of cfg.Silos, in the order of the binary's
+// maintenance tasks: the files under cfg.Dir/silos/<key>/, or the children on Turso. Each
+// Orphaned is told before it returns (cfg.Shared opened and closed here); a database is opened
+// by its Open, once, by a maintenance process. With no silo database there are none.
+func SiloDBs(ctx context.Context, cfg StoresConfig) ([]SiloDB, error) {
+	s, err := newStores(nil, cfg)
+	if err != nil {
+		return nil, err
+	}
+	es, err := s.entries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	orphaned, done, err := s.orphans(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer done()
+	var out []SiloDB
+	for _, e := range es {
+		out = append(out, SiloDB{
+			Key: e.key, Value: e.value,
+			Orphaned: orphaned != nil && orphaned(e.key, e.value),
+			Open: func(ctx context.Context, reader bool) (*SQLite, error) {
+				return s.openEntry(ctx, e, reader)
+			},
+			Check: func(ctx context.Context, st *SQLite) (SiloState, string, error) {
+				return s.state(ctx, st, e, false, false)
+			},
+		})
+	}
+	return out, nil
 }
 
 // ---- the runtime's own tables in the shared database on Turso

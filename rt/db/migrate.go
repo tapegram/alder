@@ -865,8 +865,8 @@ const JobsTable = "_alder_jobs"
 // is in every store that has one; only the shared store's is used.
 const SiloHintsTable = "_alder_jobs_silos"
 
-// jobsSchema is the jobs table's version, the jobs_schema row of _alder_meta.
-const jobsSchema = "2"
+// JobsSchema is the jobs table's version, the jobs_schema row of _alder_meta.
+const JobsSchema = "2"
 
 // createJobs is the jobs table and its indexes: the key of Job.enqueueOnce (unique while a row
 // with it is queued or running) and the one queued tick of a schedule; then the silo hints
@@ -917,7 +917,7 @@ func EnsureJobsTable(ctx context.Context, q Execer) error {
 			return err
 		}
 	}
-	if _, err := q.ExecContext(ctx, `INSERT INTO "_alder_meta" ("key", "value") VALUES ('jobs_schema', ?) ON CONFLICT ("key") DO NOTHING`, jobsSchema); err != nil {
+	if _, err := q.ExecContext(ctx, `INSERT INTO "_alder_meta" ("key", "value") VALUES ('jobs_schema', ?) ON CONFLICT ("key") DO NOTHING`, JobsSchema); err != nil {
 		return err
 	}
 	if err := upgradeJobs(ctx, q); err != nil {
@@ -933,6 +933,14 @@ func EnsureJobsTable(ctx context.Context, q Execer) error {
 func JobsTableOld(ctx context.Context, q Execer) (bool, error) {
 	v, err := metaValue(ctx, q, "jobs_schema")
 	return v == "1", err
+}
+
+// JobsSchemaOf is q's jobs_schema row of _alder_meta, "" when the row or the table is absent.
+func JobsSchemaOf(ctx context.Context, q Execer) (string, error) {
+	if ok, err := tableExists(ctx, q, "_alder_meta"); err != nil || !ok {
+		return "", err
+	}
+	return metaValue(ctx, q, "jobs_schema")
 }
 
 // upgradeJobs brings a schema-1 jobs table to schema 2 (#283): the priority column (guarded

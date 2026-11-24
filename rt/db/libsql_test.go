@@ -540,3 +540,46 @@ func TestTurso_UpgradesJobsTable(t *testing.T) {
 		t.Fatalf("child %+v", got)
 	}
 }
+
+// SiloDBs on Turso lists the children of the key (not another database of the group), each
+// opening and reading.
+func TestTurso_SiloDBs(t *testing.T) {
+	f := tursofake.New(t, "acme")
+	path := tursoEnv(t, f)
+	s, cfg := openTursoApp(t, path, 1)
+	ctx := context.Background()
+	want := map[string]bool{}
+	for _, org := range []string{"A", "B"} {
+		id, err := s.shared.Insert(ctx, nil, "Org.Org", orgDesc.Columns, "id", "", "", []any{nil, org}, clock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.silo(ctx, "org", id); err != nil {
+			t.Fatal(err)
+		}
+		want[id] = true
+	}
+	if err := f.Create("stray", "default"); err != nil {
+		t.Fatal(err)
+	}
+	dbs, err := SiloDBs(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dbs) != 2 {
+		t.Fatalf("%d silo databases, want 2: %+v", len(dbs), dbs)
+	}
+	for _, d := range dbs {
+		if d.Key != "org" || !want[d.Value] || d.Orphaned {
+			t.Fatalf("%+v", d)
+		}
+		st, err := d.Open(ctx, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := tableExists(ctx, st.db, "_alder_jobs"); err != nil || !ok {
+			t.Fatalf("%s: reading the child: %v %v", d.Value, ok, err)
+		}
+		st.Close()
+	}
+}
