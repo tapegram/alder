@@ -102,10 +102,37 @@ func (s adminStore) with(ctx context.Context, reader bool, f func(st *db.SQLite,
 	}
 	var one int
 	err = q.QueryRowContext(ctx, `SELECT 1 FROM sqlite_schema WHERE "type" = 'table' AND "name" = '_alder_jobs'`).Scan(&one)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
+		return f(st, q, false)
+	}
+	if err != nil {
 		return err
 	}
-	return f(st, q, err == nil)
+	old, err := db.JobsTableOld(ctx, q)
+	if err != nil {
+		return err
+	}
+	if old { // a schema-1 table an older build left: every read names the schema-2 columns
+		if err := s.upgrade(ctx); err != nil {
+			return err
+		}
+	}
+	return f(st, q, true)
+}
+
+// upgrade moves s's schema-1 jobs table to the current schema (EnsureTable) through a writer
+// of its own, as `alder jobs` does (upgradeJobs), so list stays a reader of a current store.
+func (s adminStore) upgrade(ctx context.Context) error {
+	st, err := s.open(ctx, false)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	q, err := db.On(st, nil)
+	if err != nil {
+		return err
+	}
+	return EnsureTable(ctx, q)
 }
 
 // maintenance is the detail of silo database st's state when it is not served (the workers do

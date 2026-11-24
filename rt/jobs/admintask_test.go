@@ -385,3 +385,113 @@ func TestAdmin_ListReaderOnly(t *testing.T) {
 		t.Errorf("data_version %d → %d: list wrote to the shared file", v0, v)
 	}
 }
+
+// schema1Jobs makes a store an older build left: a schema-1 jobs table (no priority column),
+// as cmd/alder/jobs_test.go's schema1Jobs.
+var schema1Jobs = []string{
+	`CREATE TABLE IF NOT EXISTS "_alder_meta" ("key" TEXT NOT NULL PRIMARY KEY, "value" TEXT NOT NULL)`,
+	`CREATE TABLE IF NOT EXISTS "_alder_jobs" (
+  "id"            TEXT    NOT NULL PRIMARY KEY,
+  "kind"          TEXT    NOT NULL,
+  "params"        TEXT    NOT NULL,
+  "key"           TEXT,
+  "state"         TEXT    NOT NULL,
+  "run_at"        INTEGER NOT NULL,
+  "created"       INTEGER NOT NULL,
+  "started"       INTEGER,
+  "finished"      INTEGER,
+  "attempts"      INTEGER NOT NULL DEFAULT 0,
+  "error"         TEXT,
+  "lease_until"   INTEGER,
+  "worker"        TEXT,
+  "schedule"      INTEGER NOT NULL DEFAULT 0,
+  "scheduled_for" INTEGER
+) STRICT`,
+	`CREATE INDEX IF NOT EXISTS "_alder_jobs_due" ON "_alder_jobs" ("state", "run_at")`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS "_alder_jobs_once" ON "_alder_jobs" ("kind", "key") WHERE "key" IS NOT NULL AND "state" IN ('queued', 'running')`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS "_alder_jobs_tick" ON "_alder_jobs" ("kind") WHERE "schedule" = 1 AND "state" = 'queued'`,
+	`CREATE TABLE IF NOT EXISTS "_alder_jobs_silos" (
+  "key"     TEXT    NOT NULL,
+  "value"   TEXT    NOT NULL,
+  "touched" INTEGER NOT NULL,
+  PRIMARY KEY ("key", "value")
+) STRICT`,
+	`INSERT INTO "_alder_meta" ("key", "value") VALUES ('jobs_schema', '1')`,
+	`INSERT INTO "_alder_jobs" ("id", "kind", "params", "state", "run_at", "created", "attempts", "error", "finished") VALUES
+  ('dead0001', 'A.B', '{}', 'dead', 1, 1, 5, 'e1', 3),
+  ('dead0002', 'A.B', '{}', 'dead', 1, 1, 5, 'e2', 2)`,
+}
+
+// schema1Store makes the database file path a store with a schema-1 jobs table and two dead
+// rows.
+func schema1Store(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	st, err := db.OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	q, _ := db.On(st, nil)
+	for _, s := range schema1Jobs {
+		if _, err := q.ExecContext(context.Background(), s); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// adminSchemaOf is the jobs_schema of the database file path.
+func adminSchemaOf(t *testing.T, path string) string {
+	t.Helper()
+	st, err := db.OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	q, _ := db.On(st, nil)
+	v, err := db.JobsSchemaOf(context.Background(), q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+// A store whose jobs table is still schema 1 (the app has not opened it since the upgrade) is
+// moved to the current schema first, as `alder jobs` does, then listed and retried.
+func TestAdmin_Schema1Store(t *testing.T) {
+	dir := t.TempDir()
+	cfg := adminApp(dir)
+	schema1Store(t, cfg.Shared)
+	a := adminSilo(t, dir, "A")
+	schema1Store(t, a)
+
+	code, lines, _, stderr := runAdmin(t, cfg, nil, "list")
+	if code != 0 || len(lines) != 2 {
+		t.Fatalf("list: exit %d, %+v, stderr %q", code, lines, stderr)
+	}
+	for _, l := range lines {
+		if l.Error != "" || l.Counts[jobs.Dead] != 2 || len(l.Dead) != 2 {
+			t.Errorf("list %q: %+v", l.Silo, l)
+		}
+	}
+	for _, p := range []string{cfg.Shared, a} {
+		if v := adminSchemaOf(t, p); v != db.JobsSchema {
+			t.Errorf("%s: jobs_schema %q, want %q", p, v, db.JobsSchema)
+		}
+	}
+
+	b := adminSilo(t, dir, "B")
+	schema1Store(t, b)
+	code, lines, _, stderr = runAdmin(t, cfg, nil, "retry", "--dead")
+	if code != 0 || len(lines) != 6 {
+		t.Fatalf("retry --dead: exit %d, %+v, stderr %q", code, lines, stderr)
+	}
+	if r := adminGet(t, b, "dead0001"); r.State != "queued" || r.Attempts != 0 {
+		t.Errorf("org/B's row: %+v", r)
+	}
+	if v := adminSchemaOf(t, b); v != db.JobsSchema {
+		t.Errorf("org/B: jobs_schema %q", v)
+	}
+}
