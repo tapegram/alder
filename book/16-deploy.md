@@ -2108,7 +2108,8 @@ The commands on a Render environment:
   asks first and takes the same `_alder_lock` row a deploy takes (chapter
   17, "`alder jobs`").
 
-All of them are rolls or reads, so none takes the site down.
+None of them takes the site down: the rollbacks and deploys are rolls,
+and the rest read, or queue a row.
 
 `alder logs <env>` prints the service's last lines (at most 100: Render's
 API returns no more at once), `[instance] message`; with `-f` it
@@ -2406,8 +2407,9 @@ with a maintenance flag):
 #### `alder jobs --env <name>`
 
 - Runs the build's `--jobs` task to list the jobs of the shared database
-  and of every silo, queue a dead one again, or queue a run of a job; a retry in a silo
-  also leaves the hint that wakes a `--jobs-only` worker. Chapter 17,
+  and of every silo, queue a dead one again, or queue a run of a job. A
+  retry in a silo also records it for a `--jobs-only` worker, where the
+  app has one (Render's `workers:`). Chapter 17,
   "`alder jobs`", has the rest: it asks before a change and takes the
   deploy lock then.
 

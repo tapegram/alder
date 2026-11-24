@@ -940,9 +940,9 @@ a small maintenance task, `app --jobs`, beside `--silo-status` and
 `--jobs-only`; `alder jobs --env` runs it through ssh or Fly's machine
 API, and the build reads the shared database and every silo database
 with its own code, its own schema and, on Turso, the token already in
-its environment at the box. It answers with a JSON line per database it lists, or per row or job it
-queued, and this alder prints them with the same printer the local command
-uses. Nothing is installed at the target and no credential of it
+its environment at the box. It answers with a JSON line per database it
+lists, or per row or job it queued, and this alder prints them with the
+same printer the local command uses. Nothing is installed at the target and no credential of it
 leaves it. Because the deployed build resolves `run <Kind>`, the kinds
 it accepts are the ones it declares, not the ones in your working tree.
 
@@ -962,10 +962,11 @@ database with no jobs table lists zero jobs and says so.
 Listing asks nothing and takes no lock, and opens every database as a
 reader, with one exception: at a box or a machine, an old (schema 1)
 jobs table is first brought up to date, as the local command does
-(on Render it is read as it is). `retry` and `run` change a queue other processes are claiming
-from, so they ask first, naming the target (`queue job <id> again at
-<target>, due now? type yes:`; `run` also names the resolved kind and
-the build), and `--yes` answers. With no terminal and no `--yes`
+(on Render it is read as it is). `retry` and `run` change a queue other
+processes are claiming from, so they ask first, naming the target
+(`queue job <id> again at <target>, due now? type yes:`; `run` also
+names the kind and the build, the kind as resolved on Render and as
+typed elsewhere), and `--yes` answers. With no terminal and no `--yes`
 nothing is queued and the command exits 2, so a CI step must pass
 `--yes`. They then take the deploy lock, the one `alder deploy`,
 `rollback` and `restore` take, on the targets that have one (an `Ssh`
@@ -986,11 +987,12 @@ usage and exits. `alder jobs --env` recognises that and refuses (exit
 1) instead of showing the usage:
 
 ```text
-build 3f9a1c7d52e0b684 at production was made by an alder without `alder jobs --env`: `alder deploy production` with this alder, then try again
+alder jobs: build 3f9a1c7d52e0b684 at production was made by an alder without `alder jobs --env`: `alder deploy production` with this alder, then try again
 ```
 
 (with ` --host h` after the environment in the `alder deploy` command
-when `--host` was given). Deploying again is the only fix, because the code that answers is the deployed build's.
+when `--host` was given). Deploying again is the only fix, because the
+code that answers is the deployed build's.
 Render has no such limit: it needs nothing from the build. There, a
 `run` on a build older than background jobs creates the table.
 
