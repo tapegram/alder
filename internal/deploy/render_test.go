@@ -1560,3 +1560,69 @@ func TestRender_NoWorkersLookup(t *testing.T) {
 		t.Errorf("service lookups: web %d, worker %d", web, worker)
 	}
 }
+
+// JobStores lists the shared database and every silo database of the declared keys, each opened on
+// demand as a reader, and never creates anything: a service without its database, or no service,
+// is not deployed.
+func TestRender_JobStores(t *testing.T) {
+	g := newRenderRig(t)
+	ctx := context.Background()
+	g.render.AddService("blog", rImage+":b1", 1, renderfake.Env{Key: db.EnvTursoDB, Value: "blog"})
+	f := g.turso
+	a, b := db.ChildName("blog", "org", "OrgA"), db.ChildName("blog", "org", "OrgB")
+	for _, name := range []string{"blog", a, b, "blog-other"} {
+		if err := f.Create(name, "default"); err != nil {
+			t.Fatal(err)
+		}
+		f.Exec(name, `CREATE TABLE "P" ("x" TEXT)`)
+	}
+	r := g.connected()
+	r.DB.Silos = []string{"org"}
+	stores, err := r.JobStores(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, s := range stores {
+		got = append(got, s.Key+"/"+s.Value)
+	}
+	if want := "/,org/OrgA,org/OrgB"; strings.Join(got, ",") != want {
+		t.Fatalf("stores %v, want %s", got, want)
+	}
+	for _, s := range stores {
+		st, err := s.Open(ctx, true)
+		if err != nil {
+			t.Fatalf("%q: %v", s.Key, err)
+		}
+		if err := db.ExecRaw(ctx, st, `INSERT INTO "P" VALUES ('x')`); err == nil {
+			t.Errorf("%q/%q: a reader accepted an INSERT", s.Key, s.Value)
+		}
+		st.Close()
+	}
+
+	// a service whose database does not exist: nothing is created
+	g.render.AddService("shop", rImage+":b1", 1, renderfake.Env{Key: db.EnvTursoDB, Value: "shop"})
+	r2 := g.target()
+	r2.Service = "shop"
+	r2.DB.Silos = []string{"org"}
+	if _, err := r2.Connect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	before := strings.Join(f.Names(), ",")
+	if _, err := r2.JobStores(ctx); !errors.Is(err, ErrNotDeployed) {
+		t.Errorf("no database: %v", err)
+	}
+	if after := strings.Join(f.Names(), ","); after != before {
+		t.Errorf("databases changed: %s -> %s", before, after)
+	}
+
+	// no service
+	r3 := g.target()
+	r3.Service = "none"
+	if _, err := r3.Connect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r3.JobStores(ctx); !errors.Is(err, ErrNotDeployed) {
+		t.Errorf("no service: %v", err)
+	}
+}
