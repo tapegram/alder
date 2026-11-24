@@ -484,8 +484,9 @@ type deployRunner struct {
 	buildDir string // --build-dir ("" is build)
 	app      string
 	decl     *ir.Deploy
-	silos    []string // the app's silo keys, sorted
-	tables   int      // the app's tables (shared store): non-zero means a SQLite file to keep
+	prog     *ir.Program // the app's lowered tables (ir.LowerTables), nil when it does not check
+	silos    []string    // the app's silo keys, sorted
+	tables   int         // the app's tables (shared store): non-zero means a SQLite file to keep
 	loadErr  string
 	checked  bool
 	errs     int
@@ -529,7 +530,7 @@ func (r *deployRunner) Check() (int, int, int, string) {
 	r.out = buf.String()
 	if res != nil {
 		if p, err := ir.LowerTables(prog, res); err == nil {
-			r.decl = p.Deploy
+			r.prog, r.decl = p, p.Deploy
 			r.tables = len(p.Tables)
 			for k := range p.Silos {
 				r.silos = append(r.silos, k)
@@ -664,29 +665,40 @@ func durationEnv(name string, def time.Duration) time.Duration {
 // envTarget loads dir's `deploy` declaration and environment env's target for status,
 // rollback, logs and restore: a Script target has no state to read.
 func envTarget(cmd, env, dir, host string, e deployEnv) (deploy.Target, *ir.Deploy, error) {
+	t, r, err := envTargetRunner(cmd, env, dir, host, e)
+	if err != nil {
+		return t, nil, err
+	}
+	return t, r.decl, nil
+}
+
+// envTargetRunner is envTarget with the deployRunner that checked the app (its lowered program:
+// `alder jobs --env` on Render reads its silo declarations and tables); nil when the app does not
+// load.
+func envTargetRunner(cmd, env, dir, host string, e deployEnv) (deploy.Target, *deployRunner, error) {
 	r := &deployRunner{dir: dir, buildDir: e.BuildDir}
 	r.Check()
 	if r.loadErr != "" {
 		return nil, nil, errors.New(r.loadErr)
 	}
 	if r.decl == nil {
-		return nil, nil, errors.New("App has no `deploy` declaration (or it does not check: run `alder check`)")
+		return nil, r, errors.New("App has no `deploy` declaration (or it does not check: run `alder check`)")
 	}
 	t, ok := r.decl.Envs[env]
 	if !ok {
-		return nil, nil, fmt.Errorf("App's `deploy` has no environment `%s` (it declares %s)", env, strings.Join(envNames(r.decl), ", "))
+		return nil, r, fmt.Errorf("App's `deploy` has no environment `%s` (it declares %s)", env, strings.Join(envNames(r.decl), ", "))
 	}
 	if t.Kind == "script" {
-		return nil, nil, deploy.ScriptUnavailable(cmd, env)
+		return nil, r, deploy.ScriptUnavailable(cmd, env)
 	}
 	if host != "" {
 		var err error
 		if t, err = withHost(env, t, host); err != nil {
-			return nil, nil, err
+			return nil, r, err
 		}
 	}
 	tg, _, err := targetFor(r, targetEnv(env, host), t, dir, io.Discard, io.Discard, e)
-	return tg, r.decl, err
+	return tg, r, err
 }
 
 // runStatusTo is `alder status <env> [dir]`: the environment's current build, its last five

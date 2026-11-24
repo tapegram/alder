@@ -44,7 +44,12 @@ type renderFakes struct {
 // renderApp makes the scaffold app with decl, and the deploy commands pointed at fresh fakes.
 func renderApp(t *testing.T, decl string) (string, *renderFakes, *deployCmds) {
 	t.Helper()
-	dir := deployScaffold(t, decl, nil)
+	return renderAppIn(t, deployScaffold(t, decl, nil))
+}
+
+// renderAppIn is renderApp for the app already at dir.
+func renderAppIn(t *testing.T, dir string) (string, *renderFakes, *deployCmds) {
+	t.Helper()
 	f := &renderFakes{render: renderfake.New(t), reg: registryfake.New(t, registryfake.Options{User: "tavish", Token: rdRegToken, RequireAuth: true}), turso: tursofake.New(t, "acme")}
 	f.render.RequireKey(rdKey)
 	c := newDeployCmds(t)

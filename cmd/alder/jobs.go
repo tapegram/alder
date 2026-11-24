@@ -40,14 +40,19 @@ A retried schedule tick runs once: no next tick is queued after it (the job's qu
 The file is changed directly: a running app's workers find a job at their next look, in a silo
 only while the silo is in their active set (a job queued or running there in the last hour) or
 after they restart. A database on Turso is read through its environment:
---env <name> runs the operation against a deployed environment (the build at the box or machine),
-asks before it changes anything (--yes answers), and takes the deploy lock to do so where the target has one (an Ssh box; Fly has none).`
+--env <name> runs the operation against a deployed environment (the build at the box or machine;
+on Render, the shared database and its silo databases from this machine), asks before it changes
+anything (--yes answers), and takes the deploy lock to do so where the target has one (an Ssh box
+or Render; Fly has none).`
 
 // jobsStore is one database of `alder jobs`: the shared one (silo "") or a silo's. where names it
-// for an error (its file, and its silo); open opens it, read-only unless write.
+// for an error (its file, and its silo); open opens it, read-only unless write. orphaned: the
+// silo's key row is gone from the shared store (marked on Render only, markOrphans), so a retry
+// there is refused.
 type jobsStore struct {
 	silo, where string // silo: "org/42"
 	open        func(ctx context.Context, write bool) (*db.SQLite, error)
+	orphaned    bool
 }
 
 // placed is a job row and where it was found: its silo ("org/42", "" for the shared store) and,
@@ -490,6 +495,9 @@ func jobsRetry(ctx context.Context, at jobsPlace, stores []jobsStore, id string,
 				return err
 			}
 			row = r
+			if s.orphaned {
+				return &jobs.OrphanedError{Silo: s.silo}
+			}
 			return jobs.Retry(ctx, q, id, time.Now())
 		})
 		if err == nil && row != nil && s.silo != "" {
@@ -501,9 +509,10 @@ func jobsRetry(ctx context.Context, at jobsPlace, stores []jobsStore, id string,
 		var (
 			se *jobs.StateError
 			ke *jobs.KeyHeldError
+			oe *jobs.OrphanedError
 		)
 		switch {
-		case errors.As(err, &se), errors.As(err, &ke), errors.Is(err, jobs.ErrNoJob):
+		case errors.As(err, &se), errors.As(err, &ke), errors.As(err, &oe), errors.Is(err, jobs.ErrNoJob):
 			fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder jobs:"), err)
 			return 1
 		case err != nil:
@@ -562,15 +571,23 @@ func jobsCancel(ctx context.Context, at jobsPlace, stores []jobsStore, id string
 }
 
 // jobsRetryDead is `alder jobs retry --dead`: every store's dead rows queued again
-// (jobs.RetryDead); exit 1 when one was refused. A failure part way (a store that cannot be
-// read, a statement of RetryDead's) exits 2 after the summary of the rows already queued again:
-// each retry commits on its own, so they stay queued.
+// (jobs.RetryDead), an orphaned silo's each refused; exit 1 when one was refused. A failure part
+// way (a store that cannot be read, a statement of RetryDead's) exits 2 after the summary of the
+// rows already queued again: each retry commits on its own, so they stay queued.
 func jobsRetryDead(ctx context.Context, at jobsPlace, stores []jobsStore, stdout, stderr io.Writer) int {
 	code := 0
 	var rows []placed
 	summary := func() { printRetriedDead(stdout, at, rows, code != 0) }
 	for _, s := range stores {
 		_, err := withJobs(ctx, s, true, func(q db.Execer) error {
+			if s.orphaned {
+				l, err := jobs.List(ctx, q)
+				for range l.Dead {
+					fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder jobs:"), &jobs.OrphanedError{Silo: s.silo})
+					code = 1
+				}
+				return err
+			}
 			retried, refused, err := jobs.RetryDead(ctx, q, time.Now())
 			for _, r := range retried {
 				rows = append(rows, placed{Row: r, silo: s.silo})
@@ -623,20 +640,20 @@ func printRetriedDead(stdout io.Writer, at jobsPlace, rows []placed, refused boo
 	}
 }
 
-// jobsRun is `alder jobs run <Kind>`: the app in dir's job named kind ("Nightly", or qualified
-// "Reports.Nightly"), which must take no parameters (jobs.ResolveKind), queued once in the shared
-// store (jobs.Manual: `{}`, not a schedule tick).
-func jobsRun(ctx context.Context, dir string, shared jobsStore, kind string, stdout, stderr io.Writer) int {
-	fail := func(code int, format string, a ...any) int {
-		fmt.Fprintf(stderr, "%s %s\n", errTag(stderr, "alder jobs run:"), fmt.Sprintf(format, a...))
-		return code
+// appJobKinds are the jobs the app in dir declares (its qualified name, its priority and its
+// parameters' names), or, when it does not load or check, the exit code after the reason printed
+// on stderr after tag ("alder jobs run").
+func appJobKinds(dir, tag string, stderr io.Writer) ([]jobs.Kind, int) {
+	fail := func(code int, format string, a ...any) ([]jobs.Kind, int) {
+		fmt.Fprintf(stderr, "%s %s\n", errTag(stderr, tag+":"), fmt.Sprintf(format, a...))
+		return nil, code
 	}
 	if !dirHasApp(dir) {
 		return fail(2, "no .alder files under %s/app: `alder jobs run` reads the app's jobs (give the app's directory)", dir)
 	}
 	_, res, bag, ioErrs := buildkit.LoadChecked(dir, nil)
-	if reportLoadErrs("alder jobs run", ioErrs, stderr) {
-		return 2
+	if reportLoadErrs(tag, ioErrs, stderr) {
+		return nil, 2
 	}
 	if res == nil || bag.HasErrors() {
 		return fail(1, "the app in %s has errors (`alder check` lists them): fix them first", dir)
@@ -650,6 +667,21 @@ func jobsRun(ctx context.Context, dir string, shared jobsStore, kind string, std
 			}
 			kinds = append(kinds, k)
 		}
+	}
+	return kinds, 0
+}
+
+// jobsRun is `alder jobs run <Kind>`: the app in dir's job named kind ("Nightly", or qualified
+// "Reports.Nightly"), which must take no parameters (jobs.ResolveKind), queued once in the shared
+// store (jobs.Manual: `{}`, not a schedule tick).
+func jobsRun(ctx context.Context, dir string, shared jobsStore, kind string, stdout, stderr io.Writer) int {
+	fail := func(code int, format string, a ...any) int {
+		fmt.Fprintf(stderr, "%s %s\n", errTag(stderr, "alder jobs run:"), fmt.Sprintf(format, a...))
+		return code
+	}
+	kinds, code := appJobKinds(dir, "alder jobs run", stderr)
+	if code != 0 {
+		return code
 	}
 	k, err := jobs.ResolveKind(kinds, kind)
 	if err != nil {

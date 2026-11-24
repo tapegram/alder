@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -170,6 +171,28 @@ func (s Schema) WithSilos(silos map[string][]string) Schema {
 		}
 	}
 	return s
+}
+
+// SiloDecls are the app's `silo` declarations as the generated app's Silos var has them
+// (internal/gen's silosVar): keys sorted, each key's tables module-qualified in the order
+// written, and Ref the first partitioned table's partition column's @ref (the table the key's
+// values are ids of, as db.Orphans reads it). Nil for an app without `silo`.
+func SiloDecls(p *ir.Program) []db.Silo {
+	var out []db.Silo
+	for _, k := range slices.Sorted(maps.Keys(p.Silos)) {
+		s := db.Silo{Key: k}
+		for _, tb := range p.Silos[k] {
+			if tb == nil {
+				continue
+			}
+			s.Tables = append(s.Tables, tb.Module+"."+tb.Name)
+			if tb.Partition != nil && s.Ref == "" {
+				s.Ref = tb.Refs[tb.Partition.Column]
+			}
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 // SiloMove is the migration generator's refusal of a table that changes store, "" for none: a

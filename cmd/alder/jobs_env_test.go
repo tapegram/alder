@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"alder/internal/deploy"
+	"alder/internal/renderfake"
 	"alder/internal/tursofake"
 	"alder/rt/db"
 	"alder/rt/jobs"
@@ -204,13 +206,172 @@ func TestJobsEnv_Script(t *testing.T) {
 	}
 }
 
-// A Render environment is refused plainly: `alder jobs --env` does not reach one yet (#285 PR 3).
-func TestJobsEnv_Render(t *testing.T) {
+// rdJobsDecl is rdDecl with a staging environment whose service names a database Turso does not
+// have (never deployed).
+const rdJobsDecl = `deploy {
+  production: Render "oregon" { service: "blog", plan: "starter", database: Turso "acme" { app: "blog" } },
+  staging: Render "oregon" { service: "blog-staging", database: Turso "acme" { app: "blog-staging" } },
+  image: "ghcr.io/tavish/blog",
+  requires: ["SMTP_URL"],
+}`
+
+// `alder jobs --env` on Render: this machine opens the shared Turso database and its silo
+// databases (testdata/corpus/silo-ok: `silo org { Project }`, the jobs Reports.Ping and
+// Reports.Digest). The listing, a silo retry (its hint written), a retry in an orphaned silo
+// (org B: no Org row) refused, retry --dead, run checked against the working tree's jobs, a jobs
+// table newer than this alder's, a shared database without one, a service whose database does
+// not exist (nothing created, even by a confirmed write), and no Turso token.
+func TestJobs_EnvRender(t *testing.T) {
 	t.Parallel()
-	dir, _, c := renderApp(t, rdDecl)
-	if code, out := runCmd(t, c.jobs, "--env", "production", dir); code != 2 || !strings.Contains(out, "alder jobs: alder jobs --env does not reach a Render environment yet") || strings.Contains(out, "internal error") {
-		t.Fatalf("exit %d\n%s", code, out)
+	dir := tempAppAbs(t, "../../testdata/corpus/silo-ok", "blog")
+	os.RemoveAll(filepath.Join(dir, "build"))
+	appendTo(t, filepath.Join(dir, "app", "App.alder"), "\n"+rdJobsDecl+"\n")
+	_, f, c := renderAppIn(t, dir)
+	const build = "0123456789abcdef"
+	f.render.AddService("blog", "ghcr.io/tavish/blog:"+build, 1, renderfake.Env{Key: db.EnvTursoDB, Value: "blog"})
+	f.render.AddService("blog-staging", "ghcr.io/tavish/blog:"+build, 1, renderfake.Env{Key: db.EnvTursoDB, Value: "blog-staging"})
+	childA, childB := db.ChildName("blog", "org", "A"), db.ChildName("blog", "org", "B")
+	for _, name := range []string{"blog", childA, childB} {
+		if err := f.turso.Create(name, "default"); err != nil {
+			t.Fatal(err)
+		}
 	}
+	org := db.SQLName("Org.Org")
+	for _, st := range []string{
+		`CREATE TABLE "_alder_deploy_current" ("key" TEXT PRIMARY KEY CHECK ("key" = 'current'), "id" TEXT NOT NULL)`,
+		`INSERT INTO "_alder_deploy_current" VALUES ('current', '` + build + `')`,
+		`CREATE TABLE "` + org + `" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL)`,
+		`INSERT INTO "` + org + `" VALUES ('A', 'A')`, // B has no row: orphaned
+	} {
+		if err := f.turso.Exec("blog", st); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shared := f.turso.DB("blog")
+	jobsInsert(t, shared, jobsRow{id: "deadS001", kind: "Reports.Ping", state: "dead", attempts: 5, err: "boom", finished: 2 * time.Minute})
+	jobsInsert(t, f.turso.DB(childA), jobsRow{id: "deadA001", kind: "Reports.Digest", state: "dead", attempts: 1, err: "x", finished: 3 * time.Minute})
+	jobsInsert(t, f.turso.DB(childB), jobsRow{id: "deadB001", kind: "Reports.Digest", state: "dead", attempts: 1, err: "y", finished: time.Minute})
+	var outs []string
+	run := func(args ...string) (int, string, string) {
+		code, so, se := runJobsCmd(c, append(args, "--env", "production", dir)...)
+		outs = append(outs, so, se)
+		return code, so, se
+	}
+	state := func(d *sql.DB, id string) string {
+		var s string
+		if err := d.QueryRow(`SELECT "state" FROM "_alder_jobs" WHERE "id" = ?`, id).Scan(&s); err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		return s
+	}
+
+	code, so, se := run()
+	if code != 0 || !strings.HasPrefix(so, "jobs at Render blog (oregon), build "+build+", and 2 silo databases:\n") ||
+		!strings.Contains(squash(so), "deadA001 Reports.Digest 1 attempt x (in silo org/A)") || !strings.Contains(squash(so), "deadS001 Reports.Ping 5 attempts boom") ||
+		!strings.Contains(so, "`alder jobs retry <id> --env production` queues one again") {
+		t.Fatalf("list: %d\n%s%s", code, so, se)
+	}
+
+	if code, so, se = run("retry", "deadA001"); code != 2 || !strings.Contains(se, "not confirmed: nothing was queued (pass --yes to confirm without a terminal)") || state(f.turso.DB(childA), "deadA001") != "dead" {
+		t.Fatalf("unconfirmed retry: %d\n%s%s", code, so, se)
+	}
+	code, so, se = run("retry", "deadA001", "--yes")
+	if code != 0 || !strings.Contains(so, "queued job deadA001 (Reports.Digest) again in silo org/A, due now") ||
+		!strings.Contains(so, "a running build's workers") || !strings.Contains(so, "a `--jobs-only` worker reads the silo hint within a poll") {
+		t.Fatalf("retry: %d\n%s%s", code, so, se)
+	}
+	if s := state(f.turso.DB(childA), "deadA001"); s != "queued" {
+		t.Fatalf("retried row: %q", s)
+	}
+	var n int
+	shared.QueryRow(`SELECT COUNT(*) FROM "_alder_jobs_silos" WHERE "key" = 'org' AND "value" = 'A'`).Scan(&n)
+	if n != 1 {
+		t.Fatalf("hint rows: %d", n)
+	}
+
+	code, so, se = run("retry", "deadB001", "--yes")
+	if code != 1 || !strings.Contains(se, "silo org/B is orphaned: nothing runs there (alder silos prune)") || state(f.turso.DB(childB), "deadB001") != "dead" {
+		t.Fatalf("orphaned retry: %d\n%s%s", code, so, se)
+	}
+	code, so, se = run("retry", "--dead", "--yes")
+	if code != 1 || !strings.Contains(so, "queued 1 dead job again, due now: deadS001") || !strings.Contains(se, "silo org/B is orphaned") ||
+		state(shared, "deadS001") != "queued" || state(f.turso.DB(childB), "deadB001") != "dead" {
+		t.Fatalf("retry --dead: %d\n%s%s", code, so, se)
+	}
+
+	code, so, se = run("run", "Ping", "--yes")
+	if code != 0 || !strings.Contains(so, "queued a run of Reports.Ping, due now: job ") || !strings.Contains(so, " at Render blog (oregon) (not a schedule tick") ||
+		!strings.Contains(so, "queued for build "+build+"; a kind that build does not declare waits for one that does") {
+		t.Fatalf("run: %d\n%s%s", code, so, se)
+	}
+	shared.QueryRow(`SELECT COUNT(*) FROM "_alder_jobs" WHERE "kind" = 'Reports.Ping' AND "state" = 'queued' AND "schedule" = 0 AND "id" <> 'deadS001'`).Scan(&n)
+	if n != 1 {
+		t.Fatalf("queued runs: %d", n)
+	}
+	if code, so, se = run("run", "Nope", "--yes"); code != 2 || !strings.Contains(se, "Nope") {
+		t.Fatalf("run of an unknown kind: %d\n%s%s", code, so, se)
+	}
+	shared.QueryRow(`SELECT COUNT(*) FROM "_alder_lock"`).Scan(&n)
+	if n != 0 {
+		t.Fatalf("a lock row is left after the writes: %d", n)
+	}
+	// a deploy holds the lock: a write is refused, naming it, and queues nothing
+	if _, err := shared.Exec(`INSERT INTO "_alder_lock" VALUES ('deploy', 'local ci at render:blog (beef)', ?)`, f.clock.Now().Add(time.Hour).UTC().Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	if code, so, se = run("run", "Ping", "--yes"); code != 1 || !strings.Contains(se, "local ci at render:blog (beef)") || strings.Contains(so, "queued") {
+		t.Fatalf("run under a held lock: %d\n%s%s", code, so, se)
+	}
+	shared.Exec(`DELETE FROM "_alder_lock"`)
+
+	// a jobs table a newer alder made
+	if _, err := shared.Exec(`UPDATE "_alder_meta" SET "value" = '9' WHERE "key" = 'jobs_schema'`); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{nil, {"retry", "deadA001", "--yes"}, {"run", "Ping", "--yes"}} {
+		code, so, se = run(args...)
+		if code != 2 || !strings.Contains(se, "the jobs table at Render blog (oregon) is schema 9, newer than this alder's "+db.JobsSchema+": upgrade alder") {
+			t.Fatalf("%v on a newer table: %d\n%s%s", args, code, so, se)
+		}
+	}
+
+	// no jobs table: zeros and the sentence; a retry finds nothing
+	for _, st := range []string{`DROP TABLE "_alder_jobs"`, `DROP TABLE "_alder_jobs_silos"`, `DELETE FROM "_alder_meta" WHERE "key" = 'jobs_schema'`} {
+		if _, err := shared.Exec(st); err != nil {
+			t.Fatal(err)
+		}
+	}
+	noTable := "no jobs table at Render blog (oregon): the app declares no job, or build " + build + " was made before background jobs"
+	code, so, se = run()
+	if code != 0 || !strings.HasPrefix(so, "jobs at Render blog (oregon), build "+build+", and 2 silo databases:\n") || !strings.Contains(squash(so), "queued 0") || !strings.Contains(so+se, noTable) {
+		t.Fatalf("no jobs table: %d\n%s%s", code, so, se)
+	}
+	if code, so, se = run("retry", "deadA001", "--yes"); code != 1 || !strings.Contains(se, noTable) {
+		t.Fatalf("retry with no jobs table: %d\n%s%s", code, so, se)
+	}
+
+	// a service whose database does not exist: not deployed, and nothing is created
+	before := strings.Join(f.turso.Names(), ",")
+	for _, args := range [][]string{{"--env", "staging", dir}, {"retry", "x", "--env", "staging", dir, "--yes"}, {"run", "Ping", "--env", "staging", dir, "--yes"}} {
+		code, so, se := runJobsCmd(c, args...)
+		outs = append(outs, so, se)
+		if code != 1 || !strings.Contains(se, "environment staging is not deployed yet: no build serves there") {
+			t.Fatalf("%v: %d\n%s%s", args, code, so, se)
+		}
+	}
+	if after := strings.Join(f.turso.Names(), ","); after != before {
+		t.Errorf("databases changed: %s -> %s", before, after)
+	}
+
+	// no Turso token on this machine: Connect's refusal
+	if os.Getenv(db.EnvTursoToken) == "" {
+		c.env.Turso.Token = ""
+		code, so, se = run()
+		if code != 1 || !strings.Contains(se, "does not set "+db.EnvTursoToken) {
+			t.Fatalf("no token: %d\n%s%s", code, so, se)
+		}
+	}
+	f.noSecrets(t, outs...)
 }
 
 // boxLockFree is whether the box's deploy lock can be taken right now (and it is released).
