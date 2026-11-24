@@ -916,8 +916,80 @@ tick, and the dead jobs with their errors:
 It changes the file directly, and a running app's workers see the
 change at their next look. In a silo, that is only while the silo is in
 their active set (a job queued or running there in the last hour), or
-after they restart. A database on Turso is not read: `--db` takes a
-file.
+after they restart. `--db` takes a file, so a database on Turso is not
+read this way; `--env` below is how a deployed one is.
+
+#### Against a deployed environment
+
+`alder jobs [retry <id> | retry --dead | run <Kind>] [dir] --env <name>`
+does the same against an environment of the app's `deploy` declaration
+(chapter 16), with the same output; `dir` is the app's directory, read
+for that declaration, and `--host` names a preview. The first line says
+where it looked:
+
+```text
+jobs at Ssh deploy@box:/srv/app, build 3f9a1c7d52e0b684, and 2 silo databases:
+```
+
+What runs where depends on the target, because the jobs table is a
+table in the app's database and the database is somewhere else.
+
+At an `Ssh` box (a database file, or `database: Turso`) and on `Fly`,
+the build that is serving runs the operation there. Every build carries
+a small maintenance task, `app --jobs`, beside `--silo-status` and
+`--jobs-only`; `alder jobs --env` runs it through ssh or Fly's machine
+API, and the build reads the shared database and every silo database
+with its own code, its own schema and, on Turso, the token already in
+its environment at the box. It answers with one JSON line per database,
+and this alder prints them with the same printer the local command
+uses. Nothing is installed at the target and no credential of it
+leaves it. Because the deployed build resolves `run <Kind>`, the kinds
+it accepts are the ones it declares, not the ones in your working tree.
+
+On `Render` there is no box to run anything on: the service is an image
+with no shell. So this machine opens the shared Turso database and each
+silo's database itself, with the same two tokens `alder deploy` already
+needs (`RENDER_API_KEY`, `TURSO_API_TOKEN`), and runs the local
+command's code over them. Here the working tree decides `run <Kind>`,
+since no build was asked: the row is queued for whichever build is
+serving, and prints `queued for build <id>; a kind that build does not
+declare waits for one that does`. Listing there reads an old (schema 1)
+jobs table as it is. Only `retry` and `run` bring the table up to the
+current schema, after you confirm and while the lock is held. A jobs
+table made by a newer alder is refused (exit 2: upgrade alder), and a
+database with no jobs table lists zero jobs and says so.
+
+Listing asks nothing and takes no lock: it opens every database as a
+reader. `retry` and `run` change a queue other processes are claiming
+from, so they ask first, naming the target (`queue job <id> again at
+<target>, due now? type yes:`; `run` also names the resolved kind and
+the build), and `--yes` answers. With no terminal and no `--yes`
+nothing is queued and the command exits 2, so a CI step must pass
+`--yes`. They then take the deploy lock, the one `alder deploy`,
+`rollback` and `restore` take, on the targets that have one (an `Ssh`
+box or Render; Fly has none). The lock keeps a retry from landing in the
+middle of a deploy that is migrating the very table it writes, and is
+refused naming the holder while one runs (exit 1).
+
+A retry in a silo also writes the silo's hint in the shared database
+(above, "Where the workers look"), so with `workers:` the `--jobs-only`
+service finds the job within a poll; the note after the retry says so.
+At a box or a machine it adds that a silo under maintenance is not
+looked in until `alder migrate silos`. A retry in an orphaned silo (its
+org's row is gone) is refused: `silo <key>/<value> is orphaned: nothing
+runs there (alder silos prune)`.
+
+A build made before this command does not know `--jobs`: it prints its
+usage and exits. `alder jobs --env` recognises that and refuses (exit
+1) instead of showing the usage: "build `<id>` at `<env>` was made by
+an alder without `alder jobs --env`: `alder deploy <env>` with this
+alder, then try again" (with ` --host h` when `--host` was given). It is
+the only fix, because the code that answers is the deployed build's.
+Render has no such limit: it needs nothing from the build. A `run` on a
+build older than background jobs creates the table.
+
+`alder jobs cancel <id>` works on a local database only; with `--env` it
+is a usage error.
 
 ## Deploying jobs
 
@@ -1038,6 +1110,5 @@ quietly:
 - `Job.enqueueWith`, a call that takes the time, the key and a priority together; a priority is a kind's for now.
 - Skipping a schedule's next tick; `Job.cancel` refuses a queued tick.
 - A queue per job.
-- `alder jobs --env <name>`, against a deployed environment.
 - Worker machines on `Fly` (they need a shared database there first).
 - A streaming read for a job over a very large table; fan out instead.

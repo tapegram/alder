@@ -86,6 +86,12 @@ func TestDeployFly_Real(t *testing.T) {
 		t.Errorf("status: exit %d\n%s%s", code, so.String(), se.String())
 	}
 	so.Reset()
+	// the build at the machine lists its own jobs table (`alder jobs --env`, #285)
+	if code := c.jobs([]string{"--env", "staging", dir}, &so, &se); code != 0 || !strings.HasPrefix(so.String(), "jobs at ") {
+		t.Errorf("jobs --env: exit %d\n%s%s", code, so.String(), se.String())
+	}
+	t.Log(so.String())
+	so.Reset()
 	if code := c.rollback([]string{"staging", "--dir", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "rolled back to "+id1) {
 		t.Fatalf("rollback: exit %d\n%s%s", code, so.String(), se.String())
 	}

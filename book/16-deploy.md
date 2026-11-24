@@ -1093,6 +1093,10 @@ whole story):
 - **`Script`.** Whatever runs the executable runs its workers, with the
   same `ALDER_JOBS`.
 
+To see a deployed app's queue, or to queue a dead job again, run
+`alder jobs --env <name>` from your machine; chapter 17, "`alder jobs`",
+says what it runs where and why it asks first.
+
 ### Slow requests
 
 `ALDER_SLOW_MS=N` makes the access line of a request that took N
@@ -1711,6 +1715,11 @@ and no earlier build to go back to.
 Nor does the Fly target have the `Ssh` target's deploy lock or
 `rollback --restore-backup` yet.
 
+`alder jobs --env <name>` works on Fly: the build that serves runs its
+`--jobs` task on the machine, over the machine's own database, and this
+alder prints what it answers (chapter 17, "`alder jobs`"). With no deploy
+lock on Fly, a retry there takes none.
+
 `Fly "ord" { app: "blog-staging" }` deploys to [Fly.io](https://fly.io),
 which runs **OCI images** (container images) on its own machines close to
 a region. The target turns the artifact into one:
@@ -2093,7 +2102,13 @@ The commands on a Render environment:
 - **`alder restore <env> --to <time>`** (with `--silo` for one org) is
   the Turso restore above, with that call in place of `turso.env`.
 
-All of them are rolls, so none takes the site down.
+- **`alder jobs --env <name>`** reads the shared database and the silo
+  databases from this machine, with the two tokens `deploy` already needs
+  (no command runs on Render: the image has no shell). A retry or a run
+  asks first and takes the same `_alder_lock` row a deploy takes (chapter
+  17, "`alder jobs`").
+
+All of them are rolls or reads, so none takes the site down.
 
 `alder logs <env>` prints the service's last lines (at most 100: Render's
 API returns no more at once), `[instance] message`; with `-f` it
@@ -2360,7 +2375,7 @@ A silo file is created the first time a request needs it, and checked
 every time a process opens it: the `_alder_schema` row inside it says
 which build last migrated it (chapter 13 explains the check).
 
-Four commands look after the silos of a deployed app, each running the
+Five commands look after the silos of a deployed app, each running the
 current build's executable at the box (the same executable that serves,
 with a maintenance flag):
 
@@ -2387,6 +2402,14 @@ with a maintenance flag):
 - Rebuilds that one silo from its own backup stream and puts it in place.
 - The file it replaces is kept beside it (`….before-restore-<time>`), and
   the build is restarted so no process keeps what it read.
+
+#### `alder jobs --env <name>`
+
+- Lists the jobs of the shared database and of every silo, or queues a
+  dead one again, or queues a run of a job (`--jobs`); a retry in a silo
+  also leaves the hint that wakes a `--jobs-only` worker. Chapter 17,
+  "`alder jobs`", has the rest: it asks before a change and takes the
+  deploy lock then.
 
 #### The data-loss flag and silos
 

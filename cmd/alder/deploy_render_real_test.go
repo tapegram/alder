@@ -134,6 +134,12 @@ func TestRenderReal(t *testing.T) {
 	}
 	t.Log(so.String())
 	so.Reset()
+	// this machine reads the shared database's jobs table (`alder jobs --env`, #285)
+	if code := c.jobs([]string{"--env", "production", dir}, &so, &se); code != 0 || !strings.HasPrefix(so.String(), "jobs at ") {
+		t.Errorf("jobs --env: exit %d\n%s%s", code, so.String(), se.String())
+	}
+	t.Log(so.String())
+	so.Reset()
 	if code := c.rollback([]string{"production", "--dir", dir, "--yes"}, &so, &se); code != 0 || !strings.Contains(so.String(), "rolled back to "+id1) {
 		t.Fatalf("rollback: exit %d\n%s%s", code, so.String(), se.String())
 	}
