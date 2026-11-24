@@ -2405,8 +2405,8 @@ with a maintenance flag):
 
 #### `alder jobs --env <name>`
 
-- Lists the jobs of the shared database and of every silo, or queues a
-  dead one again, or queues a run of a job (`--jobs`); a retry in a silo
+- Runs the build's `--jobs` task to list the jobs of the shared database
+  and of every silo, queue a dead one again, or queue a run of a job; a retry in a silo
   also leaves the hint that wakes a `--jobs-only` worker. Chapter 17,
   "`alder jobs`", has the rest: it asks before a change and takes the
   deploy lock then.
