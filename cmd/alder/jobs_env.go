@@ -30,15 +30,16 @@ func runJobsEnv(ctx context.Context, op, target, env, dir, host string, dead, ye
 		fmt.Fprintf(stderr, "%s %s\n", errTag(stderr, "alder jobs:"), fmt.Sprintf(format, a...))
 		return code
 	}
-	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM) // an interrupt releases the lock
-	defer stop()
 	t, _, err := envTarget("jobs", env, dir, host, e)
 	if err != nil {
 		return fail(2, "%v", err)
 	}
 	defer t.Close()
 	jr, ok := t.(deploy.JobsRunner)
-	if !ok { // every target but Script (refused above) and Render (#285 PR 3) runs the task
+	if _, render := t.(*deploy.Render); render && !ok {
+		return fail(2, "alder jobs --env does not reach a Render environment yet")
+	}
+	if !ok { // every target but Script (refused above) and Render runs the task
 		return fail(2, "internal error: %s has no way to its jobs table", t.Describe())
 	}
 	name := targetEnv(env, host)
@@ -80,19 +81,25 @@ func runJobsEnv(ctx context.Context, op, target, env, dir, host string, dead, ye
 		return lines, code, true
 	}
 	// write asks question unless --yes, then takes the deploy lock: ok false when the command is
-	// over (code is its exit); release it with unlock.
+	// over (code is its exit); release it with unlock. The question is asked with the default
+	// signal handling, so an interrupt there ends the command (as restore's); from the lock on,
+	// SIGINT and SIGTERM cancel ctx instead, so the lock is released (the reads before keep the
+	// default: they hold nothing).
 	write := func(question string) (unlock func(), code int, ok bool) {
 		if !yes && !confirm(question, stdout) {
 			return nil, fail(2, "not confirmed: nothing was queued (pass --yes to confirm without a terminal)"), false
 		}
+		var stop context.CancelFunc
+		ctx, stop = signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM) // task runs on it too
 		if l, isLocker := t.(deploy.Locker); isLocker {
 			u, err := l.Lock(ctx)
 			if err != nil {
+				stop()
 				return nil, fail(1, "%v", err), false
 			}
-			return u, 0, true
+			return func() { u(); stop() }, 0, true
 		}
-		return func() {}, 0, true
+		return stop, 0, true
 	}
 
 	switch {

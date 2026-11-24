@@ -204,6 +204,15 @@ func TestJobsEnv_Script(t *testing.T) {
 	}
 }
 
+// A Render environment is refused plainly: `alder jobs --env` does not reach one yet (#285 PR 3).
+func TestJobsEnv_Render(t *testing.T) {
+	t.Parallel()
+	dir, _, c := renderApp(t, rdDecl)
+	if code, out := runCmd(t, c.jobs, "--env", "production", dir); code != 2 || !strings.Contains(out, "alder jobs: alder jobs --env does not reach a Render environment yet") || strings.Contains(out, "internal error") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+}
+
 // boxLockFree is whether the box's deploy lock can be taken right now (and it is released).
 func boxLockFree(t *testing.T, c *deployCmds, box *sshBox) error {
 	t.Helper()
@@ -252,7 +261,7 @@ func TestJobs_EnvSsh(t *testing.T) {
 		jobsRow{id: "deadS001", kind: "Mail.Send", state: "dead", attempts: 5, err: "smtp: timeout\nat line 2", finished: 2 * time.Minute},
 		jobsRow{id: "tickD001", kind: "Reports.Nightly", state: "dead", attempts: 5, err: "boom", finished: time.Minute, scheduledFor: "2026-11-16 03:00"},
 	)
-	jobsDB(t, siloA, jobsRow{id: "deadA001", kind: "Reports.Digest", state: "dead", attempts: 1, err: "x", finished: 3 * time.Minute})
+	jobsDB(t, siloA, jobsRow{id: "deadA001", kind: "Reports.Digest", state: "dead", attempts: 1, err: "digest: no org\nat line 7", finished: 3 * time.Minute})
 
 	// the listing
 	code, so, se := runJobsCmd(dc, "--env", "production", dir)
@@ -270,7 +279,7 @@ func TestJobs_EnvSsh(t *testing.T) {
 	if last := lines[len(lines)-1]; !strings.HasSuffix(last, "queues them all again") || strings.Count(last, " --env production`") != 2 {
 		t.Fatalf("hint: %q", last)
 	}
-	if !strings.Contains(so, "(in silo org/A)") || !strings.Contains(so, "smtp: timeout …") || !strings.Contains(so, "(the schedule tick of 2026-11-16 03:00 UTC)") {
+	if !strings.Contains(squash(so), "deadA001 Reports.Digest 1 attempt digest: no org … (in silo org/A)") || !strings.Contains(so, "smtp: timeout …") || !strings.Contains(so, "(the schedule tick of 2026-11-16 03:00 UTC)") {
 		t.Fatalf("rows:\n%s", so)
 	}
 
@@ -307,6 +316,9 @@ func TestJobs_EnvSsh(t *testing.T) {
 	if code != 0 || !strings.Contains(so, "queued 2 dead jobs again, due now: ") || !strings.Contains(so, "deadS001") || !strings.Contains(so, "tickD001: it is the Reports.Nightly schedule tick of 2026-11-16 03:00 UTC") {
 		t.Fatalf("retry --dead: %d\n%s%s", code, so, se)
 	}
+	if err := boxLockFree(t, dc, box); err != nil {
+		t.Fatalf("lock after retry --dead: %v", err)
+	}
 	code, so, se = runJobsCmd(dc, "retry", "--dead", "--env", "production", dir)
 	if code != 0 || so != "no dead job\n" || se != "" {
 		t.Fatalf("retry --dead with none: %d\n%s%s", code, so, se)
@@ -316,6 +328,9 @@ func TestJobs_EnvSsh(t *testing.T) {
 	code, so, se = runJobsCmd(dc, "run", "Ping", "--env", "production", dir, "--yes")
 	if code != 0 || !strings.Contains(so, "queued a run of Reports.Ping, due now: job ") {
 		t.Fatalf("run Ping: %d\n%s%s", code, so, se)
+	}
+	if err := boxLockFree(t, dc, box); err != nil {
+		t.Fatalf("lock after run: %v", err)
 	}
 	code, so, se = runJobsCmd(dc, "run", "Digest", "--env", "production", dir, "--yes")
 	if code != 2 || !strings.Contains(se, "Reports.Digest takes parameters (org): only a job without parameters is run from here") {
