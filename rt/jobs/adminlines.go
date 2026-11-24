@@ -19,7 +19,8 @@ type AdminLine struct {
 	// retry
 	Row         *Row   `json:"row,omitempty"`
 	Maintenance string `json:"maintenance,omitempty"`
-	// Refused names the silos the task did not act on.
+	// Refused holds the refusal text of each row that was refused: StateError, KeyHeldError,
+	// no such job, or orphaned silo.
 	Refused []string `json:"refused,omitempty"`
 	// run
 	ID   string `json:"id,omitempty"`

@@ -25,7 +25,8 @@ var adminStates = []State{Queued, Running, Dead, Done, Cancelled}
 // the app's shared store (cfg.Shared) and its silo databases (db.SiloDBs), kinds the app's jobs
 // (app.Jobs()). It prints AdminLine JSON lines on stdout and every message on stderr, and returns
 // the exit code: 0, 1 when something was refused, 2 on a failure or a store missed. It checks
-// no migration and no ALDER_SECRET (as --silo-status); list opens every store read-only.
+// no migration and no ALDER_SECRET (as --silo-status); list opens every store read-only,
+// except to upgrade an old (schema-1) jobs table first.
 func Admin(ctx context.Context, cfg db.StoresConfig, kinds []Kind, args []string, stdout, stderr io.Writer) int {
 	a := &admin{cfg: cfg, now: time.Now(), out: json.NewEncoder(stdout), stderr: stderr}
 	switch {
