@@ -106,7 +106,13 @@ func writeHint(ctx context.Context, s *db.Stores, key, value string, now time.Ti
 	if err != nil {
 		return err
 	}
-	_, err = q.ExecContext(ctx, `INSERT INTO "_alder_jobs_silos" ("key", "value", "touched") VALUES (?, ?, ?) ON CONFLICT ("key", "value") DO UPDATE SET "touched" = excluded."touched"`,
+	return Hint(ctx, q, key, value, now)
+}
+
+// Hint upserts the hint of silo key/value in the shared store's _alder_jobs_silos through
+// shared, touched at now.
+func Hint(ctx context.Context, shared db.Execer, key, value string, now time.Time) error {
+	_, err := shared.ExecContext(ctx, `INSERT INTO "_alder_jobs_silos" ("key", "value", "touched") VALUES (?, ?, ?) ON CONFLICT ("key", "value") DO UPDATE SET "touched" = excluded."touched"`,
 		key, value, now.UnixMilli())
 	return err
 }

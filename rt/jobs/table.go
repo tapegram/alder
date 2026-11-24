@@ -24,20 +24,28 @@ func EnsureTable(ctx context.Context, x db.Execer) error { return db.EnsureJobsT
 
 // Row is a row of the jobs table. Times are milliseconds since the epoch; a nil pointer is NULL.
 type Row struct {
-	ID, Kind, Params, State, Worker             string
-	Key                                         *string
-	RunAt, Created                              int64
-	Started, Finished, LeaseUntil, ScheduledFor *int64
-	Attempts                                    int
-	Priority                                    int // higher is claimed first (claimStmt)
-	Error                                       *string
+	ID           string  `json:"id"`
+	Kind         string  `json:"kind"`
+	Params       string  `json:"-"` // never printed: it may hold personal data
+	State        string  `json:"state"`
+	Worker       string  `json:"worker"`
+	Key          *string `json:"key"`
+	RunAt        int64   `json:"run_at"`
+	Created      int64   `json:"created"`
+	Started      *int64  `json:"started"`
+	Finished     *int64  `json:"finished"`
+	LeaseUntil   *int64  `json:"lease_until"`
+	ScheduledFor *int64  `json:"scheduled_for"`
+	Attempts     int     `json:"attempts"`
+	Priority     int     `json:"priority"` // higher is claimed first (claimStmt)
+	Error        *string `json:"error"`
 	// Schedule: the row is its kind's queued schedule tick, or was until this claim (ClaimedTick
 	// clears it in the table; a tick keeps its ScheduledFor).
-	Schedule bool
+	Schedule bool `json:"schedule"`
 	// In is where the row is, which is not a column: the store its claimer found it in and, in
 	// a test, the transaction its statements run in. Zero: the store of the Env RunOne is given
 	// (its Within's transaction in a test).
-	In db.Place
+	In db.Place `json:"-"`
 }
 
 // State is a job row's state.

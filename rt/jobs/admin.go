@@ -36,6 +36,13 @@ type StateError struct {
 	Want  State // the state the operation takes
 }
 
+// OrphanedError is an operation on a silo no store of the app holds any more (db.Orphans).
+type OrphanedError struct{ Silo string }
+
+func (e *OrphanedError) Error() string {
+	return fmt.Sprintf("silo %s is orphaned: nothing runs there (alder silos prune)", e.Silo)
+}
+
 func (e *StateError) Error() string {
 	want, op := string(e.Want), "retried"
 	switch e.Want {

@@ -26,6 +26,7 @@ type Kind struct {
 	Cron      string        // "" when not scheduled by cron
 	SiloParam string        // "" when the job runs on the shared store
 	Priority  int           // its rows' priority: higher is claimed first; 0 by default
+	Params    []string      // the parameter names, in declaration order; nil: none
 }
 
 // MaxError is the most bytes of a failure's text the row keeps (4 KB).
