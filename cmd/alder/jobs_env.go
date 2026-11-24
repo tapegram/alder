@@ -74,6 +74,7 @@ func runJobsEnv(ctx context.Context, op, target, env, dir, host string, dead, ye
 		case oldBuild(out, code):
 			return nil, fail(1, "build %s at %s was made by an alder without `alder jobs --env`: `alder deploy %s%s` with this alder, then try again", id, name, env, hostArg), false
 		}
+		code = jobsExit(code)
 		lines, msgs := jobs.DecodeAdmin(out)
 		for _, m := range msgs {
 			fmt.Fprintf(stderr, "%s %s\n", errTag(stderr, "alder jobs:"), m)
@@ -259,4 +260,14 @@ func oldBuild(out string, code int) bool {
 		}
 	}
 	return false
+}
+
+// jobsExit is a --jobs task's exit code as the command's: 0, 1 and 2 are the task's own (done,
+// refused, failed); any other (a shell's 127 for a missing run script, a signal's 128+n) is a
+// target not reached, 1.
+func jobsExit(code int) int {
+	if code < 0 || code > 2 {
+		return 1
+	}
+	return code
 }

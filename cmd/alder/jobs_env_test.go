@@ -460,3 +460,13 @@ func TestJobs_EnvOldBuild(t *testing.T) {
 		t.Fatalf("lock after the old build's retry: %v", err)
 	}
 }
+
+// A code outside the task's own 0, 1 and 2 (127: no run script at the box) is 1, not reached.
+func TestJobsExit(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[int]int{0: 0, 1: 1, 2: 2, 3: 1, 127: 1, 137: 1, -1: 1} {
+		if got := jobsExit(in); got != want {
+			t.Errorf("jobsExit(%d) = %d, want %d", in, got, want)
+		}
+	}
+}

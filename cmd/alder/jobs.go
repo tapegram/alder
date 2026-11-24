@@ -41,7 +41,7 @@ The file is changed directly: a running app's workers find a job at their next l
 only while the silo is in their active set (a job queued or running there in the last hour) or
 after they restart. A database on Turso is read through its environment:
 --env <name> runs the operation against a deployed environment (the build at the box or machine),
-asks before it changes anything (--yes answers), and takes the deploy lock to do so.`
+asks before it changes anything (--yes answers), and takes the deploy lock to do so where the target has one (an Ssh box; Fly has none).`
 
 // jobsStore is one database of `alder jobs`: the shared one (silo "") or a silo's. where names it
 // for an error (its file, and its silo); open opens it, read-only unless write.
