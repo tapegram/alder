@@ -25,7 +25,7 @@ import (
 // files; a running app's workers see a change at their next look. The operations are rt/jobs's
 // admin ones (admin.go), which the dev panel's Jobs page uses too.
 
-const jobsUsage = "usage: alder jobs [retry <id> | retry --dead | run <Kind> | cancel <id>] [dir] [--db FILE] [--build-dir DIR]"
+const jobsUsage = "usage: alder jobs [retry <id> | retry --dead | run <Kind> | cancel <id>] [dir] [--db FILE | --env <name> [--host name] [--yes]] [--build-dir DIR]"
 
 // jobsHelpNote follows `alder jobs --help`'s usage line.
 const jobsHelpNote = `
@@ -39,7 +39,10 @@ job's next tick, and the dead jobs with their attempts and error.
 A retried schedule tick runs once: no next tick is queued after it (the job's queued tick stays).
 The file is changed directly: a running app's workers find a job at their next look, in a silo
 only while the silo is in their active set (a job queued or running there in the last hour) or
-after they restart. A database on Turso is not read (--db takes a file).`
+after they restart. A database on Turso is read through its environment:
+--env <name> runs the operation against a deployed environment (the build at the box or machine;
+on Render, the shared database and its silo databases from this machine), asks before it changes
+anything (--yes answers), and takes the deploy lock to do so.`
 
 // jobsStore is one database of `alder jobs`: the shared one (silo "") or a silo's. where names it
 // for an error (its file, and its silo); open opens it, read-only unless write.
@@ -74,24 +77,42 @@ type jobsPlace struct {
 	head, flags, who string
 }
 
-// runJobsTo is `alder jobs [retry <id> | retry --dead | run <Kind> | cancel <id>] [dir] [--db FILE]
-// [--build-dir DIR]`. Exit 0; 1 when an operation is refused (an unknown id, a job neither dead nor cancelled
-// (retry) or neither queued nor running (cancel), a schedule's queued tick, a key held, an app with errors); 2 for usage, a database that cannot be read, and `run` of a
-// kind the app lacks or one with parameters.
+// runJobsTo is `alder jobs [retry <id> | retry --dead | run <Kind> | cancel <id>] [dir] [--db FILE
+// | --env <name> [--host name] [--yes]] [--build-dir DIR]`. Exit 0; 1 when an operation is refused
+// (an unknown id, a job neither dead nor cancelled (retry) or neither queued nor running (cancel),
+// a schedule's queued tick, a key held, an app with errors); 2 for usage, a database that cannot
+// be read, and `run` of a kind the app lacks or one with parameters. With --env, runJobsEnv.
 func runJobsTo(args []string, stdout, stderr io.Writer) int {
+	return runJobsWith(args, stdout, stderr, osDeployEnv())
+}
+
+// runJobsWith is runJobsTo with the deploy commands' environment e (read by --env only).
+func runJobsWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	fail := func(code int, format string, a ...any) int {
 		fmt.Fprintf(stderr, "%s %s\n", errTag(stderr, "alder jobs:"), fmt.Sprintf(format, a...))
 		return code
 	}
 	usage := func() int { fmt.Fprintln(stderr, jobsUsage); return 2 }
 	var (
-		dbPath, bd string
-		dead       bool
-		pos        []string
+		dbPath, bd, env, host string
+		dead, yes, hasEnv     bool
+		hasHost               bool
+		pos                   []string
 	)
 	for i := 0; i < len(args); i++ {
+		if h, ok := hostFlag(args, &i); ok {
+			host, hasHost = h, true
+			continue
+		}
 		a := args[i]
 		switch {
+		case a == "--env" && i+1 < len(args):
+			env, hasEnv = args[i+1], true
+			i++
+		case strings.HasPrefix(a, "--env="):
+			env, hasEnv = strings.TrimPrefix(a, "--env="), true
+		case a == "--yes":
+			yes = true
 		case (a == "--db" || a == "--build-dir") && i+1 < len(args):
 			if a == "--db" {
 				dbPath = args[i+1]
@@ -130,12 +151,26 @@ func runJobsTo(args []string, stdout, stderr io.Writer) int {
 	if len(pos) > 1 {
 		return usage()
 	}
+	switch {
+	case hasEnv && dbPath != "":
+		return fail(2, "--db takes a file; --env an environment")
+	case hasEnv && op == "cancel":
+		return fail(2, "cancel <id> works on a local database only")
+	case hasEnv && env == "", hasHost && (!hasEnv || host == ""), yes && op != "retry" && op != "run":
+		return usage()
+	}
 	dir := "."
 	if len(pos) == 1 {
 		dir = pos[0]
 		if info, err := os.Stat(dir); dead && (err != nil || !info.IsDir()) {
 			return usage() // `retry <id> --dead`: --dead takes no id, and what follows is the app dir
 		}
+	}
+	if hasEnv {
+		if bd != "" {
+			e.BuildDir = bd
+		}
+		return runJobsEnv(context.Background(), op, target, env, dir, host, dead, yes, stdout, stderr, e)
 	}
 	if dbPath == "" {
 		dbPath = filepath.Join(appBuildDir(bd, dir), "dev.db")
@@ -254,8 +289,11 @@ func upgradeJobs(ctx context.Context, s jobsStore) error {
 }
 
 // siloCount is " and N silo database(s)" for the silos of stores ("" for none).
-func siloCount(stores []jobsStore, and string) string {
-	switch n := len(stores) - 1; n {
+func siloCount(stores []jobsStore, and string) string { return siloWords(len(stores)-1, and) }
+
+// siloWords is " and N silo database(s)" for n silo databases ("" for none).
+func siloWords(n int, and string) string {
+	switch n {
 	case 0:
 		return ""
 	case 1:
@@ -529,34 +567,14 @@ func jobsCancel(ctx context.Context, at jobsPlace, stores []jobsStore, id string
 // read, a statement of RetryDead's) exits 2 after the summary of the rows already queued again:
 // each retry commits on its own, so they stay queued.
 func jobsRetryDead(ctx context.Context, at jobsPlace, stores []jobsStore, stdout, stderr io.Writer) int {
-	n, code := 0, 0
-	var ids, notes []string
-	summary := func() {
-		switch n {
-		case 0:
-			if code == 0 {
-				fmt.Fprintln(stdout, "no dead job")
-			} else {
-				fmt.Fprintln(stdout, "no dead job was queued again")
-			}
-		case 1:
-			fmt.Fprintf(stdout, "queued 1 dead job again, due now: %s\n", ids[0])
-		default:
-			fmt.Fprintf(stdout, "queued %d dead jobs again, due now: %s\n", n, strings.Join(ids, ", "))
-		}
-		for _, note := range notes {
-			fmt.Fprintln(stdout, note)
-		}
-	}
+	code := 0
+	var rows []placed
+	summary := func() { printRetriedDead(stdout, at, rows, code != 0) }
 	for _, s := range stores {
 		_, err := withJobs(ctx, s, true, func(q db.Execer) error {
 			retried, refused, err := jobs.RetryDead(ctx, q, time.Now())
 			for _, r := range retried {
-				n++
-				ids = append(ids, r.ID)
-				for _, note := range retriedNotes(placed{Row: r, silo: s.silo}, at.who) {
-					notes = append(notes, "  "+r.ID+": "+note)
-				}
+				rows = append(rows, placed{Row: r, silo: s.silo})
 			}
 			if len(retried) > 0 && s.silo != "" && err == nil {
 				err = hintSilo(ctx, stores[0], s.silo)
@@ -568,7 +586,7 @@ func jobsRetryDead(ctx context.Context, at jobsPlace, stores []jobsStore, stdout
 			return err
 		})
 		if err != nil {
-			if n > 0 {
+			if len(rows) > 0 {
 				summary()
 			}
 			fmt.Fprintf(stderr, "%s %s: %v\n", errTag(stderr, "alder jobs:"), s.where, err)
@@ -577,6 +595,33 @@ func jobsRetryDead(ctx context.Context, at jobsPlace, stores []jobsStore, stdout
 	}
 	summary()
 	return code
+}
+
+// printRetriedDead is the summary of a retry --dead that queued rows again: their ids, then each
+// one's notes; with none, "no dead job", or, when one was refused, that none was queued.
+func printRetriedDead(stdout io.Writer, at jobsPlace, rows []placed, refused bool) {
+	var ids, notes []string
+	for _, p := range rows {
+		ids = append(ids, p.ID)
+		for _, note := range retriedNotes(p, at.who) {
+			notes = append(notes, "  "+p.ID+": "+note)
+		}
+	}
+	switch len(rows) {
+	case 0:
+		if !refused {
+			fmt.Fprintln(stdout, "no dead job")
+		} else {
+			fmt.Fprintln(stdout, "no dead job was queued again")
+		}
+	case 1:
+		fmt.Fprintf(stdout, "queued 1 dead job again, due now: %s\n", ids[0])
+	default:
+		fmt.Fprintf(stdout, "queued %d dead jobs again, due now: %s\n", len(rows), strings.Join(ids, ", "))
+	}
+	for _, note := range notes {
+		fmt.Fprintln(stdout, note)
+	}
 }
 
 // jobsRun is `alder jobs run <Kind>`: the app in dir's job named kind ("Nightly", or qualified

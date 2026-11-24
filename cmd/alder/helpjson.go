@@ -187,6 +187,9 @@ var commandTree = []cmdSpec{
 		Args: []string{"[dir]"},
 		Flags: []flagSpec{
 			{Name: "--db", Value: "FILE", Summary: "another database file than build/<app>/dev.db"},
+			{Name: "--env", Value: "name", Summary: "a deployed environment's jobs instead of a file's"},
+			hostFlagSpec,
+			{Name: "--yes", Summary: "with --env, do not ask before retry or run"},
 			buildDirFlag,
 		},
 		Subcommands: []cmdSpec{

@@ -30,7 +30,7 @@ func runDeploy(t *testing.T, args ...string) (int, string, string) {
 }
 
 // deployCmds runs the deploy commands (deploy, status, rollback, logs, restore, migrate silos,
-// silos prune) as one test does: with an environment of its own (env, the deployEnv the
+// silos prune, jobs --env) as one test does: with an environment of its own (env, the deployEnv the
 // commands would read from this process's; vars, the variables set for its Getenv and a
 // Script's environment) and the test's build directory (testBuildDir). Nothing is set in the
 // process's environment, so the deploy tests run in parallel.
@@ -113,6 +113,10 @@ func (c *deployCmds) restore(args []string, stdout, stderr io.Writer) int {
 
 func (c *deployCmds) silos(args []string, stdout, stderr io.Writer) int {
 	return runSilosWith(args, stdout, stderr, c.e())
+}
+
+func (c *deployCmds) jobs(args []string, stdout, stderr io.Writer) int {
+	return runJobsWith(args, stdout, stderr, c.e())
 }
 
 // migrate is `alder migrate args` (`alder migrate silos <env>` with the commands' environment).

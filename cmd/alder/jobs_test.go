@@ -39,11 +39,17 @@ func jobsDB(t *testing.T, path string, rows ...jobsRow) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	ctx := context.Background()
 	q, err := db.On(st, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	jobsInsert(t, q, rows...)
+}
+
+// jobsInsert makes the jobs table of q (jobs.EnsureTable) and inserts rows in it.
+func jobsInsert(t *testing.T, q db.Execer, rows ...jobsRow) {
+	t.Helper()
+	ctx := context.Background()
 	if err := jobs.EnsureTable(ctx, q); err != nil {
 		t.Fatal(err)
 	}
@@ -379,6 +385,9 @@ func TestJobs_RunTypeError(t *testing.T) {
 // --db reads another file; a missing database and bad arguments exit 2.
 func TestJobs_DBFlagAndUsage(t *testing.T) {
 	t.Parallel()
+	if want := "usage: alder jobs [retry <id> | retry --dead | run <Kind> | cancel <id>] [dir] [--db FILE | --env <name> [--host name] [--yes]] [--build-dir DIR]"; jobsUsage != want {
+		t.Errorf("jobsUsage = %q", jobsUsage)
+	}
 	other := filepath.Join(t.TempDir(), "prod-copy.db")
 	jobsDB(t, other, jobsRow{id: "deadx001", kind: "A.B", state: "dead", attempts: 2, err: "e", finished: time.Minute})
 	code, out := runCmd(t, runJobsTo, "--db", other)
@@ -405,7 +414,8 @@ func TestJobs_DBFlagAndUsage(t *testing.T) {
 func TestJobs_Help(t *testing.T) {
 	t.Parallel()
 	var out strings.Builder
-	if !helpTo([]string{"jobs", "--help"}, &out) || !strings.HasPrefix(out.String(), jobsUsage+"\n") || !strings.Contains(out.String(), "A retried schedule tick runs once") {
+	if !helpTo([]string{"jobs", "--help"}, &out) || !strings.HasPrefix(out.String(), jobsUsage+"\n") || !strings.Contains(out.String(), "A retried schedule tick runs once") ||
+		!strings.Contains(out.String(), "--env <name> runs the operation against a deployed environment") {
 		t.Fatalf("help:\n%s", out.String())
 	}
 }
