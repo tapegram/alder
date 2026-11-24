@@ -74,6 +74,13 @@ func (g *gen) jobsSource(p *ir.Program) string {
 		if j.Priority != 0 {
 			k += fmt.Sprintf("Priority: %d,\n", j.Priority)
 		}
+		if len(j.Params.Fields) > 0 { // the --jobs task's `run` names them
+			names := make([]string, len(j.Params.Fields))
+			for i, f := range j.Params.Fields {
+				names[i] = strconv.Quote(f.Name)
+			}
+			k += "Params: []string{" + strings.Join(names, ", ") + "},\n"
+		}
 		kinds = append(kinds, k+"}")
 	}
 	var b strings.Builder

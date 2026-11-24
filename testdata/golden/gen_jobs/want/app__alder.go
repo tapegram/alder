@@ -336,6 +336,7 @@ func Jobs() []jobs.Kind {
 		},
 		Retries: 4,
 		Timeout: 300000000000, // 5m0s
+		Params:  []string{"user"},
 	}, {
 		Name: "Signup.Nightly",
 		Run: func(e *eff.Env, params string) (eff.Task[struct{}], error) {
@@ -383,6 +384,7 @@ func Jobs() []jobs.Kind {
 		},
 		Retries: 0,
 		Timeout: 30000000000, // 30s
+		Params:  []string{"n", "x", "ok", "title", "user", "due", "at", "tags", "address", "shape", "shapes", "tree", "outcome"},
 	}, {
 		Name: "Signup.Urgent",
 		Run: func(e *eff.Env, params string) (eff.Task[struct{}], error) {

@@ -185,6 +185,7 @@ func Jobs() []jobs.Kind {
 		Retries:   4,
 		Timeout:   300000000000, // 5m0s
 		SiloParam: "org",
+		Params:    []string{"org"},
 	}}
 }
 

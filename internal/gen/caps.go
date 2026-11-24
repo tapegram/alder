@@ -834,6 +834,11 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 // status` runs it), --verify-silos N tries the pending migrations on the N largest silos of each
 // key and rolls them back (alder deploy runs it on Turso before migrating), and --prune-silos
 // key:id… removes the databases of those silos that are orphaned (`alder silos prune`).
+//
+// --jobs <list | retry <id> | retry --dead | run <Kind>> (rt/jobs.Admin) administers the job
+// queue of the database at ALDER_DB (and, with silos, of each silo's database): it prints JSON
+// lines (`alder jobs --env` reads them back) and never opens the app or starts job workers.
+// It is matched exactly, so --jobs-only is a different argument.
 func Main(name string, withCaps, withSilos bool) []byte {
 	imports := "\t\"app\"\n"
 	caps := "app.Caps{}"
@@ -1112,7 +1117,10 @@ func maintain(args []string, path string, dev bool) int {
 		}
 		return 0
 	}
-SILOCASES	fmt.Fprintln(os.Stderr, "usage: "+filepath.Base(os.Args[0])+" [--jobs-only | --migrate-only | --backup-to FILE"+SILOUSAGE+"]  (no argument: serve)")
+SILOCASES	if len(args) >= 1 && args[0] == "--jobs" {
+		return jobs.Admin(ctx, JOBSCFG, app.Jobs(), args[1:], os.Stdout, os.Stderr)
+	}
+	fmt.Fprintln(os.Stderr, "usage: "+filepath.Base(os.Args[0])+" [--jobs-only | --migrate-only | --backup-to FILE | --jobs list|retry <id>|retry --dead|run <Kind>"+SILOUSAGE+"]  (no argument: serve)")
 	return 2
 }
 
@@ -1124,8 +1132,9 @@ func env(name, def string) string {
 	return def
 }
 `
-	cases, usage := "", ""
+	cases, usage, jobsCfg := "", "", "db.StoresConfig{Shared: path}"
 	if withSilos {
+		jobsCfg = "silos"
 		cases = siloCases
 		usage = `+" | --migrate-silos [--allow-data-loss] | --silo-status | --verify-silos N | --prune-silos key:id…"`
 		src = strings.Replace(src, `	"path/filepath"
@@ -1139,6 +1148,7 @@ func env(name, def string) string {
 	}
 	src = strings.Replace(src, "DRAIN", drain, -1)
 	src = strings.Replace(strings.Replace(src, "SILOCASES", cases, 1), "+SILOUSAGE", usage, 1)
+	src = strings.Replace(src, "JOBSCFG", jobsCfg, 1)
 	out, err := format.Source([]byte(src))
 	if err != nil {
 		panic(fmt.Sprintf("gen: cmd/main.go: %v\n%s", err, src))

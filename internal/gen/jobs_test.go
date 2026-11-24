@@ -21,3 +21,27 @@ func TestJobs_NoJobs(t *testing.T) {
 		t.Errorf("app file has no empty Jobs():\n%s", files[appFile])
 	}
 }
+
+// A job's parameter names are the kind's Params (the --jobs task's `run` reads them), in
+// declaration order; a job without fields has none.
+func TestJobs_KindParams(t *testing.T) {
+	files := emitSource(t, map[string]string{"M.alder": `module M
+
+job Send = { user: Text, note: Text }
+
+Send.run : Send.Params -> Task Unit
+Send.run p = Task.succeed ()
+
+job Tick = {} every "1h"
+
+Tick.run : Tick.Params -> Task Unit
+Tick.run p = Task.succeed ()
+`})
+	src := string(files[appFile])
+	if !strings.Contains(src, `Params:  []string{"user", "note"},`) {
+		t.Errorf("Send has no Params:\n%s", src)
+	}
+	if n := strings.Count(src, "Params:  []string{"); n != 1 {
+		t.Errorf("%d Params literals, want 1 (Tick has no fields)", n)
+	}
+}

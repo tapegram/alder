@@ -212,3 +212,79 @@ func TestMain_JobsOnly(t *testing.T) {
 		}
 	}
 }
+
+// TestMain_JobsTask: `app --jobs <args>` (spec §4) runs jobs.Admin over the app's Jobs() on the
+// silo config (an app with silos) or the shared file, before the usage line, and never opens the
+// app. --jobs-only is not shadowed: the case matches "--jobs" exactly.
+func TestMain_JobsTask(t *testing.T) {
+	for _, withSilos := range []bool{false, true} {
+		src := string(Main("todos", true, withSilos))
+		cfg := "db.StoresConfig{Shared: path}"
+		if withSilos {
+			cfg = "silos"
+		}
+		for _, want := range []string{
+			"if len(args) >= 1 && args[0] == \"--jobs\" {",
+			"return jobs.Admin(ctx, " + cfg + ", app.Jobs(), args[1:], os.Stdout, os.Stderr)",
+			"--jobs list|retry <id>|retry --dead|run <Kind>",
+		} {
+			if !strings.Contains(src, want) {
+				t.Errorf("silos %v: main has no %q", withSilos, want)
+			}
+		}
+		if strings.Contains(src, "JOBSCFG") {
+			t.Errorf("silos %v: placeholder left", withSilos)
+		}
+	}
+}
+
+// TestMain_JobsTaskBuilt builds gen_jobs and runs its --jobs task over a database file.
+func TestMain_JobsTaskBuilt(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go is not on PATH")
+	}
+	dir := emitApp(t, "../../testdata/golden/gen_jobs")
+	if err := os.MkdirAll(filepath.Join(dir, "cmd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cmd", "main.go"), Main("jobs", true, false), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "jobs-app")
+	goRun(t, dir, "build", "-o", bin, "./cmd")
+	dbFile := filepath.Join(t.TempDir(), "jobs.db")
+	run := func(args ...string) (int, string) {
+		cmd := exec.Command(bin, args...)
+		cmd.Env = append(os.Environ(), "ALDER_DB="+dbFile, "ALDER_DEV=1")
+		var out strings.Builder
+		cmd.Stdout = &out
+		err := cmd.Run()
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			return ee.ExitCode(), out.String()
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return 0, out.String()
+	}
+	code, out := run("--jobs", "list")
+	lines, msgs := jobs.DecodeAdmin(out)
+	if code != 0 || len(lines) != 1 || lines[0].Silo != "" || len(msgs) != 0 {
+		t.Errorf("--jobs list: exit %d, %q -> %v %v", code, out, lines, msgs)
+	}
+	if code, out := run("--jobs", "frob"); code != 2 {
+		t.Errorf("--jobs frob: exit %d, %q; want 2", code, out)
+	}
+	if code, out := run("--jobs", "run", "Signup.Nightly"); code != 0 {
+		t.Errorf("--jobs run Signup.Nightly: exit %d, %q", code, out)
+	}
+	if fi, err := os.Stat(dbFile); err != nil || fi.Size() == 0 {
+		t.Errorf("no database file after run: %v", err)
+	}
+	code, out = run("--jobs", "list")
+	lines, _ = jobs.DecodeAdmin(out)
+	if code != 0 || len(lines) != 1 || lines[0].Counts[jobs.Queued] != 1 {
+		t.Errorf("--jobs list after run: exit %d, %q", code, out)
+	}
+}
