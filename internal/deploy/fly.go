@@ -411,18 +411,28 @@ type execResult struct {
 // exec runs the shell script in the environment's machine (R is the volume's mount point) and
 // returns its standard output; a non-zero exit is an error with its standard error.
 func (f *Fly) exec(ctx context.Context, script string) (string, error) {
-	if f.machine == nil {
-		return "", errors.New("the environment has no machine yet")
-	}
-	var r execResult
-	body := map[string]any{"command": []string{"sh", "-c", "R=" + q(f.Data) + "\n" + script}, "timeout": 60}
-	if err := f.call(ctx, "POST", "/apps/"+url.PathEscape(f.FlyApp)+"/machines/"+url.PathEscape(f.machine.ID)+"/exec", body, &r); err != nil {
+	r, err := f.execCode(ctx, script)
+	if err != nil {
 		return "", err
 	}
 	if r.ExitCode != 0 {
 		return r.Stdout, fmt.Errorf("a command in machine %s failed (exit %d): %s", f.machine.ID, r.ExitCode, orNone(lastLines(strings.TrimSpace(r.Stderr), 20)))
 	}
 	return r.Stdout, nil
+}
+
+// execCode is exec without the error for a non-zero exit: the result carries the exit code and
+// both outputs.
+func (f *Fly) execCode(ctx context.Context, script string) (execResult, error) {
+	if f.machine == nil {
+		return execResult{}, errors.New("the environment has no machine yet")
+	}
+	var r execResult
+	body := map[string]any{"command": []string{"sh", "-c", "R=" + q(f.Data) + "\n" + script}, "timeout": 60}
+	if err := f.call(ctx, "POST", "/apps/"+url.PathEscape(f.FlyApp)+"/machines/"+url.PathEscape(f.machine.ID)+"/exec", body, &r); err != nil {
+		return execResult{}, err
+	}
+	return r, nil
 }
 
 // running reports whether the machine is started, starting it when it is stopped (Fly may

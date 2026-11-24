@@ -261,6 +261,11 @@ func fakeApp(variant string, refuse bool) string {
 case "$1" in
 --migrate-only) ` + mig + ` ;;
 --backup-to) cp "$ALDER_DB" "$2" ;;
+--jobs) case "$2" in
+  list) echo '{"silo":"","counts":{"dead":1}}'; exit 0 ;;
+  retry) echo '{"refused":["no such job x"]}'; exit 1 ;;
+  *) printf '%s' "$3" > "$ALDER_DB.arg"; echo "usage: app [--migrate-only]" >&2; exit 2 ;;
+  esac ;;
 esac
 exit 0
 `
@@ -681,5 +686,52 @@ func TestTailLines(t *testing.T) {
 		if got := tailLines(c.s, c.n); got != c.want {
 			t.Errorf("tailLines(%q, %d) = %q, want %q", c.s, c.n, got, c.want)
 		}
+	}
+}
+
+// Jobs at a Fly environment: the app's --jobs run in its machine (started first when stopped),
+// stdout then stderr back with the exit code; a non-zero exit is not an error; arguments survive
+// the shell; no machine is ErrNotDeployed.
+func TestFly_Jobs(t *testing.T) {
+	ff := newFakeFly(t)
+	ctx := context.Background()
+	env := map[string]string{"SMTP_URL": flySecretValue, "ALDER_SECRET": strings.Repeat("k", 32)}
+
+	empty := ff.target(env)
+	if _, err := empty.Connect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := empty.Jobs(ctx, "list"); !errors.Is(err, ErrNotDeployed) {
+		t.Fatalf("no machine: %v", err)
+	}
+
+	var out bytes.Buffer
+	if _, err := Deploy(ctx, flyOptions(t, flyApp(t), &out, "one", false), GateResult{Check: "ok"}, ff.target(env), nil); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	tg := ff.target(env)
+	if _, err := tg.Connect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ff.mu.Lock()
+	ff.machine.State = "stopped"
+	ff.mu.Unlock()
+	got, code, err := tg.Jobs(ctx, "list")
+	if err != nil || code != 0 || got != `{"silo":"","counts":{"dead":1}}`+"\n" {
+		t.Fatalf("list: %q %d %v", got, code, err)
+	}
+	if ff.machine.State != "started" {
+		t.Errorf("the machine is %s", ff.machine.State)
+	}
+	got, code, err = tg.Jobs(ctx, "retry", "x")
+	if err != nil || code != 1 || !strings.Contains(got, "no such job x") {
+		t.Fatalf("retry: %q %d %v", got, code, err)
+	}
+	got, code, err = tg.Jobs(ctx, "run", "it's")
+	if err != nil || code != 2 || !strings.Contains(got, "usage:") {
+		t.Fatalf("old build: %q %d %v", got, code, err)
+	}
+	if a := readFile(t, filepath.Join(ff.data, "db", "app.db.arg")); a != "it's" {
+		t.Errorf("the argument arrived as %q", a)
 	}
 }
