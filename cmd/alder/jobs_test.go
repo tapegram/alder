@@ -174,6 +174,9 @@ func TestJobs_RetryID(t *testing.T) {
 	if r := jobsGet(t, silo, "dead0003"); r.State != "queued" || r.Attempts != 0 {
 		t.Fatalf("retried silo row: %+v", r)
 	}
+	if !strings.Contains(out, "or after they restart; a `--jobs-only` worker reads the silo hint within a poll") {
+		t.Fatalf("silo note:\n%s", out)
+	}
 	code, out = runCmd(t, runJobsTo, "retry", "canc0001", dir, "--build-dir", bd)
 	if code != 0 || !strings.Contains(out, "queued job canc0001 (Signup.First) again") {
 		t.Fatalf("retry of a cancelled row: exit %d\n%s", code, out)
@@ -188,6 +191,45 @@ func TestJobs_RetryID(t *testing.T) {
 	code, out = runCmd(t, runJobsTo, "retry", "nosuch01", dir, "--build-dir", bd)
 	if code != 1 || !strings.Contains(out, "no job nosuch01 in "+dev+" or its 1 silo database") {
 		t.Fatalf("retry of an unknown id: exit %d\n%s", code, out)
+	}
+}
+
+// A silo file that cannot be read does not stop the listing: the other stores print, the missed
+// one follows on stderr and the exit is 2.
+func TestJobs_ListMissed(t *testing.T) {
+	t.Parallel()
+	dir, bd, dev, _ := jobsFixture(t)
+	bad := filepath.Join(bd, "jobsapp", "silos", "org", db.SiloFileName("o2"))
+	if err := os.MkdirAll(bad, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var so, se strings.Builder
+	code := runJobsTo([]string{dir, "--build-dir", bd}, &so, &se)
+	out := squash(so.String())
+	if code != 2 || !strings.Contains(out, "jobs in "+dev+" and 2 silo databases:") || !strings.Contains(out, "dead 3") || !strings.Contains(out, "dead0003 Reports.Digest 1 attempt x (in silo org/o1)") || !strings.Contains(out, "dead0001 Signup.SendWelcome") {
+		t.Fatalf("exit %d\nstdout:\n%s", code, so.String())
+	}
+	if want := "alder jobs: silo org/o2 (" + bad + "): not read: "; !strings.Contains(se.String(), want) {
+		t.Fatalf("stderr:\n%s\nwant %q", se.String(), want)
+	}
+}
+
+// A retry of a row in a silo writes the silo's hint in the dev database (for a --jobs-only
+// worker); a retry of a shared row writes none.
+func TestJobs_RetryWritesHint(t *testing.T) {
+	t.Parallel()
+	dir, bd, dev, _ := jobsFixture(t)
+	if code, out := runCmd(t, runJobsTo, "retry", "dead0001", dir, "--build-dir", bd); code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	if n := sqlCount(t, dev, `SELECT COUNT(*) FROM "_alder_jobs_silos"`); n != 0 {
+		t.Fatalf("%d hints after a shared retry", n)
+	}
+	if code, out := runCmd(t, runJobsTo, "retry", "dead0003", dir, "--build-dir", bd); code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	if n := sqlCount(t, dev, `SELECT COUNT(*) FROM "_alder_jobs_silos" WHERE "key" = 'org' AND "value" = 'o1'`); n != 1 {
+		t.Fatalf("%d hints for org/o1", n)
 	}
 }
 
@@ -247,7 +289,7 @@ func TestJobs_RetryDeadPartialFailure(t *testing.T) {
 		var so, se strings.Builder
 		code := runJobsTo([]string{"retry", "--dead", "--db", dev}, &so, &se)
 		want := "queued 2 dead jobs again, due now: dead0001, dead0003\n" +
-			"  dead0003: in silo org/o1, a running app's workers find it only while the silo is in their active set (a job queued or running there in the last hour) or after they restart\n"
+			"  dead0003: in silo org/o1, a running app's workers find it only while the silo is in their active set (a job queued or running there in the last hour) or after they restart; a `--jobs-only` worker reads the silo hint within a poll\n"
 		if code != 2 || so.String() != want || !strings.Contains(se.String(), "silo org/o2 ("+bad+"): ") {
 			t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, so.String(), se.String())
 		}
