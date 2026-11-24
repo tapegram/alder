@@ -222,8 +222,9 @@ another process; its writes are undone, and its log line
 says `cancelled`. The job stays as a row marked `Cancelled`, with its
 attempts and last error as they were, so `Job.status` and the Jobs page
 can say what happened. A job that cancels itself rolls the cancel back
-with its own writes, so to stop early a job returns
-`Task.succeed ()`.
+with its own writes and ends with its row still `running`: it is tried
+again when its lease runs out, and goes dead with `lost: the process
+stopped`. To stop early a job returns `Task.succeed ()`.
 
 Waiting is done with `enqueueIn`, not with a sleep:
 

@@ -168,7 +168,7 @@ func TestDevJobs_Cancelled(t *testing.T) {
 		t.Errorf("cancelled = %+v", v.Cancelled)
 	}
 	body := serve(h, httptest.NewRequest("GET", "/_dev/jobs", nil)).Body.String()
-	if !strings.Contains(body, "<h2>Cancelled (1)</h2>") || !strings.Contains(body, `href="/_dev/jobs/cancel01"`) || strings.Index(body, "<h2>Cancelled") < strings.Index(body, "<h2>Dead") {
+	if !strings.Contains(body, "<h2>Cancelled (last 50)</h2>") || !strings.Contains(body, `href="/_dev/jobs/cancel01"`) || strings.Index(body, "<h2>Cancelled") < strings.Index(body, "<h2>Dead") {
 		t.Errorf("/_dev/jobs lacks a Cancelled section after Dead:\n%s", body)
 	}
 	body = serve(h, httptest.NewRequest("GET", "/_dev/jobs/cancel01", nil)).Body.String()
@@ -239,6 +239,14 @@ func TestDevJobs_RetryTick(t *testing.T) {
 	page := serve(h, httptest.NewRequest("GET", "/_dev/jobs/"+r.ID, nil)).Body.String()
 	if !strings.Contains(page, "A retried tick runs once, now, and inserts no next tick") {
 		t.Errorf("the dead tick's page does not say what its retry does:\n%s", page)
+	}
+	// a cancelled tick retries the same way
+	if _, err := q.ExecContext(ctx, `UPDATE "_alder_jobs" SET "state" = 'cancelled' WHERE "id" = ?`, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	page = serve(h, httptest.NewRequest("GET", "/_dev/jobs/"+r.ID, nil)).Body.String()
+	if !strings.Contains(page, "A retried tick runs once, now, and inserts no next tick") {
+		t.Errorf("the cancelled tick's page does not say what its retry does:\n%s", page)
 	}
 	if w := serve(h, httptest.NewRequest("POST", "/_dev/jobs/"+r.ID+"/retry", nil)); w.Code != 303 {
 		t.Fatalf("retry: %d %s", w.Code, w.Body.String())

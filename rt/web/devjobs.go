@@ -193,7 +193,7 @@ func (rt *router) devJob(w http.ResponseWriter, r *http.Request, id string) {
 		http.Error(w, "no job "+id+" in the stores this process sees (never enqueued there, or pruned)", http.StatusNotFound)
 		return
 	}
-	v := devJobView{Row: jobRow(*row), Workers: p.Workers(), DeadTick: row.State == string(jobs.Dead) && row.ScheduledFor != nil, Ring: jobs.AttemptRing}
+	v := devJobView{Row: jobRow(*row), Workers: p.Workers(), DeadTick: (row.State == string(jobs.Dead) || row.State == string(jobs.Cancelled)) && row.ScheduledFor != nil, Ring: jobs.AttemptRing}
 	for _, k := range p.Kinds {
 		if k.Name == row.Kind {
 			v.Known, v.Max = true, k.Retries+1
@@ -327,7 +327,7 @@ var devJobsPage = template.Must(template.New("jobs").Funcs(devJobsFuncs).Parse(`
 <table><tr><th>id</th><th>kind</th><th>finished</th><th>attempts</th><th>error</th></tr>
 {{range .Dead}}<tr><td><a href="/_dev/jobs/{{.ID}}">{{.ID}}</a></td><td><code>{{.Kind}}</code>{{if .Silo}} <small>silo {{.Silo}}</small>{{end}}</td><td>{{ms .Finished}}</td><td>{{.Attempts}}</td><td>{{with .Error}}{{.}}{{end}}</td></tr>
 {{end}}</table>
-<h2>Cancelled ({{len .Cancelled}})</h2>
+<h2>Cancelled (last 50)</h2>
 <table><tr><th>id</th><th>kind</th><th>finished</th><th>attempts</th></tr>
 {{range .Cancelled}}<tr><td><a href="/_dev/jobs/{{.ID}}">{{.ID}}</a></td><td><code>{{.Kind}}</code>{{if .Silo}} <small>silo {{.Silo}}</small>{{end}}</td><td>{{ms .Finished}}</td><td>{{.Attempts}}</td></tr>
 {{end}}</table>

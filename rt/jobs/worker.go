@@ -209,7 +209,6 @@ func start(ctx context.Context, o Options, housekept func(), hintTick <-chan tim
 			}
 			quit()
 			ticker.Stop()
-			watchTicker.Stop()
 			hintStop()
 			done := make(chan struct{})
 			go func() { wg.Wait(); close(done) }()
@@ -235,6 +234,7 @@ func start(ctx context.Context, o Options, housekept func(), hintTick <-chan tim
 			case <-t.C:
 			}
 			t.Stop()
+			watchTicker.Stop()
 		})
 	}
 }

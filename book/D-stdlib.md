@@ -2402,7 +2402,7 @@ which store the job is in. In a `test`, `Job.Id "x"` is an id that names no job,
 type State = Queued | Running | Done | Dead | Cancelled
 ```
 
-Where a job stands: waiting, running, finished, or given up.
+Where a job stands: waiting, running, finished, given up, or taken back.
 
 `Queued` waits for its time and a free worker, `Running` is being run, `Done` finished, and
 `Dead` failed on every attempt its `retries` allow, or had parameters this build cannot read.

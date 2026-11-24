@@ -17,7 +17,7 @@ module Job
 -- `Job.status` of it is `Nothing`.
 type Id = brand Text where True
 
--- Where a job stands: waiting, running, finished, or given up.
+-- Where a job stands: waiting, running, finished, given up, or taken back.
 --
 -- `Queued` waits for its time and a free worker, `Running` is being run, `Done` finished, and
 -- `Dead` failed on every attempt its `retries` allow, or had parameters this build cannot read.

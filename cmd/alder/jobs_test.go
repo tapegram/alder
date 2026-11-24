@@ -485,7 +485,15 @@ func TestJobs_Schema1Store(t *testing.T) {
 func TestJobs_Cancel(t *testing.T) {
 	t.Parallel()
 	dir, bd, dev, silo := jobsFixture(t)
-	code, out := runCmd(t, runJobsTo, "cancel", "q0000001", dir, "--build-dir", bd)
+	jobsDB(t, silo, jobsRow{id: "sq000001", kind: "Reports.Digest", state: "queued"})
+	code, out := runCmd(t, runJobsTo, "cancel", "sq000001", dir, "--build-dir", bd)
+	if code != 0 || !strings.Contains(out, "cancelled job sq000001 (Reports.Digest) in silo org/o1") || !strings.Contains(out, "in silo org/o1, a running app's workers") {
+		t.Fatalf("cancel in a silo: exit %d\n%s", code, out)
+	}
+	if r := jobsGet(t, silo, "sq000001"); r.State != "cancelled" {
+		t.Fatalf("cancelled silo row: %+v", r)
+	}
+	code, out = runCmd(t, runJobsTo, "cancel", "q0000001", dir, "--build-dir", bd)
 	if code != 0 || !strings.Contains(out, "cancelled job q0000001 (Signup.First)\n") || !strings.Contains(out, "a running app's workers stop it within a poll if it is running there") {
 		t.Fatalf("cancel: exit %d\n%s", code, out)
 	}
@@ -515,7 +523,6 @@ func TestJobs_Cancel(t *testing.T) {
 	if code != 2 {
 		t.Errorf("cancel without an id: exit %d", code)
 	}
-	_ = silo
 	var help strings.Builder
 	if !helpTo([]string{"jobs", "--help"}, &help) || !strings.Contains(help.String(), "cancel <id>") {
 		t.Fatalf("help:\n%s", help.String())

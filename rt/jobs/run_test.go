@@ -308,6 +308,28 @@ func TestRunOne_Backstop(t *testing.T) {
 	}
 }
 
+// The done mark's fallback: a row that is no longer running but not cancelled (re-queued by a
+// lease expiry) must not fail the Task: the job's writes stand and the row is marked done.
+func TestRunOne_DoneMarkFallbackRequeued(t *testing.T) {
+	st := open(t)
+	env, _ := newEnv(st)
+	id := runEnqueue(t, env, welcome, nil)
+	requeue := eff.Call("requeue elsewhere", false, func(*eff.Env) (struct{}, error) {
+		_, err := raw(t, st).ExecContext(context.Background(), `UPDATE "_alder_jobs" SET "state" = 'queued', "lease_until" = NULL WHERE "id" = ?`, id)
+		return struct{}{}, err
+	})
+	out := jobs.RunOne(env, kind(then(requeue, insertNote("kept"))), claim(t, st, id))
+	if out.Err != nil {
+		t.Fatalf("outcome %+v", out)
+	}
+	if n := notes(t, st); n != 1 {
+		t.Fatalf("notes %d", n)
+	}
+	if r := read(t, st, id); r.state != "done" {
+		t.Fatalf("row %+v", r)
+	}
+}
+
 // A job that fails on its own after another process cancelled its row: the failure is not
 // recorded over the cancel, for a retry or a death (review focus 1).
 func TestRunOne_FailureAfterCancelKeepsCancelled(t *testing.T) {
