@@ -10,6 +10,17 @@ func page(body ...Node) Node {
 	return El("html", nil, El("head", nil, El("title", nil, Text("t"))), El("body", nil, body...))
 }
 
+// svgChart is an <svg> (with id svgID unless empty) holding a <g id="series"> with a polyline
+// (id lineID) through points.
+func svgChart(svgID, lineID, points string) Node {
+	var attrs []Attr
+	if svgID != "" {
+		attrs = append(attrs, A("id", svgID))
+	}
+	attrs = append(attrs, A("viewBox", "0 0 10 10"))
+	return El("svg", attrs, El("g", []Attr{A("id", "series")}, El("polyline", []Attr{A("id", lineID), A("points", points)})))
+}
+
 func li(id, text string) Node { return El("li", []Attr{A("id", id)}, Text(text)) }
 
 // TestRenderTracked_RegionsInDocumentOrder: every element with an id is recorded, outer before
@@ -107,6 +118,11 @@ var fragmentCases = []struct {
 	{"text in a table row", page(El("table", nil, El("tr", []Attr{A("id", "r")}, Text("loose"), El("td", []Attr{A("id", "c")}, Text("1"))))),
 		page(El("table", nil, El("tr", []Attr{A("id", "r")}, Text("loose"), El("td", []Attr{A("id", "c")}, Text("2"))))), []string{"#c"}},
 	{"an id in noscript", page(El("noscript", nil, El("p", []Attr{A("id", "n")}, Text("1")))), page(El("noscript", nil, El("p", []Attr{A("id", "n")}, Text("2")))), []string{"body"}},
+	// #306: a region inside an <svg> would be patched as HTML (Datastar parses the fragment in an
+	// HTML <template>), so its shape would leave the drawing: the <svg> is the region, or an outer one.
+	{"an id'd shape in an svg region", page(svgChart("c", "line", "0,0 5,5")), page(svgChart("c", "line", "0,0 5,9")), []string{"#c"}},
+	{"an id'd shape in an svg", page(El("div", []Attr{A("id", "card")}, svgChart("", "line", "0,0 5,5"))), page(El("div", []Attr{A("id", "card")}, svgChart("", "line", "0,0 5,9"))), []string{"#card"}},
+	{"an id'd shape in an svg outside any region", page(svgChart("", "line", "0,0 5,5")), page(svgChart("", "line", "0,0 5,9")), []string{"body"}},
 	{"body attribute changed", El("html", nil, El("body", []Attr{A("class", "x")}, li("a", "A"))), El("html", nil, El("body", []Attr{A("class", "y")}, li("a", "A"))), []string{"body"}},
 	{"a click button in a region", page(El("ul", []Attr{A("id", "rows")}, El("li", []Attr{A("id", "r1")}, Text("A"), El("button", []Attr{A("id", "b1")}, Text("x"))))),
 		page(El("ul", []Attr{A("id", "rows")}, El("li", []Attr{A("id", "r1")}, Text("A2"), El("button", []Attr{A("id", "b1")}, Text("x"))))), []string{"#r1"}},

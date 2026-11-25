@@ -254,7 +254,7 @@ type Rendered struct {
 }
 
 // Region is an element with an id attribute: Page[Start:End] is its markup. Inert: it is never a
-// region (but counted for uniqueness): it is inside <head>, <template> or <noscript>, or the
+// region (but counted for uniqueness): it is inside <head>, <template>, <noscript> or <svg>, or the
 // browser's parser would not build it as written (repairOf: it holds, or is, markup the parser
 // restructures, such as a <div> in a <p>).
 type Region struct {
@@ -369,7 +369,9 @@ func (r *renderer) render(n Node) {
 			if n.tag == "al-toasts" && tr.inert == 0 {
 				tr.toasts = true
 			}
-			if n.tag == "head" || n.tag == "template" || n.tag == "noscript" {
+			// An <svg> is a region itself, but an element inside it is not: a patch is parsed as
+			// HTML (Datastar's <template>), which would take an SVG shape out of the drawing (#306).
+			if n.tag == "head" || n.tag == "template" || n.tag == "noscript" || n.tag == "svg" {
 				tr.inert++
 				defer func() { tr.inert-- }()
 			}

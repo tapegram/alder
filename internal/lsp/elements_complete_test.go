@@ -249,3 +249,23 @@ func TestComplete_AttrsDeepInView(t *testing.T) {
 		t.Fatalf("al-pagination's slots: %v", got)
 	}
 }
+
+// An SVG attribute's name has capitals and digits (`viewBox`, `x1`): the completion replaces
+// all of what was typed, not only its lower-case tail (#306).
+func TestComplete_SVGAttrs(t *testing.T) {
+	for _, c := range []struct{ typed, label string }{
+		{"  let z = <svg viewB", "viewBox"},
+		{"  let z = <line x1=\"0\" x", "x2"},
+		{"  let z = <line x1", "x1"},
+	} {
+		got := completeTyped(t, blogCopy(t), c.typed)
+		it, ok := got[c.label]
+		if !ok {
+			t.Fatalf("%q: no %s: %v", c.typed, c.label, got)
+		}
+		word := c.typed[strings.LastIndexByte(c.typed, ' ')+1:]
+		if r := it.TextEdit.Range; r.End.Character-r.Start.Character != len(word) || it.TextEdit.NewText != c.label+`=""` {
+			t.Fatalf("%q: %s replaces %d bytes with %q, want %d bytes (%q)", c.typed, c.label, r.End.Character-r.Start.Character, it.TextEdit.NewText, len(word), word)
+		}
+	}
+}
