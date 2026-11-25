@@ -55,6 +55,37 @@ var attrDocs = map[string]string{
 	"popovertargetaction": "show, hide or toggle the popover", "blocking": "block rendering until the resource is fetched", "fetchpriority": "how important the fetch is: high, low or auto",
 	"controlslist": "which controls to hide", "disablepictureinpicture": "stop picture-in-picture", "disableremoteplayback": "stop remote playback", "srcdoc": "the HTML of the framed document",
 	"coords": "the shape's coordinates", "shape": "the shape of the area",
+	// SVG (#306)
+	"viewBox": "the drawing's coordinate system: min-x, min-y, width and height in user units", "preserveAspectRatio": "how the viewBox fits the element's box when their shapes differ, such as xMidYMid meet or none",
+	"xmlns": "the XML namespace, http://www.w3.org/2000/svg (an inline <svg> needs none)", "x": "the x coordinate, in user units", "y": "the y coordinate, in user units",
+	"x1": "the x coordinate of the line's start", "y1": "the y coordinate of the line's start", "x2": "the x coordinate of the line's end", "y2": "the y coordinate of the line's end",
+	"cx": "the x coordinate of the centre", "cy": "the y coordinate of the centre", "r": "the radius", "rx": "the horizontal radius, or the corners' rounding", "ry": "the vertical radius, or the corners' rounding",
+	"d": "the path's commands, such as M0 0 L10 10", "points": "the vertices as x,y pairs separated by spaces, such as 0,0 5,5",
+	"fill": "the paint inside the shape: a color, currentColor or none", "stroke": "the paint of the outline: a color, currentColor or none", "stroke-width": "the width of the outline",
+	"stroke-dasharray": "the lengths of the outline's dashes and gaps, such as 4 2", "stroke-linecap": "the shape of the outline's open ends: butt, round or square",
+	"stroke-linejoin": "the shape of the outline's corners: miter, round or bevel", "opacity": "the element's opacity, from 0 to 1", "fill-opacity": "the fill's opacity, from 0 to 1",
+	"stroke-opacity": "the outline's opacity, from 0 to 1", "transform": "a transformation, such as translate(10 0) or rotate(45)", "text-anchor": "where the text sits on its x: start, middle or end",
+	"dominant-baseline": "the baseline the text sits on its y, such as middle or hanging", "font-size": "the size of the text",
+}
+
+// svgPaint are the presentation attributes every drawing SVG element takes.
+const svgPaint = "fill stroke stroke-width stroke-dasharray stroke-linecap stroke-linejoin opacity fill-opacity stroke-opacity transform text-anchor dominant-baseline font-size "
+
+// svgSpecs are the SVG elements a view may write (#306), as tagSpecs: an SVG element takes only its
+// own attributes, the global ones, `data-*` and `aria-*`.
+var svgSpecs = []struct{ name, desc, attrs string }{
+	{"circle", "an SVG circle", "cx cy r " + svgPaint},
+	{"desc", "an SVG element's long description, for assistive technology", ""},
+	{"ellipse", "an SVG ellipse", "cx cy rx ry " + svgPaint},
+	{"g", "a group of SVG elements that share attributes", svgPaint},
+	{"line", "an SVG straight line from (x1, y1) to (x2, y2)", "x1 y1 x2 y2 " + svgPaint},
+	{"path", "an SVG shape drawn by its path commands", "d " + svgPaint},
+	{"polygon", "an SVG closed shape through its points", "points " + svgPaint},
+	{"polyline", "an SVG line through its points, such as a chart's series", "points " + svgPaint},
+	{"rect", "an SVG rectangle", "x y width height rx ry " + svgPaint},
+	{"svg", "an SVG drawing in the page", "viewBox preserveAspectRatio xmlns x y width height " + svgPaint},
+	{"text", "SVG text drawn at (x, y)", "x y " + svgPaint},
+	{"tspan", "a run of SVG text inside a <text>, which may move to its own x and y", "x y " + svgPaint},
 }
 
 var boolNames = strings.Fields(`allowfullscreen alpha async autofocus autoplay checked controls default defer disabled formnovalidate hidden inert ismap itemscope loop multiple muted nomodule novalidate open playsinline readonly required reversed selected shadowrootclonable shadowrootdelegatesfocus shadowrootserializable`)
@@ -162,7 +193,7 @@ var tagSpecs = []struct{ name, desc, attrs string }{
 	{"th", "a header cell of a table", "colspan rowspan headers scope"},
 	{"thead", "the header rows of a table", ""},
 	{"time", "a date or time", "datetime"},
-	{"title", "the title of the page, shown in the tab", ""},
+	{"title", "the title of the page, shown in the tab, or inside <svg> the drawing's accessible name", ""},
 	{"tr", "a row of a table", ""},
 	{"track", "a timed text track for a video or audio", "kind src srclang label default"},
 	{"u", "text with an unarticulated annotation, shown underlined", ""},
@@ -188,13 +219,17 @@ func buildHTML() *Manifest {
 	for _, n := range strings.Fields(`accesskey autocapitalize autofocus class contenteditable dir draggable enterkeyhint hidden id inert inputmode itemscope lang nonce popover slot spellcheck style tabindex title translate role aria-label`) {
 		m.Global = append(m.Global, attr(n))
 	}
-	for _, s := range tagSpecs {
-		t := Tag{Name: s.name, Description: s.desc}
-		for _, n := range strings.Fields(s.attrs) {
-			t.Attrs = append(t.Attrs, attr(n))
+	add := func(specs []struct{ name, desc, attrs string }, svg bool) {
+		for _, s := range specs {
+			t := Tag{Name: s.name, Description: s.desc, SVG: svg}
+			for _, n := range strings.Fields(s.attrs) {
+				t.Attrs = append(t.Attrs, attr(n))
+			}
+			m.Tags = append(m.Tags, t)
 		}
-		m.Tags = append(m.Tags, t)
 	}
+	add(tagSpecs, false)
+	add(svgSpecs, true)
 	sort.Slice(m.Tags, func(i, j int) bool { return m.Tags[i].Name < m.Tags[j].Name })
 	return m
 }

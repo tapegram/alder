@@ -13,6 +13,9 @@ type Attr struct {
 type Tag struct {
 	Name, Description string
 	Attrs             []Attr // per-tag attributes
+	// SVG: an SVG element, which takes only its own attributes, the global ones, `data-*` and
+	// `aria-*`, and whose attributes are all Text.
+	SVG bool
 }
 
 // Manifest lists the tags of one markup language.
