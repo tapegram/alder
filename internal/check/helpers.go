@@ -35,7 +35,11 @@ func (mc *modCtx) helperBan() string {
 	case mc.isApp:
 		return "`App." + mc.value + "` is not a helper"
 	case mc.route != nil:
-		if _, member, _ := strings.Cut(mc.value, "."); member == "load" || member == "view" || member == "update" {
+		_, member, _ := strings.Cut(mc.value, ".")
+		if isHandlerName(member, mc.route.Method) {
+			return "`" + mc.value + "` is the route's handler, not a helper"
+		}
+		if member == "load" || member == "view" {
 			return "`" + mc.value + "` is the route's " + member + ", not a helper"
 		}
 	}

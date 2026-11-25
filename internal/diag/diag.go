@@ -162,6 +162,7 @@ const (
 	ShadowedCapability  = "W0010" // an import whose qualifier, or a stdlib module, is the name of a capability in scope: `Q.entry` reaches the module
 	NoticeDeprecated    = "W0012" // `Notice.with`/`success`/`warning`/`error`, aliases of the `Response` builders for one release
 	DeployFilesNoBlock  = "W0009" // render.yaml or fly.toml in the project and no `deploy` block in App (#25)
+	HandlerRenamed      = "W0013" // a write route's handler named `update`, not after its method (#308), accepted for one release
 
 	// ScratchAppErrors is the language server's warning at 1:1 of a scratch file the app's errors
 	// keep from running (internal/lsp publishScratch).

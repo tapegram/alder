@@ -174,11 +174,11 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 	}
 }
 
-// mayInvalid reports whether write route r's `update` can answer `Response.invalid` (W0005):
-// whether its body mentions it. A `Response.invalid` built by a function `update` calls is not
-// seen.
+// mayInvalid reports whether write route r's handler can answer `Response.invalid` (W0005):
+// whether its body mentions it. A `Response.invalid` built by a function the handler calls is
+// not seen.
 func (c *Checker) mayInvalid(r *RouteInfo) bool {
-	vd := c.routeMembers(c.prog.Modules[r.Module], r.Name)["update"]
+	vd := c.handler(r)
 	return vd != nil && vd.Body != nil && mentions(reflect.ValueOf(vd.Body), isInvalid)
 }
 

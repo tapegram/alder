@@ -136,8 +136,8 @@ func TestIR_Todos(t *testing.T) {
 	for _, r := range p.Routes {
 		if r.Method == "GET" {
 			gets++
-			if r.View == nil || r.Load == nil || r.Update != nil {
-				t.Errorf("GET route %s.%s: view %v, load %v, update %v", r.Module, r.Name, r.View != nil, r.Load != nil, r.Update != nil)
+			if r.View == nil || r.Load == nil || r.Handler != nil {
+				t.Errorf("GET route %s.%s: view %v, load %v, handler %v", r.Module, r.Name, r.View != nil, r.Load != nil, r.Handler != nil)
 			}
 			if r.Load != nil && (!r.Load.IsEffect || r.Load.Effect != EffQuery) {
 				t.Errorf("route %s.%s: load is not a Query effect", r.Module, r.Name)
@@ -145,8 +145,8 @@ func TestIR_Todos(t *testing.T) {
 			continue
 		}
 		writes++
-		if r.Update == nil || !r.Update.IsEffect || r.Update.Effect != EffTask {
-			t.Errorf("write route %s.%s: update is not a Task effect", r.Module, r.Name)
+		if r.Handler == nil || !r.Handler.IsEffect || r.Handler.Effect != EffTask {
+			t.Errorf("write route %s.%s: handler is not a Task effect", r.Module, r.Name)
 		}
 	}
 	if gets != 3 || writes != 6 {

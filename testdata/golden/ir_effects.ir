@@ -169,7 +169,7 @@
 (table Todo.Todo (id id) (created created) (insert title done due owner))
 (route App.Logout DELETE "/session"
   (params Logout.Params)
-  (update App.Logout.update)
+  (handler App.Logout.update)
   (needs-shown))
 (route Index.Index GET "/pair/{a}/{b}"
   (params Index.Params)
@@ -182,24 +182,24 @@
   (params Add.Params)
   (requires user)
   (session Index.Session)
-  (update Index.Add.update))
+  (handler Index.Add.update))
 (route Index.Toggle PUT "/pair/{a}/{b}/done"
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
-  (update Index.Toggle.update)
+  (handler Index.Toggle.update)
   (needs-shown))
 (route Index.Remove DELETE "/pair/{a}/{b}"
   (params Remove.Params)
   (requires user)
   (session Index.Session)
-  (update Index.Remove.update)
+  (handler Index.Remove.update)
   (needs-shown))
 (route Index.Notify POST "/pair/{a}/{b}/notification"
   (params Notify.Params)
   (requires user)
   (session Index.Session)
-  (update Index.Notify.update)
+  (handler Index.Notify.update)
   (needs-shown))
 (route Login.Login GET "/login"
   (params Login.Params)

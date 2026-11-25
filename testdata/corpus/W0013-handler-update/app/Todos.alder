@@ -1,0 +1,11 @@
+module Todos
+
+route Toggle = PATCH "/todos/{id}/toggle" { id: Int }
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update params session = Task.succeed Response.refresh
+
+test "toggle refreshes" = {
+  let r <- Test.run (Toggle.update { id: 1 } {})
+  Task.succeed (r.value == Ok Response.refresh)
+}

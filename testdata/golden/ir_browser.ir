@@ -673,11 +673,11 @@
 (form Notes.Index.Prefs)
 (route App.Logout DELETE "/session"
   (params Logout.Params)
-  (update App.Logout.update))
+  (handler App.Logout.update))
 (route App.Send POST "/"
   (params Send.Params)
   (form Feedback)
-  (update App.Send.update)
+  (handler App.Send.update)
   (needs-shown))
 (route Auth.Login.Login GET "/login"
   (params Login.Params)
@@ -687,7 +687,7 @@
 (route Auth.Login.Submit POST "/session"
   (params Submit.Params)
   (form Credentials)
-  (update Auth.Login.Submit.update)
+  (handler Auth.Login.Submit.update)
   (needs-shown))
 (route Notes.Index.Index GET "/"
   (params Index.Params)
@@ -701,32 +701,32 @@
   (form NewNote)
   (requires user)
   (session Index.Session)
-  (update Notes.Index.Submit.update))
+  (handler Notes.Index.Submit.update))
 (route Notes.Index.Toggle PUT "/notes/{id}/done"
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
-  (update Notes.Index.Toggle.update)
+  (handler Notes.Index.Toggle.update)
   (needs-shown))
 (route Notes.Index.Boom POST "/notes/failure"
   (params Boom.Params)
   (requires user)
   (session Index.Session)
-  (update Notes.Index.Boom.update)
+  (handler Notes.Index.Boom.update)
   (needs-shown))
 (route Notes.Index.Rename PATCH "/notes/{id}"
   (params Rename.Params)
   (form Title)
   (requires user)
   (session Index.Session)
-  (update Notes.Index.Rename.update)
+  (handler Notes.Index.Rename.update)
   (needs-shown))
 (route Notes.Index.SavePrefs PUT "/prefs"
   (params SavePrefs.Params)
   (form Prefs)
   (requires user)
   (session Index.Session)
-  (update Notes.Index.SavePrefs.update)
+  (handler Notes.Index.SavePrefs.update)
   (needs-shown))
 (route Notes.Show.Show GET "/notes/{id}"
   (params Show.Params)

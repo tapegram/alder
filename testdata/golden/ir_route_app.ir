@@ -64,11 +64,11 @@
 (route Edit.Save POST "/edit/{n}"
   (params Save.Params)
   (form Note)
-  (update Edit.Save.update)
+  (handler Edit.Save.update)
   (needs-shown))
 (route Edit.Ping POST "/edit/{n}/ping"
   (params Ping.Params)
-  (update Edit.Ping.update)
+  (handler Edit.Ping.update)
   (needs-shown))
 (route Other.Other GET "/other"
   (params Other.Params)

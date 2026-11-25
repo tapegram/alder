@@ -249,18 +249,18 @@ func (c *collector) requires(g guard) {
 		Replacement: &ir.Lit{Typed: ir.Typed{Ty: types.Text}, Kind: ir.LitText, Text: "mutant"}})
 }
 
-// redirectOnly is, for a write route whose update does nothing but answer `Response.redirect`
+// redirectOnly is, for a write route whose handler does nothing but answer `Response.redirect`
 // to a GET route (`Task.succeed (Response.redirect (Show { … }))`), that GET route; nil otherwise.
 // Its guard runs on the redirect: when it refuses whom r's own clause would, in the same order
 // (requires dropped, roles: the callers' conditions), dropping r's clause ends a request where the
-// clause did, at the login page or a 404. Only when nothing runs between r's guard and its update
+// clause did, at the login page or a 404. Only when nothing runs between r's guard and its handler
 // that could answer otherwise: r has no form (a post that does not decode is a 422, and the
 // options check a 400) and is not in a silo (db.Enter may answer the maintenance page).
 func redirectOnly(r *ir.Route) *ir.Route {
-	if r == nil || r.Method == "GET" || r.Update == nil || r.Form != nil || r.Silo != "" || r.Store.Silo != "" {
+	if r == nil || r.Method == "GET" || r.Handler == nil || r.Form != nil || r.Silo != "" || r.Store.Silo != "" {
 		return nil
 	}
-	pure, ok := r.Update.Body.(*ir.EffPure)
+	pure, ok := r.Handler.Body.(*ir.EffPure)
 	if !ok {
 		return nil
 	}

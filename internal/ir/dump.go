@@ -156,12 +156,12 @@ func routeForm(p *Program, r *Route) *sx {
 	for _, v := range []struct {
 		kind string
 		v    *Value
-	}{{"load", r.Load}, {"view", r.View}, {"update", r.Update}} {
+	}{{"load", r.Load}, {"view", r.View}, {"handler", r.Handler}} {
 		if v.v != nil {
 			x.items = append(x.items, atoms(v.kind, v.v.Module+"."+v.v.Name))
 		}
 	}
-	if p.Silos != nil && r.Update != nil {
+	if p.Silos != nil && r.Handler != nil {
 		x.items = append(x.items, atoms("store", r.Store.String()))
 	}
 	if r.NeedsShown {

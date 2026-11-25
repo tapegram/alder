@@ -17,7 +17,7 @@
 //     to (a fixed point, so recursion and cycles are fine). A reference counts whether or not
 //     the value is called, and a whole body counts, lambdas and `Task.all`/`List.map`
 //     arguments included: the analysis over-approximates, never under.
-//  3. Each write route's `update` (`Toggle.update`) is one arm, recorded under the route's module
+//  3. Each write route's handler (`Toggle.patch`) is one arm, recorded under the route's module
 //     with Msg the route's name. Its writes are those of its body, as in 2. Each table written
 //     is in the store of its `silo` (siloOf), else shared. An update whose tables are in two
 //     stores is E0031, naming it, the tables and their stores; otherwise its store is recorded
@@ -159,8 +159,8 @@ func (c *Checker) checkWriteSets() {
 			continue
 		}
 		for _, r := range c.routes[name] {
-			vd := c.routeMembers(c.prog.Modules[name], r.Name)["update"]
-			if !isWrite(r.Method) || vd == nil || vd.Body == nil {
+			vd := c.handler(r)
+			if vd == nil || vd.Body == nil {
 				continue
 			}
 			st := ArmStore{Msg: r.Name, Span: vd.Span}

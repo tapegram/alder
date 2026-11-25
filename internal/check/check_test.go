@@ -134,6 +134,7 @@ func TestFixesApply(t *testing.T) {
 		"E0102-maybe-field/E0102":   "(match user { Just x -> x.name, Nothing -> ?default }) }",
 		"check_fix_multiline/E0003": "|> List.length", // a multi-line span's fix must keep the whole expression
 		"E0101-get-by-slug/E0101":   "Db.from Post |> Db.where (Post.slug.eq params.slug) |> Db.first\n",
+		"E0043-wrong-method/E0043":  "Add.post : Add.Params -> Session -> Task Response\nAdd.post params session",
 	}
 	for _, dir := range dirs {
 		bag := runDir(t, dir)
@@ -150,12 +151,48 @@ func TestFixesApply(t *testing.T) {
 				t.Errorf("%s %s: fix does not apply: %v", dir, d.Code, err)
 			} else if out == string(src) {
 				t.Errorf("%s %s: fix changes nothing", dir, d.Code)
-			} else if _, pd := syntax.ParseFile(d.Span.File, []byte(out)); len(pd) > 0 && !strings.Contains(d.Fix.Replace, "?type") { // `?type` is a hole in type position, which the parser rejects by design
+			} else if _, pd := syntax.ParseFile(d.Span.File, []byte(out)); len(pd) > 0 && !strings.Contains(d.Fix.Replace, "?type") && d.Code != diag.HandlerRenamed { // `?type` is a hole in type position, which the parser rejects by design; W0013 renames a signature's and a definition's name in two fixes, applied together (TestHandlerRenameFixesCheckClean)
 				t.Errorf("%s %s: fix must leave the file parseable: %v\n%s", dir, d.Code, pd[0].Message, out)
 			} else if w, ok := want[filepath.Base(dir)+"/"+d.Code]; ok && !strings.Contains(out, w) {
 				t.Errorf("%s %s: applied output lacks %q:\n%s", dir, d.Code, w, out)
 			}
 		}
+	}
+}
+
+// W0013 (#308): applying every fix of a write route's handler still named `update` (its signature,
+// its definition and each reference, in any module) leaves an app that checks clean.
+func TestHandlerRenameFixesCheckClean(t *testing.T) {
+	src := "../../testdata/corpus/W0013-handler-update"
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS(src)); err != nil {
+		t.Fatal(err)
+	}
+	fixes := map[string][]diag.Fix{}
+	for _, d := range runDir(t, dir).Items {
+		if d.Code == diag.HandlerRenamed && d.Fix != nil {
+			fixes[d.Span.File] = append(fixes[d.Span.File], *d.Fix)
+		}
+	}
+	if len(fixes) != 2 {
+		t.Fatalf("want W0013 fixes in 2 files, got %v", fixes)
+	}
+	for file, fs := range fixes {
+		path := filepath.Join(dir, file)
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := diag.Apply(string(b), fs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := renderSev(runDir(t, dir), true); got != "" {
+		t.Errorf("after the fixes, want no diagnostics, got:\n%s", got)
 	}
 }
 
@@ -176,11 +213,11 @@ form F = { title: Text, size: Int, done: Bool }
 Index.load : Index.Params -> Session -> Query Int
 Index.load params session = Query.succeed 1
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update params session = Task.succeed Response.refresh
+Add.post : Add.Params -> Session -> Task Response
+Add.post params session = Task.succeed Response.refresh
 
-Keep.update : Keep.Params -> Session -> Task Response
-Keep.update params session = Task.succeed Response.refresh
+Keep.post : Keep.Params -> Session -> Task Response
+Keep.post params session = Task.succeed Response.refresh
 
 Index.view : Int -> Session -> Html
 Index.view n session =

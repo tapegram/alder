@@ -263,18 +263,18 @@
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
-  (update Todos.Toggle.update))
+  (handler Todos.Toggle.update))
 (route Todos.Create POST "/todos"
   (params Create.Params)
   (form NewTodo)
   (requires user)
   (session Index.Session)
-  (update Todos.Create.update))
+  (handler Todos.Create.update))
 (route Todos.Delete DELETE "/todos/{id}"
   (params Delete.Params)
   (requires user)
   (session Index.Session)
-  (update Todos.Delete.update))
+  (handler Todos.Delete.update))
 (route Todos.Export GET "/export.csv"
   (params Export.Params)
   (requires user)
@@ -288,7 +288,7 @@
   (form MoveTo)
   (requires user)
   (session Index.Session)
-  (update Todos.Move.update)
+  (handler Todos.Move.update)
   (needs-shown)
   (option-routes Todos.Index Todos.Row))
 (route Todos.About GET "/about"

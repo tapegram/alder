@@ -365,7 +365,7 @@ func (f *fn) testRun(x *ir.TestRun, s *scope) string {
 	})
 }
 
-// routeUpdate is, in an app with silos, the write route whose update e calls (`R.update params
+// routeUpdate is, in an app with silos, the write route whose handler e calls (`R.post params
 // session`); nil otherwise. Test.run binds such a Task to the route's store (Route.Store), as the
 // request's db.Enter does (writeRoute).
 func (f *fn) routeUpdate(e ir.Expr) *ir.Route {
@@ -377,14 +377,14 @@ func (f *fn) routeUpdate(e ir.Expr) *ir.Route {
 		return nil
 	}
 	v, ok := call.Fn.(*ir.Var)
-	if !ok || v.Kind != ir.VarGlobal || !strings.HasSuffix(v.Name, ".update") {
+	if !ok || v.Kind != ir.VarGlobal {
 		return nil
 	}
 	if _, isMutant := f.hoisted(e); isMutant || f.mutantsOf(e) != nil {
 		return nil
 	}
 	for _, r := range f.g.routes[v.Module] {
-		if r.Update != nil && r.Name+".update" == v.Name {
+		if r.Handler != nil && r.Handler.Name == v.Name {
 			return r
 		}
 	}

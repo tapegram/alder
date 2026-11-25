@@ -1,0 +1,8 @@
+app/Checks.alder:6:22 W0013 `Todos.Toggle.update` is now `Todos.Toggle.patch`: a write route's handler is named after its method. `alder fmt` renames it.
+  fix 6:22-6:41 Todos.Toggle.patch
+app/Todos.alder:5:1 W0013 `Toggle.update` is now `Toggle.patch`: a write route's handler is named after its method. `alder fmt` renames it.
+  fix 5:8-5:14 patch
+app/Todos.alder:6:1 W0013 `Toggle.update` is now `Toggle.patch`: a write route's handler is named after its method. `alder fmt` renames it.
+  fix 6:8-6:14 patch
+app/Todos.alder:9:22 W0013 `Toggle.update` is now `Toggle.patch`: a write route's handler is named after its method. `alder fmt` renames it.
+  fix 9:22-9:35 Toggle.patch

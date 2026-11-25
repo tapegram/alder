@@ -1376,7 +1376,7 @@
 (form Todos.Show.EditTodo)
 (route App.Logout DELETE "/session"
   (params Logout.Params)
-  (update App.Logout.update))
+  (handler App.Logout.update))
 (route Auth.Login.Login GET "/login"
   (params Login.Params)
   (model Model)
@@ -1385,7 +1385,7 @@
 (route Auth.Login.Submit POST "/session"
   (params Submit.Params)
   (form Credentials)
-  (update Auth.Login.Submit.update)
+  (handler Auth.Login.Submit.update)
   (needs-shown))
 (route Todos.Index.Index GET "/"
   (params Index.Params)
@@ -1399,12 +1399,12 @@
   (form NewTodo)
   (requires user)
   (session Index.Session)
-  (update Todos.Index.Submit.update))
+  (handler Todos.Index.Submit.update))
 (route Todos.Index.Toggle PATCH "/todos/{id}"
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
-  (update Todos.Index.Toggle.update)
+  (handler Todos.Index.Toggle.update)
   (needs-shown))
 (route Todos.Show.Show GET "/todos/{id}"
   (params Show.Params)
@@ -1418,12 +1418,12 @@
   (form EditTodo)
   (requires user)
   (session Show.Session)
-  (update Todos.Show.Save.update))
+  (handler Todos.Show.Save.update))
 (route Todos.Show.Delete DELETE "/todos/{id}"
   (params Delete.Params)
   (requires user)
   (session Show.Session)
-  (update Todos.Show.Delete.update))
+  (handler Todos.Show.Delete.update))
 (job Jobs.Nightly.Nightly
   (params Nightly.Params)
   (run Jobs.Nightly.Nightly.run)

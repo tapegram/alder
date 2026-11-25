@@ -18,5 +18,5 @@ Index.view id session =
     <form method="post" action="/results"><input name="electionId" /></form>
   </div>
 
-Save.update : Save.Params -> Session -> Task Response
-Save.update params session = Task.succeed Response.refresh
+Save.post : Save.Params -> Session -> Task Response
+Save.post params session = Task.succeed Response.refresh

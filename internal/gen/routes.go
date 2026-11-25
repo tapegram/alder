@@ -354,7 +354,7 @@ func (g *gen) writeRoute(b *strings.Builder, p *ir.Program, r *ir.Route, forms m
 	if len(p.Silos) > 0 {
 		fmt.Fprintf(b, "\t\tif err := db.Enter(rq.Env, %s); err != nil {\n\t\t\treturn route__fail(err)\n\t\t}\n", strconv.Quote(r.Store.Silo))
 	}
-	fmt.Fprintf(b, "\t\tresp, err := eff.Run(rq.Env, eff.KTask, %s(params, session))\n", GoName(m, r.Name+".update"))
+	fmt.Fprintf(b, "\t\tresp, err := eff.Run(rq.Env, eff.KTask, %s(params, session))\n", GoName(m, r.Handler.Name))
 	b.WriteString(routeUpdateFailure(p, r.Form != nil))
 	if r.Form != nil {
 		fmt.Fprintf(b, `		ans := web.AnswerResponse(resp, %s, rq.Env.Session)

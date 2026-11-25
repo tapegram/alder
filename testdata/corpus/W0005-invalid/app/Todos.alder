@@ -28,9 +28,9 @@ Index.view n session =
     </form>
   </div>
 
-Create.update : Create.Params -> Session -> Task Response
-Create.update params session =
+Create.post : Create.Params -> Session -> Task Response
+Create.post params session =
   if params.form.title == "x" then Task.succeed (Response.invalid "No x, please.") else Task.succeed Response.refresh
 
-Rename.update : Rename.Params -> Session -> Task Response
-Rename.update params session = Task.succeed Response.refresh
+Rename.post : Rename.Params -> Session -> Task Response
+Rename.post params session = Task.succeed Response.refresh

@@ -12,18 +12,18 @@ Index.load params session = Query.succeed { n: 0 }
 
 form NewTodo = { title: Text }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update p session =
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post p session =
   if p.form.title == "x" then
     Task.succeed (Response.invalid "No x, please.")
   else
     Task.succeed Response.refresh
 
-Rename.update : Rename.Params -> Session -> Task Response
-Rename.update p session = Task.succeed Response.refresh
+Rename.patch : Rename.Params -> Session -> Task Response
+Rename.patch p session = Task.succeed Response.refresh
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update p session = Task.succeed Response.refresh
+Toggle.put : Toggle.Params -> Session -> Task Response
+Toggle.put p session = Task.succeed Response.refresh
 
 -- Submit can answer Reject, and its form has no <Errors form />: the warning. Rename's form has
 -- none either, but Rename never rejects; the third form shows the text.

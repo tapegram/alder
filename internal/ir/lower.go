@@ -831,8 +831,12 @@ func (l *lowerer) declareValues() {
 					r.Load = v
 				case "view":
 					r.View = v
-				case "update":
-					r.Update = v
+				case r.HandlerName():
+					r.Handler = v
+				case "update": // the handler's name before #308, for one release (W0013)
+					if r.Handler == nil && r.HandlerName() != "" {
+						r.Handler = v
+					}
 				}
 			}
 			if j := l.jobs[key(name, vd.Route)]; vd.Route != "" && j != nil && vd.Name == "run" {

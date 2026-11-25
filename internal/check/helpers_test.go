@@ -106,7 +106,7 @@ func TestTestHelpers(t *testing.T) {
 			"E0040 Board.alder:16:12 `refresh` is a test helper (it uses `Helpers.at400`, a test helper): only a `test` or another test helper may use it"},
 		{"a route's update", "Board.alder",
 			boardPage(boardLoad, "Refresh.update : Refresh.Params -> Session -> Task Response\nRefresh.update params session = {\n  let r <- Test.fetch (Sites.MnSos.MnSos { cfg: \"x\" })\n  Task.succeed Response.refresh\n}", boardView),
-			"E0040 Board.alder:13:12 `Test.fetch` is only available in a `test` or a test helper: `Refresh.update` is the route's update, not a helper"},
+			"E0040 Board.alder:13:12 `Test.fetch` is only available in a `test` or a test helper: `Refresh.update` is the route's handler, not a helper"},
 		{"a route's view", "Board.alder",
 			boardPage(boardLoad, boardUpdate, "Board.view : Int -> Session -> Html\nBoard.view n session = <p>{Helpers.answerName}</p>"),
 			"E0040 Board.alder:15:28 `Helpers.answerName` is a test helper (it uses `Shown`): only a `test` or another test helper may use it"},

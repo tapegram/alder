@@ -17,6 +17,7 @@
 package ir
 
 import (
+	"strings"
 	"time"
 
 	"alder/internal/types"
@@ -307,7 +308,8 @@ type Form struct {
 // Response). OptionRoutes are, for a write route with a form, the GET routes whose view renders
 // a `<Select options>` of that form, itself or through a view it calls (`Row.view` inside
 // `Index.view`): the views the runtime renders again to check a submitted option. Members are
-// Values of the module named "Name.load", "Name.view" and "Name.update".
+// Values of the module named "Name.load" and "Name.view" (GET), or the write route's handler,
+// named after its method ("Name.post", HandlerName; "Name.update" for one release, #308).
 type Route struct {
 	Module, Name, Method, Path string
 	Params                     *RecordType
@@ -319,10 +321,19 @@ type Route struct {
 	Session                    *RecordType
 	Model                      types.Type // GET: what Load gives; nil for a write route
 	File                       bool
-	Load, View, Update         *Value
+	Load, View, Handler        *Value
 	Store                      Store
 	NeedsShown                 bool
 	OptionRoutes               []*Route
+}
+
+// HandlerName is the name of write route r's handler (#308): its method in lower case (`post`
+// for POST); "" for a GET route, which has none.
+func (r *Route) HandlerName() string {
+	if r.Method == "GET" {
+		return ""
+	}
+	return strings.ToLower(r.Method)
 }
 
 // Job is a `job Name = { params } …` declaration (#168) of module Module. Params is the record

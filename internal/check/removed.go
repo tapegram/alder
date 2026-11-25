@@ -87,18 +87,30 @@ func (c *Checker) rejectRemoved(quiet map[string]bool) []removedDecl {
 	return out
 }
 
-// routeCandidates are the routes of m that need the member (`update`: write routes; `load` and
-// `view`: GET routes) and do not declare it, in declaration order.
+// routeCandidates are the routes of m that need the member (`update`: write routes, which need
+// a handler; `load` and `view`: GET routes) and do not declare it, in declaration order. A write
+// route has its handler when it declares it under its method's name or, for one release,
+// `update`.
 func routeCandidates(m *syntax.Module, member string) []string {
 	have := map[string]bool{}
+	methods := map[string]string{}
 	for _, d := range m.Decls {
-		if vd, ok := d.(*syntax.ValueDecl); ok && vd.Route != "" && vd.Name == member {
+		if r, ok := d.(*syntax.RouteDecl); ok {
+			methods[r.Name] = r.Method
+		}
+	}
+	for _, d := range m.Decls {
+		vd, ok := d.(*syntax.ValueDecl)
+		if !ok || vd.Route == "" {
+			continue
+		}
+		if vd.Name == member || member == legacyHandler && isHandlerName(vd.Name, methods[vd.Route]) {
 			have[vd.Route] = true
 		}
 	}
 	var out []string
 	for _, d := range m.Decls {
-		if r, ok := d.(*syntax.RouteDecl); ok && isWrite(r.Method) == (member == "update") && !have[r.Name] {
+		if r, ok := d.(*syntax.RouteDecl); ok && isWrite(r.Method) == (member == legacyHandler) && !have[r.Name] {
 			out = append(out, r.Name)
 		}
 	}
@@ -108,7 +120,7 @@ func routeCandidates(m *syntax.Module, member string) []string {
 // qualifyMessage is the E0046 for an unqualified member in a module with routes that lack it.
 func qualifyMessage(module, member string, cands []string) string {
 	kind := "GET"
-	if member == "update" {
+	if member == legacyHandler {
 		kind = "write"
 	}
 	if len(cands) == 1 {

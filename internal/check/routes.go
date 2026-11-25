@@ -1,6 +1,7 @@
 // Route declarations (#160): `route NAME = METHOD "path" { params } [form F] [requires …]` and
-// the members `NAME.load`, `NAME.view`, `NAME.update` (E0043). Markup and test steps on routes
-// are html.go's and browser.go's.
+// the members `NAME.load` and `NAME.view` of a GET route, and a write route's handler named after
+// its method, `NAME.post` (#308) (E0043). Markup and test steps on routes are html.go's and
+// browser.go's.
 package check
 
 import (
@@ -32,7 +33,7 @@ type RouteInfo struct {
 	Silo     string
 	Model    types.Type // GET: what `load` returns (nil when it is not known)
 	File     bool       // GET: `view` returns File
-	// NeedsShown is set for a write route whose `update` may answer with the page it was sent
+	// NeedsShown is set for a write route whose handler may answer with the page it was sent
 	// from rendered again (plan call 12; Task 2.7).
 	NeedsShown bool
 	// OptionRoutes are, for a write route with a form, the GET routes whose view renders a
@@ -49,6 +50,86 @@ type RouteInfo struct {
 
 // isWrite reports whether method is a write route's (anything but GET).
 func isWrite(method string) bool { return method != "GET" }
+
+// handlerName is the name of the handler of a write route of method (#308): the method in lower
+// case, `post` for POST.
+func handlerName(method string) string { return strings.ToLower(method) }
+
+// handlerNames are the names a write route's handler has, one per write method.
+var handlerNames = []string{"post", "put", "patch", "delete"}
+
+// legacyHandler is the handler's name before #308, accepted for one release with W0013.
+const legacyHandler = "update"
+
+// handlerOf is, among the members of a route of method, its handler: the member named after the
+// method, else (for one release) `update`; nil for a GET route or when it has neither.
+func handlerOf(members map[string]*syntax.ValueDecl, method string) *syntax.ValueDecl {
+	if !isWrite(method) {
+		return nil
+	}
+	if d := members[handlerName(method)]; d != nil {
+		return d
+	}
+	return members[legacyHandler]
+}
+
+// handler is write route r's handler declaration (handlerOf), nil when it has none.
+func (c *Checker) handler(r *RouteInfo) *syntax.ValueDecl {
+	return handlerOf(c.routeMembers(c.prog.Modules[r.Module], r.Name), r.Method)
+}
+
+// isHandlerName reports whether member is the handler's name on a route of method: its own
+// method's name, or `update` during the release that still accepts it.
+func isHandlerName(member, method string) bool {
+	return isWrite(method) && (member == handlerName(method) || member == legacyHandler)
+}
+
+// memberNameSpans are the spans of route member d's name (`Toggle.update`) in module m: in its
+// signature, then on its definition line (one span when d has no signature).
+func memberNameSpans(m *syntax.Module, d *syntax.ValueDecl) []diag.Span {
+	n := len(d.FullName())
+	at := func(line, col int) diag.Span {
+		return diag.Span{File: d.Span.File, Start: diag.Pos{Line: line, Col: col}, End: diag.Pos{Line: line, Col: col + n}}
+	}
+	out := []diag.Span{at(d.RouteSpan.Start.Line, d.RouteSpan.Start.Col)}
+	if d.Sig == nil {
+		return out
+	}
+	for l := d.Sig.GetSpan().End.Line + 1; l <= d.Span.End.Line && l <= len(m.Lines); l++ {
+		if rest, ok := strings.CutPrefix(m.Lines[l-1], d.FullName()); ok && (rest == "" || !isWordByte(rest[0])) {
+			return append(out, at(l, 1))
+		}
+	}
+	return out
+}
+
+// isWordByte reports whether b may continue a name.
+func isWordByte(b byte) bool {
+	return b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
+}
+
+// memberPart is the member part (`update`) of a span sp of a name written `Route.member`.
+func memberPart(sp diag.Span, route string) diag.Span {
+	sp.Start.Col += len(route) + 1
+	return sp
+}
+
+// renameFix is the fix renaming route member d of module m to name: one edit from the member
+// part of its signature's name to that of its definition's, the text between kept.
+func renameFix(m *syntax.Module, d *syntax.ValueDecl, name string) *diag.Fix {
+	spans := memberNameSpans(m, d)
+	first, last := memberPart(spans[0], d.Route), memberPart(spans[len(spans)-1], d.Route)
+	if len(spans) == 1 {
+		return diag.ReplaceSpan(first, name)
+	}
+	if last.Start.Line > len(m.Lines) {
+		return nil
+	}
+	between := []string{m.Lines[first.End.Line-1][first.End.Col-1:]}
+	between = append(between, m.Lines[first.End.Line:last.Start.Line-1]...)
+	between = append(between, m.Lines[last.Start.Line-1][:last.Start.Col-1])
+	return diag.ReplaceSpan(diag.Span{File: first.File, Start: first.Start, End: last.End}, name+strings.Join(between, "\n")+name)
+}
 
 // route is route name of module, nil when the module has none by that name (or its routes are
 // not defined: a module that also declares a `page`).
@@ -256,8 +337,30 @@ func (c *Checker) routeMembers(m *syntax.Module, r string) map[string]*syntax.Va
 	return out
 }
 
+// legacyHandlerRef raises W0013 at a reference to a write route's handler by its name before
+// #308 (`Toggle.update`, `Todos.Toggle.update`), in any module, with the rename as its fix.
+func (mc *modCtx) legacyHandlerRef(x *syntax.Var) {
+	c := mc.c
+	route, member, ok := strings.Cut(x.Ref.Name, ".")
+	if !ok || member != legacyHandler {
+		return
+	}
+	r := c.route(x.Ref.Module, route)
+	if r == nil {
+		return
+	}
+	if h := c.handler(r); h == nil || h.Name != legacyHandler {
+		return
+	}
+	name := written(x.Module, x.Name)
+	renamed := strings.TrimSuffix(name, legacyHandler) + handlerName(r.Method)
+	w := c.bag.Warn(diag.HandlerRenamed, x.Span, "`%s` is now `%s`: a write route's handler is named after its method. `alder fmt` renames it.", name, renamed)
+	w.Fix = diag.ReplaceSpan(x.Span, renamed)
+	w.Fix.Preferred = true // the one obvious repair
+}
+
 // checkRoutes checks the members every route of the module has (E0043): a GET route's `load`
-// and `view`, tied by their model, and a write route's `update`, each with the type the route
+// and `view`, tied by their model, and a write route's handler, each with the type the route
 // fixes. It records each GET route's Model and File.
 func (mc *modCtx) checkRoutes() {
 	c := mc.c
@@ -275,18 +378,37 @@ func (mc *modCtx) checkRoutes() {
 
 func (mc *modCtx) checkWriteRoute(r *RouteInfo, members map[string]*syntax.ValueDecl) {
 	c := mc.c
+	h := handlerName(r.Method)
 	sig := r.Name + ".Params -> Session -> Task Response"
 	for _, name := range []string{"load", "view"} {
 		if d := members[name]; d != nil {
-			c.errorf(diag.RouteDecl, d.Span, "route `%s` is a %s route, which has no `%s`: a write route has only `%s.update : %s`; `load` and `view` belong to a GET route", r.Name, r.Method, name, r.Name, sig)
+			c.errorf(diag.RouteDecl, d.Span, "route `%s` is a %s route, which has no `%s`: a write route has only `%s.%s : %s`; `load` and `view` belong to a GET route", r.Name, r.Method, name, r.Name, h, sig)
 		}
 	}
-	d := members["update"]
+	misnamed := false
+	for _, name := range handlerNames {
+		if d := members[name]; d != nil && name != h {
+			misnamed = true
+			e := c.errorf(diag.RouteDecl, d.Span, "route `%s` is a %s route, so its handler is `%s.%s`, not `%s.%s`", r.Name, r.Method, r.Name, h, r.Name, name)
+			e.Fix = renameFix(mc.m, d, h)
+		}
+	}
+	d := members[h]
+	if old := members[legacyHandler]; old != nil && d != nil {
+		c.errorf(diag.RouteDecl, old.Span, "route `%s` has two handlers, `%s.%s` and `%s.%s`: keep `%s.%s`", r.Name, r.Name, legacyHandler, r.Name, h, r.Name, h)
+	} else if old != nil { // the name before #308, for one release
+		d = old
+		for _, sp := range memberNameSpans(mc.m, old) {
+			w := c.bag.Warn(diag.HandlerRenamed, sp, "`%s.%s` is now `%s.%s`: a write route's handler is named after its method. `alder fmt` renames it.", r.Name, legacyHandler, r.Name, h)
+			w.Fix = diag.ReplaceSpan(memberPart(sp, r.Name), h)
+			w.Fix.Preferred = true // the one obvious repair
+		}
+	}
 	if d == nil {
-		if c.unqualified[mc.m.Name]["update"] {
+		if misnamed || c.unqualified[mc.m.Name][legacyHandler] {
 			return
 		}
-		c.errorf(diag.RouteDecl, r.Decl.Span, "route `%s` is a %s route: it needs `%s.update : %s`", r.Name, r.Method, r.Name, sig)
+		c.errorf(diag.RouteDecl, r.Decl.Span, "route `%s` is a %s route: it needs `%s.%s : %s`", r.Name, r.Method, r.Name, h, sig)
 		return
 	}
 	want := &types.Fun{Params: []types.Type{r.Params, mc.session}, Result: &types.App{Con: "Task", Args: []types.Type{types.Response}}}
@@ -295,7 +417,7 @@ func (mc *modCtx) checkWriteRoute(r *RouteInfo, members map[string]*syntax.Value
 	}
 }
 
-// needsShown reports whether write route update d may answer with the page the request came
+// needsShown reports whether write route handler d may answer with the page the request came
 // from rendered again (plan call 12): its body mentions `Response.refresh` or `Response.invalid`,
 // or calls an app function whose type's result contains `Response`. A function is judged by its
 // type, not its name, so a helper that wraps or builds a Response counts, and one that does not
@@ -367,8 +489,10 @@ func holdsResponse(t types.Type, seen map[types.Type]bool) bool {
 
 func (mc *modCtx) checkGetRoute(r *RouteInfo, members map[string]*syntax.ValueDecl) {
 	c := mc.c
-	if d := members["update"]; d != nil {
-		c.errorf(diag.RouteDecl, d.Span, "route `%s` is a GET route, which has no `update`: a GET route has `%s.load` and `%s.view`; `update` belongs to a write route (POST, PUT, PATCH or DELETE)", r.Name, r.Name, r.Name)
+	for _, name := range append(slices.Clone(handlerNames), legacyHandler) {
+		if d := members[name]; d != nil {
+			c.errorf(diag.RouteDecl, d.Span, "route `%s` is a GET route, which has no `%s.%s`: a GET route has `%s.load` and `%s.view`; a handler named after its method belongs to a write route (POST, PUT, PATCH or DELETE)", r.Name, r.Name, name, r.Name, r.Name)
+		}
 	}
 	load, view := members["load"], members["view"]
 	model := c.u.Fresh()

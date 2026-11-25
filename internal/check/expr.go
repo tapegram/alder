@@ -1223,6 +1223,7 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 		if x.Ref.Kind == syntax.RefValue {
 			mc.scopedRef(x)
 			mc.helperRef(x.Ref.Module, x.Ref.Name, written(x.Module, x.Name), x.Span)
+			mc.legacyHandlerRef(x)
 		}
 		if t, ok := c.values[c.key(x.Ref.Module, x.Ref.Name)]; ok {
 			t = c.u.Instantiate(t)
