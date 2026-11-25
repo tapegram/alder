@@ -15,8 +15,8 @@ login = Auth.Login.Login
 
 route Logout = DELETE "/session" { }
 
-Logout.update : Logout.Params -> Session -> Task Response
-Logout.update p session = {
+Logout.delete : Logout.Params -> Session -> Task Response
+Logout.delete p session = {
   let _ <- Session.put (\s -> { s | user: Nothing, role: Reader })
   Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
@@ -32,10 +32,10 @@ notFound : Html
 notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 
 -- From a page that `requires user` a refresh ends at the login page too; only a test of
--- `Logout.update` itself tells a redirect from a refresh.
+-- `Logout.delete` itself tells a redirect from a refresh.
 test "Logout goes to log in" = {
   let r <-
-    Test.run (Logout.update {} {
+    Test.run (Logout.delete {} {
       user: Just (User.UserId "me"),
       role: Admin,
       theme: "light",

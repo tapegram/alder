@@ -61,7 +61,7 @@ func TestRun_FirstAttemptApplies(t *testing.T) {
 	before := readHome(t, dir)
 	s := &script{answers: []string{"```alder\nTask.succeed Response.refresh\n```\n"}}
 	reported := 0
-	r, err := Run(context.Background(), s, dir, "Home.Submit.update", "", func(Attempt) { reported++ })
+	r, err := Run(context.Background(), s, dir, "Home.Submit.post", "", func(Attempt) { reported++ })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestRun_RetriesWithErrors(t *testing.T) {
 	dir := holeApp(t, nil)
 	s := &script{answers: []string{"Task.sleep 0", "Task.succeed Response.refresh"}}
 	var reports []Attempt
-	r, err := Run(context.Background(), s, dir, "Home.Submit.update", "", func(a Attempt) { reports = append(reports, a) })
+	r, err := Run(context.Background(), s, dir, "Home.Submit.post", "", func(a Attempt) { reports = append(reports, a) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestRun_GivesUpAfterThree(t *testing.T) {
 	dir := holeApp(t, nil)
 	before := readHome(t, dir)
 	s := &script{answers: []string{"42"}}
-	_, err := Run(context.Background(), s, dir, "Home.Submit.update", "", nil)
+	_, err := Run(context.Background(), s, dir, "Home.Submit.post", "", nil)
 	var f *Failure
 	if !errors.As(err, &f) {
 		t.Fatalf("err %v", err)
@@ -117,7 +117,7 @@ func TestRun_NotOneExpressionRetries(t *testing.T) {
 	dir := holeApp(t, nil)
 	s := &script{answers: []string{"Task.succeed Response.refresh,\n}\n\nevil = 1", "Task.succeed Response.refresh"}}
 	var reports []Attempt
-	r, err := Run(context.Background(), s, dir, "Home.Submit.update", "", func(a Attempt) { reports = append(reports, a) })
+	r, err := Run(context.Background(), s, dir, "Home.Submit.post", "", func(a Attempt) { reports = append(reports, a) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestRun_ThreeDotRestRetries(t *testing.T) {
 	dir := holeApp(t, nil)
 	s := &script{answers: []string{"match [1] { [a, ...rest] -> Task.succeed Response.refresh, [] -> Task.succeed Response.refresh }", "Task.succeed Response.refresh"}}
 	var reports []Attempt
-	r, err := Run(context.Background(), s, dir, "Home.Submit.update", "", func(a Attempt) { reports = append(reports, a) })
+	r, err := Run(context.Background(), s, dir, "Home.Submit.post", "", func(a Attempt) { reports = append(reports, a) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestRun_ThreeDotRestRetries(t *testing.T) {
 
 func TestRun_AddsImport(t *testing.T) {
 	dir := holeApp(t, map[string]string{"app/Helpers.alder": "module Helpers\n\ngoHome : Task Response\ngoHome = Task.succeed (Response.redirect (Home.Home {}))\n"})
-	r, err := Run(context.Background(), &script{answers: []string{"Helpers.goHome"}}, dir, "Home.Submit.update", "", nil)
+	r, err := Run(context.Background(), &script{answers: []string{"Helpers.goHome"}}, dir, "Home.Submit.post", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestRun_AddsImport(t *testing.T) {
 
 func TestRun_LeavesHoles(t *testing.T) {
 	dir := holeApp(t, nil)
-	r, err := Run(context.Background(), &script{answers: []string{"Task.succeed ?nav"}}, dir, "Home.Submit.update", "", nil)
+	r, err := Run(context.Background(), &script{answers: []string{"Task.succeed ?nav"}}, dir, "Home.Submit.post", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestRun_Timeout(t *testing.T) {
 		<-ctx.Done()
 		return "", ctx.Err()
 	})
-	_, err := Run(context.Background(), block, dir, "Home.Submit.update", "", nil)
+	_, err := Run(context.Background(), block, dir, "Home.Submit.post", "", nil)
 	var f *Failure
 	if !errors.As(err, &f) || f.Why != "no answer in 0.05 s (attempt 1 of 3)" {
 		t.Errorf("err %v", err)
@@ -179,7 +179,7 @@ func TestRun_Timeout(t *testing.T) {
 }
 
 func TestRun_NoBackend(t *testing.T) {
-	if _, err := Run(context.Background(), nil, holeApp(t, nil), "Home.Submit.update", "", nil); !errors.Is(err, NoBackend) {
+	if _, err := Run(context.Background(), nil, holeApp(t, nil), "Home.Submit.post", "", nil); !errors.Is(err, NoBackend) {
 		t.Errorf("err %v", err)
 	}
 }

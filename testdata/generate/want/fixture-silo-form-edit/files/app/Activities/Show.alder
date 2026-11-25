@@ -44,8 +44,8 @@ form ActivityEdit = { text: Text.NonEmpty }
 
 -- SaveActivityEdit writes the form over the row and goes back to the page;
 -- another org's row, or one deleted since, is not found.
-SaveActivityEdit.update : SaveActivityEdit.Params -> Session -> Task Response
-SaveActivityEdit.update params session = {
+SaveActivityEdit.put : SaveActivityEdit.Params -> Session -> Task Response
+SaveActivityEdit.put params session = {
   let _ <- Db.updateScoped Activity params.id (\r -> { r | text: params.form.text })
   Task.succeed (Response.redirect (Show { id: params.id }) |> Response.success "Saved")
 }

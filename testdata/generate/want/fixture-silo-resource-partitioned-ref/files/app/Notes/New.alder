@@ -50,8 +50,8 @@ form NoteForm = { text: Text.NonEmpty, activity: Activity.ActivityId }
 -- @resource end
 
 -- Create adds the row and goes to its page.
-Create.update : Create.Params -> Session -> Task Response
-Create.update params session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post params session = {
   -- @resource begin insert
   let id <- Db.insertMine Note { text: params.form.text, activity: params.form.activity }
   Task.succeed (Response.redirect (Notes.Show.Show { id: id }))

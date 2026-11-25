@@ -14,7 +14,7 @@ edited app/Auth/Login.alder
    </Layout.Page>
  
  -- Logging in through the form, with the fake: an unknown email is rejected with the form's
---- message, and a known one puts the user in the session and goes to the page ?afterLogin names (fill it, here and in SignIn.update, once the page exists).
+--- message, and a known one puts the user in the session and goes to the page ?afterLogin names (fill it, here and in SignIn.post, once the page exists).
 +-- message, and a known one puts the user in the session and goes to Notes.Notes {}.
  test "an unknown email is rejected" = {
    let _ <- Test.fake Password

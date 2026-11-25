@@ -16,8 +16,8 @@ form Credentials = {
   email: Text.Email,
 }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update p session = {
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post p session = {
   let found <- Db.from User |> Db.where (User.email.eq p.form.email) |> Db.first
   match found {
     Just u -> {

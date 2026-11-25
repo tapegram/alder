@@ -47,8 +47,8 @@ form Confirm = { }
 -- Destroy deletes the row, unless rows refer to it that keep it (counted again, as the page
 -- counted them): the database would refuse the delete with an error, and the page says why
 -- instead. The Show page's dialog posts it too.
-Destroy.update : Destroy.Params -> Session -> Task Response
-Destroy.update params session = {
+Destroy.delete : Destroy.Params -> Session -> Task Response
+Destroy.delete params session = {
   let model <- counted params.id
   -- @resource begin remove
   let _ <- Db.deleteScoped Activity params.id

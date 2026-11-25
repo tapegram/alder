@@ -35,11 +35,11 @@ edited app/Home.alder
 +notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
  
  -- From a page that `requires user` a refresh ends at the login page too; only a test of
- -- `Logout.update` itself tells a redirect from a refresh.
+ -- `Logout.delete` itself tells a redirect from a refresh.
  test "Logout goes to log in" = {
--  let r <- Test.run (Logout.update {} { user: Just (User.UserId "me"), role: Admin })
+-  let r <- Test.run (Logout.delete {} { user: Just (User.UserId "me"), role: Admin })
 +  let r <-
-+    Test.run (Logout.update {} {
++    Test.run (Logout.delete {} {
 +      user: Just (User.UserId "me"),
 +      role: Admin,
 +      post: Nothing,
@@ -74,8 +74,8 @@ edited app/Home.alder
 -}
 +form Write = { title: Text.NonEmpty, body: Text }
  
- Submit.update : Submit.Params -> Session -> Task Response
- Submit.update p session = {
+ Submit.post : Submit.Params -> Session -> Task Response
+ Submit.post p session = {
 @@ -50,20 +50,52 @@
  
  test "writing a post lists it, a draft" = {

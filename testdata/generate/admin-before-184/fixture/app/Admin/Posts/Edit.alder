@@ -75,8 +75,8 @@ form PostForm = {
 form FindAuthor = { q: Text }
 
 -- SearchAuthor answers the page again at the text.
-SearchAuthor.update : SearchAuthor.Params -> Session -> Task Response
-SearchAuthor.update params session =
+SearchAuthor.post : SearchAuthor.Params -> Session -> Task Response
+SearchAuthor.post params session =
   Task.succeed (
     Response.redirect (Edit { id: params.id, findAuthor: Text.slice 0 200 params.form.q })
   )
@@ -84,8 +84,8 @@ SearchAuthor.update params session =
 -- @admin end
 
 -- Save writes the form over the row (a row deleted since is not found) and goes to its page.
-Save.update : Save.Params -> Session -> Task Response
-Save.update params session = {
+Save.put : Save.Params -> Session -> Task Response
+Save.put params session = {
   let _ <- Layout.adminOnly session.user
   let found <- Db.get Post params.id
   match found {

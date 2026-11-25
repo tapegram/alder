@@ -7,6 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"alder/internal/check"
 	"alder/internal/diag"
 	"alder/internal/names"
 	"alder/internal/syntax"
@@ -410,7 +411,7 @@ func isNameByte(b byte) bool {
 // parseAddress splits `Module.decl[.arm]`: the module is the longest prefix naming one of the
 // app's modules; decl is a value's name, a fake's, or a test's name in double quotes, or a
 // route's member by its full name (`Module.Route.member` gives decl `Route.member`, #160). A
-// member named bare (`Module.update`) in a route module is the one route's that has it; with
+// member named bare (`Module.post`) in a route module is the one route's that has it; with
 // several, the address is refused, naming them.
 func parseAddress(p *Program, address string) (mod, decl, arm string, err error) {
 	if i := strings.Index(address, `."`); i > 0 {
@@ -422,7 +423,7 @@ func parseAddress(p *Program, address string) (mod, decl, arm string, err error)
 		}
 		decl, rest = rest[:j+2], rest[j+2:]
 		if rest != "" {
-			return "", "", "", Refusef("`%s` is not a declaration: write `Module.decl`, `Module.update.Msg` or `Module.\"test name\"`", address)
+			return "", "", "", Refusef("`%s` is not a declaration: write `Module.decl`, `Module.Route.post` or `Module.\"test name\"`", address)
 		}
 		if p.Modules[p.ResolveModule(mod)] == nil {
 			return "", "", "", Refusef("there is no module `%s`", mod)
@@ -435,14 +436,34 @@ func parseAddress(p *Program, address string) (mod, decl, arm string, err error)
 		if cand := p.ResolveModule(strings.Join(segs[:i], ".")); p.Modules[cand] != nil {
 			mod, rest := cand, segs[i:]
 			if len(rest) == 2 && routeDecl(p.Modules[mod].Syntax, rest[0]) != nil { // `Module.Route.member` (#160)
-				return mod, rest[0] + "." + rest[1], "", nil
+				member := rest[1]
+				if member == "update" && valueDeclFull(p.Modules[mod].Syntax, rest[0]+".update") == nil { // the handler's name before #308, for one release
+					if h := check.HandlerName(routeDecl(p.Modules[mod].Syntax, rest[0]).Method); valueDeclFull(p.Modules[mod].Syntax, rest[0]+"."+h) != nil {
+						member = h
+					}
+				}
+				return mod, rest[0] + "." + member, "", nil
 			}
 			if len(rest) > 2 {
-				return "", "", "", Refusef("`%s` is not a declaration: write `Module.decl`, `Module.Route.member`, `Module.update.Msg` or `Module.\"test name\"`", address)
+				return "", "", "", Refusef("`%s` is not a declaration: write `Module.decl`, `Module.Route.member`, `Module.Route.post` or `Module.\"test name\"`", address)
 			}
 			decl = rest[0]
+			if len(rest) == 1 && decl == "update" && valueDecl(p.Modules[mod].Syntax, decl) == nil { // the handler's name before #308, for one release: the one route whose handler it was
+				var full []string
+				for _, d := range p.Modules[mod].Syntax.Decls {
+					if v, ok := d.(*syntax.ValueDecl); ok && v.Route != "" && slices.Contains([]string{"post", "put", "patch", "delete"}, v.Name) {
+						full = append(full, v.FullName())
+					}
+				}
+				if len(full) > 1 {
+					return "", "", "", Refusef("`%s`: a route's handler is named after its method now: %s: name the route, `%s`", address, routeMembers(mod, full), mod+"."+full[0])
+				}
+				if len(full) == 1 {
+					return mod, full[0], "", nil
+				}
+			}
 			if len(rest) == 1 && valueDecl(p.Modules[mod].Syntax, decl) != nil && !ownValue(p.Modules[mod].Syntax, decl) {
-				// a route's member named bare (`Notes.update`): the one route that has it
+				// a route's member named bare (`Notes.post`): the one route that has it
 				var full []string
 				for _, d := range p.Modules[mod].Syntax.Decls {
 					if v, ok := d.(*syntax.ValueDecl); ok && v.Route != "" && v.Name == decl {
@@ -463,7 +484,7 @@ func parseAddress(p *Program, address string) (mod, decl, arm string, err error)
 			return mod, decl, arm, nil
 		}
 	}
-	return "", "", "", Refusef("`%s` names no module of this app: write `Module.decl`, such as `Home.update`", address)
+	return "", "", "", Refusef("`%s` names no module of this app: write `Module.decl`, such as `Home.view`", address)
 }
 
 // holeNames lists holes for a message: "?a, ?b".
@@ -652,7 +673,7 @@ func ownValue(m *syntax.Module, name string) bool {
 	return false
 }
 
-// valueDeclFull is module m's value declaration by its full name (`update`, `Clear.update`), or nil.
+// valueDeclFull is module m's value declaration by its full name (`update`, `Clear.post`), or nil.
 func valueDeclFull(m *syntax.Module, full string) *syntax.ValueDecl {
 	for _, d := range m.Decls {
 		if v, ok := d.(*syntax.ValueDecl); ok && v.FullName() == full {
@@ -662,8 +683,8 @@ func valueDeclFull(m *syntax.Module, full string) *syntax.ValueDecl {
 	return nil
 }
 
-// routeMembers says which routes of mod have a member: "`Notes.Clear.update`, `Notes.Pin.update`
-// are both `update`".
+// routeMembers says which routes of mod have a member: "`Notes.Clear.post`, `Notes.Pin.post`
+// are both `post`".
 func routeMembers(mod string, full []string) string {
 	var qs []string
 	for _, f := range full {

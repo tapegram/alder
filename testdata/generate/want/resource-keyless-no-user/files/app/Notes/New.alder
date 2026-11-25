@@ -32,8 +32,8 @@ form NoteForm = { title: Text.NonEmpty }
 -- @resource end
 
 -- Create adds the row and goes to its page.
-Create.update : Create.Params -> Session -> Task Response
-Create.update params session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post params session = {
   -- @resource begin insert
   let id <- Db.insert Note { title: params.form.title }
   Task.succeed (Response.redirect (Notes.Show.Show { id: id }))

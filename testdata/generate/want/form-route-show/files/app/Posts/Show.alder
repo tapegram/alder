@@ -64,8 +64,8 @@ Show.view model session =
 
 form Reply = { body: Text }
 
-SendReply.update : SendReply.Params -> Session -> Task Response
-SendReply.update params session = ?answer
+SendReply.post : SendReply.Params -> Session -> Task Response
+SendReply.post params session = ?answer
 
 test "the page shows the row" = {
   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }

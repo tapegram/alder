@@ -8,13 +8,13 @@ import (
 )
 
 // newWriteRoute is NewRoute for --method POST|PUT|PATCH|DELETE: a module with a write route,
-// which has an `update` answering `Response.refresh` and no `load` or `view`. It has no test: a
+// which has a handler named after its method (`post`, …) answering `Response.refresh` and no `load` or `view`. It has no test: a
 // write route is pressed from a page that has its button or form, which the module does not
 // have (a comment above `update` says so). A parameter that is a `{name}` segment of the path is
 // the URL's, the others ride in the query string (--param names them all); --form F declares `form F = { }` and posts it.
 func newWriteRoute(p *Program, o RouteOptions, route, method string) ([]Edit, error) {
 	if o.List != "" || o.Show != "" || len(o.From) > 0 || o.Blank || o.File || o.ContentType != "" || o.By != "" || o.Example {
-		return nil, Refusef("--method %s makes a write route, which has only `update`: --list, --show, --from, --blank, --file, --type, --by and --example belong to a GET route", method)
+		return nil, Refusef("--method %s makes a write route, which has only its handler: --list, --show, --from, --blank, --file, --type, --by and --example belong to a GET route", method)
 	}
 	if o.Form == route {
 		return nil, Refusef("`--form %s` is the route's own name: a form and a route cannot share one; name the form for what it holds, such as `%sForm`", o.Form, o.Form)

@@ -5,6 +5,6 @@ import Table.Post
 route Feature = PATCH "/posts/{id}/feature" { id: Post.PostId } requires user
 
 -- Press Feature from a page that has its button to test it: `Test.get` that page, then
--- `Test.click (Feature { … })`, and `r.answer` is Refreshed until `update` says otherwise.
-Feature.update : Feature.Params -> Session -> Task Response
-Feature.update params session = Task.succeed Response.refresh
+-- `Test.click (Feature { … })`, and `r.answer` is Refreshed until `patch` says otherwise.
+Feature.patch : Feature.Params -> Session -> Task Response
+Feature.patch params session = Task.succeed Response.refresh

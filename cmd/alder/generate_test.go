@@ -216,12 +216,12 @@ var genCases = []genCase{
 	{name: "table", base: "scaffold", args: []string{"new", "table", "Tag", "name:Text.NonEmpty@unique", "entry:Entry.EntryId@ref=Entry@cascade", "note:Maybe Text", "pinned:Bool=False"}, test: true},
 	{name: "form-insert", base: "scaffold", args: []string{"new", "form", "Home", "Quick", "name:Text.NonEmpty", "message:Text.NonEmpty"}, test: true},
 	{name: "form-hole", base: "scaffold", args: []string{"new", "form", "Home", "Contact", "email:Text.Email", "topic:Text", "--path", "/contacts"}, test: true,
-		fills: [][2]string{{"Home.SubmitContact.update", "Task.succeed Response.refresh"}, {`Home."submitting Contact"`, "Refreshed"}}},
+		fills: [][2]string{{"Home.SubmitContact.post", "Task.succeed Response.refresh"}, {`Home."submitting Contact"`, "Refreshed"}}},
 	// #160: new form on a route module adds the form, a POST route, its update and the markup
 	{name: "form-route", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--requires", "user"}}, args: []string{"new", "form", "Posts.Index", "Quick", "title:Text.NonEmpty", "body:Text"}, test: true},
 	{name: "form-route-ref", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--requires", "user"}}, args: []string{"new", "form", "Posts.Index", "Tagging", "name:Text.NonEmpty", "post:Post.PostId"}, test: true},
 	{name: "form-route-hole", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--requires", "user"}}, args: []string{"new", "form", "Posts.Index", "NewComment", "body:Text", "--hole"}, test: true,
-		fills: [][2]string{{"Posts.Index.SubmitNewComment.update --hole ?answer", "Task.succeed (Response.refresh |> Response.success \"Saved\")"}, {`Posts.Index."submitting NewComment"`, "Refreshed"}}},
+		fills: [][2]string{{"Posts.Index.SubmitNewComment.post --hole ?answer", "Task.succeed (Response.refresh |> Response.success \"Saved\")"}, {`Posts.Index."submitting NewComment"`, "Refreshed"}}},
 	// #160: a form on a route with `role`: its tests refuse a visitor and a user of another role
 	{name: "form-route-role", base: "fixture", pre: [][]string{{"new", "route", "Tags.Index", "/tags", "--list", "Tag", "--role", "Admin"}}, args: []string{"new", "form", "Tags.Index", "Quick", "name:Text.NonEmpty", "post:Post.PostId"}, test: true},
 	{name: "form-route-show-test", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "form", "Posts.Show", "Reply", "name:Text.NonEmpty", "post:Post.PostId", "--msg", "SendReply"}, test: true},
@@ -234,7 +234,7 @@ var genCases = []genCase{
 	{name: "form-edit-into", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post", "--requires", "user"}}, args: []string{"new", "form", "Posts.Show", "PostEdit", "--edit", "Post", "--into", "Post"}, code: 1},
 	{name: "form-edit-hole", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post", "--requires", "user"}}, args: []string{"new", "form", "Posts.Show", "PostEdit", "--edit", "Post", "--hole"}, code: 1},
 	{name: "msg", base: "scaffold", args: []string{"new", "action", "Home", "Clear", "--method", "DELETE"}, test: true,
-		fills: [][2]string{{"--decl Home.Clear.update", "{\n  let _ <- Log.info \"cleared\"\n  Task.succeed Response.refresh\n}"}}},
+		fills: [][2]string{{"--decl Home.Clear.delete", "{\n  let _ <- Log.info \"cleared\"\n  Task.succeed Response.refresh\n}"}}},
 	{name: "capability", base: "scaffold", args: []string{"new", "capability", "Weather", "current", "{ city: Text } -> Query (Maybe Float)"}, test: true,
 		fills: [][2]string{{"Weather.Weather.current", "Query.succeed (Just 21.5)"}}},
 	// #168: jobs: with parameters, into a module, on an interval, on a cron schedule, with a fix-up
@@ -533,7 +533,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"edit", "table", "Nope", "drop-field", "x"}, "", "alder edit table: `Nope` is not a table of this app (its tables: Entry)"},
 		{"fixture", []string{"edit", "table", "Post", "add-field", "views:Int"}, "", "alder edit table: the migration generator refuses the change: Post.views: a new non-null column needs a default (`= 0`) so existing rows can be filled"},
 		{"scaffold", []string{"fill", "Home.update", "-"}, "Task.succeed Rerender", "alder fill: `Home.update` has no typed hole; to rewrite it whole, `alder fill --decl Home.update -` (`alder fill --list` lists the app's holes)"},
-		{"scaffold", []string{"fill", "Nope.update", "-"}, "x", "alder fill: `Nope.update` names no module of this app: write `Module.decl`, such as `Home.update`"},
+		{"scaffold", []string{"fill", "Nope.update", "-"}, "x", "alder fill: `Nope.update` names no module of this app: write `Module.decl`, such as `Home.view`"},
 		{"scaffold", []string{"fill", "Home.update", "-"}, "\n", "alder fill: standard input is empty: write the expression that fills the hole"},
 		{"scaffold", []string{"fill", "Home.update", "-"}, "Task.succeed Rerender,\n}\n\nevil : Int\nevil = 1\n", "alder fill: `alder fill` takes one expression; found more after it: `,` at line 1, column 22 of standard input"},
 		{"scaffold", []string{"new", "table", "Tag", "n:Int=1, evil: Text"}, "", "alder new table: field `n`: the default `1, evil: Text` is not one expression"},
@@ -543,7 +543,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		// #160: write routes
 		{"scaffold", []string{"new", "route", "Like", "/like", "--method", "TRACE"}, "", "alder new route: `--method TRACE` is not a method: use one of GET, POST, PUT, PATCH, DELETE"},
 		{"scaffold", []string{"new", "route", "Like", "/like", "--form", "Message"}, "", "alder new route: --form goes with a write route: a GET route has no form to post (`--method POST --form Message`)"},
-		{"scaffold", []string{"new", "route", "Like", "/like", "--method", "POST", "--list", "Entry"}, "", "alder new route: --method POST makes a write route, which has only `update`:"},
+		{"scaffold", []string{"new", "route", "Like", "/like", "--method", "POST", "--list", "Entry"}, "", "alder new route: --method POST makes a write route, which has only its handler:"},
 		{"scaffold", []string{"new", "route", "Like", "/like/{id}", "--method", "POST"}, "", "alder new route: `/like/{id}` has the parameter `{id}` but no `--param id:<Type>`"},
 		{"scaffold", []string{"new", "route", "Like", "/like", "--method", "POST", "--form", "Like"}, "", "alder new route: `--form Like` is the route's own name:"},
 		{"scaffold", []string{"new", "route", "Like", "/like", "--method", "POST", "--form", "message"}, "", "alder new route: `--form message` is not a form name:"},
@@ -696,7 +696,7 @@ func TestGenerate_JSON(t *testing.T) {
 	if len(got.Diags) != 2 || got.Diags[0].Code != "W0002" || got.Diags[0].Message != "hole ?answer has type Task Response" {
 		t.Errorf("diagnostics: %+v", got.Diags)
 	}
-	if len(got.Holes) != 2 || got.Holes[0].Module != "Home" || got.Holes[0].Decl != "SubmitClear.update" || got.Holes[0].Arm != "" || got.Holes[0].Name != "answer" || got.Holes[0].Type != "Task Response" ||
+	if len(got.Holes) != 2 || got.Holes[0].Module != "Home" || got.Holes[0].Decl != "SubmitClear.put" || got.Holes[0].Arm != "" || got.Holes[0].Name != "answer" || got.Holes[0].Type != "Task Response" ||
 		got.Holes[1].Decl != `"submitting Clear"` || got.Holes[1].Type != "Answer" {
 		t.Errorf("holes: %+v", got.Holes)
 	}
@@ -705,11 +705,11 @@ func TestGenerate_JSON(t *testing.T) {
 		t.Errorf("a refusal: exit %d\n%s%s", code, out, errs)
 	}
 	code, out, _ = alderIn(t, dir, "", "fill", "--list", "--json")
-	if code != 0 || !strings.HasPrefix(out, `{"holes":[{"module":"Home","decl":"SubmitClear.update","name":"answer","type":"Task Response"`) {
+	if code != 0 || !strings.HasPrefix(out, `{"holes":[{"module":"Home","decl":"SubmitClear.put","name":"answer","type":"Task Response"`) {
 		t.Errorf("fill --list --json: exit %d\n%s", code, out)
 	}
 	code, out, _ = alderIn(t, dir, "", "fill", "--list")
-	if code != 0 || out != "Home SubmitClear.update ?answer : Task Response\nHome \"submitting Clear\" ?expected : Answer\n" {
+	if code != 0 || out != "Home SubmitClear.put ?answer : Task Response\nHome \"submitting Clear\" ?expected : Answer\n" {
 		t.Errorf("fill --list: exit %d\n%s", code, out)
 	}
 }
@@ -846,11 +846,11 @@ func TestGenerate_FillImports(t *testing.T) {
 		t.Fatalf("alder new action: %s", errs)
 	}
 	fill := "{\n  let n <- Db.from Comment |> Db.where (Comment.body.contains (Text.trim \"x\")) |> Db.count\n  Task.succeed (if n > 0 then Response.refresh else Response.refresh)\n}"
-	code, out, errs := alderIn(t, dir, fill, "fill", "--decl", "Home.Purge.update", "-", "--dry-run", "--json")
+	code, out, errs := alderIn(t, dir, fill, "fill", "--decl", "Home.Purge.delete", "-", "--dry-run", "--json")
 	if code != 0 || !strings.Contains(out, `"imports":["Table.Comment"]`) || !strings.Contains(out, `+import Table.Comment\n`) {
 		t.Errorf("fill --dry-run --json: exit %d\n%s%s", code, out, errs)
 	}
-	code, out, errs = alderIn(t, dir, fill, "fill", "--decl", "Home.Purge.update", "-")
+	code, out, errs = alderIn(t, dir, fill, "fill", "--decl", "Home.Purge.delete", "-")
 	if code != 0 || !strings.HasSuffix(out, "added import Table.Comment to app/Home.alder\n") || !strings.Contains(out, "+import Table.Comment\n") {
 		t.Fatalf("fill: exit %d\n%s%s", code, out, errs)
 	}
@@ -869,7 +869,7 @@ func TestGenerate_FillDecl(t *testing.T) {
 	t.Parallel()
 	dir := genApp(t, "scaffold")
 	before := appFiles(t, dir)
-	code, out, errs := alderIn(t, dir, "Task.succeed 1", "fill", "--decl", "Home.Submit.update", "-")
+	code, out, errs := alderIn(t, dir, "Task.succeed 1", "fill", "--decl", "Home.Submit.post", "-")
 	if code != 1 || errs != "alder fill: the result does not check (the errors above): nothing was written\n" || !strings.Contains(out, "error[") {
 		t.Errorf("an update that answers no Response: exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
 	}
@@ -1450,7 +1450,7 @@ func TestGenerate_RouteMsgRefusals(t *testing.T) {
 		{[]string{"new", "action", "Posts.Show", "Feature", "id:Text"}, "alder new action: field `id` is a parameter of the route's path already, with another type (`Post.PostId`): the route takes it from there\n"},
 		{[]string{"new", "action", "Posts.Edit", "Feature"}, "alder new action: `Posts.Edit`'s `view` is a hole: fill `view` first (`alder fill Posts.Edit.view -`), then add the route's button\n"},
 		{[]string{"new", "form", "Posts.Show", "Reply", "body:Text", "--msg", "Reply"}, "alder new form: `--msg Reply` names the form itself: the form and its route need two names\n"},
-		{[]string{"new", "form", "Posts.Show", "Reply", "body:Text", "--hole", "--into", "Comment"}, "alder new form: --hole leaves the `update` body a hole and --into Comment fills it with an insert: give one of them\n"},
+		{[]string{"new", "form", "Posts.Show", "Reply", "body:Text", "--hole", "--into", "Comment"}, "alder new form: --hole leaves the handler body a hole and --into Comment fills it with an insert: give one of them\n"},
 		{[]string{"new", "form", "Posts.Show", "Show", "body:Text"}, "alder new form: `Posts.Show` already declares `Show`: choose another name\n"},
 		{[]string{"new", "form", "Like", "Reply", "body:Text"}, "alder new form: `Like` has no GET route: a form is posted from a route's `view`; `alder new route Like /path` makes one\n"},
 		{[]string{"new", "action", "Like", "Again"}, "alder new action: `Like` has no GET route: a write route's button sits on a route's `view`; `alder new route Like /path --method POST` makes a write route without one\n"},
@@ -1509,7 +1509,7 @@ func TestGenerate_EditAuthPrePR(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const now = "the page ?afterLogin names (fill it, here and in SignIn.update, once the page exists)"
+	const now = "the page ?afterLogin names (fill it, here and in SignIn.post, once the page exists)"
 	if !strings.Contains(string(src), now) {
 		t.Fatalf("the login has no comment %q", now)
 	}
@@ -1563,7 +1563,7 @@ func TestAuth_LogoutIsDelete(t *testing.T) {
 	// a route of the app's own at POST /session: refused, nothing written
 	clash := genApp(t, "scaffold")
 	src := appFiles(t, clash)["app/App.alder"]
-	src = strings.Replace(src, "\nerror :", "\nroute Enter = POST \"/session\" { }\n\nEnter.update : Enter.Params -> Session -> Task Response\nEnter.update params session = Task.succeed Response.refresh\n\nerror :", 1)
+	src = strings.Replace(src, "\nerror :", "\nroute Enter = POST \"/session\" { }\n\nEnter.post : Enter.Params -> Session -> Task Response\nEnter.post params session = Task.succeed Response.refresh\n\nerror :", 1)
 	if err := os.WriteFile(filepath.Join(clash, "app", "App.alder"), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}

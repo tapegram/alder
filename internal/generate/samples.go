@@ -166,8 +166,8 @@ func (b *testBuilder) loginAs(me, role string) {
 	b.setSession(strings.Join(fields, ", "))
 }
 
-// session is the session record an update of a route requiring keys is called with directly
-// (`Test.run (Save.update params session)`), for the signed-in user: the user and each other key
+// session is the session record a handler of a route requiring keys is called with directly
+// (`Test.run (Save.put params session)`), for the signed-in user: the user and each other key
 // its row (no longer a `Maybe`: the route requires them), every other `Maybe` Nothing, the role
 // role (its first constructor when ""), any other field a sample value.
 func (b *testBuilder) session(keys []string, role string) string {

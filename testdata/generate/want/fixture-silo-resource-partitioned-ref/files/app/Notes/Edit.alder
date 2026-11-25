@@ -67,8 +67,8 @@ form NoteForm = { text: Text.NonEmpty, activity: Activity.ActivityId }
 
 -- Save writes the form over the row (another user's, or one deleted since, is not found) and goes
 -- to its page.
-Save.update : Save.Params -> Session -> Task Response
-Save.update params session = {
+Save.put : Save.Params -> Session -> Task Response
+Save.put params session = {
   -- @resource begin update
   let _ <- Db.updateMine Note params.id (\r -> { r |
     text: params.form.text,
@@ -372,10 +372,7 @@ test "Save itself does not change another user's row" = {
   let activity2 <- Db.insert Activity { text: Text.NonEmpty "text-2", org: org }
   let before <- Db.get Note note1
   let r <-
-    Test.run (Save.update {
-      id: note1,
-      form: { text: Text.NonEmpty "text-2", activity: activity2 },
-    } {
+    Test.run (Save.put { id: note1, form: { text: Text.NonEmpty "text-2", activity: activity2 } } {
       user: me,
       org: org,
       role: Member,

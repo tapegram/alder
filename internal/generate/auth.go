@@ -45,13 +45,13 @@ const hashColumn = "passwordHash"
 // form Credentials and `route SignIn = POST "/session" { } form Credentials`, whose
 // update puts the user (and the role) in the session and redirects, or answers
 // Response.invalid; two tests), the edits of App (the session's `user` and `role` fields,
-// `login = Auth.Login.Login`, `route Logout = DELETE "/session"` and its update (the session is the resource: POST /session
+// `login = Auth.Login.Login`, `route Logout = DELETE "/session"` and its `Logout.delete` (the session is the resource: POST /session
 // signs in, DELETE /session signs out), a test of it:
 // editApp), the user table when it does not exist (with its migration, the caller's
 // Options.Migrate), and the Go adapter adapters/auth/login_password.go (PBKDF2-SHA256) with its
 // tests. The login goes to --to's route (loginTarget), else the GET route (or page) at `/`, else
 // (an app with no route yet: `alder new <app> --bare`, whose routes come after the login they
-// require) the typed hole ?afterLogin, in SignIn.update and in its test, filled once the route
+// require) the typed hole ?afterLogin, in SignIn.post and in its test, filled once the route
 // exists (EditAuth). It refuses an app whose session has a `user`, that has an Auth module or a
 // `login`, a user table without `email` and `passwordHash`, and a role that is not a union of
 // the user module (`alder new type` makes one) or that the table has no column of.
@@ -271,7 +271,7 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 
 // editApp is App with a login (RF1, chapter 15): the session's `user` (and role) fields after
 // its others, `login = Auth.Login.Login` and `route Logout = DELETE "/session" { }` after the
-// session, the user module imported, and at the end `Logout.update` (it empties the session's
+// session, the user module imported, and at the end `Logout.delete` (it empties the session's
 // user and role and goes to log in) and a test of it. Nothing else moves. Logout is a `DELETE`
 // on /session (the session is the resource: POST /session signs in, DELETE /session signs out):
 // a button `click={App.Logout}` sends it, a form with a hidden `_method` does without
@@ -336,8 +336,8 @@ func editApp(p *Program, app *Module, users *Table, idType, roleField, roleColum
 	}
 	e.appendText("\n-- Logout empties the session's user and goes to log in: a `DELETE` of the session, sent by a button\n" +
 		"-- (`click={App.Logout}`), a form without JavaScript.\n" +
-		"Logout.update : Logout.Params -> Session -> Task Response\n" +
-		"Logout.update params session = {\n  let _ <- Session.put (\\s -> " + put + ")\n  Task.succeed (Response.redirect (" + loginRoute + " {}))\n}")
+		"Logout.delete : Logout.Params -> Session -> Task Response\n" +
+		"Logout.delete params session = {\n  let _ <- Session.put (\\s -> " + put + ")\n  Task.succeed (Response.redirect (" + loginRoute + " {}))\n}")
 
 	// the test of Logout: from the login page, which a visitor may open, so the redirect is
 	// told from the page shown again (on a page that requires a user both end at the login)
@@ -399,7 +399,7 @@ func routeHasRequiredParams(r *Route) bool {
 // (an app with no page yet), the page that hole will name.
 func goesTo(home string) string {
 	if strings.HasPrefix(home, "?") {
-		return "the page " + home + " names (fill it, here and in SignIn.update, once the page exists)"
+		return "the page " + home + " names (fill it, here and in SignIn.post, once the page exists)"
 	}
 	return home
 }

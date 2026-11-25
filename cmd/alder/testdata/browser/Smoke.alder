@@ -12,8 +12,8 @@ type Model = { }
 Smoke.load : Smoke.Params -> Session -> Query Model
 Smoke.load params session = Query.succeed {}
 
-Refresh.update : Refresh.Params -> Session -> Task Response
-Refresh.update p session = Task.succeed Response.refresh
+Refresh.post : Refresh.Params -> Session -> Task Response
+Refresh.post p session = Task.succeed Response.refresh
 
 Smoke.view : Model -> Session -> Html
 Smoke.view model session =

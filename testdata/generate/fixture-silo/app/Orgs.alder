@@ -17,8 +17,8 @@ Orgs.load params session = {
   Query.succeed { mine: mine }
 }
 
-Pick.update : Pick.Params -> Session -> Task Response
-Pick.update p session = {
+Pick.post : Pick.Params -> Session -> Task Response
+Pick.post p session = {
   let _ <- Session.put (\s -> { s | org: Just p.org })
   Task.succeed Response.refresh
 }
@@ -47,7 +47,7 @@ test "a non-member's switch is refused" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
   let b <- Db.insert Org { name: Text.NonEmpty "B" }
   let _ <- Test.login { user: Just me, org: Nothing }
-  let r <- Test.run (Pick.update { org: b } { user: me, org: Nothing, role: Member })
+  let r <- Test.run (Pick.post { org: b } { user: me, org: Nothing, role: Member })
   Task.succeed (r.value == Err "Session.put org: no Membership for this user and org")
 }
 

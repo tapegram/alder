@@ -32,7 +32,7 @@ printf '%s\n' "$a"
 }
 
 // clearApp is the scaffold with `alder new form Home Clear note:Text`: holes ?answer
-// (Home.SubmitClear.update) and ?expected (the test "submitting Clear").
+// (Home.SubmitClear.put) and ?expected (the test "submitting Clear").
 func clearApp(t *testing.T) string {
 	t.Helper()
 	dir := genApp(t, "scaffold")
@@ -54,11 +54,11 @@ func homeOf(t *testing.T, dir string) string {
 func TestFill_AI(t *testing.T) {
 	dir := clearApp(t)
 	fakeModel(t, "Task.succeed Response.refresh")
-	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.update", "--ai")
-	if code != 0 || !strings.Contains(out, "edited app/Home.alder\n") || !strings.Contains(out, "+SubmitClear.update params session = Task.succeed Response.refresh\n") || errs != "" {
+	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.put", "--ai")
+	if code != 0 || !strings.Contains(out, "edited app/Home.alder\n") || !strings.Contains(out, "+SubmitClear.put params session = Task.succeed Response.refresh\n") || errs != "" {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
 	}
-	if !strings.Contains(homeOf(t, dir), "SubmitClear.update params session = Task.succeed Response.refresh\n") {
+	if !strings.Contains(homeOf(t, dir), "SubmitClear.put params session = Task.succeed Response.refresh\n") {
 		t.Errorf("not written:\n%s", homeOf(t, dir))
 	}
 }
@@ -67,7 +67,7 @@ func TestFill_AIDryRun(t *testing.T) {
 	dir := clearApp(t)
 	before := homeOf(t, dir)
 	fakeModel(t, "Task.succeed Response.refresh")
-	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.update", "--ai", "--dry-run")
+	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.put", "--ai", "--dry-run")
 	if code != 0 || !strings.Contains(out, "would edit app/Home.alder\n") || !strings.Contains(out, "dry run: nothing written") {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
 	}
@@ -80,7 +80,7 @@ func TestFill_AIRefusedWritesNothing(t *testing.T) {
 	dir := clearApp(t)
 	before := homeOf(t, dir)
 	prompts := fakeModel(t, "42")
-	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.update", "--ai")
+	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.put", "--ai")
 	if code != 1 || !strings.Contains(errs, "alder fill: attempt 2 of 3: E0003 ") || !strings.Contains(errs, "alder fill: attempt 3 of 3: E0003 ") ||
 		!strings.HasSuffix(errs, "alder fill: the result does not check after 3 attempts: nothing was written\n") ||
 		!strings.Contains(out, "error[E0003]") || !strings.HasSuffix(out, "the model's last expression:\n42\n") {
@@ -98,7 +98,7 @@ func TestFill_AIRefusedWritesNothing(t *testing.T) {
 func TestFill_AIJSON(t *testing.T) {
 	dir := clearApp(t)
 	fakeModel(t, "Task.succeed Response.refresh")
-	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.update", "--ai", "--json")
+	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.put", "--ai", "--json")
 	var got struct {
 		Written    bool     `json:"written"`
 		Expression string   `json:"expression"`
@@ -150,11 +150,11 @@ func TestFill_AIUsageErrors(t *testing.T) {
 		args []string
 		msg  string
 	}{
-		{[]string{"fill", "Home.SubmitClear.update", "-", "--ai"}, "alder fill: --ai reads no standard input: drop the `-`"},
-		{[]string{"fill", "Home.SubmitClear.update", "-", "--prompt"}, "alder fill: --prompt reads no standard input: drop the `-`"},
-		{[]string{"fill", "--decl", "Home.SubmitClear.update", "--ai"}, "alder fill: --ai fills a hole: it takes no --list or --decl"},
+		{[]string{"fill", "Home.SubmitClear.put", "-", "--ai"}, "alder fill: --ai reads no standard input: drop the `-`"},
+		{[]string{"fill", "Home.SubmitClear.put", "-", "--prompt"}, "alder fill: --prompt reads no standard input: drop the `-`"},
+		{[]string{"fill", "--decl", "Home.SubmitClear.put", "--ai"}, "alder fill: --ai fills a hole: it takes no --list or --decl"},
 		{[]string{"fill", "--list", "--ai"}, "alder fill: --ai fills a hole: it takes no --list or --decl"},
-		{[]string{"fill", "Home.SubmitClear.update", "--ai", "--prompt"}, "alder fill: --ai and --prompt are two ways to run: give one"},
+		{[]string{"fill", "Home.SubmitClear.put", "--ai", "--prompt"}, "alder fill: --ai and --prompt are two ways to run: give one"},
 		{[]string{"fill", "--ai"}, "usage: alder fill"},
 	} {
 		code, _, errs := alderIn(t, dir, "", c.args...)
@@ -164,7 +164,7 @@ func TestFill_AIUsageErrors(t *testing.T) {
 	}
 	// no backend: exit 2, the variables named
 	t.Setenv("ALDER_FILL_COMMAND", "")
-	code, _, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.update", "--ai")
+	code, _, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.put", "--ai")
 	if code != 2 || errs != "alder fill: set ANTHROPIC_API_KEY, or ALDER_FILL_COMMAND, in the environment\n" {
 		t.Errorf("no backend: exit %d, %q", code, errs)
 	}
@@ -175,7 +175,7 @@ func TestFill_AIUsageErrors(t *testing.T) {
 func TestFill_AIEffectsWarned(t *testing.T) {
 	dir := clearApp(t)
 	fakeModel(t, "Session.put (\\s -> s) |> Task.map (\\u -> Response.refresh)")
-	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.update", "--ai")
+	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitClear.put", "--ai")
 	if code != 0 || !strings.Contains(out, "the model's expression:\nSession.put (\\s -> s) |> Task.map (\\u -> Response.refresh)\n") ||
 		errs != "alder fill: warning: the model's expression uses Session.put, effects its hole's type does not limit: review it\n" {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
@@ -205,11 +205,11 @@ func TestFill_AIRoute(t *testing.T) {
 		t.Fatalf("new form: exit %d\n%s%s", code, out, errs)
 	}
 	prompts := fakeModel(t, "Task.succeed Response.refresh")
-	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitContact.update", "--ai")
-	if code != 0 || !strings.Contains(homeOf(t, dir), "SubmitContact.update params session = Task.succeed Response.refresh\n") {
+	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitContact.post", "--ai")
+	if code != 0 || !strings.Contains(homeOf(t, dir), "SubmitContact.post params session = Task.succeed Response.refresh\n") {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s\n%s", code, out, errs, homeOf(t, dir))
 	}
-	if b, _ := os.ReadFile(filepath.Join(prompts, "stdin.1")); !strings.Contains(string(b), "in SubmitContact.update of module Home") {
+	if b, _ := os.ReadFile(filepath.Join(prompts, "stdin.1")); !strings.Contains(string(b), "in SubmitContact.post of module Home") {
 		t.Errorf("the prompt:\n%s", b)
 	}
 }

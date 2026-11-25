@@ -24,10 +24,10 @@ edited app/Posts/Show.alder
 -    <al-button click={Feature { id: ?featureId, note: ?featureNote }}>Feature</al-button>
    </Layout.Page>
  
- Feature.update : Feature.Params -> Session -> Task Response
- Feature.update params session = Task.succeed Response.refresh
+ Feature.post : Feature.Params -> Session -> Task Response
+ Feature.post params session = Task.succeed Response.refresh
  
-+-- Feature.update reads the posted fields as params.form (params.form : Reason, such as params.form.why)
++-- Feature.post reads the posted fields as params.form (params.form : Reason, such as params.form.why)
 +form Reason = { why: Text.NonEmpty }
 +
  test "the page shows the row" = {

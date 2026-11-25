@@ -49,7 +49,7 @@ func TestEffects_Semantic(t *testing.T) {
 		{"session", then(`Session.put (\s -> s)`), []string{"Session.put"}},
 		{"two at once", "{\n  let _ <- Email.send \"a\"\n  let _ <- Lib.pause\n  Task.succeed Response.refresh\n}", []string{"Lib.pause → Task.sleep", "capability Email.send"}},
 	} {
-		r, err := Run(context.Background(), &script{answers: []string{c.expr}}, dir, "Home.Submit.update", "", nil)
+		r, err := Run(context.Background(), &script{answers: []string{c.expr}}, dir, "Home.Submit.post", "", nil)
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
@@ -74,7 +74,7 @@ func TestEffects_OnlyTheExpression(t *testing.T) {
 		t.Fatal("no update to add an effect to")
 	}
 	os.WriteFile(home, []byte(src), 0o644)
-	r, err := Run(context.Background(), &script{answers: []string{"Pure.home"}}, dir, "Home.Submit.update", "", nil)
+	r, err := Run(context.Background(), &script{answers: []string{"Pure.home"}}, dir, "Home.Submit.post", "", nil)
 	if err != nil || len(r.Effects) != 0 {
 		t.Errorf("effects %q, %v", r.Effects, err)
 	}

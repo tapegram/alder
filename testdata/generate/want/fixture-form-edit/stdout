@@ -35,8 +35,8 @@ edited app/Posts/Show.alder
 +
 +-- SavePostEdit writes the form over the row and goes back to the page;
 +-- another user's row, or one deleted since, is not found.
-+SavePostEdit.update : SavePostEdit.Params -> Session -> Task Response
-+SavePostEdit.update params session = {
++SavePostEdit.put : SavePostEdit.Params -> Session -> Task Response
++SavePostEdit.put params session = {
 +  let _ <- Db.updateMine Post params.id (\r -> { r |
 +    title: params.form.title,
 +    body: params.form.body,

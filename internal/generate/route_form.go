@@ -69,7 +69,7 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 		}
 	}
 	if attach != nil && (o.Into != "" || o.Hole) {
-		return nil, Refusef("`%s` has its `update` already: --into and --hole belong to a new route", route)
+		return nil, Refusef("`%s` has its handler already: --into and --hole belong to a new route", route)
 	}
 	if attach != nil && (o.Path != "" || o.Method != "") {
 		return nil, Refusef("`--path` and `--method` belong to a new route; `%s` has its path already", route)
@@ -89,7 +89,7 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 		return nil, Refusef("a form needs at least one field: `alder new form %s %s title:Text.NonEmpty`", o.Page, o.Name)
 	}
 	if o.Hole && o.Into != "" {
-		return nil, Refusef("--hole leaves the `update` body a hole and --into %s fills it with an insert: give one of them", o.Into)
+		return nil, Refusef("--hole leaves the handler body a hole and --into %s fills it with an insert: give one of them", o.Into)
 	}
 	seen := map[string]bool{}
 	d := FormData{Name: o.Name, Msg: route, Label: Humanize(o.Name)}
@@ -172,6 +172,9 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 	if method == "" {
 		method = "POST"
 	}
+	if attach != nil { // the form joins a route that is there: its handler is named after its method
+		method = attach.Method
+	}
 	path := o.Path
 	if path == "" {
 		path = formPath(r, into)
@@ -223,7 +226,8 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 		}
 		body = fmt.Sprintf("{\n  let _ <- %s %s { %s }\n  Task.succeed (%s |> Response.success \"Saved\")\n}", op, recordName(into, o.Page), strings.Join(inits, ", "), response)
 	}
-	update := fmt.Sprintf("%s.update : %s.Params -> Session -> Task Response\n%s.update params session = %s", route, route, route, body)
+	h := check.HandlerName(method)
+	update := fmt.Sprintf("%s.%s : %s.Params -> Session -> Task Response\n%s.%s params session = %s", route, h, route, route, h, body)
 
 	e = newSrcEdit(m.Source)
 	var lastRoute, firstTest syntax.Decl
@@ -246,7 +250,7 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 			return nil, err
 		}
 		dropMsgControls(e, m, route)
-		decls = "-- " + route + ".update reads the posted fields as params.form (params.form : " + o.Name + ", such as params.form." + o.Fields[0].Name + ")\n" + snippet("form_decl", d) + "\n"
+		decls = "-- " + route + "." + h + " reads the posted fields as params.form (params.form : " + o.Name + ", such as params.form." + o.Fields[0].Name + ")\n" + snippet("form_decl", d) + "\n"
 	} else {
 		e.insertBefore(lastRoute.GetSpan().End.Line+1, line+"\n")
 	}
@@ -597,7 +601,8 @@ func newEditForm(p *Program, o FormOptions, r *Route, m *Module, route string) (
 	if direct {
 		note = "-- " + route + " writes the form over the row and goes back to the page;\n-- another " + a.whose() + "'s row, or one deleted since, is not found."
 	}
-	update := fmt.Sprintf("%s\n%s.update : %s.Params -> Session -> Task Response\n%s.update params session = {\n%s\n}", note, route, route, route, indent(strings.Join(save, "\n"), "  "))
+	h := check.HandlerName(method)
+	update := fmt.Sprintf("%s\n%s.%s : %s.Params -> Session -> Task Response\n%s.%s params session = {\n%s\n}", note, route, h, route, route, h, indent(strings.Join(save, "\n"), "  "))
 
 	e := newSrcEdit(m.Source)
 	var lastRoute, firstTest syntax.Decl
@@ -678,7 +683,7 @@ func newEditForm(p *Program, o FormOptions, r *Route, m *Module, route string) (
 			return "Redirected (" + pageLit(r.Ref(o.Page), args(tb, target, true)) + ")"
 		},
 		run: func(tb *testBuilder, target, form string) string {
-			return route + ".update { " + strings.Join(args(tb, target, true), ", ") + ", form: { " + form + " } }"
+			return route + "." + check.HandlerName(method) + " { " + strings.Join(args(tb, target, true), ", ") + ", form: { " + form + " } }"
 		},
 	}
 	var tests []TestData

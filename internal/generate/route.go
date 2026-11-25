@@ -29,6 +29,9 @@ func render(name string, data any) string {
 	return b.String()
 }
 
+// Handler is the name of a write route's handler: its method in lower case (#308).
+func (d RouteData) Handler() string { return check.HandlerName(d.Method) }
+
 // RouteData is the data every route template takes (route.tmpl, route_list.tmpl,
 // route_show.tmpl, route_from.tmpl, route_write.tmpl; the header and tests of common.tmpl).
 type RouteData struct {

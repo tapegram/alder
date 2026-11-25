@@ -22,8 +22,8 @@ Home.load params session = {
 
 form Write = { title: Text.NonEmpty, body: Text }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update p session = {
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post p session = {
   let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
   Task.succeed (Response.redirect (Home {}))
 }
@@ -58,8 +58,8 @@ Home.view model session =
 
 form Tagging = { name: Text.NonEmpty, post: Post.PostId }
 
-SubmitTagging.update : SubmitTagging.Params -> Session -> Task Response
-SubmitTagging.update params session = {
+SubmitTagging.post : SubmitTagging.Params -> Session -> Task Response
+SubmitTagging.post params session = {
   let _ <- Db.insert Tag { name: params.form.name, post: params.form.post }
   Task.succeed (Response.redirect (Home {}) |> Response.success "Saved")
 }

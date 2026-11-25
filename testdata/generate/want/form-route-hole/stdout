@@ -28,8 +28,8 @@ edited app/Posts/Index.alder
  
 +form NewComment = { body: Text }
 +
-+SubmitNewComment.update : SubmitNewComment.Params -> Session -> Task Response
-+SubmitNewComment.update params session = ?answer
++SubmitNewComment.post : SubmitNewComment.Params -> Session -> Task Response
++SubmitNewComment.post params session = ?answer
 +
  test "the list shows my rows, newest first" = {
    let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
@@ -55,9 +55,9 @@ edited app/Posts/Index.alder
 +  let r <- Test.submit SubmitNewComment { body: "body-1" }
 +  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 +}
-app/Posts/Index.alder:111:42: warning[W0002]: hole ?answer has type Task Response
-  SubmitNewComment.update params session = ?answer
-                                           ^^^^^^^
+app/Posts/Index.alder:111:40: warning[W0002]: hole ?answer has type Task Response
+  SubmitNewComment.post params session = ?answer
+                                         ^^^^^^^
 app/Posts/Index.alder:187:29: warning[W0002]: hole ?expected has type Answer
     Task.succeed (r.answer == ?expected)
                               ^^^^^^^^^

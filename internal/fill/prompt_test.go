@@ -12,8 +12,8 @@ import (
 
 const fixture = "../../testdata/generate/fixture"
 
-// holeApp copies the generate fixture to a temporary directory with Home.Submit.update's last
-// line a hole `?done`, a value `stay : Task Response` with a comment above `Submit.update`, and
+// holeApp copies the generate fixture to a temporary directory with Home.Submit.post's last
+// line a hole `?done`, a value `stay : Task Response` with a comment above `Submit.post`, and
 // the extra files (path relative to the app → text). It returns the app's directory.
 func holeApp(t *testing.T, extra map[string]string) string {
 	t.Helper()
@@ -41,7 +41,7 @@ func holeApp(t *testing.T, extra map[string]string) string {
 	home := filepath.Join(dir, "app", "Home.alder")
 	b, _ := os.ReadFile(home)
 	src := strings.Replace(string(b), "  Task.succeed (Response.redirect (Home {}))\n", "  ?done\n", 1)
-	src = strings.Replace(src, "Submit.update : ", "stay : Task Response\nstay = Task.succeed Response.refresh\n\n-- What the page does when its form is posted.\n-- Submit writes the post.\nSubmit.update : ", 1)
+	src = strings.Replace(src, "Submit.post : ", "stay : Task Response\nstay = Task.succeed Response.refresh\n\n-- What the page does when its form is posted.\n-- Submit writes the post.\nSubmit.post : ", 1)
 	os.WriteFile(home, []byte(src), 0o644)
 	for rel, text := range extra {
 		p := filepath.Join(dir, filepath.FromSlash(rel))
@@ -67,10 +67,10 @@ func loadHole(t *testing.T, dir, address, hole string) (*generate.Program, gener
 
 func TestPrompt_Contents(t *testing.T) {
 	dir := holeApp(t, nil)
-	p, h := loadHole(t, dir, "Home.Submit.update", "")
+	p, h := loadHole(t, dir, "Home.Submit.post", "")
 	got := Prompt(p, h)
 	for _, want := range []string{
-		"Fill the typed hole ?done in Submit.update of module Home (app/Home.alder).\nIt must have type: Task Response\n",
+		"Fill the typed hole ?done in Submit.post of module Home (app/Home.alder).\nIt must have type: Task Response\n",
 		"The comment above the declaration:\n-- What the page does when its form is posted.\n-- Submit writes the post.\n",
 		"The module, app/Home.alder:\n```alder\nmodule Home\n",
 		"  ?done\n", // the hole as written

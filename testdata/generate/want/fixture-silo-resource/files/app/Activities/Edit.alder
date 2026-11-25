@@ -37,8 +37,8 @@ form ActivityForm = { text: Text.NonEmpty }
 
 -- Save writes the form over the row (another user's, or one deleted since, is not found) and goes
 -- to its page.
-Save.update : Save.Params -> Session -> Task Response
-Save.update params session = {
+Save.put : Save.Params -> Session -> Task Response
+Save.put params session = {
   -- @resource begin update
   let _ <- Db.updateScoped Activity params.id (\r -> { r | text: params.form.text })
   Task.succeed (Response.redirect (Activities.Show.Show { id: params.id }))

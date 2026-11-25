@@ -27,8 +27,8 @@ edited app/Home.alder
 -}
 +form Write = { title: Text.NonEmpty, body: Text }
  
- Submit.update : Submit.Params -> Session -> Task Response
- Submit.update p session = {
+ Submit.post : Submit.Params -> Session -> Task Response
+ Submit.post p session = {
 @@ -54,15 +54,47 @@
    let _ <- Test.get (Home {})
    let r <- Test.submit Submit { title: Text.NonEmpty "Hello", body: "" }

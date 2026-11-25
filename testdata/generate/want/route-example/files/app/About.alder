@@ -17,11 +17,11 @@ type Model = { count: Int }
 About.load : About.Params -> Session -> Query Model
 About.load params session = Query.succeed { count: params.count }
 
--- example: a write route has an `update` and no `load` or `view`; delete `Bump.update` whole.
+-- example: a write route has a `post` handler and no `load` or `view`; delete `Bump.post` whole.
 -- It answers with a Response: redirect to the same route with the new count (`Response.refresh`
 -- would load the page again with the old parameters), or `Response.invalid` with an error.
-Bump.update : Bump.Params -> Session -> Task Response
-Bump.update params session =
+Bump.post : Bump.Params -> Session -> Task Response
+Bump.post params session =
   Task.succeed (Response.redirect (About { count: params.count + params.by }))
 
 -- example: in `About.view`, delete the `<p id="count">` and `<al-button>` lines: they show

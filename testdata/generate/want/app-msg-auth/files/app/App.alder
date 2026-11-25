@@ -22,16 +22,16 @@ notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 
 -- Logout empties the session's user and goes to log in: a `DELETE` of the session, sent by a button
 -- (`click={App.Logout}`), a form without JavaScript.
-Logout.update : Logout.Params -> Session -> Task Response
-Logout.update params session = {
+Logout.delete : Logout.Params -> Session -> Task Response
+Logout.delete params session = {
   let _ <- Session.put (\s -> { s | user: Nothing })
   Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
 
 -- Press Ping from a page that has its button to test it: `Test.get` that page, then
--- `Test.click App.Ping`, and `r.answer` is Refreshed until `update` says otherwise.
-Ping.update : Ping.Params -> Session -> Task Response
-Ping.update params session = Task.succeed Response.refresh
+-- `Test.click App.Ping`, and `r.answer` is Refreshed until `post` says otherwise.
+Ping.post : Ping.Params -> Session -> Task Response
+Ping.post params session = Task.succeed Response.refresh
 
 -- Logging out from the login page, which a visitor may open: the answer is the redirect,
 -- not the page shown again.

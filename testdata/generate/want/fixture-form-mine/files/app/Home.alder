@@ -21,8 +21,8 @@ Home.load params session = {
 
 form Write = { title: Text.NonEmpty, body: Text }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update p session = {
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post p session = {
   let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
   Task.succeed (Response.redirect (Home {}))
 }
@@ -57,8 +57,8 @@ Home.view model session =
 
 form Quick = { title: Text.NonEmpty, body: Text }
 
-SubmitQuick.update : SubmitQuick.Params -> Session -> Task Response
-SubmitQuick.update params session = {
+SubmitQuick.post : SubmitQuick.Params -> Session -> Task Response
+SubmitQuick.post params session = {
   let _ <- Db.insertMine Post { title: params.form.title, body: params.form.body }
   Task.succeed (Response.redirect (Home {}) |> Response.success "Saved")
 }

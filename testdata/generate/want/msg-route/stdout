@@ -23,8 +23,8 @@ edited app/About.alder
 +    <al-button click={Clear}>Clear</al-button>
 +  </Layout.Page>
 +
-+Clear.update : Clear.Params -> Session -> Task Response
-+Clear.update params session = Task.succeed Response.refresh
++Clear.post : Clear.Params -> Session -> Task Response
++Clear.post params session = Task.succeed Response.refresh
 +
  test "the page is shown" = {
    let r <- Test.open (About {})

@@ -7,8 +7,8 @@ edited app/App.alder
  route Logout = DELETE "/session" { }
 +route Ping   = POST   "/ping"    { }
  
- Logout.update : Logout.Params -> Session -> Task Response
- Logout.update p session = {
+ Logout.delete : Logout.Params -> Session -> Task Response
+ Logout.delete p session = {
 @@ -25,11 +26,13 @@
    </Layout.Page>
  
@@ -20,10 +20,10 @@ edited app/App.alder
 +notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
  
 +-- Press Ping from a page that has its button to test it: `Test.get` that page, then
-+-- `Test.click App.Ping`, and `r.answer` is Refreshed until `update` says otherwise.
-+Ping.update : Ping.Params -> Session -> Task Response
-+Ping.update params session = Task.succeed Response.refresh
++-- `Test.click App.Ping`, and `r.answer` is Refreshed until `post` says otherwise.
++Ping.post : Ping.Params -> Session -> Task Response
++Ping.post params session = Task.succeed Response.refresh
 +
  -- From a page that `requires user` a refresh ends at the login page too; only a test of
- -- `Logout.update` itself tells a redirect from a refresh.
+ -- `Logout.delete` itself tells a redirect from a refresh.
  test "Logout goes to log in" = {

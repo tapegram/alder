@@ -50,8 +50,8 @@ form ArticleForm = { title: Text.NonEmpty, category: Category.CategoryId }
 -- @resource end
 
 -- Create adds the row and goes to its page.
-Create.update : Create.Params -> Session -> Task Response
-Create.update params session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post params session = {
   -- @resource begin insert
   let id <- Db.insertMine Article { title: params.form.title, category: params.form.category }
   Task.succeed (Response.redirect (Articles.Show.Show { id: id }))

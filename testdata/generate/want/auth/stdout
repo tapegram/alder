@@ -31,8 +31,8 @@ edited migrations/schema.json
 +
 +-- Logout empties the session's user and goes to log in: a `DELETE` of the session, sent by a button
 +-- (`click={App.Logout}`), a form without JavaScript.
-+Logout.update : Logout.Params -> Session -> Task Response
-+Logout.update params session = {
++Logout.delete : Logout.Params -> Session -> Task Response
++Logout.delete params session = {
 +  let _ <- Session.put (\s -> { s | user: Nothing })
 +  Task.succeed (Response.redirect (Auth.Login.Login {}))
 +}

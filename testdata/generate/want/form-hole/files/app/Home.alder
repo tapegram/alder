@@ -45,16 +45,16 @@ Home.view model session =
 
 form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update params session = {
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post params session = {
   let _ <- Db.insert Entry { name: params.form.name, message: params.form.message }
   Task.succeed (Response.redirect (Home {}) |> Response.success "Signed")
 }
 
 form Contact = { email: Text.Email, topic: Text }
 
-SubmitContact.update : SubmitContact.Params -> Session -> Task Response
-SubmitContact.update params session = ?answer
+SubmitContact.post : SubmitContact.Params -> Session -> Task Response
+SubmitContact.post params session = ?answer
 
 test "signing adds an entry" = {
   let _ <- Test.get (Home {})

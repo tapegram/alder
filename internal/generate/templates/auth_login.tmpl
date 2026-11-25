@@ -38,8 +38,8 @@ form Credentials = {
 -- SignIn checks the password (Password.verify): a match puts the user in the session and goes
 -- on, anything else refuses the form with one message for both cases, so the form does not
 -- say which emails have an account.
-SignIn.update : SignIn.Params -> Session -> Task Response
-SignIn.update params session = {
+SignIn.post : SignIn.Params -> Session -> Task Response
+SignIn.post params session = {
   let found <- Password.verify { email: params.form.email, password: params.form.password }
   match found {
 [[- if .Role]]

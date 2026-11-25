@@ -21,8 +21,8 @@ Home.load params session = {
 
 form Write = { title: Text.NonEmpty, body: Text }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update p session = {
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post p session = {
   let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
   Task.succeed (Response.redirect (Home {}))
 }
@@ -51,8 +51,8 @@ Home.view model session =
     <al-button click={Feature { id: ?featureId }}>Feature</al-button>
   </Layout.Page>
 
-Feature.update : Feature.Params -> Session -> Task Response
-Feature.update params session = Task.succeed Response.refresh
+Feature.patch : Feature.Params -> Session -> Task Response
+Feature.patch params session = Task.succeed Response.refresh
 
 test "writing a post lists it, a draft" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }

@@ -26,8 +26,8 @@ edited app/Home.alder
    Task.succeed (Response.redirect (Home {}) |> Response.success "Signed")
  }
  
-+Clear.update : Clear.Params -> Session -> Task Response
-+Clear.update params session = Task.succeed Response.refresh
++Clear.delete : Clear.Params -> Session -> Task Response
++Clear.delete params session = Task.succeed Response.refresh
 +
  test "signing adds an entry" = {
    let _ <- Test.get (Home {})

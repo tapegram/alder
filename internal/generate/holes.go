@@ -14,8 +14,8 @@ import (
 // type it must have.
 type Hole struct {
 	Module string `json:"module"`
-	// Decl is the declaration holding it: a value's name ("update", "view"; a route's member by
-	// its full name, "Clear.update"), a test's name in quotes (`"signing adds an entry"`), or a fake's name ("Weather", whose entry is Arm).
+	// Decl is the declaration holding it: a value's name ("view"; a route's member by
+	// its full name, "Clear.post"), a test's name in quotes (`"signing adds an entry"`), or a fake's name ("Weather", whose entry is Arm).
 	Decl string `json:"decl"`
 	// Arm is the message of the `update` arm holding it ("Archive"), or the entry of the fake;
 	// "" otherwise.
@@ -92,7 +92,7 @@ func declAt(m *syntax.Module, pos diag.Pos) (decl, arm string) {
 		}
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
-			if d.Route != "" { // a route's member, by its full name (`Clear.update`, #160)
+			if d.Route != "" { // a route's member, by its full name (`Clear.post`, #160)
 				return d.FullName(), ""
 			}
 			if mt, ok := d.Body.(*syntax.Match); ok {

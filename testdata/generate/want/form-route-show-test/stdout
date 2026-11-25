@@ -29,8 +29,8 @@ edited app/Posts/Show.alder
  
 +form Reply = { name: Text.NonEmpty, post: Post.PostId }
 +
-+SendReply.update : SendReply.Params -> Session -> Task Response
-+SendReply.update params session = {
++SendReply.post : SendReply.Params -> Session -> Task Response
++SendReply.post params session = {
 +  let _ <- Db.insert Tag { name: params.form.name, post: params.form.post }
 +  Task.succeed (Response.redirect (Show { id: params.id }) |> Response.success "Saved")
 +}

@@ -29,8 +29,8 @@ edited app/Home.alder
 -}
 +form Write = { title: Text.NonEmpty, body: Text }
  
- Submit.update : Submit.Params -> Session -> Task Response
- Submit.update p session = {
+ Submit.post : Submit.Params -> Session -> Task Response
+ Submit.post p session = {
 @@ -46,23 +47,60 @@
      </al-card>
  
@@ -39,8 +39,8 @@ edited app/Home.alder
 +    <al-button click={Feature { id: ?featureId }}>Feature</al-button>
    </Layout.Page>
  
-+Feature.update : Feature.Params -> Session -> Task Response
-+Feature.update params session = Task.succeed Response.refresh
++Feature.patch : Feature.Params -> Session -> Task Response
++Feature.patch params session = Task.succeed Response.refresh
 +
  test "writing a post lists it, a draft" = {
    let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }

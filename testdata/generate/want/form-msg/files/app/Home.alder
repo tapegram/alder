@@ -45,16 +45,16 @@ Home.view model session =
 
 form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update params session = {
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post params session = {
   let _ <- Db.insert Entry { name: params.form.name, message: params.form.message }
   Task.succeed (Response.redirect (Home {}) |> Response.success "Signed")
 }
 
 form Quick = { name: Text.NonEmpty, message: Text.NonEmpty }
 
-Sign2.update : Sign2.Params -> Session -> Task Response
-Sign2.update params session = {
+Sign2.post : Sign2.Params -> Session -> Task Response
+Sign2.post params session = {
   let _ <- Db.insert Entry { name: params.form.name, message: params.form.message }
   Task.succeed (Response.redirect (Home {}) |> Response.success "Saved")
 }

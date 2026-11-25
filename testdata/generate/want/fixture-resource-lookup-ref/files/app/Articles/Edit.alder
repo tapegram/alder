@@ -67,8 +67,8 @@ form ArticleForm = { title: Text.NonEmpty, category: Category.CategoryId }
 
 -- Save writes the form over the row (another user's, or one deleted since, is not found) and goes
 -- to its page.
-Save.update : Save.Params -> Session -> Task Response
-Save.update params session = {
+Save.put : Save.Params -> Session -> Task Response
+Save.put params session = {
   -- @resource begin update
   let _ <- Db.updateMine Article params.id (\r -> { r |
     title: params.form.title,
@@ -326,7 +326,7 @@ test "Save itself does not change another user's row" = {
   let category2 <- Db.insert Category { name: Text.NonEmpty "name-2" }
   let before <- Db.get Article article1
   let r <-
-    Test.run (Save.update {
+    Test.run (Save.put {
       id: article1,
       form: { title: Text.NonEmpty "title-2", category: category2 },
     } { user: me, role: Reader })

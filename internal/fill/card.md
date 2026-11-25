@@ -76,13 +76,13 @@ imports, and the standard library signatures the request includes. Nothing else 
 
 - Every declaration of a route is qualified by its name. A GET route has
   `Index.load : Index.Params -> Session -> Query m` and `Index.view : m -> Session -> Html`; a
-  write route has `Create.update : Create.Params -> Session -> Task Response`. `params.id` is a
+  write route has one handler named after its method: `Create.post : Create.Params -> Session -> Task Response` (`put`, `patch`, `delete` likewise). `params.id` is a
   parameter, `params.form.title` a field of the route's form. There is no `Msg` and no `model`
-  in `update`: it reads again what it needs.
+  in a handler: it reads again what it needs.
 - A route is a value with its parameters: `Index { filter: All }`, from another module
   `Todos.Index {}`. `href={Index {}}` links to a GET route; `click={Toggle { id: t.id }}` and
   `<form submit={Create}>` send a write route.
-- `update` answers with a `Response`, built by:
+- A handler answers with a `Response`, built by:
   - `Response.redirect (Index {})`: go there (303);
   - `Response.render (Row { id: params.id })`: that GET route's view, for something already on the page;
   - `Response.refresh`: the page the browser is on, again, for things that appear or disappear;

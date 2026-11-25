@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"alder/internal/check"
 	"alder/internal/types"
 )
 
@@ -133,10 +134,11 @@ func (g *crudGen) load(r, body string) string {
 	return r + ".load : " + r + ".Params -> Session -> Query Model\n" + r + ".load params session = {\n" + g.gated(body) + "\n}\n\n"
 }
 
-// update is write route r's `update`, with body its statements (indented two spaces), after the
-// access's gate, as load.
-func (g *crudGen) update(r, body string) string {
-	return r + ".update : " + r + ".Params -> Session -> Task Response\n" + r + ".update params session = {\n" + g.gated(body) + "\n}\n\n"
+// update is write route r's handler (named after its method, #308), with body its statements
+// (indented two spaces), after the access's gate, as load.
+func (g *crudGen) update(r, method, body string) string {
+	h := r + "." + check.HandlerName(method)
+	return h + " : " + r + ".Params -> Session -> Task Response\n" + h + " params session = {\n" + g.gated(body) + "\n}\n\n"
 }
 
 // gated is body (statements indented two spaces) after the access's gate, when it has one: the
@@ -1576,7 +1578,7 @@ func (g *crudGen) othersSave(at *crudTable, mod string, imports *importSet, who 
 		values = append(values, c.Name+": "+g.changedValue(tb, at, c, k+1))
 	}
 	tb.let("let before <- Db.get %s %s", t.Name, target)
-	call := fmt.Sprintf("Save.update { id: %s, form: { %s } }", target, strings.Join(values, ", "))
+	call := fmt.Sprintf("Save.put { id: %s, form: { %s } }", target, strings.Join(values, ", "))
 	if at.host != nil {
 		call = at.host.run(tb, target, strings.Join(values, ", "))
 	}
@@ -1821,7 +1823,7 @@ func (g *crudGen) newPage(at *crudTable) {
 	// clears an older admin's search routes' forms and updates
 	b.WriteString(g.regionAt("", "search", nil) + "\n\n")
 	b.WriteString("-- Create adds the row and goes to its page.\n")
-	b.WriteString(g.update("Create", g.regionAt("  ", "insert", wrapAll(insert))))
+	b.WriteString(g.update("Create", "POST", g.regionAt("  ", "insert", wrapAll(insert))))
 	b.WriteString(viewHead("New"))
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n%s\n      <form submit={%s}>\n%s\n", open, UpperFirst(title), g.regionAt("      ", "finder", finder), at.own("Create", false), g.regionAt("        ", "inputs", inputs))
 	b.WriteString("        <al-alert variant=\"destructive\"><Errors form /></al-alert>\n        <al-button type=\"submit\">Create</al-button>\n      </form>\n    </al-card>\n")
@@ -2231,7 +2233,7 @@ func (g *crudGen) edit(at *crudTable) {
 	if !direct {
 		saved = g.a.found(g.a.writeGet, t, "params.id", nil, saved, "Task.notFound")
 	}
-	b.WriteString(g.update("Save", indent(strings.Join(saved, "\n"), "  ")))
+	b.WriteString(g.update("Save", "PUT", indent(strings.Join(saved, "\n"), "  ")))
 	b.WriteString(viewHead("Edit"))
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n%s\n      <form submit={Save { id: model.row.%s }}>\n%s\n", open, UpperFirst(title), g.regionAt("      ", "finder", finder), t.IDField, g.regionAt("        ", "inputs", inputs))
 	b.WriteString("        <al-alert variant=\"destructive\"><Errors form /></al-alert>\n        <al-button type=\"submit\">Save</al-button>\n      </form>\n    </al-card>\n")
@@ -2524,7 +2526,7 @@ func (g *crudGen) delete(at *crudTable) {
 -- counted them): the database would refuse the delete with an error, and the page says why
 -- instead. The Show page's dialog posts it too.
 `)
-	b.WriteString(g.update("Destroy", "  let model <- counted params.id\n"+g.regionAt("  ", "remove", wrapAll(pl.remove))))
+	b.WriteString(g.update("Destroy", "DELETE", "  let model <- counted params.id\n"+g.regionAt("  ", "remove", wrapAll(pl.remove))))
 	b.WriteString(viewHead("Delete"))
 	fmt.Fprintf(&b, "  %s\n    <h1>Delete this %s?</h1>\n\n    <al-card>\n%s\n      <dl>\n%s\n      </dl>\n", open, at.noun, g.regionAt("      ", "row", []string{labelRow}), g.regionAt("        ", "counts", pl.counts))
 	fmt.Fprintf(&b, `      <form id="delete" submit={Destroy { id: model.row.%s }}>

@@ -44,16 +44,16 @@ Home.view model session =
 
 form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update params session = {
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post params session = {
   let _ <- Db.insert Entry { name: params.form.name, message: params.form.message }
   Task.succeed (Response.redirect (Home {}) |> Response.success "Signed")
 }
 
-Clear.update : Clear.Params -> Session -> Task Response
-Clear.update params session = Task.succeed Response.refresh
+Clear.delete : Clear.Params -> Session -> Task Response
+Clear.delete params session = Task.succeed Response.refresh
 
--- Clear.update reads the posted fields as params.form (params.form : Reason, such as params.form.why)
+-- Clear.delete reads the posted fields as params.form (params.form : Reason, such as params.form.why)
 form Reason = { why: Text.NonEmpty }
 
 test "signing adds an entry" = {

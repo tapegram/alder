@@ -20,8 +20,8 @@ form Write = {
   body: Text,
 }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update p session = {
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post p session = {
   let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
   Task.succeed (Response.redirect (Home {}))
 }

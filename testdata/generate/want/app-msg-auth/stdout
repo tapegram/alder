@@ -14,9 +14,9 @@ edited app/App.alder
  }
  
 +-- Press Ping from a page that has its button to test it: `Test.get` that page, then
-+-- `Test.click App.Ping`, and `r.answer` is Refreshed until `update` says otherwise.
-+Ping.update : Ping.Params -> Session -> Task Response
-+Ping.update params session = Task.succeed Response.refresh
++-- `Test.click App.Ping`, and `r.answer` is Refreshed until `post` says otherwise.
++Ping.post : Ping.Params -> Session -> Task Response
++Ping.post params session = Task.succeed Response.refresh
 +
  -- Logging out from the login page, which a visitor may open: the answer is the redirect,
  -- not the page shown again.

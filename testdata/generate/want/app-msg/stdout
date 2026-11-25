@@ -16,6 +16,6 @@ edited app/App.alder
  notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 +
 +-- Press ToggleTheme from a page that has its button to test it: `Test.get` that page, then
-+-- `Test.click (App.ToggleTheme { … })`, and `r.answer` is Refreshed until `update` says otherwise.
-+ToggleTheme.update : ToggleTheme.Params -> Session -> Task Response
-+ToggleTheme.update params session = Task.succeed Response.refresh
++-- `Test.click (App.ToggleTheme { … })`, and `r.answer` is Refreshed until `put` says otherwise.
++ToggleTheme.put : ToggleTheme.Params -> Session -> Task Response
++ToggleTheme.put params session = Task.succeed Response.refresh

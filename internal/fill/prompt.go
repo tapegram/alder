@@ -312,7 +312,7 @@ func stdFiles(p *generate.Program, m *generate.Module, h generate.Hole) string {
 	if strings.HasPrefix(h.Decl, `"`) {
 		want["Test"] = true
 	}
-	if responseType.MatchString(h.Type) { // a route's `update` answers with Response's builders
+	if responseType.MatchString(h.Type) { // a route's handler answers with Response's builders
 		want["Response"] = true
 	}
 	for _, src := range []string{h.Type, m.Source} {

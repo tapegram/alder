@@ -28,7 +28,7 @@ func guardText(r *Route) string {
 // newRouteMsg is `alder new action` on a route module (plan call 13, aliased as `new route
 // --method POST` from the page's side): a write route `M = <METHOD> "<path>" { <page path
 // parameters>, <fields> }`, the method POST unless --method says otherwise and the path the
-// page's own unless --path says otherwise (the method tells the router which one is meant), with the page's guard, its `M.update` answering `Response.refresh`,
+// page's own unless --path says otherwise (the method tells the router which one is meant), with the page's guard, its `M.<method>` answering `Response.refresh`,
 // a button sending it at the end of the page's view (--in-for, --when and --id place it as for a
 // page), and a test that presses it from the page. The fields' values in the button and the
 // test are holes, as a page's are, except a table's id: the row the page shows.
@@ -118,7 +118,8 @@ func newRouteMsg(p *Program, page, name string, fields []FieldSpec, o ActionOpti
 	if len(params) == 0 {
 		line = fmt.Sprintf("route %s = %s \"%s\" { }%s", name, method, path, guardText(r))
 	}
-	update := fmt.Sprintf("%s.update : %s.Params -> Session -> Task Response\n%s.update params session = Task.succeed Response.refresh", name, name, name)
+	h := check.HandlerName(method)
+	update := fmt.Sprintf("%s.%s : %s.Params -> Session -> Task Response\n%s.%s params session = Task.succeed Response.refresh", name, h, name, name, h)
 
 	// the button: the path parameters' values are holes (the page's `params` are not in scope in
 	// its `view`), the fields' as a page's message has them

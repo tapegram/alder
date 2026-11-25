@@ -32,8 +32,8 @@ edited app/Home.alder
  
 +form Contact = { email: Text.Email, topic: Text }
 +
-+SubmitContact.update : SubmitContact.Params -> Session -> Task Response
-+SubmitContact.update params session = ?answer
++SubmitContact.post : SubmitContact.Params -> Session -> Task Response
++SubmitContact.post params session = ?answer
 +
  test "signing adds an entry" = {
    let _ <- Test.get (Home {})
@@ -57,9 +57,9 @@ edited app/Home.alder
 +  ]
 +  Task.succeed (r.answer == FormRejected [{ field: "email", message: "must be an email address" }])
 +}
-app/Home.alder:57:39: warning[W0002]: hole ?answer has type Task Response
-  SubmitContact.update params session = ?answer
-                                        ^^^^^^^
+app/Home.alder:57:37: warning[W0002]: hole ?answer has type Task Response
+  SubmitContact.post params session = ?answer
+                                      ^^^^^^^
 app/Home.alder:87:29: warning[W0002]: hole ?expected has type Answer
     Task.succeed (r.answer == ?expected)
                               ^^^^^^^^^

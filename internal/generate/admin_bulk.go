@@ -95,7 +95,7 @@ func (g *crudGen) bulk(at *crudTable) {
 		routes = append(routes, routeLine(name, method, where, params, form, at.siloed(adminRequires)))
 		upd := append([]string{"let model <- selected params.ids", "if tooMany model then", "  Task.succeed (Response.invalid (" + bulkTooMany + "))", "else {"}, indentAll(body, "  ")...)
 		upd = append(upd, "  Task.succeed (Response.refresh |> Response.success ("+quote(verb+" ")+" ++ "+ok+"))", "}")
-		forms = append(forms, strings.Split(strings.TrimSuffix(g.update(name, strings.Join(indentAll(upd, "  "), "\n")), "\n"), "\n")...)
+		forms = append(forms, strings.Split(strings.TrimSuffix(g.update(name, method, strings.Join(indentAll(upd, "  "), "\n")), "\n"), "\n")...)
 	}
 	if at.bulkDel {
 		forms = append(forms, "-- BulkDelete takes no input: the form is the button, and the place a refusal is shown.", "form Confirm = { }", "")

@@ -11,7 +11,7 @@ import (
 // newAppRouteMsg is `alder new action App <Name> [fields]` on an App written with routes (plan call
 // 13): `route <Name> = <METHOD> "<path>" { fields }` (POST unless method says otherwise; the path
 // is --path, which App needs, as it has no GET route to take one from) after App's last route (else after its
-// `login`, else after its `session`), and `<Name>.update` answering `Response.refresh`, with a
+// `login`, else after its `session`), and `<Name>.<method>` answering `Response.refresh`, with a
 // comment saying how to test it. It writes no test: a route of App is sent by a button on any
 // page (`click={App.<Name>}`), so no page's view is touched, and which page has the button is the
 // author's to say.
@@ -76,8 +76,9 @@ func newAppRouteMsg(p *Program, name string, fields []FieldSpec, path, method st
 	if len(fields) > 0 {
 		press = "Test.click (App." + name + " { … })"
 	}
-	comment := fmt.Sprintf("-- Press %s from a page that has its button to test it: `Test.get` that page, then\n-- `%s`, and `r.answer` is Refreshed until `update` says otherwise.\n", name, press)
-	update := comment + fmt.Sprintf("%s.update : %s.Params -> Session -> Task Response\n%s.update params session = Task.succeed Response.refresh", name, name, name)
+	h := check.HandlerName(method)
+	comment := fmt.Sprintf("-- Press %s from a page that has its button to test it: `Test.get` that page, then\n-- `%s`, and `r.answer` is Refreshed until `%s` says otherwise.\n", name, press, h)
+	update := comment + fmt.Sprintf("%s.%s : %s.Params -> Session -> Task Response\n%s.%s params session = Task.succeed Response.refresh", name, h, name, name, h)
 	if after != nil {
 		e.insertBefore(after.GetSpan().End.Line+1, line+"\n")
 	} else {

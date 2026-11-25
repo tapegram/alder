@@ -26,7 +26,7 @@ func TestEffects_SCC(t *testing.T) {
 		{"a then b", "{\n  let _ <- Scc.a 1\n  let _ <- Scc.b 2\n  Task.succeed Response.refresh\n}", 2},
 	} {
 		dir := sccApp(t)
-		r, err := Run(context.Background(), &script{answers: []string{c.expr}}, dir, "Home.Submit.update", "", nil)
+		r, err := Run(context.Background(), &script{answers: []string{c.expr}}, dir, "Home.Submit.post", "", nil)
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}

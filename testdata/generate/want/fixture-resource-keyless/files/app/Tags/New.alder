@@ -49,8 +49,8 @@ form TagForm = { name: Text.NonEmpty, post: Post.PostId }
 -- @resource end
 
 -- Create adds the row and goes to its page.
-Create.update : Create.Params -> Session -> Task Response
-Create.update params session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post params session = {
   -- @resource begin insert
   let nameTaken <-
     Db.from Tag

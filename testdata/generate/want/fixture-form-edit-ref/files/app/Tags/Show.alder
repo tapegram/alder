@@ -94,8 +94,8 @@ form TagEdit = { name: Text.NonEmpty, post: Post.PostId }
 
 -- SaveTagEdit writes the form over the row and goes back to the page;
 -- a row deleted since is not found.
-SaveTagEdit.update : SaveTagEdit.Params -> Session -> Task Response
-SaveTagEdit.update params session = {
+SaveTagEdit.put : SaveTagEdit.Params -> Session -> Task Response
+SaveTagEdit.put params session = {
   let found <- Db.get Tag params.id
   match found {
     Just row -> {

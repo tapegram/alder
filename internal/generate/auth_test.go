@@ -40,8 +40,8 @@ session { theme: Theme.Theme = Light }
 route Toggle = POST "/theme" { }
 
 -- Toggle switches the theme.
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update params session = {
+Toggle.post : Toggle.Params -> Session -> Task Response
+Toggle.post params session = {
   let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
   Task.succeed Response.refresh
 }
@@ -106,13 +106,13 @@ route Logout = DELETE "/session" { }
 route Toggle = POST "/theme" { }
 
 -- Toggle switches the theme.
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update params session = {
+Toggle.post : Toggle.Params -> Session -> Task Response
+Toggle.post params session = {
   let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
   Task.succeed Response.refresh
 }
 `
-	logout := "\n-- Logout empties the session's user and goes to log in: a `DELETE` of the session, sent by a button\n-- (`click={App.Logout}`), a form without JavaScript.\nLogout.update : Logout.Params -> Session -> Task Response\nLogout.update params session = {\n  let _ <- Session.put (\\s -> { s | user: Nothing })\n  Task.succeed (Response.redirect (Auth.Login.Login {}))\n}\n"
+	logout := "\n-- Logout empties the session's user and goes to log in: a `DELETE` of the session, sent by a button\n-- (`click={App.Logout}`), a form without JavaScript.\nLogout.delete : Logout.Params -> Session -> Task Response\nLogout.delete params session = {\n  let _ <- Session.put (\\s -> { s | user: Nothing })\n  Task.succeed (Response.redirect (Auth.Login.Login {}))\n}\n"
 	if !strings.HasPrefix(app, want) || !strings.Contains(app, "\nnotFound : Html\n") || !strings.Contains(app, logout) ||
 		!strings.Contains(app, "test \"Logout clears the user and goes to log in\"") || !strings.Contains(app, "let r <- Test.click Logout\n") {
 		t.Errorf("App:\n%s\nwant it to start:\n%s\nand have:\n%s", app, want, logout)

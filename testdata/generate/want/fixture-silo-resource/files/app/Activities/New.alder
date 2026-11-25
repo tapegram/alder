@@ -34,8 +34,8 @@ form ActivityForm = { text: Text.NonEmpty }
 -- @resource end
 
 -- Create adds the row and goes to its page.
-Create.update : Create.Params -> Session -> Task Response
-Create.update params session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post params session = {
   -- @resource begin insert
   let id <- Db.insertScoped Activity { text: params.form.text }
   Task.succeed (Response.redirect (Activities.Show.Show { id: id }))

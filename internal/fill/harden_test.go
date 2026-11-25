@@ -100,7 +100,7 @@ func TestSystem_Reference(t *testing.T) {
 // of standard input.
 func TestRun_RetryTextNamesTheAnswer(t *testing.T) {
 	s := &script{answers: []string{"Task.succeed Response.refresh,\n}", "Task.succeed Response.refresh"}}
-	if _, err := Run(context.Background(), s, holeApp(t, nil), "Home.Submit.update", "", nil); err != nil {
+	if _, err := Run(context.Background(), s, holeApp(t, nil), "Home.Submit.post", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if retry := s.seen[1][2].Content; strings.Contains(retry, "standard input") || !strings.Contains(retry, "your answer") {
