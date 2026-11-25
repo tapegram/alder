@@ -13,14 +13,17 @@ import (
 	"alder/internal/types"
 )
 
-// htmlTags and boolAttrs are derived from the markup manifest. boolAttrs are the HTML standard's
-// boolean attributes: written bare or `={Bool}`, rendered present or absent.
+// htmlTags, svgTags and boolAttrs are derived from the markup manifest. svgTags are the SVG
+// elements, which take only the manifest's attributes (svgAttr). boolAttrs are the HTML
+// standard's boolean attributes: written bare or `={Bool}`, rendered present or absent.
 var htmlTags = map[string]bool{}
+var svgTags = map[string]bool{}
 var boolAttrs = map[string]bool{}
 
 func init() {
 	for _, t := range markup.HTML.Tags {
 		htmlTags[t.Name] = true
+		svgTags[t.Name] = t.SVG
 		for _, a := range t.Attrs {
 			if a.Boolean {
 				boolAttrs[a.Name] = true
@@ -264,6 +267,13 @@ func (mc *modCtx) attribute(x *syntax.Element, a *syntax.HtmlAttr, m types.Type,
 		c.errorf(diag.ParseError, a.Span, "`%s` is not Alder; use `click={Route}`", a.Name)
 		return
 	}
+	if svgTags[x.Tag] && !svgAttr(x.Tag, a.Name) {
+		c.errorf(diag.UnknownName, a.Span, "`<%s>` takes no attribute `%s`", x.Tag, a.Name)
+		if a.Value != nil {
+			mc.infer(a.Value, env, eff)
+		}
+		return
+	}
 	if a.Value == nil {
 		if !boolAttrs[a.Name] && a.Name != "popover" { // a bare `popover` is `popover="auto"`
 			c.errorf(diag.TypeMismatch, a.Span, "attribute `%s` needs a value", a.Name)
@@ -328,6 +338,13 @@ func (mc *modCtx) attribute(x *syntax.Element, a *syntax.HtmlAttr, m types.Type,
 	default:
 		mc.textAttr(a, env, eff)
 	}
+}
+
+// svgAttr reports whether SVG element tag takes attribute name: one of its own or a global one in
+// the markup manifest, or a `data-*` or `aria-*` one. Alder's route attributes (`click`, `load`,
+// …) are not among them.
+func svgAttr(tag, name string) bool {
+	return markup.HTML.Attr(tag, name) != nil || strings.HasPrefix(name, "data-") || strings.HasPrefix(name, "aria-")
 }
 
 // triggerNames are the route trigger attributes an element takes one of (#160).

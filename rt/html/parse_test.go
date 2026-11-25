@@ -54,6 +54,8 @@ func goldenNodes() map[string]Node {
 		"page":     page,
 		"form":     El("main", nil, form),
 		"state":    El("main", nil, form), // rendered with state below
+		"svg": El("svg", []Attr{A("viewBox", "0 0 10 10"), A("preserveAspectRatio", "none"), A("role", "img")},
+			El("title", nil, Text("t")), El("polyline", []Attr{A("points", "0,0 5,5"), A("stroke-width", "2")})),
 	}
 }
 
@@ -194,5 +196,25 @@ func TestReplaceAndAppend(t *testing.T) {
 	}
 	if _, ok := ReplaceElement(got, "main", body); ok {
 		t.Fatal("replaced a missing element")
+	}
+}
+
+// SVG (#306): the camel-case attribute names an SVG view writes keep their case when parsed (as a
+// browser's parser keeps them in foreign content), so a page with a chart round-trips, and a
+// selector reaches its shapes.
+func TestParse_SVG(t *testing.T) {
+	in := `<svg viewbox="0 0 1 1" PreserveAspectRatio="none"><polyline points="0,0 1,1"></polyline></svg>`
+	n, err := Parse(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := Render(n), `<svg viewBox="0 0 1 1" preserveAspectRatio="none"><polyline points="0,0 1,1"></polyline></svg>`; got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+	if got := len(Select(n, MustParseSelector("svg polyline"))); got != 1 {
+		t.Fatalf("svg polyline: %d", got)
+	}
+	if got := len(Select(n, MustParseSelector("[viewBox]"))); got != 1 {
+		t.Fatalf("[viewBox]: %d", got)
 	}
 }

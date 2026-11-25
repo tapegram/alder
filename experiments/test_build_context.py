@@ -390,7 +390,9 @@ class BuildContextTests(unittest.TestCase):
         # #168 PR 3 (schedules): `Test.work`'s paragraph on schedule ticks measured 73.54k, so 73.6k.
         # #168 PR 7: the `Job` module in chapter 9 and "Jobs: `Test.jobs` and `Test.work`" in chapter 10
         # measured 74.26k, so 74.3k.
-        self.assertLessEqual(len(out) // 4, 74300, "the reference is at most 74.3k tokens (len/4)")
+        # #306: chapter 5's "SVG" (the elements, their attributes, what an SVG element refuses; "How SVG
+        # renders" is dropped) measured 74.81k, so 74.9k.
+        self.assertLessEqual(len(out) // 4, 74900, "the reference is at most 74.9k tokens (len/4)")
         # M17 (file pages) raised from 48000; see the M17 plan
         # M15: the partition rules, `via`, `silo`, the one-store rule and the commands are in; the
         # silo files, the open-time check and moving a table into a silo (the inside) are not

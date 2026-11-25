@@ -26,6 +26,9 @@ func TestParse_EveryForm(t *testing.T) {
 		{"[DATA-X=Y]", []Step{{Comb: Descendant, Attrs: []Attr{{Name: "data-x", Value: "Y", HasValue: true}}}}},
 		{"[Id=m]", []Step{{Comb: Descendant, Attrs: []Attr{{Name: "id", Value: "m", HasValue: true}}}}},
 		{"my-widget", []Step{{Comb: Descendant, Tag: "my-widget"}}},
+		{"svg text tspan", []Step{{Comb: Descendant, Tag: "svg"}, {Comb: Descendant, Tag: "text"}, {Comb: Descendant, Tag: "tspan"}}},
+		{"svg > ellipse", []Step{{Comb: Descendant, Tag: "svg"}, {Comb: Child, Tag: "ellipse"}}},
+		{"svg desc", []Step{{Comb: Descendant, Tag: "svg"}, {Comb: Descendant, Tag: "desc"}}},
 	} {
 		got, err := Parse(tc.in)
 		if err != nil {

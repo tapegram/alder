@@ -15,7 +15,8 @@ import (
 // <script>/<style>, comments and a doctype as Raw. Render(Parse(Render(x))) is Render(x).
 //
 // It is lenient where the renderer's output never needs it, so markup a user wrote with
-// Html.unsafe still parses: tag and attribute names are lower-cased, single-quoted and unquoted
+// Html.unsafe still parses: tag and attribute names are lower-cased (SVG's `viewBox` and
+// `preserveAspectRatio` keep their case, svgCase), single-quoted and unquoted
 // attribute values are read, `<br>` without the slash is void, an end tag closes the open element
 // of its name (and those inside it), an end tag matching no open element is dropped, and the
 // elements still open at the end are closed. It fails only on a `<` that starts a tag it cannot
@@ -139,6 +140,19 @@ func (p *parser) errorf(format string, args ...any) error {
 	return fmt.Errorf("html: line %d: %s", line, fmt.Sprintf(format, args...))
 }
 
+// svgCase is lower-cased attribute name with its case back when it is one of the camel-case SVG
+// names a view writes (#306), as a browser's parser does inside <svg>, so Render(Parse(x)) is
+// Render(x) for a page with a chart. A switch, not a map: no init work in a production binary.
+func svgCase(name string) string {
+	switch name {
+	case "viewbox":
+		return "viewBox"
+	case "preserveaspectratio":
+		return "preserveAspectRatio"
+	}
+	return name
+}
+
 // startTag reads `<name attr="v" …>` or `… />` at p.pos.
 func (p *parser) startTag() (Node, bool, error) {
 	start := p.pos
@@ -167,7 +181,7 @@ func (p *parser) startTag() (Node, bool, error) {
 				p.pos = start
 				return Node{}, false, p.errorf("cannot read the attributes of <%s", el.tag)
 			}
-			name := strings.ToLower(p.in[p.pos : p.pos+k])
+			name := svgCase(strings.ToLower(p.in[p.pos : p.pos+k]))
 			p.pos += k
 			p.skipSpace()
 			if p.pos >= len(p.in) || p.in[p.pos] != '=' {
@@ -443,13 +457,13 @@ func TextContent(n Node) string {
 }
 
 // AttrOf is the value of n's attribute name ("" for a bare one such as `checked`) and whether n
-// is an element that has it.
+// is an element that has it. Names match in any case, as in HTML (`viewbox` finds `viewBox`).
 func AttrOf(n Node, name string) (string, bool) {
 	if n.kind != kElem {
 		return "", false
 	}
 	for _, a := range n.attrs {
-		if a.Name == name && !a.Omit {
+		if strings.EqualFold(a.Name, name) && !a.Omit {
 			if a.Bool {
 				return "", true
 			}

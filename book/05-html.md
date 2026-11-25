@@ -18,8 +18,9 @@ a shared component). It takes no type argument: `Html Msg`, `Html a` and
 ```
 
 Elements are written as in HTML. Every element is closed: `<li>...</li>` or
-`<br />`. Tag names are the standard HTML5 set; an unknown tag is a compile
-error. A tag with a hyphen is a custom element (below).
+`<br />`. Tag names are the standard HTML5 set and a set of SVG elements
+(below, "SVG"); an unknown tag is a compile error. A tag with a hyphen is a
+custom element (below).
 
 ## Expressions in HTML
 
@@ -246,6 +247,72 @@ Data reaches a script through an escaped `data-*` attribute
 
 A body may not contain `</script` or `</style` in any case (split it:
 `"<\/script>"`), nor be wholly one `{ … }` that is not JSON (E0001).
+
+## SVG
+
+A view can draw with SVG, rendered on the server with the rest of the page:
+a chart, an icon, a diagram. No script is involved, and an app test reads
+the shapes like any other markup.
+
+```alder eval=<svg viewBox="0 0 10 10" role="img"><title>t</title><polyline points="0,0 5,5" fill="none" stroke="currentColor" stroke-width="2"></polyline><line x1="0" y1="0" x2="10" y2="0"></line></svg>
+<svg viewBox="0 0 10 10" role="img">
+  <title>t</title>
+  <polyline points="0,0 5,5" fill="none" stroke="currentColor" stroke-width="2" />
+  <line x1="0" y1="0" x2="10" y2="0" />
+</svg>
+```
+
+### The elements and their attributes
+
+The SVG elements are `svg`, `g`, `path`, `line`, `polyline`, `polygon`,
+`rect`, `circle`, `ellipse`, `text`, `tspan` and `desc`. `<title>` inside
+an `<svg>` is the drawing's accessible name.
+
+Each takes its own attributes, all `Text`:
+
+| Element | Its own attributes |
+|---|---|
+| `svg` | `viewBox`, `preserveAspectRatio`, `xmlns`, `x`, `y`, `width`, `height` |
+| `line` | `x1`, `y1`, `x2`, `y2` |
+| `polyline`, `polygon` | `points` |
+| `path` | `d` |
+| `rect` | `x`, `y`, `width`, `height`, `rx`, `ry` |
+| `circle` | `cx`, `cy`, `r` |
+| `ellipse` | `cx`, `cy`, `rx`, `ry` |
+| `text`, `tspan` | `x`, `y` |
+
+Every one but `desc` also takes the paint attributes: `fill`, `stroke`,
+`stroke-width`, `stroke-dasharray`, `stroke-linecap`, `stroke-linejoin`,
+`opacity`, `fill-opacity`, `stroke-opacity`, `transform`, `text-anchor`,
+`dominant-baseline` and `font-size`.
+
+All of them also take the global attributes (`class`, `id`, `role`,
+`style`, …), `data-*` and `aria-*`, and nothing else.
+
+### What an SVG element refuses
+
+An attribute an SVG element does not take is E0002, so a typo or an HTML
+attribute is caught. That includes Alder's route attributes: `href`, `click`
+and the others belong on HTML elements, so put the link or the button
+around the `<svg>`.
+
+```alder error=E0002 "`<rect>` takes no attribute `href`"
+<svg><rect href="x" /></svg>
+```
+
+An unknown element inside an `<svg>` is E0002 as anywhere else.
+
+### How SVG renders
+
+An SVG element renders like an HTML one: each shape closed with its end tag
+(`<line …></line>`), which HTML parses the same as `<line … />` inside an
+`<svg>`. `viewBox` and `preserveAspectRatio` keep their case, as SVG needs.
+
+A test finds the shapes with a selector, and reads their attributes:
+
+```alder
+Test.count "svg polyline" page.doc == 1
+```
 
 ## Components
 

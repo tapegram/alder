@@ -342,4 +342,5 @@ fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 head header hgroup hr h
 input ins kbd label legend li link main map mark menu meta meter nav noscript object ol optgroup
 option output p param picture pre progress q rp rt ruby s samp script search section select slot
 small source span strong style sub summary sup svg table tbody td template textarea tfoot th
-thead time title tr track u ul var video wbr math path g circle rect line polyline polygon `
+thead time title tr track u ul var video wbr math path g circle rect line polyline polygon
+ellipse text tspan desc `

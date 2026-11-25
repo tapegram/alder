@@ -260,3 +260,13 @@ func TestFormat_Job(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
+
+// An SVG view (#306) is a fixed point: `viewBox` keeps its case and each shape stays `/>`-closed.
+func TestFormat_SVG(t *testing.T) {
+	src := "module Chart\n\nchart : Html\nchart =\n  <svg viewBox=\"0 0 10 10\" role=\"img\">\n    <title>t</title>\n" +
+		"    <polyline points=\"0,0 5,5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" />\n" +
+		"    <line x1=\"0\" y1=\"0\" x2=\"10\" y2=\"0\" />\n  </svg>\n"
+	if got := string(format(t, "chart.alder", []byte(src))); got != src {
+		t.Fatalf("not a fixed point\n--- got:\n%s\n--- want:\n%s", got, src)
+	}
+}
