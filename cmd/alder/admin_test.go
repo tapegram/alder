@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -950,7 +951,9 @@ func TestAdmin_RegenBeforeRestPaths(t *testing.T) {
 					t.Fatal(err)
 				}
 				got := string(b)
-				if got != want {
+				// the old app's handlers are still named `update` (W0013; `alder fmt` renames them), and
+				// the regenerated tests call them so: compare with the handlers' names left out
+				if normHandlers(got) != normHandlers(want) {
 					t.Errorf("%s after regen is not what new admin writes:\n%s", rel, got)
 				}
 				for _, stale := range []string{"route Search", "form Find", ".update : Search", "/_" + "/"} {
@@ -964,4 +967,13 @@ func TestAdmin_RegenBeforeRestPaths(t *testing.T) {
 			}
 		})
 	}
+}
+
+// normHandlers is src with each handler of a route it declares written `Route.handler`, whatever
+// its name (`update` before #308, the method's after).
+func normHandlers(src string) string {
+	for _, m := range regexp.MustCompile(`(?m)^route (\w+)\s*=`).FindAllStringSubmatch(src, -1) {
+		src = regexp.MustCompile(`\b`+m[1]+`\.(update|post|put|patch|delete)\b`).ReplaceAllString(src, m[1]+".handler")
+	}
+	return src
 }

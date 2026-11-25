@@ -68,8 +68,8 @@ refused model row = List.member row.id model.held
 -- BulkDelete takes no input: the form is the button, and the place a refusal is shown.
 form Confirm = { }
 
-BulkDelete.post : BulkDelete.Params -> Session -> Task Response
-BulkDelete.post params session = {
+BulkDelete.update : BulkDelete.Params -> Session -> Task Response
+BulkDelete.update params session = {
   let _ <- Layout.adminOnly session.user
   let model <- selected params.ids
   if tooMany model then
@@ -93,8 +93,8 @@ BulkDelete.post params session = {
 
 form SetStatus = { value: Issue.Status }
 
-BulkSetStatus.post : BulkSetStatus.Params -> Session -> Task Response
-BulkSetStatus.post params session = {
+BulkSetStatus.update : BulkSetStatus.Params -> Session -> Task Response
+BulkSetStatus.update params session = {
   let _ <- Layout.adminOnly session.user
   let model <- selected params.ids
   if tooMany model then

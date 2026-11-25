@@ -92,7 +92,7 @@ func TestHoleIndex(t *testing.T) {
 	for _, h := range HoleIndex(p.Prog, p.Diags) {
 		got = append(got, h.Address()+" ?"+h.Name+" : "+h.Type)
 	}
-	want := []string{`Home.Submit.update ?done : Task Response`, `Home."a hole" ?verdict : Bool`, `Home.Home.stamp ?stamp : Task Text`}
+	want := []string{`Home.Submit.post ?done : Task Response`, `Home."a hole" ?verdict : Bool`, `Home.Home.stamp ?stamp : Task Text`}
 	if !slices.Equal(got, want) {
 		t.Errorf("holes:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}

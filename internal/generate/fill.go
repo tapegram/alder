@@ -692,3 +692,14 @@ func routeMembers(mod string, full []string) string {
 	}
 	return strings.Join(qs, ", ") + " each have `" + full[0][strings.LastIndex(full[0], ".")+1:] + "`"
 }
+
+// handlerIn is the name of route's handler in module mod as the module declares it: the method's
+// name, or the legacy `update` (#308, W0013) when that is what the module has; a module not yet
+// written gets the method's name.
+func (p *Program) handlerIn(mod, route, method string) string {
+	h := check.HandlerName(method)
+	if m := p.Modules[mod]; m != nil && valueDeclFull(m.Syntax, route+"."+h) == nil && valueDeclFull(m.Syntax, route+".update") != nil {
+		return "update"
+	}
+	return h
+}

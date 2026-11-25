@@ -85,3 +85,28 @@ func TestClashRefusal_Text(t *testing.T) {
 		}
 	}
 }
+
+// TestParseAddress_LegacyUpdate: `Module.Route.update` and bare `Module.update` name the handler
+// of an app whose route still has `update` (W0013), and of one whose handler is named after its
+// method; a route with neither is refused without a panic.
+func TestParseAddress_LegacyUpdate(t *testing.T) {
+	p := clashApp(t)
+	for _, addr := range []string{"Replies.Show.Delete.update", "Replies.Show.update", "Replies.Show.Delete.delete"} {
+		mod, decl, _, err := parseAddress(p, addr)
+		if addr == "Replies.Show.Delete.delete" {
+			if err != nil || mod != "Replies.Show" || decl != "Delete.delete" {
+				t.Errorf("%s: %q %q %v", addr, mod, decl, err)
+			}
+			continue
+		}
+		if err != nil || mod != "Replies.Show" || decl != "Delete.update" {
+			t.Errorf("%s: %q %q %v", addr, mod, decl, err)
+		}
+	}
+	if got := p.handlerIn("Replies.Show", "Delete", "DELETE"); got != "update" {
+		t.Errorf("handlerIn legacy = %q", got)
+	}
+	if got := p.handlerIn("Nope", "Delete", "DELETE"); got != "delete" {
+		t.Errorf("handlerIn new = %q", got)
+	}
+}

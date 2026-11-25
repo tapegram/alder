@@ -105,8 +105,8 @@ form IssueForm = {
 form FindProject = { q: Text }
 
 -- SearchProject answers the page again at the text.
-SearchProject.post : SearchProject.Params -> Session -> Task Response
-SearchProject.post params session =
+SearchProject.update : SearchProject.Params -> Session -> Task Response
+SearchProject.update params session =
   Task.succeed (
     Response.redirect (Edit {
       org: session.org,
@@ -118,8 +118,8 @@ SearchProject.post params session =
 form FindAssignee = { q: Text }
 
 -- SearchAssignee answers the page again at the text.
-SearchAssignee.post : SearchAssignee.Params -> Session -> Task Response
-SearchAssignee.post params session =
+SearchAssignee.update : SearchAssignee.Params -> Session -> Task Response
+SearchAssignee.update params session =
   Task.succeed (
     Response.redirect (Edit {
       org: session.org,
@@ -131,8 +131,8 @@ SearchAssignee.post params session =
 -- @admin end
 
 -- Save writes the form over the row (a row deleted since is not found) and goes to its page.
-Save.put : Save.Params -> Session -> Task Response
-Save.put params session = {
+Save.update : Save.Params -> Session -> Task Response
+Save.update params session = {
   let _ <- Layout.adminOnly session.user
   let found <- Db.get Issue params.id
   match found {

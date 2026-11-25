@@ -1578,7 +1578,7 @@ func (g *crudGen) othersSave(at *crudTable, mod string, imports *importSet, who 
 		values = append(values, c.Name+": "+g.changedValue(tb, at, c, k+1))
 	}
 	tb.let("let before <- Db.get %s %s", t.Name, target)
-	call := fmt.Sprintf("Save.put { id: %s, form: { %s } }", target, strings.Join(values, ", "))
+	call := fmt.Sprintf("Save."+g.p.handlerIn(mod, "Save", "PUT")+" { id: %s, form: { %s } }", target, strings.Join(values, ", "))
 	if at.host != nil {
 		call = at.host.run(tb, target, strings.Join(values, ", "))
 	}
