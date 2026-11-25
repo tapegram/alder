@@ -21,6 +21,9 @@ type Fix struct {
 	// Preferred marks the fix an editor should list first and may apply on its own: the one
 	// obvious repair of its diagnostic.
 	Preferred bool
+	// Migration marks a fix `alder fmt` applies on its own whatever its code: the rename of a
+	// reference to a write route's handler renamed after its method (#308, an E0002).
+	Migration bool
 }
 
 // ReplaceSpan is a fix that replaces the half-open span [sp.Start, sp.End) with text.

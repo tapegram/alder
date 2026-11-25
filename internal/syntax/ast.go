@@ -41,8 +41,18 @@ type Module struct {
 	Imports []*Import
 	Decls   []Decl
 	Lines   []string // source lines, for rendering
+	// CRLF is set when the source's lines end in "\r\n" (Lines and spans never hold the "\r").
+	CRLF bool
 	// Comments are the `--` comments of the source in order; the AST does not attach them.
 	Comments []Comment
+}
+
+// Newline is the source's line ending, for a fix whose text spans lines: "\r\n" or "\n".
+func (m *Module) Newline() string {
+	if m.CRLF {
+		return "\r\n"
+	}
+	return "\n"
 }
 
 // Comment is a `--` comment. Text includes the leading `--`, with trailing blanks trimmed.

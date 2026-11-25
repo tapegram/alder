@@ -6,17 +6,22 @@ import (
 	"alder/internal/diag"
 )
 
-// Migrate applies the resolver's import-qualifier fixes (E0204, E0205) for file to src and
-// reports whether anything changed. bag is the diagnostics of the resolved program,
-// loaded from the same text as src. Only those two codes are applied: another diagnostic that
-// shares an E0205's span (E0203 on `Table.Todo.Open`) carries its own fix, which formatting must
-// not take. Identical fixes are applied once and a fix that overlaps one already taken is
-// skipped, so the output is well formed whatever the bag holds; the next run picks up what was
-// skipped, and a migrated file has nothing left to fix.
+// migration are the codes whose fixes Migrate applies.
+var migration = map[string]bool{diag.ImportAlias: true, diag.FullPath: true, diag.HandlerRenamed: true}
+
+// Migrate applies the migration fixes for file to src and reports whether anything changed: the
+// resolver's import-qualifier fixes (E0204, E0205), the checker's rename of a write route's
+// handler still named `update` (W0013, #308), and any fix marked Migration (a reference to a
+// handler already renamed). bag is the diagnostics of the checked program, loaded from the same
+// text as src. No other fix is applied: another diagnostic that shares an E0205's span (E0203 on
+// `Table.Todo.Open`) carries its own fix, which formatting must not take. Identical fixes are
+// applied once and a fix that overlaps one already taken is skipped, so the output is well formed
+// whatever the bag holds; the next run picks up what was skipped (and a handler in a module that
+// still has import errors, which the checker skips), and a migrated file has nothing left to fix.
 func Migrate(bag *diag.Bag, file string, src []byte) ([]byte, bool, error) {
 	var fixes []diag.Fix
 	for _, d := range bag.Items {
-		if (d.Code != diag.ImportAlias && d.Code != diag.FullPath) || d.Fix == nil || d.Span.File != file {
+		if d.Fix == nil || d.Span.File != file || !migration[d.Code] && !d.Fix.Migration {
 			continue
 		}
 		fixes = append(fixes, *d.Fix)

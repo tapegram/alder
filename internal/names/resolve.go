@@ -1302,6 +1302,14 @@ func entryHint(s *moduleScope, name string) string {
 // fix is false where span covers more than the name (an element).
 func (r *resolver) ownQualified(span diag.Span, name string, declared, fix bool) {
 	if !declared {
+		if h := r.renamedHandler(r.m.Name, name); h != "" {
+			d := r.bag.Error(diag.UnknownName, span, "module `%s` has no `%s`; `%s` is now `%s`", r.m.Name, name, name, h)
+			if fix {
+				d.Fix = diag.ReplaceSpan(span, h)
+				d.Fix.Migration = true // `alder fmt` finishes the rename W0013 began
+			}
+			return
+		}
 		d := r.bag.Error(diag.UnknownName, span, "module `%s` has no `%s`%s", r.m.Name, name, entryHint(r.ms, name))
 		if c := r.ms.entryCaps[name]; c != "" && fix {
 			d.Fix = diag.ReplaceSpan(span, c+"."+name)
@@ -1739,12 +1747,39 @@ func (r *resolver) routeMember(span diag.Span, mod, path, route, name string, se
 	case !declared && typ:
 		r.bag.Error(diag.UnknownName, span, "%s `%s` of `%s` has no type `%s`", noun, route, path, name)
 	case !declared:
-		r.bag.Error(diag.UnknownName, span, "%s `%s` of `%s` has no `%s`", noun, route, path, name)
+		h := r.renamedHandler(path, full)
+		if h == "" {
+			r.bag.Error(diag.UnknownName, span, "%s `%s` of `%s` has no `%s`", noun, route, path, name)
+			return
+		}
+		d := r.bag.Error(diag.UnknownName, span, "%s `%s` of `%s` has no `%s`; `%s` is now `%s`", noun, route, path, name, full, h)
+		_, member, _ := strings.Cut(h, ".")
+		d.Fix = diag.ReplaceSpan(span, mod+"."+member) // the qualifier as written
+		d.Fix.Migration = true                         // `alder fmt` finishes the rename W0013 began
 	case typ:
 		set(syntax.Ref{Kind: syntax.RefType, Module: path, Name: full})
 	default:
 		set(syntax.Ref{Kind: syntax.RefValue, Module: path, Name: full})
 	}
+}
+
+// renamedHandler is the name (`Toggle.patch`) that value full (`Toggle.update`) of module path
+// now has (#308): set when full names `update` of a write route of that module, and the route
+// declares its handler under its method's name; "" otherwise.
+func (r *resolver) renamedHandler(path, full string) string {
+	route, member, ok := strings.Cut(full, ".")
+	if !ok || member != "update" {
+		return ""
+	}
+	rd := r.p.Route(path, route)
+	if rd == nil || rd.Method == "GET" {
+		return ""
+	}
+	renamed := route + "." + strings.ToLower(rd.Method)
+	if s := r.p.scopes[path]; s == nil || !s.values[renamed] {
+		return ""
+	}
+	return renamed
 }
 
 // routeByQualifier reports the path of the imported module whose qualifier q is not its path and

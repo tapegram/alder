@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"syscall"
 
+	"alder/internal/buildkit"
 	"alder/internal/format"
 	"alder/internal/generate"
 	"bytes"
@@ -403,4 +404,71 @@ func TestFmt_MigratesSeveralFilesOfOneProject(t *testing.T) {
 			t.Fatalf("%s: %q", f, got)
 		}
 	}
+}
+
+// #308: the handler-rename fixture of the corpus: a PATCH route's handler still named `update`,
+// referenced from its own module and from another.
+func fmtHandlerProject(t *testing.T) (dir string, files map[string]string) {
+	t.Helper()
+	dir = t.TempDir()
+	src := "../../testdata/corpus/W0013-handler-update"
+	if err := os.CopyFS(dir, os.DirFS(src)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, "expected.diag")); err != nil {
+		t.Fatal(err)
+	}
+	return dir, map[string]string{"todos": filepath.Join(dir, "app", "Todos.alder"), "checks": filepath.Join(dir, "app", "Checks.alder")}
+}
+
+// fmtCheckClean fails unless the app at dir checks with no diagnostic, warnings included.
+func fmtCheckClean(t *testing.T, dir string) {
+	t.Helper()
+	_, _, bag, ioErrs := buildkit.LoadChecked(dir, nil)
+	if len(ioErrs) > 0 {
+		t.Fatal(ioErrs)
+	}
+	for _, d := range bag.Items {
+		t.Errorf("after fmt: %s %s:%d:%d %s", d.Code, d.Span.File, d.Span.Start.Line, d.Span.Start.Col, d.Message)
+	}
+}
+
+// `alder fmt` over the project renames the handler's signature, its definition and every
+// reference to it, in its module and in another (W0013); a second run changes nothing.
+func TestMigrate_HandlerRename(t *testing.T) {
+	t.Parallel()
+	dir, f := fmtHandlerProject(t)
+	if code, out, errOut := fmtRun(dir); code != 0 || errOut != "" || !strings.Contains(out, "Todos.alder") || !strings.Contains(out, "Checks.alder") {
+		t.Fatalf("code %d out %q err %q", code, out, errOut)
+	}
+	todos, _ := os.ReadFile(f["todos"])
+	checks, _ := os.ReadFile(f["checks"])
+	for _, want := range []string{"Toggle.patch : Toggle.Params -> Session -> Task Response\nToggle.patch params session", "Test.run (Toggle.patch {"} {
+		if !strings.Contains(string(todos), want) {
+			t.Errorf("Todos.alder lacks %q:\n%s", want, todos)
+		}
+	}
+	if !strings.Contains(string(checks), "Test.run (Todos.Toggle.patch {") {
+		t.Errorf("Checks.alder not renamed:\n%s", checks)
+	}
+	if strings.Contains(string(todos)+string(checks), "update") {
+		t.Errorf("`update` remains:\n%s\n%s", todos, checks)
+	}
+	if code, out, errOut := fmtRun(dir); code != 0 || out != "" || errOut != "" {
+		t.Fatalf("second run: code %d out %q err %q", code, out, errOut)
+	}
+	fmtCheckClean(t, dir)
+}
+
+// Formatted one file at a time, the route module first: the other module's reference, by then an
+// E0002 with the rename as its fix, is renamed when that file is formatted.
+func TestMigrate_HandlerRenameFileByFile(t *testing.T) {
+	t.Parallel()
+	dir, f := fmtHandlerProject(t)
+	for _, p := range []string{f["todos"], f["checks"]} {
+		if code, out, errOut := fmtRun(p); code != 0 || out != p+"\n" || errOut != "" {
+			t.Fatalf("%s: code %d out %q err %q", p, code, out, errOut)
+		}
+	}
+	fmtCheckClean(t, dir)
 }

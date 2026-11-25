@@ -2,6 +2,7 @@
 package syntax
 
 import (
+	"bytes"
 	"slices"
 	"strings"
 
@@ -15,6 +16,7 @@ type Parser struct {
 	diags   []diag.Diagnostic
 	sigMode bool
 	lines   []string
+	crlf    bool // the source's lines end in "\r\n"
 	// noBrace stops application arguments at `{`, so `match s { ... }` is not read as `s {...}`.
 	noBrace bool
 	// prevEnd is the end of the last consumed non-newline token; spans end there, not at the next token.
@@ -38,6 +40,7 @@ func newParser(file string, src []byte, sigMode bool, trace *[]Token) *Parser {
 	p := &Parser{lx: NewLexer(file, src), file: file, sigMode: sigMode}
 	p.lx.trace = trace
 	p.lines = strings.Split(string(p.lx.src), "\n")
+	p.crlf = bytes.Contains(src, []byte("\r\n"))
 	p.advance()
 	return p
 }
@@ -306,7 +309,7 @@ func (p *Parser) skipToDecl() {
 // ---- module
 
 func (p *Parser) parseModule() *Module {
-	m := &Module{Lines: p.lines, File: p.file}
+	m := &Module{Lines: p.lines, File: p.file, CRLF: p.crlf}
 	// The module starts at `module`: comments and blank lines before it lex as newlines, and
 	// the first of those would otherwise be the start (at the end of the first comment line).
 	p.skipNL()

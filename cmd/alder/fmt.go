@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"alder/internal/check"
 	"alder/internal/diag"
 	"alder/internal/format"
 	"alder/internal/names"
@@ -171,12 +172,12 @@ func fmtFile(path string, isScratch, checkOnly bool, cache *fmtCache, stdout, st
 	})
 }
 
-// fmtMigrate is src with the import-qualifier fixes (E0204, E0205) of a file inside an app
-// project applied; src itself for a file outside one, or when the project cannot be loaded and
-// resolved. When project files do not parse, it also returns the app root and those files
-// (relative to the root) so the caller can say why nothing was migrated; the formatter reports
-// the syntax errors of the file it formats. An error applying the fixes goes to stderr and the
-// file is formatted unmigrated.
+// fmtMigrate is src with the migration fixes (format.Migrate: import qualifiers, the handler
+// rename) of a file inside an app project applied; src itself for a file outside one, or when
+// the project cannot be loaded and resolved. When project files do not parse, it also returns
+// the app root and those files (relative to the root) so the caller can say why nothing was
+// migrated; the formatter reports the syntax errors of the file it formats. An error applying
+// the fixes goes to stderr and the file is formatted unmigrated.
 func fmtMigrate(path string, src []byte, cache *fmtCache, stderr io.Writer) (out []byte, root string, broken []string) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -218,6 +219,8 @@ func loadFmtProject(root string, cache *fmtCache) *fmtProject {
 		return &fmtProject{broken: prog.Unparsed}
 	}
 	prog.Resolve(bag)
+	prog.MarkFailed(bag)
+	check.Program(prog, bag) // W0013, the handler rename (#308), is the checker's
 	return &fmtProject{bag: bag}
 }
 

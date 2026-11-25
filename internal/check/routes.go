@@ -51,9 +51,9 @@ type RouteInfo struct {
 // isWrite reports whether method is a write route's (anything but GET).
 func isWrite(method string) bool { return method != "GET" }
 
-// handlerName is the name of the handler of a write route of method (#308): the method in lower
+// HandlerName is the name of the handler of a write route of method (#308): the method in lower
 // case, `post` for POST.
-func handlerName(method string) string { return strings.ToLower(method) }
+func HandlerName(method string) string { return strings.ToLower(method) }
 
 // handlerNames are the names a write route's handler has, one per write method.
 var handlerNames = []string{"post", "put", "patch", "delete"}
@@ -67,7 +67,7 @@ func handlerOf(members map[string]*syntax.ValueDecl, method string) *syntax.Valu
 	if !isWrite(method) {
 		return nil
 	}
-	if d := members[handlerName(method)]; d != nil {
+	if d := members[HandlerName(method)]; d != nil {
 		return d
 	}
 	return members[legacyHandler]
@@ -81,7 +81,7 @@ func (c *Checker) handler(r *RouteInfo) *syntax.ValueDecl {
 // isHandlerName reports whether member is the handler's name on a route of method: its own
 // method's name, or `update` during the release that still accepts it.
 func isHandlerName(member, method string) bool {
-	return isWrite(method) && (member == handlerName(method) || member == legacyHandler)
+	return isWrite(method) && (member == HandlerName(method) || member == legacyHandler)
 }
 
 // memberNameSpans are the spans of route member d's name (`Toggle.update`) in module m: in its
@@ -115,7 +115,8 @@ func memberPart(sp diag.Span, route string) diag.Span {
 }
 
 // renameFix is the fix renaming route member d of module m to name: one edit from the member
-// part of its signature's name to that of its definition's, the text between kept.
+// part of its signature's name to that of its definition's, the text between kept (with the
+// source's line endings).
 func renameFix(m *syntax.Module, d *syntax.ValueDecl, name string) *diag.Fix {
 	spans := memberNameSpans(m, d)
 	first, last := memberPart(spans[0], d.Route), memberPart(spans[len(spans)-1], d.Route)
@@ -128,7 +129,7 @@ func renameFix(m *syntax.Module, d *syntax.ValueDecl, name string) *diag.Fix {
 	between := []string{m.Lines[first.End.Line-1][first.End.Col-1:]}
 	between = append(between, m.Lines[first.End.Line:last.Start.Line-1]...)
 	between = append(between, m.Lines[last.Start.Line-1][:last.Start.Col-1])
-	return diag.ReplaceSpan(diag.Span{File: first.File, Start: first.Start, End: last.End}, name+strings.Join(between, "\n")+name)
+	return diag.ReplaceSpan(diag.Span{File: first.File, Start: first.Start, End: last.End}, name+strings.Join(between, m.Newline())+name)
 }
 
 // route is route name of module, nil when the module has none by that name (or its routes are
@@ -353,7 +354,7 @@ func (mc *modCtx) legacyHandlerRef(x *syntax.Var) {
 		return
 	}
 	name := written(x.Module, x.Name)
-	renamed := strings.TrimSuffix(name, legacyHandler) + handlerName(r.Method)
+	renamed := strings.TrimSuffix(name, legacyHandler) + HandlerName(r.Method)
 	w := c.bag.Warn(diag.HandlerRenamed, x.Span, "`%s` is now `%s`: a write route's handler is named after its method. `alder fmt` renames it.", name, renamed)
 	w.Fix = diag.ReplaceSpan(x.Span, renamed)
 	w.Fix.Preferred = true // the one obvious repair
@@ -378,7 +379,7 @@ func (mc *modCtx) checkRoutes() {
 
 func (mc *modCtx) checkWriteRoute(r *RouteInfo, members map[string]*syntax.ValueDecl) {
 	c := mc.c
-	h := handlerName(r.Method)
+	h := HandlerName(r.Method)
 	sig := r.Name + ".Params -> Session -> Task Response"
 	for _, name := range []string{"load", "view"} {
 		if d := members[name]; d != nil {
@@ -398,9 +399,8 @@ func (mc *modCtx) checkWriteRoute(r *RouteInfo, members map[string]*syntax.Value
 		c.errorf(diag.RouteDecl, old.Span, "route `%s` has two handlers, `%s.%s` and `%s.%s`: keep `%s.%s`", r.Name, r.Name, legacyHandler, r.Name, h, r.Name, h)
 	} else if old != nil { // the name before #308, for one release
 		d = old
-		for _, sp := range memberNameSpans(mc.m, old) {
-			w := c.bag.Warn(diag.HandlerRenamed, sp, "`%s.%s` is now `%s.%s`: a write route's handler is named after its method. `alder fmt` renames it.", r.Name, legacyHandler, r.Name, h)
-			w.Fix = diag.ReplaceSpan(memberPart(sp, r.Name), h)
+		w := c.bag.Warn(diag.HandlerRenamed, memberNameSpans(mc.m, old)[0], "`%s.%s` is now `%s.%s`: a write route's handler is named after its method. `alder fmt` renames it.", r.Name, legacyHandler, r.Name, h)
+		if w.Fix = renameFix(mc.m, old, h); w.Fix != nil {
 			w.Fix.Preferred = true // the one obvious repair
 		}
 	}

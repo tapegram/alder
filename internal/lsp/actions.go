@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"alder/internal/check"
 	"alder/internal/diag"
 	"alder/internal/generate"
 	"alder/internal/scratch"
@@ -173,9 +174,9 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 
 // routeSignatureActions offers, on the lines of a `route` of rel's module in the current build,
 // to write the signatures of the members the route lacks (`Row.load` and `Row.view` for a GET
-// route, `Row.update` for a write route; the checker's E0043 says they are needed), after the
-// route's last member or else at the end of the file. The model of a GET route is `m`, unless
-// its `load` or `view` is already written, which gives it. The build must still hold for the
+// route, the handler named after its method for a write route, `Add.post` for POST; the checker's
+// E0043 says they are needed), after the route's last member or else at the end of the file. The
+// model of a GET route is `m`, unless its `load` or `view` is already written, which gives it. The build must still hold for the
 // whole file (the edit's place and the route's module are read from it), else nothing is offered.
 // Edits are in compiler (byte) positions of now.
 func routeSignatureActions(a *analysis, rel string, now []string, rng Range, doc versionedDocument) []codeAction {
@@ -217,8 +218,8 @@ func routeSignatureActions(a *analysis, rel string, now []string, rng Range, doc
 			if have["view"] == nil {
 				add(r.Name+".view : "+model+" -> Session -> Html", "model session")
 			}
-		} else if have["update"] == nil {
-			add(r.Name+".update : "+r.Name+".Params -> Session -> Task Response", "params session")
+		} else if h := check.HandlerName(r.Method); have[h] == nil && have["update"] == nil { // `update` is the handler for one more release (W0013)
+			add(r.Name+"."+h+" : "+r.Name+".Params -> Session -> Task Response", "params session")
 		}
 		if len(sigs) == 0 {
 			continue

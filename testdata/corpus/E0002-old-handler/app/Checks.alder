@@ -1,0 +1,8 @@
+module Checks
+
+import Todos
+
+test "toggle from elsewhere" = {
+  let r <- Test.run (Todos.Toggle.update { id: 2 } {})
+  Task.succeed (r.value == Ok Response.refresh)
+}

@@ -1,0 +1,6 @@
+app/Checks.alder:6:22 E0002 route `Toggle` of `Todos` has no `update`; `Toggle.update` is now `Toggle.patch`
+  fix 6:22-6:41 Todos.Toggle.patch
+app/Todos.alder:9:22 E0002 route `Toggle` of `Todos` has no `update`; `Toggle.update` is now `Toggle.patch`
+  fix 9:22-9:35 Toggle.patch
+app/Todos.alder:14:22 E0002 module `Todos` has no `Toggle.update`; `Toggle.update` is now `Toggle.patch`
+  fix 14:22-14:41 Toggle.patch

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"alder/internal/check"
 	"alder/internal/diag"
 	"alder/internal/elements"
 	"alder/internal/markup"
@@ -262,8 +263,9 @@ func (cx *completion) routeNamed(q string) (*syntax.Module, *syntax.RouteDecl) {
 }
 
 // routeMembers is what follows `Row.` for route r of mod (the spec's Names section): a GET
-// route's `load`, `view`, `Params` and `Session`, a write route's `update`, `Params` and `Session`. A
-// member the module declares shows its signature as written, one it lacks the signature it needs.
+// route's `load`, `view`, `Params` and `Session`, a write route's handler (named after its method,
+// `post` for POST: check.HandlerName), `Params` and `Session`. A member the module declares shows
+// its signature as written, one it lacks the signature it needs.
 func (cx *completion) routeMembers(mod *syntax.Module, r *syntax.RouteDecl, n int) []completionItem {
 	member := func(name, sig string) completionItem {
 		for _, d := range mod.Decls {
@@ -279,7 +281,7 @@ func (cx *completion) routeMembers(mod *syntax.Module, r *syntax.RouteDecl, n in
 			member("load", r.Name+".Params -> Session -> Query m"),
 			member("view", "m -> Session -> Html"))
 	} else {
-		out = append(out, member("update", r.Name+".Params -> Session -> Task Response"))
+		out = append(out, member(check.HandlerName(r.Method), r.Name+".Params -> Session -> Task Response"))
 	}
 	out = append(out, cx.item("Params", kindClass, "type "+r.Name+".Params", n))
 	out = append(out, cx.item("Session", kindClass, "type "+r.Name+".Session", n))

@@ -116,3 +116,24 @@ func TestMigrate_SharedAndOverlappingSpans(t *testing.T) {
 		t.Fatalf("changed=%v err=%v:\n%s", changed, err, out)
 	}
 }
+
+// #308: a write route's handler still named `update` (W0013) is renamed, and so is a reference to
+// a handler already renamed (an E0002 whose fix is marked Migration); another E0002's fix is not
+// applied.
+func TestMigrate_HandlerRenameFixes(t *testing.T) {
+	src := "module Todos\n\nA.update : Int\nA.update = 1\n\nb = A.update\n\nc = nope\n"
+	file := "app/Todos.alder"
+	at := func(l1, c1, l2, c2 int) diag.Span {
+		return diag.Span{File: file, Start: diag.Pos{Line: l1, Col: c1}, End: diag.Pos{Line: l2, Col: c2}}
+	}
+	bag := &diag.Bag{}
+	bag.Warn(diag.HandlerRenamed, at(3, 1, 3, 9), "renamed").Fix = diag.ReplaceSpan(at(3, 3, 4, 9), "post : Int\nA.post")
+	ref := bag.Error(diag.UnknownName, at(6, 5, 6, 13), "now A.post")
+	ref.Fix = diag.ReplaceSpan(at(6, 5, 6, 13), "A.post")
+	ref.Fix.Migration = true
+	bag.Error(diag.UnknownName, at(8, 5, 8, 9), "no nope").Fix = diag.ReplaceSpan(at(8, 5, 8, 9), "garbage")
+	out, changed, err := Migrate(bag, file, []byte(src))
+	if want := "module Todos\n\nA.post : Int\nA.post = 1\n\nb = A.post\n\nc = nope\n"; err != nil || !changed || string(out) != want {
+		t.Fatalf("changed=%v err=%v:\n%s", changed, err, out)
+	}
+}

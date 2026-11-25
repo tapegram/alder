@@ -9,9 +9,7 @@ import (
 
 	"alder/internal/diag"
 	"alder/internal/format"
-	"alder/internal/names"
 	"alder/internal/scratch"
-	"alder/internal/types"
 )
 
 // formattingReq answers textDocument/formatting: minimal edits that make the open buffer
@@ -56,11 +54,11 @@ func formattingReq(s *server, params json.RawMessage) (any, error) {
 	return edits, nil
 }
 
-// migrated is d's text with its import-qualifier fixes applied; the text itself when migration is
-// off: a project file does not parse (Program.Unparsed, the rule `alder fmt` uses, which covers an
-// unparseable buffer), the project cannot be loaded, or there is nothing to fix. It reads the
-// server's analysis when that was built from the open documents as they now are, and loads the
-// program (names only, no checking) otherwise.
+// migrated is d's text with its migration fixes (format.Migrate: import qualifiers, the handler
+// rename) applied; the text itself when migration is off: a project file does not parse
+// (Program.Unparsed, the rule `alder fmt` uses, which covers an unparseable buffer), the project
+// cannot be loaded, or there is nothing to fix. It reads the server's analysis when that was built
+// from the open documents as they now are, and loads and checks the program otherwise.
 func (s *server) migrated(rel string, d *doc) []byte {
 	text := []byte(d.Text)
 	over, vers := s.docs.snapshot()
@@ -71,15 +69,10 @@ func (s *server) migrated(rel string, d *doc) []byte {
 		}
 		items = a.diags
 	} else {
-		std, err := types.LoadStd()
-		if err != nil {
-			return text
-		}
-		prog, bag, ioErrs := names.LoadOverlay(s.rootReal, std, over)
+		prog, _, bag, ioErrs := loadCheckedOverlay(s.rootReal, over)
 		if len(ioErrs) > 0 || prog.ParseFailed {
 			return text
 		}
-		prog.Resolve(bag)
 		items = bag.Items
 	}
 	out, _, err := format.Migrate(&diag.Bag{Items: items}, rel, text)

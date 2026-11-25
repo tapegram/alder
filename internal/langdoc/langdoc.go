@@ -446,7 +446,8 @@ Declare a route: its name, its method, its path and the parameters it takes.
 
 ˋroute Show = GET "/todos/{id}" { id: Todo.TodoId }ˋ declares the route ˋShowˋ. A write route
 may add ˋform Fˋ for the fields posted to it, and any route may add ˋrequires …ˋ. The code of
-a route is declared under its name: ˋShow.loadˋ, ˋShow.viewˋ, ˋToggle.updateˋ.
+a route is declared under its name: ˋShow.loadˋ and ˋShow.viewˋ, or a write route's handler,
+named after its method: ˋToggle.patchˋ.
 
 Book: chapter 6, "ˋrouteˋ"`},
 	{"session", "", `

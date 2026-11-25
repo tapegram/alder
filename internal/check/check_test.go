@@ -151,7 +151,7 @@ func TestFixesApply(t *testing.T) {
 				t.Errorf("%s %s: fix does not apply: %v", dir, d.Code, err)
 			} else if out == string(src) {
 				t.Errorf("%s %s: fix changes nothing", dir, d.Code)
-			} else if _, pd := syntax.ParseFile(d.Span.File, []byte(out)); len(pd) > 0 && !strings.Contains(d.Fix.Replace, "?type") && d.Code != diag.HandlerRenamed { // `?type` is a hole in type position, which the parser rejects by design; W0013 renames a signature's and a definition's name in two fixes, applied together (TestHandlerRenameFixesCheckClean)
+			} else if _, pd := syntax.ParseFile(d.Span.File, []byte(out)); len(pd) > 0 && !strings.Contains(d.Fix.Replace, "?type") { // `?type` is a hole in type position, which the parser rejects by design
 				t.Errorf("%s %s: fix must leave the file parseable: %v\n%s", dir, d.Code, pd[0].Message, out)
 			} else if w, ok := want[filepath.Base(dir)+"/"+d.Code]; ok && !strings.Contains(out, w) {
 				t.Errorf("%s %s: applied output lacks %q:\n%s", dir, d.Code, w, out)
@@ -193,6 +193,42 @@ func TestHandlerRenameFixesCheckClean(t *testing.T) {
 	}
 	if got := renderSev(runDir(t, dir), true); got != "" {
 		t.Errorf("after the fixes, want no diagnostics, got:\n%s", got)
+	}
+}
+
+// W0013 and E0043's rename (#308) on a source with "\r\n" line endings: the one edit from the
+// signature's name to the definition's keeps them.
+func TestHandlerRenameFixKeepsCRLF(t *testing.T) {
+	src := "../../testdata/corpus/W0013-handler-update"
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS(src)); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "app", "Todos.alder")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crlf := strings.ReplaceAll(string(b), "\n", "\r\n")
+	if err := os.WriteFile(path, []byte(crlf), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, d := range runDir(t, dir).Items {
+		if d.Code != diag.HandlerRenamed || d.Span.File != "app/Todos.alder" || d.Fix == nil || d.Fix.Line == d.Fix.EndLine {
+			continue
+		}
+		found = true
+		out, err := diag.Apply(crlf, []diag.Fix{*d.Fix})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "Toggle.patch : Toggle.Params -> Session -> Task Response\r\nToggle.patch params session"; !strings.Contains(out, want) {
+			t.Errorf("applied output lacks %q:\n%q", want, out)
+		}
+	}
+	if !found {
+		t.Fatal("no multi-line W0013 fix on app/Todos.alder")
 	}
 }
 

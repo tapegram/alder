@@ -41,6 +41,32 @@ func routesCopy(t *testing.T) (*client, string) {
 	if err := os.CopyFS(root, os.DirFS("../../testdata/corpus/routes-ok")); err != nil {
 		t.Fatal(err)
 	}
+	return routesStart(t, root)
+}
+
+// routesCopyNamed is routesCopy with the write handlers named after their methods (#308):
+// `Toggle.patch`, `Create.post`, `Delete.delete`. Once the corpus is swept the rewrite finds
+// nothing to change.
+func routesCopyNamed(t *testing.T) (*client, string) {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("../../testdata/corpus/routes-ok")); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(root, "app", "Todos.alder")
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := strings.NewReplacer("Toggle.update", "Toggle.patch", "Create.update", "Create.post", "Delete.update", "Delete.delete").Replace(string(b))
+	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return routesStart(t, root)
+}
+
+func routesStart(t *testing.T, root string) (*client, string) {
+	t.Helper()
 	c := start(t, root)
 	const rel = "app/Todos.alder"
 	c.open(rel, c.disk(rel))
@@ -145,9 +171,10 @@ func TestDefinition_FromClick(t *testing.T) {
 	}
 }
 
-// `R.` offers a GET route's load, view, Params and Session, and a write route's update, Params and Session.
+// `R.` offers a GET route's load, view, Params and Session, and a write route's handler (named
+// after its method), Params and Session.
 func TestComplete_RouteMembers(t *testing.T) {
-	c, rel := routesCopy(t)
+	c, rel := routesCopyNamed(t)
 	const after = "  let _ <- Db.updateMine Todo params.id (\\t -> { t | done: not t.done })\n"
 	p := typing(t, c, rel, after, "  let z = Row.")
 	got := labels(complete(t, c, rel, p))
@@ -162,12 +189,33 @@ func TestComplete_RouteMembers(t *testing.T) {
 	p = typing(t, c, rel, after, "  let z = Toggle.")
 	got = labels(complete(t, c, rel, p))
 	if len(got) != 3 {
-		t.Errorf("Toggle. offers %v, want update, Params and Session only", got)
+		t.Errorf("Toggle. offers %v, want patch, Params and Session only", got)
 	}
-	for _, name := range []string{"update", "Params", "Session"} {
+	for _, name := range []string{"patch", "Params", "Session"} {
 		if _, ok := got[name]; !ok {
 			t.Errorf("Toggle. lacks %s: %v", name, got)
 		}
+	}
+	if it := got["patch"]; it.Detail != "patch : Toggle.Params -> Session -> Task Response" {
+		t.Errorf("patch detail %q", it.Detail)
+	}
+}
+
+// #308: after `Add.` on a POST route that has no handler yet, completion offers `post`, with the
+// signature it needs, and never `update`.
+func TestComplete_HandlerNamedAfterMethod(t *testing.T) {
+	c, rel := routesCopyNamed(t)
+	text := c.disk(rel) + "\nroute Add = POST \"/add\" { } requires user\n"
+	c.change(rel, text)
+	c.diags(rel)
+	const after = "  let _ <- Db.updateMine Todo params.id (\\t -> { t | done: not t.done })\n"
+	p := typing(t, c, rel, after, "  let z = Add.")
+	got := labels(complete(t, c, rel, p))
+	if it, ok := got["post"]; !ok || it.Detail != "post : Add.Params -> Session -> Task Response" {
+		t.Errorf("Add. offers post as %+v (ok %v): %v", it, ok, got)
+	}
+	if _, ok := got["update"]; ok {
+		t.Errorf("Add. offers update: %v", got)
 	}
 }
 
@@ -243,16 +291,19 @@ func insertInto(text string, e TextEdit) string {
 // route and each followed by its definition with a hole: the GET pair (the model from a declared
 // member), or the write signature. With no member yet they go right after the route's line.
 func TestAction_InsertSignatures(t *testing.T) {
-	c, rel := routesCopy(t)
+	c, rel := routesCopyNamed(t)
 	text := c.disk(rel)
 	text += "\nroute Stats = GET \"/stats\" { } requires user\nroute Archive = PATCH \"/todos/{id}/archive\" { id: Todo.TodoId } requires user\n" +
+		"route Add = POST \"/add\" { } requires user\n" +
+		"route Legacy = PUT \"/legacy\" { } requires user\n\nLegacy.update : Legacy.Params -> Session -> Task Response\nLegacy.update params session = Task.succeed Response.refresh\n" +
 		"route Count = GET \"/count\" { } requires user\n\nCount.load : Count.Params -> Session -> Query (List Todo)\nCount.load params session = Db.mine Todo |> Db.all\n"
 	c.change(rel, text)
 	c.diags(rel)
 	want := map[string]string{
 		"route Stats": "\n\nStats.load : Stats.Params -> Session -> Query m\nStats.load params session = ?\n\n" +
 			"Stats.view : m -> Session -> Html\nStats.view model session = ?\n",
-		"route Archive": "\n\nArchive.update : Archive.Params -> Session -> Task Response\nArchive.update params session = ?\n",
+		"route Archive": "\n\nArchive.patch : Archive.Params -> Session -> Task Response\nArchive.patch params session = ?\n",
+		"route Add":     "\n\nAdd.post : Add.Params -> Session -> Task Response\nAdd.post params session = ?\n",
 		"route Count":   "\n\nCount.view : List Todo -> Session -> Html\nCount.view model session = ?",
 	}
 	for needle, sigs := range want {
@@ -264,10 +315,12 @@ func TestAction_InsertSignatures(t *testing.T) {
 	if e := insertEdit(t, c, rel, "route Stats"); e.Range.Start != (Position{Line: c.at(rel, "route Stats", 0).Line, Character: len("route Stats = GET \"/stats\" { } requires user")}) {
 		t.Errorf("Stats edit at %+v", e.Range.Start)
 	}
-	// a route with all its members is offered nothing
-	for _, a := range actions(t, c, rel, c.at(rel, "route Toggle", 0).Line) {
-		if strings.HasPrefix(a.Title, "Insert ") {
-			t.Errorf("complete route offered %q", a.Title)
+	// a route with all its members is offered nothing, nor one whose handler is still `update`
+	for _, needle := range []string{"route Toggle", "route Legacy"} {
+		for _, a := range actions(t, c, rel, c.at(rel, needle, 0).Line) {
+			if strings.HasPrefix(a.Title, "Insert ") {
+				t.Errorf("%s: complete route offered %q", needle, a.Title)
+			}
 		}
 	}
 }
@@ -282,7 +335,7 @@ func TestAction_InsertSignaturesBuilds(t *testing.T) {
 		"write route":                             "\nroute Archive = PATCH \"/todos/{id}/archive\" { id: Todo.TodoId } requires user\n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			c, rel := routesCopy(t)
+			c, rel := routesCopyNamed(t)
 			text := strings.TrimRight(c.disk(rel), "\n") + "\n" + tail
 			c.change(rel, text)
 			c.diags(rel)
