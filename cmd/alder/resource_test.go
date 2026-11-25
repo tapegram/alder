@@ -593,3 +593,65 @@ func TestRegenHelp(t *testing.T) {
 		}
 	}
 }
+
+// TestResource_RegenLegacyHandlers (#308, W0013): a resource generated before write-route
+// handlers were named after their method has `Save.update`; `alder regen resource` leaves those
+// declarations as they are, its rewritten tests call `Save.update` (not a `Save.put` the module
+// does not have), and the app checks with warnings only.
+func TestResource_RegenLegacyHandlers(t *testing.T) {
+	t.Parallel()
+	dir := genApp(t, "fixture")
+	if code, out, errs := alderIn(t, dir, "", "new", "resource", "BlogPost", "title:Text", "body:Text", "owner:User.UserId@ref=User@owner", "reviewer:Maybe User.UserId@ref=User", "post:Maybe Post.PostId@ref=Post"); code != 0 {
+		t.Fatalf("new resource: exit %d\n%s%s", code, out, errs)
+	}
+	route := regexp.MustCompile(`(?m)^route (\w+)\s*= (?:POST|PUT|PATCH|DELETE)\b`)
+	legacy := regexp.MustCompile(`(?m)^(\w+)\.update (?:: .*|params session.*)$`)
+	decls := map[string][]string{} // file -> the legacy declaration lines it must keep
+	for _, f := range []string{"New.alder", "Edit.alder", "Delete.alder"} {
+		path := filepath.Join(dir, "app", "BlogPosts", f)
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src := string(b)
+		for _, m := range route.FindAllStringSubmatch(src, -1) {
+			src = regexp.MustCompile(`\b`+m[1]+`\.(post|put|patch|delete)\b`).ReplaceAllString(src, m[1]+".update")
+		}
+		for _, m := range legacy.FindAllStringSubmatch(src, -1) {
+			decls[f] = append(decls[f], m[0])
+		}
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	edit := filepath.Join(dir, "app", "BlogPosts", "Edit.alder")
+	if b, _ := os.ReadFile(edit); !strings.Contains(string(b), "Save.update {") {
+		t.Fatalf("the old Edit.alder has no test calling Save.update directly:\n%s", b)
+	}
+	if code, out, errs := alderIn(t, dir, "", "edit", "table", "BlogPost", "add-field", `summary:Text=""`); code != 0 {
+		t.Fatalf("edit table: exit %d\n%s%s", code, out, errs)
+	}
+	if code, out, errs := alderIn(t, dir, "", "regen", "resource", "BlogPost"); code != 0 {
+		t.Fatalf("regen: exit %d\n%s%s", code, out, errs)
+	}
+	for f, lines := range decls {
+		b, _ := os.ReadFile(filepath.Join(dir, "app", "BlogPosts", f))
+		for _, l := range lines {
+			if !strings.Contains(string(b), "\n"+l+"\n") {
+				t.Errorf("%s: regen changed the declaration `%s`", f, l)
+			}
+		}
+	}
+	b, _ := os.ReadFile(edit)
+	got := string(b)
+	if !strings.Contains(got, "Save.update {") || strings.Contains(got, "Save.put") {
+		t.Errorf("the regenerated Edit.alder does not call Save.update:\n%s", got)
+	}
+	if !strings.Contains(got, "summary") {
+		t.Errorf("Edit.alder did not gain summary")
+	}
+	code, out, errs := alderIn(t, dir, "", "check")
+	if code != 0 || strings.Contains(out+errs, "error[") || !strings.Contains(out+errs, "W0013") {
+		t.Errorf("alder check after regen: exit %d (want 0, warnings W0013 only)\n%s%s", code, out, errs)
+	}
+}

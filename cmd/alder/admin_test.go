@@ -951,10 +951,24 @@ func TestAdmin_RegenBeforeRestPaths(t *testing.T) {
 					t.Fatal(err)
 				}
 				got := string(b)
-				// the old app's handlers are still named `update` (W0013; `alder fmt` renames them), and
-				// the regenerated tests call them so: compare with the handlers' names left out
-				if normHandlers(got) != normHandlers(want) {
-					t.Errorf("%s after regen is not what new admin writes:\n%s", rel, got)
+				oldSrc, err := os.ReadFile(filepath.Join(old, rel))
+				if err != nil {
+					t.Fatal(err)
+				}
+				// the old app's handlers are still named `update` (W0013; `alder fmt` renames them):
+				// regen leaves their declarations byte for byte as they were, and the regenerated
+				// tests call them by that name; otherwise the page is what `new admin` writes now
+				for _, m := range legacyHandler.FindAllStringSubmatch(outsideRegions(string(oldSrc)), -1) {
+					if !regexp.MustCompile(`(?m)^route ` + m[1] + `\b`).MatchString(got) {
+						continue // a route regen removed (`Search…`) takes its handler with it
+					}
+					if !strings.Contains(got, "\n"+m[0]+"\n") {
+						t.Errorf("%s: regen changed the declaration `%s`", rel, m[0])
+					}
+					want = regexp.MustCompile(`\b`+m[1]+`\.(post|put|patch|delete)\b`).ReplaceAllString(want, m[1]+".update")
+				}
+				if got != want {
+					t.Errorf("%s after regen is not what new admin writes (its handlers named `update`):\n%s", rel, got)
 				}
 				for _, stale := range []string{"route Search", "form Find", ".update : Search", "/_" + "/"} {
 					if strings.Contains(got, stale) {
@@ -969,11 +983,24 @@ func TestAdmin_RegenBeforeRestPaths(t *testing.T) {
 	}
 }
 
-// normHandlers is src with each handler of a route it declares written `Route.handler`, whatever
-// its name (`update` before #308, the method's after).
-func normHandlers(src string) string {
-	for _, m := range regexp.MustCompile(`(?m)^route (\w+)\s*=`).FindAllStringSubmatch(src, -1) {
-		src = regexp.MustCompile(`\b`+m[1]+`\.(update|post|put|patch|delete)\b`).ReplaceAllString(src, m[1]+".handler")
+// legacyHandler matches the declaration lines of a handler named `update` (`Save.update : …`,
+// `Save.update params session = {`), capturing the route's name.
+var legacyHandler = regexp.MustCompile(`(?m)^(\w+)\.update (?:: .*|params session.*)$`)
+
+// outsideRegions is src without the lines between `-- @admin begin` and `-- @admin end`, which
+// regen rewrites whole (a handler inside one is regenerated with its routes and tests).
+func outsideRegions(src string) string {
+	var keep []string
+	in := false
+	for _, l := range strings.Split(src, "\n") {
+		switch t := strings.TrimSpace(l); {
+		case strings.HasPrefix(t, "-- @admin begin"):
+			in = true
+		case t == "-- @admin end":
+			in = false
+		case !in:
+			keep = append(keep, l)
+		}
 	}
-	return src
+	return strings.Join(keep, "\n")
 }
