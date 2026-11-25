@@ -84,6 +84,7 @@ KEEP_SUBSECTIONS = {
 # failure", "`--fuzz`, `--seed` and saved failures" and "Health checks" to pay for the route-era
 # COMMANDS table (the failure text and the flags are met by running the test, not needed to write one).
 DROP_SUBSECTIONS = {
+    "05": {"SVG": ["How SVG renders"]},
     "06": {"Rules": ["The rules and a replicated database"],
            "App-level routes": ["Example: a theme switch"],
            "File pages": ["Status and headers", "Links and the boost", "What stays HTML"]},
