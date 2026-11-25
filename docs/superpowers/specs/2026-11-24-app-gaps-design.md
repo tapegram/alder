@@ -924,3 +924,24 @@ Each with the options and the recommendation. Sixteen in all.
   `Text.toEmail`; (b) `@nocase` on the column; (c) both. *Recommended: (a), with `@nocase`
   filed as a follow-up for other columns.*
 - **R16. How much is folded.** (a) The whole address; (b) the domain only. *Recommended: (a).*
+
+## Rulings (user, 2026-11-24)
+
+Ruled one by one. Where a ruling departs from the recommendation, the sections above are superseded by it.
+
+- R1 (a) checker analysis with a signature clause.
+- R2 (a) clause required: at once in modules without routes; W0014 for one release in route modules.
+- R3 (a) `requires`.
+- R4 (a) warning, W0015.
+- R5 (a) jobs unchanged (`silo k` only); a partition form for jobs is a follow-up issue.
+- R6 (a) tests anywhere, key checked at run time.
+- R7 (a) E0031 unchanged apart from the "(through `Helper`)" note.
+- R8 (a) `List Html -> Response` plus a `remove : Text -> Response -> Response` modifier.
+- R9 **(b) `Response.replace`**, not `Response.patch` (departs from the recommendation): it says what happens to each element and does not read against `R.patch` handlers. Rename throughout #309's design, tests (`Answer` constructor names included) and book.
+- R10 **(b) deprecate `render r`** (departs from the recommendation): one mechanism; handlers load what they need and answer `Response.replace [ Row.view row s ]`. `render` warns for one release (like W0013), with the rewrite in the message, then is removed.
+- R11 (a) send nothing, log, error toast, 500 in `Alder-Status`.
+- R12 (a) fail a step whose target is missing, and compare each replaced element with the page loaded again.
+- R13 (a) replace and remove only.
+- R14 (a) W0013 for one release, fixed by `alder fmt` and the editor's quick fix.
+- R15 (a) `Text.Email` folds wherever one is made, plus `Text.toEmail`; `@nocase` filed as a follow-up for other columns.
+- R16 (a) the whole address.
