@@ -72,7 +72,12 @@ func runFmtTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code in
 			code = c
 		}
 	}
-	cache := &fmtCache{noted: map[string]bool{}, progs: map[string]*fmtProject{}}
+	cache := &fmtCache{noted: map[string]bool{}, progs: map[string]*fmtProject{}, targets: map[string]bool{}}
+	for _, f := range files {
+		if abs, err := filepath.Abs(f.path); err == nil && !f.scratch {
+			cache.targets[abs] = true
+		}
+	}
 	for _, f := range files {
 		raise(fmtFile(f.path, f.scratch, checkOnly, cache, stdout, stderr))
 	}
@@ -102,6 +107,9 @@ type fmtCache struct {
 	std   map[string]*syntax.Module
 	noted map[string]bool
 	progs map[string]*fmtProject
+	// targets are the absolute paths of the files this run formats: a rename that spans files
+	// (format.Migrate's groups) is migrated only when the run formats all of them.
+	targets map[string]bool
 
 	hooks fmtHooks // test seams
 }
@@ -195,7 +203,9 @@ func fmtMigrate(path string, src []byte, cache *fmtCache, stderr io.Writer) (out
 	if pr.bag == nil {
 		return src, root, pr.broken
 	}
-	out, _, err = format.Migrate(pr.bag, fmtRel(root, abs), src)
+	out, _, err = format.Migrate(pr.bag, fmtRel(root, abs), src, func(rel string) bool {
+		return cache.targets[filepath.Join(root, filepath.FromSlash(rel))]
+	})
 	if err != nil {
 		fmt.Fprintf(stderr, "%s %s: imports were not migrated: %v\n", errTag(stderr, "alder fmt:"), path, err)
 		return src, root, nil

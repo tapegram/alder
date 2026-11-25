@@ -75,7 +75,7 @@ func (s *server) migrated(rel string, d *doc) []byte {
 		}
 		items = bag.Items
 	}
-	out, _, err := format.Migrate(&diag.Bag{Items: items}, rel, text)
+	out, _, err := format.Migrate(&diag.Bag{Items: items}, rel, text, func(f string) bool { return f == rel }) // one buffer: a rename other files share waits for `alder fmt`
 	if err != nil {
 		fmt.Fprintf(s.o.Log, "alder lsp: migrating %s: %v\n", rel, err)
 		return text

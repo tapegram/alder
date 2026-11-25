@@ -338,6 +338,10 @@ func (c *Checker) routeMembers(m *syntax.Module, r string) map[string]*syntax.Va
 	return out
 }
 
+// handlerGroup is the diag.Fix group of W0013's rename of write route r's handler: its
+// declaration and every reference to it, in any module, rename together.
+func handlerGroup(r *RouteInfo) string { return "W0013 " + r.Module + "." + r.Name }
+
 // legacyHandlerRef raises W0013 at a reference to a write route's handler by its name before
 // #308 (`Toggle.update`, `Todos.Toggle.update`), in any module, with the rename as its fix.
 func (mc *modCtx) legacyHandlerRef(x *syntax.Var) {
@@ -358,6 +362,7 @@ func (mc *modCtx) legacyHandlerRef(x *syntax.Var) {
 	w := c.bag.Warn(diag.HandlerRenamed, x.Span, "`%s` is now `%s`: a write route's handler is named after its method. `alder fmt` renames it.", name, renamed)
 	w.Fix = diag.ReplaceSpan(x.Span, renamed)
 	w.Fix.Preferred = true // the one obvious repair
+	w.Fix.Group = handlerGroup(r)
 }
 
 // checkRoutes checks the members every route of the module has (E0043): a GET route's `load`
@@ -402,6 +407,7 @@ func (mc *modCtx) checkWriteRoute(r *RouteInfo, members map[string]*syntax.Value
 		w := c.bag.Warn(diag.HandlerRenamed, memberNameSpans(mc.m, old)[0], "`%s.%s` is now `%s.%s`: a write route's handler is named after its method. `alder fmt` renames it.", r.Name, legacyHandler, r.Name, h)
 		if w.Fix = renameFix(mc.m, old, h); w.Fix != nil {
 			w.Fix.Preferred = true // the one obvious repair
+			w.Fix.Group = handlerGroup(r)
 		}
 	}
 	if d == nil {

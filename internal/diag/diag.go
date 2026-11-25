@@ -24,6 +24,10 @@ type Fix struct {
 	// Migration marks a fix `alder fmt` applies on its own whatever its code: the rename of a
 	// reference to a write route's handler renamed after its method (#308, an E0002).
 	Migration bool
+	// Group names the change a fix is part of when that change spans files (W0013's rename of a
+	// handler: its declaration and every reference); "" for a fix that stands alone. A migration
+	// of only some files (format.Migrate) applies a group only when every fix of it lies in them.
+	Group string
 }
 
 // ReplaceSpan is a fix that replaces the half-open span [sp.Start, sp.End) with text.

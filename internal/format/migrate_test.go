@@ -42,7 +42,7 @@ func migrateIn(t *testing.T, files map[string]string, file string) (string, bool
 		t.Fatal(ioErrs)
 	}
 	prog.Resolve(bag)
-	out, changed, err := Migrate(bag, file, []byte(files[file]))
+	out, changed, err := Migrate(bag, file, []byte(files[file]), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestMigrate_SharedAndOverlappingSpans(t *testing.T) {
 	bag.Error(diag.FullPath, inner, "overlap").Fix = diag.ReplaceSpan(inner, "Todo")
 	bag.Error("E0203", sp, "other code").Fix = diag.ReplaceSpan(sp, "garbage")
 	bag.Error(diag.FullPath, diag.Span{File: "app/Other.alder", Start: sp.Start, End: sp.End}, "other file").Fix = diag.ReplaceSpan(sp, "garbage")
-	out, changed, err := Migrate(bag, "app/Use.alder", []byte(src))
+	out, changed, err := Migrate(bag, "app/Use.alder", []byte(src), nil)
 	if err != nil || !changed || string(out) != "module Use\n\nb = Todo.Open\n" {
 		t.Fatalf("changed=%v err=%v:\n%s", changed, err, out)
 	}
@@ -132,8 +132,36 @@ func TestMigrate_HandlerRenameFixes(t *testing.T) {
 	ref.Fix = diag.ReplaceSpan(at(6, 5, 6, 13), "A.post")
 	ref.Fix.Migration = true
 	bag.Error(diag.UnknownName, at(8, 5, 8, 9), "no nope").Fix = diag.ReplaceSpan(at(8, 5, 8, 9), "garbage")
-	out, changed, err := Migrate(bag, file, []byte(src))
+	out, changed, err := Migrate(bag, file, []byte(src), nil)
 	if want := "module Todos\n\nA.post : Int\nA.post = 1\n\nb = A.post\n\nc = nope\n"; err != nil || !changed || string(out) != want {
 		t.Fatalf("changed=%v err=%v:\n%s", changed, err, out)
+	}
+}
+
+// A fix of a group (a handler rename across files) is applied only when the run migrates every
+// file of its group; a fix with no group is applied regardless.
+func TestMigrate_GroupNeedsEveryFile(t *testing.T) {
+	src := "module Todos\n\nA.update : Int\nA.update = 1\n\nb = Table.Todo.find 1\n"
+	file := "app/Todos.alder"
+	at := func(f string, l1, c1, l2, c2 int) diag.Span {
+		return diag.Span{File: f, Start: diag.Pos{Line: l1, Col: c1}, End: diag.Pos{Line: l2, Col: c2}}
+	}
+	bag := &diag.Bag{}
+	decl := bag.Warn(diag.HandlerRenamed, at(file, 3, 1, 3, 9), "renamed")
+	decl.Fix = diag.ReplaceSpan(at(file, 3, 3, 4, 9), "post : Int\nA.post")
+	decl.Fix.Group = "W0013 Todos.A"
+	ref := bag.Warn(diag.HandlerRenamed, at("app/Checks.alder", 5, 1, 5, 15), "renamed")
+	ref.Fix = diag.ReplaceSpan(at("app/Checks.alder", 5, 1, 5, 15), "Todos.A.post")
+	ref.Fix.Group = "W0013 Todos.A"
+	bag.Error(diag.FullPath, at(file, 6, 5, 6, 20), "full path").Fix = diag.ReplaceSpan(at(file, 6, 5, 6, 20), "Todo.find")
+	only := func(f string) bool { return f == file }
+	out, _, err := Migrate(bag, file, []byte(src), only)
+	if want := "module Todos\n\nA.update : Int\nA.update = 1\n\nb = Todo.find 1\n"; err != nil || string(out) != want {
+		t.Fatalf("one file: err=%v:\n%q", err, out)
+	}
+	both := func(f string) bool { return f == file || f == "app/Checks.alder" }
+	out, _, err = Migrate(bag, file, []byte(src), both)
+	if want := "module Todos\n\nA.post : Int\nA.post = 1\n\nb = Todo.find 1\n"; err != nil || string(out) != want {
+		t.Fatalf("both files: err=%v:\n%s", err, out)
 	}
 }

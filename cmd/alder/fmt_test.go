@@ -460,15 +460,30 @@ func TestMigrate_HandlerRename(t *testing.T) {
 	fmtCheckClean(t, dir)
 }
 
-// Formatted one file at a time, the route module first: the other module's reference, by then an
-// E0002 with the rename as its fix, is renamed when that file is formatted.
-func TestMigrate_HandlerRenameFileByFile(t *testing.T) {
+// `alder fmt` on the route module alone leaves the handler as `update`: other files still name
+// it, and renaming only the declaration would break them. The app still checks, with W0013 only.
+func TestMigrate_HandlerRenameSingleFileWaits(t *testing.T) {
 	t.Parallel()
 	dir, f := fmtHandlerProject(t)
-	for _, p := range []string{f["todos"], f["checks"]} {
-		if code, out, errOut := fmtRun(p); code != 0 || out != p+"\n" || errOut != "" {
-			t.Fatalf("%s: code %d out %q err %q", p, code, out, errOut)
+	before, _ := os.ReadFile(f["todos"])
+	if code, _, errOut := fmtRun(f["todos"]); code != 0 || errOut != "" {
+		t.Fatalf("code %d err %q", code, errOut)
+	}
+	if got, _ := os.ReadFile(f["todos"]); string(got) != string(before) {
+		t.Fatalf("Todos.alder changed:\n%s", got)
+	}
+	_, _, bag, ioErrs := buildkit.LoadChecked(dir, nil)
+	if len(ioErrs) > 0 {
+		t.Fatal(ioErrs)
+	}
+	for _, d := range bag.Items {
+		if d.Code != "W0013" {
+			t.Errorf("after fmt of one file: %s %s:%d:%d %s", d.Code, d.Span.File, d.Span.Start.Line, d.Span.Start.Col, d.Message)
 		}
+	}
+	// both files named on the command line: the rename is whole
+	if code, _, errOut := fmtRun(f["todos"], f["checks"]); code != 0 || errOut != "" {
+		t.Fatalf("both: code %d err %q", code, errOut)
 	}
 	fmtCheckClean(t, dir)
 }

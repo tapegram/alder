@@ -186,3 +186,24 @@ func TestFormatting_NoMigrationWhenAFileDoesNotParse(t *testing.T) {
 		t.Fatalf("imports changed:\n%s", got)
 	}
 }
+
+// #308: formatting one buffer never renames a handler that another file still names: the
+// declaration's W0013 rename waits for `alder fmt` over both files. Analysed or not.
+func TestFormatting_HandlerRenameWaitsForOtherFiles(t *testing.T) {
+	for _, analysed := range []bool{false, true} {
+		root := t.TempDir()
+		if err := os.CopyFS(root, os.DirFS("../../testdata/corpus/W0013-handler-update")); err != nil {
+			t.Fatal(err)
+		}
+		c := start(t, root)
+		const rel = "app/Todos.alder"
+		text := c.disk(rel)
+		c.open(rel, text)
+		if analysed {
+			c.diags(rel)
+		}
+		if got := applyEdits(t, text, formatting(t, c, rel)); strings.Contains(got, "patch") {
+			t.Fatalf("analysed=%v: renamed in one buffer:\n%s", analysed, got)
+		}
+	}
+}

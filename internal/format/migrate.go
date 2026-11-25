@@ -18,10 +18,22 @@ var migration = map[string]bool{diag.ImportAlias: true, diag.FullPath: true, dia
 // applied once and a fix that overlaps one already taken is skipped, so the output is well formed
 // whatever the bag holds; the next run picks up what was skipped (and a handler in a module that
 // still has import errors, which the checker skips), and a migrated file has nothing left to fix.
-func Migrate(bag *diag.Bag, file string, src []byte) ([]byte, bool, error) {
+//
+// migrating reports whether a file is migrated in the same run (nil: every file is). A fix of a
+// group (diag.Fix.Group) is applied only when every fix of its group lies in a migrated file, so
+// formatting one file never renames a handler whose references other files still hold.
+func Migrate(bag *diag.Bag, file string, src []byte, migrating func(file string) bool) ([]byte, bool, error) {
+	blocked := map[string]bool{} // groups with a fix in a file this run does not migrate
+	if migrating != nil {
+		for _, d := range bag.Items {
+			if d.Fix != nil && d.Fix.Group != "" && !migrating(d.Span.File) {
+				blocked[d.Fix.Group] = true
+			}
+		}
+	}
 	var fixes []diag.Fix
 	for _, d := range bag.Items {
-		if d.Fix == nil || d.Span.File != file || !migration[d.Code] && !d.Fix.Migration {
+		if d.Fix == nil || d.Span.File != file || !migration[d.Code] && !d.Fix.Migration || blocked[d.Fix.Group] {
 			continue
 		}
 		fixes = append(fixes, *d.Fix)
