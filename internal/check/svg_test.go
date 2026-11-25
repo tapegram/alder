@@ -29,6 +29,11 @@ func TestSVG(t *testing.T) {
 		{"unknown element", `<svg><bogus /></svg>`, "E0002 unknown element `<bogus>`"},
 		{"unknown attribute", `<svg><rect href="x" /></svg>`, "E0002 `<rect>` takes no attribute `href`"},
 		{"an HTML attribute", `<svg><circle alt="x" /></svg>`, "E0002 `<circle>` takes no attribute `alt`"},
+		{"an HTML element in an svg", `<svg><div>x</div></svg>`, "E0002 `<div>` cannot go inside `<svg>`: an SVG element holds SVG elements (and `<title>`)"},
+		{"an HTML element in svg text", `<svg><text x="0" y="0">a<span>b</span></text></svg>`, "E0002 `<span>` cannot go inside `<text>`: an SVG element holds SVG elements (and `<title>`)"},
+		{"an HTML element in a loop in an svg", `<svg>{for p in [1] -> <p>x</p>}</svg>`, "E0002 `<p>` cannot go inside `<svg>`: an SVG element holds SVG elements (and `<title>`)"},
+		{"a custom element in an svg", `<svg><al-badge>x</al-badge></svg>`, "E0002 `<al-badge>` cannot go inside `<svg>`: an SVG element holds SVG elements (and `<title>`)"},
+		{"an attribute in the wrong case", `<svg viewbox="0 0 1 1" />`, "E0002 `<svg>` takes no attribute `viewbox`; did you mean `viewBox`?"},
 		{"a typed value", `<svg><circle r={n} /></svg>`, "E0003 expected Text, got Int"},
 	}
 	for _, c := range cases {

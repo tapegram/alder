@@ -63,9 +63,9 @@ var (
 	reMember   = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.])([A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)*)\.([a-zA-Z0-9_]*)$`)
 	reField    = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.])([a-z][A-Za-z0-9_]*)\.([a-zA-Z0-9_]*)$`)
 	reCloseTag = regexp.MustCompile(`</([a-z0-9-]*)$`)
-	reAttr     = regexp.MustCompile(`<([a-z][a-z0-9-]*)\s[^<>]*?\b([a-z-]*)$`)
+	reAttr     = regexp.MustCompile(`<([a-z][a-z0-9-]*)\s[^<>]*?\b([a-zA-Z0-9-]*)$`)
 	// reAttrValue: inside an attribute's quotes, the tag, the attribute and the typed value.
-	reAttrValue = regexp.MustCompile(`<([a-z][a-z0-9-]*)\s[^<>]*?\b([a-z-]+)="([^"]*)$`)
+	reAttrValue = regexp.MustCompile(`<([a-z][a-z0-9-]*)\s[^<>]*?\b([a-zA-Z0-9-]+)="([^"]*)$`)
 	reTag       = regexp.MustCompile(`(?:^|[\s>({\[,])<([a-z0-9-]*)$`)
 	reHole      = regexp.MustCompile(`\?([a-z][A-Za-z0-9_]*)?$`)
 	reWord      = regexp.MustCompile(`[A-Za-z0-9_]*$`)

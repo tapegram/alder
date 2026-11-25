@@ -250,9 +250,8 @@ A body may not contain `</script` or `</style` in any case (split it:
 
 ## SVG
 
-A view can draw with SVG, rendered on the server with the rest of the page:
-a chart, an icon, a diagram. No script is involved, and an app test reads
-the shapes like any other markup.
+A view can draw with SVG (a chart, an icon), rendered on the server with
+no script.
 
 ```alder eval=<svg viewBox="0 0 10 10" role="img"><title>t</title><polyline points="0,0 5,5" fill="none" stroke="currentColor" stroke-width="2"></polyline><line x1="0" y1="0" x2="10" y2="0"></line></svg>
 <svg viewBox="0 0 10 10" role="img">
@@ -289,18 +288,29 @@ Every one but `desc` also takes the paint attributes: `fill`, `stroke`,
 All of them also take the global attributes (`class`, `id`, `role`,
 `style`, …), `data-*` and `aria-*`, and nothing else.
 
+A shape draws only inside an `<svg>`. An SVG element holds SVG elements
+(and `<title>`): an HTML or custom element inside one, such as a `<span>`
+in a `<text>`, is E0002.
+
+A test finds the shapes with a selector, and reads their attributes by
+their SVG names (`Test.attr "viewBox" "svg"`):
+
+```alder
+Test.count "svg polyline" page.doc == 1
+```
+
 ### What an SVG element refuses
 
-An attribute an SVG element does not take is E0002, so a typo or an HTML
-attribute is caught. That includes Alder's route attributes: `href`, `click`
-and the others belong on HTML elements, so put the link or the button
-around the `<svg>`.
+An attribute an SVG element does not take is E0002: a typo, an HTML
+attribute, or a route attribute (`href`, `click`, …; put the link or the
+button around the `<svg>`).
 
 ```alder error=E0002 "`<rect>` takes no attribute `href`"
 <svg><rect href="x" /></svg>
 ```
 
-An unknown element inside an `<svg>` is E0002 as anywhere else.
+A name in the wrong case (`viewbox`) suggests the right one. An unknown
+element inside an `<svg>` is E0002 as anywhere else.
 
 ### How SVG renders
 
@@ -308,11 +318,10 @@ An SVG element renders like an HTML one: each shape closed with its end tag
 (`<line …></line>`), which HTML parses the same as `<line … />` inside an
 `<svg>`. `viewBox` and `preserveAspectRatio` keep their case, as SVG needs.
 
-A test finds the shapes with a selector, and reads their attributes:
-
-```alder
-Test.count "svg polyline" page.doc == 1
-```
+An `id` inside an `<svg>` is not a region (below, "Partial updates"): a
+patch is read as HTML, which would take the shape out of the drawing, so a
+change to a shape sends the whole `<svg>` (a region when it has an `id`),
+or a region around it.
 
 ## Components
 
@@ -842,7 +851,9 @@ small an update is:
 
 An `id` counts as a region only when it is a plain name (letters, digits,
 `_` and `-`, not starting with a digit) and appears once on the page;
-`id`s inside `<head>`, `<noscript>` or `Html.unsafe` markup do not count.
+`id`s inside `<head>`, `<noscript>` or `Html.unsafe` markup do not count,
+nor do those inside an `<svg>` (an `<svg>` with an `id` is a region: a
+change to a shape sends the whole drawing).
 
 Nor does an element around markup the browser rebuilds as it reads it:
 

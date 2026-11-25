@@ -117,6 +117,11 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 	if !htmlTags[x.Tag] {
 		c.errorf(diag.UnknownName, x.Span, "unknown element `<%s>`", x.Tag)
 	}
+	if svgTags[x.Tag] {
+		for _, ch := range x.Children {
+			mc.svgChildren(x.Tag, ch)
+		}
+	}
 	if !c.slotted[x] {
 		mc.misplacedSlots(x)
 	}
@@ -268,7 +273,12 @@ func (mc *modCtx) attribute(x *syntax.Element, a *syntax.HtmlAttr, m types.Type,
 		return
 	}
 	if svgTags[x.Tag] && !svgAttr(x.Tag, a.Name) {
-		c.errorf(diag.UnknownName, a.Span, "`<%s>` takes no attribute `%s`", x.Tag, a.Name)
+		d := c.errorf(diag.UnknownName, a.Span, "`<%s>` takes no attribute `%s`", x.Tag, a.Name)
+		for _, at := range markup.HTML.AttrsOf(x.Tag) {
+			if strings.EqualFold(at.Name, a.Name) {
+				d.Message += "; did you mean `" + at.Name + "`?"
+			}
+		}
 		if a.Value != nil {
 			mc.infer(a.Value, env, eff)
 		}
@@ -337,6 +347,31 @@ func (mc *modCtx) attribute(x *syntax.Element, a *syntax.HtmlAttr, m types.Type,
 		mc.textAttrOr(a, env, eff, types.Route)
 	default:
 		mc.textAttr(a, env, eff)
+	}
+}
+
+// svgChildren reports (E0002) each HTML or custom element that e, a child of SVG element parent,
+// puts directly inside it, through `for`, `if` and `match`: the browser would build it outside
+// the SVG namespace, where it draws nothing. `<title>` names the drawing; a component's markup is
+// not seen.
+func (mc *modCtx) svgChildren(parent string, e syntax.Expr) {
+	switch x := e.(type) {
+	case *syntax.Element:
+		if x.Ref.Kind == syntax.RefComponent || isUpperName(x.Tag) || svgTags[x.Tag] || x.Tag == "title" {
+			return
+		}
+		if htmlTags[x.Tag] || strings.Contains(x.Tag, "-") {
+			mc.c.errorf(diag.UnknownName, x.Span, "`<%s>` cannot go inside `<%s>`: an SVG element holds SVG elements (and `<title>`)", x.Tag, parent)
+		}
+	case *syntax.HtmlFor:
+		mc.svgChildren(parent, x.Body)
+	case *syntax.HtmlIf:
+		mc.svgChildren(parent, x.Then)
+		mc.svgChildren(parent, x.Else)
+	case *syntax.HtmlMatch:
+		for _, a := range x.Arms {
+			mc.svgChildren(parent, a.Body)
+		}
 	}
 }
 

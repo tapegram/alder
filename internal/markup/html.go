@@ -22,7 +22,7 @@ var attrDocs = map[string]string{
 	"role": "the ARIA role of the element", "aria-label": "a text label for assistive technology", "itemscope": "mark the element as a microdata item",
 	"href": "the address the link points to", "target": "where to show the linked page or form response", "rel": "how the linked resource relates to this page",
 	"download": "download the linked resource instead of opening it", "src": "the address of the resource", "alt": "text shown when the image cannot be",
-	"width": "the width in pixels", "height": "the height in pixels", "loading": "load now (eager) or when near the viewport (lazy)",
+	"width": "the width in pixels, or user units in SVG", "height": "the height in pixels, or user units in SVG", "loading": "load now (eager) or when near the viewport (lazy)",
 	"decoding": "how the browser decodes the image: sync, async or auto", "srcset": "a list of image sources for different screen sizes",
 	"sizes": "the display width of the image for each screen size", "type": "the type of the control or resource", "name": "the name used when the form is submitted",
 	"value": "the value of the control", "placeholder": "a hint shown while the control is empty", "required": "the control must be filled in before submitting",
