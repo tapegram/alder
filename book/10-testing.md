@@ -432,6 +432,25 @@ notes `Db.mine Todo` just before the count's own name. The other four
 are steps, named as written: `Db.getMine Todo`, `Db.updateMine Todo`,
 `Db.deleteMine Todo`, `Db.insertMine Todo`.
 
+A test may call a value that needs a key, too, in any module: the key is
+certain in a test, as it is in a route that `requires` it, and `Test.login`
+supplies it. That is how a query written once in a table's module is tested
+beside it. The workspace's `ordered` (`Db.scoped Project`, with the signature
+`ordered : Query (List Project) requires org`) is tested in
+`examples/workspace/app/Table/Project.alder`, as two orgs, one answer each:
+
+```alder fragment
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let inAcme <- ordered
+  let _ <- Test.login { user: Just ann, org: Just globex }
+  let inGlobex <- ordered
+```
+
+The checker does not prove that a test logged in: without `Test.login` the
+step fails when it runs, with the runtime's message (`Db.scoped Project: the
+session has no org`), as a scoped operation written in the test does. A test and a test
+helper never write the clause themselves.
+
 ### Two orgs
 
 A partition by another key (chapter 6, "Partitions") is tested the same

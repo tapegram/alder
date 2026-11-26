@@ -925,12 +925,16 @@ Why an app wants that:
   files: "`AuditLog.project` refers to `Project`, which lives in `silo
   org`: a shared table cannot point into a silo"; nor may one silo's
   table point into another's.
-- Reading or writing a siloed table needs the key narrowed: the scoped
+- Reading or writing a siloed table needs the key certain: the scoped
   operations, and the unscoped ones too (`Db.from Project` reads one
   org's file, so it needs to know which): "`Db.delete Project` (`Project`
-  lives in `silo org`) needs a route that `requires org`: this is not
-  a member of one". There is no query over every org's rows; the admin goes through
-  the orgs one at a time (chapter 15).
+  lives in `silo org`) needs a route that `requires org`: `Index` does
+  not". The key is certain in a member of a route that `requires` it, in a
+  job with `silo org`, in a test, and in any value whose signature says
+  `requires org`, in the table's own module or any other: a query over a
+  siloed table is written once, beside the table, with the clause
+  (chapter 6, "Where they may be used"). There is no query over every org's
+  rows; the admin goes through the orgs one at a time (chapter 15).
 - `Db.update` cannot move a row to another org: "Db.update Project: a row
   cannot move to another org (delete it and insert it there)". A row is
   inserted into the org its `org` column names, which in a request must

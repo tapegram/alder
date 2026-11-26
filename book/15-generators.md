@@ -5560,6 +5560,23 @@ A form whose fields fit such a table inserts with `Db.insertScoped` (the
 partition column is the route's), and the tests of `alder new form` and
 `alder new action` on the route sign in with the key the same way.
 
+A helper a command writes that reads through a key says so in its signature,
+as any helper does (chapter 6, "Where they may be used"). The admin pages of a
+silo's table write their `counted` that way, with the clause of the key the
+route's parameter makes certain:
+
+```alder fragment
+counted : Project.ProjectId -> Query Model requires org
+counted id = {
+  let found <- Db.get Project id
+  …
+```
+
+The same goes for `labelsOf` and `selected`, wherever the helper reads an
+owned table (`requires user`) or a partitioned one (`requires org`). A table's queries
+the commands write stay in the route module; the clause lets you move one
+into the table's module, to share it, without changing what it says.
+
 ## Four gaps: a button in `App`, a prop, a form with parameters, a login's route
 
 E11 (below) found four things the commands could not do.

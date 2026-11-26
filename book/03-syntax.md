@@ -325,6 +325,25 @@ Names of values and functions start with a lowercase letter. Names of types,
 constructors, modules, and components start with an uppercase letter.
 Multi-word names are `camelCase` or `PascalCase`.
 
+### A value's session keys: `requires`
+
+A value that reads or writes through a scoped operation (`Db.mine`,
+`Db.scoped`, chapter 6) needs a session key to be certain when it runs. It
+says which in its signature, after the type:
+
+```alder fragment
+-- the org's projects, for the session's org
+visible : Query (List Project) requires org
+visible = Db.scoped Project |> Db.orderBy Project.name.asc |> Db.all
+```
+
+`requires` is followed by session field names, separated by commas, in the
+session's order (`requires user, org`). The clause may begin the next line,
+as `->` may. It is not part of the type: `visible` is a `Query (List
+Project)`. A route's members and a job's `run` never write it, since the
+route line and `silo` say it for them. Chapter 6 ("Where they may be used")
+says where each key is certain, and what the compiler checks.
+
 ### Route declarations
 
 A page, and every action it sends, is a **route**: a `route` line, and the

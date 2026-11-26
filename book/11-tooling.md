@@ -2775,6 +2775,7 @@ A `route` declaration the rules refuse (chapter 6):
 - `form F` on a GET route.
 - A `{segment}` that names no parameter.
 - Two routes with one method and path.
+- A `requires` clause on a route's member or a job's `run`: "`Index.load` takes what it requires from its route: write `requires org` on `route Index`".
 
 #### E0044 — a route name that cannot be told apart
 
@@ -2868,13 +2869,21 @@ For `@partition k` (E0032) the texts are its own.
 - The generic operations: "`Todo` has no `@partition` column, so `Db.scoped Todo` has nothing to scope by".
 - The `mine` family on another key: "`Project` is partitioned by `org`, not by the session's `user`: `Db.mine` is for `@owner` tables; write `Db.scoped Project`".
 
-#### E0026 — a scoped operation with no signed-in user
+#### E0026 — a session key needed where it is not certain
 
-- **Basic case.** "`Db.mine` needs a route that `requires user`: `Public` does not", "`Db.deleteMine` needs a route that `requires user`: this is not a member of one".
-- **Through another module.** Through a value of another module, at the use: "`Todos.Index.recent` uses `Db.mine`, which needs a route that `requires user`: `Public` does not".
+The scoped operations need a session key (`user` for the `Db.mine` family, a table's partition key for `Db.scoped`, a silo's key for an unscoped operation on a siloed table), and the need belongs to the value that uses the operation, in any module (chapter 6, "Where they may be used").
+
+- **Basic case.** "`Db.mine` needs a route that `requires user`: `Public` does not", "`Db.deleteMine` needs a route that `requires user`: `Clear` does not".
+- **Through another value.** At the use: "`Todos.Index.recent` uses `Db.mine`, which needs a route that `requires user`: `Public` does not"; when the need comes through helpers the text names the first one: "`Access.reviewers` uses `Db.scoped Reviewer` (through `Reviewer.current`), which needs a route that `requires org`: `Index` does not".
 - **In a fake.** "`Db.mine` cannot be used in a fake: a fake has no session".
-- **Another key.** For another key the text names it and the table: "`Db.scoped Project` needs a route that `requires org`: `Public` does not", "`Projects.Index.recent` uses `Db.scoped Project`, which needs a route that `requires org`: `Public` does not".
-- **Unscoped operation on a siloed table.** "`Db.delete Project` (`Project` lives in `silo org`) needs a route that `requires org`: this is not a member of one".
+- **In a job.** A job's `run` has no session: it needs `silo k` for the key, and never has `user`.
+- **Another key.** For another key the text names it and the table: "`Db.scoped Project` needs a route that `requires org`: `Public` does not".
+- **Unscoped operation on a siloed table.** "`Db.delete Project` (`Project` lives in `silo org`) needs a route that `requires org`: `Wipe` does not".
+- **A value without the clause.** "`current` uses `Db.scoped Reviewer`, which needs `org`: say so in its signature, `current : ReviewerId -> Query (Maybe Reviewer) requires org`"; the fix inserts the clause.
+- **A clause that lacks a key.** "`current` uses `Db.mine Draft`, which needs `user`: its signature says `requires org`; write `requires user, org`"; the fix rewrites it.
+- **A value that uses a value with a clause.** "`reviewers` uses `Reviewer.current`, which `requires org`: say so in its signature".
+
+In a module that declares a route or a job, the last three are the warning W0014 for one release (below).
 
 #### E0027 — a role clause the session cannot answer
 
@@ -3086,6 +3095,14 @@ The admin form `requires user, role Admin, silo org`:
 
 - `Notice.with`, `Notice.success`, `Notice.warning` or `Notice.error`: "`Notice.success` is now `Response.success`" (chapter 9, "Response").
 - The old names still work, as aliases, for one release.
+
+#### W0014 — a helper of a route module without its `requires` clause
+
+- A helper of a module that declares a route or a job uses a session key its signature does not state: "`recent` uses `Db.mine`, which needs `user`: say so in its signature (`recent : Select Todo requires user`). `alder fmt` adds it." Such helpers compiled before the clause existed, so for one release this is a warning where a module with no route and no job gets E0026; callers still see what the body needs. `alder fmt` adds the clause.
+
+#### W0015 — a `requires` clause the body does not need
+
+- "`current` says `requires org` and uses nothing that needs `org`". The clause may run ahead of the body, so a helper can be declared and its callers written before it is filled in; callers are checked against the clause all the same.
 
 #### W0009 — deploy files exist but App.alder has no `deploy` block
 

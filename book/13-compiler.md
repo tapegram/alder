@@ -2522,17 +2522,41 @@ becomes the table's `Owner`.
 
 A reference to one of the five operations is checked where it is written
 (`inferVar` sends `Db.mine` and the others to `inferScoped`), against the
-member being checked: it is legal in a member of a route that
-`requires user` (its `load`, `view` or the handler), and in a `test`;
-anywhere else it is E0026.
+place being checked (`scopedRefusal`): the key is certain in a member of a
+route that `requires user` (its `load`, `view` or the handler), in a job
+with `silo` for it, in a `test`, and in any top-level value that is no
+route's or job's member, in any module. A `fake` has no session and never
+has it. Anywhere else it is E0026.
 
-A top-level value that uses one legally is marked, and the mark follows
-references to it within its module (`propagateScoped`, a fixpoint), so a
-use of the value from a module where the operation itself would be refused
-is E0026 at that use. A helper of a route module that no route owns may
-use the operation: each route member that refers to the helper is checked
-instead (`checkRouteRefs`), so the helper is refused at the member whose
-route does not `require` the key.
+The last case is what lets the operation sit in a table module: the value
+being checked then *has the need* instead of being refused. Each value has
+a **need**, per session key, the first operation on its path and the first
+helper through which it arrives. A use marks the value
+(`markScoped`), and a reference to another value that has a need marks the
+referring value too (`scopedRef`), whether or not the reference is applied,
+since a reference can be applied anywhere later. Within a module,
+`propagateScoped` carries the marks along references to a fixed point, so
+recursion terminates and the order of declarations does not matter.
+
+What a *caller* sees of a value is not that inferred need but its
+signature's `requires` clause (the parser puts the clause on the
+`ValueDecl`, and `statedUses` reads it). Two reasons. A caller's check then
+does not depend on the order the modules are checked in, and the language
+server can check one file against its imports' signatures alone. And a
+route that refers to a value is refused at the reference, with a message
+that names the value, the operation and the first helper.
+
+After every body is checked, `checkStatedNeeds` compares each value's stated
+set *S* with its inferred set *I*. A key in *I* that *S* lacks is E0026 at
+the use that needs it, with a fix that inserts or rewrites the clause
+(keys in the session's field order); in a module that declares a route or
+a job, where such helpers existed before the clause, it is the warning W0014
+for one release, and `alder fmt` applies the fix. A key in *S* that *I*
+lacks is W0015: the clause may run ahead of its body. A clause on a route's
+member or a job's `run` is E0043, since their key comes from the route line
+or `silo`. A route's references to values of its own module are collected
+and checked once the module's bodies are (`checkRouteRefs`), so a helper
+declared below its caller is checked all the same.
 
 After a body is typed, each operation's table argument must have an
 `Owner` (E0025, `checkScopedTables`).
@@ -2824,10 +2848,10 @@ session is known (E0032); `via`, `choose` and `silo` declarations into
 `Result.Via`, `Choose` and `Silos` (E0032, E0033).
 
 A scoped operation is checked as in M11, with the key in place of `user`:
-legal in a member of a route that `requires` the table's key (or has `silo
-k`, the admin form), in a test, and, through a helper, wherever the
-helper's own use is legal (E0026). An unscoped operation on a siloed table
-is held to the same rule.
+certain in a member of a route that `requires` the table's key (or has `silo
+k`, the admin form), in a test, in a job with `silo k`, and in a value whose
+signature says `requires k`, in any module (E0026 elsewhere). An unscoped
+operation on a siloed table is held to the same rule.
 
 ##### The write-set analysis
 

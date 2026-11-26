@@ -124,3 +124,11 @@ unless the item says what happens instead.
 22. The old `page` and `msg` declarations, `Nav`, and an unqualified `load`,
     `view` or the handler are E0046. Rewrite such a module as routes by hand
     (chapter 6).
+
+23. A route reads rows, then passes them to a helper that filters or checks
+    them. Every route that does so must remember to read the right rows
+    first, and one that forgets passes the helper the wrong ones. Put the
+    query in the helper instead, in the table's module, with the key it
+    needs in its signature
+    (`current : ProjectId -> Query Project requires org`), and have each
+    route call it (chapter 6, "Where they may be used").

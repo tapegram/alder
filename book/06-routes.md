@@ -1280,15 +1280,40 @@ writes its own check.
 ### Where they may be used
 
 A scoped operation needs a signed-in user, so it is allowed only where
-the compiler knows there is one: in the members of a route that `requires
-user`, its `load`, `view` or the handler, and in the helpers they call, such as
+the compiler is certain there is one. The need is a property of the
+**value** that uses the operation, not of the file it sits in: a value that
+reads `Db.mine Todo` *needs `user`*, and the compiler checks every place
+that value is used. There are four places, and what makes the key certain
+is different in each:
+
+| Place | `user` (or another key `k`) is certain when |
+|---|---|
+| a route's `load`, `view` or handler | the route `requires k`, or is the admin form `requires user, role Admin, silo k` |
+| a job's `run` | the job has `silo k` (`user` is never certain in a job: it has no session) |
+| a top-level value that is no member of a route or job, in **any** module | its signature says `requires k` |
+| a `test` or a test helper | always; the runtime fails the step when the test's session has no `k` |
+| a `fake` | never: a fake has no session |
+
+The third row is what lets a query live where it belongs. A value that
+reads a table with a scoped operation states what it needs in its signature,
+after the type, with the word `requires` and the session keys:
 
 ```alder fragment
-recent : Select Todo
+recent : Select Todo requires user
 recent = Db.mine Todo |> Db.orderBy Todo.created.desc |> Db.limit 5
 ```
 
-Anywhere else, it is E0026: in a route without `requires user`,
+The clause is not part of the type: `recent` is a `Select Todo`, and is
+passed, stored and unified as one. It may sit in the route's module or in
+`Table/Todo.alder`, where two routes can share it; a module with no route
+at all may hold it. A route's own members (`Index.load`, `Add.post`) never
+write the clause, since their route line is theirs, and a job's `run` takes
+its key from `silo k`.
+
+A reference to `recent` is then allowed exactly where `user` is certain: in a
+member of a route that `requires user`, in another value that says `requires
+user`, and in a test. Anywhere else it is E0026, at the reference: in a route
+without `requires user`,
 
 ```alder error=E0026 "`Db.mine` needs a route that `requires user`: `Index` does not"
 module Public
@@ -1309,10 +1334,44 @@ Index.view : Model -> Session -> Html
 Index.view model session = <p>{Text.fromInt model.open}</p>
 ```
 
-The rule follows a helper: a value that uses a scoped operation is checked
-where it is used, not where it is written, so a route that does not `requires
-user` and calls `recent` is E0026 at that call ("`recent` uses `Db.mine`,
-which needs a route that `requires user`: `Index` does not").
+The check follows the references, not just the calls. A route that does not
+`requires user` and uses `recent` is E0026 at that use ("`recent` uses
+`Db.mine`, which needs a route that `requires user`: `Index` does not"), and
+so is one that only passes `recent` to another function, since a reference
+can be applied anywhere later. When the need arrives through other
+helpers, the message names the first one on the path: "`Access.reviewers`
+uses `Db.scoped Reviewer` (through `Reviewer.current`), which needs a route
+that `requires org`: `Index` does not".
+
+**The clause is checked against the body.** The compiler still works out what
+a value needs by reading its body. The clause is what *other* code is
+checked against, so that an error never depends on the order the modules are
+checked in, and a language server can check one file against the signatures
+of its imports. Two things can differ:
+
+- The body needs a key the clause does not name: E0026 at the use that
+  needs it, with the fix that writes the clause. Without a clause at all
+  ("`current` uses `Db.scoped Reviewer`, which needs `org`: say so in its
+  signature, `current : ReviewerId -> Query (Maybe Reviewer) requires org`"),
+  or with one that is short ("`current` uses `Db.mine Draft`, which needs
+  `user`: its signature says `requires org`; write `requires user, org`").
+  A helper that calls a helper says so too: "`reviewers` uses
+  `Reviewer.current`, which `requires org`: say so in its signature". In a
+  module that declares a route or a job, where such helpers were written
+  before the clause existed, it is a warning for one release, W0014, and
+  `alder fmt` adds the clause.
+- The clause names a key the body never needs: the warning W0015 ("`current`
+  says `requires org` and uses nothing that needs `org`"). It is allowed to
+  run ahead, so a helper can be declared and its callers written before it
+  is filled in.
+
+A clause names session keys only, each a `Maybe` field of the session:
+`requires team` is E0011 ("the session has no field `team`"), and so is
+`requires theme` where `theme` is not a `Maybe` ("session field `theme` must
+be a `Maybe`"), and naming a key twice. A clause with `role` or `silo` is
+E0027: a role check belongs on the route line. A clause on a route's member
+or a job's `run` is E0043 ("`Index.load` takes what it requires from its
+route: write `requires org` on `route Index`").
 
 A `fake` (chapter 10) has no session either: "`Db.mine` cannot be used in a
 fake: a fake has no session" (an excerpt: the message begins with where the
@@ -1642,8 +1701,9 @@ write for it and nothing to give away.
 #### `requires user, org`
 
 A scoped operation on `Project` needs a
-session whose `org` is set, so it is allowed only in the members of a route
-that `requires org` (E0026 otherwise: "`Db.scoped Project` needs a route
+session whose `org` is set, so it is allowed only where `org` is certain: in
+the members of a route that `requires org`, and in values whose signature
+says `requires org` (E0026 otherwise: "`Db.scoped Project` needs a route
 that `requires org`: `Index` does not"). The workspace's projects page and
 the write routes beside it (`examples/workspace/app/Projects/Index.alder`):
 
@@ -1837,22 +1897,44 @@ The rules (E0033):
 > from a membership.
 >
 > The checker cannot tell a role everyone has from one few have: give the
-> admin form a role that is granted, never a default.
+> admin form a role that is granted, never a default. Nor can a helper tell a
+> member's request from an admin's: a value that `requires org` acts on the
+> org the route made certain, whether it came from a membership or from
+> the admin form's parameter, so the role check is still the only guard.
 
 #### Where the rules are kept
 
-Only where the key is narrowed: in the
-members of a route that `requires` it (or the admin form) and the helpers
-they call, and in tests, which run with the test's session.
+Only where the key is certain, which is the table of "Where they may be
+used", for every key alike: in the members of a route that `requires` it
+(or the admin form), in a job with `silo` for it, in a value whose signature
+says `requires` it, and in tests, which run with the test's session. The
+workspace keeps the queries its pages share in the table modules, with the
+clause (`examples/workspace/app/Table/Project.alder`):
+
+```alder fragment
+-- current is the org's project with that id; another org's is not there to find (a 404).
+current : ProjectId -> Query Project requires org
+current id = Db.getScoped Project id
+```
+
+and a route calls it as any function (`Project.current p.id`). Because the
+clause is what callers see, `Projects.Show` is checked against it without
+the compiler opening `Table.Project`'s body.
 
 - A fake has no session ("`Db.scoped Project` cannot be used in a fake: a
   fake has no session").
-- A helper that uses a scoped operation, called from a route that does not
-  narrow the key, is refused at the call, as for `@owner` ("`recent` uses
-  `Db.scoped Project`, which needs a route that `requires org`: `Public` does
-  not").
+- A value that uses a scoped operation, called from a route that does not
+  make the key certain, is refused at the call, as for `@owner` ("`recent`
+  uses `Db.scoped Project`, which needs a route that `requires org`: `Public`
+  does not").
+- A value that needs a key its signature does not state is refused where it
+  needs it (E0026: "say so in its signature").
 - Rows that are anyone's (an org's name, a user's) stay unscoped: the
   workspace reads `Db.get Org session.org` beside its scoped projects.
+
+A shared check that is a query, an access test over rows, say, is therefore
+written once, as a value with a clause, instead of as a pure function that
+each route must remember to feed rows read and filtered by hand.
 
 #### One org's database
 

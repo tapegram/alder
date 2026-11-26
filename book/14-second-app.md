@@ -1751,7 +1751,8 @@ table may not refer to either (E0033).
 
 The org's queries over it live in the table's module, each with the
 `requires org` its body needs: a route that `requires org`,
-or a test that logged in as one, may call them, and nothing else may.
+a test that logged in as one, or another value that says `requires org`,
+may call them, and nothing else may.
 
 ```alder part=workspace/Table.Project
 -- ordered is the org's projects by name: the session's org, from the silo `Db.scoped` opens, so

@@ -13,7 +13,11 @@ import      = "import" ModName ["as" uname] ;   (* the canonical qualifier, chap
 decl        = valueDecl | typeDecl | routeDecl | formDecl
             | tableDecl | capDecl | fakeDecl | sessionDecl | testDecl | loginDecl ;
 
-valueDecl   = declName ":" type NL declName {lname} "=" expr ;
+valueDecl   = declName ":" type [needs] NL declName {lname} "=" expr ;
+needs       = "requires" lname {"," lname} ;   (* session keys only: no role, no silo; it may
+                                                  start the next line; a route's members and a
+                                                  job's run take theirs from the route and the
+                                                  job, E0043; chapter 6 *)
 declName    = lname | uname "." lname ;         (* Route.name: a member of route Route, chapter 6;
                                                    the signature and the definition write the same name *)
 typeDecl    = "type" uname {lname} "=" ( unionBody | recordType | brandType ) ;
