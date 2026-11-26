@@ -1476,8 +1476,8 @@ in constant stack space.
 The `Toggle` route of the same module is a write route. Its handler is
 
 ```alder fragment
-Toggle.patch : Toggle.Params -> Session -> Task Response
-Toggle.patch p session = {
+Toggle.put : Toggle.Params -> Session -> Task Response
+Toggle.put p session = {
   let _ <- Db.update Todo p.id (\t -> { t | done: not t.done })
   Task.succeed Response.refresh
 }
@@ -1486,7 +1486,7 @@ Toggle.patch p session = {
 and lowers to
 
 ```
-(value Index.Toggle.patch : Toggle.Params -> Index.Session -> Task Response (p session)
+(value Index.Toggle.put : Toggle.Params -> Index.Session -> Task Response (p session)
   (bind task _
     (db-update Todo.Todo
       (field id (var p))
@@ -1499,11 +1499,11 @@ The route itself is a node of its own, `ir.Route` (`internal/ir/ir.go`), printed
 after the values:
 
 ```
-(route Index.Toggle PATCH "/pair/{a}/{b}/done"
+(route Index.Toggle PUT "/pair/{a}/{b}/done"
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
-  (handler Index.Toggle.patch)
+  (handler Index.Toggle.put)
   (needs-shown))
 ```
 
@@ -1526,7 +1526,7 @@ the route's source.
 The handler itself is emitted as
 
 ```go
-func Index__Toggle__patch(p Index__Toggle__Params, session Index__Index__Session) eff.Task[rt.Response] {
+func Index__Toggle__put(p Index__Toggle__Params, session Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.update Todo", true, func(_e1 *eff.Env) (struct{}, error) {
 		return struct{}{}, db.UpdateRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Todo__Todo, p.Id, func(t Todo__Todo) Todo__Todo {
 			return Todo__Todo{Id: t.Id, Title: t.Title, Done: !t.Done, Due: t.Due, Owner: t.Owner, Created: t.Created}
@@ -7943,6 +7943,6 @@ the server ever sends) after each phase, and asks again.
    three ways: plain, with `Datastar-Request: true`, and with that header
    and `Alder-Page: /`. Say, from `rt/web/answer.go` and `rt/web/router.go`,
    which function wrote each answer, and why the second and the third are
-   the same. Then change `Toggle.patch` to answer
+   the same. Then change `Toggle.put` to answer
    `Response.refresh` and say what `NeedsShown` makes the handler do
    differently (section 5, section 8).
