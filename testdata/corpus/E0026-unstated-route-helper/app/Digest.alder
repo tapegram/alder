@@ -1,0 +1,11 @@
+module Digest
+
+import Todos
+
+job Digest = {}
+
+Digest.run : Digest.Params -> Task Unit
+Digest.run p = {
+  let _ <- Todos.recent |> Db.count
+  Task.succeed ()
+}

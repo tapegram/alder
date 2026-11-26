@@ -86,10 +86,13 @@ type Checker struct {
 	testDirect   map[string]string
 	testEdges    []testEdge
 	testReported map[diag.Span]bool
-	scopedEdges  [][2]string
+	scopedEdges  []scopedEdge
 	scopedUsing  map[string]map[string]need
 	insertRows   map[*syntax.Var]bool
 	insertOps    map[*syntax.RecordLit]string
+	// valueDecls are the program's top-level value declarations by key ("Module.name"), for the
+	// `requires` clause a caller is checked against (statedNeed).
+	valueDecls map[string]valueDecl
 	// M15: hasSession says App declares `session`; via maps each valid `via` session field to
 	// its membership table ("Membership.Membership"), silos each silo key to its tables
 	// ("Project.Project"), siloOf each siloed table to its key, choose each `choose` key to
@@ -262,6 +265,7 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 	c.checkJobSessions()  // Session.put reached from a job's run needs every body's references
 	c.checkOptionRoutes() // a write route's option views reach through every body's references
 	c.markTestHelpers()   // test helpers (E0040) need every body's references
+	c.checkStatedNeeds()  // a value's `requires` clause against its need (#310); test helpers are exempt
 	// App rules need every module's bodies checked first (Session.put usage)
 	if app := prog.Modules["App"]; app != nil && !prog.Failed["App"] {
 		c.ctx(app).checkApp()

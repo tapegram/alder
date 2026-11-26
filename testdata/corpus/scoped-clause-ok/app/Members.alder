@@ -1,0 +1,23 @@
+module Members
+
+import Summary
+import Table.Reviewer
+
+-- a member route that requires the key uses every helper that states it
+route Members = GET "/members" { } requires user, org
+
+type Model = { n: Int }
+
+-- a route module's helper that states its need
+shown : Query Int requires org
+shown = Reviewer.count
+
+Members.load : Members.Params -> Session -> Query Model
+Members.load params session = {
+  let n <- Summary.total
+  let m <- shown
+  Query.succeed { n: n + m }
+}
+
+Members.view : Model -> Session -> Html
+Members.view model session = <p>{Text.fromInt model.n}</p>

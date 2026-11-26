@@ -1,0 +1,8 @@
+module Feed
+
+import Todo
+import Todos
+
+-- a module with no route: its helper must state what `Todos.recent` needs
+latest : Query (List Todo)
+latest = Todos.recent |> Db.all

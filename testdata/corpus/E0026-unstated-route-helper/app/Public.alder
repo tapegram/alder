@@ -1,0 +1,18 @@
+module Public
+
+import Todo
+import Todos
+
+-- a route without `user` in another module
+route Public = GET "/public" { }
+
+type Model = { todos: List Todo }
+
+Public.load : Public.Params -> Session -> Query Model
+Public.load params session = {
+  let todos <- Todos.recent |> Db.all
+  Query.succeed { todos: todos }
+}
+
+Public.view : Model -> Session -> Html
+Public.view model session = <p>public</p>

@@ -1,0 +1,4 @@
+app/Table/Reviewer.alder:15:14 E0026 `current` uses `Db.scoped Reviewer`, which needs `org`: say so in its signature, `current : ReviewerId -> Query (Maybe Reviewer) requires org`
+  fix 14:47-14:47  requires org
+app/Table/Reviewer.alder:21:11 E0026 `named` uses `Db.scoped Reviewer`, which needs `org`: say so in its signature, `named : Text -> Query (List Reviewer) requires org`
+  fix 20:29-20:29  requires org

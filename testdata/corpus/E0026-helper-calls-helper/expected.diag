@@ -1,0 +1,4 @@
+app/Access.alder:7:45 E0026 `reviewers` uses `Table.Reviewer.current`, which `requires org`: say so in its signature, `reviewers : List Reviewer.ReviewerId -> Query (List (Maybe Reviewer)) requires org`
+  fix 6:70-6:70  requires org
+app/Table/Reviewer.alder:19:12 E0026 `name` uses `current`, which `requires org`: say so in its signature, `name : ReviewerId -> Query Text requires org`
+  fix 17:32-17:32  requires org

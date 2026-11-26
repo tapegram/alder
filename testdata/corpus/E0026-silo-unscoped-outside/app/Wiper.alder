@@ -2,5 +2,5 @@ module Wiper
 
 import Project
 
-wipe : Project.ProjectId -> Task Unit
+wipe : Project.ProjectId -> Task Unit requires org
 wipe id = Db.delete Project id

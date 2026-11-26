@@ -2,6 +2,6 @@ module Access
 
 import Table.Reviewer
 
--- a value of a module with no route that needs `org` through `Reviewer.current`
-reviewers : List Reviewer.ReviewerId -> Query (List (Maybe Reviewer))
+-- a value of a module with no route that needs (and states) `org` through `Reviewer.current`
+reviewers : List Reviewer.ReviewerId -> Query (List (Maybe Reviewer)) requires org
 reviewers ids = Query.all (List.map (\id -> Reviewer.current id) ids)

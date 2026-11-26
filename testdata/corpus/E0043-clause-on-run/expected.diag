@@ -1,0 +1,1 @@
+app/Digest.alder:7:3 E0043 `Digest.run` takes its key from its job: write `silo org` on `job Digest`

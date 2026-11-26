@@ -12,5 +12,5 @@ table Item {
 
 -- #310: a scoped query in the table's module; its `scope dropped` is a mutant like a route
 -- module helper's
-latest : Select Item
+latest : Select Item requires user
 latest = Db.mine Item |> Db.limit 3

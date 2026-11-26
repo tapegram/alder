@@ -10,6 +10,6 @@ table Reviewer {
   org: Org.OrgId @ref Org @partition org,
 }
 
--- a table module's value with a need (`org`): it is recorded, not refused
-current : ReviewerId -> Query (Maybe Reviewer)
+-- a table module's value with a need (`org`), stated in its signature
+current : ReviewerId -> Query (Maybe Reviewer) requires org
 current id = Db.scoped Reviewer |> Db.where (Reviewer.id.eq id) |> Db.first

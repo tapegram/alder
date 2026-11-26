@@ -1,0 +1,7 @@
+module Access
+
+import Table.Reviewer
+
+-- a module with no route: one hop from the operation, through `Reviewer.current`
+reviewers : List Reviewer.ReviewerId -> Query (List (Maybe Reviewer)) requires org
+reviewers ids = Query.all (List.map (\id -> Reviewer.current id) ids)

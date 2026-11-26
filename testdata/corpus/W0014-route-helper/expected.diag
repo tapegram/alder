@@ -1,0 +1,8 @@
+app/Todos.alder:13:10 W0014 `recent` uses `Db.mine`, which needs `user`: say so in its signature (`recent : Select Todo requires user`). `alder fmt` adds it.
+  fix 12:21-12:21  requires user
+app/Todos.alder:17:9 W0014 `count` uses `Db.mine` (through `recent`), which needs `user`: say so in its signature (`count : Query Int requires user`). `alder fmt` adds it.
+  fix 16:18-16:18  requires user
+app/Todos.alder:22:15 W0014 `both` uses `Db.scoped Tag`, which needs `org`: say so in its signature (`both : Query Int requires user, org`). `alder fmt` adds it.
+  fix 20:17-20:17  requires user, org
+app/Todos.alder:23:16 W0014 `both` uses `Db.mine`, which needs `user`: say so in its signature (`both : Query Int requires user, org`). `alder fmt` adds it.
+  fix 20:17-20:17  requires user, org

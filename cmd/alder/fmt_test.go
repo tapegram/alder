@@ -487,3 +487,30 @@ func TestMigrate_HandlerRenameSingleFileWaits(t *testing.T) {
 	}
 	fmtCheckClean(t, dir)
 }
+
+// #310: `alder fmt` adds the `requires` clause to a route module's helpers that do not state
+// their need (W0014, the corpus fixture), and the app then checks clean; a second run changes
+// nothing.
+func TestMigrate_RequiresClause(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS("../../testdata/corpus/W0014-route-helper")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, "expected.diag")); err != nil {
+		t.Fatal(err)
+	}
+	if code, out, errOut := fmtRun(dir); code != 0 || errOut != "" || !strings.Contains(out, "Todos.alder") {
+		t.Fatalf("code %d out %q err %q", code, out, errOut)
+	}
+	todos, _ := os.ReadFile(filepath.Join(dir, "app", "Todos.alder"))
+	for _, want := range []string{"recent : Select Todo requires user\n", "count : Query Int requires user\n", "both : Query Int requires user, org\n"} {
+		if !strings.Contains(string(todos), want) {
+			t.Errorf("Todos.alder lacks %q:\n%s", want, todos)
+		}
+	}
+	if code, out, errOut := fmtRun(dir); code != 0 || out != "" || errOut != "" {
+		t.Fatalf("second run: code %d out %q err %q", code, out, errOut)
+	}
+	fmtCheckClean(t, dir)
+}

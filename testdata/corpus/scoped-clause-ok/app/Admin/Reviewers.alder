@@ -1,0 +1,20 @@
+module Admin.Reviewers
+
+import Access
+import Org
+import Project
+
+-- the admin form: `org` is certain from the parameter, so the helpers act on it
+route Reviewers = GET "/admin/orgs/{org}/reviewers" { org: Org.OrgId } requires user, role Admin, silo org
+
+type Model = { n: Int }
+
+Reviewers.load : Reviewers.Params -> Session -> Query Model
+Reviewers.load params session = {
+  let rs <- Access.reviewers []
+  let ps <- Project.all
+  Query.succeed { n: List.length rs + List.length ps }
+}
+
+Reviewers.view : Model -> Session -> Html
+Reviewers.view model session = <p>{Text.fromInt model.n}</p>

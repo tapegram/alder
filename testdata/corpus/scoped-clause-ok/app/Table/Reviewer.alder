@@ -1,0 +1,30 @@
+module Table.Reviewer
+
+import Org
+
+type ReviewerId = brand Text
+
+-- partitioned by `org`, shared: a predicate in the shared store
+table Reviewer {
+  id: ReviewerId @id,
+  name: Text,
+  org: Org.OrgId @ref Org @partition org,
+}
+
+-- a table module's queries over its own table, each stating its need
+current : ReviewerId -> Query (Maybe Reviewer) requires org
+current id = Db.scoped Reviewer |> Db.where (Reviewer.id.eq id) |> Db.first
+
+count : Query Int
+  requires org
+count = Db.scoped Reviewer |> Db.count
+
+-- a helper of the module that calls one that states the need, and states it too
+named : Text -> Query (List Reviewer) requires org
+named n = Db.scoped Reviewer |> Db.where (Reviewer.name.eq n) |> Db.all
+
+-- a test of the helper lives beside it: a test may use what needs `org`
+test "count is a number" = {
+  let n <- count
+  Task.succeed (n >= 0)
+}

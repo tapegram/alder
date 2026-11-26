@@ -170,6 +170,8 @@ const (
 	NoticeDeprecated    = "W0012" // `Notice.with`/`success`/`warning`/`error`, aliases of the `Response` builders for one release
 	DeployFilesNoBlock  = "W0009" // render.yaml or fly.toml in the project and no `deploy` block in App (#25)
 	HandlerRenamed      = "W0013" // a write route's handler named `update`, not after its method (#308), accepted for one release
+	HelperNeedUnstated  = "W0014" // a route or job module's helper whose need its signature does not state (#310), accepted for one release
+	NeedUnused          = "W0015" // a key in a value's `requires` clause its body does not need (#310)
 
 	// ScratchAppErrors is the language server's warning at 1:1 of a scratch file the app's errors
 	// keep from running (internal/lsp publishScratch).

@@ -229,7 +229,7 @@ func (mc *modCtx) inferScoped(x *syntax.Var) types.Type {
 		if msg := mc.scopedRefusal("`"+op+"`", "user"); msg != "" {
 			c.reportScoped(x.Span, msg)
 		} else {
-			mc.markScoped("user", op, "")
+			mc.markScoped("user", op, "", x.Span)
 		}
 	}
 	if scopedOps[x.Ref.Name] == "insertScoped" && !c.insertRows[x] {
@@ -278,10 +278,8 @@ func (c *Checker) reportScoped(at diag.Span, msg string) {
 // a member of a route that `requires` key, or takes it from its parameter (`silo key`, the admin
 // form), and in a `test` (a test has a
 // session, from `Test.login` or `Session.put`; a scoped operation without the field fails when
-// it runs). Never in a fake. A top-level value that is no route's or job's member, in any module
-// (#310), may use the operation: its need is recorded (markScoped), and each use of the value in
-// a member, a job's `run` or a fake is checked instead (checkRouteRefs within its module,
-// scopedRef from another).
+// it runs). Never in a fake. In a top-level value that is no route's or job's member, in any
+// module (#310), when its signature's `requires` clause names key.
 func (mc *modCtx) narrowed(key string) bool {
 	switch {
 	case mc.fake != "":
@@ -294,18 +292,52 @@ func (mc *modCtx) narrowed(key string) bool {
 	if j := mc.armJob(); j != nil { // a job's `run`: only its `silo k` (#168)
 		return j.Silo != "" && j.Silo == key
 	}
+	if !mc.topValue() {
+		return false
+	}
+	vd := mc.c.valueDecls[mc.c.key(mc.m.Name, mc.value)]
+	return vd.d != nil && slices.Contains(mc.c.statedKeys(vd.d), key)
+}
+
+// topValue reports whether mc is checking a top-level value that is no route's or job's member.
+func (mc *modCtx) topValue() bool {
 	return mc.value != "" && !strings.Contains(mc.value, ".")
 }
 
 // need is what a value needs of one session key (scopedUsing, by key): Op the first operation
 // on its path (“Db.scoped Reviewer”), Via the first helper on that path ("Module.value"), ""
-// when the value uses Op itself.
-type need struct{ Op, Via string }
+// when the value uses Op itself; At the use in the value's body that needs it (the operation,
+// or the reference to Via). Op is "" when the need comes from a `requires` clause alone (a
+// clause ahead of its body, W0015).
+type need struct {
+	Op, Via string
+	At      diag.Span
+}
+
+// scopedEdge is a reference, at at, from value from to value to of the same module
+// ("Module.value"), for propagateScoped.
+type scopedEdge struct {
+	from, to string
+	at       diag.Span
+}
+
+// valueDecl is a top-level value declaration and its module.
+type valueDecl struct {
+	mod string
+	d   *syntax.ValueDecl
+}
 
 // needSubject is E0026's subject for a use of value name (as the message names it), which
-// needs n, in module mod: “`Access.reviewers` uses `Db.scoped Reviewer` (through
-// `Table.Reviewer.current`), which”.
-func needSubject(name string, n need, mod string) string {
+// needs n of session key key, in module mod: “`Access.reviewers` uses `Db.scoped Reviewer`
+// (through `Table.Reviewer.current`), which”; “`Reviewer.current` says `requires org`, which”
+// for a need its clause states and its body does not have.
+func needSubject(name string, n need, mod, key string) string {
+	switch {
+	case n.Op == "" && n.Via == "":
+		return "`" + name + "` says `requires " + key + "`, which"
+	case n.Op == "":
+		return "`" + name + "` uses `" + helperName(n.Via, mod) + "`, which"
+	}
 	return "`" + name + "` uses `" + n.Op + "`" + throughNote(n.Via, mod) + ", which"
 }
 
@@ -328,14 +360,15 @@ func helperName(key, mod string) string {
 
 // scopedRefusal is E0026's message for subject (“`Db.mine`”, “`Db.scoped Project`”, or
 // “`Todos.Index.recent` uses `Db.mine`, which”) used where mc is checking, "" when it may be
-// used there (narrowed): a member of a route that `requires key`, a job with `silo key`, a
-// top-level value (which then has the need), or a test. A fake's entries may not: a fake has no
-// session.
+// used there (narrowed): a member of a route that `requires key`, a job with `silo key`, or a
+// test; and in any top-level value that is no member, which then has the need, checked against
+// its `requires` clause once every body is (checkStatedNeeds). A fake's entries may not: a fake
+// has no session.
 func (mc *modCtx) scopedRefusal(subject, key string) string {
 	switch {
 	case mc.fake != "":
 		return subject + " cannot be used in a fake: a fake has no session"
-	case mc.narrowed(key):
+	case mc.narrowed(key), mc.topValue():
 		return ""
 	case mc.armJob() != nil:
 		return jobRefusal(mc.armJob(), subject, key)
@@ -346,9 +379,9 @@ func (mc *modCtx) scopedRefusal(subject, key string) string {
 	return subject + " needs a route that `requires " + key + "`: this has no session"
 }
 
-// markScoped notes that the value being checked (outside tests) uses operation op, which needs
-// the session's key narrowed, itself (via "") or through the helper via of another module.
-func (mc *modCtx) markScoped(key, op, via string) {
+// markScoped notes that the value being checked (outside tests) uses operation op, at at, which
+// needs the session's key narrowed, itself (via "") or through the helper via of another module.
+func (mc *modCtx) markScoped(key, op, via string, at diag.Span) {
 	c := mc.c
 	if mc.value == "" || mc.inTest || mc.fake != "" {
 		return
@@ -360,22 +393,22 @@ func (mc *modCtx) markScoped(key, op, via string) {
 	if c.scopedDirect[k] == nil {
 		c.scopedDirect[k] = map[string]need{}
 	}
-	if c.scopedDirect[k][key].Op == "" {
-		c.scopedDirect[k][key] = need{Op: op, Via: via}
+	if old, ok := c.scopedDirect[k][key]; !ok || old.Op == "" && op != "" {
+		c.scopedDirect[k][key] = need{Op: op, Via: via, At: at}
 	}
 }
 
 // scopedRef handles a reference x to a top-level value: within its module it is an edge for
 // propagateScoped (and, from a member, a job's `run` or a fake, a routeRef checked once the
-// module's bodies are); to another module's value that has a need (scopedUsing), it is E0026
-// where that need's key is not narrowed, and marks the value being checked otherwise (with the
-// referenced value as the helper its need comes through).
+// module's bodies are); to another module's value that has a need (statedNeed: its signature's,
+// #310), it is E0026 where that need's key is not narrowed, and marks the value being checked
+// otherwise (with the referenced value as the helper its need comes through).
 func (mc *modCtx) scopedRef(x *syntax.Var) {
 	c := mc.c
 	k := c.key(x.Ref.Module, x.Ref.Name)
 	if x.Ref.Module == mc.m.Name {
 		if mc.value != "" && !mc.inTest && mc.fake == "" {
-			c.scopedEdges = append(c.scopedEdges, [2]string{c.key(mc.m.Name, mc.value), k})
+			c.scopedEdges = append(c.scopedEdges, scopedEdge{from: c.key(mc.m.Name, mc.value), to: k, at: x.Span})
 		}
 		switch {
 		case mc.inTest:
@@ -389,15 +422,15 @@ func (mc *modCtx) scopedRef(x *syntax.Var) {
 		}
 		return
 	}
-	uses := c.scopedUsing[k]
+	uses := c.statedUses(k)
 	for _, key := range sortedKeys(uses) {
-		if msg := mc.scopedRefusal(needSubject(k, uses[key], mc.m.Name), key); msg != "" {
+		if msg := mc.scopedRefusal(needSubject(k, uses[key], mc.m.Name, key), key); msg != "" {
 			c.reportScoped(x.Span, msg)
 			return
 		}
 	}
 	for _, key := range sortedKeys(uses) {
-		mc.markScoped(key, uses[key].Op, k)
+		mc.markScoped(key, uses[key].Op, k, x.Span)
 	}
 }
 
@@ -410,17 +443,18 @@ func sortedKeys(uses map[string]need) []string {
 	return keys
 }
 
-// propagateScoped recomputes scopedUsing, every value's need: per key, the first operation and
-// the first helper on its path, from its own uses (scopedDirect) and through the values of its
-// module it refers to (scopedEdges; a fixed point, so recursion terminates). It runs after each
-// module's bodies, so a module's importers (checked after it) see its needs.
+// propagateScoped recomputes scopedUsing, every value's inferred need: per key, the first
+// operation and the first helper on its path, from its own uses (scopedDirect) and through the
+// values of its module it refers to (scopedEdges: what each states, statedNeed; a fixed point,
+// so recursion terminates). It runs after each module's bodies, so a module's importers
+// (checked after it) see its needs.
 func (c *Checker) propagateScoped() {
 	c.scopedUsing = map[string]map[string]need{}
 	add := func(v, key string, n need) bool {
 		if c.scopedUsing[v] == nil {
 			c.scopedUsing[v] = map[string]need{}
 		}
-		if c.scopedUsing[v][key].Op != "" {
+		if old, ok := c.scopedUsing[v][key]; ok && (old.Op != "" || n.Op == "") {
 			return false
 		}
 		c.scopedUsing[v][key] = n
@@ -434,8 +468,8 @@ func (c *Checker) propagateScoped() {
 	for changed := true; changed; {
 		changed = false
 		for _, e := range c.scopedEdges {
-			for key, n := range c.scopedUsing[e[1]] {
-				if add(e[0], key, need{Op: n.Op, Via: e[1]}) {
+			for key, n := range c.statedUses(e.to) {
+				if add(e.from, key, need{Op: n.Op, Via: e.to, At: e.at}) {
 					changed = true
 				}
 			}
@@ -538,7 +572,7 @@ func (mc *modCtx) checkScopedTables() {
 			if msg := mc.scopedRefusal(subject, info.PartKey); msg != "" {
 				c.reportScoped(u.v.Span, msg)
 			} else {
-				mc.markScoped(info.PartKey, "Db."+name+" "+rec.Name, "")
+				mc.markScoped(info.PartKey, "Db."+name+" "+rec.Name, "", u.v.Span)
 			}
 		}
 	}
@@ -562,7 +596,7 @@ func (mc *modCtx) checkScopedTables() {
 		if msg := mc.scopedRefusal(subject, key); msg != "" {
 			c.reportScoped(v.Span, msg)
 		} else {
-			mc.markScoped(key, "Db."+v.Ref.Name+" "+rec.Name, "")
+			mc.markScoped(key, "Db."+v.Ref.Name+" "+rec.Name, "", v.Span)
 		}
 	}
 }
@@ -615,4 +649,196 @@ func (c *Checker) recordLabelName(rec *types.Record) string {
 		return c.recordLabel(rec, "")
 	}
 	return rec.Name
+}
+
+// statedKeys are the session keys d's `requires` clause names that are `Maybe` fields of App's
+// session (another is already E0011, and is no need a caller could meet).
+func (c *Checker) statedKeys(d *syntax.ValueDecl) []string {
+	var out []string
+	for _, k := range d.Needs {
+		if _, ok := c.fieldMaybe(k); ok && k != "" {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// statedNeed is S for value key ("Module.value"), the session keys its callers see (#310 rule
+// 3): its `requires` clause. A route-module or job-module value without a clause is still
+// accepted for one release (W0014), and its callers see what its body needs, S ∪ I; so do a
+// route's or job's member and a value with no declaration here.
+func (c *Checker) statedNeed(key string) []string {
+	vd, ok := c.valueDecls[key]
+	switch {
+	case !ok || vd.d.Route != "":
+		return sortedKeys(c.scopedUsing[key])
+	case len(vd.d.Needs) > 0:
+		return c.statedKeys(vd.d)
+	case c.unstatedAllowed(vd.mod):
+		return sortedKeys(c.scopedUsing[key])
+	}
+	return nil
+}
+
+// statedUses is statedNeed with each key's need as the body has it (its operation and first
+// helper, for the messages); a key the clause states and the body does not use has no Op.
+func (c *Checker) statedUses(key string) map[string]need {
+	keys := c.statedNeed(key)
+	if len(keys) == 0 {
+		return nil
+	}
+	out := map[string]need{}
+	for _, k := range keys {
+		out[k] = c.scopedUsing[key][k]
+	}
+	return out
+}
+
+// unstatedAllowed reports whether module mod declares a route or a job: there a helper whose
+// signature does not state its need is W0014 for one release, elsewhere E0026 (ruling R2).
+func (c *Checker) unstatedAllowed(mod string) bool {
+	return c.prog.IsRouteModule(mod) || len(c.jobs[mod]) > 0
+}
+
+// sessionOrder is keys (a set) in the order of App's session fields.
+func (c *Checker) sessionOrder(keys map[string]bool) []string {
+	var out []string
+	for _, f := range c.session.Fields {
+		if keys[f.Name] {
+			out = append(out, f.Name)
+		}
+	}
+	return out
+}
+
+// checkStatedNeeds checks every top-level value's `requires` clause against its inferred need
+// (#310), once every body is checked and test helpers are known (they neither state nor are
+// checked for needs): a key the body needs and the clause lacks is E0026 at the use that needs
+// it (W0014 for a route or job module's value with no clause), a key the clause names and the
+// body does not need is W0015, and a clause on a route's member or a job's `run` is E0043.
+func (c *Checker) checkStatedNeeds() {
+	for _, name := range c.prog.Order {
+		if c.prog.Failed[name] {
+			continue
+		}
+		mc := c.ctx(c.prog.Modules[name])
+		for _, d := range c.live(mc.m) {
+			vd, ok := d.(*syntax.ValueDecl)
+			if !ok || vd.Sig == nil || vd.Body == nil {
+				continue
+			}
+			if vd.Route != "" {
+				mc.memberClause(vd)
+				continue
+			}
+			if k := c.key(name, vd.Name); c.res.TestOnly[k] == "" {
+				mc.checkStated(vd, k)
+			}
+		}
+	}
+}
+
+// memberClause reports E0043 for a `requires` clause on a route's member or a job's `run`: the
+// key belongs on the route line, or in the job's `silo k`.
+func (mc *modCtx) memberClause(vd *syntax.ValueDecl) {
+	c := mc.c
+	if vd.NeedsSpan == (diag.Span{}) || slices.Contains(vd.Needs, "") {
+		return // no clause, or one the parser gave up on (its error is reported)
+	}
+	if j := c.job(mc.m.Name, vd.Route); j != nil {
+		key := vd.Needs[0]
+		for _, k := range vd.Needs {
+			if k != "user" { // a job never has `user`: name the key a silo could hold
+				key = k
+				break
+			}
+		}
+		c.errorf(diag.RouteDecl, vd.NeedsSpan, "`%s` takes its key from its job: write `silo %s` on `job %s`", vd.FullName(), key, j.Name)
+		return
+	}
+	if c.route(mc.m.Name, vd.Route) != nil {
+		c.errorf(diag.RouteDecl, vd.NeedsSpan, "`%s` takes what it requires from its route: write `requires %s` on `route %s`", vd.FullName(), strings.Join(vd.Needs, ", "), vd.Route)
+	}
+}
+
+// checkStated checks value vd's (key k) `requires` clause, S, against what its body needs, I
+// (scopedUsing): rule 1, a key of I that S lacks, at the use that needs it, with the clause
+// inserted or rewritten (keys in the session's order) as the fix; rule 2, a key of S that I
+// lacks (W0015).
+func (mc *modCtx) checkStated(vd *syntax.ValueDecl, k string) {
+	c := mc.c
+	clause := vd.NeedsSpan != (diag.Span{})
+	if len(vd.Needs) > 0 && (!clause || slices.Contains(vd.Needs, "")) {
+		return // a clause the parser gave up on (E0027, or a missing key): its error is reported
+	}
+	inferred := c.scopedUsing[k]
+	stated := c.statedKeys(vd)
+	all := map[string]bool{}
+	for _, key := range stated {
+		all[key] = true
+	}
+	var missing []string
+	for _, key := range c.sessionOrder(keysOf(inferred)) {
+		if !all[key] {
+			missing = append(missing, key)
+		}
+		all[key] = true
+	}
+	if len(missing) > 0 {
+		keys := strings.Join(c.sessionOrder(all), ", ")
+		reported := map[diag.Span]bool{} // one diagnostic per use, whatever it needs
+		for _, key := range missing {
+			n := inferred[key]
+			at := n.At
+			if at == (diag.Span{}) {
+				at = vd.Span
+			}
+			if reported[at] {
+				continue
+			}
+			reported[at] = true
+			var subject string
+			if n.Via != "" && c.states(n.Via, key) {
+				subject = "`" + vd.Name + "` uses `" + helperName(n.Via, mc.m.Name) + "`, which `requires " + key + "`"
+			} else {
+				subject = needSubject(vd.Name, n, mc.m.Name, key) + " needs `" + key + "`"
+			}
+			switch {
+			case clause:
+				d := c.errorf(diag.ScopedOutside, at, "%s: its signature says `%s`; write `requires %s`", subject, mc.source(vd.NeedsSpan), keys)
+				d.Fix = diag.ReplaceSpan(vd.NeedsSpan, "requires "+keys)
+				d.Fix.Preferred = true
+			default:
+				sig := vd.FullName() + " : " + strings.Join(strings.Fields(mc.source(vd.Sig.GetSpan())), " ") + " requires " + keys
+				var d *diag.Diagnostic
+				if c.unstatedAllowed(mc.m.Name) {
+					d = c.bag.Warn(diag.HelperNeedUnstated, at, "%s: say so in its signature (`%s`). `alder fmt` adds it.", subject, sig)
+				} else {
+					d = c.errorf(diag.ScopedOutside, at, "%s: say so in its signature, `%s`", subject, sig)
+				}
+				end := vd.Sig.GetSpan().End
+				d.Fix = diag.InsertAt(end.Line, end.Col, " requires "+keys)
+				d.Fix.Preferred = true
+			}
+		}
+	}
+	for i, key := range vd.Needs {
+		if _, ok := inferred[key]; !ok && slices.Contains(stated, key) {
+			c.bag.Warn(diag.NeedUnused, vd.NeedSpans[i], "`%s` says `requires %s` and uses nothing that needs `%s`", vd.Name, key, key)
+		}
+	}
+}
+
+// states reports whether value key's `requires` clause names session key k.
+func (c *Checker) states(key, k string) bool {
+	vd, ok := c.valueDecls[key]
+	return ok && slices.Contains(c.statedKeys(vd.d), k)
+}
+
+func keysOf(m map[string]need) map[string]bool {
+	out := map[string]bool{}
+	for k := range m {
+		out[k] = true
+	}
+	return out
 }

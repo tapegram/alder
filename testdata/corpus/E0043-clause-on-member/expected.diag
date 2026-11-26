@@ -1,0 +1,1 @@
+app/Index.alder:8:53 E0043 `Index.load` takes what it requires from its route: write `requires org` on `route Index`

@@ -1,0 +1,12 @@
+module Index
+
+route Index = GET "/index" { } requires user
+
+type Model = { }
+
+-- a member takes what it requires from its route
+Index.load : Index.Params -> Session -> Query Model requires org
+Index.load params session = Query.succeed {}
+
+Index.view : Model -> Session -> Html
+Index.view model session = <p>x</p>

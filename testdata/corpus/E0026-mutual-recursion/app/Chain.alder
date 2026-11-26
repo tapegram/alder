@@ -2,5 +2,5 @@ module Chain
 
 import Walk
 
-h : Query Int
+h : Query Int requires user
 h = Walk.f 3

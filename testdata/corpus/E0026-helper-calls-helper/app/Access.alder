@@ -1,0 +1,7 @@
+module Access
+
+import Table.Reviewer
+
+-- a helper of another module calls `Reviewer.current` without stating its need
+reviewers : List Reviewer.ReviewerId -> Query (List (Maybe Reviewer))
+reviewers ids = Query.all (List.map (\id -> Reviewer.current id) ids)

@@ -606,16 +606,16 @@ type routeRef struct {
 }
 
 // checkRouteRefs reports E0026 for each pending routeRef whose value has a need its place does
-// not narrow. It runs after propagateScoped, so a helper's needs are known whatever the order
-// of the module's declarations.
+// not narrow (what its signature states, statedNeed). It runs after propagateScoped, so a
+// helper's needs are known whatever the order of the module's declarations.
 func (c *Checker) checkRouteRefs() {
 	refs := c.routeRefs
 	c.routeRefs = nil
 	for _, rr := range refs {
 		k := c.key(rr.x.Ref.Module, rr.x.Ref.Name)
-		uses := c.scopedUsing[k]
+		uses := c.statedUses(k)
 		for _, key := range sortedKeys(uses) {
-			subject := needSubject(rr.x.Ref.Name, uses[key], rr.x.Ref.Module)
+			subject := needSubject(rr.x.Ref.Name, uses[key], rr.x.Ref.Module, key)
 			if rr.fake != "" {
 				c.reportScoped(rr.x.Span, "in `fake "+rr.fake+"`'s `"+rr.entry+"`: "+subject+" cannot be used in a fake: a fake has no session")
 				break

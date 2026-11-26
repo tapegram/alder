@@ -1,0 +1,4 @@
+app/Digest.alder:9:12 E0026 `Todos.recent` uses `Db.mine`, which cannot be used in a job's `run`: a job has no session; give the job the user as a parameter and use the unscoped operations
+app/Feed.alder:8:10 E0026 `latest` uses `Db.mine` (through `Todos.recent`), which needs `user`: say so in its signature, `latest : Query (List Todo) requires user`
+  fix 7:27-7:27  requires user
+app/Public.alder:13:16 E0026 `Todos.recent` uses `Db.mine`, which needs a route that `requires user`: `Public` does not

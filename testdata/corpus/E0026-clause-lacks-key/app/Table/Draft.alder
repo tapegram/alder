@@ -1,0 +1,26 @@
+module Table.Draft
+
+import Org
+import User
+
+type DraftId = brand Text
+
+table Draft {
+  id: DraftId @id,
+  title: Text,
+  owner: User.UserId @ref User @owner,
+  org: Org.OrgId @ref Org,
+}
+
+-- the clause names `org` but the body also needs `user`: the fix rewrites the clause with the
+-- keys in the session's field order
+current : DraftId -> Query (Maybe Draft) requires org
+current id = Db.mine Draft |> Db.where (Draft.id.eq id) |> Db.first
+
+-- the same through a helper of the module that states `user`
+inOrg : Org.OrgId -> Query (List Draft) requires user
+inOrg o = Db.mine Draft |> Db.where (Draft.org.eq o) |> Db.all
+
+ofOrg : Org.OrgId -> Query (List Draft)
+  requires org
+ofOrg o = inOrg o

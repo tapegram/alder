@@ -1,0 +1,13 @@
+module Sweep
+
+import Org
+import Summary
+
+-- a job with `silo org` may call any helper that `requires org`
+job Sweep = { org: Org.OrgId } silo org
+
+Sweep.run : Sweep.Params -> Task Unit
+Sweep.run p = {
+  let _ <- Summary.total
+  Task.succeed ()
+}

@@ -165,3 +165,20 @@ func TestMigrate_GroupNeedsEveryFile(t *testing.T) {
 		t.Fatalf("both files: err=%v:\n%s", err, out)
 	}
 }
+
+// #310: a route module's helper that does not state its need (W0014) gets its `requires` clause;
+// two warnings of one helper carry the same fix, applied once.
+func TestMigrate_RequiresClauseFix(t *testing.T) {
+	src := "module Todos\n\nboth : Query Int\nboth = ?both\n"
+	file := "app/Todos.alder"
+	at := func(l1, c1, l2, c2 int) diag.Span {
+		return diag.Span{File: file, Start: diag.Pos{Line: l1, Col: c1}, End: diag.Pos{Line: l2, Col: c2}}
+	}
+	bag := &diag.Bag{}
+	bag.Warn(diag.HelperNeedUnstated, at(4, 8, 4, 13), "needs user").Fix = diag.InsertAt(3, 17, " requires user, org")
+	bag.Warn(diag.HelperNeedUnstated, at(4, 8, 4, 13), "needs org").Fix = diag.InsertAt(3, 17, " requires user, org")
+	out, changed, err := Migrate(bag, file, []byte(src), nil)
+	if want := "module Todos\n\nboth : Query Int requires user, org\nboth = ?both\n"; err != nil || !changed || string(out) != want {
+		t.Fatalf("changed=%v err=%v:\n%s", changed, err, out)
+	}
+}

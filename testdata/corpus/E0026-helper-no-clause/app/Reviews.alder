@@ -1,0 +1,18 @@
+module Reviews
+
+import Table.Reviewer
+
+-- a caller is checked against the signature alone: `current` states no need, so this route
+-- (without `org`) is not refused; the error is on the helper
+route Reviews = GET "/reviews/{id}" { id: Reviewer.ReviewerId } requires user
+
+type Model = { found: Bool }
+
+Reviews.load : Reviews.Params -> Session -> Query Model
+Reviews.load params session = {
+  let r <- Reviewer.current params.id
+  Query.succeed { found: r != Nothing }
+}
+
+Reviews.view : Model -> Session -> Html
+Reviews.view model session = <p>x</p>

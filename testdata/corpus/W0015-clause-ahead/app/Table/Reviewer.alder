@@ -1,0 +1,19 @@
+module Table.Reviewer
+
+import Org
+
+type ReviewerId = brand Text
+
+table Reviewer {
+  id: ReviewerId @id,
+  name: Text,
+  org: Org.OrgId @ref Org @partition org,
+}
+
+-- the clause may run ahead of the body (W0015), and callers are checked against it
+current : ReviewerId -> Query (Maybe Reviewer) requires org
+current id = Query.succeed Nothing
+
+-- `user` runs ahead, `org` is used
+named : Text -> Query (List Reviewer) requires user, org
+named n = Db.scoped Reviewer |> Db.where (Reviewer.name.eq n) |> Db.all

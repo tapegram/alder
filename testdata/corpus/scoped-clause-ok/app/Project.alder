@@ -1,0 +1,15 @@
+module Project
+
+import Org
+
+type ProjectId = brand Text
+
+-- in App's `silo org`: an unscoped read needs `org`
+table Project {
+  id: ProjectId @id,
+  name: Text,
+  org: Org.OrgId @ref Org @partition org,
+}
+
+all : Query (List Project) requires org
+all = Db.from Project |> Db.orderBy Project.name.asc |> Db.all

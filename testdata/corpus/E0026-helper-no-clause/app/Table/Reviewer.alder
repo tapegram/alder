@@ -1,0 +1,21 @@
+module Table.Reviewer
+
+import Org
+
+type ReviewerId = brand Text
+
+table Reviewer {
+  id: ReviewerId @id,
+  name: Text,
+  org: Org.OrgId @ref Org @partition org,
+}
+
+-- a module with no route: a value that needs `org` must say so (E0026, fix: insert the clause)
+current : ReviewerId -> Query (Maybe Reviewer)
+current id = Db.scoped Reviewer |> Db.where (Reviewer.id.eq id) |> Db.first
+
+-- a signature broken over lines: the clause goes after its last line
+named :
+  Text
+    -> Query (List Reviewer)
+named n = Db.scoped Reviewer |> Db.where (Reviewer.name.eq n) |> Db.all

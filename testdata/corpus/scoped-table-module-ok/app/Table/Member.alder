@@ -11,11 +11,11 @@ table Member {
   org: Org.OrgId @ref Org @partition org,
 }
 
--- #310: a value with a need may live in a table's module (no `requires` clause yet)
-count : Query Int
+-- #310: a value with a need may live in a table's module stating it with a `requires` clause
+count : Query Int requires org
 count = Db.scoped Member |> Db.where (Member.active.eq True) |> Db.count
 
-visible : Query (List Member)
+visible : Query (List Member) requires org
 visible = Db.scoped Member |> Db.where (Member.active.eq True) |> Db.orderBy Member.name.asc |> Db.all
 
 -- a test of the helper lives beside it: a test may use what needs `org`

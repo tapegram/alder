@@ -1,0 +1,4 @@
+app/Table/Draft.alder:18:14 E0026 `current` uses `Db.mine`, which needs `user`: its signature says `requires org`; write `requires user, org`
+  fix 17:42-17:54 requires user, org
+app/Table/Draft.alder:26:11 E0026 `ofOrg` uses `inOrg`, which `requires user`: its signature says `requires org`; write `requires user, org`
+  fix 25:3-25:15 requires user, org

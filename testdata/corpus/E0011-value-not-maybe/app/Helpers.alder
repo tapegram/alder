@@ -1,0 +1,4 @@
+module Helpers
+
+count : Query Int requires theme
+count = Query.succeed 1

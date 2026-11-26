@@ -3,6 +3,7 @@ package check
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -1250,7 +1251,15 @@ func (mc *modCtx) declareValues() {
 			}
 			continue
 		}
-		if len(vd.Needs) > 0 { // the route guard's check: each key is a `Maybe` field of the session
+		if c.prog.Std[mc.m.Name] == nil {
+			if c.valueDecls == nil {
+				c.valueDecls = map[string]valueDecl{}
+			}
+			c.valueDecls[c.key(mc.m.Name, vd.FullName())] = valueDecl{mod: mc.m.Name, d: vd}
+		}
+		// the route guard's check: each key is a `Maybe` field of the session (not on a clause the
+		// parser gave up on, which already has its error)
+		if len(vd.Needs) > 0 && vd.NeedsSpan != (diag.Span{}) && !slices.Contains(vd.Needs, "") {
 			mc.checkRequires(&syntax.Guard{Requires: vd.Needs, RequiresSpan: vd.NeedSpans[0], FieldSpans: vd.NeedSpans}, vd.NeedsSpan)
 		}
 		params := map[string]bool{}

@@ -10,5 +10,5 @@ table Todo {
   owner: User.UserId @ref User @owner,
 }
 
-mineFirst : Select Todo
+mineFirst : Select Todo requires user
 mineFirst = Db.mine Todo |> Db.limit 1

@@ -20,7 +20,7 @@ type Model = {
 }
 
 -- writes Project only: one silo
-seed : Text -> Task Unit
+seed : Text -> Task Unit requires org
 seed name = {
   let _ <- Db.insertScoped Project { name: name }
   Task.succeed ()
@@ -112,6 +112,7 @@ setup : Task {
   a: Org.OrgId,
   b: Org.OrgId,
 }
+  requires org
 setup = {
   let me <- Db.insert User { name: "Me" }
   let them <- Db.insert User { name: "Them" }

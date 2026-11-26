@@ -1,0 +1,11 @@
+module Table.Tag
+
+import Org
+
+type TagId = brand Text
+
+table Tag {
+  id: TagId @id,
+  name: Text,
+  org: Org.OrgId @ref Org @partition org,
+}

@@ -1,0 +1,17 @@
+module Reviews
+
+import Table.Reviewer
+
+route Reviews = GET "/reviews/{id}" { id: Reviewer.ReviewerId } requires user
+
+type Model = { found: Bool }
+
+-- what the signature says is what the caller sees, though `current`'s body needs nothing
+Reviews.load : Reviews.Params -> Session -> Query Model
+Reviews.load params session = {
+  let r <- Reviewer.current params.id
+  Query.succeed { found: r != Nothing }
+}
+
+Reviews.view : Model -> Session -> Html
+Reviews.view model session = <p>x</p>

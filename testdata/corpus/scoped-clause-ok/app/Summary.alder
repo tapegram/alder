@@ -1,0 +1,12 @@
+module Summary
+
+import Access
+import Project
+
+-- two hops: `Access.reviewers`, then `Reviewer.current`; and `Project.all` on the silo
+total : Query Int requires org
+total = {
+  let rs <- Access.reviewers []
+  let ps <- Project.all
+  Query.succeed (List.length rs + List.length ps)
+}

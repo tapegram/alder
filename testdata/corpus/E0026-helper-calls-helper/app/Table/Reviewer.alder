@@ -1,0 +1,21 @@
+module Table.Reviewer
+
+import Org
+
+type ReviewerId = brand Text
+
+table Reviewer {
+  id: ReviewerId @id,
+  name: Text,
+  org: Org.OrgId @ref Org @partition org,
+}
+
+current : ReviewerId -> Query (Maybe Reviewer) requires org
+current id = Db.scoped Reviewer |> Db.where (Reviewer.id.eq id) |> Db.first
+
+-- a helper of the same module that calls `current` without stating its need
+name : ReviewerId -> Query Text
+name id = {
+  let r <- current id
+  Query.succeed (Maybe.withDefault "" (Maybe.map (\x -> x.name) r))
+}

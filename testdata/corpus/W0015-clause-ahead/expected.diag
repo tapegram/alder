@@ -1,0 +1,3 @@
+app/Reviews.alder:12:12 E0026 `Table.Reviewer.current` says `requires org`, which needs a route that `requires org`: `Reviews` does not
+app/Table/Reviewer.alder:14:57 W0015 `current` says `requires org` and uses nothing that needs `org`
+app/Table/Reviewer.alder:18:48 W0015 `named` says `requires user` and uses nothing that needs `user`
