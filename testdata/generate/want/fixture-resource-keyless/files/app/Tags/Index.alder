@@ -155,7 +155,7 @@ Index.load params session = {
 type Labels = { posts: List Post }
 
 -- labelsOf reads the rows that rows refer to.
-labelsOf : List Tag -> Query Labels
+labelsOf : List Tag -> Query Labels requires user
 labelsOf rows = {
   let posts <-
     Db.mine Post

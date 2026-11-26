@@ -193,7 +193,7 @@ Index.load params session = {
 type Labels = { projects: List Project, assignees: List User }
 
 -- labelsOf reads the rows that rows refer to.
-labelsOf : List Issue -> Query Labels
+labelsOf : List Issue -> Query Labels requires org
 labelsOf rows = {
   let projects <-
     Db.from Project

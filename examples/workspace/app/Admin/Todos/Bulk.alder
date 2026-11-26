@@ -34,7 +34,7 @@ tooMany : Model -> Bool
 tooMany model = model.chosen > maxRows
 
 -- selected is the rows of ids: the page shows them, and each action reads them again.
-selected : List Todo.TodoId -> Query Model
+selected : List Todo.TodoId -> Query Model requires org
 selected ids = {
   -- @admin begin load
   let taken = List.take maxRows ids

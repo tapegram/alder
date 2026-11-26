@@ -179,7 +179,7 @@ type Labels = {
 }
 
 -- labelsOf reads the rows that rows refer to.
-labelsOf : List BlogPost -> Query Labels
+labelsOf : List BlogPost -> Query Labels requires user
 labelsOf rows = {
   -- every user's rows: User has no owner
   let owners <-

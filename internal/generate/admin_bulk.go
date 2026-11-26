@@ -132,7 +132,8 @@ func (g *crudGen) bulk(at *crudTable) {
 	fmt.Fprintf(&b, "-- maxRows is how many rows one action takes: a page of the list. More are refused.\nmaxRows : Int\nmaxRows = %d\n\n", bulkMax)
 	b.WriteString("-- tooMany says whether the page was given more ids than an action takes.\ntooMany : Model -> Bool\ntooMany model = model.chosen > maxRows\n\n")
 	b.WriteString("-- selected is the rows of ids: the page shows them, and each action reads them again.\n")
-	fmt.Fprintf(&b, "selected : List %s -> Query Model\nselected ids = {\n%s\n}\n\n", idT, g.regionAt("  ", "load", wrapAll(loads)))
+	body := g.regionAt("  ", "load", wrapAll(loads))
+	fmt.Fprintf(&b, "selected : List %s -> Query Model%s\nselected ids = {\n%s\n}\n\n", idT, g.p.requiresOf(body), body)
 	b.WriteString(g.load("Bulk", "  selected params.ids"))
 	cond := "List.member row." + id + " model.held"
 	sig := "refused : Model -> " + t.Name + " -> Bool\nrefused model row = "

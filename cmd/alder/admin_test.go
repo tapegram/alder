@@ -967,6 +967,13 @@ func TestAdmin_RegenBeforeRestPaths(t *testing.T) {
 					}
 					want = regexp.MustCompile(`\b`+m[1]+`\.(post|put|patch|delete)\b`).ReplaceAllString(want, m[1]+".update")
 				}
+				// a helper's signature outside the regions keeps the `requires` clause it had (none,
+				// before #310: W0014, which `alder fmt` adds), where `new admin` now writes one
+				for _, sig := range regexp.MustCompile(`(?m)^\w+ : .*$`).FindAllString(outsideRegions(string(oldSrc)), -1) {
+					if !strings.Contains(sig, " requires ") {
+						want = regexp.MustCompile(`(?m)^`+regexp.QuoteMeta(sig)+` requires [\w, ]+$`).ReplaceAllString(want, sig)
+					}
+				}
 				if got != want {
 					t.Errorf("%s after regen is not what new admin writes (its handlers named `update`):\n%s", rel, got)
 				}

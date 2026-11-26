@@ -652,7 +652,7 @@ func (g *crudGen) labels(at *crudTable, mod string, imports *importSet) []string
 	}
 	out = append(out, "type Labels = { "+strings.Join(fields, ", ")+" }", "",
 		"-- labelsOf reads the rows that rows refer to.",
-		"labelsOf : List "+t.Name+" -> Query Labels", "labelsOf rows = {")
+		"labelsOf : List "+t.Name+" -> Query Labels"+g.p.requiresOf(strings.Join(loads, "\n")), "labelsOf rows = {")
 	out = append(out, loads...)
 	out = append(out, "  Query.succeed { "+strings.Join(inits, ", ")+" }", "}")
 	return append(out, funcs...)
@@ -2518,7 +2518,8 @@ func (g *crudGen) delete(at *crudTable) {
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + g.regionAt("  ", "model", pl.model) + "\n}\n\n")
 	b.WriteString("-- counted is the row id names (none is not found) and how many rows of each table refer to it:\n")
 	b.WriteString("-- the page shows them, and Destroy counts them again before it deletes.\n")
-	fmt.Fprintf(&b, "counted : %s -> Query Model\ncounted id = {\n%s\n}\n\n", idT, g.regionAt("  ", "load", wrapAll(loads)))
+	body := g.regionAt("  ", "load", wrapAll(loads))
+	fmt.Fprintf(&b, "counted : %s -> Query Model%s\ncounted id = {\n%s\n}\n\n", idT, g.p.requiresOf(body), body)
 	b.WriteString(g.load("Delete", "  counted params.id"))
 	b.WriteString(g.regionAt("", "blockers", pl.block) + "\n\n")
 	b.WriteString("-- Destroy takes no input: the form is the button, and the place a refusal is shown.\nform Confirm = { }\n\n")

@@ -37,7 +37,7 @@ Show.load params session = {
 type Labels = { owners: List User, activities: List Activity }
 
 -- labelsOf reads the rows that rows refer to.
-labelsOf : List Note -> Query Labels
+labelsOf : List Note -> Query Labels requires org
 labelsOf rows = {
   -- every user's rows: User has no owner
   let owners <-

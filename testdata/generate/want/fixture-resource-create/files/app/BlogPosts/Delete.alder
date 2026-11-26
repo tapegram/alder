@@ -22,7 +22,7 @@ type Model = {
 
 -- counted is the row id names (none is not found) and how many rows of each table refer to it:
 -- the page shows them, and Destroy counts them again before it deletes.
-counted : BlogPost.BlogPostId -> Query Model
+counted : BlogPost.BlogPostId -> Query Model requires user
 counted id = {
   -- @resource begin load
   let row <- Db.getMine BlogPost id

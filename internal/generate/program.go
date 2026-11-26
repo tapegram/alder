@@ -9,6 +9,7 @@ package generate
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -672,4 +673,46 @@ func (p *Program) SessionField(name string) *SessionField {
 		}
 	}
 	return nil
+}
+
+// dbOp is a Db operation on a table written in generated code: `Db.mine Post`,
+// `Db.getScoped Project`, `Db.from Issue` (the table by its name, or qualified).
+var dbOp = regexp.MustCompile(`\bDb\.(\w+)\s+((?:[A-Z]\w*\.)*[A-Z]\w*)`)
+
+// requiresOf is the `requires` clause a generated helper's body needs (#310), " requires user,
+// org" or "": what the checker's W0014 fix would insert. A `mine` operation needs `user`, a
+// scoped one its table's partition key, an unscoped one on a table in a `silo k` that key; the
+// keys are in the session's field order.
+func (p *Program) requiresOf(body string) string {
+	keys := map[string]bool{}
+	for _, m := range dbOp.FindAllStringSubmatch(body, -1) {
+		name := m[2][strings.LastIndex(m[2], ".")+1:]
+		t := p.TableNamed(name)
+		switch op := m[1]; {
+		case strings.HasSuffix(op, "Mine") || op == "mine":
+			keys["user"] = true
+		case t == nil:
+		case strings.HasSuffix(op, "Scoped") || op == "scoped":
+			if t.PartKey != "" {
+				keys[t.PartKey] = true
+			}
+		case op == "from" || op == "get" || op == "insert" || op == "update" || op == "delete":
+			if t.Silo != "" {
+				keys[t.Silo] = true
+			}
+		}
+	}
+	if len(keys) == 0 || p.Session == nil {
+		return ""
+	}
+	var out []string
+	for _, f := range p.Session.Fields {
+		if keys[f.Name] {
+			out = append(out, f.Name)
+		}
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	return " requires " + strings.Join(out, ", ")
 }

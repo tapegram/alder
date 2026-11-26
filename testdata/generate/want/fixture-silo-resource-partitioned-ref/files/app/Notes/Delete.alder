@@ -24,7 +24,7 @@ type Model = {
 
 -- counted is the row id names (none is not found) and how many rows of each table refer to it:
 -- the page shows them, and Destroy counts them again before it deletes.
-counted : Note.NoteId -> Query Model
+counted : Note.NoteId -> Query Model requires user
 counted id = {
   -- @resource begin load
   let row <- Db.getMine Note id

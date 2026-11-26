@@ -43,7 +43,7 @@ Show.load params session = {
 type Labels = { projects: List Project }
 
 -- labelsOf reads the rows that rows refer to.
-labelsOf : List Todo -> Query Labels
+labelsOf : List Todo -> Query Labels requires org
 labelsOf rows = {
   let projects <-
     Db.from Project
