@@ -1,0 +1,3 @@
+app/Todos.alder:23:42 W0016 `Response.render Index` is going away: load what `Index.view` shows and answer `Response.replace [ Index.view … ]`, a handler sends the views it built
+app/Todos.alder:26:42 W0016 `Response.render Row` is going away: load what `Row.view` shows and answer `Response.replace [ Row.view … ]`, a handler sends the views it built
+app/Todos.alder:29:60 W0016 `Response.render Row` is going away: load what `Row.view` shows and answer `Response.replace [ Row.view … ]`, a handler sends the views it built

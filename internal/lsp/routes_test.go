@@ -469,7 +469,7 @@ func TestReferences_RouteMemberCalls(t *testing.T) {
 		{"Todos.alder", c.at(rel, "Row.load params", 0)},
 		{"Todos.alder", c.at(rel, "Row.view :", 0)},
 		{"Todos.alder", c.at(rel, "Row.view t session =", 0)},
-		{"Todos.alder", c.at(rel, "Row { id: params.id }", 0)},
+		{"Todos.alder", c.at(rel, "Row.view t session ]", 0)},
 		{"Todos.alder", c.at(rel, "Row.Session", 0)},
 		{"Other.alder", c.at(other, "Row.Session", 0)},
 		{"Other.alder", c.at(other, "Row.view\n", 0)},

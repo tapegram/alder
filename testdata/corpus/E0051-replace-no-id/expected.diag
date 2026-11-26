@@ -1,0 +1,4 @@
+app/Todos.alder:26:62 E0051 `Response.replace`: the root is a `<p>` without an `id`. A replace swaps the element with the same `id`: give the root one.
+app/Todos.alder:30:61 E0051 `Response.replace`: the root of `countView` is a `<p>` without an `id`. A replace swaps the element with the same `id`: give the root one.
+app/Todos.alder:30:109 E0051 `Response.replace`: the root is a `<span>` without an `id`. A replace swaps the element with the same `id`: give the root one.
+app/Todos.alder:33:44 E0051 `Response.replace`: the root of `badge` is a `<i>` without an `id`. A replace swaps the element with the same `id`: give the root one.

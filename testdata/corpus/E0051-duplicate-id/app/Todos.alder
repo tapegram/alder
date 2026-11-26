@@ -1,0 +1,22 @@
+module Todos
+
+route Index = GET  "/"      { }
+route Clear = POST "/clear" { }
+route Wipe  = POST "/wipe"  { }
+
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <div>{countView n}</div>
+
+countView : Int -> Html
+countView n = <p id="member-count">{Text.fromInt n} members</p>
+
+-- two roots written in place with one id
+Clear.post : Clear.Params -> Session -> Task Response
+Clear.post params session = Task.succeed (Response.replace [ <p id="member-count">0</p>, <p id="member-count">1</p> ])
+
+-- a called view's root and a fragment's share one
+Wipe.post : Wipe.Params -> Session -> Task Response
+Wipe.post params session = Task.succeed (Response.replace [ countView 0, Html.fragment [ <p id="member-count">0 members</p> ] ])

@@ -150,12 +150,13 @@ const (
 	ThemeDecl           = "E0042" // a `theme` declaration the rules refuse: outside App, twice, an unknown or removed token, a value of the wrong kind or shape
 	RouteDecl           = "E0043" // a route declaration the rules refuse: `form` on GET, a missing or extra member, a member of the wrong type, a path two routes answer with one method, a path segment with no parameter, a module with both `page` and `route`
 	RouteName           = "E0044" // a route name that cannot be told apart (a module's, an import qualifier's, a constructor's in scope, another route's) or a qualified declaration naming no route
-	RouteTarget         = "E0045" // a route requested in a way its method refuses: `href`, `Test.get`/`open`/`fetch` to a write route, `submit` to a GET route, `Response.redirect`/`render` of a write route, `Test.submit` of a route without `form`, `Test.click` of one with it, `click` of a route with a form, `load`/`intersect`/`input` (and their test steps) to a write route
+	RouteTarget         = "E0045" // a route requested in a way its method refuses: `href`, `Test.get`/`open`/`fetch` to a write route, `submit` to a GET route, `Response.redirect`/`render` of a write route, `Response.remove` after a whole-page answer (`refresh`, `redirect`, `invalid`), `Test.submit` of a route without `form`, `Test.click` of one with it, `click` of a route with a form, `load`/`intersect`/`input` (and their test steps) to a write route
 	RemovedSyntax       = "E0046" // page-era syntax (#160): `page`, `msg`, `Nav` and its constructors, `Page`, `Html` with a type argument, an unqualified `load`/`view`/`update`
 	RouteTrigger        = "E0047" // a route trigger attribute misused: `input` off a control, without a literal name, or naming no Text query parameter; two of `load`/`intersect`/`input` on one element; `every` without `load` or not a literal like "5s"; any of the four on a custom element
 	SecretInSession     = "E0048" // a session field that holds a `Text.Secret` (or a `Maybe` of one): the cookie is signed, not encrypted
 	JobParam            = "E0049" // a job parameter that cannot be stored: a function, `Task`, `Query`, `Html`, `Doc`, `Job`, `Route` or `Answer`, or a type holding one
 	JobSchedule         = "E0050" // a job's options the rules refuse: two schedules, a scheduled job with parameters, an unreadable or out-of-range `every` or `timeout`, a `priority` that is not a whole number, a malformed or never-matching `cron`
+	ReplaceRoot         = "E0051" // a root of a `Response.replace` list the checker can see with no `id`, or two with one literal `id` (#309)
 	ImportAlias         = "E0204" // an import's `as` is missing, redundant or not its canonical qualifier
 	FullPath            = "E0205" // a name written with an imported module's full path instead of its qualifier
 	NoQualifier         = "E0206" // an import with no usable qualifier: every candidate is taken or shared
@@ -172,6 +173,7 @@ const (
 	HandlerRenamed      = "W0013" // a write route's handler named `update`, not after its method (#308), accepted for one release
 	HelperNeedUnstated  = "W0014" // a route or job module's helper whose need its signature does not state (#310), accepted for one release
 	NeedUnused          = "W0015" // a key in a value's `requires` clause its body does not need (#310)
+	RenderDeprecated    = "W0016" // `Response.render`, deprecated for `Response.replace` (#309), accepted for one release
 
 	// ScratchAppErrors is the language server's warning at 1:1 of a scratch file the app's errors
 	// keep from running (internal/lsp publishScratch).

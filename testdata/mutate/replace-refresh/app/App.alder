@@ -1,0 +1,9 @@
+module App
+
+session { }
+
+error : Error -> Html
+error err = <p>Error</p>
+
+notFound : Html
+notFound = <p>Not found</p>

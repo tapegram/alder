@@ -93,6 +93,8 @@ type Checker struct {
 	// valueDecls are the program's top-level value declarations by key ("Module.name"), for the
 	// `requires` clause a caller is checked against (statedNeed).
 	valueDecls map[string]valueDecl
+	// renderWarned are the `Response.render` references W0016 named a route for (replace.go).
+	renderWarned map[*syntax.Var]bool
 	// M15: hasSession says App declares `session`; via maps each valid `via` session field to
 	// its membership table ("Membership.Membership"), silos each silo key to its tables
 	// ("Project.Project"), siloOf each siloed table to its key, choose each `choose` key to

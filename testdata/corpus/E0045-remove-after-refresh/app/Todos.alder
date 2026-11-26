@@ -1,0 +1,35 @@
+module Todos
+
+route Index = GET    "/"         { }
+route Clear = POST   "/clear"    { }
+route Wipe  = POST   "/wipe"     { }
+route Go    = POST   "/go"       { }
+route Bad   = POST   "/bad"      { }
+route Keep  = DELETE "/keep"     { }
+
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <div><p id="member-3">Ada</p></div>
+
+-- a refresh sends the page as it now is: nothing to remove
+Clear.post : Clear.Params -> Session -> Task Response
+Clear.post params session = Task.succeed (Response.refresh |> Response.remove "member-3")
+
+-- through a toast, and written applied
+Wipe.post : Wipe.Params -> Session -> Task Response
+Wipe.post params session = Task.succeed (Response.remove "member-3" (Response.refresh |> Response.success "Wiped"))
+
+Go.post : Go.Params -> Session -> Task Response
+Go.post params session = Task.succeed (Response.redirect Index |> Response.remove "member-3")
+
+Bad.post : Bad.Params -> Session -> Task Response
+Bad.post params session = Task.succeed (Response.invalid "No" |> Response.remove "member-3")
+
+-- after a replace, a removal is what it is for; one reached through a variable is left to the run time
+Keep.delete : Keep.Params -> Session -> Task Response
+Keep.delete params session = {
+  let r = Response.refresh
+  if True then Task.succeed (Response.replace [] |> Response.remove "member-3") else Task.succeed (r |> Response.remove "member-3")
+}

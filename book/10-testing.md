@@ -2607,6 +2607,7 @@ breaks, in five classes; every mutant is well-typed:
 | flow | `redirect → refresh` | `Response.redirect r` becomes `Response.refresh` |
 | flow | `render → redirect` | `Response.render r` becomes `Response.redirect r` |
 | flow | `render → refresh` | `Response.render r` becomes `Response.refresh`: the whole page rendered again, not `r`'s element |
+| flow | `replace → refresh` | `Response.replace views` becomes `Response.refresh`: the whole page rendered again, not the views the handler built |
 | flow | `invalid → refresh` | `Response.invalid "message"` becomes `Response.refresh`: a refused write answered as a done one |
 | flow | `refresh → invalid` | `Response.refresh` becomes `Response.invalid "mutant"`: a done write answered as a refused one |
 | flow | `toast dropped` | One `Response.toast`, `success`, `warning` or `error` left out: the `Response` it decorates is answered without the notice |

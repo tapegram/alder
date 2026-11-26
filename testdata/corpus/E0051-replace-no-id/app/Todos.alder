@@ -1,0 +1,33 @@
+module Todos
+
+route Index = GET  "/"      { }
+route Clear = POST "/clear" { }
+route Wipe  = POST "/wipe"  { }
+route Flip  = POST "/flip"  { }
+
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <div>{countView n}{badge True}</div>
+
+countView : Int -> Html
+countView n = <p>{Text.fromInt n} members</p>
+
+-- the root is visible through `if`, `case` and a block's last expression
+badge : Bool -> Html
+badge on = {
+  let label = "on"
+  if on then <b id="badge">{label}</b> else <i>off</i>
+}
+
+-- a root written in place has no id
+Clear.post : Clear.Params -> Session -> Task Response
+Clear.post params session = Task.succeed (Response.replace [ <p>none</p> ])
+
+-- the root of a called view, and of a fragment of those, has no id
+Wipe.post : Wipe.Params -> Session -> Task Response
+Wipe.post params session = Task.succeed (Response.replace [ countView 0, Html.fragment [ <b id="ok">ok</b>, <span>x</span> ] ])
+
+Flip.post : Flip.Params -> Session -> Task Response
+Flip.post params session = Task.succeed ([ badge False ] |> Response.replace)

@@ -52,6 +52,7 @@ const (
 	RedirectRefresh    = "redirect → refresh"
 	RenderRedirect     = "render → redirect"
 	RenderRefresh      = "render → refresh"
+	ReplaceRefresh     = "replace → refresh"
 	InvalidRefresh     = "invalid → refresh"
 	RefreshInvalid     = "refresh → invalid"
 	ToastDropped       = "toast dropped"
@@ -1011,7 +1012,8 @@ func responseStd(ty types.Type, name string) *ir.Var {
 
 // answer swaps a write's answer for another of type Response: `redirect r` → refresh (the write
 // stays on the page it was sent from), `render r` → `redirect r` (the same route, but a 303 to
-// it) and → refresh (the whole page rendered again, not r's element), `invalid t` → refresh (a
+// it) and → refresh (the whole page rendered again, not r's element), `replace views` → refresh
+// (the page rendered again, not the views the handler built), `invalid t` → refresh (a
 // refused write answered as a done one); and drops a notice (`toast`, `success`, `warning`,
 // `error`), leaving the Response it decorates. A mutant keeps the original route's NeedsShown
 // (every mutant is a switch arm of one binary, internal/gen/routes.go), so a `redirect` → refresh
@@ -1030,6 +1032,8 @@ func (c *collector) answer(x *ir.Call) {
 		r := &ir.Call{Typed: x.Typed, Pos: x.Pos, Fn: responseStd(v.Ty, "redirect"), Args: x.Args}
 		c.add(RenderRedirect, x.Pos, x, r, c.show(x), c.show(r))
 		c.add(RenderRefresh, x.Pos, x, refresh, c.show(x), "Response.refresh")
+	case v.Name == "replace" && len(x.Args) == 1:
+		c.add(ReplaceRefresh, x.Pos, x, refresh, c.show(x), "Response.refresh")
 	case v.Name == "invalid" && len(x.Args) == 1:
 		c.add(InvalidRefresh, x.Pos, x, refresh, c.show(x), "Response.refresh")
 	case (v.Name == "toast" || v.Name == "success" || v.Name == "warning" || v.Name == "error") && len(x.Args) == 2:

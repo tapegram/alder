@@ -1,0 +1,39 @@
+module Todos
+
+route Index  = GET    "/"             { }
+route Clear  = POST   "/clear"        { }
+route Remove = DELETE "/members/{id}" { id: Int }
+route Many   = POST   "/many"         { }
+
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <div>{countView n}{row n}{status n}</div>
+
+countView : Int -> Html
+countView n = <p id="member-count">{Text.fromInt n} members</p>
+
+-- a computed id counts as present
+row : Int -> Html
+row n = <li id={"member-" ++ Text.fromInt n}>Member</li>
+
+status : Int -> Html
+status n = match n {
+  0 -> <p id="status">none</p>,
+  _ -> <p id="status">some</p>
+}
+
+-- a toast alone: nothing replaced
+Clear.post : Clear.Params -> Session -> Task Response
+Clear.post params session = Task.succeed (Response.replace [] |> Response.success "Cleared")
+
+Remove.delete : Remove.Params -> Session -> Task Response
+Remove.delete params session = Task.succeed (Response.replace [ countView 1, status 1, row 2, Html.fragment [ row 3 ] ] |> Response.remove ("member-" ++ Text.fromInt params.id))
+
+-- a list the checker cannot see into is left to the run time
+Many.post : Many.Params -> Session -> Task Response
+Many.post params session = {
+  let views = [ <p>none</p> ]
+  Task.succeed (Response.replace (views ++ List.map row [ 1, 2 ]))
+}

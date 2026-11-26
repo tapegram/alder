@@ -774,30 +774,33 @@ HTTP it produces:
 
 ```alder
 Response.redirect : Route -> Response                 -- 303, to the GET route's URL
-Response.render   : Route -> Response                 -- 200, that GET route's view, as one element
+Response.replace  : List Html -> Response             -- 200, each root replaces the page's element with its id
 Response.refresh  : Response                          -- 200, the page the browser is on, again
 Response.invalid  : Text -> Response                  -- 422, that page, form kept, the text in <Errors form />
 Response.toast    : Text -> Response -> Response      -- a toast on any response
 Response.success  : Text -> Response -> Response      -- a toast of kind success
 Response.warning  : Text -> Response -> Response      -- a toast of kind warning
 Response.error    : Text -> Response -> Response      -- a toast of kind error
+Response.remove   : Text -> Response -> Response      -- also removes the page's element with this id
 ```
 
 A toast is a one-line notice shown once, in the next page the browser shows
 (chapter 6, "Notices and in-flight state").
 
-- `redirect` and `render` take a GET route (E0045 for any other).
+- `redirect` takes a GET route (E0045 for any other).
 - `invalid` is a successful result: its `Task` commits.
 - A `Route` and a `Response` compare with `==`; two routes are equal when
   they lead to the same address.
 
-> **Not yet:** `Response.status`, `header`, `json`, `file`, `remove`, `patch`
-> and `stream` do not exist yet.
+> **Not yet:** `Response.status`, `header`, `json`, `file` and `stream` do not
+> exist yet.
 
 > **Deprecated:** `Notice.with`, `Notice.success`, `Notice.warning` and
 > `Notice.error` are the old names of `Response.toast`, `success`, `warning`
 > and `error`. They still work, as aliases, and each use is W0012. Write the
 > `Response` builders.
+> `Response.render r` is deprecated too (W0016): load what `r`'s view shows
+> and answer `Response.replace [ … ]` with the views built from it.
 
 ## Job
 

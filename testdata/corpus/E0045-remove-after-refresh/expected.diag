@@ -1,0 +1,4 @@
+app/Todos.alder:18:63 E0045 `Response.remove` after `Response.refresh`: a refresh sends the page as it now is, which already lacks the element
+app/Todos.alder:22:42 E0045 `Response.remove` after `Response.refresh`: a refresh sends the page as it now is, which already lacks the element
+app/Todos.alder:25:67 E0045 `Response.remove` after `Response.redirect`: a redirect loads another page, which has no element to remove
+app/Todos.alder:28:66 E0045 `Response.remove` after `Response.invalid`: an invalid answer shows the form again, with the page as it is

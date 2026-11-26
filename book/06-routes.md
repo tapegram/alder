@@ -47,15 +47,16 @@ Toggle.patch params session = {
   -- The id comes from the request: `Db.updateMine` changes the todo only when it is the
   -- signed-in user's, and answers 404 otherwise ("Rules", below).
   let _ <- Db.updateMine Todo params.id (\t -> { t | done: not t.done })
-  Task.succeed (Response.render (Row { id: params.id }))
+  let todo <- Db.getMine Todo params.id
+  Task.succeed (Response.replace [ Row.view todo session ])
 }
 ```
 
 Three routes. `Index` is a page: its view includes the layout. `Row` is a
 GET route whose view is one `<li>`; the page's view uses it for every todo,
 and `Toggle` uses it to answer a click. `Toggle` is a `PATCH`: it flips one
-todo and answers `Response.render (Row { id: … })`, which sends that one
-`<li>` to the browser and nothing else.
+todo and answers `Response.replace [ Row.view todo session ]`, which sends
+that one `<li>` to the browser and nothing else.
 
 The to-do app in `examples/todos` is this with a form to add a todo and a
 button to delete one; its `Toggle` is a `PATCH` that answers

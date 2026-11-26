@@ -1207,6 +1207,7 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			d.Fix = diag.ReplaceSpan(x.Span, "Response."+b)
 			d.Fix.Preferred = true // the one obvious repair
 		}
+		mc.renderRef(x) // after responseCall, which names the route when it sees one
 		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Session" && mc.fake != "" { // the entry's prefix names the fake
 			c.errorf(diag.TypeMismatch, x.Span, "a fake cannot use `Session`: an adapter has no session")
 			return types.Err
@@ -1496,6 +1497,9 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 			}
 		}
 	}
+	if v, ok := x.Fn.(*syntax.Var); ok {
+		mc.responseCall(v, x.Args, pipe)
+	}
 	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "File" {
 		mc.checkFileArg(v.Ref.Name, x.Args)
 	}
@@ -1642,6 +1646,9 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 			res := mc.inferApp(app, env, eff, p, nil)
 			c.record(app, mc.pipedApp(app))
 			return res
+		}
+		if v, ok := x.R.(*syntax.Var); ok {
+			mc.responseCall(v, nil, p)
 		}
 		fnT := c.u.Apply(mc.infer(x.R, env, eff))
 		if types.IsErr(fnT) {

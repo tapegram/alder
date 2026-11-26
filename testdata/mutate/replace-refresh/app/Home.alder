@@ -1,0 +1,19 @@
+module Home
+
+route Home = GET  "/" { }
+route Show = POST "/" { }
+
+type Model = { }
+
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = Query.succeed { }
+
+-- A mutant: the update refreshes the page instead of replacing the element.
+Show.post : Show.Params -> Session -> Task Response
+Show.post p session = Task.succeed (Response.replace [ greeting ])
+
+Home.view : Model -> Session -> Html
+Home.view model session = greeting
+
+greeting : Html
+greeting = <p id="greeting">Home</p>

@@ -43,7 +43,8 @@ Row.view t session =
 Toggle.patch : Toggle.Params -> Session -> Task Response
 Toggle.patch params session = {
   let _ <- Db.updateMine Todo params.id (\t -> { t | done: not t.done })
-  Task.succeed (Response.render (Row { id: params.id }))
+  let t <- Db.getMine Todo params.id
+  Task.succeed (Response.replace [ Row.view t session ])
 }
 
 Create.post : Create.Params -> Session -> Task Response
