@@ -40,14 +40,14 @@ M.load params session = Query.succeed {
   shape: Circle 1.0,
 }
 
-Save.update : Save.Params -> Session -> Task Response
-Save.update params session = Task.succeed Response.refresh
+Save.post : Save.Params -> Session -> Task Response
+Save.post params session = Task.succeed Response.refresh
 
-Pick.update : Pick.Params -> Session -> Task Response
-Pick.update params session = Task.succeed Response.refresh
+Pick.post : Pick.Params -> Session -> Task Response
+Pick.post params session = Task.succeed Response.refresh
 
-Ping.update : Ping.Params -> Session -> Task Response
-Ping.update params session = Task.succeed Response.refresh
+Ping.post : Ping.Params -> Session -> Task Response
+Ping.post params session = Task.succeed Response.refresh
 
 M.view : Model -> Session -> Html
 M.view model session =

@@ -309,7 +309,7 @@ func Route__Todos__Toggle() web.Route {
 		if stop != nil {
 			return *stop
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Toggle__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Toggle__put(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -384,7 +384,7 @@ func Route__Todos__Create() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Create__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Create__post(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -441,7 +441,7 @@ func Route__Todos__Delete() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Delete__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Delete__delete(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -523,7 +523,7 @@ func Route__Todos__Move() web.Route {
 			resp.Shown = shown
 			return resp
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Move__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Move__post(params, session))
 		if err != nil {
 			return route__fail(err)
 		}

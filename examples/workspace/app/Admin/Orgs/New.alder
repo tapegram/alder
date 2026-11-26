@@ -34,8 +34,8 @@ form OrgForm = { name: Text.NonEmpty }
 -- @admin end
 
 -- Create adds the row and goes to its page.
-Create.update : Create.Params -> Session -> Task Response
-Create.update params session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post params session = {
   let _ <- Layout.adminOnly session.user
   -- @admin begin insert
   let id <- Db.insert Org { name: params.form.name }

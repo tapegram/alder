@@ -97,7 +97,7 @@ func Projects__Index__Index__load(params Projects__Index__Index__Params, session
 	}))
 }
 
-func Projects__Index__Add__update(p Projects__Index__Add__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+func Projects__Index__Add__post(p Projects__Index__Add__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.get Org", false, func(_e1 *eff.Env) (rt.Maybe[Org__Org], error) {
 		return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Org__Org, session.Org)
 	}), func(org rt.Maybe[Org__Org]) eff.Task[rt.Response] {
@@ -123,7 +123,7 @@ func Projects__Index__Add__update(p Projects__Index__Add__Params, session Projec
 	})
 }
 
-func Projects__Index__Rename__update(p Projects__Index__Rename__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+func Projects__Index__Rename__patch(p Projects__Index__Rename__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[struct{}] {
 		switch Mutant {
 		case 31:
@@ -145,7 +145,7 @@ func Projects__Index__Rename__update(p Projects__Index__Rename__Params, session 
 	})
 }
 
-func Projects__Index__Remove__update(p Projects__Index__Remove__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+func Projects__Index__Remove__delete(p Projects__Index__Remove__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[struct{}] {
 		switch Mutant {
 		case 33:
@@ -165,7 +165,7 @@ func Projects__Index__Remove__update(p Projects__Index__Remove__Params, session 
 	})
 }
 
-func Projects__Index__Tag__update(params Projects__Index__Tag__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+func Projects__Index__Tag__post(params Projects__Index__Tag__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[string] {
 		switch Mutant {
 		case 35:
@@ -185,7 +185,7 @@ func Projects__Index__Tag__update(params Projects__Index__Tag__Params, session P
 	})
 }
 
-func Projects__Index__Seed__update(params Projects__Index__Seed__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+func Projects__Index__Seed__post(params Projects__Index__Seed__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[[]struct{}] {
 		switch Mutant {
 		case 37:
@@ -1195,7 +1195,7 @@ func test__Projects__Index__3() eff.Task[bool] {
 								Value rt.Result[string, rt.Response]
 								Trace []string
 							}, error) {
-								_v18, _msg19, _ok20, _tr21, _err22 := rtesting.InnerOn(_e17, "org", Projects__Index__Remove__update(Projects__Index__Remove__Params{Id: id}, me))
+								_v18, _msg19, _ok20, _tr21, _err22 := rtesting.InnerOn(_e17, "org", Projects__Index__Remove__delete(Projects__Index__Remove__Params{Id: id}, me))
 								if _err22 != nil {
 									var _z24 struct {
 										Value rt.Result[string, rt.Response]
@@ -1226,7 +1226,7 @@ func test__Projects__Index__3() eff.Task[bool] {
 									Value rt.Result[string, rt.Response]
 									Trace []string
 								}, error) {
-									_v26, _msg27, _ok28, _tr29, _err30 := rtesting.InnerOn(_e25, "org", Projects__Index__Rename__update(Projects__Index__Rename__Params{Id: id}, me))
+									_v26, _msg27, _ok28, _tr29, _err30 := rtesting.InnerOn(_e25, "org", Projects__Index__Rename__patch(Projects__Index__Rename__Params{Id: id}, me))
 									if _err30 != nil {
 										var _z32 struct {
 											Value rt.Result[string, rt.Response]
@@ -1759,7 +1759,7 @@ func test__Projects__Index__6() eff.Task[bool] {
 				Value rt.Result[string, rt.Response]
 				Trace []string
 			}, error) {
-				_v6, _msg7, _ok8, _tr9, _err10 := rtesting.InnerOn(_e5, "", Projects__Index__Tag__update(Projects__Index__Tag__Params{}, me))
+				_v6, _msg7, _ok8, _tr9, _err10 := rtesting.InnerOn(_e5, "", Projects__Index__Tag__post(Projects__Index__Tag__Params{}, me))
 				if _err10 != nil {
 					var _z12 struct {
 						Value rt.Result[string, rt.Response]
@@ -1785,7 +1785,7 @@ func test__Projects__Index__6() eff.Task[bool] {
 					Value rt.Result[string, rt.Response]
 					Trace []string
 				}, error) {
-					_v14, _msg15, _ok16, _tr17, _err18 := rtesting.InnerOn(_e13, "org", Projects__Index__Seed__update(Projects__Index__Seed__Params{}, me))
+					_v14, _msg15, _ok16, _tr17, _err18 := rtesting.InnerOn(_e13, "org", Projects__Index__Seed__post(Projects__Index__Seed__Params{}, me))
 					if _err18 != nil {
 						var _z20 struct {
 							Value rt.Result[string, rt.Response]

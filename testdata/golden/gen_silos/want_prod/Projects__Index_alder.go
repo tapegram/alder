@@ -74,7 +74,7 @@ func Projects__Index__Index__load(params Projects__Index__Index__Params, session
 	}))
 }
 
-func Projects__Index__Add__update(p Projects__Index__Add__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+func Projects__Index__Add__post(p Projects__Index__Add__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.get Org", false, func(_e1 *eff.Env) (rt.Maybe[Org__Org], error) {
 		return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Org__Org, session.Org)
 	}), func(org rt.Maybe[Org__Org]) eff.Task[rt.Response] {
@@ -88,7 +88,7 @@ func Projects__Index__Add__update(p Projects__Index__Add__Params, session Projec
 	})
 }
 
-func Projects__Index__Rename__update(p Projects__Index__Rename__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+func Projects__Index__Rename__patch(p Projects__Index__Rename__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.updateScoped Project", true, func(_e1 *eff.Env) (struct{}, error) {
 		return struct{}{}, db.UpdateScopedRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Project__Project, p.Id, func(x Project__Project) Project__Project {
 			return Project__Project{Id: x.Id, Name: "renamed", Org: x.Org}
@@ -98,7 +98,7 @@ func Projects__Index__Rename__update(p Projects__Index__Rename__Params, session 
 	})
 }
 
-func Projects__Index__Remove__update(p Projects__Index__Remove__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+func Projects__Index__Remove__delete(p Projects__Index__Remove__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.deleteScoped Project", true, func(_e1 *eff.Env) (struct{}, error) {
 		return struct{}{}, db.DeleteScopedRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Project__Project, p.Id)
 	}), func(_ struct{}) eff.Task[rt.Response] {
@@ -106,7 +106,7 @@ func Projects__Index__Remove__update(p Projects__Index__Remove__Params, session 
 	})
 }
 
-func Projects__Index__Tag__update(params Projects__Index__Tag__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+func Projects__Index__Tag__post(params Projects__Index__Tag__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.insertScoped Label", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertScopedRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Label__Label, insertminevals__Label__Label(insertmine__Label__Label{Name: "new"}), _e1.Now())
 	}), func(_ string) eff.Task[rt.Response] {
@@ -114,7 +114,7 @@ func Projects__Index__Tag__update(params Projects__Index__Tag__Params, session P
 	})
 }
 
-func Projects__Index__Seed__update(params Projects__Index__Seed__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+func Projects__Index__Seed__post(params Projects__Index__Seed__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.All(std.ListMap(Projects__Index__seed, []string{"x", "y"})), func(_ []struct{}) eff.Task[rt.Response] {
 		return eff.Pure(std.ResponseRefresh())
 	})

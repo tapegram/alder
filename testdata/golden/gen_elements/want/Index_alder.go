@@ -64,11 +64,11 @@ func Index__Index__load(params Index__Index__Params, session App__Session) eff.Q
 	}{Value: "bob", Label: "Bob"}}}))
 }
 
-func Index__Submit__update(p Index__Submit__Params, session App__Session) eff.Task[rt.Response] {
+func Index__Submit__post(p Index__Submit__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Pure(std.ResponseRefresh())
 }
 
-func Index__Clear__update(p Index__Clear__Params, session App__Session) eff.Task[rt.Response] {
+func Index__Clear__delete(p Index__Clear__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Pure(std.ResponseRefresh())
 }
 

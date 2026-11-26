@@ -11,11 +11,11 @@ form NewTodo = {
 Index.load : Index.Params -> Session -> Query { r: Route }
 Index.load params session = Query.succeed { r: Toggle { id: "c" } }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update params session = Task.succeed Response.refresh
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post params session = Task.succeed Response.refresh
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update params session = Task.succeed Response.refresh
+Toggle.patch : Toggle.Params -> Session -> Task Response
+Toggle.patch params session = Task.succeed Response.refresh
 
 -- `click` sends a route without a form; a route with `form NewTodo` is sent by a form
 Index.view : { r: Route } -> Session -> Html

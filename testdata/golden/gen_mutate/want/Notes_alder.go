@@ -49,7 +49,7 @@ func Notes__Notes__load(params Notes__Notes__Params, session Notes__Notes__Sessi
 	}))
 }
 
-func Notes__Add__update(p Notes__Add__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
+func Notes__Add__post(p Notes__Add__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[string] {
 		switch Mutant {
 		case 7:

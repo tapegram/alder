@@ -28,15 +28,15 @@ route Logout = DELETE "/session"      { }
 route Leave  = DELETE "/orgs/current" { }
 
 -- logging out clears the user; a `via` key goes with it (the runtime clears `org`)
-Logout.update : Logout.Params -> Session -> Task Response
-Logout.update p session = {
+Logout.delete : Logout.Params -> Session -> Task Response
+Logout.delete p session = {
   let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
   Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
 
 -- back to the list of orgs, to pick another
-Leave.update : Leave.Params -> Session -> Task Response
-Leave.update p session = {
+Leave.delete : Leave.Params -> Session -> Task Response
+Leave.delete p session = {
   let _ <- Session.put (\s -> { s | org: Nothing })
   Task.succeed (Response.redirect (Orgs.Index.Index {}))
 }
@@ -68,8 +68,8 @@ test "Logout and Leave say where to go" = {
     org: Nothing,
     role: Member,
   }
-  let out <- Test.run (Logout.update {} me)
-  let leave <- Test.run (Leave.update {} me)
+  let out <- Test.run (Logout.delete {} me)
+  let leave <- Test.run (Leave.delete {} me)
   Task.succeed (
     { out: out.value, leave: leave.value }
       == {

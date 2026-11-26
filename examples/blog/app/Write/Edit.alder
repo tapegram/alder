@@ -33,30 +33,30 @@ Edit.load params session = {
 
 form EditPost = { title: Text.NonEmpty, body: Text }
 
-Save.update : Save.Params -> Session -> Task Response
-Save.update p session = {
+Save.put : Save.Params -> Session -> Task Response
+Save.put p session = {
   let _ <- User.authorOnly session.user
   let _ <- Db.updateMine Post p.id (\post -> { post | title: p.form.title, body: p.form.body })
   Task.succeed (Response.refresh |> Response.toast "Saved")
 }
 
-Publish.update : Publish.Params -> Session -> Task Response
-Publish.update p session = {
+Publish.post : Publish.Params -> Session -> Task Response
+Publish.post p session = {
   let _ <- User.authorOnly session.user
   let _ <- Db.updateMine Post p.id (\post -> { post | published: True })
   Task.succeed Response.refresh
 }
 
-Unpublish.update : Unpublish.Params -> Session -> Task Response
-Unpublish.update p session = {
+Unpublish.delete : Unpublish.Params -> Session -> Task Response
+Unpublish.delete p session = {
   let _ <- User.authorOnly session.user
   let _ <- Db.updateMine Post p.id (\post -> { post | published: False })
   Task.succeed Response.refresh
 }
 
 -- The post's comments go with it: Comment.post is `@ref Post @cascade`.
-Delete.update : Delete.Params -> Session -> Task Response
-Delete.update p session = {
+Delete.delete : Delete.Params -> Session -> Task Response
+Delete.delete p session = {
   let _ <- User.authorOnly session.user
   let _ <- Db.deleteMine Post p.id
   Task.succeed (Response.redirect (Write.Write {}))
@@ -115,7 +115,7 @@ test "deleting a post deletes its comments" = {
     body: Comment.Body "Second.",
   }
   let _ <- Test.login { user: Just author, role: Author }
-  let r <- Test.run (Delete.update { id: id } { user: author, role: Author })
+  let r <- Test.run (Delete.delete { id: id } { user: author, role: Author })
   let posts <- Db.from Post |> Db.count
   let comments <- Db.from Comment |> Db.count
   Task.succeed (
@@ -157,10 +157,10 @@ test "another author's post is not found" = {
   let _ <- Test.login { user: Just other, role: Author }
   let r <- Test.open (Edit { id: id })
   let as = { user: other, role: Author }
-  let saved <- Test.run (Save.update { id: id, form: { title: Text.NonEmpty "Mine", body: "" } } as)
-  let published <- Test.run (Publish.update { id: id } as)
-  let unpublished <- Test.run (Unpublish.update { id: id } as)
-  let deleted <- Test.run (Delete.update { id: id } as)
+  let saved <- Test.run (Save.put { id: id, form: { title: Text.NonEmpty "Mine", body: "" } } as)
+  let published <- Test.run (Publish.post { id: id } as)
+  let unpublished <- Test.run (Unpublish.delete { id: id } as)
+  let deleted <- Test.run (Delete.delete { id: id } as)
   let after <- Db.get Post id
   Task.succeed (
     {
@@ -203,7 +203,7 @@ test "a demoted author is turned away at once" = {
   let _ <- Db.update User author (\u -> { u | role: Reader })
   let stale <- Test.open (Edit { id: id })
   let _ <- Test.login { user: Just author, role: Author }
-  let write <- Test.run (Publish.update { id: id } { user: author, role: Author })
+  let write <- Test.run (Publish.post { id: id } { user: author, role: Author })
   let _ <- Test.get (Auth.Login.Login {})
   let _ <- Test.submit Auth.Login.Submit {
     email: Text.Email "author@example.com",
@@ -432,9 +432,9 @@ test "Publish shows the post on the front page; Unpublish hides it" = {
     author: author,
   }
   let _ <- Test.login { user: Just author, role: Author }
-  let _ <- Publish.update { id: id } { user: author, role: Author }
+  let _ <- Publish.post { id: id } { user: author, role: Author }
   let published <- Index.Index.load { page: 1, q: "" } { user: Nothing, role: Reader }
-  let _ <- Unpublish.update { id: id } { user: author, role: Author }
+  let _ <- Unpublish.delete { id: id } { user: author, role: Author }
   let unpublished <- Index.Index.load { page: 1, q: "" } { user: Nothing, role: Reader }
   Task.succeed (
     { published: List.length published.posts, unpublished: List.length unpublished.posts }

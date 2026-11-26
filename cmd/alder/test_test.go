@@ -754,13 +754,13 @@ func TestTest_Rules(t *testing.T) {
 	// without the tests that look at a stranger or a role, exactly those mutants survive
 	code, stdout, _ = runTest(t, dir, "--mutate", "-run", `^(?:User|Todo |Admin\.Index "(an author|a visitor|a demoted)|Admin\.Users "(an admin|a visitor)|Todos\.Index "(recent|the open count|a visitor|adding|toggling|renaming|removing|duplicating)|Todos\.Show "(the owner|a visitor))`)
 	for _, want := range []string{
-		"  Admin.Index   Index:6               role dropped    requires user, role Author | Admin → requires user\n",
-		"  Admin.Users   Users:7               role dropped    requires user, role Admin → requires user\n",
-		"  Todos.Index   Toggle.update:43      scope dropped   Db.updateMine Todo p.id (\\t -> { t | done: not t.done }) → Db.update Todo p.id (\\t -> { t | done: not t.done }), not found when missing\n",
-		"  Todos.Index   Rename.update:49      scope dropped   Db.getMine Todo p.id → Db.get Todo p.id, not found when missing\n",
-		"  Todos.Index   Remove.update:56      scope dropped   Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing\n",
-		"  Todos.Index   Duplicate.update:64   scope dropped   Db.updateMine Todo p.id (\\t -> { t | done: True }) → Db.update Todo p.id (\\t -> { t | done: True }), not found when missing\n",
-		"  Todos.Show    Show.load:12          scope dropped   Db.getMine Todo params.id → Db.get Todo params.id, not found when missing\n",
+		"  Admin.Index   Index:6             role dropped    requires user, role Author | Admin → requires user\n",
+		"  Admin.Users   Users:7             role dropped    requires user, role Admin → requires user\n",
+		"  Todos.Index   Toggle.put:43       scope dropped   Db.updateMine Todo p.id (\\t -> { t | done: not t.done }) → Db.update Todo p.id (\\t -> { t | done: not t.done }), not found when missing\n",
+		"  Todos.Index   Rename.patch:49     scope dropped   Db.getMine Todo p.id → Db.get Todo p.id, not found when missing\n",
+		"  Todos.Index   Remove.delete:56    scope dropped   Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing\n",
+		"  Todos.Index   Duplicate.post:64   scope dropped   Db.updateMine Todo p.id (\\t -> { t | done: True }) → Db.update Todo p.id (\\t -> { t | done: True }), not found when missing\n",
+		"  Todos.Show    Show.load:12        scope dropped   Db.getMine Todo params.id → Db.get Todo params.id, not found when missing\n",
 	} {
 		if code != 0 || !strings.Contains(stdout, want) {
 			t.Errorf("exit %d: missing survivor %q in\n%s", code, want, stdout)
@@ -1190,7 +1190,7 @@ ok   Notes "a visitor cannot add a note"
 	for _, c := range []struct{ class, left, survivor string }{
 		{"authorization", `Notes "a visitor is sent to log in"`, `  Notes   Notes:6   requires dropped   requires user → served without user (user = User.UserId "mutant")`},
 		{"data", `Notes "I see only my notes"`, `  Notes   Notes.load:15   where dropped   Db.where (Note.owner.eq session.user) → the condition dropped`},
-		{"flow", `Notes "adding a note goes back to the list"`, `  Notes   Add.update:25   redirect → refresh   Response.redirect (Notes {}) → Response.refresh`},
+		{"flow", `Notes "adding a note goes back to the list"`, `  Notes   Add.post:25   redirect → refresh   Response.redirect (Notes {}) → Response.refresh`},
 		{"logic", `Note "a pinned note is labelled pinned"`, `  Note   label:18   condition negated   if note.pinned → if not note.pinned`},
 		{"schema", `Notes "a new note is not pinned"`, `  Note   Note:13   default changed   pinned = False → pinned = True`},
 	} {

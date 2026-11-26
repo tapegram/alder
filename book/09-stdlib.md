@@ -766,7 +766,7 @@ answers a 303 to the route value, as `Response.redirect r` does (chapter 7,
 
 ## Response, Route
 
-A write route's `update` is `Params -> Session -> Task Response` (chapter 6,
+A write route's handler is `Params -> Session -> Task Response` (chapter 6,
 "`Response`"). `Response` and `Route` are types of the Prelude: a `Route` is
 a route name applied to its parameters (`Todos.Index.Index { filter: Done }`),
 and a `Response` is built with these functions, each named after the

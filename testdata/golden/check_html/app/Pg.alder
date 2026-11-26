@@ -25,11 +25,11 @@ form F = { title: Text.NonEmpty, kind: Kind }
 
 type Kind = A | B
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update p session = Task.succeed Response.refresh
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post p session = Task.succeed Response.refresh
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update p session = Task.succeed Response.refresh
+Toggle.put : Toggle.Params -> Session -> Task Response
+Toggle.put p session = Task.succeed Response.refresh
 
 Pg.view : Model -> Session -> Html
 Pg.view model session =

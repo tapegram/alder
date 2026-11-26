@@ -134,7 +134,7 @@ func Signup__SendWelcome__run(p Signup__SendWelcome__Params) eff.Task[struct{}] 
 	})
 }
 
-func Signup__Create__update(p Signup__Create__Params, session App__Session) eff.Task[rt.Response] {
+func Signup__Create__post(p Signup__Create__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.insert User", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Table__User__User, insertvals__Table__User__User(insert__Table__User__User{Email: p.Form.Email, Name: p.Form.Name}), _e1.Now())
 	}), func(id string) eff.Task[rt.Response] {

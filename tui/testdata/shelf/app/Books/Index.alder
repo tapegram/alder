@@ -18,8 +18,8 @@ Index.load params session = {
   Query.succeed { books: books }
 }
 
-Lend.update : Lend.Params -> Session -> Task Response
-Lend.update p session = {
+Lend.post : Lend.Params -> Session -> Task Response
+Lend.post p session = {
   let _ <- Db.insert Loan { book: p.id }
   Task.succeed (Response.redirect (Books.Show.Show { id: p.id }))
 }

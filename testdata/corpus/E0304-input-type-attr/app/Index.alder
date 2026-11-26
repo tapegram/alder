@@ -10,8 +10,8 @@ Index.load params session = Query.succeed { n: 1 }
 
 form NewPost = { title: Text.NonEmpty, published: Bool = False }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update p session = Task.succeed Response.refresh
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post p session = Task.succeed Response.refresh
 
 Index.view : Model -> Session -> Html
 Index.view model session =

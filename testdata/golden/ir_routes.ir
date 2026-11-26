@@ -98,7 +98,7 @@
           (list
             (record (value "home") (label "Home"))
             (record (value (field title (var t))) (label "Its own"))))))))
-(value Todos.Toggle.update : Toggle.Params -> Index.Session -> Task Response (params session)
+(value Todos.Toggle.patch : Toggle.Params -> Index.Session -> Task Response (params session)
   (bind task _
     (db-update-scoped Db.updateMine user Table.Todo.Todo
       (field id (var params))
@@ -107,7 +107,7 @@
     (pure task
       (call (std Response.render)
         (route-ref Todos.Row (record Row.Params (id (field id (var params)))))))))
-(value Todos.Create.update : Create.Params -> Index.Session -> Task Response (params session)
+(value Todos.Create.post : Create.Params -> Index.Session -> Task Response (params session)
   (bind task _
     (db-insert-scoped Db.insertMine user Table.Todo.Todo
       (record
@@ -120,7 +120,7 @@
         (call (std Response.redirect)
           (route-ref Todos.Index
             (record Index.Params (filter (ctor Table.Todo.Filter.All)))))))))
-(value Todos.Delete.update : Delete.Params -> Index.Session -> Task Response (params session)
+(value Todos.Delete.delete : Delete.Params -> Index.Session -> Task Response (params session)
   (bind task _
     (db-delete-scoped Db.deleteMine user Table.Todo.Todo
       (field id (var params)))
@@ -140,7 +140,7 @@
           (call (std List.map)
             (lambda (t : Table.Todo.Todo) (field title (var t)))
             (var todos)))))))
-(value Todos.Move.update : Move.Params -> Index.Session -> Task Response (params session)
+(value Todos.Move.post : Move.Params -> Index.Session -> Task Response (params session)
   (if (== : Text (field list (field form (var params))) "")
     (pure task (call (std Response.invalid) "Pick a list."))
     (pure task (std Response.refresh))))
@@ -263,18 +263,18 @@
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
-  (handler Todos.Toggle.update))
+  (handler Todos.Toggle.patch))
 (route Todos.Create POST "/todos"
   (params Create.Params)
   (form NewTodo)
   (requires user)
   (session Index.Session)
-  (handler Todos.Create.update))
+  (handler Todos.Create.post))
 (route Todos.Delete DELETE "/todos/{id}"
   (params Delete.Params)
   (requires user)
   (session Index.Session)
-  (handler Todos.Delete.update))
+  (handler Todos.Delete.delete))
 (route Todos.Export GET "/export.csv"
   (params Export.Params)
   (requires user)
@@ -288,7 +288,7 @@
   (form MoveTo)
   (requires user)
   (session Index.Session)
-  (handler Todos.Move.update)
+  (handler Todos.Move.post)
   (needs-shown)
   (option-routes Todos.Index Todos.Row))
 (route Todos.About GET "/about"

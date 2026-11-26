@@ -32,8 +32,8 @@ Home.load params session = {
   }
 }
 
-Join.update : Join.Params -> Session -> Task Response
-Join.update p session = {
+Join.post : Join.Params -> Session -> Task Response
+Join.post p session = {
   let _ <- Session.put (\s -> { s | role: Member })
   Task.succeed Response.refresh
 }

@@ -8,8 +8,8 @@ type Model = { n: Int }
 Index.load : Index.Params -> Session -> Query Model
 Index.load params session = Query.succeed { n: 1 }
 
-Go.update : Go.Params -> Session -> Task Response
-Go.update p session = Task.succeed Response.refresh
+Go.post : Go.Params -> Session -> Task Response
+Go.post p session = Task.succeed Response.refresh
 
 Index.view : Model -> Session -> Html
 Index.view model session = <main><wa-button variant="brand">Go</wa-button></main>

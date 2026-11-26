@@ -43,7 +43,7 @@ func Admin__Projects__Projects__load(params Admin__Projects__Projects__Params, s
 	}))
 }
 
-func Admin__Projects__Remove__update(p Admin__Projects__Remove__Params, session Admin__Projects__Projects__Session) eff.Task[rt.Response] {
+func Admin__Projects__Remove__post(p Admin__Projects__Remove__Params, session Admin__Projects__Projects__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[struct{}] {
 		switch Mutant {
 		case 5:

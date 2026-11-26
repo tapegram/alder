@@ -348,8 +348,8 @@ Tally.load params session = Query.succeed { count: params.start }
 Tally.view : Model -> Session -> Html
 Tally.view model session = <p id="count">{Text.fromInt model.count}</p>
 
-Bump.update : Bump.Params -> Session -> Task Response
-Bump.update params session = Task.succeed (Response.redirect (Tally { start: params.by }))
+Bump.post : Bump.Params -> Session -> Task Response
+Bump.post params session = Task.succeed (Response.redirect (Tally { start: params.by }))
 ```
 
 The `route` line is `route NAME = METHOD "path" { params }`, with an optional
@@ -360,7 +360,7 @@ their signatures written out, as everywhere in Alder:
 |---|---|---|
 | `R.load` | a `GET` route | `R.Params -> Session -> Query m` |
 | `R.view` | a `GET` route | `m -> Session -> Html` |
-| `R.update` | a write route (`POST`, `PUT`, `PATCH`, `DELETE`) | `R.Params -> Session -> Task Response` |
+| `R.post`, `R.put`, `R.patch` or `R.delete` | a write route (`POST`, `PUT`, `PATCH`, `DELETE`) | `R.Params -> Session -> Task Response` |
 
 `R.Params` is the parameter record, generated from the `route` line. A name
 before the dot that is no route of the module is E0044. Inside the module a

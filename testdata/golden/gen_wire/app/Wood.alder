@@ -18,8 +18,8 @@ Wood.load params session = Query.succeed {
   contest: params.contestId,
 }
 
-Bump.update : Bump.Params -> Session -> Task Response
-Bump.update p session =
+Bump.post : Bump.Params -> Session -> Task Response
+Bump.post p session =
   Task.succeed (
     Response.redirect (Wood {
       cfg: p.cfg,

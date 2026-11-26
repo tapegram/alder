@@ -13,8 +13,8 @@ Pick.load params session = Db.from Membership |> Db.where (Membership.user.eq se
 Pick.view : List Membership -> Session -> Html
 Pick.view mine session = <ul>{for m in mine -> <li>{m.org}</li>}</ul>
 
-Leave.update : Leave.Params -> Session -> Task Response
-Leave.update params session = Task.succeed (Response.redirect (Pick {}))
+Leave.post : Leave.Params -> Session -> Task Response
+Leave.post params session = Task.succeed (Response.redirect (Pick {}))
 
 Team.load : Team.Params -> Session -> Query Text
 Team.load params session = Query.succeed session.team

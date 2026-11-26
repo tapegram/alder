@@ -45,8 +45,8 @@ Index.load params session = {
 form NewProject = { name: Text }
 
 -- reads the shared store (Org) outside the transaction, writes the silo
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post p session = {
   let org <- Db.get Org session.org
   let _ <- Db.insertScoped Project {
     name: Maybe.withDefault "" (Maybe.map (\o -> o.name ++ ": ") org) ++ p.form.name,
@@ -54,29 +54,29 @@ Add.update p session = {
   Task.succeed Response.refresh
 }
 
-Rename.update : Rename.Params -> Session -> Task Response
-Rename.update p session = {
+Rename.patch : Rename.Params -> Session -> Task Response
+Rename.patch p session = {
   let _ <- Db.updateScoped Project p.id (\x -> { x | name: "renamed" })
   Task.succeed Response.refresh
 }
 
-Remove.update : Remove.Params -> Session -> Task Response
-Remove.update p session = {
+Remove.delete : Remove.Params -> Session -> Task Response
+Remove.delete p session = {
   let _ <- p.id |> Db.deleteScoped Project
   Task.succeed Response.refresh
 }
 
 -- a shared write (Label is partitioned but in no silo): an explicit
 -- shared arm beside the `_` silo arm has a case of its own in store__Projects__Index
-Tag.update : Tag.Params -> Session -> Task Response
-Tag.update params session = {
+Tag.post : Tag.Params -> Session -> Task Response
+Tag.post params session = {
   let _ <- Db.insertScoped Label { name: "new" }
   Task.succeed Response.refresh
 }
 
 -- a Task.all within one silo, for Seed: the `_` arm, on the silo
-Seed.update : Seed.Params -> Session -> Task Response
-Seed.update params session = {
+Seed.post : Seed.Params -> Session -> Task Response
+Seed.post params session = {
   let _ <- Task.all (List.map seed ["x", "y"])
   Task.succeed Response.refresh
 }
@@ -176,8 +176,8 @@ test "another org's project is not found" = {
     role: Reader,
   }
   let ids <- Task.succeed (List.map (\p -> p.id) theirs.model.projects)
-  let removed <- Task.all (List.map (\id -> Test.run (Remove.update { id: id } me)) ids)
-  let renamed <- Task.all (List.map (\id -> Test.run (Rename.update { id: id } me)) ids)
+  let removed <- Task.all (List.map (\id -> Test.run (Remove.delete { id: id } me)) ids)
+  let renamed <- Task.all (List.map (\id -> Test.run (Rename.patch { id: id } me)) ids)
   let _ <- Test.login { user: Just s.them, org: Just s.b }
   let still <- Test.get (Index {})
   Task.succeed (
@@ -226,8 +226,8 @@ test "Test.run of Tag writes the shared store, of Seed the org's" = {
     org: s.a,
     role: Reader,
   }
-  let tagged <- Test.run (Tag.update {} me)
-  let seeded <- Test.run (Seed.update {} me)
+  let tagged <- Test.run (Tag.post {} me)
+  let seeded <- Test.run (Seed.post {} me)
   let page <- Test.get (Index {})
   Task.succeed (
     {

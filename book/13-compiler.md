@@ -79,7 +79,7 @@ kind, its text, and where it started: line, column and byte offset
 
 Here is what the lexer produces for a file holding a `module App` line, a
 blank line, and two lines, `session { user: Maybe User.UserId }` and
-`Logout.update p session = 1`, which are shaped like lines in
+`Logout.delete p session = 1`, which are shaped like lines in
 `examples/todos/app/App.alder`. The listing was printed by
 `alder dump --tokens` (section 3 shows how to run it):
 
@@ -111,8 +111,8 @@ blank line, and two lines, `session { user: Maybe User.UserId }` and
 Notice that `session` is a `Keyword` token on both lines 3 and 4. On
 line 3 it starts a declaration. On line 4, `session` is just a parameter
 name, which is exactly how `examples/todos/app/App.alder` uses it in
-`Logout.update p session = { … }`. (`Logout.update` is a qualified name: the
-`update` of the route `Logout`, chapter 6, "Qualified declarations". The
+`Logout.delete p session = { … }`. (`Logout.delete` is a qualified name: the
+the handler of the route `Logout`, chapter 6, "Qualified declarations". The
 lexer does not know that; it sees an upper-case name, a dot and a
 lower-case name.)
 
@@ -130,7 +130,7 @@ same two lines, with `module App` above them, gives:
 
 ```
 (session (field user (Maybe User.UserId)))
-(val Logout.update p session = (int 1))
+(val Logout.delete p session = (int 1))
 ```
 
 The first is a session declaration, the second a value with two parameters.
@@ -456,7 +456,7 @@ A route's members have a shape, and the checker holds them to it
 (`checkRoutes` in `internal/check/routes.go`, E0043). A GET route has
 `R.load : R.Params -> Session -> Query m` and `R.view : m -> Session -> Html`
 for one type `m`, which is whatever `load` returns, and a write route has
-`R.update : R.Params -> Session -> Task Response`. A member with a wrong
+`R.post : R.Params -> Session -> Task Response` (`put`, `patch` or `delete` for a route of that method). A member with a wrong
 signature has a fix: the required signature, in place of the declared one
 (`routeSig`). In `examples/todos`, change `Index.load` of `Todos.Index` to
 `Index.Params -> Session -> Model` and the checker says
@@ -489,8 +489,8 @@ text under the cursor.
 ### Whether a route needs the shown page
 
 The same pass works out something the generator will need. A write route
-whose `update` can answer `Response.refresh` or `Response.invalid` must have
-the page the browser is on rendered before the update runs, so the answer
+whose handler can answer `Response.refresh` or `Response.invalid` must have
+the page the browser is on rendered before the handler runs, so the answer
 can be compared with it (section 8, "A request").
 
 `needsShown` decides, once, per write route: does the body mention
@@ -1103,7 +1103,7 @@ is the same for two keys exactly when they are `==`.
 name, method, path with the path parameters filled in, and the rest of its
 parameters (`rt.RouteURL` makes the URL of one).
 
-`rt/response.go` holds `Response`, the result of an `update`: a kind
+`rt/response.go` holds `Response`, the result of a handler: a kind
 (`RespRedirect`, `RespRender`, `RespRefresh` or `RespInvalid`), the `Route`
 it names or the text it carries, and a list of events (so far only toasts),
 built by `rt.Redirect(route)`, `rt.Render(route)`, `rt.Refresh()`,
@@ -1186,7 +1186,7 @@ and those lines mostly call into `rt`. The largest file, `routes__alder.go`
 decoders and guards they share. The last part of this section reads them.
 
 The rest of this section follows one `load` from source to SQL, then one
-write route's `update` through a transaction.
+write route's handler through a transaction.
 
 The program is `testdata/golden/ir_effects/app/`, whose module `Index` uses
 the `Todo` table (declared in `app/Todo.alder`: a table's module only has
@@ -1277,7 +1277,7 @@ are defined in `internal/ir/ir.go` and produced by
 `internal/ir/lower_eff.go`:
 
 - `bind query todos : List Todo` is `EffBind`: run the effect, call the
-  result `todos`, continue. `query` is its kind; in an `update` it says
+  result `todos`, continue. `query` is its kind; in a handler it says
   `task`.
 
 - `db-select Todo.Todo … all` is `DbSelect`. The whole pipeline,
@@ -1473,11 +1473,11 @@ in constant stack space.
 
 ### A `Task`: `Toggle`
 
-The `Toggle` route of the same module is a write route. Its `update` is
+The `Toggle` route of the same module is a write route. Its handler is
 
 ```alder fragment
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update p session = {
+Toggle.patch : Toggle.Params -> Session -> Task Response
+Toggle.patch p session = {
   let _ <- Db.update Todo p.id (\t -> { t | done: not t.done })
   Task.succeed Response.refresh
 }
@@ -1486,7 +1486,7 @@ Toggle.update p session = {
 and lowers to
 
 ```
-(value Index.Toggle.update : Toggle.Params -> Index.Session -> Task Response (p session)
+(value Index.Toggle.patch : Toggle.Params -> Index.Session -> Task Response (p session)
   (bind task _
     (db-update Todo.Todo
       (field id (var p))
@@ -1503,7 +1503,7 @@ after the values:
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
-  (update Index.Toggle.update)
+  (update Index.Toggle.patch)
   (needs-shown))
 ```
 
@@ -1515,15 +1515,15 @@ It holds:
 - the narrowed session record;
 - its members (a GET route has `(load …)` and `(view …)` instead of
   `(update …)`);
-- the store its `update` writes in an app with silos (`(store silo org)`);
-- `(needs-shown)`, the checker's answer from section 5: this `update`
+- the store its handler writes in an app with silos (`(store silo org)`);
+- `(needs-shown)`, the checker's answer from section 5: this handler
   mentions `Response.refresh`, so the handler renders the page the browser
   is on before it runs (below).
 
 The generator writes one handler per `ir.Route`, and nothing in it reads
 the route's source.
 
-The `update` itself is emitted as
+The handler itself is emitted as
 
 ```go
 func Index__Toggle__update(p Index__Toggle__Params, session Index__Index__Session) eff.Task[rt.Response] {
@@ -1597,7 +1597,7 @@ each step a test runs (`Test.run` returns it in `r.trace`).
 
 ### A request: `GET` and `POST`
 
-The last two parts ran `load` and `update` by hand. In the server, a
+The last two parts ran `load` and the handler by hand. In the server, a
 request handler runs them.
 
 This part follows two requests through the to-do app (chapter 2): a `GET`
@@ -1874,13 +1874,13 @@ This is chapter 6's lifecycle, line by line:
 
 2. `guard__…` is `requires user` and the role: a 303 to `App.login` or a 404
    when the session falls short, otherwise the narrowed `Session` that
-   `update` takes. A write route has no `load`, so it has no `load__…`
+   the handler takes. A write route has no `load`, so it has no `load__…`
    function: `guard__` is what `load__` is without the load.
 
-3. Because `Toggle.update` mentions `Response.refresh`, the checker marked
+3. Because `Toggle.patch` mentions `Response.refresh`, the checker marked
    the route (`NeedsShown`, section 5), and the generator wrote the lines
    with `before`. For a Datastar request the handler renders the page the
-   browser is on, now, before the update.
+   browser is on, now, before the handler.
 
    `rq.RenderShown` (`rt/web/shown.go`) resolves `rq.ShownURL()`
    (`/?filter=Active`) to a GET route with the matcher a GET uses,
@@ -1890,11 +1890,11 @@ This is chapter 6's lifecycle, line by line:
 
    The result, `web.Shown`, holds the URL, the status the route answered
    and its render with the regions (below). It is nil when no GET route
-   matches the URL, or the route is a file page. A route whose `update`
+   matches the URL, or the route is a file page. A route whose handler
    only redirects or renders has no such lines; the golden's `Toggle`,
    further down, is one.
 
-4. `eff.Run` with `eff.KTask` runs the `Toggle` route's `update` much as "A
+4. `eff.Run` with `eff.KTask` runs the `Toggle` route's handler much as "A
    `Task`: `Toggle`" did, as one step, `Db.updateMine Todo`: it reads the
    row with the owner in the `WHERE` (which begins the transaction), writes
    it with the owner in the `WHERE` again, then a commit ("The rules",
@@ -2203,7 +2203,7 @@ same walk with another delivery:
   data: elements <body class="dark"><nav>…
   ```
 
-  A form that does not decode never reaches `update`: the handler answers
+  A form that does not decode never reaches the handler: the handler answers
   `web.InvalidResponse` with the form's state and the field errors, which is
   `answerShown` with an `invalid` that has no text of its own.
 
@@ -2454,7 +2454,7 @@ gets the target's model), and `write` answers with the target's morph.
 > counts them.
 
 Clicking "Log out" on `/?filter=Active` (the route `Logout` of `App`,
-whose `update` answers `Response.redirect (Auth.Login.Login {})`) answers
+whose handler answers `Response.redirect (Auth.Login.Login {})`) answers
 
 ```
 HTTP/1.1 200 OK
@@ -2481,7 +2481,7 @@ data: elements <script data-effect="el.remove()">(function(){var u="/login";…h
 
 The `redirect` is never diffed against the page the browser is on, and no
 before-view was rendered for it: `Logout`'s handler has no `RenderShown`,
-because its `update` mentions neither `Response.refresh` nor
+because its handler mentions neither `Response.refresh` nor
 `Response.invalid`.
 
 A target that is not followable (another site's, which `Url.external`
@@ -2523,7 +2523,7 @@ becomes the table's `Owner`.
 A reference to one of the five operations is checked where it is written
 (`inferVar` sends `Db.mine` and the others to `inferScoped`), against the
 member being checked: it is legal in a member of a route that
-`requires user` (its `load`, `view` or `update`), and in a `test`;
+`requires user` (its `load`, `view` or the handler), and in a `test`;
 anywhere else it is E0026.
 
 A top-level value that uses one legally is marked, and the mark follows
@@ -2575,10 +2575,10 @@ examples/todos` prints it, among the modules of the generated admin):
       all)
 ```
 
-and the `update` of its `Toggle` route:
+and the handler of its `Toggle` route:
 
 ```
-(value Todos.Index.Toggle.update : Toggle.Params -> Index.Session -> Task Response (p session)
+(value Todos.Index.Toggle.patch : Toggle.Params -> Index.Session -> Task Response (p session)
   (bind task _
     (db-update-scoped Db.updateMine user Table.Todo.Todo
       (field id (var p))
@@ -2647,7 +2647,7 @@ func Todos__Index__Submit__update(p Todos__Index__Submit__Params, session Todos_
 }
 ```
 
-Notice what none of these is given: the user. `update`'s `session` is
+Notice what none of these is given: the user. The handler's `session` is
 not passed to `UpdateMineRow`, and `load`'s is not in the `Select`.
 
 #### Whose user: the ambient session
@@ -2721,7 +2721,7 @@ table is `Table__Todo__Todo`, from `module Table.Todo`):
   ```
 
   (The whole `Toggle` request sent four: the list's `SELECT` first, from
-  the before-view, since `Toggle.update` answers `refresh`, and again after
+  the before-view, since `Toggle.patch` answers `refresh`, and again after
   the `UPDATE`, from the page the answer is cut from.)
 
 - `Db.deleteMine Todo p.id`, `Delete` (`DeleteMineRow`, through
@@ -2776,7 +2776,7 @@ the row stays the user's.
 #### The role check
 
 A route with `role R` gets one more check in its
-guard, after the `requires user` redirect and before `load` or `update`.
+guard, after the `requires user` redirect and before `load` or the handler.
 The blog's `load__Write__Write` (`build/blog/routes__alder.go`), which the
 `GET /write` route runs before it renders:
 
@@ -2806,7 +2806,7 @@ A write route has the same check in its `guard__` function, which has no
 `load` after it: `guard__Write__Create` returns the 404 in the same place.
 Every handler of a route with the clause, a GET route's and a write
 route's, goes through its guard first, so a write is checked before its
-form is decoded or its `update` runs. The route's `Session` carries `Role`
+form is decoded or its handler runs. The route's `Session` carries `Role`
 beside the narrowed `User`.
 
 ### Partitions and silos
@@ -2840,17 +2840,17 @@ mention — the analysis reads types, not spellings, so a write cannot hide
 behind a name.
 
 It closes that over every value the body refers to (a fixed point, so a
-helper of a helper counts), and gives each write route's `update` the store
-its writes fall in: the shared one, or `silo org`. An `update` with two
+helper of a helper counts), and gives each write route's handler the store
+its writes fall in: the shared one, or `silo org`. A handler with two
 stores is E0031.
 
 > **Over-approximation.** It over-approximates (a helper counts if it is
 > referred to, called or not) and never under-approximates. What it proves
-> is about `update`s (and fakes): a `test`'s own Tasks and an adapter's Go
+> is about handlers (and fakes): a `test`'s own Tasks and an adapter's Go
 > code are the runtime's to check, below.
 
 The answer is `Result.Arms`, which the IR keeps as the route's `Store`:
-`(store silo org)` in `alder dump --ir`, under the route's `update`.
+`(store silo org)` in `alder dump --ir`, under the route's handler.
 
 #### The Go
 
@@ -2924,7 +2924,7 @@ outside the transaction (SQLite's `query_only`, and a Go wrapper that
 refuses a write), which is how a `load` reads an org's name and its
 projects in one go.
 
-A write to another store cannot happen in an `update` that checked; one
+A write to another store cannot happen in a handler that checked; one
 that reaches it anyway (a test's own `Task`, an adapter, a bug in gen) is
 refused by `route` as an internal error rather than written outside the
 `Task`.
@@ -2972,7 +2972,7 @@ of them.
 
 A browser request's `Task` is bound by the same `db.Enter` as production's.
 A `Test.run`'s `Task` is bound too (`rtesting.Inner` sets `Env.Pending`): to
-the store its first write lands in, or, for a route's `update`, to the
+the store its first write lands in, or, for a route's handler, to the
 route's store beforehand (`rtesting.InnerOn`), so a write to a second store
 fails it as a request's would.
 
@@ -3936,7 +3936,7 @@ A task case gets its own environment:
    ordered `created` times.
 
 Then `eff.Run(env, eff.KTask, c.Task())` runs it exactly as the server
-runs an `update` (section 8, "What `Run` does"): one transaction, begun
+runs a handler (section 8, "What `Run` does"): one transaction, begun
 by the first database step, committed when the task succeeds. The
 report's trace is `env.Trace`. Then the database is closed, and with
 `:memory:` that is the end of it.
@@ -3975,8 +3975,8 @@ results into the record Alder sees. From `test__Todos__Index__1`
 	}), func(r struct {
 ```
 
-A route's `update` is a plain function of its parameters and its session,
-so a test calls it the same way a handler does: `Toggle.update { id: id }
+A route's handler is a plain function of its parameters and its session,
+so a test calls it the same way a handler does: `Toggle.patch { id: id }
 { user: me, role: Member }` in the test is `Todos__Index__Toggle__update(…)`
 above, with the record the route declared and the session the route
 narrows to (what `guard__` would pass). Nothing is decoded and nothing is
@@ -5045,7 +5045,7 @@ type Within struct {
 (`env.Transaction()`).
 
 With `Within` set, `eff.Run` (`rt/eff/run.go`) never begins or commits: a
-`Query` (a route's `load`) reads through `Tx`; a `Task` (an `update`) takes
+`Query` (a route's `load`) reads through `Tx`; a `Task` (a handler) takes
 `SAVEPOINT alder_tN` as it starts, then `RELEASE` when it succeeds, or
 `ROLLBACK TO` and `RELEASE` when it fails, the same three statements as
 `Test.run`'s. The savepoint is taken at once rather than at the first step, so
@@ -5294,8 +5294,8 @@ Collect visits the modules in the program's order (imports first, otherwise
 alphabetical). In each module it takes the tables field by field, then each
 value's body in pre-order, numbering from 1.
 
-A route's `load` and `update` are values like any other (`Index.load`,
-`Toggle.update`), so their bodies are walked; its `view` is not, nor a `test`,
+A route's `load` and the handler are values like any other (`Index.load`,
+`Toggle.patch`), so their bodies are walked; its `view` is not, nor a `test`,
 a `fake`, a component, or a value whose result has `Html` in it. A change it
 refuses is a `mutate.Suppressed` with a `Category` (`equivalent` or `skipped`)
 and a `Why`.
@@ -5440,8 +5440,8 @@ so under mutant 345 a session without a user gets the placeholder user
 `"mutant"`, and the check that follows lets the request through. `role
 dropped` is the same for the role check that follows it: `Mutant != 346
 && app.Role.Tag != …` lets every role through under its id. A write route
-runs no `load` before its `update`, so these two lines, and the access
-check its `update` begins with (`step dropped`), are all that stop a
+runs no `load` before its handler, so these two lines, and the access
+check its handler begins with (`step dropped`), are all that stop a
 request; the tests that kill them send the write from a page still open
 after the session changed (chapter 10, "The operators").
 
@@ -5451,7 +5451,7 @@ has the same type: `Db.mine T` becomes `Db.from T`, and
 `Db.updateMine T id f` becomes a `Db.get`, then a `match` on its result
 that runs `Db.update T id f` for `Just _` and `Task.notFound` for
 `Nothing`, so the mutant is "not found" only for a missing row. The
-to-do app's `Toggle.update`, mutant 219, in the mutate build:
+to-do app's `Toggle.patch`, mutant 219, in the mutate build:
 
 ```go
 		switch Mutant {
@@ -5842,7 +5842,7 @@ decisions per column (a select for a reference, a checkbox for a `Bool`, a
 count for a `@unique`) that templates express badly.
 
 Code that goes into an existing file is placed by looking at the parsed
-module: a new route's line after the module's last `route` line, its `update`
+module: a new route's line after the module's last `route` line, its handler
 before the module's first `test` (or at the end of the file), a button at the
 end of the view or inside a `for` loop, a form inside the view's last
 `al-card`.
@@ -5867,7 +5867,7 @@ A hole `?name` parses as an expression of its own (section 3), and the checker
 gives it the type its place demands and reports it as W0002 with that type.
 `generate.HoleIndex` turns those warnings into addresses: the module and the
 declaration that encloses the hole's position (a route's member by its full
-name, `Toggle.update`).
+name, `Toggle.patch`).
 
 `alder fill` parses standard input with `syntax.ParseExpr`, refuses anything
 after one expression, puts the expression where the hole's span is (wrapped in
@@ -5904,7 +5904,7 @@ reaches through the values it refers to (`RouteInfo.OptionRoutes`: `Row.view`
 called by `Index.view`).
 
 The write route's handler checks the value after the form has decoded and
-before the `update` (this is `Move` of `testdata/golden/gen_route_handlers`,
+before the handler (this is `Move` of `testdata/golden/gen_route_handlers`,
 which answers `render` and so has no before-view of its own):
 
 ```go
@@ -6473,7 +6473,7 @@ Compare it with the `view` in chapter 2. `session` has type
 user`, so it gets its own session record in which `user` is a `UserId`, not a
 `Maybe UserId`. The routes of a module that narrow the same fields share one
 record, named after the first of them, so `Index`'s `view` and `Toggle`'s
-`update` take the same type.
+Handlers take the same type.
 
 Where the code passes `session` to code that expects the app's session, the
 call goes through `widen__Todos__Index__Index__Session`, which the emitter
@@ -7029,7 +7029,7 @@ same comments, to what the generator writes.
 
 A route is a name of its own kind (`RefRoute`). `Search` in `submit={Search}`
 resolves to the route, and so does the route part of a member's name: `Search`
-in `Search.update`, in the type `Search.Params`. For such a name hover prints
+in `Search.post`, in the type `Search.Params`. For such a name hover prints
 the route line without `route Name =` (`routeHover`: the method and path, the
 parameters, the form and the guard, two spaces apart) and the `--` comment
 above the route, and definition returns the span of the route's name in its
@@ -7050,7 +7050,7 @@ the definition is the span of `Search` in the `route` line, line 10,
 characters 6 to 12.)
 
 Where the checker says a route lacks a member (E0043), a code action writes
-the signatures: `Row.load` and `Row.view` for a GET route, `Row.update` for a
+the signatures: `Row.load` and `Row.view` for a GET route, `Row.post` (or `put`, `patch`, `delete`) for a
 write route (`routeSignatureActions`), after the route's last member.
 
 ### References
@@ -7091,7 +7091,7 @@ used as a value: a `click`, `submit` or `href`, a `Response.redirect`, a
 test's `Test.get` or `Test.submit`.
 
 In the blog, `Search` is found at its `route` line, in `submit={Search}` and
-in one test. The route part of a member's name (`Search.update`) is not a node
+in one test. The route part of a member's name (`Search.post`) is not a node
 of its own with a `Ref`, so references do not list it; hover and definition do
 (above).
 
@@ -7150,7 +7150,7 @@ but `Search` is no module. `members` then asks `routeNamed` whether the
 written qualifier names a route of this module (or, through an import, a route
 of that module: `Index.Row` for the route `Row` of `Todos.Index`) and answers
 with what follows a route's name: the members the route fixes, a GET route's
-`load` and `view`, a write route's `update`, and its `Params` and `Session`
+`load` and `view`, a write route's handler, and its `Params` and `Session`
 types.
 
 A module that imports a route module is offered that module by its full path
@@ -7162,7 +7162,7 @@ shows the signature it needs (`Query m` for a `load`, whose model only the
 author knows).
 
 In the blog, typing `Search.` where `let q = …` was answers, with the
-signature of `Search.update`:
+signature of `Search.post`:
 
 ```text
 <- {"id":5,"jsonrpc":"2.0","result":{"isIncomplete":false,"items":[{"label":"update","kind":3,"detail":"update : Search.Params -\u003e Session -\u003e Task Response","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"update"}},{"label":"Params","kind":7,"detail":"type Search.Params","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"Params"}},{"label":"Session","kind":7,"detail":"type Search.Session","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"Session"}}]}}
@@ -7439,8 +7439,8 @@ the editor shows (here with its `\n` turned into line breaks):
 +    <al-button click={Delete}>Delete</al-button>
    </Layout.Page>
  
-+Delete.update : Delete.Params -> Session -> Task Response
-+Delete.update params session = Task.succeed Response.refresh
++Delete.post : Delete.Params -> Session -> Task Response
++Delete.post params session = Task.succeed Response.refresh
 +
  test "the front page lists only published posts, newest first" = {
    let author <- Db.insert User {
@@ -7457,10 +7457,10 @@ the editor shows (here with its `\n` turned into line breaks):
 +}
 ```
 
-That is a write route, `Delete`, with its `update` answering
+That is a write route, `Delete`, with its handler answering
 `Response.refresh`, a button that sends it, and a test that presses it, which
 is chapter 15's `alder new action` on a route module. The route line goes after
-the module's last `route` line, the `update` before the first `test`, the
+the module's last `route` line, the handler before the first `test`, the
 button at the end of the view and the new test at the end of the file.
 
 Its `diagnostics` and `holes` are empty: nothing in this change needs the
@@ -7537,7 +7537,7 @@ that go the other way, from the server to the editor.
 `internal/fill` holds what `alder fill --ai` and the server
 share. `fill.Run` loads the app with `generate.Load`, finds the hole with
 `generate.FindHole` (the same address `alder fill` takes, a route's
-member, `App.Logout.update`), and builds the first message with
+member, `App.Logout.delete`), and builds the first message with
 `fill.Prompt`:
 
 - where the hole is and its type;
@@ -7552,7 +7552,7 @@ member, `App.Logout.update`), and builds the first message with
 
 The system prompt is `internal/fill/card.md`, embedded in the binary: a
 page on what a hole is, the expression syntax and the idioms of a write
-route's `update` and of tests.
+route's handler and of tests.
 
 Then, up to three times:
 
@@ -7580,7 +7580,7 @@ So `generate.Fill` asks the lexer for the expression's comments and cuts them
 (`syntax.StripComments`: a regular expression would cut a `--` inside a
 string), and parenthesises any expression that is not atomic (a name, a
 literal, one bracketed whole). The formatter, which runs on every file a
-generator writes, drops the parentheses that are not needed, so `Delete.update
+generator writes, drops the parentheses that are not needed, so `Delete.post
 params session = (Task.succeed Response.refresh)` is written without them.
 
 A backend is one method, `Complete(ctx, system, messages) (text, error)`.
@@ -7943,6 +7943,6 @@ the server ever sends) after each phase, and asks again.
    three ways: plain, with `Datastar-Request: true`, and with that header
    and `Alder-Page: /`. Say, from `rt/web/answer.go` and `rt/web/router.go`,
    which function wrote each answer, and why the second and the third are
-   the same. Then change `Toggle.update` to answer
+   the same. Then change `Toggle.patch` to answer
    `Response.refresh` and say what `NeedsShown` makes the handler do
    differently (section 5, section 8).

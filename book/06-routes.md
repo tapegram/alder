@@ -4,8 +4,9 @@
 
 Every URL of an Alder app is a **route**: one `route` line with an HTTP
 method and a path. A route that reads (`GET`) has a `load` and a `view`. A
-route that changes something (`POST`, `PUT`, `PATCH`, `DELETE`) has an
-`update`, which does the change and says what to send back. A module may
+route that changes something (`POST`, `PUT`, `PATCH`, `DELETE`) has a
+handler, named after its method (`post`, `put`, `patch`, `delete`), which
+does the change and says what to send back. A module may
 declare any number of routes. This is the whole shape of an Alder app.
 
 ```alder
@@ -41,8 +42,8 @@ Row.view todo session =
     <button click={Toggle { id: todo.id }}>{todo.title}</button>
   </li>
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update params session = {
+Toggle.patch : Toggle.Params -> Session -> Task Response
+Toggle.patch params session = {
   -- The id comes from the request: `Db.updateMine` changes the todo only when it is the
   -- signed-in user's, and answers 404 otherwise ("Rules", below).
   let _ <- Db.updateMine Todo params.id (\t -> { t | done: not t.done })
@@ -66,7 +67,7 @@ user, because the table marks its `owner` column `@owner` ("Rules", below).
 
 The compiler checks each route module against the shape of its routes.
 A GET route has exactly one `load` and one `view`; a write route has
-exactly one `update` and neither of those. There is no `Model` slot and no
+exactly one handler and neither of those. There is no `Model` slot and no
 `Msg`: the model is whatever `load` returns, and a button names a route.
 
 `R.Params` is generated from the route line and must not be written by hand.
@@ -262,7 +263,7 @@ errors (E0045).
 ## Qualified declarations
 
 Everything that belongs to a route is written `Route.name`: `Index.load`,
-`Index.view`, `Toggle.update`, and the type `Index.Params`. The order of the
+`Index.view`, `Toggle.patch`, and the type `Index.Params`. The order of the
 declarations in the file is free, and anything unqualified (a `type`, a
 `form`, a helper, a component) belongs to the module. The signatures are
 fixed, and, as everywhere in Alder, written out:
@@ -271,7 +272,7 @@ fixed, and, as everywhere in Alder, written out:
 |---|---|---|
 | `R.load` | a GET route | `R.Params -> Session -> Query m` |
 | `R.view` | a GET route | `m -> Session -> Html` |
-| `R.update` | a write route | `R.Params -> Session -> Task Response` |
+| `R.post` (`put`, `patch`, `delete`) | a write route | `R.Params -> Session -> Task Response` |
 
 `m` is one type: whatever `load` returns, and what `view` takes. The checker
 ties the two together. Name it (`type Model = …`), use a table's row type
@@ -362,12 +363,12 @@ So the to-do list's filter is a parameter of `Index`
 (`href={Index { filter: Done }}` is a link, and Back works); a half-typed
 title is in the form until the form is sent; who you are is in the session;
 the todos are rows. There is no fifth place: no model that the server holds
-for a tab, and none that `update` hands to `view`. An `update` changes data,
+for a tab, and none that the handler hands to `view`. A handler changes data,
 and a GET route renders data.
 
 ## `Response`
 
-A write route's `update` is `Params -> Session -> Task Response`. `Response`
+A write route's handler is `Params -> Session -> Task Response`. `Response`
 is a type of the standard library, built with functions named after the HTTP
 they produce (chapter 9 lists them with the rest):
 
@@ -399,7 +400,7 @@ sent.
 **`refresh`** loads the page the browser is on again, and sends the regions of
 it that changed.
 
-**`invalid t`** refuses a well-formed submission for a reason only `update`
+**`invalid t`** refuses a well-formed submission for a reason only the handler
 can know (wrong password, name already taken). It is the page the browser is
 on again, with the values that were posted, and `t` shown in the form's
 `<Errors form />`.
@@ -410,7 +411,7 @@ more than one place changes.**
 
 The reason is cost. `render` costs the `load` of the route it shows (one read
 by key, for a row) and sends one element. `refresh` costs what loading the
-page costs (twice: the runtime renders the page before the `update`, to know
+page costs (twice: the runtime renders the page before the handler, to know
 what changed) and sends the regions that differ.
 
 A toggle edits a row that is there: `render`. A delete removes one, and the
@@ -476,8 +477,8 @@ New.view model session =
     </form>
   </Layout.Page>
 
-Create.update : Create.Params -> Session -> Task Response
-Create.update p session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post p session = {
   let same <- Db.mine Todo |> Db.where (Todo.title.eq p.form.title) |> Db.count
   if same > 0 then
     Task.succeed (Response.invalid "You have a todo with that title.")
@@ -492,7 +493,7 @@ There are two ways for this form to fail, and they look the same to the
 user.
 
 When a submitted form fails to decode (missing field, failed refinement,
-wrong type), the runtime does **not** call `update`. It answers `422` with
+wrong type), the runtime does **not** call the handler. It answers `422` with
 the page the browser is on, rendered again with the submitted values and
 errors attached to that form; `<Input>` and `<Errors>` show them. The program
 never sees an invalid form.
@@ -505,7 +506,7 @@ without one are listed in the form's `<Errors form />`, after its name ("due
 must be a date (YYYY-MM-DD)"). A form with neither for a field gets warning
 W0003.
 
-When the form decodes and `update` still refuses it, `update` answers
+When the form decodes and the handler still refuses it, the handler answers
 `Response.invalid "…"`: the same `422`, the same page, with the text in
 `<Errors form />`. A form that can be refused this way and has no
 `<Errors form />` gets warning W0005, because the user would see the page come
@@ -526,8 +527,8 @@ page's address is sent with every write, "Delivery", below).
 -- in App
 route Logout = DELETE "/session" { }
 
-Logout.update : Logout.Params -> Session -> Task Response
-Logout.update p session = {
+Logout.delete : Logout.Params -> Session -> Task Response
+Logout.delete p session = {
   let _ <- Session.put (\s -> { s | user: Nothing })
   Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
@@ -544,7 +545,7 @@ typed `Html` can contain `click={App.Logout}`.
 The to-do app has one app-level route, `Logout`. A switch between a light
 and a dark theme is the other usual one, and it uses every piece an app-level
 route can involve: a type for the state, a session field to keep it in, the
-route and its `update`, and a button that every page shows. Here is how to
+route and its handler, and a button that every page shows. Here is how to
 add it.
 
 > **Not in the example app.** The example app leaves it out, so that its
@@ -571,7 +572,7 @@ test "flip alternates" = flip (flip Light) == Light
 This block is an excerpt, and the verifier does not check it: an app declares
 its `session` once, and the example's `App` (in "The `App` module", below)
 already does. The new lines are the `import`, the `theme` field, the route and
-its `update`:
+its handler:
 
 ```alder fragment
 -- in App
@@ -581,8 +582,8 @@ session { user: Maybe User.UserId, theme: Theme = Light }
 
 route SwitchTheme = PUT "/theme" { }
 
-SwitchTheme.update : SwitchTheme.Params -> Session -> Task Response
-SwitchTheme.update p session = {
+SwitchTheme.put : SwitchTheme.Params -> Session -> Task Response
+SwitchTheme.put p session = {
   let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
   Task.succeed Response.refresh
 }
@@ -1194,17 +1195,17 @@ Index.load params session = {
   Query.succeed { filter: params.filter, todos: List.filter (Todo.matches params.filter) todos }
 }
 
-Submit.update p session = {
+Submit.post p session = {
   let _ <- Db.insertMine Todo { title: p.form.title, due: p.form.due }
   Task.succeed (Response.redirect (Index { filter: p.filter }))
 }
 
-Toggle.update p session = {
+Toggle.patch p session = {
   let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
   Task.succeed Response.refresh
 }
 
-Delete.update p session = {
+Delete.delete p session = {
   let _ <- Db.deleteMine Todo p.id
   Task.succeed Response.refresh
 }
@@ -1239,8 +1240,8 @@ import Table.Todo
 
 route Add = POST "/quick" { title: Text.NonEmpty } requires user
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post p session = {
   let _ <- Db.insertMine Todo { title: p.title, due: Nothing, owner: session.user }
   Task.succeed Response.refresh
 }
@@ -1280,7 +1281,7 @@ writes its own check.
 
 A scoped operation needs a signed-in user, so it is allowed only where
 the compiler knows there is one: in the members of a route that `requires
-user`, its `load`, `view` or `update`, and in the helpers they call, such as
+user`, its `load`, `view` or the handler, and in the helpers they call, such as
 
 ```alder fragment
 recent : Select Todo
@@ -1342,11 +1343,11 @@ Account.view model session = <p>{Text.fromInt model.users}</p>
 
 A scoped operation acts for the user of the **running** request or
 test, the session the runtime holds while it runs the effect. It does
-not read the `session` argument of `load` or `update`. In a served
+not read the `session` argument of `load` or the handler. In a served
 request the two are the same session, so the difference never shows.
 It shows in two places:
 
-- **A test** that calls `update` (or `load`) itself, with a session
+- **A test** that calls the handler (or `load`) itself, with a session
   record it wrote, does not choose the user that way: the scoped
   operations act for the test's own session, which `Test.login` sets
   (chapter 10, "Tests that use the rules").
@@ -1355,7 +1356,7 @@ It shows in two places:
   `Db.mine Todo: no signed-in user` (or `Db.getMine Todo: …`, and so on).
   It never quietly returns nothing.
 
-- **`Session.put`** in the middle of an `update` changes the user for
+- **`Session.put`** in the middle of a handler changes the user for
   every scoped operation after it in the same `Task`: they act for the
   session as it now is.
 
@@ -1390,7 +1391,7 @@ Just id -> {
 and logging out puts it back: `{ s | user: Nothing, role: Reader }`.
 
 Adding `role` to the session changes the tests. A session record a test
-writes for a route's `load` or `update` is a record literal, and names every
+writes for a route's `load` or the handler is a record literal, and names every
 field: `{ user: author }` becomes `{ user: author, role: Author }`, or
 E0003 says `role` is missing (a default applies at the boundaries, not
 to a literal, as the theme switch earlier in this chapter shows).
@@ -1410,13 +1411,13 @@ route Drafts = GET "/write/drafts" { } requires user, role Author | Admin
 - Then the role: a signed-in user whose session's `role` is not one of
   those named gets a 404, the same `App.notFound` page as a missing row,
   so a Reader cannot even tell the route exists. This is checked before
-  the route's `load` or `update` runs, so neither needs a check of its own.
+  the route's `load` or the handler runs, so neither needs a check of its own.
 - `role Author | Admin` lets either in.
 - Inside the route's members, `session.role` has the union's type, as
   everywhere.
 - The router checks `requires` and the role, whatever the method. A test of
   them goes through the browser (`Test.open`, `Test.click`, chapter 10); a
-  direct `load` or `update` call is not checked.
+  direct `load` or the handler call is not checked.
 
 The rules for the clause (E0027): `role` needs `user` first (`requires
 role Author` alone is an error); the session must have a field `role`
@@ -1489,7 +1490,7 @@ Edit.load params session = {
 and a write route begins with `authorOnly`, because no `load` runs before it:
 
 ```alder fragment
-Save.update p session = {
+Save.put p session = {
   let _ <- User.authorOnly session.user
   let _ <- Db.updateMine Post p.id (\post -> { post | title: p.form.title, body: p.form.body })
   Task.succeed (Response.refresh |> Response.toast "Saved")
@@ -1499,7 +1500,7 @@ Save.update p session = {
 That is the blog's test "a demoted author is turned away at once"
 (chapter 14). The role clause stays: it turns away a Reader promoted
 since their login, and keeps a Reader's request from reaching a `load`
-or an `update` at all.
+or a handler at all.
 
 ### When to use the unscoped forms
 
@@ -1669,13 +1670,13 @@ org's rows with the scoped operations, as `Projects.Index` does
 (`Membership.memberOnly` is the re-read idiom, below):
 
 ```alder fragment
-Create.update p session = {
+Create.post p session = {
   let _ <- Membership.memberOnly session.user session.org
   let id <- Db.insertScoped Project { name: p.form.name }
   Task.succeed (Response.redirect (Projects.Show.Show { id: id }))
 }
 
-Remove.update p session = {
+Remove.delete p session = {
   let _ <- Membership.memberOnly session.user session.org
   let _ <- Db.deleteScoped Project p.id
   Task.succeed Response.refresh
@@ -1697,7 +1698,7 @@ org is `v`. The workspace's org picker (`examples/workspace/app/Orgs/Index.alder
 sets it from a button:
 
 ```alder fragment
-Open.update p session = {
+Open.get p session = {
   let _ <- Session.put (\s -> { s | org: Just p.org })
   Task.succeed (Response.redirect (Projects.Index.Index {}))
 }
@@ -1795,7 +1796,7 @@ Index.load params session = {
 ```
 
 and a write route begins with `memberOnly`, because no `load` runs before
-it (`Create.update` and `Remove.update` above do). A removed member's
+it (`Create.post` and `Remove.delete` above do). A removed member's
 requests are refused either way: the tests "a member removed from the org
 loses access at once".
 
@@ -1923,7 +1924,7 @@ It is the hash of the body as the server last rendered it for this page (the
 whole body, or the hash sent after region patches). A write sent without it
 (before the page's script ran) is answered with the whole body.
 
-The server compares its own render before the `update` with the one after it:
+The server compares its own render before the handler with the one after it:
 when they are equal, no element event is sent.
 
 ### A write's response, with JavaScript
@@ -1953,11 +1954,11 @@ when they are equal, no element event is sent.
 
 #### The before-view
 
-The before-view is the page rendered before `update` runs, so there is
+The before-view is the page rendered before the handler runs, so there is
 something to diff against.
 
 The compiler works out per write route whether it can be needed: a route
-renders one only when its `update` mentions `Response.refresh` or
+renders one only when its handler mentions `Response.refresh` or
 `Response.invalid`, or calls an app function whose result type contains
 `Response`. A route that only `redirect`s or `render`s renders none, which is
 why a toggle by `render` costs one read by key.
@@ -1975,7 +1976,7 @@ that did not touch them.
 
 ### A write's response, without JavaScript
 
-A plain `POST` runs `update` and answers with the response's own HTTP:
+A plain `POST` runs the handler and answers with the response's own HTTP:
 
 | response | answer |
 |---|---|
@@ -2066,8 +2067,8 @@ login = Auth.Login.Login
 
 route Logout = DELETE "/session" { }
 
-Logout.update : Logout.Params -> Session -> Task Response
-Logout.update p session = {
+Logout.delete : Logout.Params -> Session -> Task Response
+Logout.delete p session = {
   let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
   Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
@@ -2092,7 +2093,7 @@ notFound =
 - `login` names the route to redirect to when `requires` fails.
 - `error` and `notFound` render failure pages; an app with a `silo` may
   add `maintenance : Html`, the 503 page of a silo not served.
-- `route` lines and their `update`s declare app-level routes (above). They
+- `route` lines and their handlers declare app-level routes (above). They
   are optional.
 
 ## Notices and in-flight state
@@ -2280,19 +2281,19 @@ It runs these steps:
   (`html.None()` is an empty document, which the router replaces with
   `App.notFound`).
 - `guard__…` is `requires` and the role: a 303 to `App.login` or a 404 when
-  the session falls short, otherwise the narrowed `Session` that `update`
+  the session falls short, otherwise the narrowed `Session` that the handler
   takes.
-- Because `Toggle.update` mentions `Response.refresh`, the handler also
-  renders the page the browser is on, before the update, for a Datastar
+- Because `Toggle.patch` mentions `Response.refresh`, the handler also
+  renders the page the browser is on, before the handler, for a Datastar
   request (`rq.RenderShown`); a route that only redirects or renders has no
   such lines.
-- Then the runtime runs the `update` `Task`, and `web.AnswerResponse` hands
+- Then the runtime runs the handler `Task`, and `web.AnswerResponse` hands
   the `Response` and the before-view to the router, which delivers them
   ("Delivery", above).
 
 The names are the route's qualified name with each dot written as `__`: the
 route `Toggle` of module `Todos.Index` is `Todos__Index__Toggle`, and its
-member `update` is `Todos__Index__Toggle__update`.
+member the handler is `Todos__Index__Toggle__update`.
 
 A GET route has its own handler, `Route__Todos__Index__Index`: it decodes the
 path and query, checks `requires`, runs `load`, and renders `view`.
@@ -2405,12 +2406,12 @@ The cookie is `HttpOnly` (page scripts cannot read it), `SameSite=Lax`,
 
 The cookie is stored only when the answer **changes** the session:
 
-- After an `update` whose `Session.put` ran (even one that wrote the value
+- After a handler whose `Session.put` ran (even one that wrote the value
   the session already had, such as logging in again as the same user) or that
   left a different session, whether the answer is a page, a 303 or a
   navigation event.
-- On a 404 or 500 when such an `update` succeeded and the page then failed to
-  load again (what the `update` committed is kept).
+- On a 404 or 500 when such a handler succeeded and the page then failed to
+  load again (what the handler committed is kept).
 
 A stored cookie is issued then, for a fresh 30 days. Any other answer sends no
 cookie: a page view, a form that fails to decode, a failed `Task`.
@@ -2425,7 +2426,7 @@ written, and no longer.
 
 ### Form errors
 
-When a form fails to decode, the handler does not call `update`. It runs
+When a form fails to decode, the handler does not call the route's handler. It runs
 `requires`, renders the page the browser is on with the form's state (what
 was submitted, and a list of messages per field), and answers `422`. Posting
 `title=` to the to-do page renders
@@ -2444,7 +2445,7 @@ The value of a `Text.Secret` field is never sent back: its input is a
 password input, and it comes back empty.
 
 `Response.invalid t` renders the same way, with `t` in `<Errors form />` of
-the form that posted. Unlike a form error, the `update` that answered
+the form that posted. Unlike a form error, the handler that answered
 `invalid` ran and committed.
 
 A form the re-rendered page no longer draws (a stale page: the state changed
@@ -2640,7 +2641,7 @@ new session.
 Clicking "Log out" on `/?filter=Active` answers a cookie whose `User` is
 `Nothing` and a redirect to `/login`.
 
-With the theme switch of "App-level routes" (its `update` answers `refresh`),
+With the theme switch of "App-level routes" (its handler answers `refresh`),
 clicking "Dark mode" there answers a cookie whose `Theme` is `"Dark"` and,
 under Datastar, the `<body>` changes that the theme causes, then the script
 that sets the attributes of `<html>`, its class `dark` among them. Without

@@ -16,8 +16,8 @@ Home.load params session = Query.succeed { }
 -- (their results are neither Unit nor a List of Unit), the step that does nothing, the delete
 -- (write replaced makes the same program), the inline check whose guard dropped makes the same
 -- program.
-Save.update : Save.Params -> Session -> Task Response
-Save.update p session = {
+Save.post : Save.Params -> Session -> Task Response
+Save.post p session = {
   let _ <- User.adminOnly session.user
   let _ <- User.audit "save"
   let id <- Db.insert User.User { name: "U" }
@@ -31,8 +31,8 @@ Save.update p session = {
 }
 
 -- Refused: session put dropped makes the same program.
-Login.update : Login.Params -> Session -> Task Response
-Login.update p session = {
+Login.post : Login.Params -> Session -> Task Response
+Login.post p session = {
   let _ <- Session.put (\s -> { s | user: Just p.id })
   Task.succeed Response.refresh
 }

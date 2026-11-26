@@ -13,11 +13,11 @@ form Note = { body: Text, color: Color }
 Edit.load : Edit.Params -> Session -> Query Model
 Edit.load params session = Query.succeed { n: params.n, busy: False }
 
-Save.update : Save.Params -> Session -> Task Response
-Save.update params session = Task.succeed Response.refresh
+Save.post : Save.Params -> Session -> Task Response
+Save.post params session = Task.succeed Response.refresh
 
-Ping.update : Ping.Params -> Session -> Task Response
-Ping.update params session = Task.succeed Response.refresh
+Ping.post : Ping.Params -> Session -> Task Response
+Ping.post params session = Task.succeed Response.refresh
 
 Edit.view : Model -> Session -> Html
 Edit.view model session =

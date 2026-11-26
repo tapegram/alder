@@ -20,14 +20,14 @@ Show.load params session = {
 Show.view : Model -> Session -> Html
 Show.view model session = <p>{model.item.title}</p>
 
-Rename.update : Rename.Params -> Session -> Task Response
-Rename.update p session = {
+Rename.post : Rename.Params -> Session -> Task Response
+Rename.post p session = {
   let _ <- Db.updateMine Item p.id (\i -> { i | title: "renamed" })
   Task.succeed Response.refresh
 }
 
-Remove.update : Remove.Params -> Session -> Task Response
-Remove.update p session = {
+Remove.delete : Remove.Params -> Session -> Task Response
+Remove.delete p session = {
   let _ <- Db.deleteMine Item p.id
   Task.succeed Response.refresh
 }

@@ -55,7 +55,7 @@ func Orgs__Orgs__load(params Orgs__Orgs__Params, session Orgs__Orgs__Session) ef
 	}))
 }
 
-func Orgs__Pick__update(p Orgs__Pick__Params, session Orgs__Orgs__Session) eff.Task[rt.Response] {
+func Orgs__Pick__post(p Orgs__Pick__Params, session Orgs__Orgs__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[struct{}] {
 		switch Mutant {
 		case 22:
@@ -75,7 +75,7 @@ func Orgs__Pick__update(p Orgs__Pick__Params, session Orgs__Orgs__Session) eff.T
 	})
 }
 
-func Orgs__Switch__update(p Orgs__Switch__Params, session Orgs__Orgs__Session) eff.Task[rt.Response] {
+func Orgs__Switch__put(p Orgs__Switch__Params, session Orgs__Orgs__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[struct{}] {
 		switch Mutant {
 		case 24:
@@ -296,7 +296,7 @@ func test__Orgs__2() eff.Task[bool] {
 							Value rt.Result[string, rt.Response]
 							Trace []string
 						}, error) {
-							_v9, _msg10, _ok11, _tr12, _err13 := rtesting.InnerOn(_e8, "", Orgs__Pick__update(Orgs__Pick__Params{Org: b}, Orgs__Orgs__Session{User: me, Org: rt.Just[string](a), Role: User__Role__Reader__}))
+							_v9, _msg10, _ok11, _tr12, _err13 := rtesting.InnerOn(_e8, "", Orgs__Pick__post(Orgs__Pick__Params{Org: b}, Orgs__Orgs__Session{User: me, Org: rt.Just[string](a), Role: User__Role__Reader__}))
 							if _err13 != nil {
 								var _z15 struct {
 									Value rt.Result[string, rt.Response]

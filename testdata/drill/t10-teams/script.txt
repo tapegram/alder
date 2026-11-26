@@ -40,7 +40,7 @@ alder new route Teams.Show /teams --show Team --blank --requires user
 alder new route Invites.Index /invites --blank --requires user
 
 # where a login goes, now that the page is there (`alder new auth` left the hole ?afterLogin)
-alder fill Auth.Login.SignIn.update - <<'EOF'
+alder fill Auth.Login.SignIn.post - <<'EOF'
 Teams.Index.Index {}
 EOF
 alder fill 'Auth.Login."logging in through the form"' - <<'EOF'
@@ -74,7 +74,7 @@ alder fill --decl Teams.Index.Index.view - <<'EOF'
 </Layout.Page>
 EOF
 alder new form Teams.Index NewTeam name:Text.NonEmpty --msg Create
-alder fill --decl Teams.Index.Create.update - <<'EOF'
+alder fill --decl Teams.Index.Create.post - <<'EOF'
 {
   let id <- Db.insert Team { name: params.form.name, owner: session.user }
   Task.succeed (Response.redirect (Teams.Show.Show { id: id }))
@@ -164,7 +164,7 @@ alder fill Teams.Show.owned - <<'EOF'
   }
 }
 EOF
-alder fill --decl Teams.Show.Remove.update - <<'EOF'
+alder fill --decl Teams.Show.Remove.delete - <<'EOF'
 {
   let team <- owned params.id session.user
   if params.user == team.owner then Task.fail "The owner cannot leave the team."
@@ -180,7 +180,7 @@ alder fill --decl Teams.Show.Remove.update - <<'EOF'
   }
 }
 EOF
-alder fill --decl Teams.Show.SendInvite.update - <<'EOF'
+alder fill --decl Teams.Show.SendInvite.post - <<'EOF'
 {
   let team <- owned params.id session.user
   let _ <- Db.insert Invite { team: team.id, email: params.form.email }
@@ -236,9 +236,9 @@ alder fill 'Teams.Show."only the owner changes the team, and the owner cannot le
   let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
   let _ <- Db.insert Member { team: red, user: bob }
   let _ <- Db.insert Member { team: red, user: cid }
-  let byMember <- Test.run (Remove.update { id: red, user: cid } { user: bob })
-  let inviteByMember <- Test.run (SendInvite.update { id: red, form: { email: Text.Email "x@example.com" } } { user: bob })
-  let self <- Test.run (Remove.update { id: red, user: ann } { user: ann })
+  let byMember <- Test.run (Remove.delete { id: red, user: cid } { user: bob })
+  let inviteByMember <- Test.run (SendInvite.post { id: red, form: { email: Text.Email "x@example.com" } } { user: bob })
+  let self <- Test.run (Remove.delete { id: red, user: ann } { user: ann })
   let members <- Db.from Member |> Db.count
   let invites <- Db.from Invite |> Db.count
   let err = \r -> match r { Err e -> e, Ok _ -> "ok" }
@@ -305,7 +305,7 @@ alder fill Invites.Index.mine - <<'EOF'
   }
 }
 EOF
-alder fill --decl Invites.Index.Accept.update - <<'EOF'
+alder fill --decl Invites.Index.Accept.post - <<'EOF'
 {
   let invite <- mine params.id session.user
   let _ <- Db.update Invite invite.id (\i -> { i | status: Accepted })
@@ -313,7 +313,7 @@ alder fill --decl Invites.Index.Accept.update - <<'EOF'
   Task.succeed (Response.redirect (Teams.Show.Show { id: invite.team }))
 }
 EOF
-alder fill --decl Invites.Index.Decline.update - <<'EOF'
+alder fill --decl Invites.Index.Decline.post - <<'EOF'
 {
   let invite <- mine params.id session.user
   let _ <- Db.update Invite invite.id (\i -> { i | status: Declined })
@@ -387,8 +387,8 @@ alder fill 'Invites.Index."an invite not to the user, or not waiting, cannot be 
   let red <- Db.insert Team { name: Text.NonEmpty "Red", owner: ann }
   let theirs <- Db.insert Invite { team: red, email: Text.Email "cid@example.com" }
   let done <- Db.insert Invite { team: red, email: Text.Email "bob@example.com", status: Declined }
-  let a <- Test.run (Accept.update { id: theirs } { user: bob })
-  let b <- Test.run (Accept.update { id: done } { user: bob })
+  let a <- Test.run (Accept.post { id: theirs } { user: bob })
+  let b <- Test.run (Accept.post { id: done } { user: bob })
   let members <- Db.from Member |> Db.count
   let err = \r -> match r { Err e -> e, Ok _ -> "ok" }
   Task.succeed ({ a: err a.value, b: err b.value, members: members } == { a: "not found", b: "not found", members: 0 })

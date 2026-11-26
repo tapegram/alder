@@ -164,7 +164,7 @@ func Route__Notes__Add() web.Route {
 			return resp
 		}
 		params.Form = form
-		resp, err := eff.Run(rq.Env, eff.KTask, Notes__Add__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Notes__Add__post(params, session))
 		if err != nil {
 			return route__fail(err)
 		}

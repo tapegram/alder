@@ -18,8 +18,8 @@ Index.view projects session =
   </div>
 
 -- Add writes the org's database only: one store
-Add.update : Add.Params -> Session -> Task Response
-Add.update params session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post params session = {
   let _ <- Db.insertScoped Project { name: params.form.name }
   Task.succeed (Response.redirect Index)
 }

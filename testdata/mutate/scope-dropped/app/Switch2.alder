@@ -17,8 +17,8 @@ Switch2.load params session = {
 hop : Task Unit
 hop = Session.put (\s -> { s | user: Nothing })
 
-Drop.update : Drop.Params -> Session -> Task Response
-Drop.update p session = {
+Drop.post : Drop.Params -> Session -> Task Response
+Drop.post p session = {
   let _ <- hop
   let _ <- Db.deleteMine Item p.id
   Task.succeed Response.refresh

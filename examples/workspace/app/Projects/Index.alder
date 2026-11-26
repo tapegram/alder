@@ -38,15 +38,15 @@ form NewProject = { name: Text.NonEmpty }
 -- No `load` runs before a write route, so each begins with Membership.memberOnly, the check
 -- load makes. Each Task writes to the org's database only (E0031 refuses a Task that writes there and to
 -- the shared one): Db.insertScoped fills in `org`, Db.deleteScoped finds nothing of another org.
-Create.update : Create.Params -> Session -> Task Response
-Create.update p session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post p session = {
   let _ <- Membership.memberOnly session.user session.org
   let id <- Db.insertScoped Project { name: p.form.name }
   Task.succeed (Response.redirect (Projects.Show.Show { id: id }))
 }
 
-Remove.update : Remove.Params -> Session -> Task Response
-Remove.update p session = {
+Remove.delete : Remove.Params -> Session -> Task Response
+Remove.delete p session = {
   let _ <- Membership.memberOnly session.user session.org
   let _ <- Db.deleteScoped Project p.id
   Task.succeed Response.refresh
@@ -258,7 +258,7 @@ test "another org's project cannot be removed" = {
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let model <- Test.get (Index {})
   let r <-
-    Test.run (Remove.update { id: s.widget } {
+    Test.run (Remove.delete { id: s.widget } {
       user: s.ann,
       org: s.acme,
       role: Member,

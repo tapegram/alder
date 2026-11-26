@@ -40,20 +40,20 @@ Row.view t session =
     <button click={Toggle { id: t.id }}>{t.title}</button>
   </li>
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update params session = {
+Toggle.patch : Toggle.Params -> Session -> Task Response
+Toggle.patch params session = {
   let _ <- Db.updateMine Todo params.id (\t -> { t | done: not t.done })
   Task.succeed (Response.render (Row { id: params.id }))
 }
 
-Create.update : Create.Params -> Session -> Task Response
-Create.update params session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post params session = {
   let _ <- Db.insertMine Todo { title: params.form.title, due: Nothing }
   Task.succeed (Response.redirect (Index { filter: All }) |> Response.toast "Added")
 }
 
-Delete.update : Delete.Params -> Row.Session -> Task Response
-Delete.update params session = {
+Delete.delete : Delete.Params -> Row.Session -> Task Response
+Delete.delete params session = {
   let _ <- Db.deleteMine Todo params.id
   Task.succeed (Response.redirect (Index { filter: All }))
 }

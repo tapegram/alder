@@ -45,7 +45,7 @@ func Route__App__Logout() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, App__Logout__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, App__Logout__delete(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -208,7 +208,7 @@ func Route__M__Save() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, M__Save__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, M__Save__post(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -264,7 +264,7 @@ func Route__M__Pick() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, M__Pick__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, M__Pick__post(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -304,7 +304,7 @@ func Route__M__Ping() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, M__Ping__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, M__Ping__post(params, session))
 		if err != nil {
 			return route__fail(err)
 		}

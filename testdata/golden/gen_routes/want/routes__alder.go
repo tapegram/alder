@@ -135,7 +135,7 @@ func Route__Edit__Save() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Edit__Save__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Edit__Save__post(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -179,7 +179,7 @@ func Route__Edit__Ping() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Edit__Ping__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Edit__Ping__post(params, session))
 		if err != nil {
 			return route__fail(err)
 		}

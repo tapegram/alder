@@ -7,8 +7,8 @@ session { user: Maybe User.UserId }
 route Logout = DELETE "/session" { }
 
 -- A mutant: logging out no longer clears the user.
-Logout.update : Logout.Params -> Session -> Task Response
-Logout.update p session = {
+Logout.delete : Logout.Params -> Session -> Task Response
+Logout.delete p session = {
   let _ <- Session.put (\s -> { s | user: Nothing })
   Task.succeed (Response.redirect (Home.Home {}))
 }

@@ -482,7 +482,7 @@ draws that page again and reads the options its select offered. Then:
 
 - **A value that is not one of them** is a field error, "must be one of the
   options", answered like a form that does not decode: `422`, the page
-  drawn again with the error under the select, and `update` does not run.
+  drawn again with the error under the select, and the handler does not run.
 - **An empty value** passes only when the select offers the empty option.
 - **A form posted from a page that does not offer its options** (another
   page, an address no `GET` route matches, a page that no longer shows that
@@ -810,7 +810,7 @@ element around whatever input you write inside it.
 
 When a write route answers `Response.refresh` (or `Response.invalid`), the
 runtime renders the page the browser is on twice: as it was before the
-`update`, and again after it (the same `view`, of the model `load` gave each
+the handler, and again after it (the same `view`, of the model `load` gave each
 time). It compares the two and sends the browser only the elements that
 changed, each found by its `id`; Datastar morphs each into place, and leaves
 the rest of the page alone.

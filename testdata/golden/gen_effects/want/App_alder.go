@@ -16,7 +16,7 @@ type App__Session struct {
 
 type App__Logout__Params struct{}
 
-func App__Logout__update(p App__Logout__Params, session App__Session) eff.Task[rt.Response] {
+func App__Logout__delete(p App__Logout__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
 		return App__Session{User: rt.Nothing[string](), Theme: s.Theme}
 	}), func(_ struct{}) eff.Task[rt.Response] {

@@ -18,8 +18,8 @@ Index.load params session = {
   Query.succeed { mine: mine }
 }
 
-Pick.update : Pick.Params -> Session -> Task Response
-Pick.update p session = {
+Pick.post : Pick.Params -> Session -> Task Response
+Pick.post p session = {
   let _ <- Session.put (\s -> { s | org: Just p.org })
   Task.succeed (Response.redirect (Projects.Index.Index {}))
 }

@@ -105,7 +105,7 @@ func Route__Signup__Create() web.Route {
 			return resp
 		}
 		params.Form = form
-		resp, err := eff.Run(rq.Env, eff.KTask, Signup__Create__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Signup__Create__post(params, session))
 		if err != nil {
 			return route__fail(err)
 		}

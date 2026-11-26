@@ -96,7 +96,7 @@ reader to download. `Name` and `Body` are brands of `Text` with a refinement
 checks for itself what `Text.NonEmpty` would.
 
 The comment form uses these types, so a longer comment is refused with an error
-beside the field before `update` runs.
+beside the field before the handler runs.
 
 ## A slug: `Post`
 
@@ -124,7 +124,7 @@ table Post {
 
 A post's address is `/posts/hello-world`. The id is still generated, and the
 slug is a second, `@unique` column. `Slug` is a refined brand too: a form field
-of type `Post.Slug` reports an error before `update` runs, and a route
+of type `Post.Slug` reports an error before the handler runs, and a route
 parameter that breaks the rule, `/posts/Bad%20Slug`, is a 404.
 
 `author` is the post's owner, and `@owner` says so to the compiler: the routes
@@ -269,13 +269,13 @@ route Write = GET "/write" { } requires user, role Author
 
 `requires user` sends a visitor to log in, as before; `role Author` then
 answers a 404 to a logged-in Reader, the same 404 as a page that does not
-exist, before `load` or `update` runs. The check reads the cookie and nothing
+exist, before `load` or the handler runs. The check reads the cookie and nothing
 else, so it costs no query. It is the role at login, and the cookie keeps it
 until logout or the session's 30 days: a user demoted since still passes it.
 
 So the GET routes re-read the user's row in `load` (chapter 6, "Rules"; a test
 below shows it). No `load` runs before a write route, so each write route's
-`update` begins with `User.authorOnly session.user`, the same re-read as a
+the handler begins with `User.authorOnly session.user`, the same re-read as a
 `Query` that is a 404 for anyone who is no author now.
 
 `Write`'s `load` lists the author's own posts with `Db.mine Post |>
@@ -342,30 +342,30 @@ for a test below, which logs in through its form.)
 ```alder part=blog/Write.Edit
 form EditPost = { title: Text.NonEmpty, body: Text }
 
-Save.update : Save.Params -> Session -> Task Response
-Save.update p session = {
+Save.put : Save.Params -> Session -> Task Response
+Save.put p session = {
   let _ <- User.authorOnly session.user
   let _ <- Db.updateMine Post p.id (\post -> { post | title: p.form.title, body: p.form.body })
   Task.succeed (Response.refresh |> Response.toast "Saved")
 }
 
-Publish.update : Publish.Params -> Session -> Task Response
-Publish.update p session = {
+Publish.post : Publish.Params -> Session -> Task Response
+Publish.post p session = {
   let _ <- User.authorOnly session.user
   let _ <- Db.updateMine Post p.id (\post -> { post | published: True })
   Task.succeed Response.refresh
 }
 
-Unpublish.update : Unpublish.Params -> Session -> Task Response
-Unpublish.update p session = {
+Unpublish.delete : Unpublish.Params -> Session -> Task Response
+Unpublish.delete p session = {
   let _ <- User.authorOnly session.user
   let _ <- Db.updateMine Post p.id (\post -> { post | published: False })
   Task.succeed Response.refresh
 }
 
 -- The post's comments go with it: Comment.post is `@ref Post @cascade`.
-Delete.update : Delete.Params -> Session -> Task Response
-Delete.update p session = {
+Delete.delete : Delete.Params -> Session -> Task Response
+Delete.delete p session = {
   let _ <- User.authorOnly session.user
   let _ <- Db.deleteMine Post p.id
   Task.succeed (Response.redirect (Write.Write {}))
@@ -375,8 +375,8 @@ Delete.update p session = {
 The four write routes take the post's id from their path, as `Edit` does
 (`GET /write/{id}`; `Save` is `PUT /write/{id}`, which replaces the post, and `Delete`
 is `DELETE` on the same path), and `Save` also decodes the form `EditPost`: its
-fields reach `update` as `p.form`. A request can name any id, and no `load`
-runs first to find the post, so each `update` begins with `User.authorOnly` and
+fields reach handler as `p.form`. A request can name any id, and no `load`
+runs first to find the post, so each handler begins with `User.authorOnly` and
 then writes with the scoped `Db.updateMine` and `Db.deleteMine`, which find no
 row for a post of another author: that is a 404, as it is on the page (chapter
 6, "Rules").
@@ -450,7 +450,7 @@ test "deleting a post deletes its comments" = {
     body: Comment.Body "Second.",
   }
   let _ <- Test.login { user: Just author, role: Author }
-  let r <- Test.run (Delete.update { id: id } { user: author, role: Author })
+  let r <- Test.run (Delete.delete { id: id } { user: author, role: Author })
   let posts <- Db.from Post |> Db.count
   let comments <- Db.from Comment |> Db.count
   Task.succeed (
@@ -492,10 +492,10 @@ test "another author's post is not found" = {
   let _ <- Test.login { user: Just other, role: Author }
   let r <- Test.open (Edit { id: id })
   let as = { user: other, role: Author }
-  let saved <- Test.run (Save.update { id: id, form: { title: Text.NonEmpty "Mine", body: "" } } as)
-  let published <- Test.run (Publish.update { id: id } as)
-  let unpublished <- Test.run (Unpublish.update { id: id } as)
-  let deleted <- Test.run (Delete.update { id: id } as)
+  let saved <- Test.run (Save.put { id: id, form: { title: Text.NonEmpty "Mine", body: "" } } as)
+  let published <- Test.run (Publish.post { id: id } as)
+  let unpublished <- Test.run (Unpublish.delete { id: id } as)
+  let deleted <- Test.run (Delete.delete { id: id } as)
   let after <- Db.get Post id
   Task.succeed (
     {
@@ -538,7 +538,7 @@ test "a demoted author is turned away at once" = {
   let _ <- Db.update User author (\u -> { u | role: Reader })
   let stale <- Test.open (Edit { id: id })
   let _ <- Test.login { user: Just author, role: Author }
-  let write <- Test.run (Publish.update { id: id } { user: author, role: Author })
+  let write <- Test.run (Publish.post { id: id } { user: author, role: Author })
   let _ <- Test.get (Auth.Login.Login {})
   let _ <- Test.submit Auth.Login.Submit {
     email: Text.Email "author@example.com",
@@ -767,9 +767,9 @@ test "Publish shows the post on the front page; Unpublish hides it" = {
     author: author,
   }
   let _ <- Test.login { user: Just author, role: Author }
-  let _ <- Publish.update { id: id } { user: author, role: Author }
+  let _ <- Publish.post { id: id } { user: author, role: Author }
   let published <- Index.Index.load { page: 1, q: "" } { user: Nothing, role: Reader }
-  let _ <- Unpublish.update { id: id } { user: author, role: Author }
+  let _ <- Unpublish.delete { id: id } { user: author, role: Author }
   let unpublished <- Index.Index.load { page: 1, q: "" } { user: Nothing, role: Reader }
   Task.succeed (
     { published: List.length published.posts, unpublished: List.length unpublished.posts }
@@ -778,16 +778,16 @@ test "Publish shows the post on the front page; Unpublish hides it" = {
 }
 ```
 
-The first test deletes a post with two comments through `Delete.update`. Its
+The first test deletes a post with two comments through `Delete.delete`. Its
 trace has two steps: the `Db.get User` of `User.authorOnly`, and
 `Db.deleteMine Post`, since SQLite deletes the comments in that statement
-(chapter 8, "Writing"). It calls `update` directly, with a session record, but
+(chapter 8, "Writing"). It calls the handler directly, with a session record, but
 the scoped operations act for the test's own session, the one `Test.login` set,
 not for that record (chapter 6, "Rules"); so the test logs in first.
 
 The second opens another author's post as that author: the role check passes,
 and `Db.getMine` answers `PageMissing`. It then runs the four write routes'
-`update` as that author, with no `load` before them: each answers
+the handler as that author, with no `load` before them: each answers
 `Err "not found"` and the post is unchanged, so it is `Db.updateMine` and
 `Db.deleteMine` that keep the writes in the author's own rows.
 
@@ -916,7 +916,7 @@ uses in the adapter's place (chapter 10, "Faking a capability").
 
 The comment form's route, `AddComment`, takes the post's slug from its
 path (`POST /posts/{slug}/comments`) and decodes the form
-`NewComment`. No `load` runs before a write route, so its `update` finds
+`NewComment`. No `load` runs before a write route, so its handler finds
 the post again with `Post.bySlug` and refuses a comment on a draft, or on
 a slug never used, with `Task.notFound`; otherwise it inserts the comment
 and redirects to the post.
@@ -999,8 +999,8 @@ sees a link to a 404.
 ```alder part=blog/Posts.Index
 form SearchForm = { q: Text }
 
-Search.update : Search.Params -> Session -> Task Response
-Search.update p session = Task.succeed (Response.redirect (Index { page: 1, q: p.form.q }))
+Search.post : Search.Params -> Session -> Task Response
+Search.post p session = Task.succeed (Response.redirect (Index { page: 1, q: p.form.q }))
 
 ```
 
@@ -1336,7 +1336,7 @@ test "a long query is cut" = {
 
 test "a search answers with the first page of its results" = {
   let model <- Index.load { page: 3, q: "" } { user: Nothing, role: Reader }
-  let nav <- Search.update { form: { q: "soup" } } { user: Nothing, role: Reader }
+  let nav <- Search.post { form: { q: "soup" } } { user: Nothing, role: Reader }
   Task.succeed (nav == Response.redirect (Index { page: 1, q: "soup" }))
 }
 
@@ -1656,15 +1656,15 @@ route Logout = DELETE "/session"      { }
 route Leave  = DELETE "/orgs/current" { }
 
 -- logging out clears the user; a `via` key goes with it (the runtime clears `org`)
-Logout.update : Logout.Params -> Session -> Task Response
-Logout.update p session = {
+Logout.delete : Logout.Params -> Session -> Task Response
+Logout.delete p session = {
   let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
   Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
 
 -- back to the list of orgs, to pick another
-Leave.update : Leave.Params -> Session -> Task Response
-Leave.update p session = {
+Leave.delete : Leave.Params -> Session -> Task Response
+Leave.delete p session = {
   let _ <- Session.put (\s -> { s | org: Nothing })
   Task.succeed (Response.redirect (Orgs.Index.Index {}))
 }
@@ -1711,8 +1711,8 @@ test "Logout and Leave say where to go" = {
     org: Nothing,
     role: Member,
   }
-  let out <- Test.run (Logout.update {} me)
-  let leave <- Test.run (Leave.update {} me)
+  let out <- Test.run (Logout.delete {} me)
+  let leave <- Test.run (Leave.delete {} me)
   Task.succeed (
     { out: out.value, leave: leave.value }
       == {
@@ -1758,14 +1758,14 @@ session:
 route Open   = PUT "/orgs/current" { org: Org.OrgId } requires user
 route Create = POST "/orgs"         { } form NewOrg    requires user
 
-Open.update : Open.Params -> Session -> Task Response
-Open.update p session = {
+Open.put : Open.Params -> Session -> Task Response
+Open.put p session = {
   let _ <- Session.put (\s -> { s | org: Just p.org })
   Task.succeed (Response.redirect (Projects.Index.Index {}))
 }
 
-Create.update : Create.Params -> Session -> Task Response
-Create.update p session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post p session = {
   let org <- Db.insert Org { name: p.form.name }
   let _ <- Db.insert Membership { user: session.user, org: org }
   let _ <- Db.insert Activity { text: "The org was created.", org: org }
@@ -1776,14 +1776,14 @@ Create.update p session = {
 
 `Open` trusts nothing about the org it is given, and its id rides in the
 query string, where anyone can type another: the `via` check does the
-work, and a test runs the `Open.update` of an org the user is no member
+work, and a test runs the `Open.put` of an org the user is no member
 of by calling it itself (the page offers no such button):
 
 ```alder fragment
 test "a non-member's switch is refused" = {
   …
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
-  let r <- Test.run (Open.update { org: s.globex } { user: s.ann, org: Nothing, role: Member })
+  let r <- Test.run (Open.put { org: s.globex } { user: s.ann, org: Nothing, role: Member })
   let page <- Test.get (Index {})
   Task.succeed (
     { value: r.value, org: page.session.org }
@@ -1839,8 +1839,8 @@ session's org's (`WHERE "org" = ?`). It is written beside the
 membership it is about, in one `Task`:
 
 ```alder fragment
-Remove.update : Remove.Params -> Session -> Task Response
-Remove.update p session = {
+Remove.delete : Remove.Params -> Session -> Task Response
+Remove.delete p session = {
   let _ <- Membership.memberOnly session.user session.org
   let rows <- Db.from Membership |> Db.where (Membership.org.eq session.org) |> Db.where (Membership.user.eq p.user) |> Db.all
   let _ <- Task.all (List.map (\m -> Db.delete Membership m.id) rows)

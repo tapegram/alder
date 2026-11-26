@@ -123,7 +123,7 @@ func Todos__Row__view(t Table__Todo__Todo, session Todos__Index__Session) html.N
 	)
 }
 
-func Todos__Toggle__update(params Todos__Toggle__Params, session Todos__Index__Session) eff.Task[rt.Response] {
+func Todos__Toggle__put(params Todos__Toggle__Params, session Todos__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.updateMine Todo", true, func(_e1 *eff.Env) (struct{}, error) {
 		return struct{}{}, db.UpdateMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Table__Todo__Todo, params.Id, func(t Table__Todo__Todo) Table__Todo__Todo {
 			return Table__Todo__Todo{Id: t.Id, Title: t.Title, Done: !t.Done, Due: t.Due, Owner: t.Owner}
@@ -133,7 +133,7 @@ func Todos__Toggle__update(params Todos__Toggle__Params, session Todos__Index__S
 	})
 }
 
-func Todos__Create__update(params Todos__Create__Params, session Todos__Index__Session) eff.Task[rt.Response] {
+func Todos__Create__post(params Todos__Create__Params, session Todos__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.insertMine Todo", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Table__Todo__Todo, insertminevals__Table__Todo__Todo(insertmine__Table__Todo__Todo{Title: params.Form.Title, Done: false, Due: params.Form.Due}), _e1.Now())
 	}), func(_ string) eff.Task[rt.Response] {
@@ -144,7 +144,7 @@ func Todos__Create__update(params Todos__Create__Params, session Todos__Index__S
 	})
 }
 
-func Todos__Delete__update(params Todos__Delete__Params, session Todos__Index__Session) eff.Task[rt.Response] {
+func Todos__Delete__delete(params Todos__Delete__Params, session Todos__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.deleteMine Todo", true, func(_e1 *eff.Env) (struct{}, error) {
 		return struct{}{}, db.DeleteMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Table__Todo__Todo, params.Id)
 	}), func(_ struct{}) eff.Task[rt.Response] {
@@ -152,7 +152,7 @@ func Todos__Delete__update(params Todos__Delete__Params, session Todos__Index__S
 	})
 }
 
-func Todos__Move__update(params Todos__Move__Params, session Todos__Index__Session) eff.Task[rt.Response] {
+func Todos__Move__post(params Todos__Move__Params, session Todos__Index__Session) eff.Task[rt.Response] {
 	return eff.Pure(std.ResponseToast("Moved to "+params.Form.List, std.ResponseRender(rt.Route{Name: "Todos.Row", Method: "GET", Path: rt.Concat("/todos/", rt.PathSegment(params.Id))})))
 }
 

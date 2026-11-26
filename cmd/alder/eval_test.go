@@ -699,8 +699,8 @@ func TestEval_InModule(t *testing.T) {
 func TestEval_InNestedModule(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
-	// Todos.Index's own route member `Toggle.update`, and Todo (which it imports) qualified
-	code, stdout, stderr := runEval(t, "", todosDir(t), "--in", "Todos.Index", "Toggle.update")
+	// Todos.Index's own route member `Toggle.patch`, and Todo (which it imports) qualified
+	code, stdout, stderr := runEval(t, "", todosDir(t), "--in", "Todos.Index", "Toggle.patch")
 	if code != 0 || !strings.HasPrefix(stdout, "<function> : Todos.Index.Toggle.Params -> ") {
 		t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
 	}

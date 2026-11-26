@@ -1,2 +1,2 @@
-1  Home  Show.update:13  render → redirect  Response.render (Home {}) → Response.redirect (Home {})
-2  Home  Show.update:13  render → refresh   Response.render (Home {}) → Response.refresh
+1  Home  Show.post:13  render → redirect  Response.render (Home {}) → Response.redirect (Home {})
+2  Home  Show.post:13  render → refresh   Response.render (Home {}) → Response.refresh

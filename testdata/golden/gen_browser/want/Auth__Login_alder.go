@@ -58,7 +58,7 @@ func Auth__Login__Login__load(params Auth__Login__Login__Params, session App__Se
 	return eff.Q(eff.Pure(Auth__Login__Model{}))
 }
 
-func Auth__Login__Submit__update(p Auth__Login__Submit__Params, session App__Session) eff.Task[rt.Response] {
+func Auth__Login__Submit__post(p Auth__Login__Submit__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Password.verify", true, func(_e1 *eff.Env) (rt.Maybe[string], error) {
 		_c2, _ok3 := _e1.Caps["Auth.Login.Password"].(Cap__Auth__Login__Password)
 		if !_ok3 {

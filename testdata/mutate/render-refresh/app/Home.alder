@@ -9,8 +9,8 @@ Home.load : Home.Params -> Session -> Query Model
 Home.load params session = Query.succeed { }
 
 -- A mutant: the update refreshes the page instead of rendering the route.
-Show.update : Show.Params -> Session -> Task Response
-Show.update p session = Task.succeed (Response.render (Home {}))
+Show.post : Show.Params -> Session -> Task Response
+Show.post p session = Task.succeed (Response.render (Home {}))
 
 Home.view : Model -> Session -> Html
 Home.view model session = <p>Home</p>

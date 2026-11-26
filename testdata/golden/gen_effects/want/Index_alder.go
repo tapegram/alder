@@ -97,7 +97,7 @@ func Index__Index__load(params Index__Index__Params, session Index__Index__Sessi
 	}))
 }
 
-func Index__Add__update(p Index__Add__Params, session Index__Index__Session) eff.Task[rt.Response] {
+func Index__Add__post(p Index__Add__Params, session Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.insert Todo", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Todo__Todo, insertvals__Todo__Todo(insert__Todo__Todo{Title: p.Title, Done: false, Due: rt.Nothing[rt.Date](), Owner: session.User}), _e1.Now())
 	}), func(id string) eff.Task[rt.Response] {
@@ -111,7 +111,7 @@ func Index__Add__update(p Index__Add__Params, session Index__Index__Session) eff
 	})
 }
 
-func Index__Toggle__update(p Index__Toggle__Params, session Index__Index__Session) eff.Task[rt.Response] {
+func Index__Toggle__put(p Index__Toggle__Params, session Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.update Todo", true, func(_e1 *eff.Env) (struct{}, error) {
 		return struct{}{}, db.UpdateRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Todo__Todo, p.Id, func(t Todo__Todo) Todo__Todo {
 			return Todo__Todo{Id: t.Id, Title: t.Title, Done: !t.Done, Due: t.Due, Owner: t.Owner, Created: t.Created}
@@ -121,7 +121,7 @@ func Index__Toggle__update(p Index__Toggle__Params, session Index__Index__Sessio
 	})
 }
 
-func Index__Remove__update(p Index__Remove__Params, session Index__Index__Session) eff.Task[rt.Response] {
+func Index__Remove__delete(p Index__Remove__Params, session Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.get Todo", false, func(_e1 *eff.Env) (rt.Maybe[Todo__Todo], error) {
 		return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Todo__Todo, p.Id)
 	}), func(found rt.Maybe[Todo__Todo]) eff.Task[rt.Response] {
@@ -137,7 +137,7 @@ func Index__Remove__update(p Index__Remove__Params, session Index__Index__Sessio
 	})
 }
 
-func Index__Notify__update(p Index__Notify__Params, session Index__Index__Session) eff.Task[rt.Response] {
+func Index__Notify__post(p Index__Notify__Params, session Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(std.RandomId(), func(token string) eff.Task[rt.Response] {
 		return eff.Bind(eff.All([]eff.Task[bool]{eff.Call("Mailer.send", true, func(_e1 *eff.Env) (bool, error) {
 			_c2, _ok3 := _e1.Caps["Index.Mailer"].(Cap__Index__Mailer)

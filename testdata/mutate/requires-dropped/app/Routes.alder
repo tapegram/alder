@@ -21,20 +21,20 @@ form LookForm = { q: Text }
 Show.load : Show.Params -> Session -> Query Model
 Show.load params session = Query.succeed { user: session.user }
 
-Save.update : Save.Params -> Session -> Task Response
-Save.update p session = Task.succeed Response.refresh
+Save.post : Save.Params -> Session -> Task Response
+Save.post p session = Task.succeed Response.refresh
 
-Count.update : Count.Params -> Session -> Task Response
-Count.update p session = Task.succeed Response.refresh
+Count.post : Count.Params -> Session -> Task Response
+Count.post p session = Task.succeed Response.refresh
 
-Find.update : Find.Params -> Session -> Task Response
-Find.update p session = Task.succeed (Response.redirect (Show { q: "x" }))
+Find.post : Find.Params -> Session -> Task Response
+Find.post p session = Task.succeed (Response.redirect (Show { q: "x" }))
 
-Team.update : Team.Params -> Session -> Task Response
-Team.update p session = Task.succeed (Response.redirect (Show { q: "x" }))
+Team.post : Team.Params -> Session -> Task Response
+Team.post p session = Task.succeed (Response.redirect (Show { q: "x" }))
 
-Look.update : Look.Params -> Session -> Task Response
-Look.update p session = Task.succeed (Response.redirect (Show { q: "x" }))
+Look.post : Look.Params -> Session -> Task Response
+Look.post p session = Task.succeed (Response.redirect (Show { q: "x" }))
 
 Show.view : Model -> Session -> Html
 Show.view model session = <p>Routes</p>

@@ -36,7 +36,7 @@ func Notes__Index__Index__load(params Notes__Index__Index__Params, session Notes
 	}))
 }
 
-func Notes__Index__Add__update(params Notes__Index__Add__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
+func Notes__Index__Add__post(params Notes__Index__Add__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.insertMine Note", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, insertminevals__Note__Note(insertmine__Note__Note{Text: "a"}), _e1.Now())
 	}), func(_ string) eff.Task[rt.Response] {

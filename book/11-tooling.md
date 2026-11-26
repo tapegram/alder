@@ -329,10 +329,10 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 #### `alder fill <Module>.<decl>[.<arm>] -`
 
-**Writes:** the declaration's hole (`--hole ?name` when it has several) replaced by the expression on standard input; `Module."test name"` names a test, `Module.Route.update` a write route's `update`, `Module.Fake.entry` a fake's entry.
+**Writes:** the declaration's hole (`--hole ?name` when it has several) replaced by the expression on standard input; `Module."test name"` names a test, `Module.Route.post` a write route's handler (`post`, `put`, `patch` or `delete`, its route's method), `Module.Fake.entry` a fake's entry.
 
 - A module of the app the expression names qualified (`Member.x`) that the file does not import is imported: `added import Member to app/…` (`--json`: `"imports"`).
-- `alder fill --list` lists every hole: `Replies.Show SubmitNote.update ?answer : Task Response`
+- `alder fill --list` lists every hole: `Replies.Show SubmitNote.post ?answer : Task Response`
 
 #### `alder fill <Module>.<decl>[.<arm>] --ai`
 
@@ -351,15 +351,15 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 **Writes:** the declaration's whole body (a value's, a test's block, a `type`'s right-hand side) replaced by the one expression, or type, on standard input; its signature stays.
 
-- Refused when the result does not check (an `update` that drops an arm the view sends).
+- Refused when the result does not check (a handler that drops an arm the view sends).
 - For what has no hole: a `Model`, a generated body or test that does not fit
 
 #### `alder new auth [--users User] [--role R] [--to Route]`
 
 **Writes:**
 
-- the login: `app/Auth/Login.alder` (`capability Password { verify, hash }`, its fake, the routes `route Login = GET "/login" { }` and `route SignIn = POST "/session" { } form Credentials`, the form `Credentials`, `SignIn.update` that puts the user, and the role, in the session or answers `Response.invalid`, a Log out button for a signed-in user, three tests);
-- `App` edited at fixed places (the session's `user` and `role` after its fields, `login = Auth.Login.Login`, `route Logout = DELETE "/session" { }` and its `Logout.update`, a test of it);
+- the login: `app/Auth/Login.alder` (`capability Password { verify, hash }`, its fake, the routes `route Login = GET "/login" { }` and `route SignIn = POST "/session" { } form Credentials`, the form `Credentials`, `SignIn.post` that puts the user, and the role, in the session or answers `Response.invalid`, a Log out button for a signed-in user, three tests);
+- `App` edited at fixed places (the session's `user` and `role` after its fields, `login = Auth.Login.Login`, `route Logout = DELETE "/session" { }` and its `Logout.delete`, a test of it);
 - the user table when it does not exist, in `app/Table/User.alder` (`email @unique`, `name`, `passwordHash: Text.Secret`, the role, `created`) and its migration;
 - and the adapter `adapters/auth/login_password.go` (PBKDF2-SHA256, 600,000 iterations, a 16-byte salt, a constant-time compare; stored as `pbkdf2-sha256$<iterations>$<salt>$<hash>`) with its Go tests.
 
@@ -453,7 +453,7 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 #### `alder edit auth --to <Route>`
 
-**Writes:** `?afterLogin` filled in `Auth.Login`'s `SignIn.update` and its test; refused when there is no such hole
+**Writes:** `?afterLogin` filled in `Auth.Login`'s `SignIn.post` and its test; refused when there is no such hole
 
 #### `alder remove route <Route module>`, `alder remove table <T>`
 
@@ -1942,7 +1942,7 @@ The fixture's `Toggle` answers `Response.render` of the row's route; its
 
 - **`req`** requests the router served for the step: the one the browser sent, and each GET route it ran in-process to answer it (the page it renders before the write, the element or page it renders after, a followed `redirect`'s target; chapter 6, "Delivery, decided by the request"), more for each 303 the browser followed
 
-- **`loads`** how many times a GET route's `load` ran: a `refresh` or an `invalid` runs the page's twice (before the `update`, to have something to compare, and after, to render), a `render` runs the route's it shows once, and a followed `redirect` runs its target's
+- **`loads`** how many times a GET route's `load` ran: a `refresh` or an `invalid` runs the page's twice (before the handler, to have something to compare, and after, to render), a `render` runs the route's it shows once, and a followed `redirect` runs its target's
 
 - **`steps`** the effect steps the requests ran (their trace)
 
@@ -2171,7 +2171,7 @@ says what to expect:
 
 #### `alder fragment`
 
-**Not checked:** a deliberate excerpt, such as one arm of an `update`; listed by `go test -v ./book`.
+**Not checked:** a deliberate excerpt, such as one arm of a handler; listed by `go test -v ./book`.
 
 - Chapter 16's `deploy { … }` fragments are the exception: each is appended to the scaffold's `App` and must check (`TestBook_DeployDeclaration`)
 
@@ -2544,12 +2544,12 @@ Its tabs:
   message and again by the page it redirects to is not a duplicate.
 
   Five or more runs of one statement in one run of a route's `load` (or in
-  what `update` itself ran) are an N+1, marked `N+1 x100` instead of
+  what the handler itself ran) are an N+1, marked `N+1 x100` instead of
   `duplicate` (a red badge, like the Errors tab's), and the bar then shows
   `N+1` after the SQL count; the server's log gets a `warn` line naming the
   request (`GET /slow: N+1: …`, the same text as below). Each `load` run is
   counted on its own because a `refresh` runs the page's `load` twice in one
-  request (before the `update` and after it): a page whose `load` selects the
+  request (before the handler and after it): a page whose `load` selects the
   same thing three times is not an N+1 when a click refreshes it, though the
   answer then holds six.
 
@@ -2771,7 +2771,7 @@ A `theme` declaration the rules refuse (Appendix C, "Changing a token"):
 
 A `route` declaration the rules refuse (chapter 6):
 
-- A GET route needs exactly `R.load` and `R.view`, a write route exactly `R.update : R.Params -> Session -> Task Response`.
+- A GET route needs exactly `R.load` and `R.view`, a write route exactly `R.post` (or `put`, `patch`, `delete`, by its method) `: R.Params -> Session -> Task Response`.
 - `form F` on a GET route.
 - A `{segment}` that names no parameter.
 - Two routes with one method and path.
@@ -2798,17 +2798,17 @@ A route requested the way its method refuses (chapter 6, 10):
 
 The `page` and `msg` declarations, `Nav` and its constructors, the `Page`
 type, a type argument on `Html`, and an unqualified `load`, `view` or
-`update` are gone (chapter 6, 11):
+Handlers are gone (chapter 6, 11):
 
 - A `page` is a GET route (`route Index = GET "/" { }` with `Index.load` and
-  `Index.view`), and a `msg` is a write route whose `Toggle.update` answers
+  `Index.view`), and a `msg` is a write route whose `Toggle.patch` answers
   `Task Response`.
 - `Rerender` is `Response.refresh`, `Redirect r` is `Response.redirect r`,
   `Reject t` is `Response.invalid t`, and `Html Msg` is `Html`.
-- An unqualified `load`, `view` or `update` in a module with routes names the
+- An unqualified `load`, `view` or the handler in a module with routes names the
   route to qualify it with (``route `Submit` is the only write route in `Home` ``),
   or lists the routes that lack the member. That route's own E0043 ("it needs
-  `Submit.update`") is then not shown.
+  `Submit.post`") is then not shown.
 - Every message ends with "see the book's chapter 6, Routes, for the route syntax
   that replaced it".
 
@@ -2928,10 +2928,10 @@ A `deploy` declaration `alder deploy` cannot use (chapter 16):
 
 A `Task` that writes to two stores (chapter 8, "Partitions and silos"):
 
-- A shared table and a silo: "`Create.update` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route."
+- A shared table and a silo: "`Create.post` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route."
 - Two silos: "… `Board` (silo `team`): a Task writes to one store. Send one of the writes from its own route."
 - A job with `silo org` that writes a shared table: "`Digest.run` writes `Org` (shared), but a job with `silo org` runs in its org's silo: a Task writes to one store. Write `Org` from a job without `silo org` (this job may enqueue one), or keep the write in the silo."
-- The write route whose `update` holds the writes, or the job whose `run` does, is named.
+- The write route whose handler holds the writes, or the job whose `run` does, is named.
 
 #### E0032 — a refused partition declaration
 
@@ -3054,7 +3054,7 @@ The admin form `requires user, role Admin, silo org`:
 
 #### W0005 — a form with no `<Errors form />` for an invalid answer
 
-- A form posting a write route whose `update` can answer `Response.invalid`, but without `<Errors form />` to show the text: "`Submit` can answer `Response.invalid`, but this form has no `<Errors form />`: the user never sees its text" (chapter 10, "`Test.submitRaw`: input the types forbid").
+- A form posting a write route whose handler can answer `Response.invalid`, but without `<Errors form />` to show the text: "`Submit` can answer `Response.invalid`, but this form has no `<Errors form />`: the user never sees its text" (chapter 10, "`Test.submitRaw`: input the types forbid").
 
 #### W0006 — an adapter reads an environment variable `deploy.requires` does not name
 
@@ -3199,7 +3199,7 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   the element's attributes, such as `variant`, hover shows that attribute's
   line alone. A component such as `<Layout.Page` is a function, not an
   element, so hover shows its signature as for any other declaration. On a
-  route's members (`Index.load`, `Index.view`, `Toggle.update`) hover shows
+  route's members (`Index.load`, `Index.view`, `Toggle.patch`) hover shows
   the signature, as for any declaration. On a use of a route (`Toggle` in
   `click={Toggle { … }}`), it shows the route as declared: its method and
   path, the parameter record, the `form` and the `requires` clauses.

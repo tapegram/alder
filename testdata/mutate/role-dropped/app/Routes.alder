@@ -24,20 +24,20 @@ Home.load params session = Query.succeed { }
 Teams.load : Teams.Params -> Session -> Query Model
 Teams.load params session = Query.succeed { }
 
-Save.update : Save.Params -> Session -> Task Response
-Save.update p session = Task.succeed Response.refresh
+Save.post : Save.Params -> Session -> Task Response
+Save.post p session = Task.succeed Response.refresh
 
-Open.update : Open.Params -> Session -> Task Response
-Open.update p session = Task.succeed Response.refresh
+Open.post : Open.Params -> Session -> Task Response
+Open.post p session = Task.succeed Response.refresh
 
-Find.update : Find.Params -> Session -> Task Response
-Find.update p session = Task.succeed (Response.redirect (Show {}))
+Find.post : Find.Params -> Session -> Task Response
+Find.post p session = Task.succeed (Response.redirect (Show {}))
 
-Back.update : Back.Params -> Session -> Task Response
-Back.update p session = Task.succeed (Response.redirect (Home {}))
+Back.post : Back.Params -> Session -> Task Response
+Back.post p session = Task.succeed (Response.redirect (Home {}))
 
-Pick.update : Pick.Params -> Session -> Task Response
-Pick.update p session = Task.succeed (Response.redirect (Teams {}))
+Pick.post : Pick.Params -> Session -> Task Response
+Pick.post p session = Task.succeed (Response.redirect (Teams {}))
 
 Teams.view : Model -> Session -> Html
 Teams.view model session = <p>Teams</p>

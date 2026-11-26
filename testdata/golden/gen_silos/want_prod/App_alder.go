@@ -17,7 +17,7 @@ type App__Session struct {
 
 type App__Leave__Params struct{}
 
-func App__Leave__update(params App__Leave__Params, session App__Session) eff.Task[rt.Response] {
+func App__Leave__post(params App__Leave__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
 		return App__Session{User: s.User, Org: rt.Nothing[string](), Role: s.Role}
 	}), func(_ struct{}) eff.Task[rt.Response] {

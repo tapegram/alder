@@ -9,8 +9,8 @@ Index.load params session = Query.succeed 1
 Index.view : Int -> Session -> Html
 Index.view n session = <button click={Clear}>Clear</button>
 
-Clear.update : Clear.Params -> Session -> Task Response
-Clear.update params session = Task.succeed Response.refresh
+Clear.post : Clear.Params -> Session -> Task Response
+Clear.post params session = Task.succeed Response.refresh
 
 -- the old answers: `Nav` and its constructors are gone
 again : Task Nav

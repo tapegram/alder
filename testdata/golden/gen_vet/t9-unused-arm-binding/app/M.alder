@@ -14,14 +14,14 @@ type Model = { n: Int }
 M.load : M.Params -> Session -> Query Model
 M.load params session = Query.succeed { n: 1 }
 
-Pick.update : Pick.Params -> Session -> Task Response
-Pick.update p session = {
+Pick.post : Pick.Params -> Session -> Task Response
+Pick.post p session = {
   let unused = p.id
   Task.succeed Response.refresh
 }
 
-Clear.update : Clear.Params -> Session -> Task Response
-Clear.update params session = Task.succeed Response.refresh
+Clear.delete : Clear.Params -> Session -> Task Response
+Clear.delete params session = Task.succeed Response.refresh
 
 label : Maybe Int -> Text
 label m = match m {

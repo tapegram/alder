@@ -13,7 +13,7 @@
     (bind query n : Int
       (db-run count (db-scoped Db.scoped org Project.Project))
       (pure query (record Model (projects (var projects)) (n (var n)))))))
-(value Admin.Projects.Remove.update : Remove.Params -> Projects.Session -> Task Response (p session)
+(value Admin.Projects.Remove.post : Remove.Params -> Projects.Session -> Task Response (p session)
   (bind task _
     (db-delete Project.Project (field id (var p)))
     (pure task (std Response.refresh))))
@@ -30,7 +30,7 @@
   (org Maybe Text)
   (role User.Role = (ctor User.Role.Reader)))
 (record App.Leave.Params)
-(value App.Leave.update : Leave.Params -> Session -> Task Response (params session)
+(value App.Leave.post : Leave.Params -> Session -> Task Response (params session)
   (bind task _
     (call (std Session.put)
       (lambda (s : Session) (update (var s) (org (ctor Prelude.Maybe.Nothing)))))
@@ -69,7 +69,7 @@
     (bind query n : Int
       (db-run count (db-scoped Db.scoped user Note.Note))
       (pure query (record Model (notes (var notes)) (n (var n)))))))
-(value Notes.Index.Add.update : Add.Params -> Index.Session -> Task Response (params session)
+(value Notes.Index.Add.post : Add.Params -> Index.Session -> Task Response (params session)
   (bind task _
     (db-insert-scoped Db.insertMine user Note.Note (record (text "a")))
     (bind task _
@@ -95,7 +95,7 @@
         (cond eq (col Membership.Membership user) (field user (var session))))
       all)
     (pure query (record Model (mine (var mine))))))
-(value Orgs.Index.Pick.update : Pick.Params -> Index.Session -> Task Response (p session)
+(value Orgs.Index.Pick.post : Pick.Params -> Index.Session -> Task Response (p session)
   (bind task _
     (call (std Session.put)
       (lambda (s : App.Session)
@@ -157,12 +157,12 @@
                   (var org))))
             (projects (var projects))
             (labels (var labels))))))))
-(value Projects.Index.Add.update : Add.Params -> Index.Session -> Task Response (p session)
+(value Projects.Index.Add.post : Add.Params -> Index.Session -> Task Response (p session)
   (bind task _
     (db-insert-scoped Db.insertScoped org Project.Project
       (record (name (field name (field form (var p))))))
     (pure task (std Response.refresh))))
-(value Projects.Index.Rename.update : Rename.Params -> Index.Session -> Task Response (p session)
+(value Projects.Index.Rename.patch : Rename.Params -> Index.Session -> Task Response (p session)
   (bind task pr : Project
     (db-get-scoped Db.getScoped org Project.Project (field id (var p)))
     (bind task _
@@ -170,15 +170,15 @@
         (field id (var pr))
         (lambda (x : Project) (update (var x) (name "renamed"))))
       (pure task (std Response.refresh)))))
-(value Projects.Index.Remove.update : Remove.Params -> Index.Session -> Task Response (p session)
+(value Projects.Index.Remove.delete : Remove.Params -> Index.Session -> Task Response (p session)
   (bind task _
     (db-delete-scoped Db.deleteScoped org Project.Project (field id (var p)))
     (pure task (std Response.refresh))))
-(value Projects.Index.Seed.update : Seed.Params -> Index.Session -> Task Response (params session)
+(value Projects.Index.Seed.post : Seed.Params -> Index.Session -> Task Response (params session)
   (bind task _
     (all task (call (std List.map) (global Projects.Index.seed) (list "a" "b")))
     (pure task (std Response.refresh))))
-(value Projects.Index.Both.update : Both.Params -> Index.Session -> Task Response (p session)
+(value Projects.Index.Both.post : Both.Params -> Index.Session -> Task Response (p session)
   (bind task _
     (db-get Org.Org (field org (var session)))
     (bind task n : Int
@@ -189,7 +189,7 @@
           (lambda (x : Project)
             (update (var x) (name (call (std Text.fromInt) (var n))))))
         (pure task (std Response.refresh))))))
-(value Projects.Index.Tag.update : Tag.Params -> Index.Session -> Task Response (params session)
+(value Projects.Index.Tag.post : Tag.Params -> Index.Session -> Task Response (params session)
   (bind task _
     (db-insert-scoped Db.insertScoped org Label.Label (record (name "new")))
     (pure task (std Response.refresh))))
@@ -305,12 +305,12 @@
   (roles Admin)
   (silo org)
   (session Projects.Session)
-  (handler Admin.Projects.Remove.update)
+  (handler Admin.Projects.Remove.post)
   (store silo org)
   (needs-shown))
 (route App.Leave POST "/"
   (params Leave.Params)
-  (handler App.Leave.update)
+  (handler App.Leave.post)
   (store shared))
 (route Login.Login GET "/login"
   (params Login.Params)
@@ -328,7 +328,7 @@
   (params Add.Params)
   (requires user)
   (session Index.Session)
-  (handler Notes.Index.Add.update)
+  (handler Notes.Index.Add.post)
   (store shared)
   (needs-shown))
 (route Orgs.Index.Index GET "/orgs"
@@ -342,7 +342,7 @@
   (params Pick.Params)
   (requires user)
   (session Index.Session)
-  (handler Orgs.Index.Pick.update)
+  (handler Orgs.Index.Pick.post)
   (store shared))
 (route Projects.Index.Index GET "/projects"
   (params Index.Params)
@@ -356,42 +356,42 @@
   (form NewProject)
   (requires user org)
   (session Index.Session)
-  (handler Projects.Index.Add.update)
+  (handler Projects.Index.Add.post)
   (store silo org)
   (needs-shown))
 (route Projects.Index.Rename PATCH "/projects/{id}"
   (params Rename.Params)
   (requires user org)
   (session Index.Session)
-  (handler Projects.Index.Rename.update)
+  (handler Projects.Index.Rename.patch)
   (store silo org)
   (needs-shown))
 (route Projects.Index.Remove DELETE "/projects/{id}"
   (params Remove.Params)
   (requires user org)
   (session Index.Session)
-  (handler Projects.Index.Remove.update)
+  (handler Projects.Index.Remove.delete)
   (store silo org)
   (needs-shown))
 (route Projects.Index.Seed POST "/projects/seeds"
   (params Seed.Params)
   (requires user org)
   (session Index.Session)
-  (handler Projects.Index.Seed.update)
+  (handler Projects.Index.Seed.post)
   (store silo org)
   (needs-shown))
 (route Projects.Index.Both POST "/projects/pair"
   (params Both.Params)
   (requires user org)
   (session Index.Session)
-  (handler Projects.Index.Both.update)
+  (handler Projects.Index.Both.post)
   (store silo org)
   (needs-shown))
 (route Projects.Index.Tag POST "/projects/tags"
   (params Tag.Params)
   (requires user org)
   (session Index.Session)
-  (handler Projects.Index.Tag.update)
+  (handler Projects.Index.Tag.post)
   (store shared)
   (needs-shown))
 (route Projects.Show.Show GET "/projects/{id}"

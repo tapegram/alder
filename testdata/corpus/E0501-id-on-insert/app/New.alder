@@ -13,8 +13,8 @@ New.load params session = Query.succeed { id: params.id }
 
 form NewTodo = { title: Text.NonEmpty, owner: User.UserId }
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post p session = {
   let _ <- Db.insert Todo {
     id: p.id,
     title: p.form.title,

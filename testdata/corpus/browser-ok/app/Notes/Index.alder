@@ -54,14 +54,14 @@ form Prefs = {
   reminder: Maybe Int = Just 3,
 }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update p session = {
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post p session = {
   let _ <- Db.insert Note { title: p.form.title, owner: session.user }
   Task.succeed (Response.redirect (Index {}) |> Response.success "Saved")
 }
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update p session = {
+Toggle.put : Toggle.Params -> Session -> Task Response
+Toggle.put p session = {
   let found <- Db.get Note p.id
   match found {
     Just n ->
@@ -74,8 +74,8 @@ Toggle.update p session = {
   }
 }
 
-Boom.update : Boom.Params -> Session -> Task Response
-Boom.update p session = {
+Boom.post : Boom.Params -> Session -> Task Response
+Boom.post p session = {
   let notes <-
     Db.from Note
       |> Db.where (Note.owner.eq session.user)
@@ -85,17 +85,17 @@ Boom.update p session = {
   Task.succeed (if 1 / zero == 0 then Response.refresh else Response.refresh)
 }
 
-Rename.update : Rename.Params -> Session -> Task Response
-Rename.update p session = {
+Rename.patch : Rename.Params -> Session -> Task Response
+Rename.patch p session = {
   let _ <- Db.update Note p.id (\x -> { x | title: p.form.title })
   Task.succeed Response.refresh
 }
 
-SavePrefs.update : SavePrefs.Params -> Session -> Task Response
-SavePrefs.update p session = Task.succeed Response.refresh
+SavePrefs.put : SavePrefs.Params -> Session -> Task Response
+SavePrefs.put p session = Task.succeed Response.refresh
 
-Visit.update : Visit.Params -> Session -> Task Response
-Visit.update p session = {
+Visit.post : Visit.Params -> Session -> Task Response
+Visit.post p session = {
   let _ <- Session.put (\s -> { s | visits: s.visits + 1 })
   Task.succeed Response.refresh
 }

@@ -22,5 +22,5 @@ Row.item n = <li>{Text.fromInt n}</li>
 Row.link : Row.Params -> Html
 Row.link params = <a href={Row { id: params.id }}>{Row.item params.id}</a>
 
-Bump.update : Bump.Params -> Session -> Task Response
-Bump.update params session = Task.succeed (Response.redirect (Row { id: params.id }))
+Bump.post : Bump.Params -> Session -> Task Response
+Bump.post params session = Task.succeed (Response.redirect (Row { id: params.id }))

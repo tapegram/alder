@@ -30,8 +30,8 @@ Login.load params session = Query.succeed {}
 
 form Credentials = { email: Text.Email, password: Text.Secret }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update p session = {
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post p session = {
   let found <- Password.verify { email: p.form.email, password: p.form.password }
   match found {
     -- The session keeps the user and their role as the row has it now: a role changed later

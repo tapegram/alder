@@ -24,27 +24,27 @@ route Bound  = POST "/bound"  { id: Project.ProjectId }
 route Helped = POST "/helper" { id: Project.ProjectId }
 route Scoped = POST "/scope" { id: Project.ProjectId }
 
-Wipe.update : Wipe.Params -> Session -> Task Response
-Wipe.update p session = {
+Wipe.post : Wipe.Params -> Session -> Task Response
+Wipe.post p session = {
   let _ <- Db.delete Project p.id
   Task.succeed Response.refresh
 }
 
-Bound.update : Bound.Params -> Session -> Task Response
-Bound.update p session = {
+Bound.post : Bound.Params -> Session -> Task Response
+Bound.post p session = {
   let del = Db.delete
   let _ <- del Project p.id
   Task.succeed Response.refresh
 }
 
-Helped.update : Helped.Params -> Session -> Task Response
-Helped.update p session = {
+Helped.post : Helped.Params -> Session -> Task Response
+Helped.post p session = {
   let _ <- Wiper.wipe p.id
   Task.succeed Response.refresh
 }
 
-Scoped.update : Scoped.Params -> Session -> Task Response
-Scoped.update p session = {
+Scoped.post : Scoped.Params -> Session -> Task Response
+Scoped.post p session = {
   let _ <- Db.deleteScoped Project p.id
   Task.succeed Response.refresh
 }

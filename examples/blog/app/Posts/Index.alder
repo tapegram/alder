@@ -54,8 +54,8 @@ Index.load params session = {
 
 form SearchForm = { q: Text }
 
-Search.update : Search.Params -> Session -> Task Response
-Search.update p session = Task.succeed (Response.redirect (Index { page: 1, q: p.form.q }))
+Search.post : Search.Params -> Session -> Task Response
+Search.post p session = Task.succeed (Response.redirect (Index { page: 1, q: p.form.q }))
 
 Index.view : Model -> Session -> Html
 Index.view model session =
@@ -299,7 +299,7 @@ test "a long query is cut" = {
 
 test "a search answers with the first page of its results" = {
   let model <- Index.load { page: 3, q: "" } { user: Nothing, role: Reader }
-  let nav <- Search.update { form: { q: "soup" } } { user: Nothing, role: Reader }
+  let nav <- Search.post { form: { q: "soup" } } { user: Nothing, role: Reader }
   Task.succeed (nav == Response.redirect (Index { page: 1, q: "soup" }))
 }
 

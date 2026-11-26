@@ -51,16 +51,16 @@ Index.view model session =
     <form submit={Start}><Input field="email" /><Input field="name" /><Errors form /><button>Export</button></form>
   </body></html>
 
-Create.update : Create.Params -> Session -> Task Response
-Create.update p session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post p session = {
   let id <- Db.insert User.User { email: p.form.email, name: p.form.name }
   let _ <- Job.enqueue (SendWelcome { user: id })
   Task.succeed (Response.redirect (Index {}))
 }
 
 -- Queues the mail and then fails: the job goes with the request's writes.
-Refuse.update : Refuse.Params -> Session -> Task Response
-Refuse.update p session = {
+Refuse.post : Refuse.Params -> Session -> Task Response
+Refuse.post p session = {
   let id <- Db.insert User.User { email: p.form.email, name: p.form.name }
   let _ <- Job.enqueue (SendWelcome { user: id })
   Task.fail "refused"
@@ -105,15 +105,15 @@ route Start = POST "/exports" { } form NewUser
 route Export = GET "/exports/{job}" { job: Job.Id }
 route Stop = DELETE "/exports/{job}" { job: Job.Id }
 
-Start.update : Start.Params -> Session -> Task Response
-Start.update p session = {
+Start.post : Start.Params -> Session -> Task Response
+Start.post p session = {
   let user <- Db.insert User.User { email: p.form.email, name: p.form.name }
   let id <- Job.enqueue (BuildExport { user: user })
   Task.succeed (Response.redirect (Export { job: id }))
 }
 
-Stop.update : Stop.Params -> Session -> Task Response
-Stop.update p session = {
+Stop.delete : Stop.Params -> Session -> Task Response
+Stop.delete p session = {
   let _ <- Job.cancel p.job
   Task.succeed (Response.redirect (Export { job: p.job }))
 }

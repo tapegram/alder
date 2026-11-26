@@ -292,7 +292,7 @@ let _ <- Db.delete Todo id
 
 ### Transactions and `@unique`
 
-Writes in one `update` run in a single transaction. If the task fails,
+Writes in one handler run in a single transaction. If the task fails,
 nothing is written. Inserting or updating a row that violates `@unique`
 fails the task with a message such as `User.email must be unique`, and
 everything the task wrote before is rolled back; check first with a query
@@ -941,16 +941,16 @@ Why an app wants that:
 
 A `Task` runs in one transaction, and a transaction is one database's.
 So **a `Task` writes to one store**: the shared database, or one silo.
-The checker works out what each write route's `update` writes, and
+The checker works out what each write route's handler writes, and
 refuses one whose writes fall in two stores (E0031):
 
 ```text
-`Create.update` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route.
+`Create.post` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route.
 ```
 
 What it counts is every mention of a write function — `Db.insert`,
 `Db.update`, `Db.delete` and their scoped forms — anywhere the `update` can
-reach: in the `update`, in every helper it mentions (in any module, a helper
+reach: in the handler, in every helper it mentions (in any module, a helper
 of a helper too), in a lambda, in a `Task.all` over a `List.map`.
 
 It does not matter whether the function is called where it is written:
@@ -962,20 +962,20 @@ function always names its table there: `Table t` is refused, E0003).
 The count errs on the side of too many: a helper that is mentioned and
 never called still counts.
 
-That is what the checker proves: an `update` it accepts mentions no
+That is what the checker proves: a handler it accepts mentions no
 write of a second store. It does not look at a `test`'s own Tasks, nor
 inside a capability's adapter (Go code).
 
 There the runtime holds the
 rule: a request's `Task` is bound to its route's store before it runs, a
-`Test.run`'s to the store it writes first (`Test.run` of a route's `update`
+`Test.run`'s to the store it writes first (`Test.run` of a route's handler
 to the route's store, as its request is), and a write of another store fails
 the `Task` with an
 internal error: a 500 in production, a failed test under `alder test`.
 
 #### Reads may mix
 
-An `update`, or a `load`, may read the shared database and a
+A handler, or a `load`, may read the shared database and a
 silo, as the workspace's projects page reads its org's name (shared)
 beside its projects (the org's file). A `Session.put` writes the cookie,
 not a store, and a capability is outside both, so neither counts.

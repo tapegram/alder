@@ -11,9 +11,9 @@
 (record Edit.Ping.Params (n Int))
 (value Edit.Edit.load : Edit.Params -> App.Session -> Query Model (params session)
   (pure query (record Model (n (field n (var params))) (busy False))))
-(value Edit.Save.update : Save.Params -> App.Session -> Task Response (params session)
+(value Edit.Save.post : Save.Params -> App.Session -> Task Response (params session)
   (pure task (std Response.refresh)))
-(value Edit.Ping.update : Ping.Params -> App.Session -> Task Response (params session)
+(value Edit.Ping.post : Ping.Params -> App.Session -> Task Response (params session)
   (pure task (std Response.refresh)))
 (value Edit.Edit.view : Model -> App.Session -> Html (model session)
   (elem div
@@ -64,11 +64,11 @@
 (route Edit.Save POST "/edit/{n}"
   (params Save.Params)
   (form Note)
-  (handler Edit.Save.update)
+  (handler Edit.Save.post)
   (needs-shown))
 (route Edit.Ping POST "/edit/{n}/ping"
   (params Ping.Params)
-  (handler Edit.Ping.update)
+  (handler Edit.Ping.post)
   (needs-shown))
 (route Other.Other GET "/other"
   (params Other.Params)

@@ -1,14 +1,14 @@
 # 17. Background jobs
 
 A request can only do work while it holds the connection. Sending a
-welcome mail from `update` makes the person who signed up wait for the
+welcome mail from the handler makes the person who signed up wait for the
 mail server, and if the server is down, the `Task` fails, and the
 sign-up with it. The mail was never the point of the request; it only
 had to happen soon. Work that should happen at night, or every hour, has
 nowhere to live at all.
 
 A **job** is the answer. It is a declaration beside the routes: a name,
-the parameters it needs, and a `run` arm that does the work. `update`
+the parameters it needs, and a `run` arm that does the work. The handler
 puts the job on a queue with one effect step, in the same transaction
 as the writes that caused it, and the app's own process runs it a
 moment later, outside any request. A job that fails is tried again
@@ -76,7 +76,7 @@ test "the welcome mail is sent by the job" = {
 
 - **The arm it needs**, `SendWelcome.run : SendWelcome.Params -> Task Unit`,
   in the same module. A job without its `run` is E0043, the code of a
-  route without its `update`:
+  route without its handler:
 
 ```alder error=E0043 "job `Cleanup` needs its `run`"
 job Cleanup = {}
@@ -187,15 +187,15 @@ The first four give back the job's `Job.Id`, eight hex characters like a
 request's id. A `Job.Id` is a brand of `Text` (chapter 4), so a route
 parameter, a table column or another job's parameter may carry one.
 
-The usual place is a write route's `update`:
+The usual place is a write route's handler:
 
 ```alder
 form NewUser = { email: Text.Email, name: Text.NonEmpty }
 
 route Signup = POST "/signup" { } form NewUser
 
-Signup.update : Signup.Params -> Session -> Task Response
-Signup.update p session = {
+Signup.post : Signup.Params -> Session -> Task Response
+Signup.post p session = {
   let id <- Db.insert User { email: p.form.email, name: p.form.name, passwordHash: "" }
   let _ <- Job.enqueue (Jobs.Nightly.Nightly {})
   Task.succeed (Response.redirect (Auth.Login.Login {}))
@@ -241,7 +241,7 @@ A job's parameters take at most 64 KB as JSON; a larger job fails the
 The job's row is written in the store the `Task` writes to. In an app
 without silos that is the one database. In an app with silos (chapter
 8, "Silos"), it is the silo of the org whose tables the route's
-`update` writes, so the job commits with those writes. A route that only
+the handler writes, so the job commits with those writes. A route that only
 queues a job writes no table, so it is bound to the shared store, and
 its job is stored there.
 
@@ -280,14 +280,14 @@ route Export = GET "/exports/{job}" { job: Job.Id }
 
 route Stop = DELETE "/exports/{job}" { job: Job.Id }
 
-Start.update : Start.Params -> Session -> Task Response
-Start.update p session = {
+Start.post : Start.Params -> Session -> Task Response
+Start.post p session = {
   let id <- Job.enqueue (BuildExport {})
   Task.succeed (Response.redirect (Export { job: id }))
 }
 
-Stop.update : Stop.Params -> Session -> Task Response
-Stop.update p session = {
+Stop.delete : Stop.Params -> Session -> Task Response
+Stop.delete p session = {
   let _ <- Job.cancel p.job
   Task.succeed (Response.redirect (Export { job: p.job }))
 }
@@ -343,7 +343,7 @@ is.
 
 ## What a job may do
 
-`run` may do everything a write route's `update` may, except what needs
+`run` may do everything a write route's handler may, except what needs
 a session, since a job runs outside any request:
 
 - **No `Session.put`.** It is E0003 in `run`, and in a helper `run`
@@ -360,7 +360,7 @@ a session, since a job runs outside any request:
   `enqueueAt`.
 
 Capabilities (`Mailer.send`, `Http.post`), `Log.*`, `Time.now`,
-`Random.*` and every `Db` read and write work as they do in `update`.
+`Random.*` and every `Db` read and write work as they do in the handler.
 
 ## How the queue works
 
@@ -482,7 +482,7 @@ before a report nobody is.
 ### Running a job
 
 The worker decodes the row's parameters, builds the job's `Task`, and
-runs it as it runs a route's `update` (chapter 7, "How effects run"),
+runs it as it runs a route's handler (chapter 7, "How effects run"),
 with one step added at the end: the **done mark**, an `UPDATE` that sets
 the row to `done`. The mark is the `Task`'s last write, so it is in the
 job's own transaction:

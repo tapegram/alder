@@ -11,8 +11,8 @@ Home.load : Home.Params -> Session -> Query Model
 Home.load params session = Query.succeed {}
 
 -- A mutant: logging in no longer stores the user.
-Login.update : Login.Params -> Session -> Task Response
-Login.update p session = {
+Login.post : Login.Params -> Session -> Task Response
+Login.post p session = {
   let _ <- Session.put (\s -> { s | user: Just p.id })
   Task.succeed Response.refresh
 }

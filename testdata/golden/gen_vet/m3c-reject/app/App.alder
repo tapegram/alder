@@ -10,8 +10,8 @@ login = Names.Names
 
 route Reset = POST "/" { }
 
-Reset.update : Reset.Params -> Session -> Task Response
-Reset.update p session = {
+Reset.post : Reset.Params -> Session -> Task Response
+Reset.post p session = {
   let _ <- Session.put (\s -> { s | n: 0 })
   Task.succeed Response.refresh
 }

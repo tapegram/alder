@@ -36,8 +36,8 @@ form NewPost = {
   body: Text,
 }
 
-Create.update : Create.Params -> Session -> Task Response
-Create.update p session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post p session = {
   let _ <- User.authorOnly session.user
   let taken <- Post.bySlug p.form.slug
   match taken {
@@ -127,7 +127,7 @@ test "creating a post redirects to its edit page" = {
   let _ <- Test.login { user: Just author, role: Author }
   let model <- Write.load {} { user: author, role: Author }
   let r <-
-    Test.run (Create.update {
+    Test.run (Create.post {
       form: {
         slug: Post.Slug "hello",
         title: Text.NonEmpty "Hello",
@@ -161,7 +161,7 @@ test "a taken slug is refused" = {
   let _ <- Test.login { user: Just author, role: Author }
   let model <- Write.load {} { user: author, role: Author }
   let r <-
-    Test.run (Create.update {
+    Test.run (Create.post {
       form: {
         slug: Post.Slug "hello",
         title: Text.NonEmpty "Again",

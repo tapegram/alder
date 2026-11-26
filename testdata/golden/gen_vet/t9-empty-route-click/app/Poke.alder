@@ -8,8 +8,8 @@ type Model = { n: Int }
 Show.load : Show.Params -> Session -> Query Model
 Show.load params session = Query.succeed { n: 1 }
 
-Poke.update : Poke.Params -> Session -> Task Response
-Poke.update p session = Task.succeed Response.refresh
+Poke.post : Poke.Params -> Session -> Task Response
+Poke.post p session = Task.succeed Response.refresh
 
 -- `route Poke` takes no parameters: `click={Poke}` and `click={Poke {}}` both send it.
 Show.view : Model -> Session -> Html

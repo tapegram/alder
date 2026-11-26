@@ -116,11 +116,11 @@ unless the item says what happens instead.
     round is E0045. A write route has no `view`: it answers with a
     `Response`, which names the GET route to show.
 
-21. A write route runs no `load` before its `update`, so its parameters come
+21. A write route runs no `load` before its handler, so its parameters come
     from the request and anyone can send any id. Use the scoped operations
     (`Db.updateMine`, `Db.deleteMine`) on an owned table, as chapter 6,
     "Rules", shows, rather than checking in `load` and trusting the id.
 
 22. The old `page` and `msg` declarations, `Nav`, and an unqualified `load`,
-    `view` or `update` are E0046. Rewrite such a module as routes by hand
+    `view` or the handler are E0046. Rewrite such a module as routes by hand
     (chapter 6).

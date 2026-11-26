@@ -32,34 +32,34 @@ Index.load params session = {
 
 form NewTodo = { title: Text }
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post p session = {
   let _ <- Db.insertMine Todo { title: p.form.title }
   Task.succeed Response.refresh
 }
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update p session = {
+Toggle.put : Toggle.Params -> Session -> Task Response
+Toggle.put p session = {
   let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
   Task.succeed Response.refresh
 }
 
-Rename.update : Rename.Params -> Session -> Task Response
-Rename.update p session = {
+Rename.patch : Rename.Params -> Session -> Task Response
+Rename.patch p session = {
   let t <- Db.getMine Todo p.id
   let _ <- Db.update Todo t.id (\x -> { x | title: "renamed" })
   Task.succeed Response.refresh
 }
 
-Remove.update : Remove.Params -> Session -> Task Response
-Remove.update p session = {
+Remove.delete : Remove.Params -> Session -> Task Response
+Remove.delete p session = {
   let _ <- p.id |> Db.deleteMine Todo
   Task.succeed Response.refresh
 }
 
 -- a write, then a scoped write: a row that is not mine undoes both
-Duplicate.update : Duplicate.Params -> Session -> Task Response
-Duplicate.update p session = {
+Duplicate.post : Duplicate.Params -> Session -> Task Response
+Duplicate.post p session = {
   let _ <- Db.insertMine Todo { title: "copy" }
   let _ <- Db.updateMine Todo p.id (\t -> { t | done: True })
   Task.succeed Response.refresh
@@ -327,7 +327,7 @@ test "a scoped update of another's row fails the whole task" = {
   let bob <- Db.insert User { name: "Bob" }
   let id <- Db.insert Todo { title: "Milk", owner: me }
   let _ <- Test.login { user: Just bob }
-  let r <- Test.run (Duplicate.update { id: id } { user: bob, role: Reader })
+  let r <- Test.run (Duplicate.post { id: id } { user: bob, role: Reader })
   let n <- Db.from Todo |> Db.count
   Task.succeed (
     {

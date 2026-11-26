@@ -10,8 +10,8 @@ type Model = { }
 Show.load : Show.Params -> Session -> Query Model
 Show.load params session = Query.succeed {}
 
-Delete.update : Delete.Params -> Session -> Task Response
-Delete.update p session = {
+Delete.post : Delete.Params -> Session -> Task Response
+Delete.post p session = {
   let _ <- p.id |> Db.delete Todo
   Task.succeed Response.refresh
 }

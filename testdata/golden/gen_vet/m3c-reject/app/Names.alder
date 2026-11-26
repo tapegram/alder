@@ -18,8 +18,8 @@ Names.load params session = {
 
 form NewName = { name: Text.NonEmpty }
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post p session = {
   let _ <- Db.insert Name { name: p.form.name }
   let _ <- Session.put (\s -> { s | n: s.n + 1 })
   Task.succeed (Response.invalid "taken")

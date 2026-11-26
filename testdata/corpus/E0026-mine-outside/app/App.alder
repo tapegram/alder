@@ -9,8 +9,8 @@ login = Login.Login
 
 route Clear = POST "/" { id: Todo.TodoId }
 
-Clear.update : Clear.Params -> Session -> Task Response
-Clear.update p session = {
+Clear.post : Clear.Params -> Session -> Task Response
+Clear.post p session = {
   let _ <- Db.deleteMine Todo p.id
   Task.succeed Response.refresh
 }

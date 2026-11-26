@@ -9,8 +9,8 @@ login = Login.Login
 
 route Clear = POST "/" { }
 
-Clear.update : Clear.Params -> Session -> Task Response
-Clear.update p session = {
+Clear.post : Clear.Params -> Session -> Task Response
+Clear.post p session = {
   let _ <- Session.put (\s -> { s | cart: 0 })
   Task.succeed (Shop.after Response.refresh)
 }

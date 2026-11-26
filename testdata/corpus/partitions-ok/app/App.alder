@@ -20,8 +20,8 @@ silo org { Project, Issue }
 
 route Leave = POST "/" { }
 
-Leave.update : Leave.Params -> Session -> Task Response
-Leave.update params session = {
+Leave.post : Leave.Params -> Session -> Task Response
+Leave.post params session = {
   let _ <- Session.put (\s -> { s | org: Nothing })
   Task.succeed (Response.redirect (Orgs.Index.Index {}))
 }

@@ -15,7 +15,7 @@ type App__Session struct {
 
 type App__Logout__Params struct{}
 
-func App__Logout__update(params App__Logout__Params, session App__Session) eff.Task[rt.Response] {
+func App__Logout__delete(params App__Logout__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Pure(std.ResponseRefresh())
 }
 

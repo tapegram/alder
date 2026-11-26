@@ -123,7 +123,7 @@ func TestIR_Todos(t *testing.T) {
 	got := Dump(p)
 	compareGolden(t, "../../testdata/golden/ir_todos.ir", got)
 	for _, want := range []string{"(value Todos.Index.Index.view ", "(component Todos.Index.Item ", "(component Layout.Page ",
-		"(value Todos.Index.Index.load ", "(value Todos.Index.Submit.update ", "(value App.Logout.update ",
+		"(value Todos.Index.Index.load ", "(value Todos.Index.Submit.post ", "(value App.Logout.delete ",
 		`(route Todos.Index.Index GET "/"`, `(route App.Logout DELETE "/session"`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("todos dump lacks %q", want)
@@ -656,10 +656,10 @@ func TestPositions(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"Index.load", "Submit.update", "Toggle.update"} {
+	for _, name := range []string{"Index.load", "Submit.post", "Toggle.patch"} {
 		visit(value(index, name).Body)
 	}
-	for _, name := range []string{"Show.load", "Save.update", "Delete.update"} {
+	for _, name := range []string{"Show.load", "Save.put", "Delete.delete"} {
 		visit(value(show, name).Body)
 	}
 	want := map[string][]Pos{
@@ -695,7 +695,7 @@ func TestPositions(t *testing.T) {
 	if lit, ok := done.Default.(*Lit); !ok || lit.Pos != (Pos{14, 16}) || done.Pos != (Pos{14, 3}) {
 		t.Fatalf("Todo.done: default %#v, field pos %v", done.Default, done.Pos)
 	}
-	ins := value(index, "Submit.update").Body.(*EffBind).Effect.(*DbInsertScoped)
+	ins := value(index, "Submit.post").Body.(*EffBind).Effect.(*DbInsertScoped)
 	for _, f := range ins.Row.(*Record).Fields {
 		if f.Name == "done" && f.Value != done.Default {
 			t.Fatalf("the insert row's done is %#v, not the table's default node", f.Value)

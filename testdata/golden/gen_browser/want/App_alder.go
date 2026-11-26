@@ -24,7 +24,7 @@ type App__Send__Params struct {
 	Form App__Feedback
 }
 
-func App__Logout__update(p App__Logout__Params, session App__Session) eff.Task[rt.Response] {
+func App__Logout__delete(p App__Logout__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
 		return App__Session{User: rt.Nothing[string](), Visits: s.Visits}
 	}), func(_ struct{}) eff.Task[rt.Response] {
@@ -32,7 +32,7 @@ func App__Logout__update(p App__Logout__Params, session App__Session) eff.Task[r
 	})
 }
 
-func App__Send__update(p App__Send__Params, session App__Session) eff.Task[rt.Response] {
+func App__Send__post(p App__Send__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Pure(std.ResponseRefresh())
 }
 

@@ -1937,7 +1937,7 @@ func TestTodos(t *testing.T) {
 			}
 		}()
 		p := Auth__Login__Submit__Params{Form: Auth__Login__Credentials{Email: "a@b.c", Password: "pw"}}
-		eff.Run(env, eff.KTask, Auth__Login__Submit__update(p, env.Session.(App__Session)))
+		eff.Run(env, eff.KTask, Auth__Login__Submit__post(p, env.Session.(App__Session)))
 	}()
 	env.Caps["Auth.Login.Password"] = password{user: uid}
 
@@ -1957,7 +1957,7 @@ func TestTodos(t *testing.T) {
 	login := func(pw string) rt.Response {
 		t.Helper()
 		p := Auth__Login__Submit__Params{Form: Auth__Login__Credentials{Email: "a@b.c", Password: pw}}
-		r, err := eff.Run(env, eff.KTask, Auth__Login__Submit__update(p, env.Session.(App__Session)))
+		r, err := eff.Run(env, eff.KTask, Auth__Login__Submit__post(p, env.Session.(App__Session)))
 		if err != nil {
 			t.Fatalf("login: %v", err)
 		}
@@ -1994,7 +1994,7 @@ func TestTodos(t *testing.T) {
 
 	// add
 	add := func() eff.Task[rt.Response] {
-		return Todos__Index__Submit__update(Todos__Index__Submit__Params{Form: Todos__Index__NewTodo{Title: "Buy milk", Due: rt.Just(rt.Date{Y: 2026, M: 10, D: 31})}}, session)
+		return Todos__Index__Submit__post(Todos__Index__Submit__Params{Form: Todos__Index__NewTodo{Title: "Buy milk", Due: rt.Just(rt.Date{Y: 2026, M: 10, D: 31})}}, session)
 	}
 	r, err := run(add())
 	if err != nil || r.Kind != rt.RespRedirect || r.Target.Path != "/" {
@@ -2015,7 +2015,7 @@ func TestTodos(t *testing.T) {
 
 	// toggle
 	mark = len(env.Trace)
-	r, err = run(Todos__Index__Toggle__update(Todos__Index__Toggle__Params{Id: td.Id}, session))
+	r, err = run(Todos__Index__Toggle__patch(Todos__Index__Toggle__Params{Id: td.Id}, session))
 	if err != nil || r.Kind != rt.RespRefresh {
 		t.Fatalf("toggle: %+v, %v", r, err)
 	}
@@ -2039,7 +2039,7 @@ func TestTodos(t *testing.T) {
 	}
 
 	// toggling a todo that does not exist is Task.notFound (a 404)
-	if _, err := run(Todos__Index__Toggle__update(Todos__Index__Toggle__Params{Id: "nope"}, session)); err != eff.ErrNotFound {
+	if _, err := run(Todos__Index__Toggle__patch(Todos__Index__Toggle__Params{Id: "nope"}, session)); err != eff.ErrNotFound {
 		t.Fatalf("toggle missing: err = %v, want ErrNotFound", err)
 	}
 	// so is another user's: the scoped operations act for the ambient session (env.Session), not
@@ -2048,7 +2048,7 @@ func TestTodos(t *testing.T) {
 	if _, err := eff.RunQuery(env, Todos__Show__Show__load(Todos__Show__Show__Params{Id: td.Id}, Todos__Show__Show__Session{User: uid})); err != eff.ErrNotFound {
 		t.Fatalf("show other's: err = %v, want ErrNotFound", err)
 	}
-	if _, err := run(Todos__Show__Delete__update(Todos__Show__Delete__Params{Id: td.Id}, Todos__Show__Show__Session{User: uid})); err != eff.ErrNotFound {
+	if _, err := run(Todos__Show__Delete__delete(Todos__Show__Delete__Params{Id: td.Id}, Todos__Show__Show__Session{User: uid})); err != eff.ErrNotFound {
 		t.Fatalf("delete other's: err = %v, want ErrNotFound", err)
 	}
 	env.Session = app
@@ -2065,7 +2065,7 @@ func TestTodos(t *testing.T) {
 
 	// delete (the list's button sends the todo's own route, which redirects to the list)
 	mark = len(env.Trace)
-	r, err = run(Todos__Show__Delete__update(Todos__Show__Delete__Params{Id: td.Id}, Todos__Show__Show__Session{User: uid}))
+	r, err = run(Todos__Show__Delete__delete(Todos__Show__Delete__Params{Id: td.Id}, Todos__Show__Show__Session{User: uid}))
 	if err != nil || r.Kind != rt.RespRedirect {
 		t.Fatalf("delete: %+v, %v", r, err)
 	}
@@ -2079,7 +2079,7 @@ func TestTodos(t *testing.T) {
 	// that touches no table begins no transaction (I2: the in-memory store's single connection
 	// would otherwise be held)
 	before := env.Session.(App__Session)
-	logoutThenFail := eff.Bind(App__Logout__update(App__Logout__Params{}, before), func(rt.Response) eff.Task[rt.Response] { return eff.Fail[rt.Response]("boom") })
+	logoutThenFail := eff.Bind(App__Logout__delete(App__Logout__Params{}, before), func(rt.Response) eff.Task[rt.Response] { return eff.Fail[rt.Response]("boom") })
 	if _, err := eff.Run(env, eff.KTask, logoutThenFail); !errors.As(err, &fail) || fail.Msg != "boom" {
 		t.Fatalf("logout then fail: err = %v", err)
 	}
@@ -2087,7 +2087,7 @@ func TestTodos(t *testing.T) {
 		t.Fatalf("failed Task kept its session change: %+v, want %+v", s, before)
 	}
 	// App's Logout route: log out
-	if r, err := run(App__Logout__update(App__Logout__Params{}, env.Session.(App__Session))); err != nil || r.Kind != rt.RespRedirect || r.Target.Path != "/login" {
+	if r, err := run(App__Logout__delete(App__Logout__Params{}, env.Session.(App__Session))); err != nil || r.Kind != rt.RespRedirect || r.Target.Path != "/login" {
 		t.Fatalf("logout: %+v, %v", r, err)
 	}
 	if s := env.Session.(App__Session); s.User.Ok {

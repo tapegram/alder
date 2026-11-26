@@ -15,8 +15,8 @@ Index.load params session = {
   Query.succeed { notes: notes, n: n }
 }
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update params session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post params session = {
   let _ <- Db.insertMine Note { text: "a" }
   let _ <- Db.insertScoped Note { text: "b" }
   let _ <- Session.put (\s -> { s | org: Nothing })

@@ -41,8 +41,8 @@ Index.load params session = {
 
 form Invite = { email: Text.Email }
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post p session = {
   let _ <- Membership.memberOnly session.user session.org
   let found <-
     Db.from User
@@ -63,8 +63,8 @@ Add.update p session = {
   }
 }
 
-Remove.update : Remove.Params -> Session -> Task Response
-Remove.update p session = {
+Remove.delete : Remove.Params -> Session -> Task Response
+Remove.delete p session = {
   let _ <- Membership.memberOnly session.user session.org
   let rows <-
     Db.from Membership

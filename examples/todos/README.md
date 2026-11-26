@@ -111,7 +111,7 @@ is not found"` kills them.
 The nine tests that closed the gaps, each named for what it kills:
 
 - `App "Logout clears the user and goes to log in"`: the `redirect → refresh` of
-  `Logout.update`, which no browser test can kill (every Log out button is on a page that
+  `Logout.delete`, which no browser test can kill (every Log out button is on a page that
   `requires user`, so a refresh ends at the login page too).
 - `Todo "countOpen ignores done todos"` (now two open todos and one done, so `not` dropped gives
   1, not 2), `Todo "Active keeps only open todos"` and `Todo "each filter has its label"`: the

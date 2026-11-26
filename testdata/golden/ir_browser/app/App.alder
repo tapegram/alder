@@ -11,14 +11,14 @@ route Send   = POST "/"   { } form Feedback
 
 form Feedback = { text: Text }
 
-Logout.update : Logout.Params -> Session -> Task Response
-Logout.update p session = {
+Logout.delete : Logout.Params -> Session -> Task Response
+Logout.delete p session = {
   let _ <- Session.put (\s -> { s | user: Nothing })
   Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
 
-Send.update : Send.Params -> Session -> Task Response
-Send.update p session = Task.succeed Response.refresh
+Send.post : Send.Params -> Session -> Task Response
+Send.post p session = Task.succeed Response.refresh
 
 error : Error -> Html
 error err = <html><body><h1>Something went wrong</h1></body></html>

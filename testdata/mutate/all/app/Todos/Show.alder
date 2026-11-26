@@ -33,15 +33,15 @@ owned id session = {
   }
 }
 
-Save.update : Save.Params -> Session -> Task Response
-Save.update p session = {
+Save.post : Save.Params -> Session -> Task Response
+Save.post p session = {
   let todo <- owned p.id session
   let _ <- Db.update Todo todo.id (\t -> { t | title: p.form.title, due: p.form.due })
   Task.succeed (Response.redirect (Todos.Index.Index {}))
 }
 
-Delete.update : Delete.Params -> Session -> Task Response
-Delete.update p session = {
+Delete.delete : Delete.Params -> Session -> Task Response
+Delete.delete p session = {
   let todo <- owned p.id session
   let _ <- Db.delete Todo todo.id
   Task.succeed (Response.redirect (Todos.Index.Index {}))

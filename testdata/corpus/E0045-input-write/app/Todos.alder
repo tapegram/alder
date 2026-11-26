@@ -10,5 +10,5 @@ Index.load params session = Query.succeed ""
 Index.view : Text -> Session -> Html
 Index.view q session = <input name="q" input={Save { q: q }} />
 
-Save.update : Save.Params -> Session -> Task Response
-Save.update params session = Task.succeed Response.refresh
+Save.post : Save.Params -> Session -> Task Response
+Save.post params session = Task.succeed Response.refresh

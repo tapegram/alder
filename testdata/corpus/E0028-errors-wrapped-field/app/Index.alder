@@ -12,8 +12,8 @@ Index.load params session = Query.succeed { n: 1 }
 
 form Prefs = { theme: Theme, name: Text }
 
-Save.update : Save.Params -> Session -> Task Response
-Save.update p session = Task.succeed Response.refresh
+Save.post : Save.Params -> Session -> Task Response
+Save.post p session = Task.succeed Response.refresh
 
 Index.view : Model -> Session -> Html
 Index.view model session =

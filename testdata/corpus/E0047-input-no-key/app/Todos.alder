@@ -27,5 +27,5 @@ Results.load params session = Query.succeed params.query
 Results.view : Text -> Session -> Html
 Results.view q session = <p id="results">{q}</p>
 
-Go.update : Go.Params -> Session -> Task Response
-Go.update params session = Task.succeed Response.refresh
+Go.post : Go.Params -> Session -> Task Response
+Go.post params session = Task.succeed Response.refresh

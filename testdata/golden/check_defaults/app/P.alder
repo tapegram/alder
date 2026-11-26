@@ -8,8 +8,8 @@ type Model = { }
 P.load : P.Params -> Session -> Query Model
 P.load params session = Query.succeed {}
 
-Go.update : Go.Params -> Session -> Task Response
-Go.update p session = Task.succeed Response.refresh
+Go.post : Go.Params -> Session -> Task Response
+Go.post p session = Task.succeed Response.refresh
 
 P.view : Model -> Session -> Html
 P.view model session = <p>p</p>

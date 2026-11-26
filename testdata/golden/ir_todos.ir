@@ -32,7 +32,7 @@
   (user Maybe Text)
   (role Table.User.Role = (ctor Table.User.Role.Member)))
 (record App.Logout.Params)
-(value App.Logout.update : Logout.Params -> Session -> Task Response (p session)
+(value App.Logout.delete : Logout.Params -> Session -> Task Response (p session)
   (bind task _
     (call (std Session.put)
       (lambda (s : Session)
@@ -52,7 +52,7 @@
 (test "Logout clears the user and goes to log in" task
   (bind task r : { value: Result Text Response, trace: List Text }
     (test-run
-      (call (global App.Logout.update)
+      (call (global App.Logout.delete)
         (record Logout.Params)
         (record Session
           (user (ctor Prelude.Maybe.Just (record (value "me"))))
@@ -108,7 +108,7 @@
 (record Auth.Login.Submit.Params (form Credentials))
 (value Auth.Login.Login.load : Login.Params -> App.Session -> Query Model (params session)
   (pure query (record Model)))
-(value Auth.Login.Submit.update : Submit.Params -> App.Session -> Task Response (p session)
+(value Auth.Login.Submit.post : Submit.Params -> App.Session -> Task Response (p session)
   (bind task found : Maybe Text
     (cap Auth.Login.Password verify
       (record
@@ -451,7 +451,7 @@
               (field filter (var params))
               (missing 1))
             (var todos)))))))
-(value Todos.Index.Submit.update : Submit.Params -> Index.Session -> Task Response (p session)
+(value Todos.Index.Submit.post : Submit.Params -> Index.Session -> Task Response (p session)
   (bind task _
     (db-insert-scoped Db.insertMine user Table.Todo.Todo
       (record
@@ -462,7 +462,7 @@
       (call (std Response.redirect)
         (route-ref Todos.Index.Index
           (record Index.Params (filter (field filter (var p)))))))))
-(value Todos.Index.Toggle.update : Toggle.Params -> Index.Session -> Task Response (p session)
+(value Todos.Index.Toggle.patch : Toggle.Params -> Index.Session -> Task Response (p session)
   (bind task _
     (db-update-scoped Db.updateMine user Table.Todo.Todo
       (field id (var p))
@@ -566,7 +566,7 @@
             (role (ctor Table.User.Role.Member))))
         (bind task r : { value: Result Text Response, trace: List Text }
           (test-run
-            (call (global Todos.Index.Toggle.update)
+            (call (global Todos.Index.Toggle.patch)
               (record Toggle.Params (id (var id)))
               (record Index.Session
                 (user (var me))
@@ -1041,7 +1041,7 @@
   (bind query todo : Table.Todo.Todo
     (db-get-scoped Db.getMine user Table.Todo.Todo (field id (var params)))
     (pure query (record Model (todo (var todo))))))
-(value Todos.Show.Save.update : Save.Params -> Show.Session -> Task Response (p session)
+(value Todos.Show.Save.put : Save.Params -> Show.Session -> Task Response (p session)
   (bind task _
     (db-update-scoped Db.updateMine user Table.Todo.Todo
       (field id (var p))
@@ -1054,7 +1054,7 @@
         (route-ref Todos.Index.Index
           (record Todos.Index.Index.Params
             (filter (ctor Table.Todo.Filter.All))))))))
-(value Todos.Show.Delete.update : Delete.Params -> Show.Session -> Task Response (p session)
+(value Todos.Show.Delete.delete : Delete.Params -> Show.Session -> Task Response (p session)
   (bind task _
     (db-delete-scoped Db.deleteMine user Table.Todo.Todo (field id (var p)))
     (pure task
@@ -1376,7 +1376,7 @@
 (form Todos.Show.EditTodo)
 (route App.Logout DELETE "/session"
   (params Logout.Params)
-  (handler App.Logout.update))
+  (handler App.Logout.delete))
 (route Auth.Login.Login GET "/login"
   (params Login.Params)
   (model Model)
@@ -1385,7 +1385,7 @@
 (route Auth.Login.Submit POST "/session"
   (params Submit.Params)
   (form Credentials)
-  (handler Auth.Login.Submit.update)
+  (handler Auth.Login.Submit.post)
   (needs-shown))
 (route Todos.Index.Index GET "/"
   (params Index.Params)
@@ -1399,12 +1399,12 @@
   (form NewTodo)
   (requires user)
   (session Index.Session)
-  (handler Todos.Index.Submit.update))
+  (handler Todos.Index.Submit.post))
 (route Todos.Index.Toggle PATCH "/todos/{id}"
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
-  (handler Todos.Index.Toggle.update)
+  (handler Todos.Index.Toggle.patch)
   (needs-shown))
 (route Todos.Show.Show GET "/todos/{id}"
   (params Show.Params)
@@ -1418,12 +1418,12 @@
   (form EditTodo)
   (requires user)
   (session Show.Session)
-  (handler Todos.Show.Save.update))
+  (handler Todos.Show.Save.put))
 (route Todos.Show.Delete DELETE "/todos/{id}"
   (params Delete.Params)
   (requires user)
   (session Show.Session)
-  (handler Todos.Show.Delete.update))
+  (handler Todos.Show.Delete.delete))
 (job Jobs.Nightly.Nightly
   (params Nightly.Params)
   (run Jobs.Nightly.Nightly.run)

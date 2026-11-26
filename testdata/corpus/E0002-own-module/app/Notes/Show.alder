@@ -8,18 +8,18 @@ type Model = { count: Int }
 Show.load : Show.Params -> Session -> Query Model
 Show.load params session = Query.succeed { count: 1 }
 
-Clear.update : Clear.Params -> Session -> Task Response
-Clear.update params session = Task.succeed Response.refresh
+Clear.post : Clear.Params -> Session -> Task Response
+Clear.post params session = Task.succeed Response.refresh
 
 Show.view : Model -> Session -> Html
 Show.view model session = <button click={Clear}>{Text.fromInt model.count}</button>
 
 test "clear rerenders" = {
-  let r <- Test.run (Notes.Show.Clear.update (Notes.Show.Clear {}) {})
+  let r <- Test.run (Notes.Show.Clear.post (Notes.Show.Clear {}) {})
   Task.succeed (r.value == Ok Response.refresh)
 }
 
 test "no such route" = {
-  let r <- Test.run (Clear.update (Notes.Show.Reset {}) {})
+  let r <- Test.run (Clear.post (Notes.Show.Reset {}) {})
   Task.succeed (r.value == Ok Response.refresh)
 }

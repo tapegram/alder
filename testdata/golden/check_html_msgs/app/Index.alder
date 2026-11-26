@@ -13,8 +13,8 @@ Index.load params session = {
   Query.succeed { todos: todos }
 }
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update p session = Task.succeed Response.refresh
+Toggle.post : Toggle.Params -> Session -> Task Response
+Toggle.post p session = Task.succeed Response.refresh
 
 Index.view : Model -> Session -> Html
 Index.view model session =

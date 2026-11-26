@@ -164,7 +164,7 @@ func Route__Admin__Projects__Remove() web.Route {
 		if err := db.Enter(rq.Env, "org"); err != nil {
 			return route__fail(err)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Admin__Projects__Remove__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Admin__Projects__Remove__post(params, session))
 		if err != nil {
 			var nm *eff.ErrFail
 			if !errors.As(err, &nm) || !nm.NotMember {
@@ -195,7 +195,7 @@ func Route__App__Leave() web.Route {
 		if err := db.Enter(rq.Env, ""); err != nil {
 			return route__fail(err)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, App__Leave__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, App__Leave__post(params, session))
 		if err != nil {
 			var nm *eff.ErrFail
 			if !errors.As(err, &nm) || !nm.NotMember {
@@ -336,7 +336,7 @@ func Route__Notes__Index__Add() web.Route {
 		if err := db.Enter(rq.Env, ""); err != nil {
 			return route__fail(err)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Notes__Index__Add__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Notes__Index__Add__post(params, session))
 		if err != nil {
 			var nm *eff.ErrFail
 			if !errors.As(err, &nm) || !nm.NotMember {
@@ -438,7 +438,7 @@ func Route__Orgs__Pick() web.Route {
 		if err := db.Enter(rq.Env, ""); err != nil {
 			return route__fail(err)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Orgs__Pick__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Orgs__Pick__post(params, session))
 		if err != nil {
 			var nm *eff.ErrFail
 			if !errors.As(err, &nm) || !nm.NotMember {
@@ -511,7 +511,7 @@ func Route__Orgs__Switch() web.Route {
 		if err := db.Enter(rq.Env, ""); err != nil {
 			return route__fail(err)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Orgs__Switch__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Orgs__Switch__put(params, session))
 		if err != nil {
 			var nm *eff.ErrFail
 			if !errors.As(err, &nm) || !nm.NotMember {
@@ -649,7 +649,7 @@ func Route__Projects__Index__Add() web.Route {
 		if err := db.Enter(rq.Env, "org"); err != nil {
 			return route__fail(err)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Add__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Add__post(params, session))
 		if err != nil {
 			var nm *eff.ErrFail
 			if !errors.As(err, &nm) || !nm.NotMember {
@@ -720,7 +720,7 @@ func Route__Projects__Index__Rename() web.Route {
 		if err := db.Enter(rq.Env, "org"); err != nil {
 			return route__fail(err)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Rename__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Rename__patch(params, session))
 		if err != nil {
 			var nm *eff.ErrFail
 			if !errors.As(err, &nm) || !nm.NotMember {
@@ -787,7 +787,7 @@ func Route__Projects__Index__Remove() web.Route {
 		if err := db.Enter(rq.Env, "org"); err != nil {
 			return route__fail(err)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Remove__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Remove__delete(params, session))
 		if err != nil {
 			var nm *eff.ErrFail
 			if !errors.As(err, &nm) || !nm.NotMember {
@@ -844,7 +844,7 @@ func Route__Projects__Index__Seed() web.Route {
 		if err := db.Enter(rq.Env, "org"); err != nil {
 			return route__fail(err)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Seed__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Seed__post(params, session))
 		if err != nil {
 			var nm *eff.ErrFail
 			if !errors.As(err, &nm) || !nm.NotMember {
@@ -901,7 +901,7 @@ func Route__Projects__Index__Tag() web.Route {
 		if err := db.Enter(rq.Env, ""); err != nil {
 			return route__fail(err)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Tag__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Tag__post(params, session))
 		if err != nil {
 			var nm *eff.ErrFail
 			if !errors.As(err, &nm) || !nm.NotMember {

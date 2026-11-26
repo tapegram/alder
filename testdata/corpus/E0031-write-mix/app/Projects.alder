@@ -27,40 +27,40 @@ note : Text -> Task Unit
 note text = Audit.log text
 
 -- the spec's case: a silo write and a shared write in one Task
-Create.update : Create.Params -> Session -> Task Response
-Create.update params session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post params session = {
   let _ <- Db.insertScoped Project { name: "p" }
   let _ <- Db.insert AuditLog { text: "created p" }
   Task.succeed Response.refresh
 }
 
 -- the shared write hides in a helper (of this module, then of another)
-Helped.update : Helped.Params -> Session -> Task Response
-Helped.update params session = {
+Helped.post : Helped.Params -> Session -> Task Response
+Helped.post params session = {
   let _ <- Db.insertScoped Project { name: "p" }
   let _ <- note "created p"
   Task.succeed Response.refresh
 }
 
 -- and in a Task.all over List.map
-Many.update : Many.Params -> Session -> Task Response
-Many.update params session = {
+Many.post : Many.Params -> Session -> Task Response
+Many.post params session = {
   let _ <- Task.all (List.map (\t -> Audit.log t) ["a", "b"])
   let _ <- Db.insertScoped Project { name: "p" }
   Task.succeed Response.refresh
 }
 
 -- two silos
-Silos.update : Silos.Params -> Session -> Task Response
-Silos.update params session = {
+Silos.post : Silos.Params -> Session -> Task Response
+Silos.post params session = {
   let _ <- Db.insertScoped Project { name: "p" }
   let _ <- Db.insertScoped Board { name: "b" }
   Task.succeed Response.refresh
 }
 
 -- reads of the other stores are fine
-Reads.update : Reads.Params -> Session -> Task Response
-Reads.update params session = {
+Reads.post : Reads.Params -> Session -> Task Response
+Reads.post params session = {
   let _ <- Db.from AuditLog |> Db.all
   let _ <- Db.scoped Board |> Db.all
   let _ <- Db.get Org session.org
@@ -69,8 +69,8 @@ Reads.update params session = {
 }
 
 -- a Db write that is not applied in place is found by its type: bound by a let,
-Bound.update : Bound.Params -> Session -> Task Response
-Bound.update params session = {
+Bound.post : Bound.Params -> Session -> Task Response
+Bound.post params session = {
   let ins = Db.insert
   let _ <- ins AuditLog { text: "created p" }
   let _ <- Db.insertScoped Project { name: "p" }
@@ -78,24 +78,24 @@ Bound.update params session = {
 }
 
 -- passed to a lambda that applies it,
-Lambda.update : Lambda.Params -> Session -> Task Response
-Lambda.update params session = {
+Lambda.post : Lambda.Params -> Session -> Task Response
+Lambda.post params session = {
   let _ <- (\f -> f AuditLog { text: "created p" }) Db.insert
   let _ <- Db.insertScoped Project { name: "p" }
   Task.succeed Response.refresh
 }
 
 -- or partially applied and mapped
-Mapped.update : Mapped.Params -> Session -> Task Response
-Mapped.update params session = {
+Mapped.post : Mapped.Params -> Session -> Task Response
+Mapped.post params session = {
   let logs <- Db.from AuditLog |> Db.all
   let _ <- Task.all (List.map (Db.delete AuditLog) (List.map (\l -> l.id) logs))
   let _ <- Db.insertScoped Project { name: "p" }
   Task.succeed Response.refresh
 }
 
-Other.update : Other.Params -> Session -> Task Response
-Other.update params session = {
+Other.post : Other.Params -> Session -> Task Response
+Other.post params session = {
   let _ <- Db.insert AuditLog { text: "other" }
   let _ <- Db.insertScoped Board { name: "b" }
   Task.succeed Response.refresh

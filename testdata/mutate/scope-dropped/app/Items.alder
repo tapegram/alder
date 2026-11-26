@@ -20,21 +20,21 @@ Items.load params session = {
   Query.succeed { items: items, n: n }
 }
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post p session = {
   let _ <- Db.insertMine Item { title: "new" }
   Task.succeed Response.refresh
 }
 
-Rename.update : Rename.Params -> Session -> Task Response
-Rename.update p session = {
+Rename.patch : Rename.Params -> Session -> Task Response
+Rename.patch p session = {
   let item <- Db.getMine Item p.id
   let _ <- Db.updateMine Item item.id (\i -> { i | title: "renamed" })
   Task.succeed Response.refresh
 }
 
-Remove.update : Remove.Params -> Session -> Task Response
-Remove.update p session = {
+Remove.delete : Remove.Params -> Session -> Task Response
+Remove.delete p session = {
   let _ <- wipe p.id
   Task.succeed Response.refresh
 }

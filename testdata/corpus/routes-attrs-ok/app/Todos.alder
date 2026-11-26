@@ -89,5 +89,5 @@ Search.load params session = Query.succeed params.query
 Search.view : Text -> Session -> Html
 Search.view q session = <p id="search">search for {q}</p>
 
-Go.update : Go.Params -> Session -> Task Response
-Go.update params session = Task.succeed (Response.redirect (Search { query: params.form.q }))
+Go.post : Go.Params -> Session -> Task Response
+Go.post params session = Task.succeed (Response.redirect (Search { query: params.form.q }))

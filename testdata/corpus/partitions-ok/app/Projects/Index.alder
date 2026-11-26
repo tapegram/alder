@@ -48,34 +48,34 @@ Index.load params session = {
 
 form NewProject = { name: Text }
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post p session = {
   let _ <- Db.insertScoped Project { name: p.form.name }
   Task.succeed Response.refresh
 }
 
-Rename.update : Rename.Params -> Session -> Task Response
-Rename.update p session = {
+Rename.patch : Rename.Params -> Session -> Task Response
+Rename.patch p session = {
   let pr <- Db.getScoped Project p.id
   let _ <- Db.updateScoped Project pr.id (\x -> { x | name: "renamed" })
   Task.succeed Response.refresh
 }
 
-Remove.update : Remove.Params -> Session -> Task Response
-Remove.update p session = {
+Remove.delete : Remove.Params -> Session -> Task Response
+Remove.delete p session = {
   let _ <- p.id |> Db.deleteScoped Project
   Task.succeed Response.refresh
 }
 
-Seed.update : Seed.Params -> Session -> Task Response
-Seed.update params session = {
+Seed.post : Seed.Params -> Session -> Task Response
+Seed.post params session = {
   let _ <- Task.all (List.map seed ["a", "b"])
   Task.succeed Response.refresh
 }
 
 -- reads the shared store (Org, Membership), writes the silo: one store
-Both.update : Both.Params -> Session -> Task Response
-Both.update p session = {
+Both.post : Both.Params -> Session -> Task Response
+Both.post p session = {
   let _ <- Db.get Org session.org
   let n <- Db.from Membership |> Db.count
   let _ <- Db.updateScoped Project p.id (\x -> { x | name: Text.fromInt n })
@@ -83,8 +83,8 @@ Both.update p session = {
 }
 
 -- a shared write (Label is partitioned but in no silo)
-Tag.update : Tag.Params -> Session -> Task Response
-Tag.update params session = {
+Tag.post : Tag.Params -> Session -> Task Response
+Tag.post params session = {
   let _ <- Db.insertScoped Label { name: "new" }
   Task.succeed Response.refresh
 }

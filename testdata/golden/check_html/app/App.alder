@@ -6,8 +6,8 @@ login = Pg.Pg
 
 route Logout = DELETE "/session" { }
 
-Logout.update : Logout.Params -> Session -> Task Response
-Logout.update params session = Task.succeed Response.refresh
+Logout.delete : Logout.Params -> Session -> Task Response
+Logout.delete params session = Task.succeed Response.refresh
 
 error : Error -> Html
 error err = <h1>x</h1>

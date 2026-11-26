@@ -17,8 +17,8 @@ Projects.load params session = {
   Query.succeed { projects: projects, n: n }
 }
 
-Remove.update : Remove.Params -> Session -> Task Response
-Remove.update p session = {
+Remove.post : Remove.Params -> Session -> Task Response
+Remove.post p session = {
   let _ <- Db.delete Project p.id
   Task.succeed Response.refresh
 }

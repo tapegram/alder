@@ -33,16 +33,16 @@ form NewOrg = { name: Text.NonEmpty }
 
 -- `via Membership`: the runtime refuses an org the user is not a member of, whatever the
 -- request says (a crafted one included)
-Open.update : Open.Params -> Session -> Task Response
-Open.update p session = {
+Open.put : Open.Params -> Session -> Task Response
+Open.put p session = {
   let _ <- Session.put (\s -> { s | org: Just p.org })
   Task.succeed (Response.redirect (Projects.Index.Index {}))
 }
 
 -- the org, its first member, and its first line of activity: all in the shared database, so
 -- one Task; the Session.put sees the Membership inserted before it in the same transaction
-Create.update : Create.Params -> Session -> Task Response
-Create.update p session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post p session = {
   let org <- Db.insert Org { name: p.form.name }
   let _ <- Db.insert Membership { user: session.user, org: org }
   let _ <- Db.insert Activity { text: "The org was created.", org: org }
@@ -155,7 +155,7 @@ test "a non-member's switch is refused" = {
   }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let r <-
-    Test.run (Open.update { org: s.globex } {
+    Test.run (Open.put { org: s.globex } {
       user: s.ann,
       org: Nothing,
       role: Member,

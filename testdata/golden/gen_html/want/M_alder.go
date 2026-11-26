@@ -96,15 +96,15 @@ func M__M__load(params M__M__Params, session App__Session) eff.Query[M__Model] {
 	return eff.Q(eff.Pure(M__Model{Id: params.Id, Busy: false, Current: rt.Nothing[string](), Items: []string{}, Shape: M__Shape__Circle__(1.0)}))
 }
 
-func M__Save__update(params M__Save__Params, session App__Session) eff.Task[rt.Response] {
+func M__Save__post(params M__Save__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Pure(std.ResponseRefresh())
 }
 
-func M__Pick__update(params M__Pick__Params, session App__Session) eff.Task[rt.Response] {
+func M__Pick__post(params M__Pick__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Pure(std.ResponseRefresh())
 }
 
-func M__Ping__update(params M__Ping__Params, session App__Session) eff.Task[rt.Response] {
+func M__Ping__post(params M__Ping__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Pure(std.ResponseRefresh())
 }
 

@@ -17,8 +17,8 @@ choose org = Orgs.Orgs
 
 route Wipe = POST "/" { id: Project.ProjectId }
 
-Wipe.update : Wipe.Params -> Session -> Task Response
-Wipe.update p session = {
+Wipe.post : Wipe.Params -> Session -> Task Response
+Wipe.post p session = {
   let _ <- Db.deleteScoped Project p.id
   Task.succeed Response.refresh
 }

@@ -12,6 +12,7 @@ with the previous release, each with what to do.
 - `job` is a reserved keyword (it opens a job declaration), so an identifier named `job` stops parsing. Rename it (#168).
 - `Job` is a Prelude type an app writes (`Job.enqueue` takes one), so a type, table, form or union of your own named `Job` is E0012. Rename it, for example to `JobType` (#168).
 - A session field that is a `Text.Secret` (or a `Maybe Text.Secret`) is E0048: the session cookie is signed, not encrypted, so the user can read it. Keep the secret in a table and store the row's id in the session (#254).
+- A write route's handler is named after its method: `Save.put`, `Create.post`, `Toggle.patch`, `Remove.delete`, not `Save.update` (#308). A handler still named `update` is W0013, with a quick fix at each site; `alder fmt` renames the declaration and every reference to it, in the whole project at once. `alder generate` writes method-named handlers, and `alder regen` keeps the `update` name of an app that still declares it. Run `alder fmt` over the app.
 
 ### Added
 

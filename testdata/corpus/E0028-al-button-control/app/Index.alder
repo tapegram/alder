@@ -18,8 +18,8 @@ Index.load params session = Query.succeed {
   items: [],
 }
 
-Go.update : Go.Params -> Session -> Task Response
-Go.update p session = Task.succeed Response.refresh
+Go.post : Go.Params -> Session -> Task Response
+Go.post p session = Task.succeed Response.refresh
 
 extra : Html
 extra = <b>extra</b>

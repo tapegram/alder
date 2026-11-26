@@ -108,7 +108,7 @@ func Route__Wood__Bump() web.Route {
 			return web.NotFoundResponse(html.None())
 		}
 		session := rq.Env.Session.(App__Session)
-		resp, err := eff.Run(rq.Env, eff.KTask, Wood__Bump__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Wood__Bump__post(params, session))
 		if err != nil {
 			return route__fail(err)
 		}

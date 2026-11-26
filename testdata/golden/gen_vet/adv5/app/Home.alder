@@ -19,11 +19,11 @@ Home.load params session = Query.succeed {
   flag: True,
 }
 
-Pick.update : Pick.Params -> Session -> Task Response
-Pick.update params session = Task.succeed Response.refresh
+Pick.post : Pick.Params -> Session -> Task Response
+Pick.post params session = Task.succeed Response.refresh
 
-Go.update : Go.Params -> Session -> Task Response
-Go.update params session = Task.succeed Response.refresh
+Go.post : Go.Params -> Session -> Task Response
+Go.post params session = Task.succeed Response.refresh
 
 cell : Int -> Html
 cell n = <td click={Pick { n: n, who: "x" }}>{Text.fromInt n}</td>

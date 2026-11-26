@@ -30,11 +30,11 @@ form NewPost = {
   reviewer: Maybe Text,
 }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update p session = Task.succeed Response.refresh
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post p session = Task.succeed Response.refresh
 
-Clear.update : Clear.Params -> Session -> Task Response
-Clear.update p session = Task.succeed Response.refresh
+Clear.delete : Clear.Params -> Session -> Task Response
+Clear.delete p session = Task.succeed Response.refresh
 
 Index.view : Model -> Session -> Html
 Index.view model session =

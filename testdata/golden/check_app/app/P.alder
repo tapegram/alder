@@ -8,8 +8,8 @@ type Model = { }
 P.load : P.Params -> Session -> Query Model
 P.load params session = Query.succeed {}
 
-Go.update : Go.Params -> Session -> Task Response
-Go.update p session = {
+Go.post : Go.Params -> Session -> Task Response
+Go.post p session = {
   let _ <- Session.put (\s -> s)
   Task.succeed Response.refresh
 }

@@ -12,8 +12,8 @@ login = Auth.Login.Login
 
 route Logout = DELETE "/session" { }
 
-Logout.update : Logout.Params -> Session -> Task Response
-Logout.update p session = {
+Logout.delete : Logout.Params -> Session -> Task Response
+Logout.delete p session = {
   let _ <- Session.put (\s -> { s | user: Nothing, role: Reader })
   Task.succeed (Response.redirect (Auth.Login.Login {}))
 }

@@ -10,8 +10,8 @@ session { theme: Theme = Light }
 
 route SwitchTheme = POST "/" { }
 
-SwitchTheme.update : SwitchTheme.Params -> Session -> Task Response
-SwitchTheme.update p session = {
+SwitchTheme.post : SwitchTheme.Params -> Session -> Task Response
+SwitchTheme.post p session = {
   let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
   Task.succeed Response.refresh
 }

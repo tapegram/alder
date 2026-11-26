@@ -6,11 +6,11 @@ and the runtime carries them out. There are two kinds.
 | Type | May | Used by |
 |---|---|---|
 | `Query a` | read | `R.load`, of a GET route |
-| `Task a` | read and write | `R.update`, of a write route |
+| `Task a` | read and write | `R.post`, `R.put`, `R.patch` or `R.delete`, of a write route |
 
 A `Query` cannot write. A `Task` can do anything a `Query` can, plus writes.
 `load` returns a `Query`, so a GET route can never change anything by being
-viewed. `update` returns a `Task Response`: the writes, and what to send back.
+viewed. The handler returns a `Task Response`: the writes, and what to send back.
 
 ## Building effects
 
@@ -32,8 +32,8 @@ plain value.
 The same shape works for `Task`:
 
 ```alder fragment
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update p session = {
+Toggle.patch : Toggle.Params -> Session -> Task Response
+Toggle.patch p session = {
   let todo <- Db.getMine Todo p.id  -- the user's todo, or a 404 (chapter 6, "Rules")
   let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
   Task.succeed Response.refresh
@@ -92,7 +92,7 @@ There is no `andThen`; use `let x <-` in a block.
 
 A `Task` can fail. `Task.fail "message"` fails explicitly; a capability may
 fail on its own (database down, email rejected). A failed task stops
-`update`, undoes everything it did (its database writes and its
+the handler, undoes everything it did (its database writes and its
 `Session.put` changes), and the runtime renders `App.error`.
 
 `Task.notFound` fails the same way but answers 404 with `App.notFound`:
@@ -125,7 +125,7 @@ Start.load params session =
 
 Nothing after it runs, and `view` is not called. A `Query` bound in a
 `Task` block stops the `Task` the same way: `let _ <- Query.redirect r`
-in `update` is a failure, its writes and `Session.put` changes undone,
+in the handler is a failure, its writes and `Session.put` changes undone,
 and the request is answered with the 303 (in `Test.run`, chapter 10, it is
 `Err "redirected to /builder/7"`). To write and then go, end the
 `Task` with `Response.redirect r` instead (chapter 6).
@@ -146,12 +146,12 @@ capability Weather {
 ```
 
 Each entry is a function whose result is a `Query` or `Task`. Using
-`Email.send { ... }` in `update` is then an ordinary effect.
+`Email.send { ... }` in the handler is then an ordinary effect.
 
 The request waits while it runs, though, and a send that fails fails
 the whole `Task`, its writes with it. Work that can happen a moment later
 (a welcome mail, a call to a slow service) belongs in a background job:
-`update` queues it in its own transaction, and the app's workers run it
+The handler queues it in its own transaction, and the app's workers run it
 outside the request, retrying it when it fails (chapter 17).
 
 The compiler generates a Go interface for each capability, and the app will
@@ -387,10 +387,10 @@ at a `call` it runs the step right away, at a `bind` it remembers the
 is given the bound value), and when a value comes out it passes the value
 on.
 
-The `Toggle.update` of the to-do app, written in two steps,
+The `Toggle.patch` of the to-do app, written in two steps,
 
 ```alder fragment
-Toggle.update p session = {
+Toggle.patch p session = {
   let todo <- Db.getMine Todo p.id
   let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
   Task.succeed Response.refresh
@@ -401,7 +401,7 @@ is a `bind` whose first part is the `call` named `Db.getMine Todo`
 (which ends in the todo, or in `notFound` when it is missing or someone
 else's) and whose continuation is a second `bind`: the `call` named
 `Db.update Todo`, then `pure Response.refresh`. `Run` performs the read, then
-the update, then returns the `Response`; when the read ends in `notFound`, it
+the handler, then returns the `Response`; when the read ends in `notFound`, it
 stops there and nothing is written.
 
 > **A two-step form.** The to-do app writes this update as one step,
@@ -436,7 +436,7 @@ failure is any of:
 - a Go panic.
 
 `Db.get` finding nothing is not a failure: it produces `Nothing`. Either
-every write of an `update` happens or none does.
+every write of a handler happens or none does.
 
 #### The session is part of the same promise
 
@@ -462,16 +462,16 @@ again so that a compiler bug can't turn a GET route into a write.
 
 Before it runs a `call`, `Run` appends the
 step's name to `Env.Trace` and logs it at level `effect` (written as a
-`debug:` line, so only under `ALDER_LOG=debug`). The `Toggle.update`
+`debug:` line, so only under `ALDER_LOG=debug`). The `Toggle.patch`
 above leaves the trace `["Db.getMine Todo", "Db.update Todo"]`: the
-scoped read, then the update.
+scoped read, then the handler.
 
 A scoped operation is traced as written
 (`Db.updateMine Todo`), and `Db.mine Todo` adds its own name before the
 step that runs it: `Db.mine Todo |> Db.all` traces `["Db.mine Todo",
 "Db.all Todo"]`.
 
-An `update` that
+A handler that
 inserts a row with `Db.insert` and then logs at three levels
 (`Log.info`, `Log.debug`, `Log.error`) leaves `["Db.insert Todo" "Log.info"
 "Log.debug" "Log.error"]`.

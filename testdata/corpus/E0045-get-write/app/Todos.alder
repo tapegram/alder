@@ -9,8 +9,8 @@ Index.load params session = Query.succeed 1
 Index.view : Int -> Session -> Html
 Index.view n session = <button click={Toggle { id: "1" }}>Toggle</button>
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update params session = Task.succeed Response.refresh
+Toggle.patch : Toggle.Params -> Session -> Task Response
+Toggle.patch params session = Task.succeed Response.refresh
 
 -- Test.get, open and fetch request a GET route; a write route is clicked or submitted
 test "get a write route" = {

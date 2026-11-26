@@ -44,7 +44,7 @@ with an HTTP method and a path. A module may declare any number of them.
   route whose view includes the layout; the language has no word for it.
 
 - **A route that changes something** (`POST`, `PUT`, `PATCH`, `DELETE`) has
-  an `update`, which describes what to write and answers with a `Response`:
+  a handler, which describes what to write and answers with a `Response`:
 
   - go to another route (`Response.redirect`);
   - show a route again in place (`Response.render`);

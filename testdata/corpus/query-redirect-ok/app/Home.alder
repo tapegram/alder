@@ -22,8 +22,8 @@ saveThenGo = {
   Task.succeed Response.refresh
 }
 
-Save.update : Save.Params -> Session -> Task Response
-Save.update p session = saveThenGo
+Save.post : Save.Params -> Session -> Task Response
+Save.post p session = saveThenGo
 
 Home.view : Model -> Session -> Html
 Home.view model session =

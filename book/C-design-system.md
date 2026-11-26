@@ -649,8 +649,8 @@ form Profile = {
   newsletter: Bool,
 }
 
-Save.update : Save.Params -> Session -> Task Response
-Save.update p session = Task.succeed Response.refresh
+Save.post : Save.Params -> Session -> Task Response
+Save.post p session = Task.succeed Response.refresh
 
 Settings.view : Model -> Session -> Html
 Settings.view model session =

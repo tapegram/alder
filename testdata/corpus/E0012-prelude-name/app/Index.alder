@@ -10,8 +10,8 @@ Index.load params session = Query.succeed { q: params.q }
 
 form Query = { q: Text }
 
-Search.update : Search.Params -> Session -> Task Response
-Search.update p session = Task.succeed (Response.redirect (Index { q: p.form.q }))
+Search.post : Search.Params -> Session -> Task Response
+Search.post p session = Task.succeed (Response.redirect (Index { q: p.form.q }))
 
 Index.view : Model -> Session -> Html
 Index.view model session =

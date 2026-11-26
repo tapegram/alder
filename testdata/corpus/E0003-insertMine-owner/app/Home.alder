@@ -11,8 +11,8 @@ type Model = { }
 Home.load : Home.Params -> Session -> Query Model
 Home.load params session = Query.succeed {}
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post p session = {
   let _ <- Db.insertMine Todo { title: "milk", owner: session.user }
   let _ <- Db.insertMine Todo { title: "eggs", created: Time.epoch }
   let _ <- Db.insertMine Todo (rowFor session.user)

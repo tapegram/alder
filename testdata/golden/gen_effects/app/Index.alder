@@ -45,8 +45,8 @@ Index.load params session = {
   }
 }
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post p session = {
   let id <- Db.insert Todo {
     title: p.title,
     due: Nothing,
@@ -58,14 +58,14 @@ Add.update p session = {
   Task.succeed (Response.redirect (Index { a: id, b: id }))
 }
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update p session = {
+Toggle.put : Toggle.Params -> Session -> Task Response
+Toggle.put p session = {
   let _ <- Db.update Todo p.id (\t -> { t | done: not t.done })
   Task.succeed Response.refresh
 }
 
-Remove.update : Remove.Params -> Session -> Task Response
-Remove.update p session = {
+Remove.delete : Remove.Params -> Session -> Task Response
+Remove.delete p session = {
   let found <- Db.get Todo p.id
   match found {
     Just t -> {
@@ -76,8 +76,8 @@ Remove.update p session = {
   }
 }
 
-Notify.update : Notify.Params -> Session -> Task Response
-Notify.update p session = {
+Notify.post : Notify.Params -> Session -> Task Response
+Notify.post p session = {
   let token : Text <- Random.id
   let sent <- Task.all [Mailer.send { to: "a@b.c", body: token }]
   let n <- Task.map List.length (Task.succeed sent)

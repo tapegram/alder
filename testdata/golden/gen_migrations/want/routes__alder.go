@@ -37,7 +37,7 @@ func Route__App__Logout() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, App__Logout__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, App__Logout__delete(params, session))
 		if err != nil {
 			return route__fail(err)
 		}

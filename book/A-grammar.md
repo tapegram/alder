@@ -104,7 +104,7 @@ ModName     = uname {"." uname} ;
 ## Routes and qualified names
 
 A route's members are `Route.name` declarations (`Index.load`, `Index.view`,
-`Toggle.update`); what a route module may declare, and the signatures, are in
+`Toggle.patch`); what a route module may declare, and the signatures, are in
 chapter 6. A dotted name is read as the longest module path the program knows,
 then a route of that module, then a member: `Todos.Index.Index {}` is the module
 `Todos.Index`, its route `Index`, and the route's parameters.

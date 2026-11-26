@@ -87,7 +87,7 @@ func Notes__Index__Index__load(params Notes__Index__Index__Params, session Notes
 	}))
 }
 
-func Notes__Index__Submit__update(p Notes__Index__Submit__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
+func Notes__Index__Submit__post(p Notes__Index__Submit__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.insert Note", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: p.Form.Title, Done: false, Owner: session.User}), _e1.Now())
 	}), func(_ string) eff.Task[rt.Response] {
@@ -95,7 +95,7 @@ func Notes__Index__Submit__update(p Notes__Index__Submit__Params, session Notes_
 	})
 }
 
-func Notes__Index__Toggle__update(p Notes__Index__Toggle__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
+func Notes__Index__Toggle__put(p Notes__Index__Toggle__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.get Note", false, func(_e1 *eff.Env) (rt.Maybe[Note__Note], error) {
 		return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, p.Id)
 	}), func(found rt.Maybe[Note__Note]) eff.Task[rt.Response] {
@@ -116,7 +116,7 @@ func Notes__Index__Toggle__update(p Notes__Index__Toggle__Params, session Notes_
 	})
 }
 
-func Notes__Index__Boom__update(p Notes__Index__Boom__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
+func Notes__Index__Boom__post(p Notes__Index__Boom__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.all Note", false, func(_e1 *eff.Env) ([]Note__Note, error) {
 		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.Where(db.CEq("owner", session.User), db.From(table__Note__Note)))
 	}), func(notes []Note__Note) eff.Task[rt.Response] {
@@ -138,7 +138,7 @@ func Notes__Index__Boom__update(p Notes__Index__Boom__Params, session Notes__Ind
 	})
 }
 
-func Notes__Index__Rename__update(p Notes__Index__Rename__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
+func Notes__Index__Rename__patch(p Notes__Index__Rename__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.update Note", true, func(_e1 *eff.Env) (struct{}, error) {
 		return struct{}{}, db.UpdateRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, p.Id, func(x Note__Note) Note__Note {
 			return Note__Note{Id: x.Id, Title: p.Form.Title, Done: x.Done, Owner: x.Owner}
@@ -148,11 +148,11 @@ func Notes__Index__Rename__update(p Notes__Index__Rename__Params, session Notes_
 	})
 }
 
-func Notes__Index__SavePrefs__update(p Notes__Index__SavePrefs__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
+func Notes__Index__SavePrefs__put(p Notes__Index__SavePrefs__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Pure(std.ResponseRefresh())
 }
 
-func Notes__Index__Visit__update(p Notes__Index__Visit__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
+func Notes__Index__Visit__post(p Notes__Index__Visit__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
 		return App__Session{User: s.User, Visits: s.Visits + 1}
 	}), func(_ struct{}) eff.Task[rt.Response] {

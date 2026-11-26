@@ -11,6 +11,6 @@ table User {
 adminOnly : Maybe UserId -> Query Unit
 adminOnly id = if id == Just (UserId "admin") then Query.succeed () else Query.notFound
 
--- audit writes nothing here; a step of the Task kind. A mutant: its step in Save.update dropped.
+-- audit writes nothing here; a step of the Task kind. A mutant: its step in Save.post dropped.
 audit : Text -> Task Unit
 audit what = Task.succeed ()

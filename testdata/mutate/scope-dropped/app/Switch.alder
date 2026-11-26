@@ -15,8 +15,8 @@ Switch.load params session = {
 
 -- a Session.put in update: the scoped write after it acts for the session it put, not the user
 -- load read the item for, so its `scope dropped` is a mutant
-Drop.update : Drop.Params -> Session -> Task Response
-Drop.update p session = {
+Drop.post : Drop.Params -> Session -> Task Response
+Drop.post p session = {
   let _ <- Session.put (\s -> { s | user: Nothing })
   let _ <- Db.deleteMine Item p.id
   Task.succeed Response.refresh

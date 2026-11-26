@@ -10,5 +10,5 @@ Index.load params session = Query.succeed 1
 Index.view : Int -> Session -> Html
 Index.view n session = <a href={Toggle { id: "1" }}>Toggle</a>
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update params session = Task.succeed Response.refresh
+Toggle.patch : Toggle.Params -> Session -> Task Response
+Toggle.patch params session = Task.succeed Response.refresh

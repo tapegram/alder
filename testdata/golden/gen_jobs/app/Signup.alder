@@ -19,8 +19,8 @@ form NewUser = { email: Text.Email, name: Text.NonEmpty }
 
 route Create = POST "/signup" { } form NewUser
 
-Create.update : Create.Params -> Session -> Task Response
-Create.update p session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post p session = {
   let id <- Db.insert User { email: p.form.email, name: p.form.name }
   let _ <- Job.enqueue (SendWelcome { user: id })
   Task.succeed (Response.redirect (Home.Home {}))

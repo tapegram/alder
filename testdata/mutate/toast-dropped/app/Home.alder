@@ -9,8 +9,8 @@ Home.load : Home.Params -> Session -> Query Model
 Home.load params session = Query.succeed { }
 
 -- Mutants: each notice dropped, one at a time (and the refresh under them answers invalid).
-Notify.update : Notify.Params -> Session -> Task Response
-Notify.update p session =
+Notify.post : Notify.Params -> Session -> Task Response
+Notify.post p session =
   Task.succeed (
     Response.refresh
       |> Response.toast "Saved"

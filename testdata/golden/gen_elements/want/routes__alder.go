@@ -131,7 +131,7 @@ func Route__Index__Submit() web.Route {
 			resp.Shown = shown
 			return resp
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Index__Submit__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Index__Submit__post(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -164,7 +164,7 @@ func Route__Index__Clear() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Index__Clear__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Index__Clear__delete(params, session))
 		if err != nil {
 			return route__fail(err)
 		}

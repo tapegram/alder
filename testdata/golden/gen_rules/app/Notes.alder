@@ -24,21 +24,21 @@ Notes.load params session = {
 
 form NewNote = { title: Text }
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post p session = {
   let _ <- Db.insertMine Note { title: p.form.title }
   Task.succeed Response.refresh
 }
 
-Pin.update : Pin.Params -> Session -> Task Response
-Pin.update p session = {
+Pin.put : Pin.Params -> Session -> Task Response
+Pin.put p session = {
   let n <- Db.getMine Note p.id
   let _ <- Db.updateMine Note n.id (\x -> { x | pinned: True })
   Task.succeed Response.refresh
 }
 
-Remove.update : Remove.Params -> Session -> Task Response
-Remove.update p session = {
+Remove.delete : Remove.Params -> Session -> Task Response
+Remove.delete p session = {
   let _ <- wipe p.id
   Task.succeed Response.refresh
 }

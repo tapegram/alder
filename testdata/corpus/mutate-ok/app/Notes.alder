@@ -19,8 +19,8 @@ Notes.load params session = {
 
 form NewNote = { title: Text }
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post p session = {
   let _ <- Db.insert Note { title: p.form.title, owner: session.user }
   Task.succeed (Response.redirect (Notes {}))
 }

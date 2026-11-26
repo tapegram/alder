@@ -24,15 +24,15 @@ Orgs.load params session = {
 form SwitchOrg = { org: Org.OrgId }
 
 -- `via Membership`: the runtime refuses an org the user is not a member of
-Pick.update : Pick.Params -> Session -> Task Response
-Pick.update p session = {
+Pick.post : Pick.Params -> Session -> Task Response
+Pick.post p session = {
   let _ <- Session.put (\s -> { s | org: Just p.org })
   Task.succeed (Response.redirect (Projects.Index.Index {}))
 }
 
 -- the same from a form: a non-member's switch is the form's error (the route's Reject)
-Switch.update : Switch.Params -> Session -> Task Response
-Switch.update p session = {
+Switch.put : Switch.Params -> Session -> Task Response
+Switch.put p session = {
   let _ <- Session.put (\s -> { s | org: Just p.form.org })
   Task.succeed (Response.redirect (Projects.Index.Index {}))
 }
@@ -71,7 +71,7 @@ test "a non-member's switch is refused" = {
   let _ <- Test.login { user: Just me, org: Just a }
   -- a crafted request: the page offers no such button, the update is run as it would be
   let r <-
-    Test.run (Pick.update { org: b } {
+    Test.run (Pick.post { org: b } {
       user: me,
       org: Just a,
       role: Reader,

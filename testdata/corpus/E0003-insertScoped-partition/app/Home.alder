@@ -11,8 +11,8 @@ type Model = { }
 Home.load : Home.Params -> Session -> Query Model
 Home.load params session = Query.succeed {}
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post p session = {
   let _ <- Db.insertScoped Project { name: "a", org: p.org }
   let row = { name: "b" }
   let _ <- Db.insertScoped Project row

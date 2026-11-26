@@ -8,8 +8,8 @@ type Model = { open: Bool }
 Index.load : Index.Params -> Session -> Query Model
 Index.load params session = Query.succeed { open: False }
 
-Close.update : Close.Params -> Session -> Task Response
-Close.update p session = Task.succeed Response.refresh
+Close.post : Close.Params -> Session -> Task Response
+Close.post p session = Task.succeed Response.refresh
 
 Index.view : Model -> Session -> Html
 Index.view model session =

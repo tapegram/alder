@@ -56,7 +56,7 @@
 (module App)
 (record App.Session (user Maybe Text) (theme Text = "light"))
 (record App.Logout.Params)
-(value App.Logout.update : Logout.Params -> Session -> Task Response (p session)
+(value App.Logout.delete : Logout.Params -> Session -> Task Response (p session)
   (bind task _
     (call (std Session.put)
       (lambda (s : Session)
@@ -110,7 +110,7 @@
                   (now (var now))
                   (count (var count))
                   (first (var first)))))))))))
-(value Index.Add.update : Add.Params -> Index.Session -> Task Response (p session)
+(value Index.Add.post : Add.Params -> Index.Session -> Task Response (p session)
   (bind task id : Text
     (db-insert Todo.Todo
       (record
@@ -124,14 +124,14 @@
         (call (std Response.redirect)
           (route-ref Index.Index
             (record Index.Params (a (var id)) (b (var id)))))))))
-(value Index.Toggle.update : Toggle.Params -> Index.Session -> Task Response (p session)
+(value Index.Toggle.put : Toggle.Params -> Index.Session -> Task Response (p session)
   (bind task _
     (db-update Todo.Todo
       (field id (var p))
       (lambda (t : Todo)
         (update (var t) (done (call (std Prelude.not) (field done (var t)))))))
     (pure task (std Response.refresh))))
-(value Index.Remove.update : Remove.Params -> Index.Session -> Task Response (p session)
+(value Index.Remove.delete : Remove.Params -> Index.Session -> Task Response (p session)
   (bind task found : Maybe Todo
     (db-get Todo.Todo (field id (var p)))
     (match union (var found)
@@ -142,7 +142,7 @@
             (db-delete Todo.Todo (field id (var t)))
             (pure task (std Response.refresh)))))
       (case Nothing (fail "no such todo")))))
-(value Index.Notify.update : Notify.Params -> Index.Session -> Task Response (p session)
+(value Index.Notify.post : Notify.Params -> Index.Session -> Task Response (p session)
   (bind task token : Text
     (std Random.id)
     (bind task sent : List Bool
@@ -169,7 +169,7 @@
 (table Todo.Todo (id id) (created created) (insert title done due owner))
 (route App.Logout DELETE "/session"
   (params Logout.Params)
-  (handler App.Logout.update)
+  (handler App.Logout.delete)
   (needs-shown))
 (route Index.Index GET "/pair/{a}/{b}"
   (params Index.Params)
@@ -182,24 +182,24 @@
   (params Add.Params)
   (requires user)
   (session Index.Session)
-  (handler Index.Add.update))
+  (handler Index.Add.post))
 (route Index.Toggle PUT "/pair/{a}/{b}/done"
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
-  (handler Index.Toggle.update)
+  (handler Index.Toggle.put)
   (needs-shown))
 (route Index.Remove DELETE "/pair/{a}/{b}"
   (params Remove.Params)
   (requires user)
   (session Index.Session)
-  (handler Index.Remove.update)
+  (handler Index.Remove.delete)
   (needs-shown))
 (route Index.Notify POST "/pair/{a}/{b}/notification"
   (params Notify.Params)
   (requires user)
   (session Index.Session)
-  (handler Index.Notify.update)
+  (handler Index.Notify.post)
   (needs-shown))
 (route Login.Login GET "/login"
   (params Login.Params)

@@ -47,15 +47,15 @@ Item.view r session =
     <button click={Delete { id: r.id }}>Delete</button>
   </li>
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update params session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post params session = {
   let _ <- Db.insert Row { title: params.form.title, n: 0 }
   Task.succeed Response.refresh
 }
 
 -- Add, and a job on the queue in the same transaction (`enqueue 1000` against `add 1000`).
-Enqueue.update : Enqueue.Params -> Session -> Task Response
-Enqueue.update params session = {
+Enqueue.post : Enqueue.Params -> Session -> Task Response
+Enqueue.post params session = {
   let _ <- Db.insert Row { title: params.form.title, n: 0 }
   let _ <- Job.enqueue (Noop {})
   Task.succeed Response.refresh
@@ -66,17 +66,17 @@ job Noop = {}
 Noop.run : Noop.Params -> Task Unit
 Noop.run p = Task.succeed ()
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update params session = {
+Toggle.patch : Toggle.Params -> Session -> Task Response
+Toggle.patch params session = {
   let _ <- Db.update Row params.id (\r -> { r | done: not r.done })
   Task.succeed (Response.render (Item { id: params.id }))
 }
 
-Jump.update : Jump.Params -> Session -> Task Response
-Jump.update params session = Task.succeed (Response.redirect (Show { id: params.id }))
+Jump.post : Jump.Params -> Session -> Task Response
+Jump.post params session = Task.succeed (Response.redirect (Show { id: params.id }))
 
-Delete.update : Delete.Params -> Session -> Task Response
-Delete.update params session = {
+Delete.delete : Delete.Params -> Session -> Task Response
+Delete.delete params session = {
   let _ <- Db.delete Row params.id
   Task.succeed Response.refresh
 }

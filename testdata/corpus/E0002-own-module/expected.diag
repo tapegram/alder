@@ -1,5 +1,5 @@
-app/Notes/Show.alder:18:22 E0002 inside `Notes.Show`, its own names are written unqualified: `Clear.update`
-  fix 18:22-18:45 Clear.update
-app/Notes/Show.alder:18:47 E0002 inside `Notes.Show`, its own names are written unqualified: `Clear`
-  fix 18:47-18:63 Clear
-app/Notes/Show.alder:23:36 E0002 module `Notes.Show` has no `Reset`
+app/Notes/Show.alder:18:22 E0002 inside `Notes.Show`, its own names are written unqualified: `Clear.post`
+  fix 18:22-18:43 Clear.post
+app/Notes/Show.alder:18:45 E0002 inside `Notes.Show`, its own names are written unqualified: `Clear`
+  fix 18:45-18:61 Clear
+app/Notes/Show.alder:23:34 E0002 module `Notes.Show` has no `Reset`

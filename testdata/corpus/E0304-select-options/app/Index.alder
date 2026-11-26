@@ -20,8 +20,8 @@ form NewPost = {
   reviewer: Maybe OwnerId,
 }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update p session = Task.succeed Response.refresh
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post p session = Task.succeed Response.refresh
 
 Picker : { owners: List { value: OwnerId, label: Text } } -> Html
 Picker props = <form submit={Submit}><al-select field="owner" options={props.owners} /></form>

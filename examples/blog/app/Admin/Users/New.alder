@@ -37,8 +37,8 @@ form UserForm = {
 -- @admin end
 
 -- Create adds the row and goes to its page.
-Create.update : Create.Params -> Session -> Task Response
-Create.update params session = {
+Create.post : Create.Params -> Session -> Task Response
+Create.post params session = {
   let _ <- Layout.adminOnly session.user
   -- @admin begin insert
   -- the admin never shows or writes a secret (passwordHash): a row starts without one

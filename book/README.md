@@ -42,7 +42,7 @@ changes, this book changes first.
   with `alder new`.
 
 - **[6. Routes, responses, forms](06-routes.md)** covers `route` (a URL with
-  a method), qualified declarations (`Index.load`, `Toggle.update`) and names
+  a method), qualified declarations (`Index.load`, `Toggle.patch`) and names
   across modules, the rule for where state lives, `Response` (`redirect`,
   `render`, `refresh`, `invalid`, `toast`) and when to use which, forms, how a
   response is delivered with and without JavaScript, the request lifecycle,
@@ -102,7 +102,7 @@ tests.
 ### Routes and state
 
 Every URL of an app is a `route` with an HTTP method. A `GET` route has a
-`load` and a `view`; a write route has an `update` that answers with a
+`load` and a `view`; a write route has a handler that answers with a
 `Response` (`redirect`, `render`, `refresh`, `invalid`). State lives in the
 URL, the HTML, the session or the database (chapter 6). The three examples
 are written that way.
@@ -174,7 +174,7 @@ All three examples run under it:
 Every survivor is explained in the example's README.
 
 A route's `requires` and role, its `Response` answers and each `let _ <-` step
-of its `update` (the access check a write route begins with) are mutated too,
+of its handler (the access check a write route begins with) are mutated too,
 so a write route's own guard needs a test that sends the write from a page
 still open after the session changed.
 

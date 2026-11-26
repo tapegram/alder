@@ -43,7 +43,7 @@ func Notes__Index__Index__load(params Notes__Index__Index__Params, session Notes
 	}))
 }
 
-func Notes__Index__Add__update(params Notes__Index__Add__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
+func Notes__Index__Add__post(params Notes__Index__Add__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[string] {
 		switch Mutant {
 		case 16:

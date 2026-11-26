@@ -89,8 +89,8 @@ Badge.load params session = Db.from Ping |> Db.count
 Badge.view : Int -> Session -> Html
 Badge.view n session = <span id="badge" load={Badge {}} every="1s">{Text.fromInt n}</span>
 
-Bump.update : Bump.Params -> Session -> Task Response
-Bump.update params session = {
+Bump.post : Bump.Params -> Session -> Task Response
+Bump.post params session = {
   let _ <- Db.insert Ping {}
   Task.succeed (Response.render (Badge {}))
 }

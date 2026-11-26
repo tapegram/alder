@@ -6,8 +6,8 @@ route Toggle = PATCH "/todos/{id}/toggle" { id: Text }
 Index.load : Index.Params -> Session -> Query Int
 Index.load params session = Query.succeed 0
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update params session = Task.succeed Response.refresh
+Toggle.patch : Toggle.Params -> Session -> Task Response
+Toggle.patch params session = Task.succeed Response.refresh
 
 Index.view : Int -> Session -> Html
 Index.view n session = <button id="t" click={Toggle { id: "a" }}>Toggle</button>

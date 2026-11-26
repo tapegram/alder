@@ -12,8 +12,8 @@ form NewTodo = {
   title: Text.NonEmpty @unique,
 }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update p session = Task.succeed Response.refresh
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post p session = Task.succeed Response.refresh
 
 Index.view : Model -> Session -> Html
 Index.view model session =

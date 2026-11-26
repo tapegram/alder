@@ -37,7 +37,7 @@ their markup).
 - Dividing an `Int` by zero, with `/` or `%`, is a runtime failure, not a
   value; `1 / 0` compiles and fails when it runs. Where it stops depends on
   when the division runs:
-  - In code a request runs (a route's `load`, `view` or `update`, and the
+  - In code a request runs (a route's `load`, `view` or the handler, and the
     functions they call), the request gets the error page (`App.error`,
     chapter 6) and the error is logged; the server goes on answering other
     requests.

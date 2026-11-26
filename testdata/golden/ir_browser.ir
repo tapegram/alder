@@ -5,7 +5,7 @@
 (record App.Feedback (text Text))
 (record App.Logout.Params)
 (record App.Send.Params (form Feedback))
-(value App.Logout.update : Logout.Params -> Session -> Task Response (p session)
+(value App.Logout.delete : Logout.Params -> Session -> Task Response (p session)
   (bind task _
     (call (std Session.put)
       (lambda (s : Session)
@@ -13,7 +13,7 @@
     (pure task
       (call (std Response.redirect)
         (route-ref Auth.Login.Login (record Auth.Login.Login.Params))))))
-(value App.Send.update : Send.Params -> Session -> Task Response (p session)
+(value App.Send.post : Send.Params -> Session -> Task Response (p session)
   (pure task (std Response.refresh)))
 (value App.error : Error -> Html (err)
   (elem html (elem body (elem h1 (htext "Something went wrong")))))
@@ -26,7 +26,7 @@
 (record Auth.Login.Submit.Params (form Credentials))
 (value Auth.Login.Login.load : Login.Params -> App.Session -> Query Model (params session)
   (pure query (record Model)))
-(value Auth.Login.Submit.update : Submit.Params -> App.Session -> Task Response (p session)
+(value Auth.Login.Submit.post : Submit.Params -> App.Session -> Task Response (p session)
   (bind task found : Maybe Text
     (cap Auth.Login.Password verify
       (record
@@ -201,7 +201,7 @@
                 (missing 1))
               (var notes)))
           (now (var now)))))))
-(value Notes.Index.Submit.update : Submit.Params -> Index.Session -> Task Response (p session)
+(value Notes.Index.Submit.post : Submit.Params -> Index.Session -> Task Response (p session)
   (bind task _
     (db-insert Note.Note
       (record
@@ -212,7 +212,7 @@
       (call (std Response.redirect)
         (route-ref Notes.Index.Index
           (record Index.Params (filter (field filter (var p)))))))))
-(value Notes.Index.Toggle.update : Toggle.Params -> Index.Session -> Task Response (p session)
+(value Notes.Index.Toggle.put : Toggle.Params -> Index.Session -> Task Response (p session)
   (bind task found : Maybe Note
     (db-get Note.Note (field id (var p)))
     (match union (var found)
@@ -229,7 +229,7 @@
               (pure task (std Response.refresh)))
             (not-found))))
       (case Nothing (not-found)))))
-(value Notes.Index.Boom.update : Boom.Params -> Index.Session -> Task Response (p session)
+(value Notes.Index.Boom.post : Boom.Params -> Index.Session -> Task Response (p session)
   (bind task notes : List Note
     (db-select Note.Note
       (where (cond eq (col Note.Note owner) (field user (var session))))
@@ -250,14 +250,14 @@
           (if (== : Int (/ 1 (var zero)) 0)
             (std Response.refresh)
             (std Response.refresh)))))))
-(value Notes.Index.Rename.update : Rename.Params -> Index.Session -> Task Response (p session)
+(value Notes.Index.Rename.patch : Rename.Params -> Index.Session -> Task Response (p session)
   (bind task _
     (db-update Note.Note
       (field id (var p))
       (lambda (x : Note)
         (update (var x) (title (field title (field form (var p)))))))
     (pure task (std Response.refresh))))
-(value Notes.Index.SavePrefs.update : SavePrefs.Params -> Index.Session -> Task Response (p session)
+(value Notes.Index.SavePrefs.put : SavePrefs.Params -> Index.Session -> Task Response (p session)
   (pure task (std Response.refresh)))
 (value Notes.Index.Index.view : Model -> Index.Session -> Html (model session)
   (elem html
@@ -673,11 +673,11 @@
 (form Notes.Index.Prefs)
 (route App.Logout DELETE "/session"
   (params Logout.Params)
-  (handler App.Logout.update))
+  (handler App.Logout.delete))
 (route App.Send POST "/"
   (params Send.Params)
   (form Feedback)
-  (handler App.Send.update)
+  (handler App.Send.post)
   (needs-shown))
 (route Auth.Login.Login GET "/login"
   (params Login.Params)
@@ -687,7 +687,7 @@
 (route Auth.Login.Submit POST "/session"
   (params Submit.Params)
   (form Credentials)
-  (handler Auth.Login.Submit.update)
+  (handler Auth.Login.Submit.post)
   (needs-shown))
 (route Notes.Index.Index GET "/"
   (params Index.Params)
@@ -701,32 +701,32 @@
   (form NewNote)
   (requires user)
   (session Index.Session)
-  (handler Notes.Index.Submit.update))
+  (handler Notes.Index.Submit.post))
 (route Notes.Index.Toggle PUT "/notes/{id}/done"
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
-  (handler Notes.Index.Toggle.update)
+  (handler Notes.Index.Toggle.put)
   (needs-shown))
 (route Notes.Index.Boom POST "/notes/failure"
   (params Boom.Params)
   (requires user)
   (session Index.Session)
-  (handler Notes.Index.Boom.update)
+  (handler Notes.Index.Boom.post)
   (needs-shown))
 (route Notes.Index.Rename PATCH "/notes/{id}"
   (params Rename.Params)
   (form Title)
   (requires user)
   (session Index.Session)
-  (handler Notes.Index.Rename.update)
+  (handler Notes.Index.Rename.patch)
   (needs-shown))
 (route Notes.Index.SavePrefs PUT "/prefs"
   (params SavePrefs.Params)
   (form Prefs)
   (requires user)
   (session Index.Session)
-  (handler Notes.Index.SavePrefs.update)
+  (handler Notes.Index.SavePrefs.put)
   (needs-shown))
 (route Notes.Show.Show GET "/notes/{id}"
   (params Show.Params)

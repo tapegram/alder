@@ -395,7 +395,7 @@ func TestNew_Bare(t *testing.T) {
 		{"", []string{"new", "table", "Note", "title:Text.NonEmpty", "body:Text", "owner:User.UserId@ref=User", "created:Time@created", "--no-timestamps"}},
 		{"", []string{"new", "auth"}},
 		{"", []string{"new", "route", "Notes.Index", "/", "--blank", "--requires", "user"}},
-		{"Notes.Index.Index {}", []string{"fill", "Auth.Login.SignIn.update", "-"}},
+		{"Notes.Index.Index {}", []string{"fill", "Auth.Login.SignIn.post", "-"}},
 		{"Notes.Index.Index {}", []string{"fill", `Auth.Login."logging in through the form"`, "-"}},
 		{"Query.succeed { }", []string{"fill", "Notes.Index.Index.load", "-"}},
 		{`<Layout.Page title="Notes"><h1>Notes</h1></Layout.Page>`, []string{"fill", "Notes.Index.Index.view", "-"}},

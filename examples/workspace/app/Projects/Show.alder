@@ -34,16 +34,16 @@ form NewTodo = { title: Text.NonEmpty }
 
 -- No `load` runs before a write route: each re-reads the membership, and Add the project, which
 -- is a 404 when it is not the org's.
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
+Add.post : Add.Params -> Session -> Task Response
+Add.post p session = {
   let _ <- Membership.memberOnly session.user session.org
   let project <- Db.getScoped Project p.id
   let _ <- Db.insertScoped Todo { title: p.form.title, project: project.id }
   Task.succeed Response.refresh
 }
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update p session = {
+Toggle.patch : Toggle.Params -> Session -> Task Response
+Toggle.patch p session = {
   let _ <- Membership.memberOnly session.user session.org
   let _ <- Db.updateScoped Todo p.id (\t -> { t | done: not t.done })
   Task.succeed Response.refresh

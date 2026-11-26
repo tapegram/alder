@@ -17,8 +17,8 @@ Peek.load params session = {
   }
 }
 
-Rename.update : Rename.Params -> Session -> Task Response
-Rename.update p session = {
+Rename.patch : Rename.Params -> Session -> Task Response
+Rename.patch p session = {
   let _ <- Db.updateMine Item p.id (\i -> { i | title: "peeked" })
   Task.succeed Response.refresh
 }

@@ -53,7 +53,7 @@ Two rules are particular to tests:
 - A test has no name you can call. It is not a value; only `alder test`
   runs it.
 
-Because a route's `load`, `view` and `update` are functions that return
+Because a route's `load`, `view` and the handler are functions that return
 descriptions, much of a route can be tested this way. `view` returns HTML,
 and two HTML values are equal when they render to the same markup:
 
@@ -124,7 +124,7 @@ test "an empty list has one open todo" = Todo.countOpen [] == 1
 ```
 
 and one at the end of `Todos.Index` that expects the `Toggle` route's
-`update` to read the todo and then write it, in two steps (sections 3 to 6
+the handler to read the todo and then write it, in two steps (sections 3 to 6
 explain effect tests and traces):
 
 ```alder
@@ -132,13 +132,13 @@ test "Toggle reads, then writes" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let r <- Test.run (Index.Toggle.update { id: id } { user: me, role: Member })
+  let r <- Test.run (Index.Toggle.patch { id: id } { user: me, role: Member })
   Task.succeed (r.trace == ["Db.get Todo", "Db.update Todo"])
 }
 ```
 
 In their modules they are written without the `Todo.` and `Index.`
-prefixes (`Toggle.update`). Both compile; both are wrong:
+prefixes (`Toggle.patch`). Both compile; both are wrong:
 
 ```text
 $ alder test examples/todos -run '^(App|Auth|Table\.Todo|Todos)'
@@ -257,7 +257,7 @@ app/Probe.alder:6:29: error[E0003]: expected Bool, got Int
 ## 3. Testing effects
 
 A `Task` cannot be compared with `==` (section 13 says why), so a test of
-`update` cannot just compare its result. Instead it runs the task and
+the handler cannot just compare its result. Instead it runs the task and
 looks at what happened.
 
 A test whose body is a block, `{ … }`, is an **effect test**: the block is
@@ -269,14 +269,14 @@ ends with `Task.succeed` of the verdict. A block that ends in a plain
 The to-do list's tests are the last thing in `app/Todos/Index.alder`
 (chapter 2 shows them in place). Written in another module, as the
 blocks of this chapter are, the route module's declarations are named
-through its import (`Index.Toggle.update`; chapter 6, "Names"):
+through its import (`Index.Toggle.patch`; chapter 6, "Names"):
 
 ```alder
 test "Toggle flips done" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let r <- Test.run (Index.Toggle.update { id: id } { user: me, role: Member })
+  let r <- Test.run (Index.Toggle.patch { id: id } { user: me, role: Member })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.updateMine Todo"], done: Just True })
@@ -300,8 +300,8 @@ Line by line:
    Without this line the step would fail with `Db.updateMine Todo: no
    signed-in user`.
 
-4. Run the `Toggle` route's `update` under `Test.run` (section 4) and
-   call the outcome `r`. `Toggle.update` takes the route's parameters
+4. Run the `Toggle` route's handler under `Test.run` (section 4) and
+   call the outcome `r`. `Toggle.patch` takes the route's parameters
    (`{ id: id }`, a `Toggle.Params`, the id the URL would carry) and the
    session; no `load` runs before it, and no form is decoded.
 
@@ -309,18 +309,18 @@ Line by line:
    own whose `user` is a `UserId`, not a `Maybe` (chapter 6). The record
    literal `{ user: me, role: Member }` names every field, the role too (a
    literal gets no defaults: chapter 6, "Rules"), and is that type because
-   it is written where `update` expects one. Bound to a name first by a
-   `let` without an annotation, it would be a plain record, which `update`
+   it is written where the handler expects one. Bound to a name first by a
+   `let` without an annotation, it would be a plain record, which the handler
    does not accept.
 
-   This record is `update`'s `session` argument, which the route's own
+   This record is the handler's `session` argument, which the route's own
    code may read; the scoped operations do not read it (step 3, and "Tests
    that use the rules", below).
 
 5. Read the todo again, and take its `done` (`after` is a `Maybe Todo`:
    `Nothing` if the row were gone).
 
-6. The verdict, as one `==` between two records: `update` made one
+6. The verdict, as one `==` between two records: the handler made one
    step, the scoped write, and the stored todo is now done. Putting everything
    the test checks into one record, rather than joining several `==`
    with `&&`, means a failure prints both records whole (section 2).
@@ -328,7 +328,7 @@ Line by line:
 The second test is the ownership rule of chapter 6, "Rules": a user who
 posts `Toggle` with someone else's todo id gets a 404 and changes
 nothing. The example tests it through the browser (section 9, "A
-stranger's todo"); here it is through `update` itself, the stranger signed
+stranger's todo"); here it is through the handler itself, the stranger signed
 in with `Test.login`:
 
 ```alder
@@ -337,7 +337,7 @@ test "Toggle by a stranger is not found" = {
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let stranger = User.UserId "someone-else"
   let _ <- Test.login { user: Just stranger }
-  let r <- Test.run (Index.Toggle.update { id: id } { user: stranger, role: Member })
+  let r <- Test.run (Index.Toggle.patch { id: id } { user: stranger, role: Member })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ value: r.value, trace: r.trace, done: done } == { value: Err "not found", trace: ["Db.updateMine Todo"], done: Just False })
@@ -359,7 +359,7 @@ FAIL Todos.Index "Toggle by a stranger is not found"
 0 passed, 1 failed
 ```
 
-The stranger's `Toggle` succeeded, the update ran, and the todo is done.
+The stranger's `Toggle` succeeded, the handler ran, and the todo is done.
 
 ### Tests that use the rules
 
@@ -371,7 +371,7 @@ to a function. What sets that session:
 - **`Test.login s`** sets it to `s`, as well as the browser's cookie
   (section 9). This is the way to choose the user.
 
-- **`Session.put`**, in the test or inside an `update` it runs, changes
+- **`Session.put`**, in the test or inside a handler it runs, changes
   it for every later step: a scoped operation after it acts for the
   new user.
 
@@ -379,15 +379,15 @@ to a function. What sets that session:
   `Credentials`) signs the user into the **browser** only: the route's
   `Session.put` ran in the request, and the router stored the result in
   the cookie. The browser's next requests act for that user; the test's
-  own steps (a `Test.run (Toggle.update …)`, a `Db.mine` in the test body)
+  own steps (a `Test.run (Toggle.patch …)`, a `Db.mine` in the test body)
   do not.
 
 The route checks `requires` and the role (chapter 6); a test of them
 goes through the browser (`Test.open`, `Test.click`, section 9); a
-direct `update` call is not checked.
+direct handler call is not checked.
 
-So a test that calls `update` or `load` itself, with a session record,
-signs in with `Test.login` first; the record is still `update`'s
+So a test that calls the handler or `load` itself, with a session record,
+signs in with `Test.login` first; the record is still the handler's
 argument, and must have the route's `Session` type, but it does not choose
 the user.
 
@@ -480,8 +480,8 @@ like the page's. Things to know:
   Nothing`, as the generated admin's tests do, whose pages take the org
   from their parameter.
 
-- **A switch refused.** A request crafted by hand is a direct `update`
-  call (the page offers no such button): `Test.run (Open.update { org:
+- **A switch refused.** A request crafted by hand is a direct handler
+  call (the page offers no such button): `Test.run (Open.put { org:
   globex } { user: ann, org: Nothing, role: Member })` gives `Err
   "Session.put org: no Membership for this user and org"`
   (`Orgs.Index "a non-member's switch is refused"`).
@@ -494,7 +494,7 @@ like the page's. Things to know:
 
 - **One store per `Test.run`.** A `Test.run` runs its `Task` as a request
   runs one, on one store: the first one it writes, and for `Test.run
-  (Create.update p session)` the route's store, bound first as its request's
+  (Create.post p session)` the route's store, bound first as its request's
   is, so a `Test.run` fails where the request would.
 
   A `Test.run` whose `Task` writes the shared
@@ -553,8 +553,8 @@ like the page's. Things to know:
 - **The app's default session.** A test's session starts as `App`'s
   session with every field at its default (here `{ user: Nothing }`).
   `Test.login` and `Session.put` change it; it is the session the
-  scoped operations act for (above). A test of `update` also passes a
-  session record as `update`'s argument, which the route's own code
+  scoped operations act for (above). A test of the handler also passes a
+  session record as the handler's argument, which the route's own code
   reads.
 
 - **A browser.** A page held and a session cookie, both empty at the
@@ -621,8 +621,8 @@ are not in the test's trace; the enqueue is, as
 
 ## 4. `Test.run`: running a task that may fail
 
-`Toggle.update` for another user's todo ends in `Task.notFound`. If the
-test simply wrote `let response <- Index.Toggle.update …`, that failure
+`Toggle.patch` for another user's todo ends in `Task.notFound`. If the
+test simply wrote `let response <- Index.Toggle.patch …`, that failure
 would be the test's failure, as a failing step is any task's failure, and
 the test could never check that the 404 happened.
 
@@ -639,7 +639,7 @@ a record:
   page in the running app — or, when a capability's Go code returned an
   error, the call and the error: `"Password.verify: connection refused"`.
 
-  A write route's `update` gives a `Result Text Response`, and `Response`
+  A write route's handler gives a `Result Text Response`, and `Response`
   values compare with `==`, so `r.value == Ok Response.refresh` works too.
 
 - `trace` is the list of steps `t` performed (section 6).
@@ -712,7 +712,7 @@ steps : Task (List Text)
 steps = Test.trace
 ```
 
-Where no test can reach (a route's `load`, `view` or `update`, `App`,
+Where no test can reach (a route's `load`, `view` or the handler, `App`,
 a fake's entry, a brand's check, a field's default) it is E0040, so no
 route can depend on them:
 
@@ -751,7 +751,7 @@ That is why the report of
 "Toggle reads, then writes" above has the trace
 `["Db.insert User", "Db.insert Todo", "Test.login", "Test.run", "Db.updateMine Todo"]`
 while its `r.trace` was `["Db.updateMine Todo"]`. Compare
-`r.trace` when the question is what `update` did; the test's own trace
+`r.trace` when the question is what the handler did; the test's own trace
 is what the report prints to help you find out why a test failed.
 
 A trace says what was attempted, not what the data became: it is the
@@ -1166,7 +1166,7 @@ step names a route (chapter 6), as a link, a form or a button does.
 
 ### Why through the browser
 
-The tests so far call `load` and `update` directly. That leaves out what
+The tests so far call `load` and the handler directly. That leaves out what
 happens between them in the running app: the router that reads `/todos/x`
 into a route's parameters, the decoding of a submitted form, `requires`
 sending a visitor to the login page, the session a login stores, the page
@@ -1286,7 +1286,7 @@ Line by line:
    error (E0002), and its fix writes `Todos.Index.Submit`. The page held
    must show that form: the browser posts only what a user could.
 
-   The route's `update` inserts the todo and answers `Response.redirect
+   The route's handler inserts the todo and answers `Response.redirect
    (Index { filter: p.filter })`; the browser follows the redirect, as a
    real one does, and now holds the new page. `added.answer` is
    `Redirected (Todos.Index.Index {})`.
@@ -1316,7 +1316,7 @@ not in the URL. Two route values are equal when their addresses are.
 The
 trace is each step's name (`Test.submit` names the form), then the effects
 of the requests it made. The submit made one request, the `Submit` route's
-`update`, whose `Db.insertMine Todo` is its only write, and then fetched
+the handler, whose `Db.insertMine Todo` is its only write, and then fetched
 the page the redirect led to (`Db.mine Todo`, `Db.all Todo`): a `redirect`
 renders no page before the write, so nothing is read ahead of the insert
 (section 10). Each `Db.mine Todo` is the note `load`'s scoped read leaves
@@ -1384,10 +1384,10 @@ type Answer = Shown
 | Answer | When | The page the browser then holds |
 |---|---|---|
 | `Shown` | `get`/`open`: the page was shown | that page |
-| `Rendered r` | `click` of the GET route `r`, or of a write route whose `update` answered `Response.render r` | the page it held, with `r`'s view patched in as the element with the view's root `id` |
-| `Refreshed` | `click`/`submit` of a write route whose `update` answered `Response.refresh`; or `Test.refresh`, when the page loaded again is the page held | after a write, the page re-rendered, the regions the server changed patched in; after `Test.refresh`, the page loaded again |
+| `Rendered r` | `click` of the GET route `r`, or of a write route whose handler answered `Response.render r` | the page it held, with `r`'s view patched in as the element with the view's root `id` |
+| `Refreshed` | `click`/`submit` of a write route whose handler answered `Response.refresh`; or `Test.refresh`, when the page loaded again is the page held | after a write, the page re-rendered, the regions the server changed patched in; after `Test.refresh`, the page loaded again |
 | `Redirected r` | a `Response.redirect r`, a `load` ending in `Query.redirect r`, or a `requires` sending a visitor to the login page | `r`, which the browser requested in turn |
-| `FormRejected errors` | `submit`/`click`: the form did not decode, or `update` answered `Response.invalid t` | the page with the form re-rendered: the values typed and the errors (status 422) |
+| `FormRejected errors` | `submit`/`click`: the form did not decode, or the handler answered `Response.invalid t` | the page with the form re-rendered: the values typed and the errors (status 422) |
 | `PageMissing` | a 404: `Query.notFound`, `Task.notFound`, no such route | `App.notFound` (when only an element was asked for, a `Response.render` or a click on a GET route: the page it held, with an error toast) |
 | `RequestFailed text` | the request failed (a `Task.fail`, a Go panic): a 500 | `App.error` (for an element, as above: the page it held, with an error toast) |
 
@@ -1609,7 +1609,7 @@ test "logging in through the form" = {
 }
 ```
 
-The `Submit` route's `update` called the fake and `Session.put`; the
+The `Submit` route's handler called the fake and `Session.put`; the
 browser kept the cookie, followed the redirect with it, and holds the
 list.
 
@@ -1617,7 +1617,7 @@ list.
 > session is still the one it started with, so a `Db.mine` in the test
 > body would have no user.
 
-With an email that has no row the fake answers `Nothing`, `update`
+With an email that has no row the fake answers `Nothing`, the handler
 answers `Response.invalid "Email or password is incorrect."`, and the
 answer is `FormRejected [{ field: "", message: "Email or password is
 incorrect." }]`, with `status` 422.
@@ -1728,8 +1728,8 @@ field not sent is a field left out of the form. Every name sent must be a
 field of the form and have an input on the page.
 
 **`FormRejected errors`** is the answer when the page shows its form again
-with errors: the form did not decode (chapter 6: `update` never ran), or
-`update` answered `Response.invalid "…"`. The status is 422. The browser
+with errors: the form did not decode (chapter 6: the handler never ran), or
+the handler answered `Response.invalid "…"`. The status is 422. The browser
 holds the page re-rendered, with what was typed back in each input
 (except a `Text.Secret`, which is never sent back) and each error in its
 `<Errors>` list. `errors` is what those lists show:
@@ -1750,11 +1750,11 @@ holds the page re-rendered, with what was typed back in each input
   the status 422, but a user sees the page unchanged.
 
   The compiler warns about such a form
-  when the `update` of its route can answer `Response.invalid` (W0005).
+  when the handler of its route can answer `Response.invalid` (W0005).
 
 - a form the re-rendered page no longer draws shows no `invalid` text
   either. A page held while an order was Open, the order paid meanwhile,
-  and its add-line form posted: `update` answers `invalid`, but the Paid
+  and its add-line form posted: the handler answers `invalid`, but the Paid
   order's page has no add-line form, so the text has nowhere to go; the
   answer is `FormRejected []`, and a user sees the page change with no
   message.
@@ -1783,7 +1783,7 @@ test "an empty title is rejected" = {
 ```
 
 The title and the date come back as typed (`Test.attr "value"` reads
-the input), with their errors, and no row was written. `update` never
+the input), with their errors, and no row was written. The handler never
 ran: the form did not decode.
 
 ### `Test.click`: pressing a button
@@ -1818,7 +1818,7 @@ test "toggling a todo through the page" = {
 }
 ```
 
-`Toggle.update` answered `Response.refresh`, so the browser loaded the
+`Toggle.patch` answered `Response.refresh`, so the browser loaded the
 page again and patched in the regions that changed: the item now has
 `class="done"`, and nothing is open. The answer is `Refreshed`.
 
@@ -1983,13 +1983,13 @@ test "Toggle by another user is not found" = {
 
 The click posts my page's Toggle button with the stranger's cookie. The
 router renders the page the stranger is on first (the before-view of a
-route that can answer `refresh`; section 10), then runs `update`, where
+route that can answer `refresh`; section 10), then runs the handler, where
 `Db.updateMine` finds no todo of the stranger's with that id:
 `PageMissing`, and the todo is not done.
 
 "Delete by another user is not
 found" does the same with the Delete button. Section 3's "Toggle by a
-stranger is not found" asks the same question of `update` directly.
+stranger is not found" asks the same question of the handler directly.
 
 The ownership test is also written with what a stranger can do on a
 fresh page, open the todo's address:
@@ -2155,7 +2155,7 @@ these texts, and nothing is sent:
 And when the test compiles (E0003 unless named):
 
 - E0040 "`Test.get` is only available in a `test` or a test helper:
-  `Toggle.update` is the route's update, not a helper"; "`Test.get`
+  `Toggle.patch` is the route's update, not a helper"; "`Test.get`
   needs an `App` module: the browser requests the app's routes, which an
   app without `App` does not serve".
 
@@ -2205,7 +2205,7 @@ And when the test compiles (E0003 unless named):
   and a submit sends only the fields the form has inputs for.
 
 - **One transaction.** Every request runs inside the test's own
-  transaction, its `update` under a savepoint of its own: a page sees
+  transaction, its handler under a savepoint of its own: a page sees
   the rows the test inserted, the test sees the rows a page wrote, and a
   request that fails (`RequestFailed`, `PageMissing`) undoes only its own writes.
 
@@ -2278,7 +2278,7 @@ A `test`, or another test helper, in any module, may use one. Production
 code may not.
 
 Some values can never be helpers, because the compiler
-or the runtime calls them: a route's `load`, `view` and `update`, every
+or the runtime calls them: a route's `load`, `view` and the handler, every
 value of `App`, a fake's entries, a brand's `where` check and a field's
 default. A reference from one of those to a helper is E0040, naming the
 helper and the first thing that makes it one:
@@ -2290,7 +2290,7 @@ test helper) ``. Using a test-only thing directly in one of them is E0040
 at the use: "`Test.fetch` is only available in a `test` or a test
 helper: `Index.view` is the route's view, not a helper" (likewise "a fake's
 entry is not a helper", "a field default is not a helper", "a brand
-check is not a helper", "`App.update` is not a helper").
+check is not a helper", "`Logout.delete` is not a helper").
 
 `alder build` leaves every test helper out of the program, and `alder
 test --mutate` makes no mutant in one (section 11).
@@ -2320,7 +2320,7 @@ request in memory and hands it to the router, which calls the route's
 handler and writes the response into memory, where the browser reads it.
 
 Everything between, from reading `/todos/x` into a route's parameters to
-decoding the form, checking `requires`, running `load` and `update`,
+decoding the form, checking `requires`, running `load` and the handler,
 rendering and setting the cookie, is the code that runs in production.
 
 #### Inside the test's transaction
@@ -2334,7 +2334,7 @@ In a test, that would wait for ever for the
 one connection, and would not see the test's uncommitted rows anyway. So
 the browser gives the router each request's environment itself, one that
 runs inside the test's transaction. A `load` is a `Query`, which cannot
-write, so it simply reads through that transaction. An `update` is a
+write, so it simply reads through that transaction. A handler is a
 `Task`, and runs under a savepoint (section 4) instead of a transaction
 of its own:
 
@@ -2356,7 +2356,7 @@ test "adding a todo through the page"   (a fresh database in memory)
   COMMIT                                   the verdict
 ```
 
-When an `update` fails, its savepoint is rolled back (`ROLLBACK TO`),
+When a handler fails, its savepoint is rolled back (`ROLLBACK TO`),
 so its writes are gone and the test's are not.
 
 #### The before-view
@@ -2365,10 +2365,10 @@ so its writes are gone and the test's are not.
 nothing before the insert: there is no `Db.all Todo` ahead of
 `Db.insertMine Todo` in the trace above.
 
-A write route whose `update` can
+A write route whose handler can
 answer `Response.refresh` or `Response.invalid` is different. The router
 renders the page the browser is on first (the address in the `Alder-Page`
-header, run as a `GET` of its route), so that after the `update` it can
+header, run as a `GET` of its route), so that after the handler it can
 compare the two renders and send only the regions that changed (chapter
 6, "A write's response, with JavaScript").
 
@@ -2531,9 +2531,9 @@ had before this section's work, the others left out with `-run`:
 11 passed, 0 failed
 41 mutants: 21 killed, 20 survived  (score 0.51)
 survived:
-  App           Logout.update:16   update field dropped   { s | user: Nothing, role: Member } → { s | user: Nothing }
-  App           Logout.update:17   redirect → refresh     Response.redirect (Auth.Login.Login {}) → Response.refresh
-  Auth.Login    Submit.update:42   update field dropped   { s | user: Just id, role: role } → { s | user: Just id }
+  App           Logout.delete:16   update field dropped   { s | user: Nothing, role: Member } → { s | user: Nothing }
+  App           Logout.delete:17   redirect → refresh     Response.redirect (Auth.Login.Login {}) → Response.refresh
+  Auth.Login    Submit.post:42   update field dropped   { s | user: Just id, role: role } → { s | user: Just id }
   Table.Todo    Todo:16            cascade ↔ restrict     owner @ref User @restrict → owner @ref User @cascade
   Table.Todo    matches:21         arm swapped            match filter { All -> True, Active -> not todo.done, Complete…
   Table.Todo    matches:23         not dropped            not todo.done → todo.done
@@ -2545,12 +2545,12 @@ survived:
   Todos.Show    Show:7             requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
   Todos.Show    Save:12            requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
   Todos.Show    Delete:13          requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
-  Todos.Show    Save.update:27     write replaced         let _ <- Db.updateMine Todo p.id … → let _ <- Task.succeed ()
-  Todos.Show    Save.update:27     scope dropped          Db.updateMine Todo p.id (\t -> { t | title: p.form.title, due: p.form.due }) → Db.update Todo p.id …, not found when missing
-  Todos.Show    Save.update:27     update field dropped   { t | title: p.form.title, due: p.form.due } → { t | due: p.form.due }
-  Todos.Show    Save.update:27     update field dropped   { t | title: p.form.title, due: p.form.due } → { t | title: p.form.title }
-  Todos.Show    Save.update:28     redirect → refresh     Response.redirect (Todos.Index.Index {}) → Response.refresh
-  Todos.Show    Delete.update:34   redirect → refresh     Response.redirect (Todos.Index.Index {}) → Response.refresh
+  Todos.Show    Save.put:27     write replaced         let _ <- Db.updateMine Todo p.id … → let _ <- Task.succeed ()
+  Todos.Show    Save.put:27     scope dropped          Db.updateMine Todo p.id (\t -> { t | title: p.form.title, due: p.form.due }) → Db.update Todo p.id …, not found when missing
+  Todos.Show    Save.put:27     update field dropped   { t | title: p.form.title, due: p.form.due } → { t | due: p.form.due }
+  Todos.Show    Save.put:27     update field dropped   { t | title: p.form.title, due: p.form.due } → { t | title: p.form.title }
+  Todos.Show    Save.put:28     redirect → refresh     Response.redirect (Todos.Index.Index {}) → Response.refresh
+  Todos.Show    Delete.delete:34   redirect → refresh     Response.redirect (Todos.Index.Index {}) → Response.refresh
 ```
 
 A test failed for 21 of the 41 mutants: the score is 21 / 41. A
@@ -2559,7 +2559,7 @@ survivor's line gives:
 - its module;
 - `declaration:line` (`Index.load:17` is
   line 17 of `app/Todos/Index.alder`; a route's members are named as in the
-  source, `Save.update:27`; a column is added, `load:33:17`, when the line
+  source, `Save.put:27`; a column is added, `load:33:17`, when the line
   has two mutants of that kind);
 - the operator;
 - the code before `→`
@@ -2577,7 +2577,7 @@ breaks, in five classes; every mutant is well-typed:
 | authorization | `scope dropped` | `Db.mine T` becomes `Db.from T`; the other scoped operations act on anyone's row; likewise `Db.scoped` and its family (not on a siloed table) |
 | authorization | `membership dropped` | A key's `via M` check removed: a `Session.put` of any org succeeds |
 | authorization | `guard dropped` | An `if` or `match` with one arm ending in `Task.notFound`, `Query.notFound` or `Task.fail` becomes its other arm: the check is gone |
-| authorization | `step dropped` | A `let _ <- e` step becomes `Task.succeed ()` (or `Query.succeed ()`; `Task.succeed []` for a `List Unit`, a bulk action's writes): the access check `let _ <- Layout.adminOnly session.user` that begins a write route's `update`, say. Not an update, a delete or a `Session.put` (the two operators below make that program), nor a step whose result is neither `Unit` nor a `List` of it |
+| authorization | `step dropped` | A `let _ <- e` step becomes `Task.succeed ()` (or `Query.succeed ()`; `Task.succeed []` for a `List Unit`, a bulk action's writes): the access check `let _ <- Layout.adminOnly session.user` that begins a write route's handler, say. Not an update, a delete or a `Session.put` (the two operators below make that program), nor a step whose result is neither `Unit` nor a `List` of it |
 | data | `where dropped` | One `Db.where` of a query removed |
 | data | `orderBy reversed` | A `Db.orderBy`'s `asc` and `desc` swapped |
 | data | `limit dropped` | A query's `Db.limit` removed |
@@ -2600,7 +2600,7 @@ breaks, in five classes; every mutant is well-typed:
 | schema | `cascade ↔ restrict` | A reference's delete rule, `@cascade`↔`@restrict` |
 
 A write route runs no `load` (chapter 6), so its own `requires`, its role
-and the access check its `update` begins with are all that stop a
+and the access check its handler begins with are all that stop a
 request: each is a mutant, and a test that sends the write from a page
 still open after the session changed kills it (a visitor, a cookie whose
 role is no longer the one required, a row demoted since; section 9).
@@ -2635,10 +2635,10 @@ app's five:
 
 ```text
   Todos.Index   Index.load:16      scope dropped          Db.mine Todo → Db.from Todo
-  Todos.Index   Toggle.update:36   scope dropped          Db.updateMine Todo p.id (\t -> { t | done: not t.done }) → Db.update Todo p.id (\t -> { t | done: not t.done }), not found when missing
+  Todos.Index   Toggle.patch:36   scope dropped          Db.updateMine Todo p.id (\t -> { t | done: not t.done }) → Db.update Todo p.id (\t -> { t | done: not t.done }), not found when missing
   Todos.Show    Show.load:19       scope dropped          Db.getMine Todo params.id → Db.get Todo params.id, not found when missing
-  Todos.Show    Save.update:27     scope dropped          Db.updateMine Todo p.id (\t -> { t | title: p.form.title, due: p.form.due }) → Db.update Todo p.id …, not found when missing
-  Todos.Show    Delete.update:33   scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
+  Todos.Show    Save.put:27     scope dropped          Db.updateMine Todo p.id (\t -> { t | title: p.form.title, due: p.form.due }) → Db.update Todo p.id …, not found when missing
+  Todos.Show    Delete.delete:33   scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
 ```
 
 "Not found when missing" is the replacement's whole behaviour: the
@@ -2665,7 +2665,7 @@ Of the first two, "Toggle flips done" kills the
 ### A surviving mutant is a test you have not written
 
 Each survivor is a behaviour no test checks: write the test that would
-notice. `Todos.Show Save.update:27` has four of them in the report above:
+notice. `Todos.Show Save.put:27` has four of them in the report above:
 the save could store nothing, drop the title, drop the due date, or touch
 anyone's todo. One test that saves the form and reads the row back kills
 the first three:
@@ -2782,9 +2782,9 @@ $ alder test --mutate examples/todos
 148 passed, 0 failed
 226 mutants: 222 killed, 4 survived  (score 0.98)
 survived:
-  Admin.Todos.Edit   Save.update:80     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Todos.Edit   Save.put:80     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Todos.New    New.load:33        operator flipped   ownersTotal > 200 → ownersTotal >= 200
-  Admin.Todos.New    Create.update:59   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Todos.New    Create.post:59   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Users.Bulk   selected:44        where dropped      Db.where (Todo.owner.in taken) → the condition dropped
 ```
 
@@ -2813,7 +2813,7 @@ each survives:
 
 ### What is never a mutant
 
-Mutants are made only in the app's own code: the `load`, `update`,
+Mutants are made only in the app's own code: the `load`, the handler,
 helpers and plain values of every module, and its tables. Never in a
 `test`, a `fake`, a test helper (section 9, "Test helpers"), a `view` or
 a component (anything that makes `Html`), or the standard library.
@@ -2830,7 +2830,7 @@ are reported apart, in `--json`'s last object (below):
   - an `operator flipped` whose two sides are the same expression;
   - a `step dropped` of a step that is already `Task.succeed`;
   - a write route's `requires dropped` or `role dropped` when the route
-    has no form, is in no silo, and its `update` only redirects to a `GET`
+    has no form, is in no silo, and its handler only redirects to a `GET`
     route whose guard refuses the same requests in the same order (for
     `requires dropped`: the route requires that one field and no role, and
     the target requires it first; for `role dropped`: the target requires
@@ -2882,25 +2882,25 @@ survivor: it stays until a test kills it or the code changes.
 Every Log out button of the to-do app is on a page that `requires user`.
 "a visitor is sent to log in, and can log out" clicks it and checks that
 the answer is `Redirected (Auth.Login.Login {})`. The logout would end at
-the login page even if `Logout.update` answered `Response.refresh`: the
+the login page even if `Logout.delete` answered `Response.refresh`: the
 browser asks for the same page again, with the user now gone from the
 session, and `requires user` redirects it to the login page. Either way
 the user ends up there, so no browser test can tell `redirect` from
 `refresh` here.
 
-A test of `Logout.update` itself can, since it sees the
+A test of `Logout.delete` itself can, since it sees the
 `Response` before any browser follows it: the `redirect → refresh`
-mutant of `Logout.update` survives every browser test, and this one kills
+mutant of `Logout.delete` survives every browser test, and this one kills
 it.
 
-The example has one. It must be in `app/App.alder`: `Logout.update` is called by the
+The example has one. It must be in `app/App.alder`: `Logout.delete` is called by the
 runtime, and a test anywhere else that calls it is E0002. (This block is
 not checked on its own, since it belongs in that module; it is the
 file's own text.)
 
 ```alder fragment
 test "Logout clears the user and goes to log in" = {
-  let r <- Test.run (Logout.update {} { user: Just (User.UserId "me"), role: Admin })
+  let r <- Test.run (Logout.delete {} { user: Just (User.UserId "me"), role: Admin })
   Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Response.redirect (Auth.Login.Login {})), trace: ["Session.put"] })
 }
 ```
@@ -2920,12 +2920,12 @@ $ alder test --mutate examples/blog
 227 passed, 0 failed
 364 mutants: 354 killed, 10 survived  (score 0.97)
 survived:
-  Admin.Comments.Edit   Save.update:80     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Comments.Edit   Save.put:80     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Comments.New    New.load:34        operator flipped   postsTotal > 200 → postsTotal >= 200
-  Admin.Comments.New    Create.update:59   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
-  Admin.Posts.Edit      Save.update:81     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Comments.New    Create.post:59   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Posts.Edit      Save.put:81     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Posts.New       New.load:33        operator flipped   authorsTotal > 200 → authorsTotal >= 200
-  Admin.Posts.New       Create.update:60   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Posts.New       Create.post:60   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Users.Bulk      selected:44        where dropped      Db.where (Post.author.in taken) → the condition dropped
   Posts.Index           Index.load:33:17   operator flipped   params.page < 1 → params.page <= 1
   Posts.Index           Index.load:33:48   operator flipped   params.page > lastPage → params.page >= lastPage
@@ -2995,12 +2995,12 @@ $ alder test --mutate --min 0.973 examples/blog
 227 passed, 0 failed
 364 mutants: 354 killed, 10 survived  (score 0.97)
 survived:
-  Admin.Comments.Edit   Save.update:80     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Comments.Edit   Save.put:80     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Comments.New    New.load:34        operator flipped   postsTotal > 200 → postsTotal >= 200
-  Admin.Comments.New    Create.update:59   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
-  Admin.Posts.Edit      Save.update:81     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Comments.New    Create.post:59   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Posts.Edit      Save.put:81     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Posts.New       New.load:33        operator flipped   authorsTotal > 200 → authorsTotal >= 200
-  Admin.Posts.New       Create.update:60   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
+  Admin.Posts.New       Create.post:60   step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Users.Bulk      selected:44        where dropped      Db.where (Post.author.in taken) → the condition dropped
   Posts.Index           Index.load:33:17   operator flipped   params.page < 1 → params.page <= 1
   Posts.Index           Index.load:33:48   operator flipped   params.page > lastPage → params.page >= lastPage

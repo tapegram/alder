@@ -58,7 +58,7 @@ alder new route Bookings.Index /bookings --blank --requires user
 alder new route Bookings.Show /bookings --show Booking --blank --requires user
 
 # where a login goes, now that the page is there (`alder new auth` left the hole ?afterLogin)
-alder fill Auth.Login.SignIn.update - <<'EOF'
+alder fill Auth.Login.SignIn.post - <<'EOF'
 Rooms.Index.Index {}
 EOF
 alder fill 'Auth.Login."logging in through the form"' - <<'EOF'
@@ -141,7 +141,7 @@ alder new form Rooms.Show NewBooking from:Date to:Date --msg Book
 alder fill Rooms.Show.Show.view - --hole ?bookId <<'EOF'
 model.room.id
 EOF
-alder fill Rooms.Show.Book.update - <<'EOF'
+alder fill Rooms.Show.Book.post - <<'EOF'
 {
   let room <- Db.get Room params.id
   let existing <- Db.from Booking |> Db.where (Booking.room.eq params.id) |> Db.all
@@ -261,7 +261,7 @@ alder new action Bookings.Show Cancel --id cancel --when "model.today < model.bo
 alder fill Bookings.Show.Show.view - --hole ?cancelId <<'EOF'
 model.booking.id
 EOF
-alder fill --decl Bookings.Show.Cancel.update - <<'EOF'
+alder fill --decl Bookings.Show.Cancel.post - <<'EOF'
 {
   let found <- Db.get Booking params.id
   let today <- Date.today
@@ -297,7 +297,7 @@ alder fill 'Bookings.Show."a booking whose from is today cannot be cancelled"' -
   let id <- Db.insert Booking { room: room, owner: me, from: today, to: Date.addDays 2 today }
   let _ <- Test.login { user: Just me }
   let page <- Test.get (Show { id: id })
-  let r <- Test.run (Cancel.update { id: id } { user: me })
+  let r <- Test.run (Cancel.post { id: id } { user: me })
   let after <- Db.get Booking id
   Task.succeed ({ button: Test.has "#cancel" page.doc, ran: match r.value { Ok _ -> True, Err _ -> False }, left: Maybe.isJust after, room: Test.text "#room" page.doc, from: Test.text "#from" page.doc, to: Test.text "#to" page.doc } == { button: False, ran: True, left: True, room: Just "Blue", from: Just (Date.toText today), to: Just (Date.toText (Date.addDays 2 today)) })
 }
@@ -312,7 +312,7 @@ alder fill 'Bookings.Show."a booking of another user is not found"' - <<'EOF'
   let id <- Db.insert Booking { room: room, owner: me, from: Date.addDays 3 today, to: Date.addDays 4 today }
   let _ <- Test.login { user: Just other }
   let r <- Test.open (Show { id: id })
-  let _ <- Test.run (Cancel.update { id: id } { user: other })
+  let _ <- Test.run (Cancel.post { id: id } { user: other })
   let after <- Db.get Booking id
   Task.succeed ({ answer: r.answer, left: Maybe.isJust after } == { answer: PageMissing, left: True })
 }

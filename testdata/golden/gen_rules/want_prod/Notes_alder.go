@@ -56,7 +56,7 @@ func Notes__Notes__load(params Notes__Notes__Params, session Notes__Notes__Sessi
 	}))
 }
 
-func Notes__Add__update(p Notes__Add__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
+func Notes__Add__post(p Notes__Add__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.insertMine Note", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, insertminevals__Note__Note(insertmine__Note__Note{Title: p.Form.Title, Pinned: false}), _e1.Now())
 	}), func(_ string) eff.Task[rt.Response] {
@@ -64,7 +64,7 @@ func Notes__Add__update(p Notes__Add__Params, session Notes__Notes__Session) eff
 	})
 }
 
-func Notes__Pin__update(p Notes__Pin__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
+func Notes__Pin__put(p Notes__Pin__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.getMine Note", false, func(_e1 *eff.Env) (Note__Note, error) {
 		return db.GetMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, p.Id)
 	}), func(n Note__Note) eff.Task[rt.Response] {
@@ -78,7 +78,7 @@ func Notes__Pin__update(p Notes__Pin__Params, session Notes__Notes__Session) eff
 	})
 }
 
-func Notes__Remove__update(p Notes__Remove__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
+func Notes__Remove__delete(p Notes__Remove__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
 	return eff.Bind(Notes__wipe(p.Id), func(_ struct{}) eff.Task[rt.Response] {
 		return eff.Pure(std.ResponseRefresh())
 	})

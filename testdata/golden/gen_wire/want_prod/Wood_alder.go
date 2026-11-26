@@ -30,7 +30,7 @@ func Wood__Wood__load(params Wood__Wood__Params, session App__Session) eff.Query
 	return eff.Q(eff.Pure(Wood__Model{Cfg: params.Cfg, Election: params.ElectionId, Contest: params.ContestId}))
 }
 
-func Wood__Bump__update(p Wood__Bump__Params, session App__Session) eff.Task[rt.Response] {
+func Wood__Bump__post(p Wood__Bump__Params, session App__Session) eff.Task[rt.Response] {
 	return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Wood.Wood", Method: "GET", Path: rt.Concat("/r/", rt.PathSegment(p.Cfg), "/wood/Results"), Query: []rt.KV{rt.QueryKV("ElectionId", p.ElectionId, ""), rt.QueryKV("ContestId", "9", "")}}))
 }
 

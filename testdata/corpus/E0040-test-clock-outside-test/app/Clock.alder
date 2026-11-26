@@ -9,8 +9,8 @@ Clock.load : Clock.Params -> Session -> Query Model
 Clock.load params session = Query.succeed { n: 0 }
 
 -- The clock steps are test-only, like every Test.* function, and `update` runs in production.
-Tick.update : Tick.Params -> Session -> Task Response
-Tick.update params session = {
+Tick.post : Tick.Params -> Session -> Task Response
+Tick.post params session = {
   let _ <- Test.setClock (Time.fromMillis 1772600767000)
   let _ <- Test.advance 1000
   Task.succeed Response.refresh

@@ -40,7 +40,7 @@ func Notes__Notes__load(params Notes__Notes__Params, session Notes__Notes__Sessi
 	}))
 }
 
-func Notes__Add__update(p Notes__Add__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
+func Notes__Add__post(p Notes__Add__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.insert Note", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: p.Form.Title, Pinned: false, Owner: session.User}), _e1.Now())
 	}), func(_ string) eff.Task[rt.Response] {

@@ -32,8 +32,8 @@ Index.load params session = {
   Query.succeed (List.map (\p -> p.name) projects)
 }
 
-Queue.update : Queue.Params -> Session -> Task Response
-Queue.update params session = {
+Queue.post : Queue.Params -> Session -> Task Response
+Queue.post params session = {
   let _ <- Db.insertScoped Project { name: "queued" }
   let _ <- Job.enqueue (Ping {})
   Task.succeed Response.refresh

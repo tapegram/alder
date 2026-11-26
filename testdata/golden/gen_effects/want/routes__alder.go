@@ -43,7 +43,7 @@ func Route__App__Logout() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, App__Logout__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, App__Logout__delete(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -160,7 +160,7 @@ func Route__Index__Add() web.Route {
 		if stop != nil {
 			return *stop
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Index__Add__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Index__Add__post(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -223,7 +223,7 @@ func Route__Index__Toggle() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Index__Toggle__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Index__Toggle__put(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -286,7 +286,7 @@ func Route__Index__Remove() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Index__Remove__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Index__Remove__delete(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -344,7 +344,7 @@ func Route__Index__Notify() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Index__Notify__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Index__Notify__post(params, session))
 		if err != nil {
 			return route__fail(err)
 		}

@@ -15,8 +15,8 @@ Home.load params session = {
   Query.succeed { n: n, orders: os }
 }
 
-Buy.update : Buy.Params -> Session -> Task Response
-Buy.update p session = {
+Buy.post : Buy.Params -> Session -> Task Response
+Buy.post p session = {
   let id <- Shop.buy session.user p.code
   let k <- Shop.runJob Shop.current
   Task.succeed (if k > 0 then Response.redirect (Home {}) else Response.invalid "no")

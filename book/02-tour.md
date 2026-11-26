@@ -182,8 +182,8 @@ Home.view model session =
 ```alder part=guestbook/Home
 form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update params session = {
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post params session = {
   let _ <- Db.insert Entry { name: params.form.name, message: params.form.message }
   Task.succeed (Response.redirect (Home {}) |> Response.success "Signed")
 }
@@ -193,7 +193,7 @@ Submit.update params session = {
 reaches any of your code, the runtime checks the posted fields against
 them: an empty name sends the page back with the error next to the field.
 
-`Submit.update` handles the post, the form in `params.form`. It returns a
+`Submit.post` handles the post, the form in `params.form`. It returns a
 `Task`, a description of writes ending in a `Response`:
 
 1. It inserts the entry (`id` and `created` are filled in, so they are not
@@ -224,7 +224,7 @@ The page ends with its two tests. The first goes through the page the way a
 person would, in an in-memory browser: it opens `/` (`Test.get`), fills in
 and posts the form (`Test.submit Submit { … }`), and opens the page again.
 
-The answer to the post must be the redirect `update` makes, with its toast
+The answer to the post must be the redirect handler makes, with its toast
 in `notices`, and the page
 must then list one entry: `Test.count "#entries li"` counts the `<li>`
 inside `<ul id="entries">`.
@@ -536,7 +536,7 @@ requests ran:
 
 1. `Db.all Entry` for the page.
 2. For the post, `Db.insert Entry` alone (a write route has no model, so
-   nothing is read before `update`).
+   nothing is read before the handler).
 3. Then `Db.all Entry` for the page the post redirects to.
 
 Chapter 11 explains each command; the warning is about production, where
@@ -673,18 +673,18 @@ exactly these two, and the model is whatever `load` returns.
 form NewTodo = { title: Text.NonEmpty, due: Maybe Date }
 
 -- The filter the page shows rides in the form's URL, so a new todo lands on the same list.
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update p session = {
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post p session = {
   let _ <- Db.insertMine Todo { title: p.form.title, due: p.form.due }
   Task.succeed (Response.redirect (Index { filter: p.filter }))
 }
 ```
 
-`form NewTodo` is the form's fields and their types. Before `Submit.update`
+`form NewTodo` is the form's fields and their types. Before `Submit.post`
 runs, the runtime checks the posted fields against them, and the decoded
 form is `p.form`.
 
-`Submit.update` returns a `Task`: a description of writes, ending in a
+`Submit.post` returns a `Task`: a description of writes, ending in a
 `Response`, which says what to send back.
 
 - `Db.insertMine` stores the new todo with the session's user as its
@@ -698,8 +698,8 @@ form is `p.form`.
 -- A write's id comes from the request: anyone can post `Toggle` with another user's id.
 -- `Db.updateMine` and `Db.deleteMine` change the row only when it is the session's user's;
 -- any other id, like a missing one, is a 404 (book 06, "Rules").
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update p session = {
+Toggle.patch : Toggle.Params -> Session -> Task Response
+Toggle.patch p session = {
   let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
   Task.succeed Response.refresh
 }
@@ -715,7 +715,7 @@ sent it.
 than one place; for one element that is already there, `Response.render`
 sends just that element (chapter 6, "`Response`").
 
-A route's `update` is its only member, and it needs no `match`: each write
+A route's handler is its only member, and it needs no `match`: each write
 is a route of its own.
 
 A write's id comes from the request: anyone can post `Toggle` with another
@@ -766,7 +766,7 @@ setting kept in the session would; chapter 6's theme is one).
 - `submit={Submit { filter: model.filter }}` ties the form to its route, and
   `<al-input field="title">` is checked against `NewTodo`. If the submitted
   form is invalid, the runtime answers with this page again, with the
-  errors in place, and `update` is never called.
+  errors in place, and the handler is never called.
 - `App.Logout` is an app-level write route, which any page may send
   (chapter 6).
 - The `al-` elements are the design system's, as in the guestbook
@@ -800,7 +800,7 @@ runs"). On an `<al-button>` it is a real `<button>` inside the element,
 which posts without JavaScript too.
 
 The module ends with its tests. The first inserts a user and a todo into
-a fresh, empty database, logs in as that user, calls `Toggle.update` with
+a fresh, empty database, logs in as that user, calls `Toggle.patch` with
 the todo's id, and checks what happened: the trace is the one scoped write,
 and the todo is done.
 
@@ -822,7 +822,7 @@ test "Toggle flips done" = {
     owner: me,
   }
   let _ <- Test.login { user: Just me }
-  let r <- Test.run (Toggle.update { id: id } { user: me, role: Member })
+  let r <- Test.run (Toggle.patch { id: id } { user: me, role: Member })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed (
@@ -1013,7 +1013,7 @@ test "a stranger cannot see my todo" = {
 ```
 
 The next deletes from the list through the page: the button sends
-`Todos.Show.Delete`, whose `update` redirects to the list, and the list
+`Todos.Show.Delete`, whose handler redirects to the list, and the list
 comes back without the todo. The one after was written after `alder test
 --mutate` (chapter 10, "Mutation testing") showed that nothing checked that
 the newest todo comes first. `Test.texts "li a"` is the text of every link
@@ -1123,7 +1123,7 @@ Reading this module, the compiler verified that:
 - every `click` and `submit` names a route that can be sent (`submit` a
   write route);
 - every route has its members, each with the signature its kind requires
-  (a `GET` its `load` and `view`, a write its `update`);
+  (a `GET` its `load` and `view`, a write its handler);
 - the form's fields match the `NewTodo` type;
 - `load` performs no writes;
 - `session.user` is always present;

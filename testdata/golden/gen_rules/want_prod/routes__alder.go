@@ -218,7 +218,7 @@ func Route__Notes__Add() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Notes__Add__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Notes__Add__post(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -275,7 +275,7 @@ func Route__Notes__Pin() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Notes__Pin__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Notes__Pin__put(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -328,7 +328,7 @@ func Route__Notes__Remove() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Notes__Remove__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Notes__Remove__delete(params, session))
 		if err != nil {
 			return route__fail(err)
 		}

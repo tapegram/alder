@@ -216,7 +216,7 @@ func TestCodeAction_FillHole(t *testing.T) {
 		t.Errorf("action %+v", a)
 	}
 	arg := a.Command.Arguments[0]
-	if len(a.Command.Arguments) != 1 || arg["uri"] != c.uri(fillRel) || arg["version"] != float64(1) || arg["address"] != "App.Logout.update" || arg["hole"] != "out" {
+	if len(a.Command.Arguments) != 1 || arg["uri"] != c.uri(fillRel) || arg["version"] != float64(1) || arg["address"] != "App.Logout.delete" || arg["hole"] != "out" {
 		t.Errorf("arguments %+v", a.Command.Arguments)
 	}
 	for _, b := range acts[:at] {

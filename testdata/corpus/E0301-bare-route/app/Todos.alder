@@ -17,5 +17,5 @@ Row.load params session = Query.succeed params.id
 Row.view : Text -> Session -> Html
 Row.view id session = <p>{id}</p>
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update params session = Task.succeed Response.refresh
+Toggle.patch : Toggle.Params -> Session -> Task Response
+Toggle.patch params session = Task.succeed Response.refresh

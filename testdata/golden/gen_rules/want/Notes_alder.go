@@ -92,7 +92,7 @@ func Notes__Notes__load(params Notes__Notes__Params, session Notes__Notes__Sessi
 	}))
 }
 
-func Notes__Add__update(p Notes__Add__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
+func Notes__Add__post(p Notes__Add__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[string] {
 		switch Mutant {
 		case 14:
@@ -118,7 +118,7 @@ func Notes__Add__update(p Notes__Add__Params, session Notes__Notes__Session) eff
 	})
 }
 
-func Notes__Pin__update(p Notes__Pin__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
+func Notes__Pin__put(p Notes__Pin__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[Note__Note] {
 		switch Mutant {
 		case 16:
@@ -183,7 +183,7 @@ func Notes__Pin__update(p Notes__Pin__Params, session Notes__Notes__Session) eff
 	})
 }
 
-func Notes__Remove__update(p Notes__Remove__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
+func Notes__Remove__delete(p Notes__Remove__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[struct{}] {
 		switch Mutant {
 		case 21:

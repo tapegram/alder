@@ -46,7 +46,7 @@ func Orgs__Orgs__load(params Orgs__Orgs__Params, session Orgs__Orgs__Session) ef
 	}))
 }
 
-func Orgs__Pick__update(p Orgs__Pick__Params, session Orgs__Orgs__Session) eff.Task[rt.Response] {
+func Orgs__Pick__post(p Orgs__Pick__Params, session Orgs__Orgs__Session) eff.Task[rt.Response] {
 	return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
 		return App__Session{User: s.User, Org: rt.Just[string](p.Org), Role: s.Role}
 	}), func(_ struct{}) eff.Task[rt.Response] {
@@ -54,7 +54,7 @@ func Orgs__Pick__update(p Orgs__Pick__Params, session Orgs__Orgs__Session) eff.T
 	})
 }
 
-func Orgs__Switch__update(p Orgs__Switch__Params, session Orgs__Orgs__Session) eff.Task[rt.Response] {
+func Orgs__Switch__put(p Orgs__Switch__Params, session Orgs__Orgs__Session) eff.Task[rt.Response] {
 	return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
 		return App__Session{User: s.User, Org: rt.Just[string](p.Form.Org), Role: s.Role}
 	}), func(_ struct{}) eff.Task[rt.Response] {

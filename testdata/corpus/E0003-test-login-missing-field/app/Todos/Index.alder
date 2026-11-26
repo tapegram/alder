@@ -11,11 +11,11 @@ Index.load params session = Query.succeed { n: 0 }
 
 form NewTodo = { title: Text }
 
-Submit.update : Submit.Params -> Session -> Task Response
-Submit.update params session = Task.succeed Response.refresh
+Submit.post : Submit.Params -> Session -> Task Response
+Submit.post params session = Task.succeed Response.refresh
 
-Toggle.update : Toggle.Params -> Session -> Task Response
-Toggle.update params session = Task.succeed Response.refresh
+Toggle.put : Toggle.Params -> Session -> Task Response
+Toggle.put params session = Task.succeed Response.refresh
 
 Index.view : Model -> Session -> Html
 Index.view model session =
