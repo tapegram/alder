@@ -608,6 +608,8 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 			return "rtesting.FormRejectedAnswer(" + inner() + ")"
 		case "RequestFailed":
 			return "rtesting.Answer{Tag: rtesting.RequestFailed, Text: " + inner() + "}"
+		case "Replaced": // its payload is the record { replaced, removed } itself
+			return "rtesting.ReplacedAnswer(" + f.code(x.Payload, s) + ")"
 		}
 		panic(fmt.Sprintf("gen: unknown Prelude constructor %s", x.Name))
 	}

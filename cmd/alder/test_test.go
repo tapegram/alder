@@ -1610,3 +1610,46 @@ test "the last page has no sentinel" = {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 }
+
+// TestTest_Replaced (#309): a step whose write answers `Response.replace` is Replaced, built,
+// compared and matched in Alder (the corpus app's own test); the fresh-load check fails a
+// replace the page's load disagrees with, and a removal of an element (id `3`) it still has.
+func TestTest_Replaced(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := tempAppAbs(t, "../../testdata/corpus/replaced-browser-ok", "members")
+	path := filepath.Join(dir, "app", "Members.alder")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	extra := `
+test "a replace the page disagrees with" = {
+  let _ <- Test.get (Index {})
+  let _ <- Test.click (Lie {})
+  Task.succeed True
+}
+
+test "a removal the page still has" = {
+  let _ <- Test.get (Index {})
+  let _ <- Test.click (Keep { id: 3 })
+  Task.succeed True
+}
+`
+	if err := os.WriteFile(path, append(b, []byte(extra)...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runTest(t, dir)
+	for _, w := range []string{
+		`ok   Members "a replace answers Replaced"`,
+		"FAIL Members \"a replace the page disagrees with\"\n  error: POST /members/lie: the answer replaced `#member-count` unlike the page loaded again (GET /members) at p#member-count",
+		"FAIL Members \"a removal the page still has\"\n  error: DELETE /members/3: the answer removed `#\\33 `, which the page loaded again (GET /members) still has",
+	} {
+		if !strings.Contains(stdout, w) {
+			t.Errorf("stdout lacks %q", w)
+		}
+	}
+	if code != 1 || strings.Contains(stderr, "internal error") || strings.Contains(stderr, "goroutine ") || t.Failed() {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+}

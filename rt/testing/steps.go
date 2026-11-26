@@ -148,6 +148,30 @@ func FormRejectedAnswer(errs []FieldError) Answer {
 	return a
 }
 
+// ReplacedRecord is the Alder record { replaced: List Text, removed: List Text } of a Replaced
+// answer (#309): the ids its replace replaced and removed, in the order sent.
+type ReplacedRecord = struct {
+	Replaced []string
+	Removed  []string
+}
+
+// ReplacedIDs is the payload of Replaced, as the Alder record.
+func (a Answer) ReplacedIDs() ReplacedRecord {
+	return ReplacedRecord{Replaced: nonNil(a.Replaced), Removed: nonNil(a.Removed)}
+}
+
+// ReplacedAnswer is the Prelude's `Replaced { replaced, removed }`.
+func ReplacedAnswer(r ReplacedRecord) Answer {
+	return Answer{Tag: Replaced, Replaced: nonNil(r.Replaced), Removed: nonNil(r.Removed)}
+}
+
+func nonNil(ids []string) []string {
+	if ids == nil {
+		return []string{}
+	}
+	return ids
+}
+
 // AlderEqual is Answer's `==` (rt.Equaler): the same constructor and the payload it names
 // (a Redirected's page compared as its URL).
 func (a Answer) AlderEqual(other any) bool {
@@ -162,6 +186,8 @@ func (a Answer) AlderEqual(other any) bool {
 		return rt.Eq(a.FieldErrors(), b.FieldErrors())
 	case RequestFailed:
 		return a.Text == b.Text
+	case Replaced:
+		return slices.Equal(a.Replaced, b.Replaced) && slices.Equal(a.Removed, b.Removed)
 	}
 	return true
 }
@@ -170,7 +196,8 @@ func (a Answer) AlderEqual(other any) bool {
 func (a Answer) AlderKey() string { s, _ := a.AlderShow(); return s }
 
 // AlderShow prints an Answer as Alder (rt.Shower): Shown, Redirected /login,
-// FormRejected [{ field: "title", message: "must not be empty" }], RequestFailed "boom".
+// FormRejected [{ field: "title", message: "must not be empty" }], RequestFailed "boom",
+// Replaced { replaced: ["member-count"], removed: ["member-3"] }.
 func (a Answer) AlderShow() (string, bool) {
 	switch a.Tag {
 	case Redirected:
@@ -181,6 +208,8 @@ func (a Answer) AlderShow() (string, bool) {
 		return "FormRejected " + rt.Show(a.FieldErrors()), true
 	case RequestFailed:
 		return "RequestFailed " + rt.Show(a.Text), true
+	case Replaced:
+		return "Replaced { replaced: " + rt.Show(nonNil(a.Replaced)) + ", removed: " + rt.Show(nonNil(a.Removed)) + " }", true
 	}
 	return a.Tag.String(), false
 }

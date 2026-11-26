@@ -35,7 +35,7 @@ var stepExample = map[string]string{
 var selectorArg = map[string]int{"text": 0, "texts": 0, "has": 0, "count": 0, "attr": 1}
 
 // answerCtors are the constructors of the Prelude's test type `Answer`.
-var answerCtors = map[string]bool{"Shown": true, "Rendered": true, "Refreshed": true, "Redirected": true, "FormRejected": true, "PageMissing": true, "RequestFailed": true}
+var answerCtors = map[string]bool{"Shown": true, "Rendered": true, "Refreshed": true, "Redirected": true, "FormRejected": true, "PageMissing": true, "RequestFailed": true, "Replaced": true}
 
 // testTypes are the Prelude types that exist only inside a `test`.
 var testTypes = map[string]bool{"Doc": true, "Answer": true}

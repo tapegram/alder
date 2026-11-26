@@ -1,0 +1,1 @@
+app/Members.alder:4:22 E0012 `Replaced` is a constructor of the Prelude's test type `Answer`; name the constructor differently (for example `ReplacedChange`)

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"alder/rt"
 	"alder/rt/datastar"
@@ -35,6 +36,7 @@ const (
 	RequestFailed                  // 500 (or a request the router refused): Answer.Text says why
 	Rendered                       // a write route answered Response.render; Answer.Page is the route
 	Refreshed                      // a write route answered Response.refresh
+	Replaced                       // a write route answered Response.replace (Answer.Replaced, Answer.Removed)
 )
 
 func (t AnswerTag) String() string {
@@ -53,18 +55,22 @@ func (t AnswerTag) String() string {
 		return "Rendered"
 	case Refreshed:
 		return "Refreshed"
+	case Replaced:
+		return "Replaced"
 	}
 	return "AnswerTag(" + strconv.Itoa(int(t)) + ")"
 }
 
 // Answer is the Prelude `Answer`: Tag, and the page of Redirected, the errors of FormRejected (in
-// document order: each `<Errors>` list's items, Field "" for the form-level list) or the text
-// of RequestFailed.
+// document order: each `<Errors>` list's items, Field "" for the form-level list), the text
+// of RequestFailed, or the ids a Replaced answer replaced and removed, in the order sent.
 type Answer struct {
-	Tag    AnswerTag
-	Page   rt.Route
-	Errors []web.FieldError
-	Text   string
+	Tag      AnswerTag
+	Page     rt.Route
+	Errors   []web.FieldError
+	Text     string
+	Replaced []string
+	Removed  []string
 }
 
 // Result is what a step gives the test: the answer, the session after it (what the browser's
@@ -159,6 +165,10 @@ type Browser struct {
 	morphed   bool
 	regions   []string
 	domBefore html.Node
+	// replaced is the ids of the elements the last request's answer replaced (a replace event,
+	// #309) and removed the ids it removed (`Response.remove`), in the order sent: a Replaced
+	// answer's, and what the fresh-load check compares (checkReplaced)
+	replaced, removed []string
 
 	model   any         // the model the last request's page GET rendered (web.Request.Model), nil for none
 	reqEnvs []*eff.Env  // the Envs of the request being served
@@ -593,7 +603,8 @@ func (b *Browser) send(o outgoing) (*httptest.ResponseRecorder, error) {
 	}
 	b.reqEnvs, b.lastErr, b.cur, b.model, b.rendered, b.answered = nil, "", cur, nil, "", nil
 	b.morphed, b.regions, b.domBefore = false, nil, b.dom
-	b.reqHead = req.Method + " " + req.URL.Path + ": "
+	b.replaced, b.removed = nil, nil
+	b.reqHead = routedMethod(o) + " " + req.URL.Path + ": "
 	w := httptest.NewRecorder()
 	b.serveHTTP(w, req)
 	recs := map[*eff.Recorder]bool{}
@@ -621,6 +632,22 @@ func (b *Browser) send(o outgoing) (*httptest.ResponseRecorder, error) {
 		}
 	}
 	return w, nil
+}
+
+// routedMethod is the method the router routes o by, and names it by in its log lines: a
+// form POST's _method (PUT, PATCH or DELETE: a click of a DELETE route is a POST with
+// _method=DELETE), else o's own.
+func routedMethod(o outgoing) string {
+	if o.method != http.MethodPost || o.ctype != "application/x-www-form-urlencoded" {
+		return o.method
+	}
+	if vs, err := url.ParseQuery(o.body); err == nil && len(vs["_method"]) == 1 {
+		switch m := vs["_method"][0]; m {
+		case http.MethodPut, http.MethodPatch, http.MethodDelete:
+			return m
+		}
+	}
+	return o.method
 }
 
 // navigate GETs u, following redirects, and holds the page it ends on; redirected says u is
@@ -825,6 +852,9 @@ func (b *Browser) checkPatched() error {
 					What: "the answer patched a region that the held page or the full render lacks"}}
 			}
 		}
+		for _, id := range b.removed { // a render's removals, sent after its patch
+			expect, _ = removeByID(expect, id)
+		}
 		want = expect
 	}
 	held := html.Select(b.dom, selBody)
@@ -960,7 +990,8 @@ func (b *Browser) apply(w *httptest.ResponseRecorder) (Answer, error) {
 // payload in the query of a GET or DELETE (`datastar={}`, which rt/web drops) and sends it as a
 // JSON body otherwise. The answer (apply) is then what the route answered: an element fetch's
 // and a write's `render r` Rendered (PageMissing or RequestFailed when the element was not
-// patched: the route's 404 or failure, toasted), `refresh` Refreshed, `invalid` (and a form
+// patched: the route's 404 or failure, toasted), `refresh` Refreshed, `replace` Replaced with the
+// ids replaced and removed (after the fresh-load check: checkReplaced), `invalid` (and a form
 // that did not decode) FormRejected with the errors the page shows.
 func (b *Browser) sendRoute(c routeCtl, r rt.Route, fields url.Values) (Answer, error) {
 	o := outgoing{method: c.method, target: c.url, ds: true, header: http.Header{}}
@@ -1000,6 +1031,11 @@ func (b *Browser) sendRoute(c routeCtl, r rt.Route, fields url.Values) (Answer, 
 			return b.checkedElement(a.Target)
 		case rt.RespRefresh:
 			return Answer{Tag: Refreshed}, nil
+		case rt.RespReplace:
+			if err := b.checkReplaced(); err != nil {
+				return Answer{}, err
+			}
+			return Answer{Tag: Replaced, Replaced: nonNil(b.replaced), Removed: nonNil(b.removed)}, nil
 		case rt.RespInvalid:
 			errs := pageErrors(b.doc)
 			if errs == nil {
@@ -1359,22 +1395,23 @@ func toastOf(el html.Node) Toast {
 	return Toast{Kind: kind, Text: strings.TrimSpace(html.TextContent(el))}
 }
 
-// replaceUnsupported is the error a step gets when its answer is a `Response.replace` or
-// carries a `Response.remove`: the test browser does not apply them yet (#309).
-const replaceUnsupported = "`Response.replace` and `Response.remove` answers are not applied by the test browser yet (#309); `Test.run` the handler to check its answer"
-
 // patch applies a datastar-patch-elements event to the held document: the router patches the
-// <body> (outer: replace it; inner: replace its children; append: add to them) and, after a
-// followed redirect, the <title> (selector `head > title`: replaced, when the page has one).
+// <body> (outer: replace it; inner: replace its children; append: add to them), after a
+// followed redirect the <title> (selector `head > title`: replaced, when the page has one), an
+// element by its id (`#id`, outer: a `render`), and for a `Response.replace` (#309) each root of
+// an event with no selector by its id (replace), and an element by its id in mode remove
+// (`Response.remove`). An id the page lacks fails the step, naming it: a real browser would
+// skip it silently.
 func (b *Browser) patch(ev sseEvent) error {
 	if ev.typ != "datastar-patch-elements" {
 		return nil
 	}
 	sel, mode := ev.field("selector"), ev.field("mode")
-	if sel == "" || mode == "remove" {
-		// a replace event (no selector) or a removal (#309): not applied here yet, so the step
-		// says so rather than failing as if the router had sent something wrong
-		return fmt.Errorf("%s%s", b.reqHead, replaceUnsupported)
+	if sel == "" && (mode == "outer" || mode == "") {
+		return b.replace(ev.field("elements"))
+	}
+	if mode == "remove" {
+		return b.remove(sel)
 	}
 	if sel == "head > title" {
 		t, err := html.Parse(ev.field("elements"))
@@ -1450,6 +1487,212 @@ func (b *Browser) patch(ev sseEvent) error {
 		b.morphed = true
 	}
 	b.dom = html.Repair(b.doc)
+	return nil
+}
+
+// replace applies a replace event's elements (#309, datastar.ReplaceEvent): each root, as
+// web.ReplaceRoots reads the roots of `Response.replace`, replaces the held page's element with
+// its id, and its id is kept (replaced). Every id is looked for first, so a step that fails
+// leaves the page as it was.
+func (b *Browser) replace(elements string) error {
+	els, err := html.Parse(elements)
+	if err != nil {
+		return fmt.Errorf("the replace does not parse: %w", err)
+	}
+	roots, err := web.ReplaceRoots([]any{els})
+	if err != nil {
+		return fmt.Errorf("%s%w", b.reqHead, err)
+	}
+	ids := make([]string, len(roots))
+	for i, n := range roots {
+		ids[i], _ = html.RootOf(n)
+		if _, ok := elementByID(b.doc, ids[i]); !ok {
+			return fmt.Errorf("%sthe answer replaced `%s`, which the page does not have", b.reqHead, datastar.IDSelector(ids[i]))
+		}
+	}
+	for i, n := range roots {
+		b.doc, _ = html.ReplaceByID(b.doc, ids[i], n)
+		// Datastar morphs the element into the nodes its parser builds from the root
+		if dom, ok := html.ReplaceByID(b.dom, ids[i], html.RepairFragment(n)); ok {
+			b.dom = dom
+		}
+	}
+	b.replaced = append(b.replaced, ids...)
+	return nil
+}
+
+// remove applies a removal (#309, datastar.RemoveEvent): the held page's element with the id
+// sel names (datastar.IDSelector's escapes read back) is removed, and its id kept (removed).
+func (b *Browser) remove(sel string) error {
+	id, ok := idOfSelector(sel)
+	if !ok {
+		return fmt.Errorf("a removal of %q: the browser only removes an element by its id", sel)
+	}
+	doc, ok := removeByID(b.doc, id)
+	if !ok {
+		return fmt.Errorf("%sthe answer removed `%s`, which the page does not have", b.reqHead, sel)
+	}
+	b.doc = doc
+	if dom, ok := removeByID(b.dom, id); ok {
+		b.dom = dom
+	}
+	b.removed = append(b.removed, id)
+	return nil
+}
+
+// removeByID is n without its first element whose id is id (in document order), and whether
+// there was one.
+func removeByID(n html.Node, id string) (html.Node, bool) {
+	found := false
+	out := html.Without(n, func(c html.Node) bool {
+		if found {
+			return false
+		}
+		v, ok := html.AttrOf(c, "id")
+		found = ok && v == id
+		return found
+	})
+	return out, found
+}
+
+// idOfSelector is the id a selector `#<identifier>` names, its CSS escapes read back (the inverse
+// of datastar.IDSelector: `\<hex> ` and `\<char>`); false for any other selector.
+func idOfSelector(sel string) (string, bool) {
+	rest, ok := strings.CutPrefix(sel, "#")
+	if !ok || rest == "" {
+		return "", false
+	}
+	var out strings.Builder
+	rs := []rune(rest)
+	for i := 0; i < len(rs); i++ {
+		r := rs[i]
+		switch {
+		case r == '\\':
+			i++
+			if i == len(rs) {
+				return "", false
+			}
+			n, v := 0, 0
+			for n < 6 && i+n < len(rs) && isHex(rs[i+n]) {
+				v = v*16 + hexVal(rs[i+n])
+				n++
+			}
+			if n == 0 {
+				out.WriteRune(rs[i])
+				continue
+			}
+			i += n - 1
+			if i+1 < len(rs) && (rs[i+1] == ' ' || rs[i+1] == '\t' || rs[i+1] == '\n') {
+				i++
+			}
+			if v == 0 || v > utf8.MaxRune || v >= 0xD800 && v <= 0xDFFF {
+				v = utf8.RuneError
+			}
+			out.WriteRune(rune(v))
+		case r >= 0x80 || r == '-' || r == '_' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z':
+			out.WriteRune(r)
+		default:
+			return "", false
+		}
+	}
+	return out.String(), true
+}
+
+func isHex(r rune) bool { return r >= '0' && r <= '9' || r >= 'a' && r <= 'f' || r >= 'A' && r <= 'F' }
+
+func hexVal(r rune) int {
+	switch {
+	case r >= 'a':
+		return int(r-'a') + 10
+	case r >= 'A':
+		return int(r-'A') + 10
+	}
+	return int(r - '0')
+}
+
+// ReplacedError is the fresh-load check's failure (#309, ruling R12): after a `Response.replace`
+// answer, the page the browser holds was loaded again (Fetch) and an element the answer replaced
+// differs from the element with its id there (Diff), or an element it removed is still there
+// (Removed, its markup Markup), or the page did not load (Why).
+type ReplacedError struct {
+	Step    string // the step's request, "DELETE /members/3"
+	Sel     string // the element's selector, "#member-count"
+	Fetch   string // "GET /members"
+	Removed bool
+	Markup  string
+	Why     string
+	Diff    *html.Difference
+}
+
+// Error is "DELETE /members/3: the answer replaced `#member-count` unlike the page loaded again
+// (GET /members) at p#member-count: <what>", then the two elements' markup.
+func (e *ReplacedError) Error() string {
+	switch {
+	case e.Why != "":
+		return fmt.Sprintf("%s: the page loaded again (%s) to check the answer's replace %s", e.Step, e.Fetch, e.Why)
+	case e.Removed:
+		return fmt.Sprintf("%s: the answer removed `%s`, which the page loaded again (%s) still has: %s", e.Step, e.Sel, e.Fetch, e.Markup)
+	}
+	return fmt.Sprintf("%s: the answer replaced `%s` unlike the page loaded again (%s) at %s: %s\n  replaced: %s\n  fresh:    %s",
+		e.Step, e.Sel, e.Fetch, e.Diff.At, e.Diff.What, e.Diff.Left, e.Diff.Right)
+}
+
+// checkReplaced is the fresh-load check (#309, ruling R12): after a `Response.replace` answer,
+// the page the browser holds is loaded again as a reload loads it (a plain GET of its URL with
+// the cookie), in a savepoint rolled back afterwards (quietly, as the element check's fetch),
+// and each element the answer replaced must equal the element with that id in the fresh page,
+// as the browser's parser builds both; an id the fresh page lacks is not compared. No element
+// the answer removed may be in it. The handler built the roots from its own data: the check
+// proves the page's own `load` agrees. It does not see a place the handler forgot to replace.
+func (b *Browser) checkReplaced() error {
+	if len(b.replaced) == 0 && len(b.removed) == 0 {
+		return nil
+	}
+	ctx := b.env.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req := httptest.NewRequest(http.MethodGet, b.url, nil).WithContext(ctx)
+	req.Header.Set("Referer", "http://example.com"+b.url)
+	if b.cookie != "" {
+		req.AddCookie(&http.Cookie{Name: web.CookieName, Value: b.cookie})
+	}
+	fail := &ReplacedError{Step: strings.TrimSuffix(b.reqHead, ": "), Fetch: http.MethodGet + " " + b.url}
+	w, err := b.quietly(ctx, req)
+	if err != nil {
+		return err
+	}
+	if w.Code != http.StatusOK || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/html") {
+		fail.Why = "answered status " + strconv.Itoa(w.Code)
+		return fail
+	}
+	page := web.StripHeadTags(strings.TrimPrefix(w.Body.String(), "<!doctype html>\n"))
+	doc, err := html.Parse(page)
+	if err != nil {
+		return fmt.Errorf("the fresh-load check: the page %s answers does not parse: %w", fail.Fetch, err)
+	}
+	doc, _ = takeShown(doc)
+	fresh := html.Repair(doc)
+	for _, id := range b.replaced {
+		want, ok := elementByID(fresh, id)
+		if !ok {
+			continue // the fresh page has no such element: nothing to compare
+		}
+		got, ok := elementByID(b.dom, id)
+		if !ok {
+			continue // a later removal took it out of the page held
+		}
+		if d, differ := html.Diff(got, want); differ {
+			fail.Sel, fail.Diff = datastar.IDSelector(id), &d
+			return fail
+		}
+	}
+	for _, id := range b.removed {
+		if el, ok := elementByID(fresh, id); ok {
+			fail.Sel, fail.Removed, fail.Markup = datastar.IDSelector(id), true, html.Render(el)
+			return fail
+		}
+	}
 	return nil
 }
 

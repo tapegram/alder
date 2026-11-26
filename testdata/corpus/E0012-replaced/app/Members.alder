@@ -1,0 +1,4 @@
+module Members
+
+-- `Replaced` is a constructor of the Prelude's test type `Answer` (#309): an app union may not take it.
+type Change = Kept | Replaced

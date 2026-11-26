@@ -3855,6 +3855,7 @@ type Answer = Shown
             | FormRejected (List { field: Text, message: Text })
             | PageMissing
             | RequestFailed Text
+            | Replaced { replaced: List Text, removed: List Text }
 ```
 
 What a request came to, in a test: the page shown, a redirect, a refusal, a 404 or a failure.
@@ -3862,7 +3863,9 @@ What a request came to, in a test: the page shown, a redirect, a refusal, a 404 
 It exists only inside a `test`. `Shown` is a page shown and `Rendered` a route's view patched
 into the page. `Refreshed` is a write whose `update` answered `Response.refresh`, and
 `Redirected` a redirect to a route. `FormRejected` carries each field's message, and
-`PageMissing` is a 404. `RequestFailed` carries the failure's message.
+`PageMissing` is a 404. `RequestFailed` carries the failure's message. `Replaced` is a write
+whose `update` answered `Response.replace`: the ids of the elements it replaced and of those
+it removed (`Response.remove`), in the order sent.
 
 ### `not`
 

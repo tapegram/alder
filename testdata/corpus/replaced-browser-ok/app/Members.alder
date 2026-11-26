@@ -1,0 +1,53 @@
+module Members
+
+-- A page whose writes answer `Response.replace` (#309), and a test reading the `Replaced`
+-- answer: its value, its payload through a pattern, and the page the browser holds after it.
+
+route Index  = GET    "/members"         { }
+route Rename = POST   "/members/rename"  { }
+route Lie    = POST   "/members/lie"     { }
+route Keep   = DELETE "/members/{id}"    { id: Int }
+
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 3
+
+Index.view : Int -> Session -> Html
+Index.view n session =
+  <main>
+    {countView n}
+    <ul>
+      <li id="3">Cy <button click={Keep { id: 3 }}>Delete</button></li>
+    </ul>
+    <button click={Rename {}}>Rename</button>
+    <button click={Lie {}}>Lie</button>
+  </main>
+
+countView : Int -> Html
+countView n = <p id="member-count">{Text.fromInt n} members</p>
+
+-- the count again, as the page's own load has it
+Rename.post : Rename.Params -> Session -> Task Response
+Rename.post params session = Task.succeed (Response.replace [ countView 3 ])
+
+-- a count the page's load does not agree with
+Lie.post : Lie.Params -> Session -> Task Response
+Lie.post params session = Task.succeed (Response.replace [ countView 2 ])
+
+-- removes a member the page's load still shows
+Keep.delete : Keep.Params -> Session -> Task Response
+Keep.delete params session = Task.succeed (Response.replace [] |> Response.remove (Text.fromInt params.id))
+
+test "a replace answers Replaced" = {
+  let _ <- Test.get (Index {})
+  let r <- Test.click (Rename {})
+  let ids = match r.answer {
+    Replaced { replaced: rs, removed: ds } -> rs ++ ds,
+    _ -> [],
+  }
+  let whole = match r.answer {
+    Replaced p -> p.replaced,
+    _ -> [],
+  }
+  Task.succeed ({ answer: r.answer, ids: ids, whole: whole, count: Test.text "#member-count" r.doc }
+    == { answer: Replaced { replaced: ["member-count"], removed: [] }, ids: ["member-count"], whole: ["member-count"], count: Just "3 members" })
+}

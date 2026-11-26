@@ -15,7 +15,7 @@ import (
 //	                  there is no default
 //	Maybe, Result     if s.Ok { … } / if s.IsOk { … } then the other case or the default
 //	Answer            switch s.Tag { case rtesting.Redirected: … } (payloads s.Page,
-//	                  s.FieldErrors(), s.Text; test builds only)
+//	                  s.FieldErrors(), s.Text, s.Replaced/s.Removed; test builds only)
 //	Job.State         switch s.Tag { case std.JobQueued: … }
 //	Bool              if s { … } (or if !s) then the other case or the default
 //	List              if len(s) == 0 { … } (or len(s) > 0) then the other case or the default
@@ -237,6 +237,11 @@ func (f *fn) partAccess(x *ir.Match, tag, field, subj string) string {
 				return subj + ".Text"
 			case "FormRejected":
 				return subj + ".FieldErrors()"
+			case "Replaced":
+				if field == "" { // the whole record { replaced, removed }
+					return subj + ".ReplacedIDs()"
+				}
+				return subj + "." + Field(field)
 			}
 			if tag == "Err" {
 				return subj + ".Err"

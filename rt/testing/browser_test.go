@@ -686,28 +686,67 @@ func TestBrowser_AnswerParsing(t *testing.T) {
 	}
 }
 
-// A replace event (no selector) and a removal (mode remove) are not applied by the test
-// browser yet (#309): the step fails naming `Response.replace` / `Response.remove`, not as a
-// patch the browser cannot place, and the held page is unchanged.
-func TestBrowser_ReplaceRemoveUnsupported(t *testing.T) {
-	for _, raw := range []string{string(datastar.ReplaceEvent(`<p id="x">new</p>`)), string(datastar.RemoveEvent("x"))} {
+// The events of a replace (no selector: each root replaces the element with its id) and of a
+// removal (mode remove, the id escaped as CSS.escape does) applied to the held page, the ids
+// kept in the order sent; an id the page lacks fails the step naming it (#309).
+func TestBrowser_ReplaceRemoveEvents(t *testing.T) {
+	apply := func(b *Browser, raw string) error {
+		t.Helper()
 		events, err := sseEvents(raw)
 		if err != nil || len(events) != 1 {
 			t.Fatalf("events = %v %v", events, err)
 		}
-		b := &Browser{reqHead: "PATCH /x: "}
-		b.doc, _ = html.Parse(`<html><body><p id="x">old</p></body></html>`)
-		b.hasDoc = true
-		before := html.Render(b.doc)
-		err = b.patch(events[0])
-		if err == nil || err.Error() != "PATCH /x: "+replaceUnsupported {
-			t.Errorf("%q: err = %v", raw, err)
+		return b.patch(events[0])
+	}
+	b := &Browser{reqHead: "DELETE /members/3: "}
+	b.doc, _ = html.Parse(`<html><body><p id="x">old</p><p id="y">old</p><ul><li id="3">three</li><li id="member-3.a">a</li></ul></body></html>`)
+	b.hasDoc, b.dom = true, html.Repair(b.doc)
+	if err := apply(b, string(datastar.ReplaceEvent(`<p id="y">new y</p><p id="x">new x</p>`))); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"3", "member-3.a"} {
+		if err := apply(b, string(datastar.RemoveEvent(id))); err != nil {
+			t.Fatalf("remove %q: %v", id, err)
 		}
-		if !strings.Contains(replaceUnsupported, "`Response.replace`") || !strings.Contains(replaceUnsupported, "`Response.remove`") {
-			t.Errorf("the error does not name the builders: %s", replaceUnsupported)
+	}
+	want := `<html><body><p id="x">new x</p><p id="y">new y</p><ul></ul></body></html>`
+	if got := html.Render(b.doc); got != want {
+		t.Errorf("doc = %s, want %s", got, want)
+	}
+	if got := html.Render(b.dom); got != want {
+		t.Errorf("dom = %s, want %s", got, want)
+	}
+	if !slices.Equal(b.replaced, []string{"y", "x"}) || !slices.Equal(b.removed, []string{"3", "member-3.a"}) {
+		t.Errorf("replaced %q, removed %q", b.replaced, b.removed)
+	}
+	before := html.Render(b.doc)
+	err := apply(b, string(datastar.ReplaceEvent(`<p id="member-count">2</p>`)))
+	if want := "DELETE /members/3: the answer replaced `#member-count`, which the page does not have"; err == nil || err.Error() != want {
+		t.Errorf("missing root: %v, want %q", err, want)
+	}
+	err = apply(b, string(datastar.RemoveEvent("member-3")))
+	if want := "DELETE /members/3: the answer removed `#member-3`, which the page does not have"; err == nil || err.Error() != want {
+		t.Errorf("missing removal: %v, want %q", err, want)
+	}
+	if html.Render(b.doc) != before {
+		t.Error("a failed replace or removal changed the page")
+	}
+	if err := apply(b, string(datastar.ReplaceEvent(`<p>no id</p>`))); err == nil || !strings.Contains(err.Error(), "root 1 is") {
+		t.Errorf("a root without an id: %v", err)
+	}
+}
+
+// Review Focus 4: the id a removal's selector names is read back as CSS.escape wrote it.
+func TestIDOfSelector(t *testing.T) {
+	for _, id := range []string{"3", "member-3", "member-3.a", "-1", "-", "a b", "x:y", "é1", "a\\b", "12ab", "a\nb"} {
+		got, ok := idOfSelector(datastar.IDSelector(id))
+		if !ok || got != id {
+			t.Errorf("idOfSelector(%q) = %q %v, want %q", datastar.IDSelector(id), got, ok, id)
 		}
-		if html.Render(b.doc) != before {
-			t.Errorf("%q changed the page", raw)
+	}
+	for _, sel := range []string{"body", "", "#a b", "#a.b"} {
+		if id, ok := idOfSelector(sel); ok {
+			t.Errorf("idOfSelector(%q) = %q, want none", sel, id)
 		}
 	}
 }
@@ -1794,4 +1833,178 @@ func TestRefresh_FailsWhenRenderLies(t *testing.T) {
 			t.Errorf("a page gone: %v", err)
 		}
 	})
+}
+
+// memberApp is a page of members (#309): GET /members shows `<p id="member-count">` and a list
+// of members, each with a click of M.Delete (DELETE /members/{i}), which answers
+// `Response.replace [count] |> Response.remove <the member's id>`. Its knobs make the answer
+// wrong in the ways the test browser checks.
+type memberApp struct {
+	names          []string // "" a deleted member
+	prefix, suffix string   // a member's element id is prefix + i + suffix
+	noCount        bool     // the page shows no #member-count
+	banner         bool     // the page shows <p id="banner">, and the answer replaces it
+	lieCount       bool     // the answer's count is one more than the page's
+	keep           bool     // the delete keeps the member (so the page loaded again still has it)
+	removeID       string   // the id the answer removes instead of the member's
+}
+
+func mDelete(i int) rt.Route {
+	return rt.Route{Name: "M.Delete", Method: "DELETE", Path: "/members/" + strconv.Itoa(i)}
+}
+
+func (a *memberApp) elID(i int) string { return a.prefix + strconv.Itoa(i) + a.suffix }
+
+func (a *memberApp) count(extra int) html.Node {
+	n := extra
+	for _, m := range a.names {
+		if m != "" {
+			n++
+		}
+	}
+	return html.El("p", []html.Attr{html.A("id", "member-count")}, html.Text(strconv.Itoa(n)+" members"))
+}
+
+func (a *memberApp) bannerView() html.Node {
+	return html.El("p", []html.Attr{html.A("id", "banner")}, html.Text("Welcome"))
+}
+
+func (a *memberApp) routes() []web.Route {
+	return []web.Route{
+		{Method: "GET", Pattern: "/members", Handle: func(rq *web.Request) web.Response {
+			var body []html.Node
+			if a.banner {
+				body = append(body, a.bannerView())
+			}
+			if !a.noCount {
+				body = append(body, a.count(0))
+			}
+			var items []html.Node
+			for i, m := range a.names {
+				if m != "" {
+					items = append(items, html.El("li", []html.Attr{html.A("id", a.elID(i+1))}, html.Text(m),
+						clickOf(mDelete(i+1), "Delete")))
+				}
+			}
+			body = append(body, html.El("ul", nil, items...))
+			return web.PageResponse(layout("Members", body...), &html.FormState{}, nil)
+		}},
+		{Method: "DELETE", Pattern: "/members/{id}", Handle: func(rq *web.Request) web.Response {
+			i, _ := strconv.Atoi(rq.Params["id"])
+			if !a.keep {
+				a.names[i-1] = ""
+			}
+			extra := 0
+			if a.lieCount {
+				extra = 1
+			}
+			roots := []any{a.count(extra)}
+			if a.banner {
+				roots = append(roots, a.bannerView())
+				a.banner = false // the page loaded again shows none
+			}
+			id := a.elID(i)
+			if a.removeID != "" {
+				id = a.removeID
+			}
+			return web.AnswerResponse(rt.WithRemove(id, rt.Replace(roots)), nil, nil)
+		}},
+	}
+}
+
+func browseMembers(t *testing.T, a *memberApp, steps ...func(b *Browser, e *eff.Env)) CaseResult {
+	t.Helper()
+	return browseOpts(t, Options{}, a.routes(), steps...)
+}
+
+// A step answered with a replace: Replaced with the ids in the order sent, the page held
+// patched (the count replaced, the member removed), and the fresh-load check passing: the
+// page's own load agrees (#309).
+func TestBrowser_Replaced(t *testing.T) {
+	a := &memberApp{names: []string{"ann", "bob", "cy"}, prefix: "member-"}
+	browseMembers(t, a, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/members"))
+		r := must(b.ClickRoute(mDelete(3), `M.Delete { id: "3" }`))
+		want := Answer{Tag: Replaced, Replaced: []string{"member-count"}, Removed: []string{"member-3"}}
+		wantAnswer(t, r, want)
+		if !want.AlderEqual(r.Answer) || want.AlderEqual(Answer{Tag: Replaced, Replaced: []string{"member-count"}}) {
+			t.Error("AlderEqual")
+		}
+		if s, _ := r.Answer.AlderShow(); s != `Replaced { replaced: ["member-count"], removed: ["member-3"] }` {
+			t.Errorf("AlderShow = %s", s)
+		}
+		if got := text(t, r.Doc, "#member-count"); got != "2 members" {
+			t.Errorf("#member-count = %q", got)
+		}
+		if len(html.Select(r.Doc, html.MustParseSelector("#member-3"))) != 0 || r.Status != 200 || r.URL != "/members" {
+			t.Errorf("held %s, status %d, url %q", html.Render(r.Doc), r.Status, r.URL)
+		}
+	})
+}
+
+// Nowhere to go: a root or a removal whose id the held page lacks fails the step (#309).
+func TestCheck_ReplacedNowhere(t *testing.T) {
+	a := &memberApp{names: []string{"ann", "bob", "cy"}, prefix: "member-", noCount: true}
+	browseMembers(t, a, func(b *Browser, e *eff.Env) {
+		mustOf(t)(b.Get("/members"))
+		_, err := b.ClickRoute(mDelete(3), "M.Delete")
+		if want := "DELETE /members/3: the answer replaced `#member-count`, which the page does not have"; err == nil || err.Error() != want {
+			t.Errorf("root: %v, want %q", err, want)
+		}
+	})
+	a = &memberApp{names: []string{"ann", "bob", "cy"}, prefix: "member-", removeID: "member-9"}
+	browseMembers(t, a, func(b *Browser, e *eff.Env) {
+		mustOf(t)(b.Get("/members"))
+		_, err := b.ClickRoute(mDelete(3), "M.Delete")
+		if want := "DELETE /members/3: the answer removed `#member-9`, which the page does not have"; err == nil || err.Error() != want {
+			t.Errorf("removal: %v, want %q", err, want)
+		}
+	})
+}
+
+// The fresh-load check (ruling R12): each replaced element must equal the element with its id
+// in the page loaded again, an id that page lacks is not compared, and a removed id it still
+// has fails the step.
+func TestCheck_ReplacedFresh(t *testing.T) {
+	a := &memberApp{names: []string{"ann", "bob", "cy"}, prefix: "member-", lieCount: true}
+	browseMembers(t, a, func(b *Browser, e *eff.Env) {
+		mustOf(t)(b.Get("/members"))
+		_, err := b.ClickRoute(mDelete(3), "M.Delete")
+		want := "DELETE /members/3: the answer replaced `#member-count` unlike the page loaded again (GET /members) at p#member-count"
+		if err == nil || !strings.HasPrefix(err.Error(), want) || !strings.Contains(err.Error(), "3 members") || !strings.Contains(err.Error(), "2 members") {
+			t.Errorf("err = %v, want %q and both markups", err, want)
+		}
+	})
+	a = &memberApp{names: []string{"ann", "bob", "cy"}, prefix: "member-", banner: true}
+	browseMembers(t, a, func(b *Browser, e *eff.Env) {
+		mustOf(t)(b.Get("/members"))
+		r := mustOf(t)(b.ClickRoute(mDelete(3), "M.Delete"))
+		wantAnswer(t, r, Answer{Tag: Replaced, Replaced: []string{"member-count", "banner"}, Removed: []string{"member-3"}})
+	})
+	a = &memberApp{names: []string{"ann", "bob", "cy"}, prefix: "member-", keep: true}
+	browseMembers(t, a, func(b *Browser, e *eff.Env) {
+		mustOf(t)(b.Get("/members"))
+		_, err := b.ClickRoute(mDelete(3), "M.Delete")
+		want := "DELETE /members/3: the answer removed `#member-3`, which the page loaded again (GET /members) still has"
+		if err == nil || !strings.HasPrefix(err.Error(), want) {
+			t.Errorf("err = %v, want %q", err, want)
+		}
+	})
+}
+
+// Review Focus 4: removals of ids that are not plain CSS identifiers (`3`, `member-3.a`) find
+// their elements, in the page held and in the page loaded again.
+func TestBrowser_ReplacedOddIDs(t *testing.T) {
+	for _, a := range []*memberApp{{prefix: ""}, {prefix: "member-", suffix: ".a"}} {
+		a.names = []string{"ann", "bob", "cy"}
+		browseMembers(t, a, func(b *Browser, e *eff.Env) {
+			mustOf(t)(b.Get("/members"))
+			r := mustOf(t)(b.ClickRoute(mDelete(3), "M.Delete"))
+			wantAnswer(t, r, Answer{Tag: Replaced, Replaced: []string{"member-count"}, Removed: []string{a.elID(3)}})
+			if strings.Contains(html.Render(r.Doc), "cy") {
+				t.Errorf("%q not removed: %s", a.elID(3), html.Render(r.Doc))
+			}
+		})
+	}
 }
