@@ -9,3 +9,15 @@ view n = <p class="x">{n}</p>
 --        ^ tag
 --          ^ attribute
 --                ^ string
+
+count : Query Int requires org
+--                 ^ keyword
+--                          ^ property
+count = Query.succeed 1
+
+total : Query Int
+  requires user, org
+-- ^ keyword
+--           ^ property
+--                 ^ property
+total = Query.succeed 1

@@ -812,6 +812,10 @@ func (mc *modCtx) checkStated(vd *syntax.ValueDecl, k string) {
 				sig := vd.FullName() + " : " + strings.Join(strings.Fields(mc.source(vd.Sig.GetSpan())), " ") + " requires " + keys
 				var d *diag.Diagnostic
 				if c.unstatedAllowed(mc.m.Name) {
+					if c.res.Unstated == nil {
+						c.res.Unstated = map[string][]string{}
+					}
+					c.res.Unstated[k] = c.sessionOrder(all)
 					d = c.bag.Warn(diag.HelperNeedUnstated, at, "%s: say so in its signature (`%s`). `alder fmt` adds it.", subject, sig)
 				} else {
 					d = c.errorf(diag.ScopedOutside, at, "%s: say so in its signature, `%s`", subject, sig)

@@ -70,7 +70,12 @@ var (
 	reTag       = regexp.MustCompile(`(?:^|[\s>({\[,])<([a-z0-9-]*)$`)
 	reHole      = regexp.MustCompile(`\?([a-z][A-Za-z0-9_]*)?$`)
 	reWord      = regexp.MustCompile(`[A-Za-z0-9_]*$`)
-	reTheme     = regexp.MustCompile(`^\s*([a-z][A-Za-z0-9]*?)$`)
+	// a value's `requires` clause (#310), on its signature's line or the next: the keys already
+	// written, then the word being typed
+	reReqSame = regexp.MustCompile(`^[a-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)? : .*\brequires\s+((?:[a-z][A-Za-z0-9_]*\s*,\s*)*)[A-Za-z0-9_]*$`)
+	reReqNext = regexp.MustCompile(`^\s+requires\s+((?:[a-z][A-Za-z0-9_]*\s*,\s*)*)[A-Za-z0-9_]*$`)
+	reSigLine = regexp.MustCompile(`^[a-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)? : `)
+	reTheme   = regexp.MustCompile(`^\s*([a-z][A-Za-z0-9]*?)$`)
 )
 
 // completion is one completion request: the open text as it is now, read once, and the last
@@ -147,7 +152,7 @@ func (s *server) completionIn(rel, text string, p Position) *completion {
 // items tries each context in the table's order; the first that applies answers.
 func (cx *completion) items() []completionItem {
 	for _, row := range []func() ([]completionItem, bool){
-		cx.theme, cx.imports, cx.members, cx.fields, cx.closeTag, cx.attrValues, cx.attrs, cx.tags, cx.hole, cx.patterns,
+		cx.theme, cx.requires, cx.imports, cx.members, cx.fields, cx.closeTag, cx.attrValues, cx.attrs, cx.tags, cx.hole, cx.patterns,
 	} {
 		if items, ok := row(); ok {
 			return items
@@ -963,6 +968,33 @@ func (cx *completion) otherwise() []completionItem {
 		add(cx.item(k, kindKeyword, "", n))
 	}
 	return out
+}
+
+// requires: a key of a value's `requires` clause, after `requires` or a comma on its signature's
+// line or the line below it: the session's `Maybe` fields (the keys a value can need), without
+// the ones already written, each with its type as the detail.
+func (cx *completion) requires() ([]completionItem, bool) {
+	g := reReqSame.FindStringSubmatch(cx.prefix)
+	if g == nil {
+		if g = reReqNext.FindStringSubmatch(cx.prefix); g != nil && (cx.line == 0 || !reSigLine.MatchString(cx.lines[cx.line-1])) {
+			g = nil
+		}
+	}
+	if g == nil || cx.a == nil || cx.a.res == nil || cx.a.res.Session == nil {
+		return nil, false
+	}
+	written := map[string]bool{}
+	for _, k := range strings.Split(g[1], ",") {
+		written[strings.TrimSpace(k)] = true
+	}
+	n := len(reWord.FindString(cx.prefix))
+	out := []completionItem{}
+	for _, f := range cx.a.res.Session.Fields {
+		if u, ok := f.Type.(*types.Union); ok && u.Name == "Maybe" && !written[f.Name] {
+			out = append(out, cx.item(f.Name, kindProperty, types.String(f.Type), n))
+		}
+	}
+	return out, true
 }
 
 // theme: a field name being typed on a line of its own inside App's `theme { … }` of the last

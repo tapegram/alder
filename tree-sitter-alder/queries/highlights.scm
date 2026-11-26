@@ -14,6 +14,7 @@
 (tag_name) @tag
 (field_attribute) @attribute
 (field_decl name: (identifier) @property)
+(session_key) @property ; a `requires` key, on a route or a value
 (type_name (constructor) @type)
 (route_decl path: (string) @string.special)
 (route_method) @constructor

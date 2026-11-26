@@ -65,6 +65,10 @@ type Result struct {
 	// (“`Test.fetch`”, or “`fetchText`, a test helper”): values only tests and other helpers use,
 	// which a production build omits.
 	TestOnly map[string]string
+	// Unstated are the route or job module helpers whose signature states no need (W0014, #310),
+	// "Module.name" → the session keys their bodies need, in the session's order: the editor's
+	// hover says so.
+	Unstated map[string][]string
 	Holes    int            // count of W0002 reported
 	U        *types.Unifier // for Apply on stored types
 }

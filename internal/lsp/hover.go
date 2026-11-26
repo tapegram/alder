@@ -129,7 +129,7 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 				if v, ok := n.(*syntax.Var); ok && v.Module != "" && a.prog.Modules[ref.Module] != nil {
 					name = ref.Module + "." + ref.Name // `Todo.find` is `Table.Todo.find` in full
 				}
-				return withDoc(sig(name, t)+helperLine(a, ref), declDoc(a, ref))
+				return withDoc(withClause(a, ref, sig(name, t))+helperLine(a, ref)+needLine(a, ref), declDoc(a, ref))
 			}
 		}
 	}
@@ -334,6 +334,27 @@ func moduleDoc(mod *syntax.Module) doccomment.Doc {
 func helperLine(a *analysis, ref syntax.Ref) string {
 	if why := a.res.TestOnly[ref.Module+"."+ref.Name]; why != "" {
 		return "\n\ntest helper (uses " + why + ")"
+	}
+	return ""
+}
+
+// withClause is a value's signature block with its `requires` clause (#310) ending the line:
+// `count : Query Int requires org`. A value without one, or whose clause the parser gave up on
+// (E0027, a missing key), is the block as it was.
+func withClause(a *analysis, ref syntax.Ref, block string) string {
+	_, d := findDecl(a, ref)
+	vd, ok := d.(*syntax.ValueDecl)
+	if !ok || len(vd.Needs) == 0 || slices.Contains(vd.Needs, "") {
+		return block
+	}
+	return strings.TrimSuffix(block, "\n```") + " requires " + strings.Join(vd.Needs, ", ") + "\n```"
+}
+
+// needLine is the hover's note on a route or job module helper whose signature states no need
+// (W0014): `needs user, org (inferred)`, "" for any other value.
+func needLine(a *analysis, ref syntax.Ref) string {
+	if keys := a.res.Unstated[ref.Module+"."+ref.Name]; len(keys) > 0 {
+		return "\n\nneeds " + strings.Join(keys, ", ") + " (inferred)"
 	}
 	return ""
 }
