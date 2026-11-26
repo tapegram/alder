@@ -94,7 +94,9 @@ func (mc *modCtx) checkFakeEntries(d *syntax.FakeDecl) {
 	for _, e := range d.Entries {
 		if sig, ok := entries[e.Name]; ok && !c.losers[e] && e.Body != nil {
 			from := len(c.bag.Items)
+			mc.fakeEntry = e.Name
 			mc.checkValue(e, sig)
+			mc.fakeEntry = ""
 			for i := from; i < len(c.bag.Items); i++ { // say which entry every diagnostic is in
 				it := &c.bag.Items[i]
 				it.Message = "in `fake " + d.Name + "`'s `" + e.Name + "`: " + it.Message

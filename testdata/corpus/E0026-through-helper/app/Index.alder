@@ -1,0 +1,26 @@
+module Index
+
+import Access
+import Table.Reviewer
+
+route Index = GET "/{id}" { id: Reviewer.ReviewerId } requires user
+
+type Model = { n: Int }
+
+-- a helper of this route module that reaches `Db.scoped Reviewer` through `Access.reviewers`
+mine : Query Int
+mine = {
+  let rs <- Access.reviewers []
+  Query.succeed (List.length rs)
+}
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let rs <- Access.reviewers []
+  let one <- Reviewer.current params.id
+  let n <- mine
+  Query.succeed { n: List.length rs + n }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session = <p>x</p>

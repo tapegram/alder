@@ -42,6 +42,7 @@ package check
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -98,8 +99,8 @@ func (c *Checker) bodyFacts(e syntax.Expr) valueFacts {
 func (c *Checker) checkWriteSets() {
 	direct := map[string]valueFacts{}
 	type fakeEntry struct {
-		fake string
-		d    *syntax.ValueDecl
+		fake, module string
+		d            *syntax.ValueDecl
 	}
 	var fakes []fakeEntry
 	for _, name := range c.prog.Order {
@@ -116,7 +117,7 @@ func (c *Checker) checkWriteSets() {
 				}
 				for _, e := range d.Entries {
 					if e.Body != nil && !c.losers[e] {
-						fakes = append(fakes, fakeEntry{d.Name, e})
+						fakes = append(fakes, fakeEntry{d.Name, name, e})
 					}
 				}
 			}
@@ -143,12 +144,24 @@ func (c *Checker) checkWriteSets() {
 			}
 		}
 	}
-	writesOf := func(e syntax.Expr) map[string]bool {
+	// writesOf maps each table body e writes to the helper ("Module.value") its write is first
+	// reached through, "" for a write in e itself; of several helpers, the first by name
+	writesOf := func(e syntax.Expr) map[string]string {
 		f := c.bodyFacts(e)
-		out := f.writes
+		out := map[string]string{}
+		for t := range f.writes {
+			out[t] = ""
+		}
+		refs := make([]string, 0, len(f.refs))
 		for r := range f.refs {
+			refs = append(refs, r)
+		}
+		sort.Strings(refs)
+		for _, r := range refs {
 			for t := range all[r] {
-				out[t] = true
+				if _, ok := out[t]; !ok {
+					out[t] = r
+				}
 			}
 		}
 		return out
@@ -166,7 +179,7 @@ func (c *Checker) checkWriteSets() {
 			st := ArmStore{Msg: r.Name, Span: vd.Span}
 			switch groups := c.storeGroups(writesOf(vd.Body)); {
 			case len(groups) > 1:
-				c.errorf(diag.WriteStores, vd.Span, "%s", c.mixMessage("`"+vd.FullName()+"`", "route", groups))
+				c.errorf(diag.WriteStores, vd.Span, "%s", c.mixMessage("`"+vd.FullName()+"`", "route", name, groups))
 			case len(groups) == 1:
 				st.Silo = groups[0].silo
 			}
@@ -186,7 +199,7 @@ func (c *Checker) checkWriteSets() {
 			}
 			switch groups := c.storeGroups(writesOf(vd.Body)); {
 			case len(groups) > 1:
-				c.errorf(diag.WriteStores, vd.Span, "%s", c.mixMessage("`"+vd.FullName()+"`", "job", groups))
+				c.errorf(diag.WriteStores, vd.Span, "%s", c.mixMessage("`"+vd.FullName()+"`", "job", name, groups))
 			case len(groups) == 1 && j.Silo != "" && groups[0].silo == "":
 				// a `silo k` job runs in its silo (the worker binds it there): a shared write
 				// is a second store, as it is for a route whose arm is the silo's
@@ -196,23 +209,30 @@ func (c *Checker) checkWriteSets() {
 	}
 	for _, fe := range fakes {
 		if groups := c.storeGroups(writesOf(fe.d.Body)); len(groups) > 1 {
-			c.errorf(diag.WriteStores, fe.d.Span, "in `fake %s`'s `%s`: %s", fe.fake, fe.d.Name, c.mixMessage("`"+fe.d.Name+"`", "entry", groups))
+			c.errorf(diag.WriteStores, fe.d.Span, "in `fake %s`'s `%s`: %s", fe.fake, fe.d.Name, c.mixMessage("`"+fe.d.Name+"`", "entry", fe.module, groups))
 		}
 	}
 }
 
-// storeGroup is the tables (bare names, sorted) an arm writes in one store (silo "" is shared).
+// storeGroup is the tables (bare names, sorted) an arm writes in one store (silo "" is shared),
+// and the helpers ("Module.value", in the tables' order, each once) writes of them are reached
+// through.
 type storeGroup struct {
 	silo   string
 	tables []string
+	vias   []string
 }
 
-// storeGroups groups the table keys written by store: silos by key, then the shared store.
-func (c *Checker) storeGroups(writes map[string]bool) []storeGroup {
+// storeGroups groups the table keys written (each with the helper it is reached through, as
+// writesOf gives them) by store: silos by key, then the shared store.
+func (c *Checker) storeGroups(writes map[string]string) []storeGroup {
 	by := map[string][]string{}
-	for t := range writes {
+	viaOf := map[string]string{}
+	for t, via := range writes {
 		s := c.siloOf[t]
-		by[s] = append(by[s], strings.TrimPrefix(t, tableModule(t)+"."))
+		name := strings.TrimPrefix(t, tableModule(t)+".")
+		by[s] = append(by[s], name)
+		viaOf[s+" "+name] = via
 	}
 	keys := make([]string, 0, len(by))
 	for k := range by {
@@ -228,15 +248,23 @@ func (c *Checker) storeGroups(writes map[string]bool) []storeGroup {
 	for _, k := range keys {
 		ts := by[k]
 		sort.Strings(ts)
-		out = append(out, storeGroup{k, ts})
+		var vias []string
+		for _, t := range ts {
+			if v := viaOf[k+" "+t]; v != "" && !slices.Contains(vias, v) {
+				vias = append(vias, v)
+			}
+		}
+		out = append(out, storeGroup{k, ts, vias})
 	}
 	return out
 }
 
-// mixMessage is E0031's text for arm name writing groups (two or more): "`Create` writes
-// `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. …"; the hint
-// sends a write from its own `from` ("entry" for a fake, "route" for a write route).
-func (c *Checker) mixMessage(name, from string, groups []storeGroup) string {
+// mixMessage is E0031's text for arm name of module mod writing groups (two or more):
+// "`Create.post` writes `Project` (silo `org`) and `AuditLog` (shared, through `Audit.record`):
+// a Task writes to one store. …", a store's note naming the helpers its writes are reached
+// through (#310); the hint sends a write from its own `from` ("entry" for a fake, "route" for a
+// write route).
+func (c *Checker) mixMessage(name, from, mod string, groups []storeGroup) string {
 	parts := make([]string, len(groups))
 	shared := ""
 	for i, g := range groups {
@@ -244,12 +272,20 @@ func (c *Checker) mixMessage(name, from string, groups []storeGroup) string {
 		for j, t := range g.tables {
 			ts[j] = "`" + t + "`"
 		}
-		where := "(shared)"
+		where := "shared"
 		if g.silo != "" {
-			where = "(silo `" + g.silo + "`)"
+			where = "silo `" + g.silo + "`"
 		} else {
 			shared = andList(ts)
 		}
+		if len(g.vias) > 0 {
+			vs := make([]string, len(g.vias))
+			for j, v := range g.vias {
+				vs[j] = "`" + helperName(v, mod) + "`"
+			}
+			where += ", through " + andList(vs)
+		}
+		where = "(" + where + ")"
 		parts[i] = andList(ts) + " " + where
 	}
 	hint := "Send one of the writes from its own " + from + "."

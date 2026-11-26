@@ -1,0 +1,25 @@
+module Table.Member
+
+import Org
+
+type MemberId = brand Text
+
+table Member {
+  id: MemberId @id,
+  name: Text.NonEmpty,
+  active: Bool = True,
+  org: Org.OrgId @ref Org @partition org,
+}
+
+-- #310: a value with a need may live in a table's module (no `requires` clause yet)
+count : Query Int
+count = Db.scoped Member |> Db.where (Member.active.eq True) |> Db.count
+
+visible : Query (List Member)
+visible = Db.scoped Member |> Db.where (Member.active.eq True) |> Db.orderBy Member.name.asc |> Db.all
+
+-- a test of the helper lives beside it: a test may use what needs `org`
+test "count is a number" = {
+  let n <- count
+  Task.succeed (n >= 0)
+}

@@ -229,7 +229,7 @@ func (mc *modCtx) inferScoped(x *syntax.Var) types.Type {
 		if msg := mc.scopedRefusal("`"+op+"`", "user"); msg != "" {
 			c.reportScoped(x.Span, msg)
 		} else {
-			mc.markScoped("user", op)
+			mc.markScoped("user", op, "")
 		}
 	}
 	if scopedOps[x.Ref.Name] == "insertScoped" && !c.insertRows[x] {
@@ -278,9 +278,10 @@ func (c *Checker) reportScoped(at diag.Span, msg string) {
 // a member of a route that `requires` key, or takes it from its parameter (`silo key`, the admin
 // form), and in a `test` (a test has a
 // session, from `Test.login` or `Session.put`; a scoped operation without the field fails when
-// it runs). Never in a fake. A top-level value of a route module that is no route's member (a
-// helper) may use the operation: each route member that uses the helper is checked instead
-// (checkRouteRefs), as another module's use of it is.
+// it runs). Never in a fake. A top-level value that is no route's or job's member, in any module
+// (#310), may use the operation: its need is recorded (markScoped), and each use of the value in
+// a member, a job's `run` or a fake is checked instead (checkRouteRefs within its module,
+// scopedRef from another).
 func (mc *modCtx) narrowed(key string) bool {
 	switch {
 	case mc.fake != "":
@@ -293,19 +294,43 @@ func (mc *modCtx) narrowed(key string) bool {
 	if j := mc.armJob(); j != nil { // a job's `run`: only its `silo k` (#168)
 		return j.Silo != "" && j.Silo == key
 	}
-	return mc.routeHelper()
+	return mc.value != "" && !strings.Contains(mc.value, ".")
 }
 
-// routeHelper reports whether mc is checking a top-level value of a route module that belongs to
-// no route.
-func (mc *modCtx) routeHelper() bool {
-	return mc.route == nil && mc.value != "" && !strings.Contains(mc.value, ".") && mc.c.routes[mc.m.Name] != nil
+// need is what a value needs of one session key (scopedUsing, by key): Op the first operation
+// on its path (“Db.scoped Reviewer”), Via the first helper on that path ("Module.value"), ""
+// when the value uses Op itself.
+type need struct{ Op, Via string }
+
+// needSubject is E0026's subject for a use of value name (as the message names it), which
+// needs n, in module mod: “`Access.reviewers` uses `Db.scoped Reviewer` (through
+// `Table.Reviewer.current`), which”.
+func needSubject(name string, n need, mod string) string {
+	return "`" + name + "` uses `" + n.Op + "`" + throughNote(n.Via, mod) + ", which"
+}
+
+// throughNote is “ (through `X`)” for helper via ("Module.value") named in module mod: by its
+// bare name in its own module, as the messages name a module's own values. "" for no helper.
+func throughNote(via, mod string) string {
+	if via == "" {
+		return ""
+	}
+	return " (through `" + helperName(via, mod) + "`)"
+}
+
+// helperName is value key ("Module.value") as module mod names it.
+func helperName(key, mod string) string {
+	if rest, ok := strings.CutPrefix(key, mod+"."); ok && !strings.Contains(rest, ".") {
+		return rest
+	}
+	return key
 }
 
 // scopedRefusal is E0026's message for subject (“`Db.mine`”, “`Db.scoped Project`”, or
 // “`Todos.Index.recent` uses `Db.mine`, which”) used where mc is checking, "" when it may be
-// used there (narrowed): a member of a route that `requires key`, or a test. A fake's entries may
-// not: a fake has no session.
+// used there (narrowed): a member of a route that `requires key`, a job with `silo key`, a
+// top-level value (which then has the need), or a test. A fake's entries may not: a fake has no
+// session.
 func (mc *modCtx) scopedRefusal(subject, key string) string {
 	switch {
 	case mc.fake != "":
@@ -316,35 +341,35 @@ func (mc *modCtx) scopedRefusal(subject, key string) string {
 		return jobRefusal(mc.armJob(), subject, key)
 	case mc.route != nil:
 		return subject + " needs a route that `requires " + key + "`: `" + mc.route.Name + "` does not"
-	case mc.c.routes[mc.m.Name] != nil:
-		return subject + " needs a route that `requires " + key + "`: this is not a member of one"
 	}
-	return subject + " needs a route that `requires " + key + "`: `" + mc.m.Name + "` declares no route"
+	// a brand's check, a field's default: no session at all
+	return subject + " needs a route that `requires " + key + "`: this has no session"
 }
 
 // markScoped notes that the value being checked (outside tests) uses operation op, which needs
-// the session's key narrowed.
-func (mc *modCtx) markScoped(key, op string) {
+// the session's key narrowed, itself (via "") or through the helper via of another module.
+func (mc *modCtx) markScoped(key, op, via string) {
 	c := mc.c
 	if mc.value == "" || mc.inTest || mc.fake != "" {
 		return
 	}
 	k := c.key(mc.m.Name, mc.value)
 	if c.scopedDirect == nil {
-		c.scopedDirect = map[string]map[string]string{}
+		c.scopedDirect = map[string]map[string]need{}
 	}
 	if c.scopedDirect[k] == nil {
-		c.scopedDirect[k] = map[string]string{}
+		c.scopedDirect[k] = map[string]need{}
 	}
-	if c.scopedDirect[k][key] == "" {
-		c.scopedDirect[k][key] = op
+	if c.scopedDirect[k][key].Op == "" {
+		c.scopedDirect[k][key] = need{Op: op, Via: via}
 	}
 }
 
 // scopedRef handles a reference x to a top-level value: within its module it is an edge for
-// propagateScoped; to another module's value that uses a scoped operation (scopedUsing), it is
-// E0026 where that operation's key is not narrowed, and marks the value being checked
-// otherwise (a `requires user` route's member using another module's value).
+// propagateScoped (and, from a member, a job's `run` or a fake, a routeRef checked once the
+// module's bodies are); to another module's value that has a need (scopedUsing), it is E0026
+// where that need's key is not narrowed, and marks the value being checked otherwise (with the
+// referenced value as the helper its need comes through).
 func (mc *modCtx) scopedRef(x *syntax.Var) {
 	c := mc.c
 	k := c.key(x.Ref.Module, x.Ref.Name)
@@ -352,57 +377,65 @@ func (mc *modCtx) scopedRef(x *syntax.Var) {
 		if mc.value != "" && !mc.inTest && mc.fake == "" {
 			c.scopedEdges = append(c.scopedEdges, [2]string{c.key(mc.m.Name, mc.value), k})
 		}
-		if mc.route != nil && !mc.inTest && mc.fake == "" {
+		switch {
+		case mc.inTest:
+		case mc.fake != "":
+			c.routeRefs = append(c.routeRefs, routeRef{x: x, fake: mc.fake, entry: mc.fakeEntry})
+		case mc.route != nil:
 			// what the value uses is known once the module's bodies are (checkRouteRefs)
 			c.routeRefs = append(c.routeRefs, routeRef{x: x, route: mc.route})
-		} else if j := mc.armJob(); j != nil {
-			c.routeRefs = append(c.routeRefs, routeRef{x: x, job: j})
+		case mc.armJob() != nil:
+			c.routeRefs = append(c.routeRefs, routeRef{x: x, job: mc.armJob()})
 		}
 		return
 	}
 	uses := c.scopedUsing[k]
+	for _, key := range sortedKeys(uses) {
+		if msg := mc.scopedRefusal(needSubject(k, uses[key], mc.m.Name), key); msg != "" {
+			c.reportScoped(x.Span, msg)
+			return
+		}
+	}
+	for _, key := range sortedKeys(uses) {
+		mc.markScoped(key, uses[key].Op, k)
+	}
+}
+
+func sortedKeys(uses map[string]need) []string {
 	keys := make([]string, 0, len(uses))
 	for key := range uses {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	for _, key := range keys {
-		op := uses[key]
-		if msg := mc.scopedRefusal("`"+k+"` uses `"+op+"`, which", key); msg != "" {
-			c.reportScoped(x.Span, msg)
-			return
-		}
-	}
-	for _, key := range keys {
-		mc.markScoped(key, uses[key])
-	}
+	return keys
 }
 
-// propagateScoped recomputes scopedUsing, the values that use a scoped operation directly or
-// through values of their module (per key, the first operation): run after each module's
-// bodies, so a module's importers (checked after it) see its marks.
+// propagateScoped recomputes scopedUsing, every value's need: per key, the first operation and
+// the first helper on its path, from its own uses (scopedDirect) and through the values of its
+// module it refers to (scopedEdges; a fixed point, so recursion terminates). It runs after each
+// module's bodies, so a module's importers (checked after it) see its needs.
 func (c *Checker) propagateScoped() {
-	c.scopedUsing = map[string]map[string]string{}
-	add := func(v, key, op string) bool {
+	c.scopedUsing = map[string]map[string]need{}
+	add := func(v, key string, n need) bool {
 		if c.scopedUsing[v] == nil {
-			c.scopedUsing[v] = map[string]string{}
+			c.scopedUsing[v] = map[string]need{}
 		}
-		if c.scopedUsing[v][key] != "" {
+		if c.scopedUsing[v][key].Op != "" {
 			return false
 		}
-		c.scopedUsing[v][key] = op
+		c.scopedUsing[v][key] = n
 		return true
 	}
 	for k, ops := range c.scopedDirect {
-		for key, op := range ops {
-			add(k, key, op)
+		for key, n := range ops {
+			add(k, key, n)
 		}
 	}
 	for changed := true; changed; {
 		changed = false
 		for _, e := range c.scopedEdges {
-			for key, op := range c.scopedUsing[e[1]] {
-				if add(e[0], key, op) {
+			for key, n := range c.scopedUsing[e[1]] {
+				if add(e[0], key, need{Op: n.Op, Via: e[1]}) {
 					changed = true
 				}
 			}
@@ -505,7 +538,7 @@ func (mc *modCtx) checkScopedTables() {
 			if msg := mc.scopedRefusal(subject, info.PartKey); msg != "" {
 				c.reportScoped(u.v.Span, msg)
 			} else {
-				mc.markScoped(info.PartKey, "Db."+name+" "+rec.Name)
+				mc.markScoped(info.PartKey, "Db."+name+" "+rec.Name, "")
 			}
 		}
 	}
@@ -529,7 +562,7 @@ func (mc *modCtx) checkScopedTables() {
 		if msg := mc.scopedRefusal(subject, key); msg != "" {
 			c.reportScoped(v.Span, msg)
 		} else {
-			mc.markScoped(key, "Db."+v.Ref.Name+" "+rec.Name)
+			mc.markScoped(key, "Db."+v.Ref.Name+" "+rec.Name, "")
 		}
 	}
 }

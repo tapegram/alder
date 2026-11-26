@@ -1,0 +1,1 @@
+app/Index.alder:13:33 E0026 `Table.Reviewer.current` uses `Db.scoped Reviewer`, which needs a route that `requires org`: `Index` does not

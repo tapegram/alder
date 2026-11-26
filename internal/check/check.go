@@ -73,13 +73,13 @@ type Checker struct {
 	// scopedReported the places E0026 was reported at
 	scopedUses     []scopedUse
 	scopedReported map[diag.Span]bool
-	// scopedDirect maps each value ("Module.name") of a module that uses a scoped
+	// scopedDirect maps each value ("Module.name"), in any module, that uses a scoped
 	// operation itself (or another module's value that does, or an unscoped operation on a
-	// siloed table) to the operation per partition key it needs narrowed ("user" → "Db.mine");
+	// siloed table) to its need per partition key ("user" → {Db.mine, via}, rules.go);
 	// scopedEdges are its module-internal references (from, to); scopedUsing is their closure
 	// (propagateScoped). insertRows are the scoped inserts insertScopedCall saw, by reference,
 	// and insertOps the op (“Db.insertMine”) of each row literal written in one.
-	scopedDirect map[string]map[string]string
+	scopedDirect map[string]map[string]need
 	// testDirect maps each value ("Module.name") that uses something only tests may use itself
 	// to the first such thing; testEdges are the references markTestHelpers follows; testReported
 	// the places E0040 was reported at (helpers.go).
@@ -87,7 +87,7 @@ type Checker struct {
 	testEdges    []testEdge
 	testReported map[diag.Span]bool
 	scopedEdges  [][2]string
-	scopedUsing  map[string]map[string]string
+	scopedUsing  map[string]map[string]need
 	insertRows   map[*syntax.Var]bool
 	insertOps    map[*syntax.RecordLit]string
 	// M15: hasSession says App declares `session`; via maps each valid `via` session field to
@@ -146,23 +146,24 @@ type errorsAt struct {
 }
 
 type modCtx struct {
-	c        *Checker
-	m        *syntax.Module
-	route    *RouteInfo // the route of the member being checked (`Row.view`), nil outside one
-	session  *types.Record
-	isApp    bool
-	holes    []holeNote
-	form     *formCtx
-	inTest   bool
-	value    string               // the top-level value whose body is being checked, "" for none
-	testBody syntax.Expr          // the body of the `test` being checked (inTest)
-	testName string               // the name of the `test` being checked (inTest)
-	propHead *syntax.Var          // the `Fuzz.forAll` of the test body: the one place a Property may be made
-	propType types.Type           // propHead's instantiated type
-	propBody syntax.Expr          // the body of a function-bodied test's lambda (its result is the property's)
-	runArgs  map[syntax.Expr]bool // the arguments of `Test.run` calls (their mismatches get a hint)
-	fake     string               // the capability whose `fake` entries are being checked
-	never    string               // why the code being checked (a brand check, a field default) is never a test helper
+	c         *Checker
+	m         *syntax.Module
+	route     *RouteInfo // the route of the member being checked (`Row.view`), nil outside one
+	session   *types.Record
+	isApp     bool
+	holes     []holeNote
+	form      *formCtx
+	inTest    bool
+	value     string               // the top-level value whose body is being checked, "" for none
+	testBody  syntax.Expr          // the body of the `test` being checked (inTest)
+	testName  string               // the name of the `test` being checked (inTest)
+	propHead  *syntax.Var          // the `Fuzz.forAll` of the test body: the one place a Property may be made
+	propType  types.Type           // propHead's instantiated type
+	propBody  syntax.Expr          // the body of a function-bodied test's lambda (its result is the property's)
+	runArgs   map[syntax.Expr]bool // the arguments of `Test.run` calls (their mismatches get a hint)
+	fake      string               // the capability whose `fake` entries are being checked
+	fakeEntry string               // the entry of `fake` being checked
+	never     string               // why the code being checked (a brand check, a field default) is never a test helper
 	// cookieLit is the record literal `Test.login` is applied to: the cookie's value, so the
 	// session's defaults apply to it (a boundary, like an insert or a form).
 	cookieLit *syntax.RecordLit

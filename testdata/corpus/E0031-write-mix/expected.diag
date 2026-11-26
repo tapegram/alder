@@ -1,6 +1,6 @@
 app/Projects.alder:30:1 E0031 `Create.post` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route.
-app/Projects.alder:38:1 E0031 `Helped.post` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route.
-app/Projects.alder:46:1 E0031 `Many.post` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route.
+app/Projects.alder:38:1 E0031 `Helped.post` writes `Project` (silo `org`) and `AuditLog` (shared, through `note`): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route.
+app/Projects.alder:46:1 E0031 `Many.post` writes `Project` (silo `org`) and `AuditLog` (shared, through `Audit.log`): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route.
 app/Projects.alder:54:1 E0031 `Silos.post` writes `Project` (silo `org`) and `Board` (silo `team`): a Task writes to one store. Send one of the writes from its own route.
 app/Projects.alder:72:1 E0031 `Bound.post` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route.
 app/Projects.alder:81:1 E0031 `Lambda.post` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route.

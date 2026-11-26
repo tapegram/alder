@@ -1,0 +1,12 @@
+module Digest
+
+import Access
+
+-- a job without `silo org` has no `org`, through a helper as directly
+job Digest = {}
+
+Digest.run : Digest.Params -> Task Unit
+Digest.run p = {
+  let _ <- Access.reviewers []
+  Task.succeed ()
+}

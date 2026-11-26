@@ -1,0 +1,15 @@
+module Table.Reviewer
+
+import Org
+
+type ReviewerId = brand Text
+
+table Reviewer {
+  id: ReviewerId @id,
+  name: Text,
+  org: Org.OrgId @ref Org @partition org,
+}
+
+-- a table module's value with a need (`org`): it is recorded, not refused
+current : ReviewerId -> Query (Maybe Reviewer)
+current id = Db.scoped Reviewer |> Db.where (Reviewer.id.eq id) |> Db.first

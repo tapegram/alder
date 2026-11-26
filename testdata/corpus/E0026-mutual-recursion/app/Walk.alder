@@ -1,0 +1,12 @@
+module Walk
+
+import Table.Draft
+
+-- `f` and `g` call each other; only `g` uses `Db.mine`, and both need `user`.
+-- (Modules cannot import each other (E0006), so a cycle of values lies inside one module;
+-- `Chain.h` reaches it from another.)
+f : Int -> Query Int
+f n = if n <= 0 then Query.succeed 0 else g (n - 1)
+
+g : Int -> Query Int
+g n = if n <= 0 then Db.mine Draft |> Db.count else f (n - 1)

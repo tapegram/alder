@@ -1,0 +1,16 @@
+module Table.Item
+
+import User
+
+type ItemId = brand Text
+
+table Item {
+  id: ItemId @id,
+  title: Text,
+  owner: User.UserId @ref User @owner,
+}
+
+-- #310: a scoped query in the table's module; its `scope dropped` is a mutant like a route
+-- module helper's
+latest : Select Item
+latest = Db.mine Item |> Db.limit 3

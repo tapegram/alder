@@ -1,0 +1,17 @@
+module Members
+
+import Table.Member
+
+route Members = GET "/members" { } requires user, org
+
+type Model = { n: Int, members: List Member }
+
+Members.load : Members.Params -> Session -> Query Model
+Members.load params session = {
+  let n <- Member.count
+  let members <- Member.visible
+  Query.succeed { n: n, members: members }
+}
+
+Members.view : Model -> Session -> Html
+Members.view model session = <p>{Text.fromInt model.n} members</p>

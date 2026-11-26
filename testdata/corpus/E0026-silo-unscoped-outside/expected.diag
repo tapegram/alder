@@ -1,6 +1,6 @@
 app/App.alder:29:12 E0026 `Db.delete Project` (`Project` lives in `silo org`) needs a route that `requires org`: `Wipe` does not
 app/App.alder:35:13 E0026 `Db.delete Project` (`Project` lives in `silo org`) needs a route that `requires org`: `Bound` does not
+app/App.alder:42:12 E0026 `Wiper.wipe` uses `Db.delete Project`, which needs a route that `requires org`: `Helped` does not
 app/App.alder:48:12 E0026 `Db.deleteScoped Project` needs a route that `requires org`: `Scoped` does not
 app/Public.alder:12:19 E0026 `Projects.Index.all` uses `Db.from Project`, which needs a route that `requires org`: `Public` does not
 app/Public.alder:13:14 E0026 `Db.get Project` (`Project` lives in `silo org`) needs a route that `requires org`: `Public` does not
-app/Wiper.alder:6:11 E0026 `Db.delete Project` (`Project` lives in `silo org`) needs a route that `requires org`: `Wiper` declares no route

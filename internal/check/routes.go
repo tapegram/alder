@@ -594,39 +594,41 @@ func sigReturnsFile(d *syntax.ValueDecl) bool {
 	return ok && tn.Name == "File" && (tn.Module == "" || tn.Module == "Prelude") && len(tn.Args) == 0
 }
 
-// routeRef is a reference from a route member to a value of its own module, checked once the
-// module's bodies are (checkRouteRefs): the value may use scoped operations its route does not
-// narrow.
+// routeRef is a reference from a route member, a job's `run` or a fake's entry to a value of
+// its own module, checked once the module's bodies are (checkRouteRefs): the value may have a
+// need its place does not narrow.
 type routeRef struct {
 	x     *syntax.Var
 	route *RouteInfo
 	job   *JobInfo // set instead of route for a reference in a job's `run` (#168)
+	// fake and entry are set instead for a reference in entry of `fake` (a fake has no session)
+	fake, entry string
 }
 
-// checkRouteRefs reports E0026 for each pending routeRef whose value uses a scoped operation
-// whose key the member's route does not narrow. It runs after propagateScoped, so a helper's
-// operations are known whatever the order of the module's declarations.
+// checkRouteRefs reports E0026 for each pending routeRef whose value has a need its place does
+// not narrow. It runs after propagateScoped, so a helper's needs are known whatever the order
+// of the module's declarations.
 func (c *Checker) checkRouteRefs() {
 	refs := c.routeRefs
 	c.routeRefs = nil
 	for _, rr := range refs {
 		k := c.key(rr.x.Ref.Module, rr.x.Ref.Name)
 		uses := c.scopedUsing[k]
-		keys := make([]string, 0, len(uses))
-		for key := range uses {
-			keys = append(keys, key)
-		}
-		slices.Sort(keys)
-		for _, key := range keys {
+		for _, key := range sortedKeys(uses) {
+			subject := needSubject(rr.x.Ref.Name, uses[key], rr.x.Ref.Module)
+			if rr.fake != "" {
+				c.reportScoped(rr.x.Span, "in `fake "+rr.fake+"`'s `"+rr.entry+"`: "+subject+" cannot be used in a fake: a fake has no session")
+				break
+			}
 			if j := rr.job; j != nil {
 				if j.Silo != key {
-					c.reportScoped(rr.x.Span, jobRefusal(j, "`"+rr.x.Ref.Name+"` uses `"+uses[key]+"`, which", key))
+					c.reportScoped(rr.x.Span, jobRefusal(j, subject, key))
 					break
 				}
 				continue
 			}
 			if !slices.Contains(rr.route.narrowed, key) {
-				c.reportScoped(rr.x.Span, "`"+rr.x.Ref.Name+"` uses `"+uses[key]+"`, which needs a route that `requires "+key+"`: `"+rr.route.Name+"` does not")
+				c.reportScoped(rr.x.Span, subject+" needs a route that `requires "+key+"`: `"+rr.route.Name+"` does not")
 				break
 			}
 		}

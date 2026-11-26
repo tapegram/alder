@@ -1,0 +1,5 @@
+app/Index.alder:19:13 E0026 `Access.reviewers` uses `Db.scoped Reviewer` (through `Table.Reviewer.current`), which needs a route that `requires org`: `Index` does not
+app/Index.alder:20:14 E0026 `Table.Reviewer.current` uses `Db.scoped Reviewer`, which needs a route that `requires org`: `Index` does not
+app/Index.alder:21:12 E0026 `mine` uses `Db.scoped Reviewer` (through `Access.reviewers`), which needs a route that `requires org`: `Index` does not
+app/Pay.alder:10:40 E0026 in `fake Pay`'s `count`: `Access.reviewers` uses `Db.scoped Reviewer` (through `Table.Reviewer.current`), which cannot be used in a fake: a fake has no session
+app/Table/Reviewer.alder:23:13 E0026 in `fake Lookup`'s `find`: `current` uses `Db.scoped Reviewer`, which cannot be used in a fake: a fake has no session

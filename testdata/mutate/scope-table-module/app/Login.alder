@@ -1,0 +1,11 @@
+module Login
+
+route Login = GET "/login" { }
+
+type Model = { }
+
+Login.load : Login.Params -> Session -> Query Model
+Login.load params session = Query.succeed {}
+
+Login.view : Model -> Session -> Html
+Login.view model session = <p>Log in</p>

@@ -1,0 +1,19 @@
+module Public
+
+import Chain
+import Walk
+
+route Public = GET "/public" { }
+
+type Model = { n: Int }
+
+Public.load : Public.Params -> Session -> Query Model
+Public.load params session = {
+  let a <- Walk.f 1
+  let b <- Walk.g 1
+  let c <- Chain.h
+  Query.succeed { n: a + b + c }
+}
+
+Public.view : Model -> Session -> Html
+Public.view model session = <p>x</p>

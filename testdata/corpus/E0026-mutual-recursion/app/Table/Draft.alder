@@ -1,0 +1,11 @@
+module Table.Draft
+
+import User
+
+type DraftId = brand Text
+
+table Draft {
+  id: DraftId @id,
+  title: Text,
+  owner: User.UserId @ref User @owner,
+}

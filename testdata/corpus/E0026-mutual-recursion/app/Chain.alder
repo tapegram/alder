@@ -1,0 +1,6 @@
+module Chain
+
+import Walk
+
+h : Query Int
+h = Walk.f 3

@@ -1,3 +1,3 @@
-app/App.alder:15:12 E0026 `Todos.Index.wipe` uses `Db.deleteMine`, which needs a route that `requires user`: `Clear` does not
+app/App.alder:15:12 E0026 `Todos.Index.wipe` uses `Db.deleteMine` (through `Todos.Index.wipeOne`), which needs a route that `requires user`: `Clear` does not
 app/Public.alder:13:16 E0026 `Todos.Index.recent` uses `Db.mine`, which needs a route that `requires user`: `Public` does not
-app/Public.alder:14:15 E0026 `Todos.Show.shown` uses `Db.mine`, which needs a route that `requires user`: `Public` does not
+app/Public.alder:14:15 E0026 `Todos.Show.shown` uses `Db.mine` (through `Todos.Index.recent`), which needs a route that `requires user`: `Public` does not

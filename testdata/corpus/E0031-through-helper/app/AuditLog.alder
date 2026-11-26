@@ -1,0 +1,9 @@
+module AuditLog
+
+type AuditLogId = brand Text
+
+-- shared
+table AuditLog {
+  id: AuditLogId @id,
+  text: Text,
+}

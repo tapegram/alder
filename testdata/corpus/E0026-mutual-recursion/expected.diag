@@ -1,0 +1,3 @@
+app/Public.alder:12:12 E0026 `Walk.f` uses `Db.mine` (through `Walk.g`), which needs a route that `requires user`: `Public` does not
+app/Public.alder:13:12 E0026 `Walk.g` uses `Db.mine`, which needs a route that `requires user`: `Public` does not
+app/Public.alder:14:12 E0026 `Chain.h` uses `Db.mine` (through `Walk.f`), which needs a route that `requires user`: `Public` does not

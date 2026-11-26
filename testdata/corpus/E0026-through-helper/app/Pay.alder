@@ -1,0 +1,11 @@
+module Pay
+
+import Access
+
+capability Pay {
+  count : Unit -> Task Int,
+}
+
+fake Pay {
+  count u = Task.succeed (List.length [Access.reviewers []])
+}

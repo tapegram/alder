@@ -1,0 +1,4 @@
+1  Table.Item  Item:10    cascade ↔ restrict  owner @ref User @restrict → owner @ref User @cascade
+2  Table.Item  latest:16  limit dropped       Db.limit 3 → no limit
+3  Table.Item  latest:16  scope dropped       Db.mine Item → Db.from Item
+4  Items       Items:5    requires dropped    requires user → served without user (user = User.UserId "mutant")

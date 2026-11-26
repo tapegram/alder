@@ -1,0 +1,1 @@
+app/Digest.alder:10:12 E0026 `Access.reviewers` uses `Db.scoped Reviewer` (through `Table.Reviewer.current`), which needs a job with `silo org`: a job without `silo org` runs on the shared store

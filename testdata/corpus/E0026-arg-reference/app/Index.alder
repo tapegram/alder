@@ -1,0 +1,18 @@
+module Index
+
+import Table.Reviewer
+
+route Index = GET "/{id}" { id: Reviewer.ReviewerId } requires user
+
+type Model = { n: Int }
+
+-- a reference passed as an argument, not called here, still needs `org`
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let ids = [params.id, params.id]
+  let rs <- Query.all (List.map Reviewer.current ids)
+  Query.succeed { n: List.length rs }
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session = <p>x</p>

@@ -1,0 +1,23 @@
+module Projects
+
+import Audit
+import Project
+
+route Projects = GET  "/projects" { } requires user, org
+route Create   = POST "/projects" { } requires user, org
+
+type Model = { }
+
+Projects.load : Projects.Params -> Session -> Query Model
+Projects.load params session = Query.succeed {}
+
+-- the shared write is reached through `Audit.record`
+Create.post : Create.Params -> Session -> Task Response
+Create.post params session = {
+  let _ <- Db.insertScoped Project { name: "p" }
+  let _ <- Audit.record "created p"
+  Task.succeed Response.refresh
+}
+
+Projects.view : Model -> Session -> Html
+Projects.view model session = <p>x</p>

@@ -1,0 +1,25 @@
+module Reviews
+
+import Access
+import Table.Reviewer
+
+route Reviews = GET "/reviews" { } requires user, org
+
+type Model = { n: Int }
+
+-- two hops: `shown` uses `Access.reviewers`, which uses `Reviewer.current`
+shown : Query Int
+shown = {
+  let rs <- Access.reviewers []
+  Query.succeed (List.length rs)
+}
+
+Reviews.load : Reviews.Params -> Session -> Query Model
+Reviews.load params session = {
+  let n <- shown
+  let more <- Access.reviewers []
+  Query.succeed { n: n + List.length more }
+}
+
+Reviews.view : Model -> Session -> Html
+Reviews.view model session = <p>{Text.fromInt model.n}</p>

@@ -1,0 +1,16 @@
+module Items
+
+import Table.Item
+
+route Items = GET "/items" { } requires user
+
+type Model = { items: List Item }
+
+Items.load : Items.Params -> Session -> Query Model
+Items.load params session = {
+  let items <- Item.latest |> Db.all
+  Query.succeed { items: items }
+}
+
+Items.view : Model -> Session -> Html
+Items.view model session = <p>Items</p>
