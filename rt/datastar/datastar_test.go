@@ -324,3 +324,49 @@ func TestHtmlSeed(t *testing.T) {
 		t.Fatalf("no seed: %q %v", rest, ok)
 	}
 }
+
+// ReplaceEvent (#309): one event with no selector, so Datastar matches each root to the page by
+// its id; mode outer; one elements line per line.
+func TestReplaceEvent(t *testing.T) {
+	got := string(ReplaceEvent("<p id=\"member-count\">1 members</p>\n<li id=\"row-2\">b</li>"))
+	want := "event: datastar-patch-elements\ndata: mode outer\n" +
+		"data: elements <p id=\"member-count\">1 members</p>\ndata: elements <li id=\"row-2\">b</li>\n\n"
+	if got != want {
+		t.Fatalf("ReplaceEvent = %q, want %q", got, want)
+	}
+}
+
+// RemoveEvent (#309): the id as a CSS selector, mode remove, and no elements line.
+func TestRemoveEvent(t *testing.T) {
+	got := string(RemoveEvent("member-3"))
+	want := "event: datastar-patch-elements\ndata: selector #member-3\ndata: mode remove\n\n"
+	if got != want {
+		t.Fatalf("RemoveEvent = %q, want %q", got, want)
+	}
+	if got, want := string(RemoveEvent("3")), "event: datastar-patch-elements\ndata: selector #\\33 \ndata: mode remove\n\n"; got != want {
+		t.Fatalf("RemoveEvent(3) = %q, want %q", got, want)
+	}
+}
+
+// IDSelector escapes an id as CSS.escape does (CSSOM, serialize an identifier).
+func TestIDSelector(t *testing.T) {
+	for _, c := range []struct{ id, want string }{
+		{"3", `#\33 `},
+		{"member-3.a", `#member-3\.a`},
+		{"member-3", `#member-3`},
+		{"a_b-C9", `#a_b-C9`},
+		{"-", `#\-`},
+		{"-3", `#-\33 `},
+		{"--x", `#--x`},
+		{"12", `#\31 2`},
+		{"a b:c#d", `#a\ b\:c\#d`},
+		{"x\x00y", "#x�y"},
+		{"x\x01\x7f", `#x\1 \7f `},
+		{"é✓", "#é✓"},
+		{"a\nb", `#a\a b`},
+	} {
+		if got := IDSelector(c.id); got != c.want {
+			t.Errorf("IDSelector(%q) = %q, want %q", c.id, got, c.want)
+		}
+	}
+}

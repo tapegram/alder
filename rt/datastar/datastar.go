@@ -381,6 +381,56 @@ func PatchRegion(w http.ResponseWriter, id, elements string) error {
 	return patch(w, "#"+id, "outer", elements)
 }
 
+// ReplaceEvent is the event of a replace's roots (#309): one `datastar-patch-elements` event
+// with no selector, so Datastar morphs each root into the page's element with the same id, mode
+// outer, elements the roots' markup (one data line per line, normalised as in PatchEvent). No
+// selector means no id is ever written as CSS.
+func ReplaceEvent(elements string) []byte {
+	var b strings.Builder
+	b.WriteString("event: datastar-patch-elements\ndata: mode outer\n")
+	for _, line := range lines(elements) {
+		b.WriteString("data: elements " + line + "\n")
+	}
+	b.WriteByte('\n')
+	return []byte(b.String())
+}
+
+// RemoveEvent is the event removing the page's element with id id (#309): selector
+// IDSelector(id), mode remove, and no elements line.
+func RemoveEvent(id string) []byte {
+	return []byte("event: datastar-patch-elements\ndata: selector " + IDSelector(id) + "\ndata: mode remove\n\n")
+}
+
+// IDSelector is the CSS selector of the element with id id: "#" and the id escaped as
+// CSS.escape does (CSSOM, "serialize an identifier"), so an id starting with a digit or holding
+// a "." or ":" names that element and nothing else. NUL becomes U+FFFD; a control character, a
+// leading digit, or a digit after a leading "-" becomes a hex escape and a space; a lone "-"
+// and any other ASCII character than [-_0-9A-Za-z] are escaped with a backslash; the rest (non-ASCII
+// included) is kept. A line end is a hex escape, so the selector fits on one SSE data line.
+func IDSelector(id string) string {
+	var b strings.Builder
+	b.WriteByte('#')
+	rs := []rune(id)
+	for i, r := range rs {
+		switch {
+		case r == 0:
+			b.WriteRune('�')
+		case r >= 0x1 && r <= 0x1f || r == 0x7f,
+			i == 0 && r >= '0' && r <= '9',
+			i == 1 && r >= '0' && r <= '9' && rs[0] == '-':
+			fmt.Fprintf(&b, `\%x `, r)
+		case i == 0 && r == '-' && len(rs) == 1:
+			b.WriteString(`\-`)
+		case r >= 0x80 || r == '-' || r == '_' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // PanelID is the id of the dev panel's element: rendered into the body with data-ignore-morph (so
 // a body morph keeps it, open tab and all) and filled by its own patch.
 const PanelID = "_alder_panel"

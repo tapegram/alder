@@ -270,3 +270,46 @@ func TestShow_JobIgnoresPriority(t *testing.T) {
 		t.Fatalf("Show: %s, want %s", got, want)
 	}
 }
+
+// A replace prints its roots as markup (rt/html sets rt.ShowRoot) and its removals and toasts as
+// the modifiers, in the order written (#309).
+func TestShow_Replace(t *testing.T) {
+	count := html.El("p", []html.Attr{html.A("id", "member-count")}, html.Text("1 members"))
+	r := rt.WithRemove("member-3", rt.Replace([]any{count}))
+	if got, want := rt.Show(r), `Response.replace [<p id="member-count">1 members</p>] |> Response.remove "member-3"`; got != want {
+		t.Errorf("Show = %s, want %s", got, want)
+	}
+	r = rt.WithToast(rt.NoticeSuccess, "Gone", rt.WithRemove("b", rt.WithToast(rt.NoticeInfo, "x", rt.WithRemove("a", rt.Replace(nil)))))
+	if got, want := rt.Show(r), `Response.replace [] |> Response.remove "a" |> Response.toast "x" |> Response.remove "b" |> Response.success "Gone"`; got != want {
+		t.Errorf("Show = %s, want %s", got, want)
+	}
+}
+
+// Two replaces are equal when their roots render alike, in order, with the same removals and
+// toasts in the same order (#309).
+func TestResponse_ReplaceEqual(t *testing.T) {
+	p := func(s string) html.Node { return html.El("p", []html.Attr{html.A("id", "c")}, html.Text(s)) }
+	mk := func(roots []any, removes ...string) rt.Response {
+		r := rt.Replace(roots)
+		for _, id := range removes {
+			r = rt.WithRemove(id, r)
+		}
+		return rt.WithToast(rt.NoticeInfo, "Removed", r)
+	}
+	a := mk([]any{p("1"), p("2")}, "m-1", "m-2")
+	if b := mk([]any{p("1"), html.El("p", []html.Attr{html.A("id", "c")}, html.Text("2"))}, "m-1", "m-2"); !rt.Eq(a, b) {
+		t.Fatal("same rendered roots, removals and toasts should be equal")
+	}
+	if b := mk([]any{p("1"), p("2")}, "m-2", "m-1"); rt.Eq(a, b) {
+		t.Fatal("removals in another order should be unequal")
+	}
+	if b := mk([]any{p("2"), p("1")}, "m-1", "m-2"); rt.Eq(a, b) {
+		t.Fatal("roots in another order should be unequal")
+	}
+	if b := mk([]any{p("1")}, "m-1", "m-2"); rt.Eq(a, b) {
+		t.Fatal("fewer roots should be unequal")
+	}
+	if rt.Eq(rt.Replace(nil), rt.Refresh()) {
+		t.Fatal("a replace and a refresh should be unequal")
+	}
+}

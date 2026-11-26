@@ -209,6 +209,10 @@ func (n Node) AlderEqual(other any) bool { return Render(n) == Render(other.(Nod
 // AlderEqual are one key.
 func (n Node) AlderKey() string { return Render(n) }
 
+// init gives rt the markup of a replace's roots (rt.ShowRoot), which rt cannot import this
+// package to render: Response's equality and printing compare and show them as Render does.
+func init() { rt.ShowRoot = func(root any) string { return Render(root.(Node)) } }
+
 // RenderWith serialises a node like Render, filling deferred form controls from
 // st (see FormState). st may be nil.
 //

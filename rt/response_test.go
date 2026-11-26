@@ -103,3 +103,26 @@ func TestRoute_URLAndKey(t *testing.T) {
 		t.Errorf("RouteKey with query = %q", got)
 	}
 }
+
+// Replace is a 200; WithRemove appends a removal event and leaves its argument alone (#309).
+func TestResponse_ReplaceAndRemove(t *testing.T) {
+	base := Replace([]any{"root"})
+	if base.Kind != RespReplace || base.Code() != 200 || len(base.Roots) != 1 {
+		t.Fatalf("Replace = %+v, code %d", base, base.Code())
+	}
+	r := WithRemove("b", WithToast(NoticeInfo, "x", WithRemove("a", base)))
+	if len(base.Events) != 0 {
+		t.Fatalf("WithRemove changed its argument: %+v", base.Events)
+	}
+	if len(r.Events) != 3 || r.Events[0].Remove != "a" || r.Events[1].Toast == nil || r.Events[2].Remove != "b" {
+		t.Fatalf("events = %+v", r.Events)
+	}
+	one := WithRemove("a", base)
+	x, y := WithRemove("x", one), WithRemove("y", one)
+	if x.Events[1].Remove != "x" || y.Events[1].Remove != "y" {
+		t.Fatalf("removals alias: %+v %+v", x.Events, y.Events)
+	}
+	if Eq(WithRemove("a", Render(Route{Path: "/"})), Render(Route{Path: "/"})) {
+		t.Fatal("a removal should make a response unequal")
+	}
+}
