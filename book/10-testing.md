@@ -447,8 +447,8 @@ beside it. The workspace's `ordered` (`Db.scoped Project`, with the signature
 ```
 
 The checker does not prove that a test logged in: without `Test.login` the
-step fails when it runs, with the runtime's message (`Db.scoped Project: the
-session has no org`), as a scoped operation written in the test does. A test and a test
+step fails when it runs, with the runtime's message (``Db.all Project: `Project` lives in `silo org` and the
+session has no org``), as a scoped operation written in the test does. A test and a test
 helper never write the clause themselves.
 
 ### Two orgs

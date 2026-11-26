@@ -337,8 +337,8 @@ visible : Query (List Project) requires org
 visible = Db.scoped Project |> Db.orderBy Project.name.asc |> Db.all
 ```
 
-`requires` is followed by session field names, separated by commas, in the
-session's order (`requires user, org`). The clause may begin the next line,
+`requires` is followed by session field names, separated by commas (`requires user, org`; the
+compiler's fixes write them in the session's order). The clause may begin the next line,
 as `->` may. It is not part of the type: `visible` is a `Query (List
 Project)`. A route's members and a job's `run` never write it, since the
 route line and `silo` say it for them. Chapter 6 ("Where they may be used")

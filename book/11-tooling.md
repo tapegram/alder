@@ -2874,16 +2874,16 @@ For `@partition k` (E0032) the texts are its own.
 The scoped operations need a session key (`user` for the `Db.mine` family, a table's partition key for `Db.scoped`, a silo's key for an unscoped operation on a siloed table), and the need belongs to the value that uses the operation, in any module (chapter 6, "Where they may be used").
 
 - **Basic case.** "`Db.mine` needs a route that `requires user`: `Public` does not", "`Db.deleteMine` needs a route that `requires user`: `Clear` does not".
-- **Through another value.** At the use: "`Todos.Index.recent` uses `Db.mine`, which needs a route that `requires user`: `Public` does not"; when the need comes through helpers the text names the first one: "`Access.reviewers` uses `Db.scoped Reviewer` (through `Reviewer.current`), which needs a route that `requires org`: `Index` does not".
+- **Through another value.** At the use: "`Todos.Index.recent` uses `Db.mine`, which needs a route that `requires user`: `Public` does not"; when the need comes through helpers the text names the first one: "`Access.reviewers` uses `Db.scoped Reviewer` (through `Table.Reviewer.current`), which needs a route that `requires org`: `Index` does not".
 - **In a fake.** "`Db.mine` cannot be used in a fake: a fake has no session".
 - **In a job.** A job's `run` has no session: it needs `silo k` for the key, and never has `user`.
 - **Another key.** For another key the text names it and the table: "`Db.scoped Project` needs a route that `requires org`: `Public` does not".
 - **Unscoped operation on a siloed table.** "`Db.delete Project` (`Project` lives in `silo org`) needs a route that `requires org`: `Wipe` does not".
 - **A value without the clause.** "`current` uses `Db.scoped Reviewer`, which needs `org`: say so in its signature, `current : ReviewerId -> Query (Maybe Reviewer) requires org`"; the fix inserts the clause.
-- **A clause that lacks a key.** "`current` uses `Db.mine Draft`, which needs `user`: its signature says `requires org`; write `requires user, org`"; the fix rewrites it.
-- **A value that uses a value with a clause.** "`reviewers` uses `Reviewer.current`, which `requires org`: say so in its signature".
+- **A clause that lacks a key.** "`current` uses `Db.mine`, which needs `user`: its signature says `requires org`; write `requires user, org`"; the fix rewrites it.
+- **A value that uses a value with a clause.** "`reviewers` uses `Table.Reviewer.current`, which `requires org`: say so in its signature".
 
-In a module that declares a route or a job, a missing clause (the first of the last three, and the helper that calls a value with a clause) is the warning W0014 for one release (below); a clause that lacks a key stays E0026.
+In a module that declares a route or a job, a missing clause (the value without the clause, and the helper that calls a value with a clause) is the warning W0014 for one release (below); a clause that lacks a key stays E0026.
 
 #### E0027 — a role clause the session cannot answer
 

@@ -1283,7 +1283,7 @@ A scoped operation needs a signed-in user, so it is allowed only where
 the compiler is certain there is one. The need is a property of the
 **value** that uses the operation, not of the file it sits in: a value that
 reads `Db.mine Todo` *needs `user`*, and the compiler checks every place
-that value is used. There are four places, and what makes the key certain
+that value is used. There are five places, and what makes the key certain
 is different in each:
 
 | Place | `user` (or another key `k`) is certain when |
@@ -1340,7 +1340,7 @@ The check follows the references, not just the calls. A route that does not
 so is one that only passes `recent` to another function, since a reference
 can be applied anywhere later. When the need arrives through other
 helpers, the message names the first one on the path: "`Access.reviewers`
-uses `Db.scoped Reviewer` (through `Reviewer.current`), which needs a route
+uses `Db.scoped Reviewer` (through `Table.Reviewer.current`), which needs a route
 that `requires org`: `Index` does not".
 
 **The clause is checked against the body.** The compiler still works out what
@@ -1353,10 +1353,10 @@ of its imports. Two things can differ:
   needs it, with the fix that writes the clause. Without a clause at all
   ("`current` uses `Db.scoped Reviewer`, which needs `org`: say so in its
   signature, `current : ReviewerId -> Query (Maybe Reviewer) requires org`"),
-  or with one that is short ("`current` uses `Db.mine Draft`, which needs
+  or with one that is short ("`current` uses `Db.mine`, which needs
   `user`: its signature says `requires org`; write `requires user, org`").
   A helper that calls a helper says so too: "`reviewers` uses
-  `Reviewer.current`, which `requires org`: say so in its signature". A
+  `Table.Reviewer.current`, which `requires org`: say so in its signature". A
   short clause is always an error. A *missing* clause (including on a helper
   that calls a value with a clause) is a warning for one release, W0014, in
   a module that declares a route or a job, where such helpers were written
