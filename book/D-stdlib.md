@@ -3639,10 +3639,10 @@ parameters. The `Job` module queues them and reads their status.
 type Response
 ```
 
-What a write route's update answers: where to go or what to show, and toasts.
+What a write route's handler answers: where to go or what to show, and toasts.
 
 It is built with the functions of the `Response` module (`Response.redirect`,
-`Response.render`), and a toast is added to one with `|>`.
+`Response.replace`, `Response.refresh`), and a toast is added to one with `|>`.
 
 ### `File`
 
@@ -4270,7 +4270,7 @@ to draw depends on what was drawn, such as a length and then that many items.
 
 ## Response
 
-The answers a write route's `update` can give: a redirect, a re-render, a refresh, a refusal or replaced elements, with toasts and removals.
+The answers a write route's handler can give: a redirect, a re-render, a refresh, a refusal or replaced elements, with toasts and removals.
 
 A `Response` is built with these functions, each named after the HTTP it produces, and a
 toast is added to one with `|>`. A `Response` can be compared with `==`, and two routes are
@@ -4297,12 +4297,13 @@ Response.redirect (Todos.Index.Index { filter: Active })
 render : Route -> Response
 ```
 
-Shows a GET route again in place, as one element with a 200.
+Deprecated (W0016): shows a GET route again in place, as one element with a 200.
 
-The runtime runs the route's `load` and renders its `view`; the element replaces the element
-with the same `id` on the page, so the view needs a root element with an `id` or nothing is
-patched. Use it for something already on the page, such as a toggled row. The route must be a
-GET route.
+It is going away: load what the route's view shows in the handler and answer
+`Response.replace [ R.view … ]` instead, so a handler sends the views it built. Until then it
+works as before: the runtime runs the route's `load` and renders its `view`, and the element
+replaces the element with the same `id` on the page, so the view needs a root element with an
+`id` or nothing is patched. The route must be a GET route.
 
 ```alder fragment
 Response.render (Todos.Index.Index { filter: All })
@@ -4349,8 +4350,8 @@ Replaces elements of the page in place, each by the element with the same `id`, 
 
 Each view in the list is a root: fragments are opened and whitespace is dropped, and every
 root must be an element with an `id`, no two the same. Nothing else on the page is loaded or
-sent. Use it when the `update` already holds the data the views show, such as a count beside
-a list. A root the runtime cannot send sends nothing: the page is left as it was, with an
+sent. Use it when a write route's handler already holds the data the views show, such as a
+count beside a list. A root the runtime cannot send sends nothing: the page is left as it was, with an
 error toast. `Response.replace []` changes nothing, for a write whose only news is a toast.
 
 ```alder fragment

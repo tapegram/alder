@@ -156,7 +156,7 @@ const (
 	SecretInSession     = "E0048" // a session field that holds a `Text.Secret` (or a `Maybe` of one): the cookie is signed, not encrypted
 	JobParam            = "E0049" // a job parameter that cannot be stored: a function, `Task`, `Query`, `Html`, `Doc`, `Job`, `Route` or `Answer`, or a type holding one
 	JobSchedule         = "E0050" // a job's options the rules refuse: two schedules, a scheduled job with parameters, an unreadable or out-of-range `every` or `timeout`, a `priority` that is not a whole number, a malformed or never-matching `cron`
-	ReplaceRoot         = "E0051" // a root of a `Response.replace` list the checker can see with no `id`, or two with one literal `id` (#309)
+	ReplaceRoot         = "E0051" // a root of a `Response.replace` list the checker can see with no `id`, a page frame or click button root, two with one literal `id`, or a `Response.remove ""` (#309)
 	ImportAlias         = "E0204" // an import's `as` is missing, redundant or not its canonical qualifier
 	FullPath            = "E0205" // a name written with an imported module's full path instead of its qualifier
 	NoQualifier         = "E0206" // an import with no usable qualifier: every candidate is taken or shared

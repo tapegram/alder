@@ -1,0 +1,40 @@
+module Todos
+
+route Index = GET  "/"       { }
+route Like  = POST "/like"   { }
+route Star  = POST "/star"   { }
+route Pin   = POST "/pin"    { }
+route Frame = POST "/frame"  { }
+route Wipe  = POST "/wipe"   { }
+route Drop  = POST "/drop"   { }
+
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <div>{likeButton}</div>
+
+-- a click button renders inside a `<form>` of its own, which has no `id`
+likeButton : Html
+likeButton = <button id="like" click={Like}>Like</button>
+
+Like.post : Like.Params -> Session -> Task Response
+Like.post params session = Task.succeed (Response.replace [ likeButton ])
+
+-- an `<al-button>` with `click`, or around a click button, renders the same way
+Star.post : Star.Params -> Session -> Task Response
+Star.post params session = Task.succeed (Response.replace [ <al-button id="star" click={Like}>Star</al-button> ])
+
+Pin.post : Pin.Params -> Session -> Task Response
+Pin.post params session = Task.succeed (Response.replace [ <al-button id="pin"><button click={Like}>Pin</button></al-button> ])
+
+-- a page's frame is not a root
+Frame.post : Frame.Params -> Session -> Task Response
+Frame.post params session = Task.succeed (Response.replace [ <body id="page"><p>x</p></body> ])
+
+-- a literal empty removal id names no element, after a replace or applied directly
+Wipe.post : Wipe.Params -> Session -> Task Response
+Wipe.post params session = Task.succeed (Response.replace [] |> Response.remove "")
+
+Drop.post : Drop.Params -> Session -> Task Response
+Drop.post params session = Task.succeed (Response.remove "" (Response.replace []))

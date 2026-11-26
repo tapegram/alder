@@ -578,7 +578,7 @@ func TestDevPanel_PatchLabels(t *testing.T) {
 		body := ansPost(h, c.target, "/", nil).Body.String()
 		i := strings.Index(body, "_alder_tab_answer")
 		if i < 0 {
-			t.Fatalf("%s: no Patches tab in %s", c.target, body)
+			t.Fatalf("%s: no answer tab (`_alder_tab_answer`) in %s", c.target, body)
 		}
 		patches := body[i:]
 		if !strings.Contains(patches, c.want) {

@@ -1028,28 +1028,36 @@ func TestAnswer_ReplaceCannotSend(t *testing.T) {
 }
 
 // `remove` on an answer that brings a whole page (refresh, redirect, invalid) has nothing to do:
-// it sends no removal event, and is logged once per route, however often it is answered.
+// it sends no removal event, and is logged once per route, however often it is answered. Each
+// kind has a fresh router, so each proves its own log line.
 // On `render` it is sent after the element's patch, before the toasts.
 func TestAnswer_RemoveIgnored(t *testing.T) {
-	a := newAnsApp(3)
-	var logged []string
-	h := NewRouter(a.routes(), testOpts(func(o *Options) { o.Log = func(level, msg string) { logged = append(logged, level+" "+msg) } }))
-	for range 2 {
-		w := ansPost(h, "/w/refresh?id=1&remove=row-2&remove=row-3", "/", nil)
-		if body := w.Body.String(); strings.Contains(body, "mode remove") || !strings.Contains(body, `<li id="row-1"`) {
-			t.Fatalf("refresh: %q", body)
+	for _, c := range []struct {
+		kind, query string
+		form        url.Values
+	}{
+		{"refresh", "id=1&remove=row-2&remove=row-3", nil},
+		{"redirect", "to=/other&remove=row-2", nil},
+		{"invalid", "remove=row-2", url.Values{"title": {"dup"}}},
+	} {
+		a := newAnsApp(3)
+		var logged []string
+		h := NewRouter(a.routes(), testOpts(func(o *Options) { o.Log = func(level, msg string) { logged = append(logged, level+" "+msg) } }))
+		for range 2 {
+			w := ansPost(h, "/w/"+c.kind+"?"+c.query, "/", c.form)
+			if body := w.Body.String(); strings.Contains(body, "mode remove") {
+				t.Fatalf("%s: sent a removal: %q", c.kind, body)
+			}
+		}
+		if len(logged) != 1 || !strings.HasPrefix(logged[0], "warn POST /w/"+c.kind) || !strings.Contains(logged[0], `Response.remove "row-2"`) ||
+			!strings.Contains(logged[0], "a "+c.kind+" answer") {
+			t.Fatalf("%s: logged %q", c.kind, logged)
 		}
 	}
-	if len(logged) != 1 || !strings.HasPrefix(logged[0], "warn POST /w/refresh") || !strings.Contains(logged[0], `Response.remove "row-2"`) ||
-		!strings.Contains(logged[0], "refresh") {
-		t.Fatalf("logged %q", logged)
-	}
-	w := ansPost(h, "/w/redirect?to=/other&remove=row-2", "/", nil)
-	if strings.Contains(w.Body.String(), "mode remove") || len(logged) != 1 {
-		t.Fatalf("redirect: logged %q, %q", logged, w.Body.String())
-	}
 
-	w = ansPost(h, "/w/render?id=2&remove=row-3&toast=Saved", "/", nil)
+	a := newAnsApp(3)
+	h := NewRouter(a.routes(), testOpts(nil))
+	w := ansPost(h, "/w/render?id=2&remove=row-3&toast=Saved", "/", nil)
 	want := []string{regionEvent("row-2", `<li id="row-2" class="done">Row 2</li>`), removeEvent("row-3"), toastEvent("success", "5000", "Saved")}
 	if evs := events(w.Body.String()); strings.Join(evs, "\n\n") != strings.Join(want, "\n\n") {
 		t.Fatalf("render: events %q\nwant %q", evs, want)

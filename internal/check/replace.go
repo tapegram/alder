@@ -1,6 +1,8 @@
 package check
 
 import (
+	"strings"
+
 	"alder/internal/diag"
 	"alder/internal/syntax"
 )
@@ -10,7 +12,8 @@ import (
 
 // responseCall checks the Response builders #309 adds or deprecates, applied to args with the
 // piped value (pipe, nil when none) last: E0051 for the roots of a `Response.replace` list
-// literal, E0045 for a `Response.remove` written after a whole-page answer, W0016 for a
+// literal and for a `Response.remove` of a literal empty id, E0045 for a `Response.remove`
+// written after a whole-page answer, W0016 for a
 // `Response.render`. renderWarned records the `render` references warned here, so the reference
 // itself (inferVar) does not warn again without the route's name.
 func (mc *modCtx) responseCall(v *syntax.Var, args []syntax.Expr, pipe *pipeArg) {
@@ -27,6 +30,11 @@ func (mc *modCtx) responseCall(v *syntax.Var, args []syntax.Expr, pipe *pipeArg)
 			mc.replaceRoots(all[0])
 		}
 	case "remove":
+		if len(all) >= 1 {
+			if text, ok := literalText(all[0]); ok && text == "" {
+				mc.c.errorf(diag.ReplaceRoot, all[0].GetSpan(), "`Response.remove \"\"` names no element: a removal takes the `id` of the element to remove")
+			}
+		}
 		if len(all) == 2 {
 			mc.removePlace(v, all[1])
 		}
@@ -112,7 +120,8 @@ type replaceRoot struct {
 // replaceRoots is E0051 for the roots of a `Response.replace` list literal the checker can see
 // (an element in place, a call of a top-level function whose body ends in an element through
 // `if`, `case` and a block's last expression, an `Html.fragment` of those): one without an `id`,
-// and two with the same literal `id`. A root it cannot see (a variable, a `for`, a list built
+// a `<html>`, `<head>` or `<body>`, a click button (clickButton), and two with the same
+// literal `id`. A root it cannot see (a variable, a `for`, a list built
 // elsewhere) is left to the run time; a computed `id` counts as present.
 func (mc *modCtx) replaceRoots(arg syntax.Expr) {
 	lit, ok := arg.(*syntax.ListLit)
@@ -139,11 +148,19 @@ func (mc *modCtx) replaceItem(item syntax.Expr, seen map[string]bool) {
 	var rs rootSet
 	mc.visibleRoots(item, "", map[string]bool{}, &rs)
 	for _, r := range rs.roots {
+		subject := "the root"
+		if r.via != "" {
+			subject = "the root of `" + r.via + "`"
+		}
+		switch tag := r.el.Tag; {
+		case tag == "html" || tag == "head" || tag == "body":
+			mc.c.errorf(diag.ReplaceRoot, item.GetSpan(), "`Response.replace`: %s is a `<%s>`, which a replace cannot swap. Replace an element inside the page, or answer `Response.refresh` for the whole page.", subject, tag)
+			return
+		case clickButton(r.el):
+			mc.c.errorf(diag.ReplaceRoot, item.GetSpan(), "`Response.replace`: %s is a `<%s>` that requests a route, which renders inside a `<form>` of its own. A replace swaps the element with the same `id`: put the button inside an element with the `id`.", subject, tag)
+			return
+		}
 		if _, has := rootID(r.el); !has {
-			subject := "the root"
-			if r.via != "" {
-				subject = "the root of `" + r.via + "`"
-			}
 			mc.c.errorf(diag.ReplaceRoot, item.GetSpan(), "`Response.replace`: %s is a `<%s>` without an `id`. A replace swaps the element with the same `id`: give the root one.", subject, r.el.Tag)
 			return
 		}
@@ -181,7 +198,7 @@ type rootSet struct {
 func (mc *modCtx) visibleRoots(e syntax.Expr, via string, visiting map[string]bool, rs *rootSet) {
 	switch x := e.(type) {
 	case *syntax.Element:
-		if x.Ref.Kind == syntax.RefComponent || isUpperName(x.Tag) || x.Tag == "html" || x.Tag == "head" || x.Tag == "body" { // a component, or a page's frame, is the run time's to judge
+		if x.Ref.Kind == syntax.RefComponent || isUpperName(x.Tag) { // a component is the run time's to judge
 			rs.hidden = true
 			return
 		}
@@ -229,6 +246,33 @@ func (mc *modCtx) calledRoots(v *syntax.Var, via string, visiting map[string]boo
 	}
 	mc.visibleRoots(vd.d.Body, via, visiting, rs)
 	return true
+}
+
+// clickButton reports whether el renders inside a `<form>` of the renderer's own, as the run
+// time's html.RootOf refuses it: a `<button>` with `click`, an `<al-button>` with `click`, or
+// an `<al-button>` whose one child (whitespace aside) is such a `<button>`.
+func clickButton(el *syntax.Element) bool {
+	switch el.Tag {
+	case "button":
+		return hasHTMLAttr(el, "click")
+	case "al-button":
+		if hasHTMLAttr(el, "click") {
+			return true
+		}
+		var only *syntax.Element
+		for _, ch := range el.Children {
+			if t, ok := ch.(*syntax.HtmlText); ok && strings.TrimSpace(t.Text) == "" {
+				continue
+			}
+			e, ok := ch.(*syntax.Element)
+			if !ok || only != nil {
+				return false
+			}
+			only = e
+		}
+		return only != nil && only.Tag == "button" && hasHTMLAttr(only, "click")
+	}
+	return false
 }
 
 // rootID is el's `id`: its text when written as a literal, and whether it has one at all (a

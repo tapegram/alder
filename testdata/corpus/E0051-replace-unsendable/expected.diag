@@ -1,0 +1,6 @@
+app/Todos.alder:22:61 E0051 `Response.replace`: the root of `likeButton` is a `<button>` that requests a route, which renders inside a `<form>` of its own. A replace swaps the element with the same `id`: put the button inside an element with the `id`.
+app/Todos.alder:26:61 E0051 `Response.replace`: the root is a `<al-button>` that requests a route, which renders inside a `<form>` of its own. A replace swaps the element with the same `id`: put the button inside an element with the `id`.
+app/Todos.alder:29:60 E0051 `Response.replace`: the root is a `<al-button>` that requests a route, which renders inside a `<form>` of its own. A replace swaps the element with the same `id`: put the button inside an element with the `id`.
+app/Todos.alder:33:62 E0051 `Response.replace`: the root is a `<body>`, which a replace cannot swap. Replace an element inside the page, or answer `Response.refresh` for the whole page.
+app/Todos.alder:37:81 E0051 `Response.remove ""` names no element: a removal takes the `id` of the element to remove
+app/Todos.alder:40:58 E0051 `Response.remove ""` names no element: a removal takes the `id` of the element to remove

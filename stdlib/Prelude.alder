@@ -80,10 +80,10 @@ type Route
 -- parameters. The `Job` module queues them and reads their status.
 type Job
 
--- What a write route's update answers: where to go or what to show, and toasts.
+-- What a write route's handler answers: where to go or what to show, and toasts.
 --
 -- It is built with the functions of the `Response` module (`Response.redirect`,
--- `Response.render`), and a toast is added to one with `|>`.
+-- `Response.replace`, `Response.refresh`), and a toast is added to one with `|>`.
 --
 -- Book: chapter 9, "Response, Route"
 type Response

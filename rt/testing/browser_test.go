@@ -686,6 +686,32 @@ func TestBrowser_AnswerParsing(t *testing.T) {
 	}
 }
 
+// A replace event (no selector) and a removal (mode remove) are not applied by the test
+// browser yet (#309): the step fails naming `Response.replace` / `Response.remove`, not as a
+// patch the browser cannot place, and the held page is unchanged.
+func TestBrowser_ReplaceRemoveUnsupported(t *testing.T) {
+	for _, raw := range []string{string(datastar.ReplaceEvent(`<p id="x">new</p>`)), string(datastar.RemoveEvent("x"))} {
+		events, err := sseEvents(raw)
+		if err != nil || len(events) != 1 {
+			t.Fatalf("events = %v %v", events, err)
+		}
+		b := &Browser{reqHead: "PATCH /x: "}
+		b.doc, _ = html.Parse(`<html><body><p id="x">old</p></body></html>`)
+		b.hasDoc = true
+		before := html.Render(b.doc)
+		err = b.patch(events[0])
+		if err == nil || err.Error() != "PATCH /x: "+replaceUnsupported {
+			t.Errorf("%q: err = %v", raw, err)
+		}
+		if !strings.Contains(replaceUnsupported, "`Response.replace`") || !strings.Contains(replaceUnsupported, "`Response.remove`") {
+			t.Errorf("the error does not name the builders: %s", replaceUnsupported)
+		}
+		if html.Render(b.doc) != before {
+			t.Errorf("%q changed the page", raw)
+		}
+	}
+}
+
 // TestBrowser_Plain303: a POST answered with a plain 303 (the router sends a navigate event
 // to a Datastar request, but a handler behind another http.Handler might not) is followed.
 func TestBrowser_Plain303(t *testing.T) {

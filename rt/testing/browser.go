@@ -1359,6 +1359,10 @@ func toastOf(el html.Node) Toast {
 	return Toast{Kind: kind, Text: strings.TrimSpace(html.TextContent(el))}
 }
 
+// replaceUnsupported is the error a step gets when its answer is a `Response.replace` or
+// carries a `Response.remove`: the test browser does not apply them yet (#309).
+const replaceUnsupported = "`Response.replace` and `Response.remove` answers are not applied by the test browser yet (#309); `Test.run` the handler to check its answer"
+
 // patch applies a datastar-patch-elements event to the held document: the router patches the
 // <body> (outer: replace it; inner: replace its children; append: add to them) and, after a
 // followed redirect, the <title> (selector `head > title`: replaced, when the page has one).
@@ -1367,6 +1371,11 @@ func (b *Browser) patch(ev sseEvent) error {
 		return nil
 	}
 	sel, mode := ev.field("selector"), ev.field("mode")
+	if sel == "" || mode == "remove" {
+		// a replace event (no selector) or a removal (#309): not applied here yet, so the step
+		// says so rather than failing as if the router had sent something wrong
+		return fmt.Errorf("%s%s", b.reqHead, replaceUnsupported)
+	}
 	if sel == "head > title" {
 		t, err := html.Parse(ev.field("elements"))
 		if err != nil {

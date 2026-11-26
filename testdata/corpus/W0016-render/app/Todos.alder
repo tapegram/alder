@@ -27,3 +27,7 @@ Prod.post params session = Task.succeed (Response.render (Row { id: 1 }) |> Resp
 
 Nudge.post : Nudge.Params -> Session -> Task Response
 Nudge.post params session = Task.succeed (Row { id: 1 } |> Response.render)
+
+-- `Response.render` as a value has no route to name in the rewrite
+renders : List Response
+renders = List.map Response.render [ Index ]
