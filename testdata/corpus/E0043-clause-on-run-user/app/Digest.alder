@@ -1,0 +1,8 @@
+module Digest
+
+-- a job's `run` takes its key from its job's `silo k`
+job Digest = {}
+
+Digest.run : Digest.Params -> Task Unit
+  requires user
+Digest.run p = Task.succeed ()

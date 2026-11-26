@@ -746,12 +746,16 @@ func (mc *modCtx) memberClause(vd *syntax.ValueDecl) {
 		return // no clause, or one the parser gave up on (its error is reported)
 	}
 	if j := c.job(mc.m.Name, vd.Route); j != nil {
-		key := vd.Needs[0]
+		key := ""
 		for _, k := range vd.Needs {
 			if k != "user" { // a job never has `user`: name the key a silo could hold
 				key = k
 				break
 			}
+		}
+		if key == "" {
+			c.errorf(diag.RouteDecl, vd.NeedsSpan, "`%s` takes its key from its job, and a job has no `user`: give the job the user as a parameter and use the unscoped operations", vd.FullName())
+			return
 		}
 		c.errorf(diag.RouteDecl, vd.NeedsSpan, "`%s` takes its key from its job: write `silo %s` on `job %s`", vd.FullName(), key, j.Name)
 		return

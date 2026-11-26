@@ -1,0 +1,1 @@
+app/Digest.alder:7:3 E0043 `Digest.run` takes its key from its job, and a job has no `user`: give the job the user as a parameter and use the unscoped operations

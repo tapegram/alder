@@ -83,7 +83,7 @@ func (w *walker) rule(n syntax.Spanned) {
 		w.declName(ts, n.Route != "")
 		if n.Sig != nil {
 			end := n.Sig.GetSpan().End
-			if len(n.Needs) > 0 { // `requires org`: a key is not the definition's name
+			if n.NeedsSpan != (diag.Span{}) { // `requires org`: a key is not the definition's name
 				end = n.NeedsSpan.End
 				w.keywordAt(n.NeedsSpan)
 				for _, sp := range n.NeedSpans {

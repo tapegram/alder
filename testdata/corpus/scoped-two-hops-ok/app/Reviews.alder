@@ -1,14 +1,13 @@
 module Reviews
 
 import Access
-import Table.Reviewer
 
 route Reviews = GET "/reviews" { } requires user, org
 
 type Model = { n: Int }
 
 -- two hops: `shown` uses `Access.reviewers`, which uses `Reviewer.current`
-shown : Query Int
+shown : Query Int requires org
 shown = {
   let rs <- Access.reviewers []
   Query.succeed (List.length rs)

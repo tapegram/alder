@@ -570,3 +570,17 @@ func TestNoticeDeprecatedFix(t *testing.T) {
 		t.Fatalf("%d W0012 diagnostics, want 4", n)
 	}
 }
+
+// TestScopedOkFixturesWarnNothing: the `scoped-*-ok` positive fixtures are the clean spelling of a
+// feature, so a spurious warning (W0014, W0015, an unused import) in one is a regression the
+// error-only corpus would not show.
+func TestScopedOkFixturesWarnNothing(t *testing.T) {
+	dirs, _ := filepath.Glob("../../testdata/corpus/scoped-*-ok")
+	for _, dir := range dirs {
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			if got := renderSev(runDir(t, dir), true); got != "" {
+				t.Fatalf("should check without a diagnostic or warning:\n%s", got)
+			}
+		})
+	}
+}

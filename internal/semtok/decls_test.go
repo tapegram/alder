@@ -189,3 +189,13 @@ func TestRouteDecls(t *testing.T) {
 		want(t, routeSrc, toks, c.needle, c.off, c.kind, c.mods)
 	}
 }
+
+// A clause the parser gave up on (`role Admin` on a value is E0027) leaves Needs without a
+// NeedsSpan; the definition's name must still be tokenised and nothing may overlap.
+func TestValueClauseWithoutSpan(t *testing.T) {
+	src := "module M\n\norgs : Query Int requires user, role Admin\norgs = Query.succeed 1\n"
+	toks := Module("t.alder", []byte(src))
+	checkInvariants(t, "clauseNoSpan", src, toks)
+	want(t, src, toks, "orgs :", 0, TFunction, Declaration)
+	want(t, src, toks, "orgs =", 0, TFunction, Declaration)
+}
