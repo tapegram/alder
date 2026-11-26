@@ -1,6 +1,9 @@
 package std
 
-import "alder/rt"
+import (
+	"alder/rt"
+	"alder/rt/html"
+)
 
 // The Response builders (#160). Each is rt's builder under the name StdCalls gives the stdlib
 // function; the toast ones fix the kind.
@@ -13,6 +16,19 @@ func ResponseRender(r rt.Route) rt.Response { return rt.Render(r) }
 
 // ResponseRefresh is `Response.refresh`.
 func ResponseRefresh() rt.Response { return rt.Refresh() }
+
+// ResponseReplace is `Response.replace` (#309): the views as the response's roots, flattened and
+// checked when it is answered (rt/web.ReplaceRoots).
+func ResponseReplace(views []html.Node) rt.Response {
+	roots := make([]any, len(views))
+	for i, v := range views {
+		roots[i] = v
+	}
+	return rt.Replace(roots)
+}
+
+// ResponseRemove is `Response.remove`.
+func ResponseRemove(id string, r rt.Response) rt.Response { return rt.WithRemove(id, r) }
 
 // ResponseInvalid is `Response.invalid`.
 func ResponseInvalid(text string) rt.Response { return rt.Invalid(text) }

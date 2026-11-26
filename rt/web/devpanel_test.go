@@ -557,8 +557,8 @@ func TestInjectedCSSTokens(t *testing.T) {
 }
 
 // The Patches tab names what a write route's answer caused: an element fetched by `render`
-// (#row-7 (render Row)), the body morphed in by `redirect` (body (redirect Page)), and the
-// region selectors of `refresh`.
+// (#row-7 (render Row)), the body morphed in by `redirect` (body (redirect Page)), the
+// region selectors of `refresh`, and each root and removal of `replace` (#309), with its answer.
 func TestDevPanel_PatchLabels(t *testing.T) {
 	t.Setenv("ALDER_DEV", "1")
 	for _, c := range []struct {
@@ -569,11 +569,14 @@ func TestDevPanel_PatchLabels(t *testing.T) {
 		{"/w/render?id=7", "<li>#row-7 (render Row)</li>", ""},
 		{"/w/redirect?to=/other", "<li>body (redirect Page)</li><li>title</li><li>html</li><li>history /other</li>", ""},
 		{"/w/refresh?id=7", "<li>#row-7</li>", "(refresh"},
+		{"/w/replace?roots=count&remove=row-3", "<li>replace #count</li><li>remove #row-3</li>", ""},
+		{"/w/replace?roots=count&remove=row-3", "<p>200 replace (1 element, 1 removed)</p>", ""},
+		{"/w/render?id=7&remove=row-3", "<li>#row-7 (render Row)</li><li>remove #row-3</li>", ""},
 	} {
 		a := newAnsApp(10)
 		h := NewRouter(a.routes(), testOpts(func(o *Options) { o.Dev = true }))
 		body := ansPost(h, c.target, "/", nil).Body.String()
-		i := strings.Index(body, "_alder_tab_patches")
+		i := strings.Index(body, "_alder_tab_answer")
 		if i < 0 {
 			t.Fatalf("%s: no Patches tab in %s", c.target, body)
 		}

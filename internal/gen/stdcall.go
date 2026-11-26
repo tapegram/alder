@@ -248,6 +248,8 @@ var StdCalls = map[string]string{
 	"Response.render":   "std.ResponseRender",
 	"Response.refresh":  "std.ResponseRefresh",
 	"Response.invalid":  "std.ResponseInvalid",
+	"Response.replace":  "std.ResponseReplace",
+	"Response.remove":   "std.ResponseRemove",
 	"Response.toast":    "std.ResponseToast",
 	"Response.success":  "std.ResponseSuccess",
 	"Response.warning":  "std.ResponseWarning",

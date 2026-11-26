@@ -4270,7 +4270,7 @@ to draw depends on what was drawn, such as a length and then that many items.
 
 ## Response
 
-The answers a write route's `update` can give: a redirect, a re-render, a refresh or a refusal, with toasts.
+The answers a write route's `update` can give: a redirect, a re-render, a refresh, a refusal or replaced elements, with toasts and removals.
 
 A `Response` is built with these functions, each named after the HTTP it produces, and a
 toast is added to one with `|>`. A `Response` can be compared with `==`, and two routes are
@@ -4337,6 +4337,41 @@ its writes and `Session.put` changes are kept.
 
 ```alder fragment
 Response.invalid "That name is already taken"
+```
+
+### `Response.replace`
+
+```alder fragment
+replace : List Html -> Response
+```
+
+Replaces elements of the page in place, each by the element with the same `id`, with a 200.
+
+Each view in the list is a root: fragments are opened and whitespace is dropped, and every
+root must be an element with an `id`, no two the same. Nothing else on the page is loaded or
+sent. Use it when the `update` already holds the data the views show, such as a count beside
+a list. A root the runtime cannot send sends nothing: the page is left as it was, with an
+error toast. `Response.replace []` changes nothing, for a write whose only news is a toast.
+
+```alder fragment
+Response.replace [ <p id="member-count">2 members</p> ]
+```
+
+### `Response.remove`
+
+```alder fragment
+remove : Text -> Response -> Response
+```
+
+Adds the removal of the element with this `id` to a response.
+
+The id is the element's `id` as text, not a selector. Removals run after the response's
+replaced elements, in the order written. It applies to `Response.replace` and
+`Response.render`; a redirect, a refresh or an invalid sends the whole page, so a removal
+there is ignored.
+
+```alder fragment
+Response.replace [ <p id="member-count">2 members</p> ] |> Response.remove "member-3"
 ```
 
 ### `Response.toast`

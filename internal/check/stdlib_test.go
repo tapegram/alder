@@ -13,6 +13,8 @@ func TestStdlib_ResponseSignatures(t *testing.T) {
 		"render : Route -> Response\nrender = Response.render\n\n" +
 		"refresh : Response\nrefresh = Response.refresh\n\n" +
 		"invalid : Text -> Response\ninvalid = Response.invalid\n\n" +
+		"replace : List Html -> Response\nreplace = Response.replace\n\n" +
+		"remove : Text -> Response -> Response\nremove = Response.remove\n\n" +
 		"toast : Text -> Response -> Response\ntoast = Response.toast\n\n" +
 		"success : Text -> Response -> Response\nsuccess = Response.success\n\n" +
 		"warning : Text -> Response -> Response\nwarning = Response.warning\n\n" +
@@ -23,7 +25,7 @@ func TestStdlib_ResponseSignatures(t *testing.T) {
 	if _, errs := checkFiles(t, map[string]string{"App.alder": app}); len(errs) > 0 {
 		t.Fatalf("signatures: %v", errs)
 	}
-	for _, name := range []string{"status", "header", "json", "file", "remove", "patch", "stream"} {
+	for _, name := range []string{"status", "header", "json", "file", "patch", "stream"} {
 		src := "module App\n\nx : Int\nx = Response." + name + "\n\nerror : Error -> Html\nerror err = <html><body></body></html>\n\nnotFound : Html\nnotFound = <html><body></body></html>\n"
 		if _, errs := checkFiles(t, map[string]string{"App.alder": src}); len(errs) == 0 {
 			t.Errorf("Response.%s checks, but it is not shipped", name)

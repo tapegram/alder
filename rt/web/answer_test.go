@@ -130,6 +130,11 @@ func (a *ansApp) routes() []Route {
 				ans = rt.Refresh()
 			case "invalid":
 				ans = rt.Invalid("Title taken")
+			case "replace":
+				ans = rt.Replace(a.replaceRoots(rq.Query.Get("roots")))
+			}
+			for _, id := range rq.Query["remove"] {
+				ans = rt.WithRemove(id, ans)
 			}
 			if t := rq.Query.Get("toast"); t != "" {
 				ans = rt.WithToast(rt.NoticeSuccess, t, ans)
@@ -153,6 +158,36 @@ func (a *ansApp) routes() []Route {
 			return AnswerResponse(rt.Refresh(), before, nil)
 		}},
 	}
+}
+
+// replaceRoots is the roots a `replace` answers with, by spec (comma-separated, "" none): "row-N"
+// row N, the first one in a fragment with whitespace-only text around it; "count" a <p
+// id="count"> of the rows; "noid" a <p> without an id; "text" text; "body" a <body>.
+func (a *ansApp) replaceRoots(spec string) []any {
+	var roots []any
+	for i, s := range strings.Split(spec, ",") {
+		var n html.Node
+		switch {
+		case s == "":
+			continue
+		case s == "count":
+			n = html.El("p", []html.Attr{html.A("id", "count")}, html.Text(strconv.Itoa(len(a.done))+" rows"))
+		case s == "noid":
+			n = html.El("p", nil, html.Text("no id"))
+		case s == "text":
+			n = html.Text("loose text")
+		case s == "body":
+			n = html.El("body", []html.Attr{html.A("id", "b")})
+		default:
+			id, _ := strconv.Atoi(strings.TrimPrefix(s, "row-"))
+			n = a.row(id)
+		}
+		if i == 0 {
+			n = html.Nodes(html.Text("\n  "), n, html.None(), html.Text("\n"))
+		}
+		roots = append(roots, n)
+	}
+	return roots
 }
 
 // targetOf is r as the request asks: without its Name (noname, as Url.external makes one), with
@@ -904,5 +939,144 @@ func TestNotify_SkipsEmptyFirstToast(t *testing.T) {
 	h.notify(&tracker{ResponseWriter: rec, rt: h, more: []rt.Toast{{Kind: rt.NoticeInfo}}})
 	if rec.Body.Len() != 0 {
 		t.Errorf("empty toasts patched: %q", rec.Body.String())
+	}
+}
+
+// replaceEvent is datastar.ReplaceEvent of elements as events splits it.
+func replaceEvent(elements string) string {
+	return strings.TrimSuffix(string(datastar.ReplaceEvent(elements)), "\n\n")
+}
+
+// removeEvent is datastar.RemoveEvent of id as events splits it.
+func removeEvent(id string) string {
+	return strings.TrimSuffix(string(datastar.RemoveEvent(id)), "\n\n")
+}
+
+// replace roots (#309): one event with no selector holding every root (fragments opened,
+// whitespace-only text dropped), then one removal event per `remove`, in the order written, then
+// the toasts; status 200, nothing loaded or rendered besides the roots. `replace []` sends no
+// replace event at all, only its removals and toasts.
+func TestAnswer_Replace(t *testing.T) {
+	a := newAnsApp(3)
+	h := NewRouter(a.routes(), testOpts(nil))
+	w := ansPost(h, "/w/replace?id=2&roots=count,row-2&remove=row-3&remove=row-1&toast=Saved", "/", nil)
+	evs := events(w.Body.String())
+	want := []string{
+		replaceEvent(`<p id="count">3 rows</p><li id="row-2" class="done">Row 2</li>`),
+		removeEvent("row-3"), removeEvent("row-1"),
+		toastEvent("success", "5000", "Saved"),
+	}
+	if strings.Join(evs, "\n\n") != strings.Join(want, "\n\n") {
+		t.Fatalf("events %q\nwant %q", evs, want)
+	}
+	if a.loads != 0 || a.rowLoads != 0 {
+		t.Fatalf("loads %d, row loads %d", a.loads, a.rowLoads)
+	}
+	if w.Code != 200 || w.Header().Get(StatusHeader) != "" || w.Header().Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("%d %q %q", w.Code, w.Header().Get(StatusHeader), w.Header().Get("Content-Type"))
+	}
+	w = ansPost(h, "/w/replace?remove=row-3&toast=Gone", "/", nil)
+	want = []string{removeEvent("row-3"), toastEvent("success", "5000", "Gone")}
+	if evs := events(w.Body.String()); strings.Join(evs, "\n\n") != strings.Join(want, "\n\n") || w.Header().Get(StatusHeader) != "" {
+		t.Fatalf("replace []: events %q\nwant %q", evs, want)
+	}
+}
+
+// Without JavaScript a replace is a 303 to the page the browser is on, as render is, its toast
+// kept in the notice cookie.
+func TestAnswerPlain_Replace(t *testing.T) {
+	a := newAnsApp(3)
+	h := NewRouter(a.routes(), testOpts(nil))
+	w := plainPost(h, "/w/replace?id=1&roots=row-1&remove=row-2&toast=Saved", "http://example.com/other?x=1", nil)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/other?x=1" || noticeOf(w) == nil || !a.done[0] {
+		t.Fatalf("%d %q notice %v done %v", w.Code, w.Header().Get("Location"), noticeOf(w), a.done)
+	}
+}
+
+// A replace the runtime cannot send (ruling R11) — a root without an id, text at the top level,
+// a <body>, two roots with one id, an empty removal id — sends nothing at all: logged with the
+// route and the reason, and answered as badTarget answers (Alder-Status 500 and the error toast,
+// not the answer's own, under Datastar; the 500 page without JavaScript). The write committed.
+func TestAnswer_ReplaceCannotSend(t *testing.T) {
+	for _, c := range []struct{ query, why string }{
+		{"roots=count,noid", "is a <p> without an id"},
+		{"roots=text,count", "is text"},
+		{"roots=body", "is a <body>"},
+		{"roots=row-1,row-2,row-1", `two roots with the id "row-1"`},
+		{"roots=count&remove=", "an empty id"},
+	} {
+		a := newAnsApp(3)
+		a.toasts = true
+		var logged []string
+		h := NewRouter(a.routes(), testOpts(func(o *Options) { o.Log = func(level, msg string) { logged = append(logged, level+" "+msg) } }))
+		w := ansPost(h, "/w/replace?id=3&toast=Saved&"+c.query, "/", nil)
+		evs := events(w.Body.String())
+		if w.Code != 200 || w.Header().Get(StatusHeader) != "500" || len(evs) != 1 || evs[0] != toastEvent("destructive", "10000", "Something went wrong") {
+			t.Fatalf("%s: %d %q %q", c.query, w.Code, w.Header().Get(StatusHeader), evs)
+		}
+		if !a.done[2] {
+			t.Fatalf("%s: the write did not commit", c.query)
+		}
+		if len(logged) != 1 || !strings.HasPrefix(logged[0], "error POST /w/replace") || !strings.Contains(logged[0], c.why) {
+			t.Fatalf("%s: logged %q, want %q", c.query, logged, c.why)
+		}
+		w = plainPost(h, "/w/replace?"+c.query, "http://example.com/", nil)
+		if w.Code != http.StatusInternalServerError || w.Header().Get("Location") != "" {
+			t.Fatalf("%s without JavaScript: %d %q", c.query, w.Code, w.Header().Get("Location"))
+		}
+	}
+}
+
+// `remove` on an answer that brings a whole page (refresh, redirect, invalid) has nothing to do:
+// it sends no removal event, and is logged once per route, however often it is answered.
+// On `render` it is sent after the element's patch, before the toasts.
+func TestAnswer_RemoveIgnored(t *testing.T) {
+	a := newAnsApp(3)
+	var logged []string
+	h := NewRouter(a.routes(), testOpts(func(o *Options) { o.Log = func(level, msg string) { logged = append(logged, level+" "+msg) } }))
+	for range 2 {
+		w := ansPost(h, "/w/refresh?id=1&remove=row-2&remove=row-3", "/", nil)
+		if body := w.Body.String(); strings.Contains(body, "mode remove") || !strings.Contains(body, `<li id="row-1"`) {
+			t.Fatalf("refresh: %q", body)
+		}
+	}
+	if len(logged) != 1 || !strings.HasPrefix(logged[0], "warn POST /w/refresh") || !strings.Contains(logged[0], `Response.remove "row-2"`) ||
+		!strings.Contains(logged[0], "refresh") {
+		t.Fatalf("logged %q", logged)
+	}
+	w := ansPost(h, "/w/redirect?to=/other&remove=row-2", "/", nil)
+	if strings.Contains(w.Body.String(), "mode remove") || len(logged) != 1 {
+		t.Fatalf("redirect: logged %q, %q", logged, w.Body.String())
+	}
+
+	w = ansPost(h, "/w/render?id=2&remove=row-3&toast=Saved", "/", nil)
+	want := []string{regionEvent("row-2", `<li id="row-2" class="done">Row 2</li>`), removeEvent("row-3"), toastEvent("success", "5000", "Saved")}
+	if evs := events(w.Body.String()); strings.Join(evs, "\n\n") != strings.Join(want, "\n\n") {
+		t.Fatalf("render: events %q\nwant %q", evs, want)
+	}
+}
+
+// ReplaceRoots flattens the list as html.RootID flattens a view and refuses what is not a root
+// of its own: raw markup, and a click button, which renders inside a <form> without its id.
+func TestReplaceRoots(t *testing.T) {
+	p := html.El("p", []html.Attr{html.A("id", "n")})
+	got, err := ReplaceRoots([]any{html.Nodes(html.Text(" "), html.Nodes(p, html.None())), html.Text("\n")})
+	if err != nil || len(got) != 1 || html.Render(got[0]) != `<p id="n"></p>` {
+		t.Fatalf("flattened: %v %v", got, err)
+	}
+	if got, err := ReplaceRoots(nil); err != nil || len(got) != 0 {
+		t.Fatalf("none: %v %v", got, err)
+	}
+	click := html.El("button", []html.Attr{html.A("id", "go"), html.RouteAttr("data-on:click", rowRoute(1))})
+	for _, c := range []struct {
+		root html.Node
+		why  string
+	}{
+		{html.Raw(`<p id="x"></p>`), "root 1 is raw markup"},
+		{click, "root 1 is a <button> that requests a route"},
+	} {
+		if _, err := ReplaceRoots([]any{c.root}); err == nil || !strings.Contains(err.Error(), c.why) {
+			t.Errorf("%s: %v", html.Render(c.root), err)
+		}
 	}
 }

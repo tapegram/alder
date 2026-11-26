@@ -138,6 +138,10 @@ type router struct {
 
 	bigCookie sync.Once // the oversized-cookie warning is logged once per router
 
+	// removalsLogged is the routes ("POST /todos/{id}") whose answer's ignored `remove`s have
+	// been logged (ignoredRemovals): once per route
+	removalsLogged sync.Map
+
 	// anyHide is whether a route has a path parameter whose name is Sensitive (route.hide);
 	// masker is maskURL as a func value, made once (no allocation per request)
 	anyHide bool
@@ -856,6 +860,8 @@ type hop struct {
 	// render is set for the element GET of a write's `render r` (answerRender): a target that does
 	// not answer its view is never patched in (renderFailed)
 	render bool
+	// removes is the `remove` ids of that write's answer, sent after the element's patch (#309)
+	removes []string
 	// stale is set for a Datastar write from a tab of another build (its datastar.BuildHeader is
 	// not BuildID): its answer is a reload, never a patch (staleReload)
 	stale bool

@@ -3806,13 +3806,15 @@ func TestGen_ResponseBuilders(t *testing.T) {
 			"done : Response\ndone = Response.redirect (Url.external \"/x\") |> Response.success \"ok\"\n\n" +
 			"again : Response\nagain = Response.refresh |> Response.toast \"a\" |> Response.warning \"b\" |> Response.error \"c\"\n\n" +
 			"shown : Route -> Response\nshown r = Response.render r\n\n" +
-			"bad : Response\nbad = Response.invalid \"no\"\n",
+			"bad : Response\nbad = Response.invalid \"no\"\n\n" +
+			"gone : Response\ngone = Response.replace [ <p id=\"n\">1</p> ] |> Response.remove \"row-3\"\n",
 	})
 	contains(t, files["R_alder.go"],
 		`std.ResponseSuccess("ok", std.ResponseRedirect(std.UrlExternal("/x")))`,
 		`std.ResponseError("c", std.ResponseWarning("b", std.ResponseToast("a", std.ResponseRefresh())))`,
 		"func R__shown(r rt.Route) rt.Response {",
 		`std.ResponseInvalid("no")`,
+		`std.ResponseRemove("row-3", std.ResponseReplace(`,
 	)
 	vet(t, files)
 }

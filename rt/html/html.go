@@ -165,6 +165,53 @@ func RootID(n Node) (id string, ok bool) {
 	return id, true
 }
 
+// Roots is the top-level nodes of ns as RootID flattens a view (#309, Response.replace):
+// fragments opened, nothing and whitespace-only text dropped.
+func Roots(ns []Node) []Node {
+	var out []Node
+	var walk func(n Node)
+	walk = func(n Node) {
+		switch {
+		case n.kind == kNone:
+		case n.kind == kFrag:
+			for _, c := range n.children {
+				walk(c)
+			}
+		case (n.kind == kText || n.kind == kRawText) && strings.TrimLeft(n.text, " \t\n\r\f") == "":
+		default:
+			out = append(out, n)
+		}
+	}
+	for _, n := range ns {
+		walk(n)
+	}
+	return out
+}
+
+// RootOf is the id of n, one of Roots, as a replace's root (#309): an element other than <html>,
+// <head> and <body> with a non-empty id, that renders as itself (not a click button, which renders
+// inside a form of its own). Otherwise why says what n is instead ("text", "a <p> without an id").
+func RootOf(n Node) (id, why string) {
+	switch n.kind {
+	case kText, kRawText:
+		return "", "text"
+	case kRaw:
+		return "", "raw markup (Html.unsafe)"
+	case kCtrl:
+		return "", "a form control"
+	}
+	switch {
+	case n.tag == "html" || n.tag == "head" || n.tag == "body":
+		return "", "a <" + n.tag + ">"
+	case wrapped(n):
+		return "", "a <" + n.tag + "> that requests a route, which renders inside a <form> of its own"
+	}
+	if id, _ := idOf(n.attrs); id != "" {
+		return id, ""
+	}
+	return "", "a <" + n.tag + "> without an id"
+}
+
 // wrapped reports whether element n renders inside a <form> of the renderer's own when it is not
 // in a form: a click button (a <button> with a data-on:click RouteAttr, or the
 // <al-button> around one), whose root is then that form, without n's id.

@@ -35,7 +35,8 @@ func elementFetch(r *http.Request) bool {
 //
 // It is also how a write's `render r` is delivered (an in-process element GET of r, with the
 // session the write left in st, st.render set): w is the write's own answer, and a target that
-// answers neither its view nor a redirect is never patched in (renderFailed).
+// answers neither its view nor a redirect is never patched in (renderFailed). The write's
+// removals (st.removes) follow the patch.
 func (rt *router) deliverElement(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
 	if st.render && !renderOK(resp) {
 		rt.renderFailed(w, r, rq, resp, "render")
@@ -74,7 +75,11 @@ func (rt *router) deliverElement(w http.ResponseWriter, r *http.Request, st hop,
 		tw.setAnswer("element #" + id)
 		tw.patches = append(tw.patches, tw.patchName("#"+id))
 	}
-	if err := datastar.PatchRegion(w, id, html.RenderWith(resp.Node, resp.State)); err != nil {
+	err := datastar.PatchRegion(w, id, html.RenderWith(resp.Node, resp.State))
+	if err == nil && len(st.removes) > 0 {
+		err = rt.writeRemovals(w, st.removes)
+	}
+	if err != nil {
 		rt.logReq(w, "error", line(w, r, fmt.Sprintf("writing the patch: %v", err)))
 	}
 	rt.notify(w)

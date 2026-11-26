@@ -24,11 +24,18 @@ import (
 //     the before-view the route rendered (Response.Shown): the regions the server changed.
 //   - invalid t (422, in StatusHeader): the same, rendered with the route's form state (the
 //     posted values, Response.State) and t as the form's error. Its update committed.
+//   - replace roots (200, #309): one event with no selector holding every root, each replacing
+//     the page's element with its id (answerReplace). Nothing loaded or rendered besides the
+//     roots, no before-view, al-shown left alone. Roots it cannot send (ReplaceRoots) send
+//     nothing (badTarget).
 //
-// The answer's toasts follow its patches.
+// `remove id` adds a removal of the element with that id, sent after the patches of a replace
+// or a render, in the order written; on redirect, refresh and invalid, which bring a whole page,
+// it is ignored and logged once per route (ignoredRemovals). The answer's toasts follow its
+// patches and removals.
 //
-// Without JavaScript (answerPlain) each is plain HTTP: redirect r a 303 to r; refresh and render
-// r a 303 to the page the browser is on (Request.ShownURL: Referer, else "/") — a partial has
+// Without JavaScript (answerPlain) each is plain HTTP: redirect r a 303 to r; refresh, render r
+// and replace a 303 to the page the browser is on (Request.ShownURL: Referer, else "/") — a partial has
 // nowhere to go without a page; invalid t a 422 with that page rendered, the form kept and t
 // shown on it. A 303's toast is kept in the notice cookie for the next page; a 422 page shows it
 // as an alert.
@@ -55,6 +62,7 @@ func InvalidResponse(st *html.FormState, session any) Response {
 func (rt *router) answer(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
 	a := resp.Answer
 	rt.setToasts(w, rq, a.Toasts())
+	rt.ignoredRemovals(w, r, *a)
 	if a.Kind == rtpkg.RespRedirect {
 		rt.answerRedirect(w, r, st, rq, resp)
 		return
@@ -67,15 +75,150 @@ func (rt *router) answer(w http.ResponseWriter, r *http.Request, st hop, rq *Req
 		rt.answerPlain(w, r, st, rq, resp)
 		return
 	}
-	if a.Kind == rtpkg.RespRender {
+	switch a.Kind {
+	case rtpkg.RespRender:
 		rt.answerRender(w, r, st, rq, resp)
+	case rtpkg.RespReplace:
+		rt.answerReplace(w, r, *a)
+	default:
+		rt.answerShown(w, r, st, rq, resp)
+	}
+}
+
+// ReplaceRoots is the roots of `Response.replace roots` as they are sent (#309): the list
+// flattened as html.RootID flattens a view (html.Roots: fragments opened, whitespace-only text
+// dropped), each an element with a non-empty id (html.RootOf), no two with one id. The error says
+// which root cannot be sent and why; the answer then sends nothing (ruling R11). The test
+// browser (rt/testing) checks a replace with it too.
+func ReplaceRoots(roots []any) ([]html.Node, error) {
+	ns := make([]html.Node, len(roots))
+	for i, root := range roots {
+		ns[i] = root.(html.Node)
+	}
+	out := html.Roots(ns)
+	seen := make(map[string]bool, len(out))
+	for i, n := range out {
+		id, why := html.RootOf(n)
+		if why != "" {
+			return nil, fmt.Errorf("Response.replace: root %d is %s; each root replaces the page's element with its id", i+1, why)
+		}
+		if seen[id] {
+			return nil, fmt.Errorf("Response.replace has two roots with the id %s", strconv.Quote(id))
+		}
+		seen[id] = true
+	}
+	return out, nil
+}
+
+// removals is the ids of a's `remove`s, in the order written.
+func removals(a rtpkg.Response) []string {
+	var ids []string
+	for _, e := range a.Events {
+		if e.Toast == nil {
+			ids = append(ids, e.Remove)
+		}
+	}
+	return ids
+}
+
+// removalProblem is why a's removals cannot be sent ("" when they can): an empty id names no
+// element (its selector would be "#", no CSS). Only a replace and a render send them.
+func removalProblem(a rtpkg.Response) string {
+	if a.Kind != rtpkg.RespReplace && a.Kind != rtpkg.RespRender {
+		return ""
+	}
+	for _, id := range removals(a) {
+		if id == "" {
+			return "Response.remove with an empty id, which names no element"
+		}
+	}
+	return ""
+}
+
+// ignoredRemovals logs the removals of a, an answer that brings a whole page (redirect, refresh,
+// invalid) and so has nothing to remove: once per route (the first time it answers so), at warn.
+// The checker refuses `remove` written in place after one (E0045); this is one reached through a
+// variable.
+func (rt *router) ignoredRemovals(w http.ResponseWriter, r *http.Request, a rtpkg.Response) {
+	if a.Kind == rtpkg.RespRender || a.Kind == rtpkg.RespReplace {
 		return
 	}
-	rt.answerShown(w, r, st, rq, resp)
+	ids := removals(a)
+	if len(ids) == 0 {
+		return
+	}
+	key := r.Method + " " + r.URL.Path
+	if tw, ok := w.(*tracker); ok && tw.route != "" {
+		key = tw.loggedMethod() + " " + tw.route
+	}
+	if _, logged := rt.removalsLogged.LoadOrStore(key, true); logged {
+		return
+	}
+	quoted := make([]string, len(ids))
+	for i, id := range ids {
+		quoted[i] = "Response.remove " + strconv.Quote(id)
+	}
+	rt.logReq(w, "warn", line(w, r, fmt.Sprintf("%s ignored: a %s answer sends the whole page, which needs no removal (logged once for this route)",
+		strings.Join(quoted, ", "), kindName(a.Kind))))
+}
+
+// answerReplace answers `replace roots` under Datastar (the roots checked by ReplaceRoots in
+// write): one ReplaceEvent of every root (none when there are none), one RemoveEvent per removal
+// in order, then the toasts and the panel. Status 200; the Alder-Shown hash is not updated.
+func (rt *router) answerReplace(w http.ResponseWriter, r *http.Request, a rtpkg.Response) {
+	roots, _ := ReplaceRoots(a.Roots)
+	ids := removals(a)
+	tw, _ := w.(*tracker)
+	if tw != nil {
+		n := "1 element"
+		if len(roots) != 1 {
+			n = strconv.Itoa(len(roots)) + " elements"
+		}
+		tw.setAnswer(fmt.Sprintf("replace (%s, %d removed)", n, len(ids)))
+	}
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	var err error
+	if len(roots) > 0 {
+		_, err = w.Write(datastar.ReplaceEvent(html.Render(html.Nodes(roots...))))
+		if tw != nil {
+			for _, n := range roots {
+				id, _ := html.RootOf(n)
+				tw.patches = append(tw.patches, "replace "+datastar.IDSelector(id))
+			}
+		}
+	}
+	if err == nil {
+		err = rt.writeRemovals(w, ids)
+	}
+	if err != nil {
+		rt.logReq(w, "error", line(w, r, fmt.Sprintf("writing the replace: %v", err)))
+	}
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	rt.notify(w)
+	rt.patchPanel(w, http.StatusOK)
+}
+
+// writeRemovals writes one RemoveEvent per id, in order, each named in the Patches tab.
+func (rt *router) writeRemovals(w http.ResponseWriter, ids []string) error {
+	tw, _ := w.(*tracker)
+	for _, id := range ids {
+		if _, err := w.Write(datastar.RemoveEvent(id)); err != nil {
+			return err
+		}
+		if tw != nil {
+			tw.patches = append(tw.patches, "remove "+datastar.IDSelector(id))
+		}
+	}
+	return nil
 }
 
 // targetProblem is why a, a write's answer, cannot be delivered, "" when it can (#160 ruling
-// R10). The checker refuses a write route written in place (E0045), but not one held in a
+// R10; for replace and remove, #309 ruling R11: ReplaceRoots, removalProblem). The checker refuses a write route written in place (E0045), but not one held in a
 // variable or made by a helper:
 //   - `redirect` goes to a GET: a named GET route or a Url.external URL (no name, Method "GET":
 //     isExternal, a full navigation); a route of another method is refused (an empty Method
@@ -96,8 +239,12 @@ func targetProblem(a rtpkg.Response) string {
 		case t.Method != "" && t.Method != http.MethodGet:
 			return t.Name + " is a " + t.Method + " route, not a GET route of this app"
 		}
+	case rtpkg.RespReplace:
+		if _, err := ReplaceRoots(a.Roots); err != nil {
+			return err.Error()
+		}
 	}
-	return ""
+	return removalProblem(a)
 }
 
 // viaName is how the Patches tab names the answer `kind` to target: "render Row", the route's
@@ -128,6 +275,9 @@ func isExternal(r rtpkg.Route) bool { return r.Name == "" && r.Method == http.Me
 func (rt *router) badTarget(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response, why string) {
 	a := resp.Answer
 	err := fmt.Errorf("%w: %s to %s: %s (nothing delivered)", eff.ErrInternal, kindName(a.Kind), strconv.Quote(rtpkg.RouteURL(a.Target)), why)
+	if a.Kind == rtpkg.RespReplace { // no target to name
+		err = fmt.Errorf("%w: %s (nothing delivered)", eff.ErrInternal, why)
+	}
 	if serr := rt.setSession(w, r, rq, resp.Session); serr != nil {
 		rt.logReq(w, "error", line(w, r, serr.Error()))
 	}
@@ -159,6 +309,8 @@ func kindName(k rtpkg.ResponseKind) string {
 		return "render"
 	case rtpkg.RespRefresh:
 		return "refresh"
+	case rtpkg.RespReplace:
+		return "replace"
 	}
 	return "invalid"
 }
@@ -212,7 +364,8 @@ func (rt *router) answerRedirect(w http.ResponseWriter, r *http.Request, st hop,
 }
 
 // answerRender answers `render r`: an element GET of r's URL served in-process (serve, with the
-// session the write left) and patched in by its root id (deliverElement). A URL no GET route of
+// session the write left) and patched in by its root id (deliverElement), the answer's removals
+// after it. A URL no GET route of
 // this app matches (or whose query does not parse) is answered as a target that is not found
 // (renderFailed): never the 404 page morphed into the body.
 func (rt *router) answerRender(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
@@ -235,7 +388,7 @@ func (rt *router) answerRender(w http.ResponseWriter, r *http.Request, st hop, r
 	if tw, ok := w.(*tracker); ok {
 		tw.via = viaName("render", resp.Answer.Target)
 	}
-	next := hop{origin: st.origin, gets: st.gets + 1, has: true, render: true}
+	next := hop{origin: st.origin, gets: st.gets + 1, has: true, render: true, removes: removals(*resp.Answer)}
 	next.session, next.enc = rt.sessionLeft(rq, resp)
 	rt.serve(w, r2, next)
 }
