@@ -734,6 +734,27 @@ func TestBrowser_ReplaceRemoveEvents(t *testing.T) {
 	if err := apply(b, string(datastar.ReplaceEvent(`<p>no id</p>`))); err == nil || !strings.Contains(err.Error(), "root 1 is") {
 		t.Errorf("a root without an id: %v", err)
 	}
+	// an id is named as written, unescaped (the selector on the wire is `#\33 `)
+	err = apply(b, string(datastar.RemoveEvent("3")))
+	if want := "DELETE /members/3: the answer removed `#3`, which the page does not have"; err == nil || err.Error() != want {
+		t.Errorf("missing removal of 3: %v, want %q", err, want)
+	}
+	err = b.patch(sseEvent{typ: "datastar-patch-elements", data: [][2]string{{"selector", "li.x"}, {"mode", "remove"}}})
+	if want := "DELETE /members/3: a removal of \"li.x\": the browser only removes an element by its id"; err == nil || err.Error() != want {
+		t.Errorf("a removal by class: %v, want %q", err, want)
+	}
+	// an id the markup has but the page the browser built lacks (here the dom alone, as
+	// html.Repair can leave it) is nowhere to go too, for a replace and a removal alike
+	b.doc, _ = html.Parse(`<html><body><p id="z">old</p></body></html>`)
+	b.dom, _ = html.Parse(`<html><body></body></html>`)
+	err = apply(b, string(datastar.ReplaceEvent(`<p id="z">new</p>`)))
+	if want := "DELETE /members/3: the answer replaced `#z`, which the page does not have"; err == nil || err.Error() != want {
+		t.Errorf("replace of an id the dom lacks: %v, want %q", err, want)
+	}
+	err = apply(b, string(datastar.RemoveEvent("z")))
+	if want := "DELETE /members/3: the answer removed `#z`, which the page does not have"; err == nil || err.Error() != want {
+		t.Errorf("removal of an id the dom lacks: %v, want %q", err, want)
+	}
 }
 
 // Review Focus 4: the id a removal's selector names is read back as CSS.escape wrote it.
@@ -1024,6 +1045,8 @@ type routeApp struct {
 	// summary, when set, adds to the index a count of the rows toggled (`<p id="toggled">`), which
 	// R.Toggle's `render` does not patch: a render that lies about the page (Task 4.3)
 	summary bool
+	// removeOnToggle, when set, is the id R.Toggle's `render` also removes (`Response.remove`)
+	removeOnToggle string
 }
 
 type seenReq struct {
@@ -1156,6 +1179,9 @@ func (a *routeApp) routes() []web.Route {
 				return web.NotFoundResponse(html.None())
 			}
 			a.rows[i-1] += "!"
+			if id := a.removeOnToggle; id != "" {
+				return web.AnswerResponse(rt.WithRemove(id, rt.Render(rRow(i))), nil, nil)
+			}
 			return web.AnswerResponse(rt.Render(rRow(i)), nil, nil)
 		}},
 		{Method: "DELETE", Pattern: "/r/rows/{id}", Handle: func(rq *web.Request) web.Response {
@@ -1697,7 +1723,7 @@ func TestCheck_ElementRollbackFails(t *testing.T) {
 				t.Fatalf("no savepoints: %v", err)
 			}
 			b.cur = &eff.Within{Tx: cur.Tx, Savepoints: failingSavepoints{cur.Savepoints, release}}
-			_, err = b.quietly(context.Background(), httptest.NewRequest("GET", "/d/1", nil))
+			_, err = b.quietly(context.Background(), httptest.NewRequest("GET", "/d/1", nil), "the element check")
 			if err == nil || !strings.Contains(err.Error(), "the element check: undoing its fetch: disk I/O error") {
 				t.Errorf("release %v: err = %v", release, err)
 			}
@@ -1759,7 +1785,7 @@ func TestCheck_ElementFetchRestoresState(t *testing.T) {
 		}
 		for _, req := range fetches() {
 			hold()
-			if _, err := b.quietly(context.Background(), req); err != nil {
+			if _, err := b.quietly(context.Background(), req, "the element check"); err != nil {
 				t.Fatal(err)
 			}
 			same(req.Method + " " + req.URL.Path)
@@ -2007,4 +2033,29 @@ func TestBrowser_ReplacedOddIDs(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A `render` with a `Response.remove`: Rendered, the removed element gone from the page held,
+// and the element check (the render's only check: the router renders no full page for it, so
+// the drift check does not run) passes; a removal the page lacks fails the step (#309).
+func TestBrowser_RenderWithRemove(t *testing.T) {
+	app := newRouteApp("one", "two")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/r"))
+		app.removeOnToggle = "row-2"
+		r := must(b.ClickRoute(rToggle(1), `R.Toggle { id: "1" }`))
+		wantAnswer(t, r, Answer{Tag: Rendered, Page: rRow(1)})
+		if html.Select(r.Doc, html.MustParseSelector("#row-2")) != nil || !strings.HasPrefix(text(t, r.Doc, "#row-1"), "one!") {
+			t.Errorf("held %s", html.Render(r.Doc))
+		}
+		if !slices.Equal(b.removed, []string{"row-2"}) {
+			t.Errorf("removed %q", b.removed)
+		}
+		app.removeOnToggle = "row-9"
+		_, err := b.ClickRoute(rToggle(1), `R.Toggle { id: "1" }`)
+		if want := "PATCH /r/rows/1: the answer removed `#row-9`, which the page does not have"; err == nil || err.Error() != want {
+			t.Errorf("err = %v, want %q", err, want)
+		}
+	})
 }

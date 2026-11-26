@@ -735,13 +735,16 @@ func (b *Browser) refusedText() string {
 // app's maintenance page is held).
 const maintenanceText = "503 maintenance"
 
+// servedDoctype is the doctype line the router begins a page with, which the held page leaves out.
+const servedDoctype = "<!doctype html>\n"
+
 // hold makes page (a document the router served for u) the held one: its doctype and the
 // Datastar script tag the router injected are left out, so it is the page as the view renders it.
 // The build its head names (its alder-build meta's content, web.BuildMeta) is kept
 // (Browser.build), as the page's script reads it: another build's page keeps that build, a page
 // without the meta "".
 func (b *Browser) hold(u, page string) error {
-	page = strings.TrimPrefix(page, "<!doctype html>\n")
+	page = strings.TrimPrefix(page, servedDoctype)
 	build := ""
 	if m := buildMeta.FindStringSubmatch(page); m != nil {
 		build = m[1]
@@ -851,9 +854,6 @@ func (b *Browser) checkPatched() error {
 				return &DriftError{Step: step, Diff: html.Difference{At: "#" + id,
 					What: "the answer patched a region that the held page or the full render lacks"}}
 			}
-		}
-		for _, id := range b.removed { // a render's removals, sent after its patch
-			expect, _ = removeByID(expect, id)
 		}
 		want = expect
 	}
@@ -1133,7 +1133,7 @@ func (b *Browser) checkElement(r rt.Route) error {
 	if fail.Route == "" {
 		fail.Route = u
 	}
-	w, err := b.quietly(ctx, req)
+	w, err := b.quietly(ctx, req, "the element check")
 	if err != nil {
 		return err
 	}
@@ -1185,13 +1185,14 @@ func (b *Browser) checkElement(r rt.Route) error {
 	return nil
 }
 
-// quietly has the router serve req, the element check's fetch, within a savepoint of the test's
+// quietly has the router serve req, the fetch of check (the element check, the fresh-load check;
+// named in its errors), within a savepoint of the test's
 // transaction that is rolled back afterwards. It is not part of the step: what the request's
 // hooks record (its Envs, so its trace and statements; the model; the render; the answer; an
 // error logged) is put back as the step left it, it is not measured, and a cookie it sets is not
 // kept. A savepoint that cannot be rolled back or released is the check's error: the step
 // fails rather than go on in a transaction holding the fetch's writes.
-func (b *Browser) quietly(ctx context.Context, req *http.Request) (_ *httptest.ResponseRecorder, err error) {
+func (b *Browser) quietly(ctx context.Context, req *http.Request, check string) (_ *httptest.ResponseRecorder, err error) {
 	reqEnvs, model, rendered, answered, lastErr := b.reqEnvs, b.model, b.rendered, b.answered, b.lastErr
 	defer func() {
 		b.reqEnvs, b.model, b.rendered, b.answered, b.lastErr = reqEnvs, model, rendered, answered, lastErr
@@ -1200,7 +1201,7 @@ func (b *Browser) quietly(ctx context.Context, req *http.Request) (_ *httptest.R
 	if w := b.cur; w != nil && w.Savepoints != nil {
 		sp := eff.SavepointName()
 		if err := w.Savepoints.Savepoint(ctx, w.Tx, sp); err != nil {
-			return nil, fmt.Errorf("the element check: %w", err)
+			return nil, fmt.Errorf("%s: %w", check, err)
 		}
 		defer func() {
 			rerr := w.Savepoints.RollbackTo(ctx, w.Tx, sp)
@@ -1208,7 +1209,7 @@ func (b *Browser) quietly(ctx context.Context, req *http.Request) (_ *httptest.R
 				rerr = w.Savepoints.Release(ctx, w.Tx, sp)
 			}
 			if rerr != nil && err == nil {
-				err = fmt.Errorf("the element check: undoing its fetch: %w", rerr)
+				err = fmt.Errorf("%s: undoing its fetch: %w", check, rerr)
 			}
 		}()
 	}
@@ -1506,16 +1507,14 @@ func (b *Browser) replace(elements string) error {
 	ids := make([]string, len(roots))
 	for i, n := range roots {
 		ids[i], _ = html.RootOf(n)
-		if _, ok := elementByID(b.doc, ids[i]); !ok {
-			return fmt.Errorf("%sthe answer replaced `%s`, which the page does not have", b.reqHead, datastar.IDSelector(ids[i]))
+		if !b.hasID(ids[i]) {
+			return fmt.Errorf("%sthe answer replaced `#%s`, which the page does not have", b.reqHead, ids[i])
 		}
 	}
 	for i, n := range roots {
 		b.doc, _ = html.ReplaceByID(b.doc, ids[i], n)
 		// Datastar morphs the element into the nodes its parser builds from the root
-		if dom, ok := html.ReplaceByID(b.dom, ids[i], html.RepairFragment(n)); ok {
-			b.dom = dom
-		}
+		b.dom, _ = html.ReplaceByID(b.dom, ids[i], html.RepairFragment(n))
 	}
 	b.replaced = append(b.replaced, ids...)
 	return nil
@@ -1526,18 +1525,24 @@ func (b *Browser) replace(elements string) error {
 func (b *Browser) remove(sel string) error {
 	id, ok := idOfSelector(sel)
 	if !ok {
-		return fmt.Errorf("a removal of %q: the browser only removes an element by its id", sel)
+		return fmt.Errorf("%sa removal of %q: the browser only removes an element by its id", b.reqHead, sel)
 	}
-	doc, ok := removeByID(b.doc, id)
-	if !ok {
-		return fmt.Errorf("%sthe answer removed `%s`, which the page does not have", b.reqHead, sel)
+	if !b.hasID(id) {
+		return fmt.Errorf("%sthe answer removed `#%s`, which the page does not have", b.reqHead, id)
 	}
-	b.doc = doc
-	if dom, ok := removeByID(b.dom, id); ok {
-		b.dom = dom
-	}
+	b.doc, _ = removeByID(b.doc, id)
+	b.dom, _ = removeByID(b.dom, id)
 	b.removed = append(b.removed, id)
 	return nil
+}
+
+// hasID reports whether the held page has an element with id id, both as the router sent it
+// (doc) and as the browser's parser built it (dom): a replace or a removal of an id the built page
+// lacks does nothing in a real browser, so the step fails as for an id the markup lacks.
+func (b *Browser) hasID(id string) bool {
+	_, inDoc := elementByID(b.doc, id)
+	_, inDom := elementByID(b.dom, id)
+	return inDoc && inDom
 }
 
 // removeByID is n without its first element whose id is id (in document order), and whether
@@ -1616,7 +1621,7 @@ func hexVal(r rune) int {
 // (Removed, its markup Markup), or the page did not load (Why).
 type ReplacedError struct {
 	Step    string // the step's request, "DELETE /members/3"
-	Sel     string // the element's selector, "#member-count"
+	Sel     string // "#" and the element's id as written, unescaped: "#member-count", "#3"
 	Fetch   string // "GET /members"
 	Removed bool
 	Markup  string
@@ -1658,7 +1663,7 @@ func (b *Browser) checkReplaced() error {
 		req.AddCookie(&http.Cookie{Name: web.CookieName, Value: b.cookie})
 	}
 	fail := &ReplacedError{Step: strings.TrimSuffix(b.reqHead, ": "), Fetch: http.MethodGet + " " + b.url}
-	w, err := b.quietly(ctx, req)
+	w, err := b.quietly(ctx, req, "the fresh-load check")
 	if err != nil {
 		return err
 	}
@@ -1666,7 +1671,7 @@ func (b *Browser) checkReplaced() error {
 		fail.Why = "answered status " + strconv.Itoa(w.Code)
 		return fail
 	}
-	page := web.StripHeadTags(strings.TrimPrefix(w.Body.String(), "<!doctype html>\n"))
+	page := web.StripHeadTags(strings.TrimPrefix(w.Body.String(), servedDoctype))
 	doc, err := html.Parse(page)
 	if err != nil {
 		return fmt.Errorf("the fresh-load check: the page %s answers does not parse: %w", fail.Fetch, err)
@@ -1683,13 +1688,13 @@ func (b *Browser) checkReplaced() error {
 			continue // a later removal took it out of the page held
 		}
 		if d, differ := html.Diff(got, want); differ {
-			fail.Sel, fail.Diff = datastar.IDSelector(id), &d
+			fail.Sel, fail.Diff = "#"+id, &d
 			return fail
 		}
 	}
 	for _, id := range b.removed {
 		if el, ok := elementByID(fresh, id); ok {
-			fail.Sel, fail.Removed, fail.Markup = datastar.IDSelector(id), true, html.Render(el)
+			fail.Sel, fail.Removed, fail.Markup = "#"+id, true, html.Render(el)
 			return fail
 		}
 	}

@@ -1643,7 +1643,7 @@ test "a removal the page still has" = {
 	for _, w := range []string{
 		`ok   Members "a replace answers Replaced"`,
 		"FAIL Members \"a replace the page disagrees with\"\n  error: POST /members/lie: the answer replaced `#member-count` unlike the page loaded again (GET /members) at p#member-count",
-		"FAIL Members \"a removal the page still has\"\n  error: DELETE /members/3: the answer removed `#\\33 `, which the page loaded again (GET /members) still has",
+		"FAIL Members \"a removal the page still has\"\n  error: DELETE /members/3: the answer removed `#3`, which the page loaded again (GET /members) still has",
 	} {
 		if !strings.Contains(stdout, w) {
 			t.Errorf("stdout lacks %q", w)
