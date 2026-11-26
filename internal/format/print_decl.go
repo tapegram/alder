@@ -167,7 +167,11 @@ func (p *printer) decl(d syntax.Decl) Doc {
 func (p *printer) valueDecl(d *syntax.ValueDecl) Doc {
 	var doc []Doc
 	if d.Sig != nil {
-		doc = append(doc, Text(d.FullName()+" : "), p.typ(d.Sig), p.trail(d.Sig), p.dangle(d.Sig, true, nil))
+		head := Concat(Text(d.FullName()+" : "), p.typ(d.Sig))
+		if len(d.Needs) > 0 { // `requires …` stays on the line, or goes on its own indented one
+			head = Group(Concat(head, Nest(Concat(Line, Text("requires "+strings.Join(d.Needs, ", "))))))
+		}
+		doc = append(doc, head, p.trail(d.Sig), p.dangle(d.Sig, true, nil))
 		if d.Body == nil {
 			return Concat(doc...)
 		}

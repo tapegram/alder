@@ -1250,6 +1250,9 @@ func (mc *modCtx) declareValues() {
 			}
 			continue
 		}
+		if len(vd.Needs) > 0 { // the route guard's check: each key is a `Maybe` field of the session
+			mc.checkRequires(&syntax.Guard{Requires: vd.Needs, RequiresSpan: vd.NeedSpans[0], FieldSpans: vd.NeedSpans}, vd.NeedsSpan)
+		}
 		params := map[string]bool{}
 		mc.value = vd.FullName() // a test type in the signature makes the value a test helper
 		restore := mc.enterMember(vd)

@@ -49,6 +49,9 @@ fake Mailer {
 -- docs for f
 f : Int -> Int
 f n = n
+
+orgs : Query Int requires org
+orgs = Query.succeed 1
 `
 
 func TestDecls(t *testing.T) {
@@ -94,6 +97,8 @@ func TestDecls(t *testing.T) {
 		{"requires user, org", 0, TKeyword, 0},
 		{"requires user, org", 9, TProperty, 0},
 		{"requires user, org", 15, TProperty, 0},
+		{"Int requires org", 4, TKeyword, 0},
+		{"Int requires org", 13, TProperty, 0},
 		{"role Admin | Editor", 0, TKeyword, 0},
 		{"role Admin | Editor", 5, TEnumMember, 0},
 		{"role Admin | Editor", 11, TOperator, 0},

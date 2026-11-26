@@ -270,3 +270,31 @@ func TestFormat_SVG(t *testing.T) {
 		t.Fatalf("not a fixed point\n--- got:\n%s\n--- want:\n%s", got, src)
 	}
 }
+
+// TestFormat_ValueRequires (#310): a value's `requires` clause stays on the signature line, and
+// goes on its own indented line when the signature does not fit with it; either way a trailing
+// comment keeps its place and the output is stable.
+func TestFormat_ValueRequires(t *testing.T) {
+	for _, c := range []struct{ name, in, want string }{
+		{"line", "module M\n\ncount : Query Int   requires  user,org\ncount = Query.succeed 1\n",
+			"module M\n\ncount : Query Int requires user, org\ncount = Query.succeed 1\n"},
+		{"next line joins", "module M\n\ncount : Query Int\n    requires org\ncount = Query.succeed 1\n",
+			"module M\n\ncount : Query Int requires org\ncount = Query.succeed 1\n"},
+		{"own line", "module M\n\nloadEverything : Dict Text (List Int) -> Dict Text (List Int) -> Dict Text (List Int) requires user, org\nloadEverything a b = a\n",
+			"module M\n\nloadEverything : Dict Text (List Int) -> Dict Text (List Int) -> Dict Text (List Int)\n  requires user, org\nloadEverything a b = a\n"},
+		{"signature breaks", "module M\n\nloadEverything : Dict Text (List Int) -> Dict Text (List Int) -> Dict Text (List Int) -> Dict Text (List Int) requires user\nloadEverything a b c = a\n",
+			"module M\n\nloadEverything : Dict Text (List Int)\n  -> Dict Text (List Int)\n  -> Dict Text (List Int)\n  -> Dict Text (List Int)\n  requires user\nloadEverything a b c = a\n"},
+		{"comment", "module M\n\ncount : Query Int requires org -- per org\ncount = Query.succeed 1\n",
+			"module M\n\ncount : Query Int requires org -- per org\ncount = Query.succeed 1\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := format(t, "m.alder", []byte(c.in))
+			if string(got) != c.want {
+				t.Fatalf("got:\n%s\nwant:\n%s", got, c.want)
+			}
+			if again := format(t, "m.alder", got); string(again) != string(got) {
+				t.Fatalf("not idempotent:\n%s", again)
+			}
+		})
+	}
+}

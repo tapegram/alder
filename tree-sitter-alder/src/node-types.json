@@ -6842,6 +6842,16 @@
           }
         ]
       },
+      "requires": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "requires_clause",
+            "named": true
+          }
+        ]
+      },
       "type": {
         "multiple": false,
         "required": true,
@@ -7434,6 +7444,16 @@
         "types": [
           {
             "type": "binding",
+            "named": true
+          }
+        ]
+      },
+      "requires": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "requires_clause",
             "named": true
           }
         ]

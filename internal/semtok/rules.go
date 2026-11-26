@@ -83,6 +83,15 @@ func (w *walker) rule(n syntax.Spanned) {
 		w.declName(ts, n.Route != "")
 		if n.Sig != nil {
 			end := n.Sig.GetSpan().End
+			if len(n.Needs) > 0 { // `requires org`: a key is not the definition's name
+				end = n.NeedsSpan.End
+				w.keywordAt(n.NeedsSpan)
+				for _, sp := range n.NeedSpans {
+					if k := w.in(sp); len(k) > 0 {
+						w.set(k[0], TProperty, 0)
+					}
+				}
+			}
 			for i, t := range ts {
 				if !before(pos(t), end) && t.Kind == ts[0].Kind && t.Text == ts[0].Text {
 					w.declName(ts[i:], n.Route != "") // the definition line's name

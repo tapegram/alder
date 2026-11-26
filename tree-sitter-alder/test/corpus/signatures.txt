@@ -149,3 +149,58 @@ g r = 1
       (parameters
         (identifier))
       (integer))))
+
+================================================================================
+a value's requires clause, on the signature line or the next
+================================================================================
+
+module M
+
+count : Query Int requires org
+count = Query.succeed 1
+
+total : Query Int
+  requires user, org
+total = Query.succeed 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    signature: (signature
+      name: (identifier)
+      type: (type_app
+        constructor: (type_name
+          (constructor))
+        argument: (type_name
+          (constructor)))
+      requires: (requires_clause
+        (session_key)))
+    binding: (binding
+      name: (identifier)
+      body: (application
+        function: (qualified_name
+          module: (constructor)
+          name: (identifier))
+        argument: (integer))))
+  (value_decl
+    signature: (signature
+      name: (identifier)
+      type: (type_app
+        constructor: (type_name
+          (constructor))
+        argument: (type_name
+          (constructor))))
+    requires: (requires_clause
+      (session_key)
+      (session_key))
+    binding: (binding
+      name: (identifier)
+      body: (application
+        function: (qualified_name
+          module: (constructor)
+          name: (identifier))
+        argument: (integer)))))

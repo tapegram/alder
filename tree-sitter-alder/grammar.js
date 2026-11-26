@@ -237,12 +237,22 @@ module.exports = grammar({
 
     value_decl: ($) =>
       choice(
-        prec.dynamic(1, seq(field('signature', $.signature), $._newline, field('binding', $.binding))),
-        field('signature', $.signature),
+        prec.dynamic(
+          1,
+          seq(
+            field('signature', $.signature),
+            optional(seq($._newline, field('requires', $.requires_clause))),
+            $._newline,
+            field('binding', $.binding),
+          ),
+        ),
+        seq(field('signature', $.signature), optional(seq($._newline, field('requires', $.requires_clause)))),
         field('binding', $.binding),
       ),
 
-    signature: ($) => seq(field('name', $._signature_name), ':', field('type', $._type)),
+    // `count : Query Int requires org` (#310): the keys a value needs from the session.
+    signature: ($) =>
+      seq(field('name', $._signature_name), ':', field('type', $._type), optional(field('requires', $.requires_clause))),
 
     binding: ($) =>
       seq(field('name', $._value_name), optional(field('params', $.parameters)), '=', field('body', $._expression)),

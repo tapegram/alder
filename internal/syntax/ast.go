@@ -80,6 +80,11 @@ type ValueDecl struct {
 	RouteSpan diag.Span
 	Name      string
 	Sig       Type // nil only in stdlib signature files (body nil) or when missing (E0007)
+	// Needs are the session keys of `f : T requires user, org` (["user", "org"]), nil for none.
+	// NeedsSpan is the whole clause (zero when absent); NeedSpans has each key's, parallel to Needs.
+	Needs     []string
+	NeedsSpan diag.Span
+	NeedSpans []diag.Span
 	Params    []*Ident
 	Body      Expr // nil in stdlib signature files
 }

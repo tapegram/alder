@@ -41,6 +41,9 @@ func dump(sb *strings.Builder, n any) {
 			sb.WriteString(" : ")
 			dump(sb, x.Sig)
 		}
+		if len(x.Needs) > 0 {
+			sb.WriteString(" requires " + strings.Join(x.Needs, ", "))
+		}
 		for _, p := range x.Params {
 			sb.WriteString(" " + p.Name)
 		}

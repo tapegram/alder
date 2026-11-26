@@ -1,0 +1,4 @@
+module Helpers
+
+count : Query Int requires user, role Admin
+count = Query.succeed 1

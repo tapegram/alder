@@ -795,6 +795,7 @@ func (p *Parser) parseValueDecl() Decl {
 		p.advance()
 		p.skipNL() // the type may start on the line after `:`
 		d.Sig = p.parseType()
+		p.parseValueRequires(d)
 		if p.sigMode && (p.at(NL) || p.at(EOF)) {
 			// peek: is the next non-blank line this name's definition?
 			save, saveTok := p.mark()
@@ -1435,4 +1436,32 @@ func (p *Parser) parseDeployValue() *DeployValue {
 	}
 	p.errorAt(p.tok, "expected a string, a number, a list, a record or a constructor, got "+describe(p.tok))
 	return nil
+}
+
+// parseValueRequires parses the `requires key, …` clause of a value signature, on the signature's
+// line or the next one, if there is one. A value needs session keys only: `role` and `silo`
+// belong on the route line (E0027).
+func (p *Parser) parseValueRequires(d *ValueDecl) {
+	save, saveTok := p.mark()
+	p.skipNL()
+	if !p.atKeyword("requires") {
+		p.restore(save, saveTok)
+		return
+	}
+	rt := p.advance()
+	for {
+		if p.atRole() || p.atSilo() {
+			p.errorCodeAt(p.tok, "E0027", "a value requires session keys only: a role check belongs on the route line")
+			p.skipLine()
+			return
+		}
+		kt := p.tok
+		d.Needs = append(d.Needs, p.expect(LIdent, "session key").Text)
+		d.NeedSpans = append(d.NeedSpans, p.spanFrom(kt))
+		if !p.at(Comma) {
+			break
+		}
+		p.advance()
+	}
+	d.NeedsSpan = p.spanFrom(rt)
 }

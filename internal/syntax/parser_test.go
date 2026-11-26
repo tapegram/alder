@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"alder/internal/diag"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -837,6 +839,51 @@ func TestParse_JobDecl_Errors(t *testing.T) {
 		_, diags := ParseFile("m.alder", []byte("module M\n\n"+src+"\n"))
 		if len(diags) == 0 || !(strings.Contains(diags[0].Message, "`"+want+"`") || strings.Contains(diags[0].Message, want)) {
 			t.Errorf("%s: want an error naming `%s`, got %v", src, want, diags)
+		}
+	}
+}
+
+// TestParse_ValueRequires (#310): a value signature may carry `requires key, …`, on the
+// signature line or on the next, indented line; the clause is not part of the signature.
+func TestParse_ValueRequires(t *testing.T) {
+	for _, c := range []struct {
+		src  string
+		keys []string
+	}{
+		{"count : Query Int requires org\ncount = Query.succeed 1", []string{"org"}},
+		{"count : Query Int\n  requires org\ncount = Query.succeed 1", []string{"org"}},
+		{"count : Query Int requires user, org\ncount = Query.succeed 1", []string{"user", "org"}},
+		{"count : Query Int\ncount = Query.succeed 1", nil},
+	} {
+		m, diags := ParseFile("m.alder", []byte("module M\n\n"+c.src+"\n"))
+		if len(diags) > 0 {
+			t.Errorf("%q: %v", c.src, diags)
+			continue
+		}
+		vd := m.Decls[0].(*ValueDecl)
+		if strings.Join(vd.Needs, ",") != strings.Join(c.keys, ",") || len(vd.NeedSpans) != len(c.keys) {
+			t.Errorf("%q: Needs %v NeedSpans %v, want %v", c.src, vd.Needs, vd.NeedSpans, c.keys)
+		}
+		if (len(c.keys) > 0) != (vd.NeedsSpan != diag.Span{}) {
+			t.Errorf("%q: NeedsSpan %+v", c.src, vd.NeedsSpan)
+		}
+		if tn, ok := vd.Sig.(*TypeName); !ok || tn.Name != "Query" || tn.Span.End.Line != 3 || tn.Span.End.Col != 18 {
+			t.Errorf("%q: Sig %+v includes the clause", c.src, vd.Sig)
+		}
+	}
+	m, _ := ParseFile("m.alder", []byte("module M\n\ncount : Query Int requires user, org\ncount = Query.succeed 1\n"))
+	vd := m.Decls[0].(*ValueDecl)
+	if s := vd.NeedsSpan; s.Start.Col != 19 || s.End.Col != 37 {
+		t.Errorf("NeedsSpan %+v", s)
+	}
+	if a, b := vd.NeedSpans[0], vd.NeedSpans[1]; a.Start.Col != 28 || a.End.Col != 32 || b.Start.Col != 34 || b.End.Col != 37 {
+		t.Errorf("NeedSpans %+v %+v", a, b)
+	}
+	// a role check belongs on the route line
+	for _, src := range []string{"requires user, role Admin", "requires role Admin", "requires user, silo org"} {
+		_, diags := ParseFile("m.alder", []byte("module M\n\ncount : Query Int "+src+"\ncount = Query.succeed 1\n"))
+		if len(diags) != 1 || diags[0].Code != "E0027" || diags[0].Message != "a value requires session keys only: a role check belongs on the route line" {
+			t.Errorf("%s: diags %v", src, diags)
 		}
 	}
 }

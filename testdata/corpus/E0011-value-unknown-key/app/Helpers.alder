@@ -1,0 +1,4 @@
+module Helpers
+
+count : Query Int requires team
+count = Query.succeed 1
