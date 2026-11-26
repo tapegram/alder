@@ -26,12 +26,12 @@ import (
 //	decode__M__R__Params(params, q) R's parameters but its form, as a GET route's (404)
 //	decode__M__<Form>(v)            the route's form from the request body
 //	guard__M__R(rq, params)         `requires` (a 303 to App.login), the role (404): the session
-//	                                R.update takes (a route that requires only)
+//	                                R's handler takes (a route that requires only)
 //	Route__M__R()                   <METHOD> <path>: decode (404), guard__M__R, the form (one
 //	                                that does not decode: web.InvalidResponse), the options check
 //	                                against the page it was posted from (rq.CheckOptions), that
-//	                                page before the update (rq.RenderShown: only when R.update
-//	                                may answer refresh or invalid), R.update, web.AnswerResponse
+//	                                page before the handler (rq.RenderShown: only when R's handler
+//	                                may answer refresh or invalid), R's handler, web.AnswerResponse
 //
 // Routes lists every route, in module order, then declaration order. The book's request
 // lifecycle (chapter 6) is the order of these steps. Under Datastar rt/web answers a 303 to a
@@ -81,7 +81,7 @@ func (g *gen) routesSource(p *ir.Program) string {
 		g.encoders(&b, p) // browser.go
 	}
 	if len(p.Silos) > 0 {
-		b.WriteString(`// route__fail answers a load or update that did not succeed: a 303 to the page for
+		b.WriteString(`// route__fail answers a load or handler that did not succeed: a 303 to the page for
 // Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, 503 (App.maintenance)
 // for a silo that is not served, else 500 (App.error).
 func route__fail(err error) web.Response {
@@ -101,7 +101,7 @@ func route__fail(err error) web.Response {
 
 `)
 	} else {
-		b.WriteString(`// route__fail answers a load or update that did not succeed: a 303 to the page for
+		b.WriteString(`// route__fail answers a load or handler that did not succeed: a 303 to the page for
 // Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
 	var rd *eff.ErrRedirect
@@ -233,16 +233,16 @@ func urlParams(r *ir.Route) *ir.RecordType {
 //   - `requires`, role (guard__M__R: 303 to App.login, 404);
 //   - decode the form (plan call 10): one that does not decode is web.InvalidResponse, the page
 //     the browser is on rendered again with the posted values and the field errors (diffed
-//     against it rendered before, under Datastar), update not called;
+//     against it rendered before, under Datastar), handler not called;
 //   - the options check (plan call 11), when the form has selects with `options={…}` in the
 //     views of some GET routes (OptionRoutes): the page it was posted from is rendered
 //     (RenderShown) and checked (rq.CheckOptions); a value it did not offer is answered as a form
 //     that does not decode, a post from another page is a 400;
-//   - the page before (rq.RenderShown), only when the update may answer refresh or invalid
+//   - the page before (rq.RenderShown), only when the handler may answer refresh or invalid
 //     (NeedsShown) and under Datastar (the plain answers render it afresh); the options check's
 //     render serves when there is one;
 //   - for an app with silos, the Task bound to the route's store (db.Enter);
-//   - R.update (a Task Response), answered by web.AnswerResponse with the session it left; an
+//   - R's handler (a Task Response), answered by web.AnswerResponse with the session it left; an
 //     `invalid` keeps the form's posted values (a FormState keyed by the route's rt.RouteKey). A
 //     failed Task changes nothing (route__fail).
 func (g *gen) writeRoute(b *strings.Builder, p *ir.Program, r *ir.Route, forms map[*ir.Form]bool) {
@@ -258,7 +258,7 @@ func (g *gen) writeRoute(b *strings.Builder, p *ir.Program, r *ir.Route, forms m
 		if r.Roles != nil {
 			roles = fmt.Sprintf(", then `role %s` (404 when the session's role is not one of them)", strings.Join(r.Roles, " | "))
 		}
-		b.WriteString(comment(fmt.Sprintf("%s runs the guard of route %s for rq: `requires %s` (a 303 to App.login when the session's %s is Nothing)%s. It returns the session the route's update takes, or the response that ends the request.", guardFunc(r), rkey, strings.Join(r.Requires, ", "), strings.Join(r.Requires, " or "), roles)))
+		b.WriteString(comment(fmt.Sprintf("%s runs the guard of route %s for rq: `requires %s` (a 303 to App.login when the session's %s is Nothing)%s. It returns the session the route's handler takes, or the response that ends the request.", guardFunc(r), rkey, strings.Join(r.Requires, ", "), strings.Join(r.Requires, " or "), roles)))
 		fmt.Fprintf(b, "func %s(rq *web.Request, params %s) (%s, *web.Response) {\n\tapp := rq.Env.Session.(%s)\n", guardFunc(r), gd.params, session, app)
 		g.requiresChecks(b, p, gd, "", "nil")
 		fmt.Fprintf(b, "\treturn %s{%s}, nil\n}\n\n", session, strings.Join(sessionFields(p, gd), ", "))
@@ -275,15 +275,15 @@ func (g *gen) writeRoute(b *strings.Builder, p *ir.Program, r *ir.Route, forms m
 		steps = append(steps, "the role (404)")
 	}
 	if r.Form != nil {
-		steps = append(steps, fmt.Sprintf("decode form %s from the body (when it does not: 422, the page the browser is on rendered again with the submitted values, no Text.Secret field, and the errors, without calling update)", r.Form.Name))
+		steps = append(steps, fmt.Sprintf("decode form %s from the body (when it does not: 422, the page the browser is on rendered again with the submitted values, no Text.Secret field, and the errors, without calling the handler)", r.Form.Name))
 	}
 	if len(r.OptionRoutes) > 0 {
 		steps = append(steps, "check its options against the page it was posted from (a value that page did not offer: as a form that does not decode; posted from another page: 400)")
 	}
 	if r.NeedsShown {
-		steps = append(steps, "render the page the browser is on before the update (refresh and invalid are diffed against it)")
+		steps = append(steps, "render the page the browser is on before the handler (refresh and invalid are diffed against it)")
 	}
-	steps = append(steps, "run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect)")
+	steps = append(steps, "run the handler and answer its Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect)")
 	b.WriteString(comment(fmt.Sprintf("%s serves route %s, %s %s: %s.", routeFunc(m, r.Name), rkey, r.Method, r.Path, strings.Join(steps, "; "))))
 
 	fmt.Fprintf(b, `func %s() web.Route {
@@ -392,7 +392,7 @@ func (g *gen) selfRoute(r *ir.Route) string {
 	return f.routeLit(routeKey(r), r.Method, r.Path, url, params, false, s)
 }
 
-// routeUpdateFailure is a write route's answer to a failed update Task: route__fail, and for an
+// routeUpdateFailure is a write route's answer to a failed handler Task: route__fail, and for an
 // app with `via` fields a Session.put the membership check refused (eff.ErrFail.NotMember: a
 // crafted switch to an org the user is no member of) is `invalid` "You are not a member of that
 // workspace." for a route with a form (hasForm), else 404 — not a 500.
@@ -469,7 +469,7 @@ func (g *gen) loadFunc(b *strings.Builder, p *ir.Program, gd guarded) {
 	app := GoName(p.Session.Module, p.Session.Name)
 	fnName := loadFunc(gd.key)
 	if len(gd.requires) == 0 {
-		b.WriteString(comment(fmt.Sprintf("%s runs %s for rq up to its model: load (with params and the session of rq.Env). It returns the model and the session view and update take, or the response that ends the request, which stores keep (the session a successful update left, or nil).", fnName, gd.what)))
+		b.WriteString(comment(fmt.Sprintf("%s runs %s for rq up to its model: load (with params and the session of rq.Env). It returns the model and the session view and the handler take, or the response that ends the request, which stores keep (the session a successful handler left, or nil).", fnName, gd.what)))
 		fmt.Fprintf(b, `func %s(rq *web.Request, params %s, keep any) (%s, %s, *web.Response) {
 	session := rq.Env.Session.(%s)
 	model, err := eff.RunQuery(rq.Env, %s(params, session))
@@ -488,7 +488,7 @@ func (g *gen) loadFunc(b *strings.Builder, p *ir.Program, gd guarded) {
 	if gd.roles != nil {
 		roles = fmt.Sprintf(", then `role %s` (404, App.notFound, as for a missing row, when the session's role is not one of them: a cookie check, read when the user logged in)", strings.Join(gd.roles, " | "))
 	}
-	b.WriteString(comment(fmt.Sprintf("%s runs %s for rq up to its model: `requires %s` (a 303 to App.login, storing keep, when the session's %s is Nothing)%s, then load (with params and the narrowed session). It returns the model and the session view and update take, or the response that ends the request, which stores keep (the session a successful update left, or nil).", fnName, gd.what, strings.Join(gd.requires, ", "), strings.Join(gd.requires, " or "), roles)))
+	b.WriteString(comment(fmt.Sprintf("%s runs %s for rq up to its model: `requires %s` (a 303 to App.login, storing keep, when the session's %s is Nothing)%s, then load (with params and the narrowed session). It returns the model and the session view and the handler take, or the response that ends the request, which stores keep (the session a successful handler left, or nil).", fnName, gd.what, strings.Join(gd.requires, ", "), strings.Join(gd.requires, " or "), roles)))
 	fmt.Fprintf(b, `func %[1]s(rq *web.Request, params %[2]s, keep any) (%[3]s, %[4]s, *web.Response) {
 	var model %[3]s
 	app := rq.Env.Session.(%[5]s)

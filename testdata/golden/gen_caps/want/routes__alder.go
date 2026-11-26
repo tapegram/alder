@@ -13,7 +13,7 @@ import (
 // order, then declaration order.
 var Routes = []web.Route{}
 
-// route__fail answers a load or update that did not succeed: a 303 to the page for
+// route__fail answers a load or handler that did not succeed: a 303 to the page for
 // Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
 	var rd *eff.ErrRedirect

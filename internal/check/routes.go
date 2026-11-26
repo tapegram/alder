@@ -396,7 +396,9 @@ func (mc *modCtx) checkWriteRoute(r *RouteInfo, members map[string]*syntax.Value
 		if d := members[name]; d != nil && name != h {
 			misnamed = true
 			e := c.errorf(diag.RouteDecl, d.Span, "route `%s` is a %s route, so its handler is `%s.%s`, not `%s.%s`", r.Name, r.Method, r.Name, h, r.Name, name)
-			e.Fix = renameFix(mc.m, d, h)
+			if members[h] == nil { // with the handler there, the rename would write it twice
+				e.Fix = renameFix(mc.m, d, h)
+			}
 		}
 	}
 	d := members[h]

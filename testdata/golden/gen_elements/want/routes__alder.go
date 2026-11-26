@@ -27,8 +27,9 @@ func decode__Index__Index__Params(_ map[string]string, _ url.Values) (r Index__I
 }
 
 // load__Index__Index runs route Index.Index for rq up to its model: load (with params and the
-// session of rq.Env). It returns the model and the session view and update take, or the response
-// that ends the request, which stores keep (the session a successful update left, or nil).
+// session of rq.Env). It returns the model and the session view and the handler take, or the
+// response that ends the request, which stores keep (the session a successful handler left, or
+// nil).
 func load__Index__Index(rq *web.Request, params Index__Index__Params, keep any) (Index__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Index__Index__load(params, session))
@@ -101,10 +102,11 @@ func decode__Index__NewPost(v url.Values) (r Index__NewPost, errs []web.FieldErr
 // Route__Index__Submit serves route Index.Submit, POST /: decode the parameters (404 when they do
 // not); decode form NewPost from the body (when it does not: 422, the page the browser is on
 // rendered again with the submitted values, no Text.Secret field, and the errors, without calling
-// update); check its options against the page it was posted from (a value that page did not offer:
-// as a form that does not decode; posted from another page: 400); render the page the browser is on
-// before the update (refresh and invalid are diffed against it); run the update and answer its
-// Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+// the handler); check its options against the page it was posted from (a value that page did not
+// offer: as a form that does not decode; posted from another page: 400); render the page the
+// browser is on before the handler (refresh and invalid are diffed against it); run the handler and
+// answer its Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for
+// Query.redirect).
 func Route__Index__Submit() web.Route {
 	return web.Route{Method: "POST", Pattern: "/", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Index__Submit__Params(rq.Params, rq.Query)
@@ -150,9 +152,9 @@ func decode__Index__Clear__Params(_ map[string]string, _ url.Values) (r Index__C
 }
 
 // Route__Index__Clear serves route Index.Clear, DELETE /: decode the parameters (404 when they do
-// not); render the page the browser is on before the update (refresh and invalid are diffed against
-// it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
-// Task.notFound, 303 for Query.redirect).
+// not); render the page the browser is on before the handler (refresh and invalid are diffed
+// against it); run the handler and answer its Response (a failed Task: 500, 404 for Query.notFound
+// or Task.notFound, 303 for Query.redirect).
 func Route__Index__Clear() web.Route {
 	return web.Route{Method: "DELETE", Pattern: "/", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Index__Clear__Params(rq.Params, rq.Query)
@@ -172,7 +174,7 @@ func Route__Index__Clear() web.Route {
 	}}
 }
 
-// route__fail answers a load or update that did not succeed: a 303 to the page for
+// route__fail answers a load or handler that did not succeed: a 303 to the page for
 // Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
 	var rd *eff.ErrRedirect

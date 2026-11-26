@@ -39,8 +39,8 @@ func decode__About__Show__Params(_ map[string]string, q url.Values) (r About__Sh
 }
 
 // load__About__Show runs route About.Show for rq up to its model: load (with params and the session
-// of rq.Env). It returns the model and the session view and update take, or the response that ends
-// the request, which stores keep (the session a successful update left, or nil).
+// of rq.Env). It returns the model and the session view and the handler take, or the response that
+// ends the request, which stores keep (the session a successful handler left, or nil).
 func load__About__Show(rq *web.Request, params About__Show__Params, keep any) (string, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, About__Show__load(params, session))
@@ -80,8 +80,8 @@ func decode__Admin__Stats__Params(_ map[string]string, _ url.Values) (r Admin__S
 // App.login, storing keep, when the session's user is Nothing), then `role Admin` (404,
 // App.notFound, as for a missing row, when the session's role is not one of them: a cookie check,
 // read when the user logged in), then load (with params and the narrowed session). It returns the
-// model and the session view and update take, or the response that ends the request, which stores
-// keep (the session a successful update left, or nil).
+// model and the session view and the handler take, or the response that ends the request, which
+// stores keep (the session a successful handler left, or nil).
 func load__Admin__Stats(rq *web.Request, params Admin__Stats__Params, keep any) (int64, Admin__Stats__Session, *web.Response) {
 	var model int64
 	app := rq.Env.Session.(App__Session)
@@ -130,8 +130,9 @@ func decode__Auth__Login__Login__Params(_ map[string]string, _ url.Values) (r Au
 }
 
 // load__Auth__Login__Login runs route Auth.Login.Login for rq up to its model: load (with params
-// and the session of rq.Env). It returns the model and the session view and update take, or the
-// response that ends the request, which stores keep (the session a successful update left, or nil).
+// and the session of rq.Env). It returns the model and the session view and the handler take, or
+// the response that ends the request, which stores keep (the session a successful handler left, or
+// nil).
 func load__Auth__Login__Login(rq *web.Request, params Auth__Login__Login__Params, keep any) (Auth__Login__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Auth__Login__Login__load(params, session))
@@ -176,8 +177,9 @@ func decode__Todos__Index__Params(_ map[string]string, q url.Values) (r Todos__I
 
 // load__Todos__Index runs route Todos.Index for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then load (with params and the
-// narrowed session). It returns the model and the session view and update take, or the response
-// that ends the request, which stores keep (the session a successful update left, or nil).
+// narrowed session). It returns the model and the session view and the handler take, or the
+// response that ends the request, which stores keep (the session a successful handler left, or
+// nil).
 func load__Todos__Index(rq *web.Request, params Todos__Index__Params, keep any) (Todos__TodoList, Todos__Index__Session, *web.Response) {
 	var model Todos__TodoList
 	app := rq.Env.Session.(App__Session)
@@ -230,8 +232,9 @@ func decode__Todos__Row__Params(params map[string]string, _ url.Values) (r Todos
 
 // load__Todos__Row runs route Todos.Row for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then load (with params and the
-// narrowed session). It returns the model and the session view and update take, or the response
-// that ends the request, which stores keep (the session a successful update left, or nil).
+// narrowed session). It returns the model and the session view and the handler take, or the
+// response that ends the request, which stores keep (the session a successful handler left, or
+// nil).
 func load__Todos__Row(rq *web.Request, params Todos__Row__Params, keep any) (Table__Todo__Todo, Todos__Index__Session, *web.Response) {
 	var model Table__Todo__Todo
 	app := rq.Env.Session.(App__Session)
@@ -283,7 +286,7 @@ func decode__Todos__Toggle__Params(params map[string]string, _ url.Values) (r To
 }
 
 // guard__Todos__Toggle runs the guard of route Todos.Toggle for rq: `requires user` (a 303 to
-// App.login when the session's user is Nothing). It returns the session the route's update takes,
+// App.login when the session's user is Nothing). It returns the session the route's handler takes,
 // or the response that ends the request.
 func guard__Todos__Toggle(rq *web.Request, params Todos__Toggle__Params) (Todos__Index__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
@@ -295,7 +298,7 @@ func guard__Todos__Toggle(rq *web.Request, params Todos__Toggle__Params) (Todos_
 }
 
 // Route__Todos__Toggle serves route Todos.Toggle, PUT /todos/{id}/done: decode the parameters (404
-// when they do not); `requires` (303 to App.login); run the update and answer its Response (a
+// when they do not); `requires` (303 to App.login); run the handler and answer its Response (a
 // failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Todos__Toggle() web.Route {
 	return web.Route{Method: "PUT", Pattern: "/todos/{id}/done", Handle: func(rq *web.Request) web.Response {
@@ -322,7 +325,7 @@ func decode__Todos__Create__Params(_ map[string]string, _ url.Values) (r Todos__
 }
 
 // guard__Todos__Create runs the guard of route Todos.Create for rq: `requires user` (a 303 to
-// App.login when the session's user is Nothing). It returns the session the route's update takes,
+// App.login when the session's user is Nothing). It returns the session the route's handler takes,
 // or the response that ends the request.
 func guard__Todos__Create(rq *web.Request, params Todos__Create__Params) (Todos__Index__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
@@ -354,9 +357,9 @@ func decode__Todos__NewTodo(v url.Values) (r Todos__NewTodo, errs []web.FieldErr
 // Route__Todos__Create serves route Todos.Create, POST /todos: decode the parameters (404 when they
 // do not); `requires` (303 to App.login); decode form NewTodo from the body (when it does not: 422,
 // the page the browser is on rendered again with the submitted values, no Text.Secret field, and
-// the errors, without calling update); render the page the browser is on before the update (refresh
-// and invalid are diffed against it); run the update and answer its Response (a failed Task: 500,
-// 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+// the errors, without calling the handler); render the page the browser is on before the handler
+// (refresh and invalid are diffed against it); run the handler and answer its Response (a failed
+// Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Todos__Create() web.Route {
 	return web.Route{Method: "POST", Pattern: "/todos", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Todos__Create__Params(rq.Params, rq.Query)
@@ -410,7 +413,7 @@ func decode__Todos__Delete__Params(params map[string]string, _ url.Values) (r To
 }
 
 // guard__Todos__Delete runs the guard of route Todos.Delete for rq: `requires user` (a 303 to
-// App.login when the session's user is Nothing). It returns the session the route's update takes,
+// App.login when the session's user is Nothing). It returns the session the route's handler takes,
 // or the response that ends the request.
 func guard__Todos__Delete(rq *web.Request, params Todos__Delete__Params) (Todos__Index__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
@@ -423,7 +426,7 @@ func guard__Todos__Delete(rq *web.Request, params Todos__Delete__Params) (Todos_
 
 // Route__Todos__Delete serves route Todos.Delete, DELETE /todos/{id}: decode the parameters (404
 // when they do not); `requires` (303 to App.login); render the page the browser is on before the
-// update (refresh and invalid are diffed against it); run the update and answer its Response (a
+// handler (refresh and invalid are diffed against it); run the handler and answer its Response (a
 // failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Todos__Delete() web.Route {
 	return web.Route{Method: "DELETE", Pattern: "/todos/{id}", Handle: func(rq *web.Request) web.Response {
@@ -463,7 +466,7 @@ func decode__Todos__Move__Params(params map[string]string, _ url.Values) (r Todo
 }
 
 // guard__Todos__Move runs the guard of route Todos.Move for rq: `requires user` (a 303 to App.login
-// when the session's user is Nothing). It returns the session the route's update takes, or the
+// when the session's user is Nothing). It returns the session the route's handler takes, or the
 // response that ends the request.
 func guard__Todos__Move(rq *web.Request, params Todos__Move__Params) (Todos__Index__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
@@ -488,10 +491,10 @@ func decode__Todos__MoveTo(v url.Values) (r Todos__MoveTo, errs []web.FieldError
 // Route__Todos__Move serves route Todos.Move, POST /todos/{id}/move: decode the parameters (404
 // when they do not); `requires` (303 to App.login); decode form MoveTo from the body (when it does
 // not: 422, the page the browser is on rendered again with the submitted values, no Text.Secret
-// field, and the errors, without calling update); check its options against the page it was posted
-// from (a value that page did not offer: as a form that does not decode; posted from another page:
-// 400); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
-// Task.notFound, 303 for Query.redirect).
+// field, and the errors, without calling the handler); check its options against the page it was
+// posted from (a value that page did not offer: as a form that does not decode; posted from another
+// page: 400); run the handler and answer its Response (a failed Task: 500, 404 for Query.notFound
+// or Task.notFound, 303 for Query.redirect).
 func Route__Todos__Move() web.Route {
 	return web.Route{Method: "POST", Pattern: "/todos/{id}/move", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Todos__Move__Params(rq.Params, rq.Query)
@@ -541,8 +544,9 @@ func decode__Todos__Export__Params(_ map[string]string, _ url.Values) (r Todos__
 
 // load__Todos__Export runs route Todos.Export for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then load (with params and the
-// narrowed session). It returns the model and the session view and update take, or the response
-// that ends the request, which stores keep (the session a successful update left, or nil).
+// narrowed session). It returns the model and the session view and the handler take, or the
+// response that ends the request, which stores keep (the session a successful handler left, or
+// nil).
 func load__Todos__Export(rq *web.Request, params Todos__Export__Params, keep any) ([]Table__Todo__Todo, Todos__Index__Session, *web.Response) {
 	var model []Table__Todo__Todo
 	app := rq.Env.Session.(App__Session)
@@ -579,7 +583,7 @@ func Route__Todos__Export() web.Route {
 	}}
 }
 
-// route__fail answers a load or update that did not succeed: a 303 to the page for
+// route__fail answers a load or handler that did not succeed: a 303 to the page for
 // Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
 	var rd *eff.ErrRedirect

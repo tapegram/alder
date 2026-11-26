@@ -33,8 +33,8 @@ func decode__Admin__Admin__Params(_ map[string]string, _ url.Values) (r Admin__A
 // App.login, storing keep, when the session's user is Nothing), then `role Author | Admin` (404,
 // App.notFound, as for a missing row, when the session's role is not one of them: a cookie check,
 // read when the user logged in), then load (with params and the narrowed session). It returns the
-// model and the session view and update take, or the response that ends the request, which stores
-// keep (the session a successful update left, or nil).
+// model and the session view and the handler take, or the response that ends the request, which
+// stores keep (the session a successful handler left, or nil).
 func load__Admin__Admin(rq *web.Request, params Admin__Admin__Params, keep any) (Admin__Model, Admin__Admin__Session, *web.Response) {
 	var model Admin__Model
 	app := rq.Env.Session.(App__Session)
@@ -86,8 +86,9 @@ func decode__Login__Login__Params(_ map[string]string, _ url.Values) (r Login__L
 }
 
 // load__Login__Login runs route Login.Login for rq up to its model: load (with params and the
-// session of rq.Env). It returns the model and the session view and update take, or the response
-// that ends the request, which stores keep (the session a successful update left, or nil).
+// session of rq.Env). It returns the model and the session view and the handler take, or the
+// response that ends the request, which stores keep (the session a successful handler left, or
+// nil).
 func load__Login__Login(rq *web.Request, params Login__Login__Params, keep any) (Login__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Login__Login__load(params, session))
@@ -125,8 +126,9 @@ func decode__Notes__Notes__Params(_ map[string]string, _ url.Values) (r Notes__N
 
 // load__Notes__Notes runs route Notes.Notes for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then load (with params and the
-// narrowed session). It returns the model and the session view and update take, or the response
-// that ends the request, which stores keep (the session a successful update left, or nil).
+// narrowed session). It returns the model and the session view and the handler take, or the
+// response that ends the request, which stores keep (the session a successful handler left, or
+// nil).
 func load__Notes__Notes(rq *web.Request, params Notes__Notes__Params, keep any) (Notes__Model, Notes__Notes__Session, *web.Response) {
 	var model Notes__Model
 	app := rq.Env.Session.(App__Session)
@@ -172,7 +174,7 @@ func decode__Notes__Add__Params(_ map[string]string, _ url.Values) (r Notes__Add
 }
 
 // guard__Notes__Add runs the guard of route Notes.Add for rq: `requires user` (a 303 to App.login
-// when the session's user is Nothing). It returns the session the route's update takes, or the
+// when the session's user is Nothing). It returns the session the route's handler takes, or the
 // response that ends the request.
 func guard__Notes__Add(rq *web.Request, params Notes__Add__Params) (Notes__Notes__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
@@ -200,9 +202,9 @@ func decode__Notes__NewNote(v url.Values) (r Notes__NewNote, errs []web.FieldErr
 // Route__Notes__Add serves route Notes.Add, POST /notes: decode the parameters (404 when they do
 // not); `requires` (303 to App.login); decode form NewNote from the body (when it does not: 422,
 // the page the browser is on rendered again with the submitted values, no Text.Secret field, and
-// the errors, without calling update); render the page the browser is on before the update (refresh
-// and invalid are diffed against it); run the update and answer its Response (a failed Task: 500,
-// 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+// the errors, without calling the handler); render the page the browser is on before the handler
+// (refresh and invalid are diffed against it); run the handler and answer its Response (a failed
+// Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Add() web.Route {
 	return web.Route{Method: "POST", Pattern: "/notes", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Add__Params(rq.Params, rq.Query)
@@ -256,7 +258,7 @@ func decode__Notes__Pin__Params(params map[string]string, _ url.Values) (r Notes
 }
 
 // guard__Notes__Pin runs the guard of route Notes.Pin for rq: `requires user` (a 303 to App.login
-// when the session's user is Nothing). It returns the session the route's update takes, or the
+// when the session's user is Nothing). It returns the session the route's handler takes, or the
 // response that ends the request.
 func guard__Notes__Pin(rq *web.Request, params Notes__Pin__Params) (Notes__Notes__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
@@ -271,8 +273,8 @@ func guard__Notes__Pin(rq *web.Request, params Notes__Pin__Params) (Notes__Notes
 }
 
 // Route__Notes__Pin serves route Notes.Pin, PUT /notes/{id}/pin: decode the parameters (404 when
-// they do not); `requires` (303 to App.login); render the page the browser is on before the update
-// (refresh and invalid are diffed against it); run the update and answer its Response (a failed
+// they do not); `requires` (303 to App.login); render the page the browser is on before the handler
+// (refresh and invalid are diffed against it); run the handler and answer its Response (a failed
 // Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Pin() web.Route {
 	return web.Route{Method: "PUT", Pattern: "/notes/{id}/pin", Handle: func(rq *web.Request) web.Response {
@@ -312,7 +314,7 @@ func decode__Notes__Remove__Params(params map[string]string, _ url.Values) (r No
 }
 
 // guard__Notes__Remove runs the guard of route Notes.Remove for rq: `requires user` (a 303 to
-// App.login when the session's user is Nothing). It returns the session the route's update takes,
+// App.login when the session's user is Nothing). It returns the session the route's handler takes,
 // or the response that ends the request.
 func guard__Notes__Remove(rq *web.Request, params Notes__Remove__Params) (Notes__Notes__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
@@ -328,7 +330,7 @@ func guard__Notes__Remove(rq *web.Request, params Notes__Remove__Params) (Notes_
 
 // Route__Notes__Remove serves route Notes.Remove, DELETE /notes/{id}: decode the parameters (404
 // when they do not); `requires` (303 to App.login); render the page the browser is on before the
-// update (refresh and invalid are diffed against it); run the update and answer its Response (a
+// handler (refresh and invalid are diffed against it); run the handler and answer its Response (a
 // failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Notes__Remove() web.Route {
 	return web.Route{Method: "DELETE", Pattern: "/notes/{id}", Handle: func(rq *web.Request) web.Response {
@@ -361,7 +363,7 @@ func encode__Notes__NewNote(r Notes__NewNote) rtesting.Fields {
 	return rtesting.Fields{Values: v, Absent: absent}
 }
 
-// route__fail answers a load or update that did not succeed: a 303 to the page for
+// route__fail answers a load or handler that did not succeed: a 303 to the page for
 // Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
 	var rd *eff.ErrRedirect

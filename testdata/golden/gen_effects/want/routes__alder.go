@@ -29,8 +29,8 @@ func decode__App__Logout__Params(_ map[string]string, _ url.Values) (r App__Logo
 }
 
 // Route__App__Logout serves route App.Logout, DELETE /session: decode the parameters (404 when they
-// do not); render the page the browser is on before the update (refresh and invalid are diffed
-// against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
+// do not); render the page the browser is on before the handler (refresh and invalid are diffed
+// against it); run the handler and answer its Response (a failed Task: 500, 404 for Query.notFound
 // or Task.notFound, 303 for Query.redirect).
 func Route__App__Logout() web.Route {
 	return web.Route{Method: "DELETE", Pattern: "/session", Handle: func(rq *web.Request) web.Response {
@@ -73,8 +73,9 @@ func decode__Index__Index__Params(params map[string]string, _ url.Values) (r Ind
 
 // load__Index__Index runs route Index.Index for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then load (with params and the
-// narrowed session). It returns the model and the session view and update take, or the response
-// that ends the request, which stores keep (the session a successful update left, or nil).
+// narrowed session). It returns the model and the session view and the handler take, or the
+// response that ends the request, which stores keep (the session a successful handler left, or
+// nil).
 func load__Index__Index(rq *web.Request, params Index__Index__Params, keep any) (Index__Model, Index__Index__Session, *web.Response) {
 	var model Index__Model
 	app := rq.Env.Session.(App__Session)
@@ -136,7 +137,7 @@ func decode__Index__Add__Params(params map[string]string, q url.Values) (r Index
 }
 
 // guard__Index__Add runs the guard of route Index.Add for rq: `requires user` (a 303 to App.login
-// when the session's user is Nothing). It returns the session the route's update takes, or the
+// when the session's user is Nothing). It returns the session the route's handler takes, or the
 // response that ends the request.
 func guard__Index__Add(rq *web.Request, params Index__Add__Params) (Index__Index__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
@@ -148,7 +149,7 @@ func guard__Index__Add(rq *web.Request, params Index__Add__Params) (Index__Index
 }
 
 // Route__Index__Add serves route Index.Add, POST /pair/{a}/{b}: decode the parameters (404 when
-// they do not); `requires` (303 to App.login); run the update and answer its Response (a failed
+// they do not); `requires` (303 to App.login); run the handler and answer its Response (a failed
 // Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Index__Add() web.Route {
 	return web.Route{Method: "POST", Pattern: "/pair/{a}/{b}", Handle: func(rq *web.Request) web.Response {
@@ -194,7 +195,7 @@ func decode__Index__Toggle__Params(params map[string]string, q url.Values) (r In
 }
 
 // guard__Index__Toggle runs the guard of route Index.Toggle for rq: `requires user` (a 303 to
-// App.login when the session's user is Nothing). It returns the session the route's update takes,
+// App.login when the session's user is Nothing). It returns the session the route's handler takes,
 // or the response that ends the request.
 func guard__Index__Toggle(rq *web.Request, params Index__Toggle__Params) (Index__Index__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
@@ -207,8 +208,8 @@ func guard__Index__Toggle(rq *web.Request, params Index__Toggle__Params) (Index_
 
 // Route__Index__Toggle serves route Index.Toggle, PUT /pair/{a}/{b}/done: decode the parameters
 // (404 when they do not); `requires` (303 to App.login); render the page the browser is on before
-// the update (refresh and invalid are diffed against it); run the update and answer its Response (a
-// failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+// the handler (refresh and invalid are diffed against it); run the handler and answer its Response
+// (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Index__Toggle() web.Route {
 	return web.Route{Method: "PUT", Pattern: "/pair/{a}/{b}/done", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Index__Toggle__Params(rq.Params, rq.Query)
@@ -257,7 +258,7 @@ func decode__Index__Remove__Params(params map[string]string, q url.Values) (r In
 }
 
 // guard__Index__Remove runs the guard of route Index.Remove for rq: `requires user` (a 303 to
-// App.login when the session's user is Nothing). It returns the session the route's update takes,
+// App.login when the session's user is Nothing). It returns the session the route's handler takes,
 // or the response that ends the request.
 func guard__Index__Remove(rq *web.Request, params Index__Remove__Params) (Index__Index__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
@@ -270,7 +271,7 @@ func guard__Index__Remove(rq *web.Request, params Index__Remove__Params) (Index_
 
 // Route__Index__Remove serves route Index.Remove, DELETE /pair/{a}/{b}: decode the parameters (404
 // when they do not); `requires` (303 to App.login); render the page the browser is on before the
-// update (refresh and invalid are diffed against it); run the update and answer its Response (a
+// handler (refresh and invalid are diffed against it); run the handler and answer its Response (a
 // failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Index__Remove() web.Route {
 	return web.Route{Method: "DELETE", Pattern: "/pair/{a}/{b}", Handle: func(rq *web.Request) web.Response {
@@ -315,7 +316,7 @@ func decode__Index__Notify__Params(params map[string]string, _ url.Values) (r In
 }
 
 // guard__Index__Notify runs the guard of route Index.Notify for rq: `requires user` (a 303 to
-// App.login when the session's user is Nothing). It returns the session the route's update takes,
+// App.login when the session's user is Nothing). It returns the session the route's handler takes,
 // or the response that ends the request.
 func guard__Index__Notify(rq *web.Request, params Index__Notify__Params) (Index__Index__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
@@ -328,7 +329,7 @@ func guard__Index__Notify(rq *web.Request, params Index__Notify__Params) (Index_
 
 // Route__Index__Notify serves route Index.Notify, POST /pair/{a}/{b}/notification: decode the
 // parameters (404 when they do not); `requires` (303 to App.login); render the page the browser is
-// on before the update (refresh and invalid are diffed against it); run the update and answer its
+// on before the handler (refresh and invalid are diffed against it); run the handler and answer its
 // Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Index__Notify() web.Route {
 	return web.Route{Method: "POST", Pattern: "/pair/{a}/{b}/notification", Handle: func(rq *web.Request) web.Response {
@@ -359,8 +360,9 @@ func decode__Login__Login__Params(_ map[string]string, _ url.Values) (r Login__L
 }
 
 // load__Login__Login runs route Login.Login for rq up to its model: load (with params and the
-// session of rq.Env). It returns the model and the session view and update take, or the response
-// that ends the request, which stores keep (the session a successful update left, or nil).
+// session of rq.Env). It returns the model and the session view and the handler take, or the
+// response that ends the request, which stores keep (the session a successful handler left, or
+// nil).
 func load__Login__Login(rq *web.Request, params Login__Login__Params, keep any) (struct{}, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Login__Login__load(params, session))
@@ -390,7 +392,7 @@ func Route__Login__Login() web.Route {
 	}}
 }
 
-// route__fail answers a load or update that did not succeed: a 303 to the page for
+// route__fail answers a load or handler that did not succeed: a 303 to the page for
 // Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
 	var rd *eff.ErrRedirect

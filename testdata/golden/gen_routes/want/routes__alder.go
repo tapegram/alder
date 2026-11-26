@@ -41,8 +41,8 @@ func decode__Edit__Edit__Params(params map[string]string, _ url.Values) (r Edit_
 }
 
 // load__Edit__Edit runs route Edit.Edit for rq up to its model: load (with params and the session
-// of rq.Env). It returns the model and the session view and update take, or the response that ends
-// the request, which stores keep (the session a successful update left, or nil).
+// of rq.Env). It returns the model and the session view and the handler take, or the response that
+// ends the request, which stores keep (the session a successful handler left, or nil).
 func load__Edit__Edit(rq *web.Request, params Edit__Edit__Params, keep any) (Edit__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Edit__Edit__load(params, session))
@@ -109,10 +109,10 @@ func decode__Edit__Note(v url.Values) (r Edit__Note, errs []web.FieldError) {
 
 // Route__Edit__Save serves route Edit.Save, POST /edit/{n}: decode the parameters (404 when they do
 // not); decode form Note from the body (when it does not: 422, the page the browser is on rendered
-// again with the submitted values, no Text.Secret field, and the errors, without calling update);
-// render the page the browser is on before the update (refresh and invalid are diffed against it);
-// run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
-// Task.notFound, 303 for Query.redirect).
+// again with the submitted values, no Text.Secret field, and the errors, without calling the
+// handler); render the page the browser is on before the handler (refresh and invalid are diffed
+// against it); run the handler and answer its Response (a failed Task: 500, 404 for Query.notFound
+// or Task.notFound, 303 for Query.redirect).
 func Route__Edit__Save() web.Route {
 	return web.Route{Method: "POST", Pattern: "/edit/{n}", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Edit__Save__Params(rq.Params, rq.Query)
@@ -165,9 +165,9 @@ func decode__Edit__Ping__Params(params map[string]string, _ url.Values) (r Edit_
 }
 
 // Route__Edit__Ping serves route Edit.Ping, POST /edit/{n}/ping: decode the parameters (404 when
-// they do not); render the page the browser is on before the update (refresh and invalid are diffed
-// against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
-// or Task.notFound, 303 for Query.redirect).
+// they do not); render the page the browser is on before the handler (refresh and invalid are
+// diffed against it); run the handler and answer its Response (a failed Task: 500, 404 for
+// Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Edit__Ping() web.Route {
 	return web.Route{Method: "POST", Pattern: "/edit/{n}/ping", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Edit__Ping__Params(rq.Params, rq.Query)
@@ -194,8 +194,9 @@ func decode__Other__Other__Params(_ map[string]string, _ url.Values) (r Other__O
 }
 
 // load__Other__Other runs route Other.Other for rq up to its model: load (with params and the
-// session of rq.Env). It returns the model and the session view and update take, or the response
-// that ends the request, which stores keep (the session a successful update left, or nil).
+// session of rq.Env). It returns the model and the session view and the handler take, or the
+// response that ends the request, which stores keep (the session a successful handler left, or
+// nil).
 func load__Other__Other(rq *web.Request, params Other__Other__Params, keep any) (Other__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Other__Other__load(params, session))
@@ -233,8 +234,9 @@ func decode__Secret__Secret__Params(_ map[string]string, _ url.Values) (r Secret
 
 // load__Secret__Secret runs route Secret.Secret for rq up to its model: `requires user` (a 303 to
 // App.login, storing keep, when the session's user is Nothing), then load (with params and the
-// narrowed session). It returns the model and the session view and update take, or the response
-// that ends the request, which stores keep (the session a successful update left, or nil).
+// narrowed session). It returns the model and the session view and the handler take, or the
+// response that ends the request, which stores keep (the session a successful handler left, or
+// nil).
 func load__Secret__Secret(rq *web.Request, params Secret__Secret__Params, keep any) (Secret__Model, Secret__Secret__Session, *web.Response) {
 	var model Secret__Model
 	app := rq.Env.Session.(App__Session)
@@ -270,7 +272,7 @@ func Route__Secret__Secret() web.Route {
 	}}
 }
 
-// route__fail answers a load or update that did not succeed: a 303 to the page for
+// route__fail answers a load or handler that did not succeed: a 303 to the page for
 // Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
 	var rd *eff.ErrRedirect

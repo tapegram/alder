@@ -28,8 +28,9 @@ func decode__Sites__MnSos__MnSos__Params(_ map[string]string, q url.Values) (r S
 }
 
 // load__Sites__MnSos__MnSos runs route Sites.MnSos.MnSos for rq up to its model: load (with params
-// and the session of rq.Env). It returns the model and the session view and update take, or the
-// response that ends the request, which stores keep (the session a successful update left, or nil).
+// and the session of rq.Env). It returns the model and the session view and the handler take, or
+// the response that ends the request, which stores keep (the session a successful handler left, or
+// nil).
 func load__Sites__MnSos__MnSos(rq *web.Request, params Sites__MnSos__MnSos__Params, keep any) (Sites__MnSos__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Sites__MnSos__MnSos__load(params, session))
@@ -59,7 +60,7 @@ func Route__Sites__MnSos__MnSos() web.Route {
 	}}
 }
 
-// route__fail answers a load or update that did not succeed: a 303 to the page for
+// route__fail answers a load or handler that did not succeed: a 303 to the page for
 // Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
 	var rd *eff.ErrRedirect

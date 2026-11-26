@@ -23,8 +23,8 @@ func decode__App__Logout__Params(_ map[string]string, _ url.Values) (r App__Logo
 }
 
 // Route__App__Logout serves route App.Logout, DELETE /session: decode the parameters (404 when they
-// do not); render the page the browser is on before the update (refresh and invalid are diffed
-// against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
+// do not); render the page the browser is on before the handler (refresh and invalid are diffed
+// against it); run the handler and answer its Response (a failed Task: 500, 404 for Query.notFound
 // or Task.notFound, 303 for Query.redirect).
 func Route__App__Logout() web.Route {
 	return web.Route{Method: "DELETE", Pattern: "/session", Handle: func(rq *web.Request) web.Response {
@@ -45,7 +45,7 @@ func Route__App__Logout() web.Route {
 	}}
 }
 
-// route__fail answers a load or update that did not succeed: a 303 to the page for
+// route__fail answers a load or handler that did not succeed: a 303 to the page for
 // Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
 	var rd *eff.ErrRedirect

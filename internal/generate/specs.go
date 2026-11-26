@@ -103,7 +103,7 @@ func newSpecs() []*Spec {
 				{Name: "show", Kind: ArgTable, Value: "T", Summary: "a GET route showing one row of table T", Example: "Post"},
 				{Name: "by", Kind: ArgText, Value: "column", Summary: "with --show, the unique column in the path", Example: "slug"},
 				{Name: "from", Kind: ArgTable, Greedy: true, Value: "T…", Summary: "a card of every row of each table T; takes several tables up to the next flag (--from A B)", Example: "Post Comment"},
-				{Name: "method", Kind: ArgChoice, Choices: []string{"GET", "POST", "PUT", "PATCH", "DELETE"}, Value: "GET|POST|PUT|PATCH|DELETE", Summary: "the route's method: GET has load and view (the default); a write method has only update, answering Response.refresh", Example: "POST"},
+				{Name: "method", Kind: ArgChoice, Choices: []string{"GET", "POST", "PUT", "PATCH", "DELETE"}, Value: "GET|POST|PUT|PATCH|DELETE", Summary: "the route's method: GET has load and view (the default); a write method has only its handler (`post`, `put`, `patch` or `delete`), answering Response.refresh", Example: "POST"},
 				{Name: "form", Kind: ArgText, Value: "F", Summary: "with a write method, the form the route posts (declared empty; add its fields)", Example: "Contact"},
 				{Name: "blank", Kind: ArgBool, Summary: "an empty route with typed holes", Agent: true},
 				{Name: "file", Kind: ArgBool, Summary: "a file route: view returns File (text, CSV, JSON, a zip) instead of HTML"},
@@ -155,7 +155,7 @@ func newSpecs() []*Spec {
 			},
 		},
 		{
-			ID: "new form", Summary: "a form with its write route, `update` and view",
+			ID: "new form", Summary: "a form with its write route, its handler and view",
 			Args: []Field{
 				{Name: "page", Kind: ArgRouteModule, Required: true, Value: "<Route module>", Help: "the route module the form goes on", Example: "Posts.Index"},
 				{Name: "name", Kind: ArgText, Required: true, Value: "<Name>", Help: "the form's name, a capitalised word", Example: "NewComment"},
@@ -164,7 +164,7 @@ func newSpecs() []*Spec {
 			Flags: []Field{
 				{Name: "into", Kind: ArgTable, Value: "T", Summary: "insert the submitted form into table T", Example: "Comment"},
 				{Name: "msg", Kind: ArgText, Value: "Route", Summary: "the write route's name (Submit<Name> by default); an existing write route of the module without a form gets this form", Example: "Submit", Agent: true},
-				{Name: "hole", Kind: ArgBool, Summary: "leave the route's `update` body a hole (?answer) instead of inserting into a table"},
+				{Name: "hole", Kind: ArgBool, Summary: "leave the route's handler body a hole (?answer) instead of inserting into a table"},
 				{Name: "edit", Kind: ArgTable, Value: "T", Summary: "on a `--show T` route, a form that changes its row (the given fields, else T's editable columns)", Example: "Post"},
 				{Name: "method", Kind: ArgChoice, Choices: []string{"POST", "PUT", "PATCH", "DELETE"}, Value: "POST|PUT|PATCH|DELETE", Summary: "the write route's method (POST by default; PUT with --edit)", Example: "PUT"},
 				{Name: "path", Kind: ArgRoute, Value: "/path", Summary: "the write route's path (the table's collection, or with --edit its row's; else the route module's own path)", Example: "/contact/messages"},

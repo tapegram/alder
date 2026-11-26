@@ -1,0 +1,9 @@
+module Todos
+
+route Add = POST "/todos" { }
+
+Add.post : Add.Params -> Session -> Task Response
+Add.post params session = Task.succeed Response.refresh
+
+Add.delete : Add.Params -> Session -> Task Response
+Add.delete params session = Task.succeed Response.refresh

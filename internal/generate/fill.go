@@ -153,7 +153,7 @@ func findHole(p *Program, address, hole string) (h *Hole, in []Hole, err error) 
 	}
 	switch {
 	case len(in) == 0 && arm != "":
-		return nil, nil, Refusef("`%s` has no typed hole: a fill replaces a hole, and this arm has none; to rewrite it, give `alder fill --decl %s.update -` the whole `match msg { … }` (`alder fill --list` lists the app's holes)", address, mod)
+		return nil, nil, Refusef("`%s` has no typed hole: a fill replaces a hole, and this arm has none; to rewrite it, give `alder fill --decl %s -` the declaration whole (`alder fill --list` lists the app's holes)", address, shellAddress(address))
 	case len(in) == 0:
 		return nil, nil, Refusef("`%s` has no typed hole; to rewrite it whole, `alder fill --decl %s -` (`alder fill --list` lists the app's holes)", address, shellAddress(address))
 	case len(named) == 0:
@@ -451,7 +451,7 @@ func parseAddress(p *Program, address string) (mod, decl, arm string, err error)
 			if len(rest) == 1 && decl == "update" && valueDecl(p.Modules[mod].Syntax, decl) == nil { // the handler's name before #308, for one release: the one route whose handler it was
 				var full []string
 				for _, d := range p.Modules[mod].Syntax.Decls {
-					if v, ok := d.(*syntax.ValueDecl); ok && v.Route != "" && slices.Contains([]string{"post", "put", "patch", "delete"}, v.Name) {
+					if v, ok := d.(*syntax.ValueDecl); ok && v.Route != "" && isRouteHandler(p.Modules[mod].Syntax, v) {
 						full = append(full, v.FullName())
 					}
 				}
@@ -702,4 +702,11 @@ func (p *Program) handlerIn(mod, route, method string) string {
 		return "update"
 	}
 	return h
+}
+
+// isRouteHandler reports whether v is the handler of its route in m: the member named after the
+// route's method (`Save.post` for a POST route), not another member that has a method's name.
+func isRouteHandler(m *syntax.Module, v *syntax.ValueDecl) bool {
+	r := routeDecl(m, v.Route)
+	return r != nil && v.Name == check.HandlerName(r.Method)
 }

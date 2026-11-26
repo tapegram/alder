@@ -51,6 +51,10 @@ func (c *Checker) rejectRemoved(quiet map[string]bool) []removedDecl {
 				if vd, ok := d.(*syntax.ValueDecl); ok && vd.Route == "" && pageMembers[vd.Name] {
 					cands := routeCandidates(m, vd.Name)
 					if len(cands) == 0 {
+						if vd.Name == legacyHandler {
+							c.errorf(diag.RemovedSyntax, vd.Span, "an unqualified `update` is a page's; a write route's handler is named after its method and written qualified (`Name.post` for `route Name = POST`); %s", removedHint)
+							continue
+						}
 						c.errorf(diag.RemovedSyntax, vd.Span, "an unqualified `%s` is a page's; a route's is written `Name.%s` for its `route Name`; %s", vd.Name, vd.Name, removedHint)
 						continue
 					}
@@ -87,11 +91,15 @@ func (c *Checker) rejectRemoved(quiet map[string]bool) []removedDecl {
 	return out
 }
 
+// routeCandidate is a route that needs an unqualified member, and the member's name for it: the
+// member itself, or for `update` the route's handler (`post` for a POST route).
+type routeCandidate struct{ route, member string }
+
 // routeCandidates are the routes of m that need the member (`update`: write routes, which need
 // a handler; `load` and `view`: GET routes) and do not declare it, in declaration order. A write
 // route has its handler when it declares it under its method's name or, for one release,
 // `update`.
-func routeCandidates(m *syntax.Module, member string) []string {
+func routeCandidates(m *syntax.Module, member string) []routeCandidate {
 	have := map[string]bool{}
 	methods := map[string]string{}
 	for _, d := range m.Decls {
@@ -108,27 +116,31 @@ func routeCandidates(m *syntax.Module, member string) []string {
 			have[vd.Route] = true
 		}
 	}
-	var out []string
+	var out []routeCandidate
 	for _, d := range m.Decls {
 		if r, ok := d.(*syntax.RouteDecl); ok && isWrite(r.Method) == (member == legacyHandler) && !have[r.Name] {
-			out = append(out, r.Name)
+			name := member
+			if member == legacyHandler {
+				name = HandlerName(r.Method)
+			}
+			out = append(out, routeCandidate{r.Name, name})
 		}
 	}
 	return out
 }
 
 // qualifyMessage is the E0046 for an unqualified member in a module with routes that lack it.
-func qualifyMessage(module, member string, cands []string) string {
+func qualifyMessage(module, member string, cands []routeCandidate) string {
 	kind := "GET"
 	if member == legacyHandler {
 		kind = "write"
 	}
 	if len(cands) == 1 {
-		return fmt.Sprintf("`%s` must be qualified with the route it belongs to: `%s.%s` (route `%s` is the only %s route in `%s`); %s", member, cands[0], member, cands[0], kind, module, removedHint)
+		return fmt.Sprintf("`%s` must be qualified with the route it belongs to: `%s.%s` (route `%s` is the only %s route in `%s`); %s", member, cands[0].route, cands[0].member, cands[0].route, kind, module, removedHint)
 	}
 	qs := make([]string, len(cands))
 	for i, r := range cands {
-		qs[i] = "`" + r + "." + member + "`"
+		qs[i] = "`" + r.route + "." + r.member + "`"
 	}
 	return fmt.Sprintf("`%s` must be qualified with the route it belongs to: one of %s (the %s routes in `%s`); %s", member, strings.Join(qs, ", "), kind, module, removedHint)
 }

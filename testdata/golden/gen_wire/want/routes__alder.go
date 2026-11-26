@@ -47,8 +47,8 @@ func decode__Wood__Wood__Params(params map[string]string, q url.Values) (r Wood_
 }
 
 // load__Wood__Wood runs route Wood.Wood for rq up to its model: load (with params and the session
-// of rq.Env). It returns the model and the session view and update take, or the response that ends
-// the request, which stores keep (the session a successful update left, or nil).
+// of rq.Env). It returns the model and the session view and the handler take, or the response that
+// ends the request, which stores keep (the session a successful handler left, or nil).
 func load__Wood__Wood(rq *web.Request, params Wood__Wood__Params, keep any) (Wood__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
 	model, err := eff.RunQuery(rq.Env, Wood__Wood__load(params, session))
@@ -99,7 +99,7 @@ func decode__Wood__Bump__Params(params map[string]string, q url.Values) (r Wood_
 }
 
 // Route__Wood__Bump serves route Wood.Bump, POST /r/{cfg}/wood/Results: decode the parameters (404
-// when they do not); run the update and answer its Response (a failed Task: 500, 404 for
+// when they do not); run the handler and answer its Response (a failed Task: 500, 404 for
 // Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Wood__Bump() web.Route {
 	return web.Route{Method: "POST", Pattern: "/r/{cfg}/wood/Results", Handle: func(rq *web.Request) web.Response {
@@ -116,7 +116,7 @@ func Route__Wood__Bump() web.Route {
 	}}
 }
 
-// route__fail answers a load or update that did not succeed: a 303 to the page for
+// route__fail answers a load or handler that did not succeed: a 303 to the page for
 // Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
 	var rd *eff.ErrRedirect
