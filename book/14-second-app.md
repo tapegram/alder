@@ -1729,6 +1729,7 @@ test "Logout and Leave say where to go" = {
 module Table.Project
 
 import Table.Org
+import Table.User
 
 type ProjectId = brand Text
 
@@ -1747,6 +1748,50 @@ puts the table in the org's database. `Todo` is the same, with
 `project: Project.ProjectId @ref Project @cascade`, a reference inside
 one database, so deleting a project deletes its to-dos there. A shared
 table may not refer to either (E0033).
+
+The org's queries over it live in the table's module, each with the
+`requires org` its body needs: a route that `requires org`,
+or a test that logged in as one, may call them, and nothing else may.
+
+```alder part=workspace/Table.Project
+-- ordered is the org's projects by name: the session's org, from the silo `Db.scoped` opens, so
+-- the clause says `org` and every caller (a route that `requires org`, a test) is checked for it.
+ordered : Query (List Project) requires org
+ordered =
+  Db.scoped Project
+    |> Db.orderBy Project.name.asc
+    |> Db.all
+
+-- current is the org's project with that id; another org's is not there to find (a 404).
+current : ProjectId -> Query Project requires org
+current id = Db.getScoped Project id
+
+test "ordered answers for the session's org, one answer per org" = {
+  let ann <- Db.insert User.User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org.Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org.Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member ann acme
+  let _ <- Test.member ann globex
+  let _ <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Apollo", org: acme }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let inAcme <- ordered
+  let _ <- Test.login { user: Just ann, org: Just globex }
+  let inGlobex <- ordered
+  Task.succeed (
+    { acme: List.map (\p -> p.name) inAcme, globex: List.map (\p -> p.name) inGlobex }
+      == {
+        acme: [Text.NonEmpty "Apollo", Text.NonEmpty "Rocket"],
+        globex: [Text.NonEmpty "Widget"],
+      }
+  )
+}
+```
 
 ### Choosing an org: `Orgs.Index`
 
@@ -1809,7 +1854,7 @@ Index.load params session = {
   let member <- Membership.isMember session.user session.org
   if member then {
     let org <- Db.get Org session.org
-    let projects <- Db.scoped Project |> Db.orderBy Project.name.asc |> Db.all
+    let projects <- Project.ordered
     Query.succeed { org: Maybe.withDefault "" (Maybe.map (\o -> o.name) org), projects: projects }
   } else Query.notFound
 }
@@ -1821,7 +1866,7 @@ Index.load params session = {
   begin with `Membership.memberOnly`, the same check as a `Query` that
   is a 404 for a non-member.
 - `Db.get Org session.org` reads the shared database: the org's name.
-- `Db.scoped Project` reads the org's own database. Both in one `load`:
+- `Project.ordered` (`Db.scoped Project`) reads the org's own database. Both in one `load`:
   a read of the other store goes through a read-only connection, so the
   rule "one store per `Task`" does not limit reads (chapter 8).
 

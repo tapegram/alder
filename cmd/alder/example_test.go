@@ -397,6 +397,7 @@ func TestExample_Workspace(t *testing.T) {
 		`ok   Orgs.Index "a non-member's switch is refused"`,
 		`ok   Orgs.Index "a membership deleted earlier in the same Task counts as gone"`,
 		`ok   Orgs.Index "creating an org makes the user its member, logs it, and opens it"`,
+		`ok   Table.Project "ordered answers for the session's org, one answer per org"`,
 		`ok   Projects.Index "a member sees the org's name and only its projects, by name"`,
 		`ok   Projects.Index "a project is created in the org's database, and another org does not see it"`,
 		`ok   Projects.Index "another org's project cannot be removed"`,
@@ -413,13 +414,39 @@ func TestExample_Workspace(t *testing.T) {
 		`ok   Admin.Projects.Index "an Admin who is no member of the org lists its projects, and only its"`,
 		`ok   Admin.Projects.Index "a Member gets no page, even one made Admin since logging in"`,
 		`ok   Admin.Projects.Bulk "a bulk action stays inside one org"`,
-		"388 passed, 0 failed\n",
+		"389 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/workspace lacks %q:\n%s", want, out)
 		}
 	}
 	mutationAtLeast(t, "workspace", workspaceMutationScore, workspaceMutants)
+}
+
+// A query in a table module needs the session's org: called by a test that never logged in, its
+// step fails with the runtime's message (the checker does not try to prove a test logged in).
+func TestExample_WorkspaceTableQueryNeedsOrg(t *testing.T) {
+	needGoTool(t)
+	if workspaceAbsErr != nil {
+		t.Fatal(workspaceAbsErr)
+	}
+	dir := filepath.Join(t.TempDir(), "workspace")
+	copyDir(t, workspaceAbs, dir)
+	os.RemoveAll(filepath.Join(dir, "build"))
+	f := filepath.Join(dir, "app", "Table", "Project.alder")
+	b, err := os.ReadFile(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = append(b, "\ntest \"ordered without a login\" = {\n  let rows <- ordered\n  Task.succeed (List.length rows == 0)\n}\n"...)
+	if err := os.WriteFile(f, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errs := alderIn(t, dir, "", "test", ".")
+	if code == 0 || !strings.Contains(out, `FAIL Table.Project "ordered without a login"`) ||
+		!strings.Contains(out, "Db.all Project: `Project` lives in `silo org` and the session has no org") {
+		t.Fatalf("alder test with a table query and no login: exit %d\nout: %s\nerr: %s", code, out, errs)
+	}
 }
 
 // The examples' stylesheets use alder-ui v0.4's tokens: no removed --al-* token (the

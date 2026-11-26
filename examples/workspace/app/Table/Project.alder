@@ -1,6 +1,7 @@
 module Table.Project
 
 import Table.Org
+import Table.User
 
 type ProjectId = brand Text
 
@@ -11,4 +12,42 @@ table Project {
   name: Text.NonEmpty,
   org: Org.OrgId @ref Org @partition org,
   created: Time @created,
+}
+
+-- ordered is the org's projects by name: the session's org, from the silo `Db.scoped` opens, so
+-- the clause says `org` and every caller (a route that `requires org`, a test) is checked for it.
+ordered : Query (List Project) requires org
+ordered =
+  Db.scoped Project
+    |> Db.orderBy Project.name.asc
+    |> Db.all
+
+-- current is the org's project with that id; another org's is not there to find (a 404).
+current : ProjectId -> Query Project requires org
+current id = Db.getScoped Project id
+
+test "ordered answers for the session's org, one answer per org" = {
+  let ann <- Db.insert User.User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org.Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org.Org { name: Text.NonEmpty "Globex" }
+  let _ <- Test.member ann acme
+  let _ <- Test.member ann globex
+  let _ <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Apollo", org: acme }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let inAcme <- ordered
+  let _ <- Test.login { user: Just ann, org: Just globex }
+  let inGlobex <- ordered
+  Task.succeed (
+    { acme: List.map (\p -> p.name) inAcme, globex: List.map (\p -> p.name) inGlobex }
+      == {
+        acme: [Text.NonEmpty "Apollo", Text.NonEmpty "Rocket"],
+        globex: [Text.NonEmpty "Widget"],
+      }
+  )
 }

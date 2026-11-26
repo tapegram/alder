@@ -15,3 +15,11 @@ table Todo {
   org: Org.OrgId @ref Org @partition org,
   created: Time @created,
 }
+
+-- inProject is the project's to-dos, oldest first, in the session's org.
+inProject : Project.ProjectId -> Query (List Todo) requires org
+inProject id =
+  Db.scoped Todo
+    |> Db.where (Todo.project.eq id)
+    |> Db.orderBy Todo.created.asc
+    |> Db.all

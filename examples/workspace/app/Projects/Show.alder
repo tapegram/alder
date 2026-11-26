@@ -19,12 +19,8 @@ Show.load : Show.Params -> Session -> Query Model
 Show.load params session = {
   let member <- Membership.isMember session.user session.org
   if member then {
-    let project <- Db.getScoped Project params.id
-    let todos <-
-      Db.scoped Todo
-        |> Db.where (Todo.project.eq project.id)
-        |> Db.orderBy Todo.created.asc
-        |> Db.all
+    let project <- Project.current params.id
+    let todos <- Todo.inProject project.id
     Query.succeed { project: project, todos: todos }
   } else
     Query.notFound
@@ -37,7 +33,7 @@ form NewTodo = { title: Text.NonEmpty }
 Add.post : Add.Params -> Session -> Task Response
 Add.post p session = {
   let _ <- Membership.memberOnly session.user session.org
-  let project <- Db.getScoped Project p.id
+  let project <- Project.current p.id
   let _ <- Db.insertScoped Todo { title: p.form.title, project: project.id }
   Task.succeed Response.refresh
 }
