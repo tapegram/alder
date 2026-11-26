@@ -1025,7 +1025,7 @@ todos and not the other user's one.
 
 ```alder part=Todos.Index
 -- The list deletes through the todo's own route, `DELETE /todos/{id}`: one todo, one URL. Its
--- update redirects to the list, so the page comes back without the todo.
+-- the handler redirects to the list, so the page comes back without the todo.
 test "deleting from the list" = {
   let me <- Db.insert User {
     email: Text.Email "me@example.com",

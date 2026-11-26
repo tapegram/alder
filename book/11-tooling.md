@@ -275,7 +275,7 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 **Writes:** `app/<Module>.alder`: the route (`route <Name> = GET "<path>" { … }`, named after the module's last segment), its `Model`, `<Name>.load` and `<Name>.view` in the app's layout, and a browser test.
 
-- `--method POST`, `PUT`, `PATCH` or `DELETE` writes a write route instead: the `route` line (`--form F` names the form it decodes, `--param name:Type` adds a parameter) and `<Name>.update`, answering `Response.refresh` until you change it; it has no `Model`, `load` or `view`.
+- `--method POST`, `PUT`, `PATCH` or `DELETE` writes a write route instead: the `route` line (`--form F` names the form it decodes, `--param name:Type` adds a parameter) and `<Name>.post` (`.put`, `.patch` or `.delete` under `--method`), answering `Response.refresh` until you change it; it has no `Model`, `load` or `view`.
 - `--list T`: a table of `T`'s rows (`al-table`, badges for Bool and unions), 20 to a page with `al-pagination`;
 - `--show T`: one row, at `<path>/{id}`, and a test of a missing one;
 - `--from T …`: every row of each table, a card each;
@@ -298,11 +298,11 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 #### `alder new form <Route module> <Name> <field>:<Type> …`
 
-**Writes:** in the route module: `form <Name>`, a write route `Submit<Name>` (`POST "<path>"`, with the parameters of the module's GET route and `form <Name>`; `<path>` is the collection of the table it inserts into, such as `/replies`, or the page's own path when it has no table; `--path` and `--method` name another, and a path and method a route already has are refused, chapter 15), its `Submit<Name>.update` (an insert into the table whose columns the fields are, by name and type, or `--into T`'s, answering `Response.redirect` to the route with a `Response.success` toast; else the hole `?answer : Task Response`), the form in `view` (wrapped inputs, `<Errors form />` in an `al-alert`), and two browser tests
+**Writes:** in the route module: `form <Name>`, a write route `Submit<Name>` (`POST "<path>"`, with the parameters of the module's GET route and `form <Name>`; `<path>` is the collection of the table it inserts into, such as `/replies`, or the page's own path when it has no table; `--path` and `--method` name another, and a path and method a route already has are refused, chapter 15), its `Submit<Name>.post` (an insert into the table whose columns the fields are, by name and type, or `--into T`'s, answering `Response.redirect` to the route with a `Response.success` toast; else the hole `?answer : Task Response`), the form in `view` (wrapped inputs, `<Errors form />` in an `al-alert`), and two browser tests
 
 #### `alder new action <Route module> <Name> [<field>:<Type> …]`
 
-**Writes:** in the route module: a write route `<Name>` (`POST "<path>"`, `<path>` the page's own path unless `--path` says another, `--method` another method; with the GET route's parameters and the fields), its `<Name>.update` (answering `Response.refresh`), an `al-button` that sends it at the end of the view (the parameters it cannot know are holes, `?<name>Id`), and a test that clicks it and expects `Refreshed`
+**Writes:** in the route module: a write route `<Name>` (`POST "<path>"`, `<path>` the page's own path unless `--path` says another, `--method` another method; with the GET route's parameters and the fields), its `<Name>.post` (named after the method `--method` gives; answering `Response.refresh`), an `al-button` that sends it at the end of the view (the parameters it cannot know are holes, `?<name>Id`), and a test that clicks it and expects `Refreshed`
 
 #### `alder new capability <Module> <entry> "<Type>"`
 
@@ -445,7 +445,7 @@ module of its own is `alder new route <Module> <path> --method POST`.
 
 #### `alder new action App <Name> [<field>:<Type> …]`
 
-**Writes:** in `App`: `route <Name> = POST "<path>"` with the fields as its parameters (`--path` is required, since a route of `App` has no GET route to take a path from; `--method` names another method), after `App`'s last route, its `<Name>.update` (answering `Response.refresh`) and a comment saying how to test it; no button and no test, as a route of `App` is sent from any page
+**Writes:** in `App`: `route <Name> = POST "<path>"` with the fields as its parameters (`--path` is required, since a route of `App` has no GET route to take a path from; `--method` names another method), after `App`'s last route, its `<Name>.post` (named after `--method`; answering `Response.refresh`) and a comment saying how to test it; no button and no test, as a route of `App` is sent from any page
 
 #### `alder edit decl <Module>.<Name> add-prop <name>:<Type>=<default>`
 
@@ -2752,7 +2752,7 @@ A route module generates none: `R.Params` is reached through the route's name.
 
 #### E0040 — test-only construct used outside tests
 
-- Something only tests may use (`Test.*`, `Doc`, `Answer`, a fake's table, a test helper) where no test helper can be: a route's `load`/`view`/`update`, `App`'s values, a fake's entry, a brand check, a field default.
+- Something only tests may use (`Test.*`, `Doc`, `Answer`, a fake's table, a test helper) where no test helper can be: a route's `load`/`view`/handler, `App`'s values, a fake's entry, a brand check, a field default.
 - "`fetchText` is a test helper (it uses `Test.fetch`): only a `test` or another test helper may use it".
 - "`Test.fetch` is only available in a `test` or a test helper: `Index.view` is the route's view, not a helper" (chapter 10, "Test helpers").
 

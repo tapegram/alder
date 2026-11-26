@@ -665,8 +665,8 @@ test "Toggle by a stranger is not found"   (a fresh database in memory)
   │ Test.login                              the test's session: the stranger
   │ Test.run ── SAVEPOINT alder_t1
   │             │ Db.updateMine Todo        no todo with that id is the stranger's
-  │             │ Task.notFound             update fails
-  │             └ ROLLBACK TO alder_t1      undo update's writes (it made none)
+  │             │ Task.notFound             handler fails
+  │             └ ROLLBACK TO alder_t1      undo the handler's writes (it made none)
   │               RELEASE alder_t1          r.value = Err "not found"
   │ Db.get Todo                             the todo is still there, not done
   COMMIT                                    the verdict was produced
@@ -2155,7 +2155,7 @@ these texts, and nothing is sent:
 And when the test compiles (E0003 unless named):
 
 - E0040 "`Test.get` is only available in a `test` or a test helper:
-  `Toggle.patch` is the route's update, not a helper"; "`Test.get`
+  `Toggle.patch` is the route's handler, not a helper"; "`Test.get`
   needs an `App` module: the browser requests the app's routes, which an
   app without `App` does not serve".
 
@@ -2347,7 +2347,7 @@ test "adding a todo through the page"   (a fresh database in memory)
   │ Test.get                               GET /
   │   Db.mine Todo, Db.all Todo            load reads in the test's transaction
   │ Test.submit                            POST /todos
-  │   SAVEPOINT alder_t1                   update is a Task
+  │   SAVEPOINT alder_t1                   handler is a Task
   │   │ Db.insertMine Todo
   │   └ RELEASE alder_t1                   it succeeded: the insert is the test's now
   │   Db.mine Todo, Db.all Todo            GET /: the redirect, followed

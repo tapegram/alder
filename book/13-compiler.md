@@ -100,7 +100,7 @@ blank line, and two lines, `session { user: Maybe User.UserId }` and
 3:36 NL "\n"
 4:1 UIdent "Logout"
 4:7 Dot "."
-4:8 LIdent "update"
+4:8 LIdent "delete"
 4:15 LIdent "p"
 4:17 Keyword "session"
 4:25 Equal "="
@@ -1499,11 +1499,11 @@ The route itself is a node of its own, `ir.Route` (`internal/ir/ir.go`), printed
 after the values:
 
 ```
-(route Index.Toggle PUT "/pair/{a}/{b}/done"
+(route Index.Toggle PATCH "/pair/{a}/{b}/done"
   (params Toggle.Params)
   (requires user)
   (session Index.Session)
-  (update Index.Toggle.patch)
+  (handler Index.Toggle.patch)
   (needs-shown))
 ```
 
@@ -1514,7 +1514,7 @@ It holds:
 - the guard (`requires`, `role`, `silo`);
 - the narrowed session record;
 - its members (a GET route has `(load …)` and `(view …)` instead of
-  `(update …)`);
+  `(handler …)`);
 - the store its handler writes in an app with silos (`(store silo org)`);
 - `(needs-shown)`, the checker's answer from section 5: this handler
   mentions `Response.refresh`, so the handler renders the page the browser
@@ -1526,7 +1526,7 @@ the route's source.
 The handler itself is emitted as
 
 ```go
-func Index__Toggle__update(p Index__Toggle__Params, session Index__Index__Session) eff.Task[rt.Response] {
+func Index__Toggle__patch(p Index__Toggle__Params, session Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.update Todo", true, func(_e1 *eff.Env) (struct{}, error) {
 		return struct{}{}, db.UpdateRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Todo__Todo, p.Id, func(t Todo__Todo) Todo__Todo {
 			return Todo__Todo{Id: t.Id, Title: t.Title, Done: !t.Done, Due: t.Due, Owner: t.Owner, Created: t.Created}
@@ -1855,7 +1855,7 @@ func Route__Todos__Index__Toggle() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Index__Toggle__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Index__Toggle__patch(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -2092,7 +2092,7 @@ func Route__Todos__Toggle() web.Route {
 		if stop != nil {
 			return *stop
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Toggle__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Toggle__put(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -2616,7 +2616,7 @@ func Todos__Index__Index__load(params Todos__Index__Index__Params, session Todos
 `Toggle` is one step:
 
 ```go
-func Todos__Index__Toggle__update(p Todos__Index__Toggle__Params, session Todos__Index__Index__Session) eff.Task[rt.Response] {
+func Todos__Index__Toggle__patch(p Todos__Index__Toggle__Params, session Todos__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.updateMine Todo", true, func(_e1 *eff.Env) (struct{}, error) {
 		return struct{}{}, db.UpdateMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Table__Todo__Todo, p.Id, func(t Table__Todo__Todo) Table__Todo__Todo {
 			return Table__Todo__Todo{Id: t.Id, Title: t.Title, Done: !t.Done, Due: t.Due, Owner: t.Owner, Created: t.Created}
@@ -2638,7 +2638,7 @@ name, its method, its path with the path parameters filled in and the rest
 of its parameters, each at its default left out:
 
 ```go
-func Todos__Index__Submit__update(p Todos__Index__Submit__Params, session Todos__Index__Index__Session) eff.Task[rt.Response] {
+func Todos__Index__Submit__post(p Todos__Index__Submit__Params, session Todos__Index__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.insertMine Todo", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Table__Todo__Todo, insertminevals__Table__Todo__Todo(insertmine__Table__Todo__Todo{Title: p.Form.Title, Done: false, Due: p.Form.Due}), _e1.Now())
 	}), func(_ string) eff.Task[rt.Response] {
@@ -2884,7 +2884,7 @@ runs it. This is `Projects.Index.Remove`, between the before-view and
 		if err := db.Enter(rq.Env, "org"); err != nil {
 			return route__fail(err)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Remove__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Remove__delete(params, session))
 ```
 
 `db.Enter(rq.Env, "org")` opens that org's database and makes it the store
@@ -3954,7 +3954,7 @@ results into the record Alder sees. From `test__Todos__Index__1`
 		Value rt.Result[string, rt.Response]
 		Trace []string
 	}, error) {
-		_v6, _msg7, _ok8, _tr9, _err10 := rtesting.Inner(_e5, Todos__Index__Toggle__update(Todos__Index__Toggle__Params{Id: id}, Todos__Index__Index__Session{User: me, Role: Table__User__Role__Member__}))
+		_v6, _msg7, _ok8, _tr9, _err10 := rtesting.Inner(_e5, Todos__Index__Toggle__patch(Todos__Index__Toggle__Params{Id: id}, Todos__Index__Index__Session{User: me, Role: Table__User__Role__Member__}))
 		if _err10 != nil {
 			var _z12 struct {
 				Value rt.Result[string, rt.Response]
@@ -3977,7 +3977,7 @@ results into the record Alder sees. From `test__Todos__Index__1`
 
 A route's handler is a plain function of its parameters and its session,
 so a test calls it the same way a handler does: `Toggle.patch { id: id }
-{ user: me, role: Member }` in the test is `Todos__Index__Toggle__update(…)`
+{ user: me, role: Member }` in the test is `Todos__Index__Toggle__patch(…)`
 above, with the record the route declared and the session the route
 narrows to (what `guard__` would pass). Nothing is decoded and nothing is
 guarded: the test hands over the values.
@@ -7039,7 +7039,7 @@ In the blog:
 
 ```text
 -> {"jsonrpc":"2.0","id":3,"method":"textDocument/hover","params":{"position":{"line":64,"character":21},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"}}}
-<- {"id":3,"jsonrpc":"2.0","result":{"contents":{"kind":"markdown","value":"```alder\nPOST /search  { }  form SearchForm\n```\n\nA search posts its form to a write route like any other: `update` redirects to the first page\nof the results, whose address (/?q=…) can be bookmarked and shared."}}}
+<- {"id":3,"jsonrpc":"2.0","result":{"contents":{"kind":"markdown","value":"```alder\nPOST /search  { }  form SearchForm\n```\n\nA search posts its form to a write route like any other: the handler redirects to the first page\nof the results, whose address (/?q=…) can be bookmarked and shared."}}}
 -> {"jsonrpc":"2.0","id":4,"method":"textDocument/definition","params":{"position":{"line":64,"character":21},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"}}}
 <- {"id":4,"jsonrpc":"2.0","result":[{"uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":9,"character":6},"end":{"line":9,"character":12}}}]}
 ```
@@ -7165,7 +7165,7 @@ In the blog, typing `Search.` where `let q = …` was answers, with the
 signature of `Search.post`:
 
 ```text
-<- {"id":5,"jsonrpc":"2.0","result":{"isIncomplete":false,"items":[{"label":"update","kind":3,"detail":"update : Search.Params -\u003e Session -\u003e Task Response","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"update"}},{"label":"Params","kind":7,"detail":"type Search.Params","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"Params"}},{"label":"Session","kind":7,"detail":"type Search.Session","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"Session"}}]}}
+<- {"id":5,"jsonrpc":"2.0","result":{"isIncomplete":false,"items":[{"label":"post","kind":3,"detail":"post : Search.Params -\u003e Session -\u003e Task Response","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"post"}},{"label":"Params","kind":7,"detail":"type Search.Params","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"Params"}},{"label":"Session","kind":7,"detail":"type Search.Session","textEdit":{"range":{"start":{"line":33,"character":17},"end":{"line":33,"character":17}},"newText":"Session"}}]}}
 ```
 
 After a module's name (`Todos.`) the list holds the module's declarations: a
@@ -7424,7 +7424,7 @@ the editor shows (here with its `\n` turned into line breaks):
 --- a/app/Posts/Index.alder
 +++ b/app/Posts/Index.alder
 @@ -8,6 +8,7 @@
- -- A search posts its form to a write route like any other: `update` redirects to the first page
+ -- A search posts its form to a write route like any other: the handler redirects to the first page
  -- of the results, whose address (/?q=…) can be bookmarked and shared.
  route Search = POST "/search" { } form SearchForm
 +route Delete = POST "/"       { }

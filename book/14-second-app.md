@@ -931,7 +931,7 @@ import Table.Post
 import Table.User
 
 route Index  = GET  "/"       { page: Int = 1, q: Text = "" }
--- A search posts its form to a write route like any other: `update` redirects to the first page
+-- A search posts its form to a write route like any other: the handler redirects to the first page
 -- of the results, whose address (/?q=…) can be bookmarked and shared.
 route Search = POST "/search" { } form SearchForm
 
@@ -1704,7 +1704,7 @@ open-time check"). Every other org is served meanwhile.
 
 ```alder part=workspace/App
 -- Both answers end where a browser would be sent anyway (the login page, `choose org`'s page),
--- so only a test of each `update` itself tells a redirect from a refresh (book 10).
+-- so only a test of each handler itself tells a redirect from a refresh (book 10).
 test "Logout and Leave say where to go" = {
   let me : Session = {
     user: Just (User.UserId "me"),

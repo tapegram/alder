@@ -404,7 +404,7 @@ else's) and whose continuation is a second `bind`: the `call` named
 the handler, then returns the `Response`; when the read ends in `notFound`, it
 stops there and nothing is written.
 
-> **A two-step form.** The to-do app writes this update as one step,
+> **A two-step form.** The to-do app writes this handler as one step,
 > `Db.updateMine`, which reads and writes with the owner in the statement:
 > chapter 13 shows it. The two-step form is here to show a continuation.
 

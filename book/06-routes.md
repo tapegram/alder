@@ -2038,10 +2038,10 @@ POST, PUT, PATCH, DELETE (the route's own path)
   2. check `requires`             → redirect to App.login on failure
      check `role R`, if declared  → 404 when the session's role is not R
   3. decode the form, if any → on failure: 422, the page the browser is
-     on rendered again with the errors, and stop (update is not called)
-  4. render the page the browser is on, if update can answer
+     on rendered again with the errors, and stop (the handler is not called)
+  4. render the page the browser is on, if the handler can answer
      `refresh` or `invalid` (the before-view)
-  5. update                       → Task, run by the runtime (no `load`)
+  5. the handler                  → Task, run by the runtime (no `load`)
   6. redirect: 303 (under Datastar: the target page, morphed in, and a
      history push; to another site, an event that navigates)
      render: the route's load and view, one element patched in
@@ -2266,7 +2266,7 @@ func Route__Todos__Index__Toggle() web.Route {
 		if rq.Datastar {
 			before, _ = rq.RenderShown(nil)
 		}
-		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Index__Toggle__update(params, session))
+		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Index__Toggle__patch(params, session))
 		if err != nil {
 			return route__fail(err)
 		}
@@ -2293,7 +2293,7 @@ It runs these steps:
 
 The names are the route's qualified name with each dot written as `__`: the
 route `Toggle` of module `Todos.Index` is `Todos__Index__Toggle`, and its
-member the handler is `Todos__Index__Toggle__update`.
+member handler is `Todos__Index__Toggle__patch` (`__post`, `__put`, `__delete` for the other methods).
 
 A GET route has its own handler, `Route__Todos__Index__Index`: it decodes the
 path and query, checks `requires`, runs `load`, and renders `view`.
