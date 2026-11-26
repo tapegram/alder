@@ -69,7 +69,11 @@ Noop.run p = Task.succeed ()
 Toggle.patch : Toggle.Params -> Session -> Task Response
 Toggle.patch params session = {
   let _ <- Db.update Row params.id (\r -> { r | done: not r.done })
-  Task.succeed (Response.render (Item { id: params.id }))
+  let found <- Db.get Row params.id
+  match found {
+    Just row -> Task.succeed (Response.replace [ Item.view row session ]),
+    Nothing -> Task.notFound,
+  }
 }
 
 Jump.post : Jump.Params -> Session -> Task Response

@@ -1786,10 +1786,12 @@ full render of the same page. A difference fails the step, naming where: `PATCH
 /todos/3: the patched page differs from a full render at body > main >
 ul#todos: …`.
 
-After a `Response.render` or a click on a GET route it makes a second check,
-that the element patched in is the view of its route rendered on its own, and
-a `render` of an element the page does not have fails the step. Your tests do
-not mention any of it; every suite proves the patches on its own pages.
+After a `Response.replace` it makes a second check, that each element
+replaced is the element with that `id` in the page loaded again, and after a
+click on a GET route (or the deprecated `Response.render`), that the element
+patched in is the view of its route rendered on its own. A replace, a removal
+or a `render` of an element the page does not have fails the step. Your tests
+do not mention any of it; every suite proves the patches on its own pages.
 
 `Test.refresh` adds the check of the whole page (chapter 10, "What the browser
 checks on every step").
@@ -1923,7 +1925,7 @@ request:
 ok   Rows.Bench "toggle 1000"
   step                                      ms     bytes               alloc  req loads steps   sql  n+1
   GET /                                   4.78  973.8 kB    14.89 MB / 60.8k    1     1     1     1
-  PATCH /rows/HvSc18PGlt_cmLI3zMB7        0.13    1.1 kB       26.6 kB / 321    2     1     2     3
+  PATCH /rows/HvSc18PGlt_cmLI3zMB7        0.14    1.0 kB       27.6 kB / 294    1     0     2     3
 ok   Rows.Bench "add 1000"
   step                                      ms     bytes               alloc  req loads steps   sql  n+1
   GET /                                   4.62  973.8 kB    14.89 MB / 60.8k    1     1     1     1
@@ -1931,8 +1933,9 @@ ok   Rows.Bench "add 1000"
 ```
 
 (`/rows/HvSc18PGlt_cmLI3zMB7` is the row's id, which differs on each run.
-The fixture's `Toggle` answers `Response.render` of the row's route; its
-`Add` answers `Response.refresh`.)
+The fixture's `Toggle` reads its row again and answers `Response.replace`
+of the row's view, so it runs no route's `load`; its `Add` answers
+`Response.refresh`.)
 
 - **`ms`** the wall time the router took to serve the step's requests (summed)
 
@@ -1942,7 +1945,7 @@ The fixture's `Toggle` answers `Response.render` of the row's route; its
 
 - **`req`** requests the router served for the step: the one the browser sent, and each GET route it ran in-process to answer it (the page it renders before the write, the element or page it renders after, a followed `redirect`'s target; chapter 6, "Delivery, decided by the request"), more for each 303 the browser followed
 
-- **`loads`** how many times a GET route's `load` ran: a `refresh` or an `invalid` runs the page's twice (before the handler, to have something to compare, and after, to render), a `render` runs the route's it shows once, and a followed `redirect` runs its target's
+- **`loads`** how many times a GET route's `load` ran: a `refresh` or an `invalid` runs the page's twice (before the handler, to have something to compare, and after, to render), a `replace` runs none (its handler reads what it sends), a `render` runs the route's it shows once, and a followed `redirect` runs its target's
 
 - **`steps`** the effect steps the requests ran (their trace)
 
@@ -2577,7 +2580,8 @@ Its tabs:
 - Answer: how the route answered. `page` for a document; `redirect /` with
   where it went; `refresh` or `invalid`, a write that answered with the page
   again; `element #todo-7`, a view patched in by its root `id` (an element
-  fetch, or the route a `render` shows); `not found`, `method not allowed`,
+  fetch, or the route a `render` shows); `replace (1 element, 1 removed)`, a
+  write that answered `Response.replace`; `not found`, `method not allowed`,
   `bad request`; `file 200 text/csv 120B` for a file route; or an error with
   its text.
 
@@ -2590,7 +2594,8 @@ Its tabs:
 - Patches: the events the answer sent: each region a `refresh` or an
   `invalid` patched (`#todo-7`) and `shown` (the page's new hash), or `body`
   when the whole body was morphed, or `none` when nothing changed; one
-  `#todo-7` for an element; then title, history, toast and panel (chapter 5,
+  `#todo-7` for an element; `replace #summary` and `remove #todo-7` for each
+  root and removal of a replace; then title, history, toast and panel (chapter 5,
   "Partial updates"). The first patch after a write is named for the answer
   that caused it: `#todo-7 (render Row)`, `body (redirect Index)`.
 - History: the last 20 requests of this browser tab, newest first. The panel
@@ -2716,7 +2721,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 #### E0012 — a type named like a Prelude type
 
 - **Prelude types.** A type, table, form or union named like a Prelude type a program writes (`Query`, `Task`, `Html`, `Maybe`, `Result`, `List`, `Dict`, `Int`, `Float`, `Text`, `Bool`, `Unit`, `Date`, `Time`, `Never`, `Error`, `File`, `Bytes`, `Route`, `Response` and `Job`; not Db's `Order`, `Form`, `Table`, `Id`, `Insert`, `Select`, `Condition`, `Column`) or like the Prelude's test types `Doc` and `Answer`, whose module's other errors wait for the rename.
-- **`Answer`'s constructors.** In any module, a constructor named like one of `Answer`'s (`Shown`, `Rendered`, `Refreshed`, `Redirected`, `FormRejected`, `PageMissing`, `RequestFailed`: "`PageMissing` is a constructor of the Prelude's test type `Answer`; name the constructor differently (for example `MissingLookup`)").
+- **`Answer`'s constructors.** In any module, a constructor named like one of `Answer`'s (`Shown`, `Rendered`, `Refreshed`, `Redirected`, `FormRejected`, `PageMissing`, `RequestFailed`, `Replaced`: "`PageMissing` is a constructor of the Prelude's test type `Answer`; name the constructor differently (for example `MissingLookup`)").
 - **Generated types.** In `App`, also the type the compiler generates there (`Session`).
 
 A route module generates none: `R.Params` is reached through the route's name.
@@ -2790,6 +2795,7 @@ A route requested the way its method refuses (chapter 6, 10):
 - `submit` to a GET route.
 - `Test.get`, `Test.open` or `Test.fetch` of a write route.
 - `Response.redirect` or `Response.render` of a write route.
+- `Response.remove` after a `Response.redirect`, `refresh` or `invalid`, which send the whole page.
 - `Test.submit` of a route without `form`.
 - `Test.click` of a route with one.
 - `click` of a write route with `form` (a button sends a route without a form; use
@@ -2822,6 +2828,29 @@ is refused at the field: "session field `pin` holds a `Text.Secret`, but the
 session cookie is signed, not encrypted: the user can read it. Keep the secret
 in a table and store the row's id in the session" (chapter 6, "Signed, not
 encrypted"). There is no automatic fix.
+
+#### E0051 — a `Response.replace` root the runtime could not send
+
+A root of a `Response.replace` list that the checker can see (an element
+written in the list, a call of a function whose body ends in an element, an
+`Html.fragment` of those) and that the runtime could not put in its place
+(chapter 6, "`Response`"):
+
+- A root without an `id`: "`Response.replace`: the root of `countView` is a
+  `<p>` without an `id`. A replace swaps the element with the same `id`: give
+  the root one."
+- Two roots with one literal `id`: "`Response.replace` has two roots with the
+  id `member-count`".
+- A click button, or an `<al-button>` with `click`: "… is a `<button>` that
+  requests a route, which renders inside a `<form>` of its own. … put the
+  button inside an element with the `id`."
+- A `<html>`, `<head>` or `<body>`: "… which a replace cannot swap. Replace an
+  element inside the page, or answer `Response.refresh` for the whole page."
+- `Response.remove ""`: "names no element".
+
+A root the checker cannot see (a variable, a `for`, a list built elsewhere),
+and a form control, are checked when the answer is sent: nothing is sent, the
+reason is logged and an error toast is shown.
 
 #### E0019 — `migrations/` is behind the app or disagrees with itself
 
@@ -3095,6 +3124,10 @@ The admin form `requires user, role Admin, silo org`:
 
 - `Notice.with`, `Notice.success`, `Notice.warning` or `Notice.error`: "`Notice.success` is now `Response.success`" (chapter 9, "Response").
 - The old names still work, as aliases, for one release.
+
+#### W0016 — `Response.render`, which is going away
+
+- "`Response.render Row` is going away: load what `Row.view` shows and answer `Response.replace [ Row.view … ]`, a handler sends the views it built" (chapter 6, "`Response`"). `render` still works, for one release.
 
 #### W0009 — deploy files exist but App.alder has no `deploy` block
 

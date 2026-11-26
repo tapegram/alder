@@ -71,7 +71,9 @@ became the `Response` builders (W0012), and the type `Page` became `Route`.
 **Goals** (the numbers are the spec's):
 
 1. A row toggle costs one write and one read by key, and sends one element on
-   the wire. No page load, no before-view. (`Response.render (Row { id })`.)
+   the wire. No page load, no before-view. (First `Response.render (Row { id
+   })`; since #309 the handler's own `Response.replace [ Row.view row session ]`,
+   below.)
 
 2. One keyword covers pages, partials and writes.
 
@@ -131,11 +133,39 @@ URL, the one home that is shared.
 **What was kept, and what is not built.** `requires`, `@owner`, roles, forms
 and their errors are unchanged, per route. Rails/Turbo, HTMX, Remix and
 LiveView all have the same three outcomes of a write: redirect, re-render in
-place, a partial. Alder spells them `Response.redirect`, `Response.render` and
+place, a partial. Alder spells them `Response.redirect`, `Response.replace` and
 `Response.refresh`, and adds `Response.invalid` for a refused form.
+(`Response.render` came first, and is deprecated: next decision.)
 
-`Response.status`, `header`, `json`, `file`, `remove`, `patch` and `stream`
+`Response.status`, `header`, `json`, `file`, `append` and `stream`
 are not built yet; the `Response` type is shaped for them (chapter 6).
+
+### A handler sends the views it built: `replace`, and `render` deprecated **(decided #309; tested: the corpus, the test browser, the to-do and workspace examples)**
+
+`render r` re-ran the GET route `r`'s `load` and sent its view: one element,
+by its root `id`. It could not send two places (a row and a count), nor take
+an element away, so a delete with a count beside the list had to be a whole
+`refresh`. `Response.replace views` sends the views the handler built from
+data it loaded, each in place of the element with the same `id`, and
+`Response.remove id` takes an element out.
+
+Keeping both was considered: `render` is one line for a toggled row. It was
+deprecated instead (W0016 for one release, then removed), so that a write
+has one way to say what changed, and the handler, which knows, says it.
+
+The cost is that the data path moves into the handler: a replace shows what
+its handler loaded, under the checks the handler ran, not what the page's
+`load` would show. Two things make that safe. A handler loads with the query
+the page uses, a helper whose signature says what it needs (`listed : Filter
+-> Query (List Todo) requires user`), and draws with the function the page
+draws with. And the test browser, after every replace, loads the page again
+and fails the step when a replaced element differs from the element there, or
+a removed one is still in it: the check `render` had, on the page rather than
+on one route.
+
+The rule a developer needs is one sentence (chapter 6): `replace` is views
+you built from data you hold; `refresh` is the page again when you would
+rather not say what changed.
 
 ### Derived model, not stored model **(still holds; the Model slot is superseded)**
 

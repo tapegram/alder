@@ -616,30 +616,29 @@ import Layout
 import Table.Todo
 import Table.User
 
-route Index  = GET   "/"           { filter: Todo.Filter = All }              requires user
-route Submit = POST  "/todos"      { filter: Todo.Filter = All } form NewTodo requires user
-route Toggle = PATCH "/todos/{id}" { id: Todo.TodoId }                        requires user
+route Index  = GET    "/"           { filter: Todo.Filter = All }                  requires user
+route Submit = POST   "/todos"      { filter: Todo.Filter = All } form NewTodo     requires user
+route Toggle = PATCH  "/todos/{id}" { id: Todo.TodoId }                            requires user
+-- The list deletes a todo in place. The filter the page shows rides in the URL, as `Submit`'s
+-- does, so that the count it sends back is the count of the list the page shows.
+route Delete = DELETE "/todos/{id}" { id: Todo.TodoId, filter: Todo.Filter = All } requires user
 ```
 
 `User` is imported for the tests at the end of the module. The module has
-three **routes**:
+four **routes**:
 
 - `Index` is a `GET`: the page. `filter` is a query parameter with a
   default, so both `/` and `/?filter=Active` work and `filter` is never
   missing.
-- The other two are writes that the page sends: `Submit` is a `POST` that
-  carries a form, `NewTodo`, and `Toggle` is a `PATCH` that carries an id.
+- The other three are writes that the page sends: `Submit` is a `POST`
+  that carries a form, `NewTodo`, `Toggle` is a `PATCH` that carries an id,
+  and `Delete` is a `DELETE` of one todo.
 
 A route's parameters that are not in its path travel in the query string,
 so `Submit { filter: Active }` is sent to `/todos?filter=Active`. The paths
 name the thing being changed (`/todos` is the todos, `/todos/{id}` is one
 todo) and the method says what happens to it. The route's name, `Toggle`,
 is for your code and never appears in the URL (chapter 6).
-
-The list's Delete button deletes one todo, `DELETE /todos/{id}`, and the
-todo's own page (`Todos.Show`, below) declares that route already. A
-method and a path name one route, so the list sends `Todos.Show.Delete`
-rather than declaring a second route for the same todo.
 
 `requires user` means the `user` field of the session must be `Just`;
 otherwise the runtime sends the visitor to the login page, and inside this
@@ -650,11 +649,19 @@ type Model = { filter: Todo.Filter, todos: List Todo }
 
 Index.load : Index.Params -> Session -> Query Model
 Index.load params session = {
+  let todos <- listed params.filter
+  Query.succeed { filter: params.filter, todos: todos }
+}
+
+-- The todos the page lists, newest first. `Index.load` and `Delete` both read them with this
+-- one query, so what `Delete` sends back agrees with what the page shows.
+listed : Todo.Filter -> Query (List Todo) requires user
+listed filter = {
   let todos <-
     Db.mine Todo
       |> Db.orderBy Todo.created.desc
       |> Db.all
-  Query.succeed { filter: params.filter, todos: List.filter (Todo.matches params.filter) todos }
+  Query.succeed (List.filter (Todo.matches filter) todos)
 }
 ```
 
@@ -663,8 +670,13 @@ returns a `Query`: a description of reads that the runtime performs.
 `let todos <- ...` binds the result of a read. Because it is a `Query`,
 nothing in `load` can write.
 
-`Db.mine Todo` is the todos whose `owner` is the session's user, newest
-first here: the page can only ever list the user's own.
+`Index.load` reads its todos with `listed`, a query of the module's own,
+so that `Delete` (below) can read them the same way. `Db.mine Todo` is the
+todos whose `owner` is the session's user, newest first here: the page can
+only ever list the user's own. Because `Db.mine` needs a signed-in user,
+`listed` says so in its signature, `requires user`, and may be used only
+where one is certain: in this module's routes, which all `requires user`
+(chapter 6, "Rules").
 
 The route's other member is its `view`, below; a route that is a `GET` has
 exactly these two, and the model is whatever `load` returns.
@@ -711,9 +723,9 @@ count of open todos). The page's address
 travels with every write, so a write route does not need to know which page
 sent it.
 
-`refresh` is for changes that make things appear or disappear or touch more
-than one place; for one element that is already there, `Response.render`
-sends just that element (chapter 6, "`Response`").
+`refresh` is the answer when you would rather not say what changed: the
+runtime works it out by rendering the page before and after. When the
+handler can say, it sends just that (`Delete`, below).
 
 A route's handler is its only member, and it needs no `match`: each write
 is a route of its own.
@@ -722,6 +734,31 @@ A write's id comes from the request: anyone can post `Toggle` with another
 user's id. `Db.updateMine` and `Db.deleteMine` act on the todo only when it
 is the user's, and a todo that is someone else's answers exactly as a
 missing one does, with a 404 (chapter 6, "Rules").
+
+```alder part=Todos.Index
+-- Delete answers with what it changed: the todo's row goes, and the count is sent again, drawn by
+-- `summary`, the function the page draws it with. Nothing else is loaded or sent.
+Delete.delete : Delete.Params -> Session -> Task Response
+Delete.delete p session = {
+  let _ <- Db.deleteMine Todo p.id
+  let todos <- listed p.filter
+  Task.succeed (Response.replace [summary todos] |> Response.remove ("todo-" ++ p.id))
+}
+```
+
+The list's Delete button sends `Delete`, `DELETE /todos/{id}`: one todo,
+one URL. Its handler answers with exactly what it changed. The todo's item
+on the page goes (`Response.remove` takes out the element whose `id` is
+`"todo-" ++ p.id`), and the count of open todos below the list is sent
+again (`Response.replace` swaps in each view it is given for the element
+with the same `id`, here `<p id="summary">`). Nothing else is loaded,
+rendered or sent.
+
+The count it sends is drawn by `summary`, the same function the page draws
+it with, from `listed`, the same query the page loads with; and the filter
+the page shows rides along in the URL, as `Submit`'s does. So the answer
+agrees with the page by construction, and the tests check that it does
+(below).
 
 ```alder part=Todos.Index
 Index.view : Model -> Session -> Html
@@ -747,10 +784,10 @@ Index.view model session =
     </nav>
 
     <ul id="todos">
-      {for todo in model.todos -> <Item todo={todo} />}
+      {for todo in model.todos -> <Item todo={todo} filter={model.filter} />}
     </ul>
 
-    <p id="summary">{Text.fromInt (Todo.countOpen model.todos)} open</p>
+    {summary model.todos}
 
     <al-button variant="outline" click={App.Logout}>Log out</al-button>
   </Layout.Page>
@@ -773,9 +810,12 @@ setting kept in the session would; chapter 6's theme is one).
   (Appendix C).
 
 ```alder part=Todos.Index
-Item : { todo: Todo } -> Html
+summary : List Todo -> Html
+summary todos = <p id="summary">{Text.fromInt (Todo.countOpen todos)} open</p>
+
+Item : { todo: Todo, filter: Todo.Filter } -> Html
 Item props =
-  <li class={if props.todo.done then "done" else ""}>
+  <li id={"todo-" ++ props.todo.id} class={if props.todo.done then "done" else ""}>
     <al-button variant="secondary" size="sm" click={Toggle { id: props.todo.id }}>
       {if props.todo.done then "Undo" else "Done"}
     </al-button>
@@ -784,7 +824,7 @@ Item props =
       Just d -> <al-badge variant="outline" class="due">{Date.format "Jan 2" d}</al-badge>,
       Nothing -> Html.none,
     }}
-    <al-button variant="ghost" size="sm" click={Todos.Show.Delete { id: props.todo.id }}>
+    <al-button variant="ghost" size="sm" click={Delete { id: props.todo.id, filter: props.filter }}>
       Delete
     </al-button>
   </li>
@@ -792,7 +832,10 @@ Item props =
 
 `Item` is a component: a function from a record to HTML. A todo without a
 due date shows nothing there: `Html.none` renders nothing; one with a date
-shows it in an `<al-badge>`.
+shows it in an `<al-badge>`. Its `<li>` has an `id` made from the todo's,
+which is how `Delete`'s answer finds it; the page's filter is passed down
+so that the Delete button can carry it. `summary` is a plain function, not
+a component, because `Delete` calls it too.
 
 `click={Toggle { id: ... }}` sends a route: it compiles to a `POST` (and,
 with Datastar, a patch of the page in place; chapter 6, "How a request
@@ -870,7 +913,7 @@ test "Delete by another user is not found" = {
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Index {})
   let _ <- Test.login { user: Just (User.UserId "someone-else") }
-  let r <- Test.click (Todos.Show.Delete { id: id })
+  let r <- Test.click (Delete { id: id })
   let after <- Db.get Todo id
   Task.succeed (
     { answer: r.answer, todo: Maybe.map (\t -> t.title) after }
@@ -973,7 +1016,7 @@ test "a write after logging out is sent to log in" = {
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Index {})
   let _ <- Test.login { user: Nothing }
-  let deleted <- Test.click (Todos.Show.Delete { id: id })
+  let deleted <- Test.click (Delete { id: id })
   let todos <- Db.from Todo |> Db.all
   Task.succeed (
     {
@@ -1012,9 +1055,17 @@ test "a stranger cannot see my todo" = {
 }
 ```
 
-The next deletes from the list through the page: the button sends
-`Todos.Show.Delete`, whose handler redirects to the list, and the list
-comes back without the todo. The one after was written after `alder test
+The next two delete from the list through the page. The answer is
+`Replaced`, the test's name for `Response.replace`, with the ids it
+replaced and removed; `r.doc` is the page after the browser applied them,
+so the test reads the list and the count there. The test browser also
+loads the page again on its own and checks that each element the answer
+replaced is the element a fresh load gives (chapter 10, "What the browser
+checks on every step"). On the Completed filter the page counts no open
+todos, and that is why `Delete` carries the filter: without it the count
+sent would be wrong, and the check would fail the step.
+
+The one after was written after `alder test
 --mutate` (chapter 10, "Mutation testing") showed that nothing checked that
 the newest todo comes first. `Test.texts "li a"` is the text of every link
 inside a list item, in page order: the titles.
@@ -1024,34 +1075,72 @@ and it acts for the user `Test.login` signed in, so it counts Me's two
 todos and not the other user's one.
 
 ```alder part=Todos.Index
--- The list deletes through the todo's own route, `DELETE /todos/{id}`: one todo, one URL. Its
--- the handler redirects to the list, so the page comes back without the todo.
+-- Delete answers `Response.replace`: the answer is `Replaced`, with the ids it replaced and
+-- removed, and `r.doc` is the page the browser holds after it. The test browser also loads the
+-- page again and checks that it agrees: the count sent is the count the page would show.
 test "deleting from the list" = {
   let me <- Db.insert User {
     email: Text.Email "me@example.com",
     name: Text.NonEmpty "Me",
     passwordHash: "",
   }
-  let id <- Db.insert Todo {
+  let milk <- Db.insert Todo {
     title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Bread",
     due: Nothing,
     owner: me,
   }
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Index {})
-  let r <- Test.click (Todos.Show.Delete { id: id })
-  let page <- Test.get (Index {})
-  let after <- Db.get Todo id
+  let r <- Test.click (Delete { id: milk })
+  let after <- Db.get Todo milk
   Task.succeed (
     {
       answer: r.answer,
       todo: Maybe.map (\t -> t.title) after,
-      items: Test.count "li" page.doc,
+      items: Test.texts "li a" r.doc,
+      summary: Test.text "#summary" r.doc,
     } == {
-      answer: Redirected (Index {}),
+      answer: Replaced { replaced: ["summary"], removed: ["todo-" ++ milk] },
       todo: Nothing,
-      items: 0,
+      items: ["Bread"],
+      summary: Just "1 open",
     }
+  )
+}
+
+-- The page on the Completed filter counts the open todos among those it lists: none. Delete
+-- carries the filter, so the count it sends is that one too, and the browser's check agrees.
+test "deleting from a filtered list keeps its count" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let milk <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    done: True,
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Bread",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index { filter: Completed })
+  let r <- Test.click (Delete { id: milk, filter: Completed })
+  Task.succeed (
+    { answer: r.answer, summary: Test.text "#summary" r.doc }
+      == {
+        answer: Replaced { replaced: ["summary"], removed: ["todo-" ++ milk] },
+        summary: Just "0 open",
+      }
   )
 }
 
@@ -1137,12 +1226,10 @@ None of that needed a test.
 ### The rest of the app
 
 - `app/Todos/Show.alder`: a detail page with an edit form: the `GET`
-  route `Show` and the write routes `Save` and `Delete`, whose paths hold
-  the todo's id (`PUT /todos/{id}` and `DELETE /todos/{id}`); the list's
-  Delete button sends the same `Delete`. `Show.load` reads the todo with
-  `Db.getMine`, which answers 404 when the todo doesn't exist or belongs
-  to someone else. Its tests send a visitor to log in, save the form and
-  delete the todo through the page.
+  route `Show` and the write route `Save`, whose path holds the todo's id
+  (`PUT /todos/{id}`). `Show.load` reads the todo with `Db.getMine`, which
+  answers 404 when the todo doesn't exist or belongs to someone else. Its
+  tests send a visitor to log in and save the form through the page.
 
 - `app/Auth/Login.alder`: the login page. It declares a `Password`
   capability, implemented in Go, and uses `Session.put` to sign the user

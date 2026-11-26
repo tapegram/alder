@@ -2510,7 +2510,7 @@ status : Id -> Query (Maybe Status)
 The status of the job with this id, `Nothing` when there is no such job.
 
 A job is stored where the `Task` that queued it writes: in an app with silos, the silo a
-route's `update` writes in, else the shared store. `Job.status` looks first in the silo its
+route's handler writes in, else the shared store. `Job.status` looks first in the silo its
 page `requires` (or its `Task` writes in), then in the shared store, so a page that requires
 what the queueing route requires finds the job. A job in another silo is `Nothing` here, and
 so is a job removed after it finished (a week after `Done`, 30 days after `Dead`; in a silo,
@@ -3715,7 +3715,7 @@ type Task a
 
 A write, or any step that may fail or wait, giving an `a`.
 
-A route's `update` is one: it ends with a `Response`. It can fail with `Task.fail` and is
+A write route's handler is one: it ends with a `Response`. It can fail with `Task.fail` and is
 stepped through with `let _ <-`.
 
 ### `Form`
@@ -3860,12 +3860,13 @@ type Answer = Shown
 
 What a request came to, in a test: the page shown, a redirect, a refusal, a 404 or a failure.
 
-It exists only inside a `test`. `Shown` is a page shown and `Rendered` a route's view patched
-into the page. `Refreshed` is a write whose `update` answered `Response.refresh`, and
-`Redirected` a redirect to a route. `FormRejected` carries each field's message, and
-`PageMissing` is a 404. `RequestFailed` carries the failure's message. `Replaced` is a write
-whose `update` answered `Response.replace`: the ids of the elements it replaced and of those
-it removed (`Response.remove`), in the order sent.
+It exists only inside a `test`. `Shown` is a page shown and `Rendered` a GET route's view
+patched into the page (a click on a GET route, or the deprecated `Response.render`).
+`Refreshed` is a write whose handler answered `Response.refresh`, and `Redirected` a redirect
+to a route. `FormRejected` carries each field's message, and `PageMissing` is a 404.
+`RequestFailed` carries the failure's message. `Replaced` is a write whose handler answered
+`Response.replace`: the ids of the elements it replaced and of those it removed
+(`Response.remove`), in the order sent.
 
 ### `not`
 
@@ -4273,7 +4274,7 @@ to draw depends on what was drawn, such as a length and then that many items.
 
 ## Response
 
-The answers a write route's handler can give: a redirect, a re-render, a refresh, a refusal or replaced elements, with toasts and removals.
+The answers a write route's handler can give: a redirect, replaced elements, a refresh or a refusal, with removals and toasts.
 
 A `Response` is built with these functions, each named after the HTTP it produces, and a
 toast is added to one with `|>`. A `Response` can be compared with `==`, and two routes are
@@ -4320,8 +4321,9 @@ refresh : Response
 
 Loads the page the browser is on again, and sends the regions of it that changed, with a 200.
 
-Use it when things appear or disappear, or when more than one place changes. It costs what
-loading the page costs, twice: the page is rendered before the `update` to know what changed.
+Use it when you would rather not say what changed: the runtime finds out by comparing the
+page before and after. It costs what loading the page costs, twice: the page is rendered
+before the handler to know what changed.
 
 ```alder fragment
 Response.refresh
@@ -4333,7 +4335,7 @@ Response.refresh
 invalid : Text -> Response
 ```
 
-Refuses a submission for a reason only `update` can know, with a 422.
+Refuses a submission for a reason only the handler can know, with a 422.
 
 It shows the page the browser is on again with the values that were posted, and the text in
 the form's `<Errors form />`. It is a successful result: the `Task` that gave it commits, so
@@ -4352,9 +4354,11 @@ replace : List Html -> Response
 Replaces elements of the page in place, each by the element with the same `id`, with a 200.
 
 Each view in the list is a root: fragments are opened and whitespace is dropped, and every
-root must be an element with an `id`, no two the same. Nothing else on the page is loaded or
-sent. Use it when a write route's handler already holds the data the views show, such as a
-count beside a list. A root the runtime cannot send sends nothing: the page is left as it was, with an
+root must be an element with an `id`, no two the same. A root cannot be text, a form control
+(`<al-input field=…>`; put it inside an element with the `id`), a `<html>`, `<head>` or
+`<body>`, or a click button. Nothing else on the page is loaded or sent. Use it for views the
+handler built from data it holds, such as a count beside a list, loaded with the query the
+page uses. A root the runtime cannot send sends nothing: the page is left as it was, with an
 error toast. `Response.replace []` changes nothing, for a write whose only news is a toast.
 
 ```alder fragment
@@ -4524,7 +4528,7 @@ Result.toMaybe (Err "bad") == Nothing
 Changing the session, the record an app keeps for each visitor in a signed cookie.
 
 The app declares the session's fields with `session { … }` in its `App` module. A route's
-`load` and `update` get the session as an argument; only `Session.put` changes it.
+`load` and a write route's handler get the session as an argument; only `Session.put` changes it.
 
 ### `Session.put`
 
@@ -4551,7 +4555,7 @@ Session.put (\s -> { s | user: Nothing, role: Member })
 Functions for `Task`, an effect that may write to the database, the session or a capability.
 
 A `Task` is a description of work, not its result: nothing runs while it is built, and the
-runtime runs it when a route's `update` (or a test) hands it over. Steps are chained with
+runtime runs it when a write route's handler (or a test) hands it over. Steps are chained with
 `let x <- e` in a block; there is no `andThen`. A `Query` can be bound with `let x <-` inside
 a `Task` block. All the writes of one `Task` run in one transaction: when the `Task` fails,
 they are rolled back and its `Session.put` changes are undone. Two tasks cannot be compared
@@ -4565,7 +4569,7 @@ succeed : a -> Task a
 
 A `Task` that does nothing and gives back the value.
 
-It is how a block ends: the last line of an `update` is usually `Task.succeed` with the
+It is how a block ends: the last line of a handler is usually `Task.succeed` with the
 `Response` to send.
 
 ```alder fragment

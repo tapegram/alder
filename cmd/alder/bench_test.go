@@ -17,7 +17,7 @@ func runBench(t *testing.T, args ...string) (int, string, string) {
 
 // TestBench_Rows runs `alder bench` on the fixture (testdata/bench/rows) once, text and --json,
 // and checks the shape of what it measures, never a time: a row per step, the loads of a
-// Rerender and of a followed Redirect, the redirect's two requests, the N+1 page's statements and
+// replace and of a followed Redirect, the redirect's two requests, the N+1 page's statements and
 // its one repeat, none on the plain page.
 func TestBench_Rows(t *testing.T) {
 	t.Parallel()
@@ -78,9 +78,9 @@ func TestBench_Rows(t *testing.T) {
 			}
 		}
 	}
-	// #160: a toggle answers `render (Item {id})`: the write (no page load) and the row's own
-	// view (its one load), not the page's.
-	if m := byTest["toggle 1000"][1]; m.Loads != 1 || m.Requests != 2 {
+	// #160, #309: a toggle answers `replace [ Item.view row session ]`: the write alone, which
+	// reads its row and sends its view, with no route's load run and no second request.
+	if m := byTest["toggle 1000"][1]; m.Loads != 0 || m.Requests != 1 {
 		t.Errorf("toggle: %+v", m)
 	}
 	// #49: a click on one row sends that row (and the shown hash), not the page: its bytes are

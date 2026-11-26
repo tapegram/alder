@@ -90,9 +90,12 @@ Badge.view : Int -> Session -> Html
 Badge.view n session = <span id="badge" load={Badge {}} every="1s">{Text.fromInt n}</span>
 
 Bump.post : Bump.Params -> Session -> Task Response
+-- The badge loads itself and polls, so Bump replaces nothing: the badge shows the new count at
+-- its next load. (The page holds the badge's placeholder, so a replace of the badge would not
+-- agree with the page loaded again.)
 Bump.post params session = {
   let _ <- Db.insert Ping {}
-  Task.succeed (Response.render (Badge {}))
+  Task.succeed (Response.replace [])
 }
 
 test "search as you type patches the results" = {

@@ -250,7 +250,7 @@ Prelude type that programs write, which every module uses unqualified
 Nor may one take `Doc` or `Answer`, the Prelude's types for tests
 (chapter 10), and no constructor may be named like one of `Answer`'s:
 `Shown`, `Rendered`, `Refreshed`, `Redirected`, `FormRejected`,
-`PageMissing`, `RequestFailed`.
+`PageMissing`, `RequestFailed`, `Replaced`.
 
 > **Db's own types stay free.** Db's own types, such as `Order` and `Page`,
 > stay free: `table Order` is fine.

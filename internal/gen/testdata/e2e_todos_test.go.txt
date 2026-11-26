@@ -477,14 +477,14 @@ func TestE2E_Todos(t *testing.T) {
 	toggle := msgURL(t, r.body, "/todos/"+url.PathEscape(id), "")
 	// a click button works without JavaScript: a form of its own posting the write route, which
 	// Datastar posts on submit
-	r.want(t, 200, `<li class=""><form method="post" action="/todos/`+url.PathEscape(id)+`" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @patch(&#39;/todos/`+url.PathEscape(id)+`&#39;, window._alderO?.(&#39;form&#39;)))"><input type="hidden" name="_method" value="PATCH" /><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>`)
+	r.want(t, 200, `<li id="todo-`+id+`" class=""><form method="post" action="/todos/`+url.PathEscape(id)+`" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @patch(&#39;/todos/`+url.PathEscape(id)+`&#39;, window._alderO?.(&#39;form&#39;)))"><input type="hidden" name="_method" value="PATCH" /><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>`)
 
 	// 7. Toggle under Datastar: an SSE patch of <body> with the toggled row; without: a 303 to the
 	// page
 	r = e.do("PATCH", toggle, nil, datastarHdr)
 	r.sse(t)
 	for _, f := range []string{
-		`<ul id="todos"><li class="done"><form method="post" action="/todos/` + url.PathEscape(id) + `" class="_alder-click"`,
+		`<ul id="todos"><li id="todo-` + id + `" class="done"><form method="post" action="/todos/` + url.PathEscape(id) + `" class="_alder-click"`,
 		`>Undo</button></al-button></form><a href="/todos/` + id + `">Milk</a>`,
 		`<p id="summary">0 open</p>`,
 	} {
@@ -510,7 +510,7 @@ func TestE2E_Todos(t *testing.T) {
 		r.want(t, 200, `<a href="/?filter=Completed" aria-current="page">Completed</a>`, `<ul id="todos"></ul>`, `<p id="summary">0 open</p>`)
 	})
 	r = e.do("GET", "/", nil)
-	r.want(t, 200, `<li class=""><form`, `>Done</button></al-button></form><a href="/todos/`+id+`">Milk</a>`, `<p id="summary">1 open</p>`)
+	r.want(t, 200, `<li id="todo-`+id+`" class=""><form`, `>Done</button></al-button></form><a href="/todos/`+id+`">Milk</a>`, `<p id="summary">1 open</p>`)
 	r = e.do("GET", "/?filter=Completed", nil)
 	r.want(t, 200, `<ul id="todos"></ul>`)
 
@@ -522,13 +522,17 @@ func TestE2E_Todos(t *testing.T) {
 	r.want(t, 404, `<title>Not found</title>`, `<h1>Not found</h1>`)
 	r.html(t)
 
-	// 9. Delete (from the list, under Datastar): the list's button sends Show's DELETE
-	// /todos/{id}, whose redirect to the list patches it empty, and it stays empty
+	// 9. Delete (from the list, under Datastar): DELETE /todos/{id} answers Response.replace
+	// (#309): one event with the count and no selector, then the removal of the todo's item;
+	// the page is not sent, and the list stays without it
 	r = e.do("GET", "/", nil)
 	del := msgURL(t, r.body, "/todos/"+url.PathEscape(id), "")
 	r = e.do("DELETE", del, nil, datastarHdr)
-	r.navigate(t, "/")
-	r.want(t, 200, `<ul id="todos"></ul>`, `<p id="summary">0 open</p>`)
+	if ct := r.header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("Content-Type %q, want text/event-stream", ct)
+	}
+	r.want(t, 200, "event: datastar-patch-elements\ndata: mode outer\ndata: elements <p id=\"summary\">0 open</p>\n",
+		"data: selector #todo-"+id+"\ndata: mode remove\n")
 	r.lacks(t, "Milk")
 	r = e.do("GET", "/", nil)
 	r.want(t, 200, `<ul id="todos"></ul>`)

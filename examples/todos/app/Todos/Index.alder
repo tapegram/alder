@@ -4,19 +4,30 @@ import Layout
 import Table.Todo
 import Table.User
 
-route Index  = GET   "/"           { filter: Todo.Filter = All }              requires user
-route Submit = POST  "/todos"      { filter: Todo.Filter = All } form NewTodo requires user
-route Toggle = PATCH "/todos/{id}" { id: Todo.TodoId }                        requires user
+route Index  = GET    "/"           { filter: Todo.Filter = All }                  requires user
+route Submit = POST   "/todos"      { filter: Todo.Filter = All } form NewTodo     requires user
+route Toggle = PATCH  "/todos/{id}" { id: Todo.TodoId }                            requires user
+-- The list deletes a todo in place. The filter the page shows rides in the URL, as `Submit`'s
+-- does, so that the count it sends back is the count of the list the page shows.
+route Delete = DELETE "/todos/{id}" { id: Todo.TodoId, filter: Todo.Filter = All } requires user
 
 type Model = { filter: Todo.Filter, todos: List Todo }
 
 Index.load : Index.Params -> Session -> Query Model
 Index.load params session = {
+  let todos <- listed params.filter
+  Query.succeed { filter: params.filter, todos: todos }
+}
+
+-- The todos the page lists, newest first. `Index.load` and `Delete` both read them with this
+-- one query, so what `Delete` sends back agrees with what the page shows.
+listed : Todo.Filter -> Query (List Todo) requires user
+listed filter = {
   let todos <-
     Db.mine Todo
       |> Db.orderBy Todo.created.desc
       |> Db.all
-  Query.succeed { filter: params.filter, todos: List.filter (Todo.matches params.filter) todos }
+  Query.succeed (List.filter (Todo.matches filter) todos)
 }
 
 form NewTodo = { title: Text.NonEmpty, due: Maybe Date }
@@ -35,6 +46,15 @@ Toggle.patch : Toggle.Params -> Session -> Task Response
 Toggle.patch p session = {
   let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
   Task.succeed Response.refresh
+}
+
+-- Delete answers with what it changed: the todo's row goes, and the count is sent again, drawn by
+-- `summary`, the function the page draws it with. Nothing else is loaded or sent.
+Delete.delete : Delete.Params -> Session -> Task Response
+Delete.delete p session = {
+  let _ <- Db.deleteMine Todo p.id
+  let todos <- listed p.filter
+  Task.succeed (Response.replace [summary todos] |> Response.remove ("todo-" ++ p.id))
 }
 
 Index.view : Model -> Session -> Html
@@ -60,17 +80,20 @@ Index.view model session =
     </nav>
 
     <ul id="todos">
-      {for todo in model.todos -> <Item todo={todo} />}
+      {for todo in model.todos -> <Item todo={todo} filter={model.filter} />}
     </ul>
 
-    <p id="summary">{Text.fromInt (Todo.countOpen model.todos)} open</p>
+    {summary model.todos}
 
     <al-button variant="outline" click={App.Logout}>Log out</al-button>
   </Layout.Page>
 
-Item : { todo: Todo } -> Html
+summary : List Todo -> Html
+summary todos = <p id="summary">{Text.fromInt (Todo.countOpen todos)} open</p>
+
+Item : { todo: Todo, filter: Todo.Filter } -> Html
 Item props =
-  <li class={if props.todo.done then "done" else ""}>
+  <li id={"todo-" ++ props.todo.id} class={if props.todo.done then "done" else ""}>
     <al-button variant="secondary" size="sm" click={Toggle { id: props.todo.id }}>
       {if props.todo.done then "Undo" else "Done"}
     </al-button>
@@ -79,7 +102,7 @@ Item props =
       Just d -> <al-badge variant="outline" class="due">{Date.format "Jan 2" d}</al-badge>,
       Nothing -> Html.none,
     }}
-    <al-button variant="ghost" size="sm" click={Todos.Show.Delete { id: props.todo.id }}>
+    <al-button variant="ghost" size="sm" click={Delete { id: props.todo.id, filter: props.filter }}>
       Delete
     </al-button>
   </li>
@@ -144,7 +167,7 @@ test "Delete by another user is not found" = {
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Index {})
   let _ <- Test.login { user: Just (User.UserId "someone-else") }
-  let r <- Test.click (Todos.Show.Delete { id: id })
+  let r <- Test.click (Delete { id: id })
   let after <- Db.get Todo id
   Task.succeed (
     { answer: r.answer, todo: Maybe.map (\t -> t.title) after }
@@ -228,7 +251,7 @@ test "a write after logging out is sent to log in" = {
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Index {})
   let _ <- Test.login { user: Nothing }
-  let deleted <- Test.click (Todos.Show.Delete { id: id })
+  let deleted <- Test.click (Delete { id: id })
   let todos <- Db.from Todo |> Db.all
   Task.succeed (
     {
@@ -266,34 +289,72 @@ test "a stranger cannot see my todo" = {
   )
 }
 
--- The list deletes through the todo's own route, `DELETE /todos/{id}`: one todo, one URL. Its
--- the handler redirects to the list, so the page comes back without the todo.
+-- Delete answers `Response.replace`: the answer is `Replaced`, with the ids it replaced and
+-- removed, and `r.doc` is the page the browser holds after it. The test browser also loads the
+-- page again and checks that it agrees: the count sent is the count the page would show.
 test "deleting from the list" = {
   let me <- Db.insert User {
     email: Text.Email "me@example.com",
     name: Text.NonEmpty "Me",
     passwordHash: "",
   }
-  let id <- Db.insert Todo {
+  let milk <- Db.insert Todo {
     title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Bread",
     due: Nothing,
     owner: me,
   }
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Index {})
-  let r <- Test.click (Todos.Show.Delete { id: id })
-  let page <- Test.get (Index {})
-  let after <- Db.get Todo id
+  let r <- Test.click (Delete { id: milk })
+  let after <- Db.get Todo milk
   Task.succeed (
     {
       answer: r.answer,
       todo: Maybe.map (\t -> t.title) after,
-      items: Test.count "li" page.doc,
+      items: Test.texts "li a" r.doc,
+      summary: Test.text "#summary" r.doc,
     } == {
-      answer: Redirected (Index {}),
+      answer: Replaced { replaced: ["summary"], removed: ["todo-" ++ milk] },
       todo: Nothing,
-      items: 0,
+      items: ["Bread"],
+      summary: Just "1 open",
     }
+  )
+}
+
+-- The page on the Completed filter counts the open todos among those it lists: none. Delete
+-- carries the filter, so the count it sends is that one too, and the browser's check agrees.
+test "deleting from a filtered list keeps its count" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let milk <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    done: True,
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Bread",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index { filter: Completed })
+  let r <- Test.click (Delete { id: milk, filter: Completed })
+  Task.succeed (
+    { answer: r.answer, summary: Test.text "#summary" r.doc }
+      == {
+        answer: Replaced { replaced: ["summary"], removed: ["todo-" ++ milk] },
+        summary: Just "0 open",
+      }
   )
 }
 

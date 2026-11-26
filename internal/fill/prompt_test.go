@@ -184,7 +184,7 @@ func TestPrompt_RouteMember(t *testing.T) {
 	}
 	for _, want := range []string{
 		"route Create = POST",
-		"Response.redirect", "Response.render", "Response.refresh", "Response.invalid", "Response.toast",
+		"Response.redirect", "Response.replace", "Response.remove", "Response.refresh", "Response.invalid", "Response.toast",
 		"If you would want it back after a refresh, it goes in the URL. If it is secret, it goes in the session. Everything else rides in the HTML or is a row.",
 		"`Test.submit Create {",
 	} {

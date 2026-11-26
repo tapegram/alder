@@ -84,8 +84,10 @@ imports, and the standard library signatures the request includes. Nothing else 
   `<form submit={Create}>` send a write route.
 - A handler answers with a `Response`, built by:
   - `Response.redirect (Index {})`: go there (303);
-  - `Response.render (Row { id: params.id })`: that GET route's view, for something already on the page;
-  - `Response.refresh`: the page the browser is on, again, for things that appear or disappear;
+  - `Response.replace [ Row.view todo session ]`: views the handler built from data it loaded,
+    each replacing the page's element with the same `id` (each root needs an `id`);
+    `|> Response.remove "todo-3"` also removes the element with that id;
+  - `Response.refresh`: the page the browser is on, again, when you would rather not say what changed;
   - `Response.invalid "reason"`: refuse the form, shown on it (422; writes before it are kept);
   - `Response.toast "Saved"` (and `Response.success`, `Response.warning`, `Response.error`),
     piped onto any of them: `Response.redirect (Index {}) |> Response.success "Saved"`.
@@ -114,7 +116,8 @@ imports, and the standard library signatures the request includes. Nothing else 
   `Test.submit Create { title: Text.NonEmpty "Hi" }` (post a route's form),
   `Test.login { user: Just me }`.
 - An `answer` is `Shown`, `Redirected (Index { … })` (a `Response.redirect`), `Refreshed` (a
-  `Response.refresh`), `Rendered (Row { … })` (a `Response.render`), `FormRejected […]` (a
+  `Response.refresh`), `Replaced { replaced: ["todo-3"], removed: [] }` (a `Response.replace`: the ids it replaced
+  and removed), `FormRejected […]` (a
   `Response.invalid`), `PageMissing` or `RequestFailed "…"`.
 - Read a document with `Test.texts "#posts li" doc`, `Test.count "li" doc`,
   `Test.has ".empty" doc`, `Test.text "h1" doc`.

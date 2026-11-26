@@ -76,7 +76,8 @@ same text.
 `alder test` checks the app, compiles it with its tests, runs every test
 and prints one line per test. In the repository, the to-do app has 148:
 its own 26, and the 122 of the admin that `alder new admin` generated for
-it (chapter 15). `-run` (section 7) picks out the app's own, by module:
+it (chapter 15). `-run` (section 7) picks out the app's own, by module
+(all but `Jobs.Nightly`'s):
 
 ```text
 $ alder test examples/todos -run '^(App|Auth|Table\.Todo|Todos)'
@@ -95,15 +96,17 @@ ok   Todos.Index "Toggle by another user is not found"
 ok   Todos.Index "Delete by another user is not found"
 ok   Todos.Index "adding a todo through the page"
 ok   Todos.Index "toggling a todo through the page"
+ok   Todos.Index "a write after logging out is sent to log in"
 ok   Todos.Index "a stranger cannot see my todo"
 ok   Todos.Index "deleting from the list"
+ok   Todos.Index "deleting from a filtered list keeps its count"
 ok   Todos.Index "the newest todo is listed first"
 ok   Todos.Index "Db.mine is what Me sees"
 ok   Todos.Show "a visitor is sent to log in from a todo"
 ok   Todos.Show "saving changes the title and the due date"
-ok   Todos.Show "deleting from the todo's page"
-ok   Todos.Show "saving or deleting another user's todo is not found"
-23 passed, 0 failed
+ok   Todos.Show "saving after logging out is sent to log in"
+ok   Todos.Show "saving another user's todo is not found"
+25 passed, 0 failed
 ```
 
 Each line names the module and the test, and is printed as soon as that
@@ -160,8 +163,10 @@ ok   Todos.Index "Toggle by another user is not found"
 ok   Todos.Index "Delete by another user is not found"
 ok   Todos.Index "adding a todo through the page"
 ok   Todos.Index "toggling a todo through the page"
+ok   Todos.Index "a write after logging out is sent to log in"
 ok   Todos.Index "a stranger cannot see my todo"
 ok   Todos.Index "deleting from the list"
+ok   Todos.Index "deleting from a filtered list keeps its count"
 ok   Todos.Index "the newest todo is listed first"
 ok   Todos.Index "Db.mine is what Me sees"
 FAIL Todos.Index "Toggle reads, then writes"
@@ -170,9 +175,9 @@ FAIL Todos.Index "Toggle reads, then writes"
   trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.run", "Db.updateMine Todo"]
 ok   Todos.Show "a visitor is sent to log in from a todo"
 ok   Todos.Show "saving changes the title and the due date"
-ok   Todos.Show "deleting from the todo's page"
-ok   Todos.Show "saving or deleting another user's todo is not found"
-23 passed, 2 failed
+ok   Todos.Show "saving after logging out is sent to log in"
+ok   Todos.Show "saving another user's todo is not found"
+25 passed, 2 failed
 ```
 
 A failing test is `FAIL`, followed by indented lines that say why:
@@ -1159,8 +1164,8 @@ fake Stripe {
   is a failing step: under `Test.run` it is `Err` with the entry's
   message, its writes undone; outside it, the test fails.
 
-- After a `render` or an element fetch, the browser's element check
-  (section 9) runs the route's `load` again, so an entry that `load`
+- After an element fetch, a `render` or a `replace`, the browser's check
+  (section 9) loads the route or the page again, so an entry that `load`
   calls runs twice in that step. The second call's rows are undone with
   the check's savepoint and it is not in the trace; what the fake keeps
   outside its tables (the Go value `Test.fake` installs) sees both calls.
@@ -1398,21 +1403,28 @@ type Answer = Shown
             | FormRejected (List { field: Text, message: Text })
             | PageMissing
             | RequestFailed Text
+            | Replaced { replaced: List Text, removed: List Text }
 ```
 
 | Answer | When | The page the browser then holds |
 |---|---|---|
 | `Shown` | `get`/`open`: the page was shown | that page |
-| `Rendered r` | `click` of the GET route `r`, or of a write route whose handler answered `Response.render r` | the page it held, with `r`'s view patched in as the element with the view's root `id` |
+| `Rendered r` | `click` of the GET route `r`, or of a write route whose handler answered the deprecated `Response.render r` | the page it held, with `r`'s view patched in as the element with the view's root `id` |
+| `Replaced { replaced, removed }` | `click`/`submit` of a write route whose handler answered `Response.replace views` (with any `Response.remove id`) | the page it held, each element of `replaced` swapped for the view with its `id`, then each of `removed` taken out |
 | `Refreshed` | `click`/`submit` of a write route whose handler answered `Response.refresh`; or `Test.refresh`, when the page loaded again is the page held | after a write, the page re-rendered, the regions the server changed patched in; after `Test.refresh`, the page loaded again |
 | `Redirected r` | a `Response.redirect r`, a `load` ending in `Query.redirect r`, or a `requires` sending a visitor to the login page | `r`, which the browser requested in turn |
 | `FormRejected errors` | `submit`/`click`: the form did not decode, or the handler answered `Response.invalid t` | the page with the form re-rendered: the values typed and the errors (status 422) |
 | `PageMissing` | a 404: `Query.notFound`, `Task.notFound`, no such route | `App.notFound` (when only an element was asked for, a `Response.render` or a click on a GET route: the page it held, with an error toast) |
 | `RequestFailed text` | the request failed (a `Task.fail`, a Go panic): a 500 | `App.error` (for an element, as above: the page it held, with an error toast) |
 
-`Rendered` and `Refreshed` are the names of `Response.render` and
-`Response.refresh` as the browser sees them: the first patches one
-element, the second the regions that changed (section 10).
+`Replaced` and `Refreshed` are the names of `Response.replace` and
+`Response.refresh` as the browser sees them: the first swaps the elements
+the handler sent, the second the regions that changed (section 10).
+`Replaced` carries the ids, without `#`, in the order the answer sent
+them: `replaced` for the views, `removed` for `Response.remove`. A test
+compares it whole, `Replaced { replaced: ["summary"], removed: ["todo-" ++
+id] }`, or matches it to take one list out. `Rendered` is the name of a
+click on a GET route, and of `Response.render`, which is deprecated.
 
 `Rerendered`, the answer of the old page-and-message form's re-render,
 is gone with that form. A test that names it is E0002; write `Refreshed`.
@@ -1842,9 +1854,31 @@ page again and patched in the regions that changed: the item now has
 `class="done"`, and nothing is open. The answer is `Refreshed`.
 
 Had the
-route answered `Response.render (Row { id: id })`, the answer would be
-`Rendered` with the address of `Row`, and only that one item would have
-changed (chapter 6, "`Response`").
+route answered `Response.replace [ Row.view todo session ]`, as chapter 6's
+`Toggle` does, the answer would be `Replaced` with the item's id, and only
+that one item would have changed (chapter 6, "`Response`").
+
+The list's Delete button answers that way. Its handler deletes the todo,
+reads the list again with the query the page loads with, and answers
+`Response.replace [ summary todos ] |> Response.remove ("todo-" ++ p.id)`:
+the count again, and the todo's item taken out. The answer names both ids,
+and `r.doc` is the page after the browser applied them:
+
+```alder
+test "deleting through the page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let milk <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Db.insert Todo { title: Text.NonEmpty "Bread", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index.Index {})
+  let r <- Test.click (Todos.Index.Delete { id: milk })
+  Task.succeed ({ answer: r.answer, items: Test.texts "li a" r.doc, summary: Test.text "#summary" r.doc } == { answer: Replaced { replaced: ["summary"], removed: ["todo-" ++ milk] }, items: ["Bread"], summary: Just "1 open" })
+}
+```
+
+The ids are written as the page writes them, without `#`. When only one
+of the lists matters, a `match` takes it out: `match r.answer { Replaced
+p -> p.removed, _ -> [] }`.
 
 ### Clicks that fail
 
@@ -1876,6 +1910,21 @@ Section 10 shows how each is made.
   compared. A difference means the page the user holds is not the page the
   server rendered.
 
+- **The fresh-load check.** After `Replaced`, the browser loads the page it
+  holds again, on its own, and each element the answer replaced must equal
+  the element with the same `id` in the page loaded again; no removed id
+  may still be in it. The handler built those views from data it loaded
+  itself, and this is what proves that the page's own `load` agrees.
+
+  A difference fails the step: "DELETE /todos/3: the answer replaced
+  `#summary` unlike the page loaded again (GET /?filter=Completed) at
+  p#summary", with both markups. The to-do list's Delete carries the
+  page's filter for this reason: without it, the count sent from the
+  Completed list would be every open todo, and the page on that filter
+  counts none. An id the page loaded again does not have is not compared.
+  The second load runs in a savepoint that is undone, and is not a step of
+  the trace.
+
 - **The element check.** After `Rendered r`, the browser asks for `r` again
   on its own, as a button does, and the element it holds must equal the
   view that answers. It is the same `load` and `view`, so they are equal
@@ -1890,17 +1939,21 @@ Section 10 shows how each is made.
   undoes the rows in the fake's tables, not what it keeps outside the
   database.
 
-- **A patch with nowhere to go.** A `render` whose root `id` the held page
-  lacks patches nothing in a real browser, silently. The test fails the
-  step: "PATCH /todos/9: the answer patched `#todo-9`, which the page does
-  not have".
+- **A patch with nowhere to go.** A replaced view or a removal whose `id`
+  the held page lacks changes nothing in a real browser, silently. The
+  test fails the step: "DELETE /members/3: the answer replaced
+  `#member-count`, which the page does not have" (and "…removed
+  `#member-3`, which the page does not have"). A `render` whose root `id`
+  the page lacks fails the same way: "PATCH /todos/9: the answer patched
+  `#todo-9`, which the page does not have".
 
   A view with no root `id` is not patched either: the answer is
   `RequestFailed` ("route GET /rows/\{id} answered an element fetch with a
   view whose first root element has no id").
 
-A `render` patches one element, and a page can have other places that
-should have changed: these checks do not see that. `Test.refresh` does.
+A `replace` changes the elements it names, and a page can have other
+places that should have changed: these checks do not see that, since
+they compare only what the answer sent. `Test.refresh` does.
 
 ### `Test.refresh`: is the page the one a fresh load would give?
 
@@ -1939,9 +1992,10 @@ because some pages are right without it.
 
 The test earns its place when a route answers with less than it
 should. Here is the same app with `Toggle` changed as chapter 6 does
-(`Row` is a GET route for one item, and `Toggle` answers
-`Response.render (Row { id: p.id })`). The click passes both checks above,
-since the item it patched is right, and `Test.refresh` fails:
+(`Row` is a GET route for one item, and `Toggle` reads the todo again and
+answers `Response.replace [ Row.view todo session ]`). The click passes
+the checks above, since the item it replaced is right, and `Test.refresh`
+fails:
 
 ```text
 FAIL Todos.Index "toggling, then refreshing"
@@ -1953,11 +2007,11 @@ FAIL Todos.Index "toggling, then refreshing"
 ```
 
 The item changed and the count of open todos below the list did not: the
-toggle should have been a `refresh`.
+toggle should have sent the count too, as the list's Delete does, or been
+a `refresh`.
 
-The trace shows the other price of
-`render`: one `Db.getMine Todo` for the item, where `refresh` loads the
-whole list.
+The trace shows what each costs: one `Db.getMine Todo`, the handler's own
+read of the item, where `refresh` loads the whole list.
 
 The failure names where the two bodies first differ and shows
 each side. The other failures are "Test.refresh: GET /rows/x: not found",
@@ -2164,8 +2218,10 @@ these texts, and nothing is sent:
 
 - "PATCH /todos/3: the patched page differs from a full render at …",
   "… the answer patched #todo-1 unlike Todos.Index.Row's view rendered on
-  its own …" and "… the answer patched `#todo-9`, which the page does not
-  have": the checks of "What the browser checks on every step".
+  its own …", "… the answer replaced `#summary` unlike the page loaded
+  again …" and "… the answer replaced `#member-count`, which the page does
+  not have" (or "removed", or "patched" for a `render`): the checks of
+  "What the browser checks on every step".
 
 - "Test.refresh: GET /: the page held differs from the page loaded again
   at …", "Test.refresh: GET /rows/x: not found" and "Test.refresh: the
@@ -2394,7 +2450,7 @@ compare the two renders and send only the regions that changed (chapter
 A click on `Toggle`, which
 answers `refresh`, shows it in the trace: the page's `Db.mine Todo` and
 `Db.all Todo` come before `Db.updateMine Todo`, and again after it. A
-route that only `redirect`s or `render`s reads nothing it does not need.
+route that only `redirect`s or `replace`s reads nothing it does not need.
 
 #### The model
 
@@ -2427,6 +2483,11 @@ applies the events as Datastar would:
   The held page without an element of that id cannot take it, and the
   step fails ("… which the page does not have").
 
+- a patch of a `replace`'s elements, with no selector: each root replaces
+  the element with its own `id`, and a removal takes out the element its
+  `#id` selector names. Every id is looked for before anything changes,
+  so a step that fails leaves the page as it was.
+
 - a toast is appended to the page's `<al-toasts>` and read into the
   step's `notices` and `toasts`.
 
@@ -2436,8 +2497,10 @@ applies the events as Datastar would:
   is not requested.
 
 Which answer a step gives is read from the route's `Response`, as the
-router handed it to the browser: a `render r` is `Rendered r` (once the
-element check has passed), a `refresh` is `Refreshed`, an `invalid` is
+router handed it to the browser: a `replace` is `Replaced` with the ids
+it replaced and removed (once the fresh-load check has passed), a `render
+r` is `Rendered r` (once the element check has passed), a `refresh` is
+`Refreshed`, an `invalid` is
 `FormRejected` with the errors the page now shows in its `<Errors>`
 lists.
 
@@ -2482,6 +2545,12 @@ address once more, as an element fetch, inside a savepoint that it rolls
 back, and compares the element in the page held with the element that
 comes back. That is the element check.
 
+After a `replace` it sends a plain `GET` for the address held, with the
+cookie, as a reload does, inside the same kind of savepoint, and compares
+each element the answer replaced with the element of that `id` in the
+page that comes back, and looks there for each id it removed. That is the
+fresh-load check.
+
 `Test.refresh` sends a plain `GET`
 for the address held, as a reload does, and compares the body it gets
 with the body held, leaving out `<al-toasts>`.
@@ -2515,8 +2584,9 @@ every function total, and one browser test that opens a page runs all of
 its `load` and its `view`.
 
 A line can run and still go unchecked: "a
-stranger cannot see my todo" runs `Index.load` of `Todos.Index`, `Db.orderBy`
-included, and nothing in it notices if the order is backwards.
+stranger cannot see my todo" runs `Index.load` of `Todos.Index`, and with
+it the `Db.orderBy` of the query it calls, and nothing in it notices if
+the order is backwards.
 
 A **mutant** is a copy of the app with one small, deliberate bug: a
 check removed, a write that does nothing, an order reversed, a
@@ -2548,37 +2618,36 @@ had before this section's work, the others left out with `-run`:
 
 ```text
 11 passed, 0 failed
-41 mutants: 21 killed, 20 survived  (score 0.51)
+41 mutants: 22 killed, 19 survived  (score 0.54)
 survived:
   App           Logout.delete:16   update field dropped   { s | user: Nothing, role: Member } → { s | user: Nothing }
   App           Logout.delete:17   redirect → refresh     Response.redirect (Auth.Login.Login {}) → Response.refresh
-  Auth.Login    Submit.post:42   update field dropped   { s | user: Just id, role: role } → { s | user: Just id }
+  Auth.Login    Submit.post:42     update field dropped   { s | user: Just id, role: role } → { s | user: Just id }
   Table.Todo    Todo:16            cascade ↔ restrict     owner @ref User @restrict → owner @ref User @cascade
-  Table.Todo    matches:21         arm swapped            match filter { All -> True, Active -> not todo.done, Complete…
+  Table.Todo    matches:21         arm swapped            match filter { All -> True, Active -> not todo.don…
   Table.Todo    matches:23         not dropped            not todo.done → todo.done
-  Table.Todo    filterLabel:28     arm swapped            match filter { All -> "Al… → the All and Active bodies swapped
-  Table.Todo    filterLabel:28     arm swapped            match filter { All -> "All", Active -> "Active", Completed ->…
+  Table.Todo    filterLabel:28     arm swapped            match filter { All -> "All", Active -> "Active", C…
+  Table.Todo    filterLabel:28     arm swapped            match filter { All -> "All", Active -> "Active", C…
   Todos.Index   Submit:8           requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
   Todos.Index   Toggle:9           requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
-  Todos.Index   Index.load:17      orderBy reversed       Db.orderBy Todo.created.desc → Db.orderBy Todo.created.asc
-  Todos.Show    Show:7             requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
+  Todos.Index   Delete:12          requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
+  Todos.Index   listed:28          orderBy reversed       Db.orderBy Todo.created.desc → Db.orderBy Todo.created.asc
+  Todos.Show    Show:11            requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
   Todos.Show    Save:12            requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
-  Todos.Show    Delete:13          requires dropped       requires user → served without user (user = Table.User.UserId "mutant")
-  Todos.Show    Save.put:27     write replaced         let _ <- Db.updateMine Todo p.id … → let _ <- Task.succeed ()
-  Todos.Show    Save.put:27     scope dropped          Db.updateMine Todo p.id (\t -> { t | title: p.form.title, due: p.form.due }) → Db.update Todo p.id …, not found when missing
-  Todos.Show    Save.put:27     update field dropped   { t | title: p.form.title, due: p.form.due } → { t | due: p.form.due }
-  Todos.Show    Save.put:27     update field dropped   { t | title: p.form.title, due: p.form.due } → { t | title: p.form.title }
-  Todos.Show    Save.put:28     redirect → refresh     Response.redirect (Todos.Index.Index {}) → Response.refresh
-  Todos.Show    Delete.delete:34   redirect → refresh     Response.redirect (Todos.Index.Index {}) → Response.refresh
+  Todos.Show    Save.put:26        write replaced         let _ <- Db.updateMine Todo p.id … → let _ <- Task.succeed ()
+  Todos.Show    Save.put:26        scope dropped          Db.updateMine Todo p.id (\t -> { t | title: p.form.title, due: p.form.due }) → Db.update Todo p.id …, not found when missing
+  Todos.Show    Save.put:26        update field dropped   { t | title: p.form.title, due: p.form.due } → { t | due: p.form.due }
+  Todos.Show    Save.put:26        update field dropped   { t | title: p.form.title, due: p.form.due } → { t | title: p.form.title }
+  Todos.Show    Save.put:27        redirect → refresh     Response.redirect (Todos.Index.Index {}) → Response.refresh
 ```
 
-A test failed for 21 of the 41 mutants: the score is 21 / 41. A
+A test failed for 22 of the 41 mutants: the score is 22 / 41. A
 survivor's line gives:
 
 - its module;
-- `declaration:line` (`Index.load:17` is
-  line 17 of `app/Todos/Index.alder`; a route's members are named as in the
-  source, `Save.put:27`; a column is added, `load:33:17`, when the line
+- `declaration:line` (`listed:28` is
+  line 28 of `app/Todos/Index.alder`; a route's members are named as in the
+  source, `Save.put:26`; a column is added, `load:33:17`, when the line
   has two mutants of that kind);
 - the operator;
 - the code before `→`
@@ -2654,11 +2723,11 @@ dropped` reads like this in a report. From `alder test --mutate -run
 app's five:
 
 ```text
-  Todos.Index   Index.load:16      scope dropped          Db.mine Todo → Db.from Todo
-  Todos.Index   Toggle.patch:36   scope dropped          Db.updateMine Todo p.id (\t -> { t | done: not t.done }) → Db.update Todo p.id (\t -> { t | done: not t.done }), not found when missing
-  Todos.Show    Show.load:19       scope dropped          Db.getMine Todo params.id → Db.get Todo params.id, not found when missing
-  Todos.Show    Save.put:27     scope dropped          Db.updateMine Todo p.id (\t -> { t | title: p.form.title, due: p.form.due }) → Db.update Todo p.id …, not found when missing
-  Todos.Show    Delete.delete:33   scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
+  Todos.Index   listed:27          scope dropped          Db.mine Todo → Db.from Todo
+  Todos.Index   Toggle.patch:47    scope dropped          Db.updateMine Todo p.id (\t -> { t | done: not t.done }) → Db.update Todo p.id (\t -> { t | done: not t.done }), not found when missing
+  Todos.Index   Delete.delete:55   scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
+  Todos.Show    Show.load:18       scope dropped          Db.getMine Todo params.id → Db.get Todo params.id, not found when missing
+  Todos.Show    Save.put:26        scope dropped          Db.updateMine Todo p.id (\t -> { t | title: p.form.title, due: p.form.due }) → Db.update Todo p.id …, not found when missing
 ```
 
 "Not found when missing" is the replacement's whole behaviour: the
@@ -2674,10 +2743,9 @@ a test that acts as a stranger:
   list's `Db.mine` and `Todos.Show`'s `Db.getMine`);
 - "Toggle by another
   user is not found" and "Delete by another user is not found" (a stranger
-  presses my todo's button on a page still open in the browser; the list's
-  Delete button sends `Todos.Show`'s `Delete`);
-- "saving or deleting another user's todo is not found" (the same for the
-  todo's own page).
+  presses my todo's button on a page still open in the browser);
+- "saving another user's todo is not found" (the same for the todo's own
+  page).
 
 Of the first two, "Toggle flips done" kills the
 `Toggle` mutant before them, since its trace says `Db.updateMine Todo`.
@@ -2685,7 +2753,7 @@ Of the first two, "Toggle flips done" kills the
 ### A surviving mutant is a test you have not written
 
 Each survivor is a behaviour no test checks: write the test that would
-notice. `Todos.Show Save.put:27` has four of them in the report above:
+notice. `Todos.Show Save.put:26` has four of them in the report above:
 the save could store nothing, drop the title, drop the due date, or touch
 anyone's todo. One test that saves the form and reads the row back kills
 the first three:
@@ -2702,8 +2770,8 @@ test "saving changes the title and the due date" = {
 }
 ```
 
-Nine tests of this kind kill those twelve, and the tests of the route
-operators kill the eight others (below): the app's own code then ends
+Eight tests of this kind kill those twelve, and the tests of the route
+operators kill the seven others (below): the app's own code then ends
 `41 mutants: 41 killed, 0 survived  (score 1.00)`.
 
 ### The mutant that needs a stranger
@@ -2711,22 +2779,18 @@ operators kill the eight others (below): the app's own code then ends
 The fourth, `scope dropped`, needs a stranger. A write route takes its id
 from the request and no `load` runs before it, so the check that the todo
 is the user's is `Db.updateMine`'s alone. The test keeps my page open, logs
-in as someone else, and saves and deletes my todo:
+in as someone else, and saves my todo:
 
 ```alder
-test "saving or deleting another user's todo is not found" = {
+test "saving another user's todo is not found" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Todos.Show.Show { id: id })
   let _ <- Test.login { user: Just (User.UserId "someone-else") }
   let saved <- Test.submit (Todos.Show.Save { id: id }) { title: Text.NonEmpty "Bread", due: Nothing }
-  let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Show.Show { id: id })
-  let _ <- Test.login { user: Just (User.UserId "someone-else") }
-  let deleted <- Test.click (Todos.Show.Delete { id: id })
   let after <- Db.get Todo id
-  Task.succeed ({ saved: saved.answer, deleted: deleted.answer, todo: Maybe.map (\t -> t.title) after } == { saved: PageMissing, deleted: PageMissing, todo: Just (Text.NonEmpty "Milk") })
+  Task.succeed ({ saved: saved.answer, todo: Maybe.map (\t -> t.title) after } == { saved: PageMissing, todo: Just (Text.NonEmpty "Milk") })
 }
 ```
 
@@ -2748,13 +2812,12 @@ is `PageMissing` and the todo is as it was.
 
 Against the mutant, `Db.update`
 finds my todo, writes it, and the answer is a redirect: the test fails, and
-the mutant is killed. The same test kills `Delete`'s `scope dropped` and
-its `write replaced`, which the list's "Delete by another user is not
-found" kills first: the list's Delete button sends the same route.
+the mutant is killed. The list's "Delete by another user is not found"
+kills `Delete`'s `scope dropped` the same way.
 
 ### All twelve, and one killed by luck
 
-Nine tests kill the twelve:
+Eight tests kill the twelve:
 
 - "Logout makes the role Member" and
   "logging in copies the role from the user's row" kill the two `update
@@ -2771,23 +2834,22 @@ Nine tests kill the twelve:
 `examples/todos/README.md`
 lists the example's tests with what each kills.
 
-The report's eight other
+The report's seven other
 lines are the route operators'. Five are `requires dropped`, one per
 route: "a visitor is sent to log in from a todo" kills `Todos.Show`'s
 GET route's, and two tests kill the four write routes': "a write after
-logging out is sent to log in" and "saving or deleting after logging out
-is sent to log in" open the page, log out (`Test.login { user: Nothing
+logging out is sent to log in" and "saving after logging out is sent to
+log in" open the page, log out (`Test.login { user: Nothing
 }`) and send each write from the page still held, which must answer
 `Redirected (Auth.Login.Login {})` and change nothing. Against the
 mutant the write runs as the placeholder user, and its answer is a 404 or
 a failure, never the login page.
 
-The three answers (`redirect → refresh`
-of Logout and of `Todos.Show`'s Save and Delete) are killed by the tests
-that check what a write answers: "Logout clears the user and goes to log
-in" (see "The logout redirect" below), "saving changes the title and the
-due date", and "deleting from the todo's page" and "deleting from the
-list".
+The two answers (`redirect → refresh`
+of Logout and of `Todos.Show`'s Save) are killed by the tests that check
+what a write answers: "Logout clears the user and goes to log in" (see
+"The logout redirect" below) and "saving changes the title and the due
+date".
 
 One kill is worth a word. `Table.Todo countOpen:37 not dropped` (`not
 t.done → t.done`) counts the done todos instead of the open ones. A test
@@ -2809,14 +2871,16 @@ survived:
 ```
 
 (`…` stands for the 148 `ok` lines.) The app's own code has 41 mutants
-and all are killed by 25 of its 26 tests: the nine above; the four of the route
+and all are killed by 25 of its 26 tests: the eight above; the four of the route
 operators ("Logout clears the user…", "a visitor is sent to log in from a
-todo" and the two that send a write after logging out); and twelve older
-ones (`Todos.Index`'s eight, `Auth.Login`'s three, "countOpen…"). The
+todo" and the two that send a write after logging out); twelve older
+ones (`Todos.Index`'s eight, `Auth.Login`'s three, "countOpen…"); and
+"deleting from a filtered list keeps its count", which checks what the
+list's Delete sends from a filtered page (section 9). The
 26th, `Jobs.Nightly`'s, checks when the nightly job runs; its module has
 no mutant.
 
-Two of the nine exist for the
+Two of the eight exist for the
 session's `role`, which the admin of chapter 15 needed: `App "Logout makes
 the role Member"` and `Auth.Login "logging in copies the role from the
 user's row"` kill the `update field dropped` of `role` in logout's and

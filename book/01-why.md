@@ -47,7 +47,7 @@ with an HTTP method and a path. A module may declare any number of them.
   a handler, which describes what to write and answers with a `Response`:
 
   - go to another route (`Response.redirect`);
-  - show a route again in place (`Response.render`);
+  - replace parts of the page in place with views it built (`Response.replace`);
   - reload the page (`Response.refresh`);
   - or refuse a form (`Response.invalid`).
 

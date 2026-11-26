@@ -817,9 +817,15 @@ the rest of the page alone.
 
 Two other answers skip the comparison:
 
-- `render r` sends the one element that `r`'s view draws, by its root `id`.
+- `replace views` sends the views the handler built, each one in place of
+  the element with the same `id`, and `|> Response.remove id` takes out
+  the element with that `id`. Nothing is loaded or compared: the handler
+  says what changed, so it must name every place that did.
 - `redirect r` sends the page `r` as a link does, never compared with the
   one on screen (chapter 6, "Delivery").
+
+(`render r`, which sent the one element `r`'s view draws, is deprecated:
+chapter 6, "`Response`".)
 
 Without Datastar (JavaScript off), a write answers with a `303` (`invalid`:
 a `422`) and the browser loads the whole page (chapter 6, "With and without

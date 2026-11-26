@@ -15,8 +15,9 @@ type cliRun struct {
 }
 
 // volatile are the parts of a run that differ between two runs of the same command: a test's
-// milliseconds and the random ids of the rows it made.
-var volatile = regexp.MustCompile(`"ms":[0-9.eE+-]+|[A-Za-z0-9_-]{20}`)
+// milliseconds and the random ids of the rows it made, with any prefix that runs into one
+// (`todo-<id>`, an element id a Replaced answer names).
+var volatile = regexp.MustCompile(`"ms":[0-9.eE+-]+|[A-Za-z0-9_-]{20,}`)
 
 func runIn(f func(out, errb *bytes.Buffer) int) cliRun {
 	var out, errb bytes.Buffer

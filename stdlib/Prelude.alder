@@ -135,7 +135,7 @@ type Query a
 
 -- A write, or any step that may fail or wait, giving an `a`.
 --
--- A route's `update` is one: it ends with a `Response`. It can fail with `Task.fail` and is
+-- A write route's handler is one: it ends with a `Response`. It can fail with `Task.fail` and is
 -- stepped through with `let _ <-`.
 --
 -- Book: chapter 9, "Query, Task, Db, Session, Log, Time, Random, Http"
@@ -234,12 +234,13 @@ type Doc
 
 -- What a request came to, in a test: the page shown, a redirect, a refusal, a 404 or a failure.
 --
--- It exists only inside a `test`. `Shown` is a page shown and `Rendered` a route's view patched
--- into the page. `Refreshed` is a write whose `update` answered `Response.refresh`, and
--- `Redirected` a redirect to a route. `FormRejected` carries each field's message, and
--- `PageMissing` is a 404. `RequestFailed` carries the failure's message. `Replaced` is a write
--- whose `update` answered `Response.replace`: the ids of the elements it replaced and of those
--- it removed (`Response.remove`), in the order sent.
+-- It exists only inside a `test`. `Shown` is a page shown and `Rendered` a GET route's view
+-- patched into the page (a click on a GET route, or the deprecated `Response.render`).
+-- `Refreshed` is a write whose handler answered `Response.refresh`, and `Redirected` a redirect
+-- to a route. `FormRejected` carries each field's message, and `PageMissing` is a 404.
+-- `RequestFailed` carries the failure's message. `Replaced` is a write whose handler answered
+-- `Response.replace`: the ids of the elements it replaced and of those it removed
+-- (`Response.remove`), in the order sent.
 --
 -- Book: chapter 10, "`Answer`: what a request came to"
 type Answer = Shown

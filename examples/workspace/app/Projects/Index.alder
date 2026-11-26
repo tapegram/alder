@@ -42,11 +42,13 @@ Create.post p session = {
   Task.succeed (Response.redirect (Projects.Show.Show { id: id }))
 }
 
+-- Remove answers with what it changed, the project's row gone, and the page keeps the rest as
+-- it is: `Response.replace []` replaces nothing, and `Response.remove` takes the row away by id.
 Remove.delete : Remove.Params -> Session -> Task Response
 Remove.delete p session = {
   let _ <- Membership.memberOnly session.user session.org
   let _ <- Db.deleteScoped Project p.id
-  Task.succeed Response.refresh
+  Task.succeed (Response.replace [] |> Response.remove ("project-" ++ p.id))
 }
 
 Index.view : Model -> Session -> Html
@@ -55,7 +57,7 @@ Index.view model session =
     <h1>{model.org}</h1>
     <ul id="projects">
       {for p in model.projects ->
-        <li>
+        <li id={"project-" ++ p.id}>
           <a class="name" href={Projects.Show.Show { id: p.id }}>{p.name}</a>
           <al-button variant="outline" click={Remove { id: p.id }}>Remove</al-button>
         </li>}
@@ -208,12 +210,16 @@ test "removing a project" = {
     rocket: rocket,
     widget: widget,
   }
+  let _ <- Db.insert Project { name: Text.NonEmpty "Apollo", org: s.acme }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let _ <- Test.get (Index {})
   let r <- Test.click (Remove { id: s.rocket })
   Task.succeed (
     { answer: r.answer, projects: Test.texts "#projects .name" r.doc }
-      == { answer: Refreshed, projects: [] }
+      == {
+        answer: Replaced { replaced: [], removed: ["project-" ++ s.rocket] },
+        projects: ["Apollo"],
+      }
   )
 }
 

@@ -1,7 +1,7 @@
 -- Changing the session, the record an app keeps for each visitor in a signed cookie.
 --
 -- The app declares the session's fields with `session { … }` in its `App` module. A route's
--- `load` and `update` get the session as an argument; only `Session.put` changes it.
+-- `load` and a write route's handler get the session as an argument; only `Session.put` changes it.
 --
 -- Book: chapter 9, "Query, Task, Db, Session, Log, Time, Random, Http"
 module Session

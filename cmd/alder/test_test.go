@@ -68,7 +68,8 @@ func TestTest_Todos(t *testing.T) {
 		`ok   Todos.Index "Db.mine is what Me sees"`,
 		`ok   Todos.Show "a visitor is sent to log in from a todo"`,
 		`ok   Todos.Show "saving changes the title and the due date"`,
-		`ok   Todos.Show "deleting from the todo's page"`,
+		`ok   Todos.Index "deleting from a filtered list keeps its count"`,
+		`ok   Todos.Show "saving after logging out is sent to log in"`,
 		`ok   App "Logout makes the role Member"`,
 		`ok   Auth.Login "logging in copies the role from the user's row"`,
 		// the generated admin (book 15)
@@ -1394,7 +1395,7 @@ test "route steps answer as the route does" = {
       toggled: toggled.answer, moved: moved.answer, movedStatus: moved.status, added: added.answer, notices: added.notices,
       addedUrl: added.url, raw: raw.status, csv: csv.status, shown: shown.answer, shownUrl: shown.url }
     == { n: 1, fetched: Rendered (Row { id: id }), fetchedStatus: 200, fetchedUrl: "/",
-      toggled: Rendered (Row { id: id }), moved: Refreshed, movedStatus: 200, added: Redirected (Index { filter: All }), notices: ["Added"],
+      toggled: Replaced { replaced: ["todo-" ++ id], removed: [] }, moved: Refreshed, movedStatus: 200, added: Redirected (Index { filter: All }), notices: ["Added"],
       addedUrl: "/", raw: 422, csv: 200, shown: Shown, shownUrl: "/?filter=Done" })
 }
 `

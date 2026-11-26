@@ -775,19 +775,24 @@ HTTP it produces:
 ```alder
 Response.redirect : Route -> Response                 -- 303, to the GET route's URL
 Response.replace  : List Html -> Response             -- 200, each root replaces the page's element with its id
+Response.remove   : Text -> Response -> Response      -- also removes the page's element with this id
 Response.refresh  : Response                          -- 200, the page the browser is on, again
 Response.invalid  : Text -> Response                  -- 422, that page, form kept, the text in <Errors form />
 Response.toast    : Text -> Response -> Response      -- a toast on any response
 Response.success  : Text -> Response -> Response      -- a toast of kind success
 Response.warning  : Text -> Response -> Response      -- a toast of kind warning
 Response.error    : Text -> Response -> Response      -- a toast of kind error
-Response.remove   : Text -> Response -> Response      -- also removes the page's element with this id
 ```
 
 A toast is a one-line notice shown once, in the next page the browser shows
 (chapter 6, "Notices and in-flight state").
 
 - `redirect` takes a GET route (E0045 for any other).
+- `replace` takes views whose roots are elements with an `id` each, not a
+  form control, a click button or the page's `<html>`, `<head>` or
+  `<body>` (E0051 where the checker can see the root); `remove` goes on a
+  `replace` only (E0045 after a `redirect`, `refresh` or `invalid`, which
+  send the whole page). Chapter 6, "`Response`", has the rules and why.
 - `invalid` is a successful result: its `Task` commits.
 - A `Route` and a `Response` compare with `==`; two routes are equal when
   they lead to the same address.
@@ -799,8 +804,11 @@ A toast is a one-line notice shown once, in the next page the browser shows
 > `Notice.error` are the old names of `Response.toast`, `success`, `warning`
 > and `error`. They still work, as aliases, and each use is W0012. Write the
 > `Response` builders.
-> `Response.render r` is deprecated too (W0016): load what `r`'s view shows
-> and answer `Response.replace [ … ]` with the views built from it.
+> `Response.render : Route -> Response`, which ran a GET route's `load` again
+> and sent its view as one element, is deprecated too: it still works, for
+> one release, and each use is W0016. Load what `r`'s view shows and answer
+> `Response.replace [ … ]` with the views built from it (chapter 6,
+> "`Response`").
 
 ## Job
 
@@ -958,10 +966,10 @@ Two types of the Prelude exist only in tests and test helpers:
 They are `Doc`, a parsed page, which has `==`, and
 
 ```text
-type Answer = Shown | Rendered Route | Refreshed | Redirected Route | FormRejected (List { field: Text, message: Text }) | PageMissing | RequestFailed Text
+type Answer = Shown | Rendered Route | Refreshed | Redirected Route | FormRejected (List { field: Text, message: Text }) | PageMissing | RequestFailed Text | Replaced { replaced: List Text, removed: List Text }
 ```
 
-Their names, and `Answer`'s seven constructors, are taken in every module
+Their names, and `Answer`'s eight constructors, are taken in every module
 (E0012). A route's answers are described in chapter 10, "`Answer`: what a
 request came to".
 

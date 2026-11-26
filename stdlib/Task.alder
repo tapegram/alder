@@ -1,7 +1,7 @@
 -- Functions for `Task`, an effect that may write to the database, the session or a capability.
 --
 -- A `Task` is a description of work, not its result: nothing runs while it is built, and the
--- runtime runs it when a route's `update` (or a test) hands it over. Steps are chained with
+-- runtime runs it when a write route's handler (or a test) hands it over. Steps are chained with
 -- `let x <- e` in a block; there is no `andThen`. A `Query` can be bound with `let x <-` inside
 -- a `Task` block. All the writes of one `Task` run in one transaction: when the `Task` fails,
 -- they are rolled back and its `Session.put` changes are undone. Two tasks cannot be compared
@@ -12,7 +12,7 @@ module Task
 
 -- A `Task` that does nothing and gives back the value.
 --
--- It is how a block ends: the last line of an `update` is usually `Task.succeed` with the
+-- It is how a block ends: the last line of a handler is usually `Task.succeed` with the
 -- `Response` to send.
 --
 --     Task.succeed (Response.redirect (Todos.Index.Index { filter: All }))

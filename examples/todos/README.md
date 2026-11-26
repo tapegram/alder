@@ -82,7 +82,7 @@ The history of the app's own code:
   `let _ <-` steps added 15 mutants. The five `requires dropped` of the write routes survived (no
   `load` runs before a write, so its own `requires user` is the check, and no test sent a write
   without a session); two tests kill them: `Todos.Index "a write after logging out is sent to log
-  in"` and `Todos.Show "saving or deleting after logging out is sent to log in"`, which open the
+  in"` and `Todos.Show "saving after logging out is sent to log in"`, which open the
   page, log out (`Test.login { user: Nothing }`) and send each write from the page still held.
   The other ten were killed by tests that were there: the GET routes' `requires dropped` by the
   visitor tests, and the answers (`redirect → refresh`, `refresh → invalid`, `invalid → refresh`)
@@ -91,6 +91,15 @@ The history of the app's own code:
   gone, and its button sends `Todos.Show`'s `DELETE /todos/{id}`. Its four mutants went with it
   (41 left); `Todos.Index "Delete by another user is not found"` now kills the `scope dropped`
   and the `write replaced` of `Todos.Show`'s `Delete`.
+- With `Response.replace` (#309): `Delete` (still the one `DELETE /todos/{id}`) moves back into
+  `Todos.Index`, where its only button is: it answers `Response.replace [ summary todos ] |>
+  Response.remove ("todo-" ++ p.id)`, the count again and the todo's item taken out, and carries
+  the list's filter so that the count agrees with the page. The todo's own page no longer has a
+  Delete button: that answer would have nowhere to go there. The four mutants moved with it
+  (`requires dropped`, `scope dropped`, `write replaced`, and `replace → refresh` for the old
+  `redirect → refresh`; 41 still), killed by `Todos.Index "a write after logging out is sent to
+  log in"`, `"Delete by another user is not found"` and `"deleting from the list"`; and
+  `Todos.Index "deleting from a filtered list keeps its count"` checks the filter.
 
 The ownership rules are declared (book 06, "Rules"): `Todo.owner` is the table's `@owner`, and
 the routes use `Db.mine`, `Db.getMine`, `Db.updateMine`, `Db.deleteMine` and `Db.insertMine`.
@@ -99,16 +108,16 @@ Their four `scope dropped` mutants (each scoped operation made unscoped) are kil
 ownership tests among the eleven: `Todos.Index "a stranger cannot see my todo"` (the list's
 `Db.mine` and `Todos.Show`'s `Db.getMine`), `Todos.Index "Toggle by another user is not found"`
 and `Todos.Index "Delete by another user is not found"` (a stranger presses my todo's button on
-a page still open in the browser; the list's Delete button sends `Todos.Show`'s `Delete`).
+a page still open in the browser).
 
 > **`Db.insertMine`.** It has no `scope dropped` mutant: the owner comes from the session either way.
 
 On routes (#160) no `load` runs before a write, so the
-`scope dropped` of `Todos.Show`'s Save and Delete (`Db.updateMine` and `Db.deleteMine` of the
-id in their path) are no longer equivalent: `Todos.Show "saving or deleting another user's todo
-is not found"` kills them.
+`scope dropped` of `Todos.Show`'s Save (`Db.updateMine` of the id in its path) is no longer
+equivalent: `Todos.Show "saving another user's todo is not found"` kills it, and `Todos.Index
+"Delete by another user is not found"` kills `Delete`'s.
 
-The nine tests that closed the gaps, each named for what it kills:
+The tests that closed the gaps, each named for what it kills:
 
 - `App "Logout clears the user and goes to log in"`: the `redirect → refresh` of
   `Logout.delete`, which no browser test can kill (every Log out button is on a page that
@@ -117,14 +126,13 @@ The nine tests that closed the gaps, each named for what it kills:
   1, not 2), `Todo "Active keeps only open todos"` and `Todo "each filter has its label"`: the
   swapped `match` arms and the dropped `not` of `matches` and `filterLabel`.
 - `Todo "a user with todos cannot be deleted"`: `owner @ref User` changed to `@cascade`.
-- `Todos.Index "deleting from the list"`: the list's Delete button sends `Todos.Show`'s
-  `Delete` (`DELETE /todos/{id}`), whose redirect brings the list back without the todo.
+- `Todos.Index "deleting from the list"`: the list's `Delete` (`DELETE /todos/{id}`) answers
+  `Replaced`, the count sent again and the todo's item removed.
 - `Todos.Index "the newest todo is listed first"`: `Db.orderBy` reversed.
 - `Todos.Show "a visitor is sent to log in from a todo"`: the `requires dropped` of the `Show`
   route.
 - `Todos.Show "saving changes the title and the due date"`: the save replaced, and each updated
   field dropped.
-- `Todos.Show "deleting from the todo's page"`: that route's delete.
 
 No mutant of the app's own code survives. The run also refuses 1 mutant as provably equivalent
 (`User.role`'s default, which no row of the app's code leaves out) and skips 38 that do not

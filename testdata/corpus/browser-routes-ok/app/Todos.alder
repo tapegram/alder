@@ -52,7 +52,8 @@ Row.view t session =
 Toggle.patch : Toggle.Params -> Session -> Task Response
 Toggle.patch params session = {
   let _ <- Db.updateMine Todo params.id (\t -> { t | done: not t.done })
-  Task.succeed (Response.render (Row { id: params.id }))
+  let t <- Db.getMine Todo params.id
+  Task.succeed (Response.replace [ Row.view t session ])
 }
 
 Create.post : Create.Params -> Session -> Task Response
@@ -98,5 +99,5 @@ test "a row is fetched, toggled, moved and refreshed" = {
   let csv <- Test.fetch (Export {})
   let shown <- Test.open (Index { filter: Done })
   Task.succeed ({ n: List.length page.model.todos, title: row.model.title, fetched: fetched.status, toggled: toggled.answer, moved: moved.status, added: added.answer, raw: raw.status, url: again.url, again: again.answer, csv: csv.status, shown: shown.url }
-    == { n: 1, title: "Milk", fetched: 200, toggled: Rendered (Row { id: id }), moved: 200, added: Redirected (Index { filter: All }), raw: 422, url: "/", again: Refreshed, csv: 200, shown: "/?filter=Done" })
+    == { n: 1, title: "Milk", fetched: 200, toggled: Replaced { replaced: ["todo-" ++ id], removed: [] }, moved: 200, added: Redirected (Index { filter: All }), raw: 422, url: "/", again: Refreshed, csv: 200, shown: "/?filter=Done" })
 }

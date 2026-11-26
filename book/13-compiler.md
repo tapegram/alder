@@ -1913,7 +1913,8 @@ This is chapter 6's lifecycle, line by line:
 
 The router's `write` sees a `web.Response` with `Answer` set. It checks that
 the target is one it can deliver (`targetProblem`: a `redirect` goes to a
-GET route, a `render` patches in a named GET route's view), and then
+GET route, a `render` patches in a named GET route's view, a `replace`'s
+roots pass `ReplaceRoots`), and then
 `answer` (`rt/web/answer.go`) delivers the `Response` by its kind:
 
 - The toasts are set first (`setToasts`), to follow the patches.
@@ -1921,8 +1922,8 @@ GET route, a `render` patches in a named GET route's view), and then
 - For the others the session is stored if the task changed it
   (`setSession`; the task here left it as it was, so no cookie), and a
   request without Datastar is answered plainly (`answerPlain`, below).
-- With Datastar, `render` has its own delivery (below) and `refresh` and
-  `invalid` are `answerShown`.
+- With Datastar, `replace` and `render` have their own deliveries (below)
+  and `refresh` and `invalid` are `answerShown`.
 
 `answerShown` runs the page the browser is on again, with the session the
 write left (`runShown` again: this is the page's second render), renders it
@@ -2071,9 +2072,53 @@ data: elements <script data-effect="el.remove()">window.location.assign("/?filte
 after the write has toggled Milk. A request with no `Alder-Build` at all (a
 hand-made one) is not checked.
 
-#### `render`: one element
+#### `replace`: the handler's views
 
-Not every write needs the page. In the route
+Not every write needs the page. The to-do list's `Delete` answers
+`Response.replace [ summary todos ] |> Response.remove ("todo-" ++ p.id)`:
+its handler deleted the todo and read the list itself, so the views are
+already built when the `Task` ends. The checker finds no `refresh` or
+`invalid` in the handler, so there is no before-view, and the generated
+`Route__…` is the shape shown below for `render`: decode, guard, run,
+`web.AnswerResponse(resp, nil, …)`.
+
+The `rt.Response` holds the roots as `html.Node` values (`Roots`) and the
+removals' ids in order. Before anything is written, `targetProblem` runs
+`ReplaceRoots` over the roots:
+
+1. It flattens the list as a view's roots are flattened (`html.Roots`:
+   fragments opened, whitespace-only text dropped).
+2. It asks `html.RootOf` of each one for its `id`. Text, raw markup, a form
+   control, a `<html>`, `<head>` or `<body>`, a click button (whose root,
+   once rendered, is the `<form>` it is wrapped in) and an element without
+   an `id` have none, and `RootOf` says why.
+3. It refuses two roots with one `id`.
+
+Any refusal stops the whole answer (ruling R11): the router logs the route
+and the reason, sends an error toast and sets `Alder-Status` to 500. A page
+half changed would look right and be wrong, so no root is sent.
+
+Otherwise `answerReplace` writes one `datastar.ReplaceEvent` holding the
+rendered roots, with no selector (Datastar puts each root in place of the
+page's element with the same `id`), then one `datastar.RemoveEvent` per
+removal, its selector built by `datastar.IDSelector` (escaped as
+`CSS.escape` would), then the toasts. The dev panel's answer line reads
+`replace (1 element, 1 removed)`. `al-shown` is not touched, as for
+`render`.
+
+Without Datastar the views are built and thrown away, and the answer is a
+303 to the page the browser is on (`answerPlain`), as for `render` and
+`refresh`.
+
+In tests the test browser applies the same events to the page it holds
+(`Browser.replace`, `Browser.remove`), refusing an id the page lacks, and
+then makes the fresh-load check (`checkReplaced`): a plain `GET` of the
+page's address in a savepoint, each replaced element compared with the
+element of that `id` there (chapter 10, section 10).
+
+#### `render`: one element (deprecated)
+
+`render` is deprecated (W0016) and stays for one release. In the route
 handlers golden (`testdata/golden/gen_route_handlers`, the app whose Go
 `TestGenRoute_ToggleRender` runs), `Toggle` is a `PUT` that answers
 `render` of the todo's own route, and the checker finds no `refresh` or
@@ -3812,19 +3857,21 @@ var Tests = []rtesting.Case{
 	{Module: "Auth.Login", Name: "logging in through the form", File: "app/Auth/Login.alder", Line: 81, Col: 1, Task: test__Auth__Login__2},
 	{Module: "Auth.Login", Name: "logging in copies the role from the user's row", File: "app/Auth/Login.alder", Line: 104, Col: 1, Task: test__Auth__Login__3},
 	{Module: "Auth.Login", Name: "a visitor is sent to log in, and can log out", File: "app/Auth/Login.alder", Line: 120, Col: 1, Task: test__Auth__Login__4},
-	{Module: "Todos.Index", Name: "Toggle flips done", File: "app/Todos/Index.alder", Line: 92, Col: 1, Task: test__Todos__Index__1},
-	{Module: "Todos.Index", Name: "Toggle by another user is not found", File: "app/Todos/Index.alder", Line: 116, Col: 1, Task: test__Todos__Index__2},
-	{Module: "Todos.Index", Name: "Delete by another user is not found", File: "app/Todos/Index.alder", Line: 138, Col: 1, Task: test__Todos__Index__3},
-	{Module: "Todos.Index", Name: "adding a todo through the page", File: "app/Todos/Index.alder", Line: 162, Col: 1, Task: test__Todos__Index__4},
-	{Module: "Todos.Index", Name: "toggling a todo through the page", File: "app/Todos/Index.alder", Line: 185, Col: 1, Task: test__Todos__Index__5},
-	{Module: "Todos.Index", Name: "a stranger cannot see my todo", File: "app/Todos/Index.alder", Line: 214, Col: 1, Task: test__Todos__Index__6},
-	{Module: "Todos.Index", Name: "deleting from the list", File: "app/Todos/Index.alder", Line: 233, Col: 1, Task: test__Todos__Index__7},
-	{Module: "Todos.Index", Name: "the newest todo is listed first", File: "app/Todos/Index.alder", Line: 253, Col: 1, Task: test__Todos__Index__8},
-	{Module: "Todos.Index", Name: "Db.mine is what Me sees", File: "app/Todos/Index.alder", Line: 276, Col: 1, Task: test__Todos__Index__9},
-	{Module: "Todos.Show", Name: "a visitor is sent to log in from a todo", File: "app/Todos/Show.alder", Line: 56, Col: 1, Task: test__Todos__Show__1},
-	{Module: "Todos.Show", Name: "saving changes the title and the due date", File: "app/Todos/Show.alder", Line: 71, Col: 1, Task: test__Todos__Show__2},
-	{Module: "Todos.Show", Name: "deleting from the todo's page", File: "app/Todos/Show.alder", Line: 102, Col: 1, Task: test__Todos__Show__3},
-	{Module: "Todos.Show", Name: "saving or deleting another user's todo is not found", File: "app/Todos/Show.alder", Line: 126, Col: 1, Task: test__Todos__Show__4},
+	{Module: "Todos.Index", Name: "Toggle flips done", File: "app/Todos/Index.alder", Line: 110, Col: 1, Task: test__Todos__Index__1},
+	{Module: "Todos.Index", Name: "Toggle by another user is not found", File: "app/Todos/Index.alder", Line: 134, Col: 1, Task: test__Todos__Index__2},
+	{Module: "Todos.Index", Name: "Delete by another user is not found", File: "app/Todos/Index.alder", Line: 156, Col: 1, Task: test__Todos__Index__3},
+	{Module: "Todos.Index", Name: "adding a todo through the page", File: "app/Todos/Index.alder", Line: 180, Col: 1, Task: test__Todos__Index__4},
+	{Module: "Todos.Index", Name: "toggling a todo through the page", File: "app/Todos/Index.alder", Line: 203, Col: 1, Task: test__Todos__Index__5},
+	{Module: "Todos.Index", Name: "a write after logging out is sent to log in", File: "app/Todos/Index.alder", Line: 232, Col: 1, Task: test__Todos__Index__6},
+	{Module: "Todos.Index", Name: "a stranger cannot see my todo", File: "app/Todos/Index.alder", Line: 273, Col: 1, Task: test__Todos__Index__7},
+	{Module: "Todos.Index", Name: "deleting from the list", File: "app/Todos/Index.alder", Line: 295, Col: 1, Task: test__Todos__Index__8},
+	{Module: "Todos.Index", Name: "deleting from a filtered list keeps its count", File: "app/Todos/Index.alder", Line: 332, Col: 1, Task: test__Todos__Index__9},
+	{Module: "Todos.Index", Name: "the newest todo is listed first", File: "app/Todos/Index.alder", Line: 361, Col: 1, Task: test__Todos__Index__10},
+	{Module: "Todos.Index", Name: "Db.mine is what Me sees", File: "app/Todos/Index.alder", Line: 384, Col: 1, Task: test__Todos__Index__11},
+	{Module: "Todos.Show", Name: "a visitor is sent to log in from a todo", File: "app/Todos/Show.alder", Line: 48, Col: 1, Task: test__Todos__Show__1},
+	{Module: "Todos.Show", Name: "saving changes the title and the due date", File: "app/Todos/Show.alder", Line: 63, Col: 1, Task: test__Todos__Show__2},
+	{Module: "Todos.Show", Name: "saving after logging out is sent to log in", File: "app/Todos/Show.alder", Line: 96, Col: 1, Task: test__Todos__Show__3},
+	{Module: "Todos.Show", Name: "saving another user's todo is not found", File: "app/Todos/Show.alder", Line: 121, Col: 1, Task: test__Todos__Show__4},
 }
 
 // TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).
@@ -5122,6 +5169,12 @@ answer into an `httptest.ResponseRecorder`, and the browser reads it:
   - `#<id>` in mode `outer` replaces the held element with that `id`: the
     regions of a `refresh` or an `invalid`, the one element of a `render`
     or an element fetch.
+  - No selector, mode `outer` (a `replace`): each root replaces the held
+    element with its `id` (`Browser.replace`); every id is looked for
+    first, so a step that fails leaves the page as it was.
+  - `#<id>` in mode `remove` (a `Response.remove`) takes out the held
+    element with that `id` (`Browser.remove`, the selector's escapes read
+    back by `idOfSelector`).
   - `#_alder_shown` records the hash of the body shown (`Browser.shown`,
     sent with the next write).
   - Appending to `al-toasts` is read into the step's `notices` and
@@ -5145,7 +5198,9 @@ answer into an `httptest.ResponseRecorder`, and the browser reads it:
 
 Which `Answer` a patch comes to is not read from the events. The router's
 `Answered` hook gave the browser the `rt.Response` the write route answered,
-and `sendRoute` reads its kind: a `render r` is `Rendered r` (once the element
+and `sendRoute` reads its kind: a `replace` is `Replaced` with the ids it
+replaced and removed, in the order sent (once the fresh-load check below has
+passed), a `render r` is `Rendered r` (once the element
 check below has passed), a `refresh` is `Refreshed`, an `invalid` is
 `FormRejected`, with the errors the page now shows in its `<ul class="errors"
 data-errors="…">` lists, in page order (`data-errors="form"` as the field
@@ -5224,6 +5279,15 @@ address once more, as an element fetch, inside a savepoint it rolls back
 (`quietly`), and compares the element the held page now has with the element
 that comes back; the two are equal by construction, and the check is what
 proves it (an `ElementError` otherwise).
+
+For a `replace`, `checkReplaced` is the fresh-load check: a plain `GET` of the
+held page's address with the cookie, as a reload, also `quietly`; the page
+that comes back is parsed the same way, and each element the answer replaced
+must equal the element with that `id` there, and no removed id may be in it
+(a `ReplacedError` otherwise, with both markups). An id the fresh page lacks
+is not compared. Here the two are not equal by construction: the handler
+built its views from its own reads, and the check is what ties them to the
+page's `load`.
 
 `Test.refresh` is the whole-page check, and is the developer's: it sends a
 plain `GET` for the address held, as a reload does, and compares the body it

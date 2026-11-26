@@ -643,7 +643,8 @@ func TestPositions(t *testing.T) {
 		case *Update:
 			got["record-update"] = append(got["record-update"], x.Pos)
 		case *EffPure:
-			// a write route's answer: Response.redirect r (a Call) or Response.refresh (a Var)
+			// a write route's answer: Response.redirect r (a Call), Response.refresh (a Var), or a
+			// replace piped into Response.remove (the outer Call)
 			switch v := x.Value.(type) {
 			case *Call:
 				if f, ok := v.Fn.(*Var); ok && f.Kind == VarStd && f.Module == "Response" {
@@ -656,32 +657,33 @@ func TestPositions(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"Index.load", "Submit.post", "Toggle.patch"} {
+	for _, name := range []string{"Index.load", "listed", "Submit.post", "Toggle.patch", "Delete.delete"} {
 		visit(value(index, name).Body)
 	}
-	for _, name := range []string{"Show.load", "Save.put", "Delete.delete"} {
+	for _, name := range []string{"Show.load", "Save.put"} {
 		visit(value(show, name).Body)
 	}
 	want := map[string][]Pos{
-		"bind":              {{15, 3}, {27, 3}, {36, 3}, {19, 3}, {27, 3}, {33, 3}},
-		"select":            {{17, 10}}, // the step that extends the Base
-		"mine":              {{16, 5}},
+		"bind":              {{18, 3}, {26, 3}, {38, 3}, {47, 3}, {55, 3}, {56, 3}, {18, 3}, {26, 3}},
+		"select":            {{28, 10}}, // the step that extends the Base
+		"mine":              {{27, 5}},
 		"where-step":        nil,
-		"ord":               {{17, 21}},
-		"order-step":        {{17, 10}},
-		"insert-mine":       {{27, 12}},
-		"update-mine":       {{36, 12}, {27, 12}},
-		"record-update":     {{36, 43}, {27, 43}},
-		"delete-mine":       {{33, 12}},
-		"get-mine":          {{19, 15}},
-		"Response.redirect": {{28, 17}, {28, 17}, {34, 17}},
-		"Response.refresh":  {{37, 16}},
+		"ord":               {{28, 21}},
+		"order-step":        {{28, 10}},
+		"insert-mine":       {{38, 12}},
+		"update-mine":       {{47, 12}, {26, 12}},
+		"record-update":     {{47, 43}, {26, 43}},
+		"delete-mine":       {{55, 12}},
+		"get-mine":          {{18, 15}},
+		"Response.redirect": {{39, 17}, {27, 17}},
+		"Response.refresh":  {{48, 16}},
+		"Response.remove":   {{57, 53}}, // the outer call of `Response.replace [ … ] |> Response.remove …`
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("positions:\n got %v\nwant %v", got, want)
 	}
 	for _, r := range p.Routes {
-		if r.Module == "Todos.Index" && r.Name == "Index" && r.RequiresPos != (Pos{7, 79}) {
+		if r.Module == "Todos.Index" && r.Name == "Index" && r.RequiresPos != (Pos{7, 84}) {
 			t.Fatalf("RequiresPos = %v", r.RequiresPos)
 		}
 	}

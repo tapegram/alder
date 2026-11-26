@@ -1,4 +1,4 @@
--- The answers a write route's handler can give: a redirect, a re-render, a refresh, a refusal or replaced elements, with toasts and removals.
+-- The answers a write route's handler can give: a redirect, replaced elements, a refresh or a refusal, with removals and toasts.
 --
 -- A `Response` is built with these functions, each named after the HTTP it produces, and a
 -- toast is added to one with `|>`. A `Response` can be compared with `==`, and two routes are
@@ -32,15 +32,16 @@ render : Route -> Response
 
 -- Loads the page the browser is on again, and sends the regions of it that changed, with a 200.
 --
--- Use it when things appear or disappear, or when more than one place changes. It costs what
--- loading the page costs, twice: the page is rendered before the `update` to know what changed.
+-- Use it when you would rather not say what changed: the runtime finds out by comparing the
+-- page before and after. It costs what loading the page costs, twice: the page is rendered
+-- before the handler to know what changed.
 --
 --     Response.refresh
 --
 -- Book: chapter 6, "`Response`"
 refresh : Response
 
--- Refuses a submission for a reason only `update` can know, with a 422.
+-- Refuses a submission for a reason only the handler can know, with a 422.
 --
 -- It shows the page the browser is on again with the values that were posted, and the text in
 -- the form's `<Errors form />`. It is a successful result: the `Task` that gave it commits, so
@@ -54,9 +55,11 @@ invalid : Text -> Response
 -- Replaces elements of the page in place, each by the element with the same `id`, with a 200.
 --
 -- Each view in the list is a root: fragments are opened and whitespace is dropped, and every
--- root must be an element with an `id`, no two the same. Nothing else on the page is loaded or
--- sent. Use it when a write route's handler already holds the data the views show, such as a
--- count beside a list. A root the runtime cannot send sends nothing: the page is left as it was, with an
+-- root must be an element with an `id`, no two the same. A root cannot be text, a form control
+-- (`<al-input field=…>`; put it inside an element with the `id`), a `<html>`, `<head>` or
+-- `<body>`, or a click button. Nothing else on the page is loaded or sent. Use it for views the
+-- handler built from data it holds, such as a count beside a list, loaded with the query the
+-- page uses. A root the runtime cannot send sends nothing: the page is left as it was, with an
 -- error toast. `Response.replace []` changes nothing, for a write whose only news is a toast.
 --
 --     Response.replace [ <p id="member-count">2 members</p> ]

@@ -435,22 +435,25 @@
   (filter Table.Todo.Filter = (ctor Table.Todo.Filter.All))
   (form NewTodo))
 (record Todos.Index.Toggle.Params (id Text))
+(record Todos.Index.Delete.Params
+  (id Text)
+  (filter Table.Todo.Filter = (ctor Table.Todo.Filter.All)))
 (record Todos.Index.Index.Session (user Text) (role Table.User.Role))
 (value Todos.Index.Index.load : Index.Params -> Index.Session -> Query Model (params session)
+  (bind query todos : List Table.Todo.Todo
+    (call (global Todos.Index.listed) (field filter (var params)))
+    (pure query
+      (record Model (filter (field filter (var params))) (todos (var todos))))))
+(value Todos.Index.listed : Table.Todo.Filter -> Query (List Table.Todo.Todo) (filter)
   (bind query todos : List Table.Todo.Todo
     (db-select Table.Todo.Todo
       (base (db-scoped Db.mine user Table.Todo.Todo))
       (order (ord (col Table.Todo.Todo created) desc))
       all)
     (pure query
-      (record Model
-        (filter (field filter (var params)))
-        (todos
-          (call (std List.filter)
-            (partial (global Table.Todo.matches)
-              (field filter (var params))
-              (missing 1))
-            (var todos)))))))
+      (call (std List.filter)
+        (partial (global Table.Todo.matches) (var filter) (missing 1))
+        (var todos)))))
 (value Todos.Index.Submit.post : Submit.Params -> Index.Session -> Task Response (p session)
   (bind task _
     (db-insert-scoped Db.insertMine user Table.Todo.Todo
@@ -469,6 +472,16 @@
       (lambda (t : Table.Todo.Todo)
         (update (var t) (done (call (std Prelude.not) (field done (var t)))))))
     (pure task (std Response.refresh))))
+(value Todos.Index.Delete.delete : Delete.Params -> Index.Session -> Task Response (p session)
+  (bind task _
+    (db-delete-scoped Db.deleteMine user Table.Todo.Todo (field id (var p)))
+    (bind task todos : List Table.Todo.Todo
+      (call (global Todos.Index.listed) (field filter (var p)))
+      (pure task
+        (call (std Response.remove)
+          (++ : Text "todo-" (field id (var p)))
+          (call (std Response.replace)
+            (list (call (global Todos.Index.summary) (var todos)))))))))
 (value Todos.Index.Index.view : Model -> Index.Session -> Html (model session)
   (comp Layout.Page
     (record (title "Todos"))
@@ -500,19 +513,22 @@
     (elem ul (attr id text "todos")
       (hfor todo : Table.Todo.Todo
         (field todos (var model))
-        (comp Todos.Index.Item (record (todo (var todo))))))
-    (elem p (attr id text "summary")
-      (hexpr text
-        (call (std Text.fromInt)
-          (call (global Table.Todo.countOpen) (field todos (var model)))))
-      (htext " open"))
+        (comp Todos.Index.Item
+          (record (todo (var todo)) (filter (field filter (var model)))))))
+    (hexpr html (call (global Todos.Index.summary) (field todos (var model))))
     (elem al-button (attr variant text "outline")
       (elem button
         (attr type text "button")
         (attr click click (route-ref App.Logout))
         (htext "Log out")))))
-(component Todos.Index.Item : { todo: Table.Todo.Todo } -> Html (props)
+(value Todos.Index.summary : List Table.Todo.Todo -> Html (todos)
+  (elem p (attr id text "summary")
+    (hexpr text
+      (call (std Text.fromInt) (call (global Table.Todo.countOpen) (var todos))))
+    (htext " open")))
+(component Todos.Index.Item : { todo: Table.Todo.Todo, filter: Table.Todo.Filter } -> Html (props)
   (elem li
+    (attr id text (++ : Text "todo-" (field id (field todo (var props)))))
     (attr class text (if (field done (field todo (var props))) "done" ""))
     (elem al-button (attr variant text "secondary") (attr size text "sm")
       (elem button
@@ -540,9 +556,10 @@
       (elem button
         (attr type text "button")
         (attr click click
-          (route-ref Todos.Show.Delete
-            (record Todos.Show.Delete.Params
-              (id (field id (field todo (var props)))))))
+          (route-ref Todos.Index.Delete
+            (record Delete.Params
+              (id (field id (field todo (var props))))
+              (filter (field filter (var props))))))
         (htext "Delete")))))
 (test "Toggle flips done" task
   (bind task me : Text
@@ -656,8 +673,10 @@
                 (user (ctor Prelude.Maybe.Just (record (value "someone-else"))))
                 (role (ctor Table.User.Role.Member))))
             (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
-              (test-click (route Todos.Show.Delete)
-                (record Todos.Show.Delete.Params (id (var id))))
+              (test-click (route Todos.Index.Delete)
+                (record Delete.Params
+                  (id (var id))
+                  (filter (ctor Table.Todo.Filter.All))))
               (bind task after : Maybe Table.Todo.Todo
                 (db-get Table.Todo.Todo (var id))
                 (pure task
@@ -820,8 +839,10 @@
                                 (user (ctor Prelude.Maybe.Nothing))
                                 (role (ctor Table.User.Role.Member))))
                             (bind task deleted : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
-                              (test-click (route Todos.Show.Delete)
-                                (record Todos.Show.Delete.Params (id (var id))))
+                              (test-click (route Todos.Index.Delete)
+                                (record Delete.Params
+                                  (id (var id))
+                                  (filter (ctor Table.Todo.Filter.All))))
                               (bind task todos : List Table.Todo.Todo
                                 (db-select Table.Todo.Todo all)
                                 (pure task
@@ -899,7 +920,7 @@
         (name "Me")
         (passwordHash "")
         (role (ctor Table.User.Role.Member))))
-    (bind task id : Text
+    (bind task milk : Text
       (db-insert Table.Todo.Todo
         (record
           (title "Milk")
@@ -907,21 +928,27 @@
           (due (ctor Prelude.Maybe.Nothing))
           (owner (var me))))
       (bind task _
-        (test-login
-          (record App.Session
-            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-            (role (ctor Table.User.Role.Member))))
+        (db-insert Table.Todo.Todo
+          (record
+            (title "Bread")
+            (done False)
+            (due (ctor Prelude.Maybe.Nothing))
+            (owner (var me))))
         (bind task _
-          (test-get (route Todos.Index.Index)
-            (record Index.Params (filter (ctor Table.Todo.Filter.All))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
-            (test-click (route Todos.Show.Delete)
-              (record Todos.Show.Delete.Params (id (var id))))
-            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
-              (test-get (route Todos.Index.Index)
-                (record Index.Params (filter (ctor Table.Todo.Filter.All))))
+          (test-login
+            (record App.Session
+              (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+              (role (ctor Table.User.Role.Member))))
+          (bind task _
+            (test-get (route Todos.Index.Index)
+              (record Index.Params (filter (ctor Table.Todo.Filter.All))))
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
+              (test-click (route Todos.Index.Delete)
+                (record Delete.Params
+                  (id (var milk))
+                  (filter (ctor Table.Todo.Filter.All))))
               (bind task after : Maybe Table.Todo.Todo
-                (db-get Table.Todo.Todo (var id))
+                (db-get Table.Todo.Todo (var milk))
                 (pure task
                   (test-eq
                     (record
@@ -930,18 +957,68 @@
                         (call (std Maybe.map)
                           (lambda (t : Table.Todo.Todo) (field title (var t)))
                           (var after)))
-                      (items
-                        (call (std Test.count) "li" (field doc (var page)))))
+                      (items (call (std Test.texts) "li a" (field doc (var r))))
+                      (summary
+                        (call (std Test.text) "#summary" (field doc (var r)))))
                     (record
                       (answer
-                        (ctor Prelude.Answer.Redirected
+                        (ctor Prelude.Answer.Replaced
                           (record
-                            (value
-                              (route-ref Todos.Index.Index
-                                (record Index.Params
-                                  (filter (ctor Table.Todo.Filter.All))))))))
+                            (replaced (list "summary"))
+                            (removed (list (++ : Text "todo-" (var milk)))))))
                       (todo (ctor Prelude.Maybe.Nothing))
-                      (items 0))))))))))))
+                      (items (list "Bread"))
+                      (summary
+                        (ctor Prelude.Maybe.Just (record (value "1 open")))))))))))))))
+(test "deleting from a filtered list keeps its count" task
+  (bind task me : Text
+    (db-insert Table.User.User
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor Table.User.Role.Member))))
+    (bind task milk : Text
+      (db-insert Table.Todo.Todo
+        (record
+          (title "Milk")
+          (done True)
+          (due (ctor Prelude.Maybe.Nothing))
+          (owner (var me))))
+      (bind task _
+        (db-insert Table.Todo.Todo
+          (record
+            (title "Bread")
+            (done False)
+            (due (ctor Prelude.Maybe.Nothing))
+            (owner (var me))))
+        (bind task _
+          (test-login
+            (record App.Session
+              (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+              (role (ctor Table.User.Role.Member))))
+          (bind task _
+            (test-get (route Todos.Index.Index)
+              (record Index.Params (filter (ctor Table.Todo.Filter.Completed))))
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
+              (test-click (route Todos.Index.Delete)
+                (record Delete.Params
+                  (id (var milk))
+                  (filter (ctor Table.Todo.Filter.Completed))))
+              (pure task
+                (test-eq
+                  (record
+                    (answer (field answer (var r)))
+                    (summary
+                      (call (std Test.text) "#summary" (field doc (var r)))))
+                  (record
+                    (answer
+                      (ctor Prelude.Answer.Replaced
+                        (record
+                          (replaced (list "summary"))
+                          (removed (list (++ : Text "todo-" (var milk)))))))
+                    (summary
+                      (ctor Prelude.Maybe.Just (record (value "0 open"))))))))))))))
 (test "the newest todo is listed first" task
   (bind task me : Text
     (db-insert Table.User.User
@@ -1035,7 +1112,6 @@
 (record Todos.Show.EditTodo (title Text) (due Maybe Date))
 (record Todos.Show.Show.Params (id Text))
 (record Todos.Show.Save.Params (id Text) (form EditTodo))
-(record Todos.Show.Delete.Params (id Text))
 (record Todos.Show.Show.Session (user Text) (role Table.User.Role))
 (value Todos.Show.Show.load : Show.Params -> Show.Session -> Query Model (params session)
   (bind query todo : Table.Todo.Todo
@@ -1049,14 +1125,6 @@
         (update (var t)
           (title (field title (field form (var p))))
           (due (field due (field form (var p)))))))
-    (pure task
-      (call (std Response.redirect)
-        (route-ref Todos.Index.Index
-          (record Todos.Index.Index.Params
-            (filter (ctor Table.Todo.Filter.All))))))))
-(value Todos.Show.Delete.delete : Delete.Params -> Show.Session -> Task Response (p session)
-  (bind task _
-    (db-delete-scoped Db.deleteMine user Table.Todo.Todo (field id (var p)))
     (pure task
       (call (std Response.redirect)
         (route-ref Todos.Index.Index
@@ -1086,14 +1154,7 @@
               (route-ref Todos.Index.Index
                 (record Todos.Index.Index.Params
                   (filter (ctor Table.Todo.Filter.All)))))
-            (htext "Back")))
-        (elem al-button (attr variant text "destructive")
-          (elem button
-            (attr type text "button")
-            (attr click click
-              (route-ref Todos.Show.Delete
-                (record Delete.Params (id (field id (field todo (var model)))))))
-            (htext "Delete")))))))
+            (htext "Back")))))))
 (test "a visitor is sent to log in from a todo" task
   (bind task me : Text
     (db-insert Table.User.User
@@ -1170,51 +1231,7 @@
                                 (filter (ctor Table.Todo.Filter.All))))))))
                     (title (ctor Prelude.Maybe.Just (record (value "Bread"))))
                     (due (call (std Date.fromText) "2026-10-12"))))))))))))
-(test "deleting from the todo's page" task
-  (bind task me : Text
-    (db-insert Table.User.User
-      (record
-        (email "me@example.com")
-        (name "Me")
-        (passwordHash "")
-        (role (ctor Table.User.Role.Member))))
-    (bind task id : Text
-      (db-insert Table.Todo.Todo
-        (record
-          (title "Milk")
-          (done False)
-          (due (ctor Prelude.Maybe.Nothing))
-          (owner (var me))))
-      (bind task _
-        (test-login
-          (record App.Session
-            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-            (role (ctor Table.User.Role.Member))))
-        (bind task _
-          (test-get (route Todos.Show.Show) (record Show.Params (id (var id))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
-            (test-click (route Todos.Show.Delete)
-              (record Delete.Params (id (var id))))
-            (bind task after : Maybe Table.Todo.Todo
-              (db-get Table.Todo.Todo (var id))
-              (pure task
-                (test-eq
-                  (record
-                    (answer (field answer (var r)))
-                    (todo
-                      (call (std Maybe.map)
-                        (lambda (t : Table.Todo.Todo) (field title (var t)))
-                        (var after))))
-                  (record
-                    (answer
-                      (ctor Prelude.Answer.Redirected
-                        (record
-                          (value
-                            (route-ref Todos.Index.Index
-                              (record Todos.Index.Index.Params
-                                (filter (ctor Table.Todo.Filter.All))))))))
-                    (todo (ctor Prelude.Maybe.Nothing))))))))))))
-(test "saving or deleting after logging out is sent to log in" task
+(test "saving after logging out is sent to log in" task
   (bind task me : Text
     (db-insert Table.User.User
       (record
@@ -1247,51 +1264,25 @@
                 (record EditTodo
                   (title "Bread")
                   (due (ctor Prelude.Maybe.Nothing))))
-              (bind task _
-                (test-login
-                  (record App.Session
-                    (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-                    (role (ctor Table.User.Role.Member))))
-                (bind task _
-                  (test-get (route Todos.Show.Show)
-                    (record Show.Params (id (var id))))
-                  (bind task _
-                    (test-login
-                      (record App.Session
-                        (user (ctor Prelude.Maybe.Nothing))
-                        (role (ctor Table.User.Role.Member))))
-                    (bind task deleted : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
-                      (test-click (route Todos.Show.Delete)
-                        (record Delete.Params (id (var id))))
-                      (bind task after : Maybe Table.Todo.Todo
-                        (db-get Table.Todo.Todo (var id))
-                        (pure task
-                          (test-eq
-                            (record
-                              (saved (field answer (var saved)))
-                              (deleted (field answer (var deleted)))
-                              (todo
-                                (call (std Maybe.map)
-                                  (lambda (t : Table.Todo.Todo)
-                                    (field title (var t)))
-                                  (var after))))
-                            (record
-                              (saved
-                                (ctor Prelude.Answer.Redirected
-                                  (record
-                                    (value
-                                      (route-ref Auth.Login.Login
-                                        (record Auth.Login.Login.Params))))))
-                              (deleted
-                                (ctor Prelude.Answer.Redirected
-                                  (record
-                                    (value
-                                      (route-ref Auth.Login.Login
-                                        (record Auth.Login.Login.Params))))))
-                              (todo
-                                (ctor Prelude.Maybe.Just
-                                  (record (value "Milk")))))))))))))))))))
-(test "saving or deleting another user's todo is not found" task
+              (bind task after : Maybe Table.Todo.Todo
+                (db-get Table.Todo.Todo (var id))
+                (pure task
+                  (test-eq
+                    (record
+                      (saved (field answer (var saved)))
+                      (todo
+                        (call (std Maybe.map)
+                          (lambda (t : Table.Todo.Todo) (field title (var t)))
+                          (var after))))
+                    (record
+                      (saved
+                        (ctor Prelude.Answer.Redirected
+                          (record
+                            (value
+                              (route-ref Auth.Login.Login
+                                (record Auth.Login.Login.Params))))))
+                      (todo (ctor Prelude.Maybe.Just (record (value "Milk")))))))))))))))
+(test "saving another user's todo is not found" task
   (bind task me : Text
     (db-insert Table.User.User
       (record
@@ -1324,42 +1315,19 @@
                 (record EditTodo
                   (title "Bread")
                   (due (ctor Prelude.Maybe.Nothing))))
-              (bind task _
-                (test-login
-                  (record App.Session
-                    (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-                    (role (ctor Table.User.Role.Member))))
-                (bind task _
-                  (test-get (route Todos.Show.Show)
-                    (record Show.Params (id (var id))))
-                  (bind task _
-                    (test-login
-                      (record App.Session
-                        (user
-                          (ctor Prelude.Maybe.Just
-                            (record (value "someone-else"))))
-                        (role (ctor Table.User.Role.Member))))
-                    (bind task deleted : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
-                      (test-click (route Todos.Show.Delete)
-                        (record Delete.Params (id (var id))))
-                      (bind task after : Maybe Table.Todo.Todo
-                        (db-get Table.Todo.Todo (var id))
-                        (pure task
-                          (test-eq
-                            (record
-                              (saved (field answer (var saved)))
-                              (deleted (field answer (var deleted)))
-                              (todo
-                                (call (std Maybe.map)
-                                  (lambda (t : Table.Todo.Todo)
-                                    (field title (var t)))
-                                  (var after))))
-                            (record
-                              (saved (ctor Prelude.Answer.PageMissing))
-                              (deleted (ctor Prelude.Answer.PageMissing))
-                              (todo
-                                (ctor Prelude.Maybe.Just
-                                  (record (value "Milk")))))))))))))))))))
+              (bind task after : Maybe Table.Todo.Todo
+                (db-get Table.Todo.Todo (var id))
+                (pure task
+                  (test-eq
+                    (record
+                      (saved (field answer (var saved)))
+                      (todo
+                        (call (std Maybe.map)
+                          (lambda (t : Table.Todo.Todo) (field title (var t)))
+                          (var after))))
+                    (record
+                      (saved (ctor Prelude.Answer.PageMissing))
+                      (todo (ctor Prelude.Maybe.Just (record (value "Milk")))))))))))))))
 (table Table.User.User
   (id id)
   (created created)
@@ -1406,6 +1374,11 @@
   (session Index.Session)
   (handler Todos.Index.Toggle.patch)
   (needs-shown))
+(route Todos.Index.Delete DELETE "/todos/{id}"
+  (params Delete.Params)
+  (requires user)
+  (session Index.Session)
+  (handler Todos.Index.Delete.delete))
 (route Todos.Show.Show GET "/todos/{id}"
   (params Show.Params)
   (requires user)
@@ -1419,11 +1392,6 @@
   (requires user)
   (session Show.Session)
   (handler Todos.Show.Save.put))
-(route Todos.Show.Delete DELETE "/todos/{id}"
-  (params Delete.Params)
-  (requires user)
-  (session Show.Session)
-  (handler Todos.Show.Delete.delete))
 (job Jobs.Nightly.Nightly
   (params Nightly.Params)
   (run Jobs.Nightly.Nightly.run)

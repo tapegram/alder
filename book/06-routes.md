@@ -59,8 +59,9 @@ todo and answers `Response.replace [ Row.view todo session ]`, which sends
 that one `<li>` to the browser and nothing else.
 
 The to-do app in `examples/todos` is this with a form to add a todo and a
-button to delete one; its `Toggle` is a `PATCH` that answers
-`Response.refresh`, the other way to answer ("`Response`", below).
+button to delete one. Its `Toggle` is a `PATCH` that answers
+`Response.refresh`, the other way to answer, and its `Delete` answers
+`Response.replace` with a `Response.remove` ("`Response`", below).
 
 `Db.mine Todo`, `Db.getMine` and `Db.updateMine` are the to-do table's
 **scoped** operations: they read and write only the todos of the signed-in
@@ -98,8 +99,7 @@ route NAME = METHOD "path" { params } [form F] [requires …]
   parameter record: `Index { filter: Done }`.
 
   A route value is what `href`, `click` and `submit` take, what
-  `Response.redirect` and `Response.render` take, and what a test passes to
-  `Test.get`.
+  `Response.redirect` takes, and what a test passes to `Test.get`.
 
 - **The method** is `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
 
@@ -375,9 +375,11 @@ they produce (chapter 9 lists them with the rest):
 
 ```alder fragment
 Response.redirect : Route -> Response                 -- 303, to the route's URL
-Response.render   : Route -> Response                 -- 200, the route's view, as one element
+Response.replace  : List Html -> Response             -- 200, each view replaces the element with its id
+Response.remove   : Text -> Response -> Response      -- also removes the element with this id
 Response.refresh  : Response                          -- 200, the page the browser is on, again
 Response.invalid  : Text -> Response                  -- 422, the page, form kept, error shown
+Response.render   : Route -> Response                 -- deprecated (W0016): use replace
 Response.toast    : Text -> Response -> Response      -- a toast on any response
 Response.success  : Text -> Response -> Response      -- a toast of kind success
 Response.warning  : Text -> Response -> Response
@@ -392,11 +394,40 @@ can be used with `|>`: `Response.redirect (Index {}) |> Response.toast "Saved"`.
 so that a browser refresh does not send the form twice. It goes to `r` even if
 `r` is the page the browser is on.
 
-**`render r`** shows the GET route `r` again, in place: the runtime runs
-`r`'s `load`, renders its `view`, and sends that one element, which replaces the
-element with the same `id` on the page (so that view needs a root element with
-an `id`, or nothing is patched). Nothing else on the page is loaded or
-sent.
+**`replace views`** sends the views the handler built, and each one
+replaces the element with the same `id` on the page. Nothing else on the
+page is loaded or sent. The views are usually the very functions the page
+draws those parts with, given data the handler loaded: `Toggle` above
+reads its todo again and answers `Response.replace [ Row.view todo session ]`.
+
+Each item of the list is a **root**, and the runtime must be able to find
+its place on the page by its `id`, so a root has rules:
+
+- it is an element with an `id`, and no two roots share one (a fragment is
+  opened into its elements, and whitespace between them is dropped);
+- it is not text, raw markup (`Html.unsafe`), or a `<html>`, `<head>` or
+  `<body>` (to send the whole page, answer `refresh`);
+- it is not a form control (`<al-input field=…>`, `<Input field=…>`,
+  `<al-select field=…>`): a control is drawn with its label and errors
+  around it, so the element with the `id` is not the one you wrote. Put it
+  inside an element with the `id`;
+- it is not a click button (`<button click={R}>`, or an `<al-button>` with
+  `click`): it is drawn inside a `<form>` of its own, so it is not the
+  element with its `id` either. Put it inside an element with the `id`.
+
+The checker refuses a root it can see that breaks a rule (E0051: "the root
+of `countView` is a `<p>` without an `id`"). A root it cannot see, a
+variable or a list built elsewhere, is checked when the answer is sent: a
+replace the runtime cannot send sends nothing at all, logs why and shows an
+error toast, so the page is never left half-changed. `Response.replace []`
+changes nothing, for a write whose only news is a toast.
+
+**`remove id`** is added to a `replace` with `|>`, and removes the element
+whose `id` is `id` (the id as text, not a selector). Removals run after the
+replaced views, in the order written: `Response.replace [ countView n ] |>
+Response.remove ("member-" ++ p.id)`. A `redirect`, `refresh` or `invalid`
+sends the whole page, so a `remove` written after one of them is refused
+(E0045).
 
 **`refresh`** loads the page the browser is on again, and sends the regions of
 it that changed.
@@ -406,17 +437,32 @@ can know (wrong password, name already taken). It is the page the browser is
 on again, with the values that were posted, and `t` shown in the form's
 `<Errors form />`.
 
-The rule a developer needs, in one sentence: **`render` is for something
-already on the page; `refresh` is for things that appear or disappear, or when
-more than one place changes.**
+The rule a developer needs, in one sentence: **`replace` is views you built
+from data you hold; `refresh` is the page again when you would rather not say
+what changed.**
 
-The reason is cost. `render` costs the `load` of the route it shows (one read
-by key, for a row) and sends one element. `refresh` costs what loading the
-page costs (twice: the runtime renders the page before the handler, to know
-what changed) and sends the regions that differ.
+The reason is cost, and what you have to know. `replace` costs what the
+handler reads for its views (one read by key, for a row) and sends only
+those elements, but the handler must name every place that changed. `refresh`
+costs what loading the page costs (twice: the runtime renders the page
+before the handler, to know what changed) and sends the regions that differ,
+and it finds them for you.
 
-A toggle edits a row that is there: `render`. A delete removes one, and the
-count in the page's footer changes too: `refresh`.
+A toggle edits one row: `replace [ Row.view todo session ]`. The to-do list's
+delete removes a row and changes the count of open todos below the list:
+`Response.replace [ summary todos ] |> Response.remove ("todo-" ++ p.id)`.
+A write that moves things around the page, or touches places the handler
+does not draw, is a `refresh`.
+
+A replace shows what its handler loaded, so load it with the query the page
+uses, and draw it with the function the page draws it with. Then the page
+and the answer cannot disagree, and the test browser checks that they do not
+(chapter 10, "What the browser checks on every step").
+
+**`render r`** is deprecated (W0016) and will be removed after one release.
+It ran the GET route `r`'s `load` again and sent its view as one element.
+Load what `r`'s view shows in the handler and answer `Response.replace [
+R.view … ]` instead: one mechanism, and the handler says what it sends.
 
 `invalid` is a successful result, not a failure: the `Task` that produced it
 commits, so anything it wrote and any `Session.put` it ran are kept. To
@@ -425,9 +471,9 @@ query, then `invalid` or the writes). Only a failed `Task` (`Task.fail`,
 `Task.notFound`, a `@unique` violation, a capability error) undoes its
 writes and its session changes (chapter 7).
 
-`toast` adds a toast to any of the four ("Notices and in-flight state",
+`toast` adds a toast to any of them ("Notices and in-flight state",
 below). The other `Response` builders a web framework has (`status`,
-`header`, `json`, `file`, `remove`, `patch`, `stream`) are not in Alder yet;
+`header`, `json`, `file`, `append`, `stream`) are not in Alder yet;
 the type is shaped for them, and a file answer is a GET route that returns a
 `File` ("File pages", below).
 
@@ -1584,14 +1630,14 @@ scoped form; it costs nothing.
 
 A write route runs no `load` before it, so it
 has not read the row: it takes the id from its path (`Todos.Show`'s `Save` and
-`Delete` are `PUT "/todos/{id}"` and `DELETE "/todos/{id}"`),
+`Todos.Index`'s `Delete` are `PUT "/todos/{id}"` and `DELETE "/todos/{id}"`),
 and the scoped write is what makes that id safe.
 
-`Todos.Show` writes
+The to-do app writes
 `Db.updateMine Todo p.id …` and `Db.deleteMine Todo p.id`, and so does the
-blog's `Write.Edit`; the test that sends a stranger's id and gets a 404
-(`Todos.Show`'s "saving or deleting another user's todo is not found") is what
-pins it.
+blog's `Write.Edit`; the tests that send a stranger's id and get a 404
+(`Todos.Show`'s "saving another user's todo is not found", `Todos.Index`'s
+"Delete by another user is not found") are what pin it.
 
 ### The rules and a replicated database
 
@@ -1742,7 +1788,7 @@ Create.post p session = {
 Remove.delete p session = {
   let _ <- Membership.memberOnly session.user session.org
   let _ <- Db.deleteScoped Project p.id
-  Task.succeed Response.refresh
+  Task.succeed (Response.replace [] |> Response.remove ("project-" ++ p.id))
 }
 ```
 
@@ -2021,9 +2067,19 @@ when they are equal, no element event is sent.
 
   A `redirect` to another site (`Url.external`) is a real navigation.
 
-- **`render r` (200)**: the runtime runs `r`'s `load` and `view` with the
-  session the write left, and sends one patch by the root `id`, mode outer.
-  No before-view, no page load.
+- **`replace views` (200)**: the runtime renders the views the handler
+  gave and sends them in one patch with no selector, mode outer, which
+  Datastar applies to each element by its `id`; then one removal per
+  `remove`, in order; then the toasts. No before-view, no page load.
+
+  If a root cannot be sent (no `id`, two with one `id`, a form control, …),
+  nothing is sent: the route and the reason are logged, an error toast is
+  shown, and `Alder-Status` is 500. A root whose `id` the page does not have
+  is skipped by the browser; only a test can catch that (chapter 10).
+
+- **`render r` (200, deprecated)**: the runtime runs `r`'s `load` and
+  `view` with the session the write left, and sends one patch by the root
+  `id`, mode outer. No before-view, no page load.
 
   If `r` cannot answer its view (the row was deleted meanwhile), nothing is
   patched and an error toast says so.
@@ -2045,13 +2101,13 @@ something to diff against.
 The compiler works out per write route whether it can be needed: a route
 renders one only when its handler mentions `Response.refresh` or
 `Response.invalid`, or calls an app function whose result type contains
-`Response`. A route that only `redirect`s or `render`s renders none, which is
-why a toggle by `render` costs one read by key.
+`Response`. A route that only `redirect`s or `replace`s renders none, which is
+why a toggle by `replace` costs one read by key.
 
 #### What the browser keeps
 
 Regions the server did not change are left as the browser has them.
-`render` and an element fetch change the DOM without the server rendering
+`replace`, `render` and an element fetch change the DOM without the server rendering
 the page, so the hash `Alder-Shown` is out of date after them by design; the
 guarantee is the one a partial page gives you: every region the server sent
 is right.
@@ -2067,7 +2123,8 @@ A plain `POST` runs the handler and answers with the response's own HTTP:
 |---|---|
 | `redirect r` | `303` to `r` |
 | `refresh` | `303` to the referring page (`Referer`, else `/`) |
-| `render r` | `303` to the referring page (the partial has nowhere to go without a page) |
+| `replace views` | `303` to the referring page (the views have nowhere to go without a page; they are built and discarded) |
+| `render r` | `303` to the referring page, as `replace` |
 | `invalid t` | `422` with the referring page rendered, the form kept, `t` shown |
 
 A button that sends a `PUT`, `PATCH` or `DELETE` route is a `<form
@@ -2086,11 +2143,12 @@ uses. Each is a few lines of routes and uses nothing else:
 | filter, sort, tab, page number | none: `href={Index { filter: Done }}` | a boosted link, the URL moves | 1 |
 | create with a form | `Create = POST … form` answering `redirect (Index {}) \|> toast "Saved"` | the body morph and a toast; `303` without JavaScript | 1 |
 | refuse a form | `Response.invalid "name taken"` | `422`, the form kept, the error shown | before-view and after |
-| toggle a row | `Toggle = PATCH` answering `render (Row { id })` | one `<li>`, by its `id` | 1 row |
-| delete a row | `Delete = DELETE` answering `refresh` | `#todos` patched | 2 |
+| toggle a row | `Toggle = PATCH` answering `replace [ Row.view todo session ]` | one `<li>`, by its `id` | 0 (the handler reads 1 row) |
+| delete a row, and a count | `Delete = DELETE` answering `replace [ summary todos ] \|> remove ("todo-" ++ id)` | the count replaced, the `<li>` removed | 0 (the handler reads the list) |
+| delete a row, when more changes | `Delete = DELETE` answering `refresh` | `#todos` patched | 2 |
 | add a comment | `Comment = POST … form` answering `refresh` | `#comments` patched | 2 |
 | a like and a count elsewhere | `Like = POST` answering `refresh` | both regions | 2 |
-| inline edit | `EditRow = GET`, asked for by `click`; `Save = PUT` answering `render (Row …)`; cancel is `click={Row …}` | the row becomes a form and back, in place | 1 row each |
+| inline edit | `EditRow = GET`, asked for by `click`; `Save = PUT` answering `replace [ Row.view row session ]`; cancel is `click={Row …}` | the row becomes a form and back, in place | 1 row each |
 | modal form | `NewDialog = GET`, asked for by `click` into `#dialog`; `Create` answering `redirect (Index {})` | the dialog, then the page | 1 |
 | wizard | `Step2 = GET { name }`; `Next1 = POST` answering `redirect (Step2 { name: … })` | one URL per step; Back works | 1 |
 | login, logout, theme | a `POST` that runs `Session.put` and answers `redirect` or `refresh` | as above | 1 or 2 |
@@ -2103,7 +2161,8 @@ uses. Each is a few lines of routes and uses nothing else:
 The last four request a route without a click, and need JavaScript
 ("Patterns", above). "Loads" counts the `load`s of GET routes a click (or
 one of those triggers) costs; `refresh` loads the
-page twice, once for the before-view.
+page twice, once for the before-view, and `replace` runs none: its handler
+reads what its views show.
 
 ## The request lifecycle
 
@@ -2129,7 +2188,9 @@ POST, PUT, PATCH, DELETE (the route's own path)
   5. the handler                  → Task, run by the runtime (no `load`)
   6. redirect: 303 (under Datastar: the target page, morphed in, and a
      history push; to another site, an event that navigates)
-     render: the route's load and view, one element patched in
+     replace: the handler's views, each patched in by its id, then
+       the removals
+     render (deprecated): the route's load and view, one element patched in
      refresh: the shown page loaded again, the regions that differ patched
      invalid: the shown page with the text on the form, 422
      Task failure: App.error → HTML, status 500 (404 for Query.notFound
@@ -2224,8 +2285,8 @@ an error, so a screen reader reads it out at once, else `role="status"`.
 The page that answers it is:
 
 - the page itself, on an `invalid`;
-- the next page, after a `303` (a `redirect`, or a `refresh` or `render` that
-  went back to the referring page).
+- the next page, after a `303` (a `redirect`, or a `refresh`, `replace` or
+  `render` that went back to the referring page).
 
 The kinds and texts ride a cookie signed with the app's key, `alder_notice`,
 for that one page. A cookie holds about 4 KB, so when the toasts do not all
@@ -2370,7 +2431,7 @@ It runs these steps:
   takes.
 - Because `Toggle.patch` mentions `Response.refresh`, the handler also
   renders the page the browser is on, before the handler, for a Datastar
-  request (`rq.RenderShown`); a route that only redirects or renders has no
+  request (`rq.RenderShown`); a route that only redirects or replaces has no
   such lines.
 - Then the runtime runs the handler `Task`, and `web.AnswerResponse` hands
   the `Response` and the before-view to the router, which delivers them
@@ -2546,12 +2607,15 @@ differ.
 
 A write is sent with the header `Datastar-Request: true`,
 and the headers of "Delivery" above. A `refresh`, an `invalid`, a form
-error, a `render`, a 404 or a 500 is answered with status 200 and
-server-sent events:
+error, a `replace`, a `render`, a 404 or a 500 is answered with status 200
+and server-sent events:
 
 - For `refresh` and `invalid`, the regions that differ
   (`datastar.PatchRegion`; the whole `<body>`, with `datastar.PatchBody`, when
   the page cannot be cut into regions safely).
+- For `replace`, one event with the views and no selector, which Datastar
+  applies to each element by its `id`, then one event per removal
+  (`datastar.ReplaceEvent`, `datastar.RemoveEvent`).
 - For `render`, one element.
 - For a 404 or a 500, the failure page's `<body>`.
 
@@ -2621,6 +2685,27 @@ into `#` (chapter 9), and the router answers a redirect to such a URL with a
 500 rather than send it.
 
 #### The event format
+
+A `replace` is one event with no selector, so Datastar puts each root in
+place of the element with the same `id`, and a removal is an event of its
+own, by a selector built from the id. Deleting Milk from the to-do list
+answers (the id shortened):
+
+```
+event: datastar-patch-elements
+data: mode outer
+data: elements <p id="summary">1 open</p>
+
+event: datastar-patch-elements
+data: selector #todo-Vn4u…
+data: mode remove
+
+```
+
+The roots are never named by a CSS selector, so an id needs no escaping
+there. The removal's selector is escaped as the browser's `CSS.escape`
+escapes it, so an id such as `3` or `member-3.a` names that element and
+nothing else.
 
 Every line of an event's elements is a `data: elements` line, and an event
 ends at a blank line. A carriage return in your data could end a line
@@ -2701,8 +2786,8 @@ such as a `<li>`, need JavaScript.
 
 Without JavaScript, the answer to a write is a whole page for a form
 error or an `invalid` (they must show what was submitted: `422`), and a 303
-for everything else: `redirect` goes to its route, and `refresh` and `render`
-go back to the page that sent the write, rebuilt from its address in the
+for everything else: `redirect` goes to its route, and `refresh`, `replace`
+and `render` go back to the page that sent the write, rebuilt from its address in the
 `Referer` header (`rt.BackURL`), so the address bar never shows a write URL
 and a refresh never posts again (Post/Redirect/Get).
 

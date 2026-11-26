@@ -30,7 +30,7 @@ test "toggle 1000" = {
   match List.head ids {
     Just id -> {
       let r <- Test.click (Rows.Toggle { id: id })
-      Task.succeed (r.answer == Rendered (Rows.Item { id: id }))
+      Task.succeed (r.answer == Replaced { replaced: ["row-" ++ id], removed: [] })
     },
     Nothing -> Task.succeed False,
   }

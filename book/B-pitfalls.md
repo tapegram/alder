@@ -100,19 +100,26 @@ unless the item says what happens instead.
     A route named like its module's last segment is the usual one-route
     file, and nothing shortens it.
 
-19. `Response.render (Row { id: x })` patches the element that `Row`'s view
-    draws, found by its root `id`, into the page the browser holds. When that
+19. `Response.replace [ Row.view todo session ]` puts the view in place of
+    the element with the same `id` on the page the browser holds. When that
     page has no element with that `id` (the row is not on this page, or a
-    filter hides it), a browser patches nothing and says nothing; `alder
-    test` fails the step ("the answer patched `#todo-9`, which the page does
-    not have").
+    filter hides it), a browser changes nothing and says nothing; `alder
+    test` fails the step ("the answer replaced `#todo-9`, which the page
+    does not have"). The same goes for a `Response.remove`.
 
-    `render` is for something already on the page. For something that
-    appears or disappears, or more than one place, answer `Response.refresh`.
-    The view needs one root element with an `id`, or nothing is patched.
+    Each root needs an `id` of its own (E0051), and the handler must name
+    every place that changed: a count elsewhere on the page is not sent
+    unless it is in the list. When you would rather not say what changed,
+    answer `Response.refresh`.
+
+    A replace shows what its handler loaded, so load it with the query the
+    page uses, and draw it with the function the page draws it with; the
+    test browser loads the page again and fails a step whose replaced
+    element differs. (`Response.render`, which ran a GET route's `load`
+    again, is deprecated: W0016.)
 
 20. `href` takes a GET route and `submit` a write route that has a `form`;
-    `Response.redirect` and `Response.render` take a GET route. The other way
+    `Response.redirect` takes a GET route. The other way
     round is E0045. A write route has no `view`: it answers with a
     `Response`, which names the GET route to show.
 
