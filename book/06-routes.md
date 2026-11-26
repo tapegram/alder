@@ -1356,10 +1356,12 @@ of its imports. Two things can differ:
   or with one that is short ("`current` uses `Db.mine Draft`, which needs
   `user`: its signature says `requires org`; write `requires user, org`").
   A helper that calls a helper says so too: "`reviewers` uses
-  `Reviewer.current`, which `requires org`: say so in its signature". In a
-  module that declares a route or a job, where such helpers were written
-  before the clause existed, it is a warning for one release, W0014, and
-  `alder fmt` adds the clause.
+  `Reviewer.current`, which `requires org`: say so in its signature". A
+  short clause is always an error. A *missing* clause (including on a helper
+  that calls a value with a clause) is a warning for one release, W0014, in
+  a module that declares a route or a job, where such helpers were written
+  before the clause existed, and `alder fmt` adds the clause; in a module
+  with no route and no job it is E0026 from the start.
 - The clause names a key the body never needs: the warning W0015 ("`current`
   says `requires org` and uses nothing that needs `org`"). It is allowed to
   run ahead, so a helper can be declared and its callers written before it
@@ -1368,7 +1370,7 @@ of its imports. Two things can differ:
 A clause names session keys only, each a `Maybe` field of the session:
 `requires team` is E0011 ("the session has no field `team`"), and so is
 `requires theme` where `theme` is not a `Maybe` ("session field `theme` must
-be a `Maybe`"), and naming a key twice. A clause with `role` or `silo` is
+be a `Maybe`"). A clause with `role` or `silo` is
 E0027: a role check belongs on the route line. A clause on a route's member
 or a job's `run` is E0043 ("`Index.load` takes what it requires from its
 route: write `requires org` on `route Index`").

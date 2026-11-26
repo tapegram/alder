@@ -2883,7 +2883,7 @@ The scoped operations need a session key (`user` for the `Db.mine` family, a tab
 - **A clause that lacks a key.** "`current` uses `Db.mine Draft`, which needs `user`: its signature says `requires org`; write `requires user, org`"; the fix rewrites it.
 - **A value that uses a value with a clause.** "`reviewers` uses `Reviewer.current`, which `requires org`: say so in its signature".
 
-In a module that declares a route or a job, the last three are the warning W0014 for one release (below).
+In a module that declares a route or a job, a missing clause (the first of the last three, and the helper that calls a value with a clause) is the warning W0014 for one release (below); a clause that lacks a key stays E0026.
 
 #### E0027 — a role clause the session cannot answer
 
@@ -3096,14 +3096,6 @@ The admin form `requires user, role Admin, silo org`:
 - `Notice.with`, `Notice.success`, `Notice.warning` or `Notice.error`: "`Notice.success` is now `Response.success`" (chapter 9, "Response").
 - The old names still work, as aliases, for one release.
 
-#### W0014 — a helper of a route module without its `requires` clause
-
-- A helper of a module that declares a route or a job uses a session key its signature does not state: "`recent` uses `Db.mine`, which needs `user`: say so in its signature (`recent : Select Todo requires user`). `alder fmt` adds it." Such helpers compiled before the clause existed, so for one release this is a warning where a module with no route and no job gets E0026; callers still see what the body needs. `alder fmt` adds the clause.
-
-#### W0015 — a `requires` clause the body does not need
-
-- "`current` says `requires org` and uses nothing that needs `org`". The clause may run ahead of the body, so a helper can be declared and its callers written before it is filled in; callers are checked against the clause all the same.
-
 #### W0009 — deploy files exist but App.alder has no `deploy` block
 
 - `render.yaml` or `fly.toml` (the files of `alder deploy init`) exists in the project and App.alder has no `deploy` block (chapter 16): "render.yaml deploys whatever is pushed, with no check, migration plan or backup: add a `deploy` block to App.alder (book chapter 16)".
@@ -3111,6 +3103,14 @@ The admin form `requires user, role Admin, silo org`:
 - A Dockerfile alone is not reported.
 
 **Fix offered:** add a `deploy` block
+
+#### W0014 — a helper of a route module without its `requires` clause
+
+- A helper of a module that declares a route or a job uses a session key its signature does not state: "`recent` uses `Db.mine`, which needs `user`: say so in its signature (`recent : Select Todo requires user`). `alder fmt` adds it." Such helpers compiled before the clause existed, so for one release this is a warning where a module with no route and no job gets E0026; callers still see what the body needs. `alder fmt` adds the clause.
+
+#### W0015 — a `requires` clause the body does not need
+
+- "`current` says `requires org` and uses nothing that needs `org`". The clause may run ahead of the body, so a helper can be declared and its callers written before it is filled in; callers are checked against the clause all the same.
 
 ## Editor support
 

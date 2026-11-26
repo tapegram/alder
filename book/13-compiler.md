@@ -2549,9 +2549,10 @@ that names the value, the operation and the first helper.
 After every body is checked, `checkStatedNeeds` compares each value's stated
 set *S* with its inferred set *I*. A key in *I* that *S* lacks is E0026 at
 the use that needs it, with a fix that inserts or rewrites the clause
-(keys in the session's field order); in a module that declares a route or
-a job, where such helpers existed before the clause, it is the warning W0014
-for one release, and `alder fmt` applies the fix. A key in *S* that *I*
+(keys in the session's field order). Only when the value has no clause at
+all, and its module declares a route or a job (`unstatedAllowed`), where such
+helpers existed before the clause, is it the warning W0014 for one release,
+and `alder fmt` applies the fix; a clause that lacks a key is always E0026. A key in *S* that *I*
 lacks is W0015: the clause may run ahead of its body. A clause on a route's
 member or a job's `run` is E0043, since their key comes from the route line
 or `silo`. A route's references to values of its own module are collected
