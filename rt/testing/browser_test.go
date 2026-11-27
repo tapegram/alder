@@ -2121,3 +2121,191 @@ func TestCheck_ReplacedLazy(t *testing.T) {
 		}
 	})
 }
+
+// A replace is applied root by root, as the client does (#330): a root whose element an earlier
+// root's replacement took out of the page has nowhere to go, though the page had it before the
+// answer; a step that fails leaves the page as it was. A root whose element an earlier root
+// brought in again replaces that one.
+func TestBrowser_ReplaceRootByRoot(t *testing.T) {
+	apply := func(b *Browser, raw string) error {
+		t.Helper()
+		events, err := sseEvents(raw)
+		if err != nil || len(events) != 1 {
+			t.Fatalf("events = %v %v", events, err)
+		}
+		return b.patch(events[0])
+	}
+	page := `<html><body><div id="a"><p id="b">old b</p></div></body></html>`
+	b := &Browser{reqHead: "POST /x: "}
+	b.doc, _ = html.Parse(page)
+	b.hasDoc, b.dom = true, html.Repair(b.doc)
+	err := apply(b, string(datastar.ReplaceEvent(`<div id="a">new a</div><p id="b">new b</p>`)))
+	if want := "POST /x: the answer replaced `#b`, which the page does not have"; err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+	if got := html.Render(b.doc); got != page {
+		t.Errorf("a failed replace changed the page: %s", got)
+	}
+	if got := html.Render(b.dom); got != page {
+		t.Errorf("a failed replace changed the dom: %s", got)
+	}
+	if len(b.replaced) != 0 {
+		t.Errorf("replaced %q", b.replaced)
+	}
+	if err := apply(b, string(datastar.ReplaceEvent(`<div id="a"><p id="b">mid</p></div><p id="b">last</p>`))); err != nil {
+		t.Fatal(err)
+	}
+	want := `<html><body><div id="a"><p id="b">last</p></div></body></html>`
+	if got := html.Render(b.doc); got != want {
+		t.Errorf("doc = %s, want %s", got, want)
+	}
+	if got := html.Render(b.dom); got != want {
+		t.Errorf("dom = %s, want %s", got, want)
+	}
+}
+
+// A removal removes every element with the id, as the client's `mode remove` removes every match
+// of its selector (#330): only a page with duplicate ids tells.
+func TestBrowser_RemoveDuplicateIDs(t *testing.T) {
+	b := &Browser{reqHead: "DELETE /x: "}
+	b.doc, _ = html.Parse(`<html><body><p id="d">1</p><div><p id="d">2</p></div><p id="e">3</p></body></html>`)
+	b.hasDoc, b.dom = true, html.Repair(b.doc)
+	events, err := sseEvents(string(datastar.RemoveEvent("d")))
+	if err != nil || len(events) != 1 {
+		t.Fatalf("events = %v %v", events, err)
+	}
+	if err := b.patch(events[0]); err != nil {
+		t.Fatal(err)
+	}
+	want := `<html><body><div></div><p id="e">3</p></body></html>`
+	if got := html.Render(b.doc); got != want {
+		t.Errorf("doc = %s, want %s", got, want)
+	}
+	if got := html.Render(b.dom); got != want {
+		t.Errorf("dom = %s, want %s", got, want)
+	}
+}
+
+// html.Repair drops an element only where the browser's parser drops it too (a non-option in a
+// <select>, a table part outside a table, a form in a form, markup in a <textarea>): a replace of
+// its id has nowhere to go in a real browser either, so the step fails (hasID). A root's own
+// element is never dropped when the root is patched in (html.RepairFragment), whatever its tag,
+// so a valid root always keeps its id (#330).
+func TestBrowser_RepairDropsOnlyWhatTheParserDrops(t *testing.T) {
+	for _, c := range []struct{ page, root string }{
+		{`<select><option>a</option><span id="x">s</span></select>`, `<span id="x">t</span>`},
+		{`<div><tr id="x"><td>c</td></tr></div>`, `<tr id="x"><td>d</td></tr>`},
+		{`<form><form id="x"></form></form>`, `<form id="x"></form>`},
+		{`<textarea><b id="x">b</b></textarea>`, `<b id="x">c</b>`},
+	} {
+		b := &Browser{reqHead: "POST /x: "}
+		b.doc, _ = html.Parse(`<html><body>` + c.page + `</body></html>`)
+		b.hasDoc, b.dom = true, html.Repair(b.doc)
+		if _, ok := elementByID(b.dom, "x"); ok {
+			t.Errorf("%s: Repair kept #x", c.page)
+		}
+		events, _ := sseEvents(string(datastar.ReplaceEvent(c.root)))
+		err := b.patch(events[0])
+		if want := "POST /x: the answer replaced `#x`, which the page does not have"; err == nil || err.Error() != want {
+			t.Errorf("%s: err = %v, want %q", c.page, err, want)
+		}
+	}
+	for _, root := range []string{`<tr id="x"><td>1</td></tr>`, `<td id="x">1</td>`, `<tbody id="x"></tbody>`, `<option id="x">o</option>`,
+		`<li id="x">l</li>`, `<form id="x"><form id="y"></form></form>`, `<caption id="x"></caption>`, `<col id="x">`} {
+		n, err := html.Parse(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := elementByID(html.RepairFragment(n), "x"); !ok {
+			t.Errorf("RepairFragment dropped the root %s: %s", root, html.Render(html.RepairFragment(n)))
+		}
+	}
+}
+
+// nestApp is a page whose #panel holds a lazy region (`load=`) that loads one nested in it, five
+// levels deep (l1 to l5); the answer to POST /nest/go replaces #panel with loaded levels drawn
+// and the next level its placeholder.
+type nestApp struct {
+	loaded  int    // the levels the answer's #panel draws loaded
+	missing string // a level whose load answers no element ("404": the route's 404; "other": a view with another root id)
+}
+
+func nestGo() rt.Route { return rt.Route{Name: "N.Go", Method: "POST", Path: "/nest/go"} }
+
+func nestLoad(i int) rt.Route {
+	return rt.Route{Name: "N.Load", Method: "GET", Path: "/nest/" + strconv.Itoa(i)}
+}
+
+// level is level i (1 to 5) of the region: loaded, its text and the next level's placeholder
+// (when loaded is more than 0, the next level drawn loaded too, loaded-1 more); else the placeholder.
+func level(i, loaded int) html.Node {
+	id := "l" + strconv.Itoa(i)
+	if loaded <= 0 {
+		return html.El("span", []html.Attr{html.A("id", id), html.RouteAttr(html.LoadAttr, nestLoad(i))}, html.Text("…"))
+	}
+	kids := []html.Node{html.Text("level " + strconv.Itoa(i))}
+	if i < 5 {
+		kids = append(kids, level(i+1, loaded-1))
+	}
+	return html.El("span", []html.Attr{html.A("id", id)}, kids...)
+}
+
+func (a *nestApp) routes() []web.Route {
+	return []web.Route{
+		{Method: "GET", Pattern: "/nest", Handle: func(rq *web.Request) web.Response {
+			panel := html.El("section", []html.Attr{html.A("id", "panel")}, level(1, 0))
+			return web.PageResponse(layout("Nest", panel, clickOf(nestGo(), "Go")), &html.FormState{}, nil)
+		}},
+		{Method: "GET", Pattern: "/nest/{i}", Handle: func(rq *web.Request) web.Response {
+			i, _ := strconv.Atoi(rq.Params["i"])
+			if a.missing != "" && rq.Params["i"] == "2" {
+				if a.missing == "404" {
+					return web.NotFoundResponse(layout("Missing"))
+				}
+				return web.PageResponse(html.El("span", []html.Attr{html.A("id", "other")}), &html.FormState{}, nil)
+			}
+			return web.PageResponse(level(i, 1), &html.FormState{}, nil)
+		}},
+		{Method: "POST", Pattern: "/nest/go", Handle: func(rq *web.Request) web.Response {
+			panel := html.El("section", []html.Attr{html.A("id", "panel")}, level(1, a.loaded))
+			return web.AnswerResponse(rt.Replace([]any{panel}), nil, nil)
+		}},
+	}
+}
+
+// The fresh-load check resolves lazy regions inside a replaced element, and inside what their
+// loads answer, to lazyDepth levels (#330): a #panel drawn as the page shows once its loads have
+// run (three levels loaded, the fourth its placeholder) passes; one drawn with fewer levels
+// loaded, or with the fourth loaded too, does not. A load that answers no element with the
+// placeholder's id (the route's 404, a view with another root id) fails the step saying so.
+func TestCheck_ReplacedLazyNested(t *testing.T) {
+	if lazyDepth != 3 {
+		t.Fatalf("lazyDepth = %d", lazyDepth)
+	}
+	run := func(a *nestApp) error {
+		t.Helper()
+		var err error
+		browseOpts(t, Options{}, a.routes(), func(b *Browser, e *eff.Env) {
+			mustOf(t)(b.Get("/nest"))
+			_, err = b.ClickRoute(nestGo(), "N.Go")
+		})
+		return err
+	}
+	if err := run(&nestApp{loaded: 3}); err != nil {
+		t.Errorf("three levels loaded: %v", err)
+	}
+	for _, n := range []int{1, 2, 4} {
+		err := run(&nestApp{loaded: n})
+		want := "POST /nest/go: the answer replaced `#panel` unlike the page loaded again (GET /nest, its load GET /nest/1, its load GET /nest/2, its load GET /nest/3) at "
+		if err == nil || !strings.HasPrefix(err.Error(), want) {
+			t.Errorf("%d levels loaded: err = %v, want %q", n, err, want)
+		}
+	}
+	for _, missing := range []string{"404", "other"} {
+		err := run(&nestApp{loaded: 3, missing: missing})
+		want := "POST /nest/go: the page loaded again (GET /nest, its load GET /nest/1, its load GET /nest/2) to check the answer's replace answered no element #l2 for the load (status "
+		if err == nil || !strings.HasPrefix(err.Error(), want) {
+			t.Errorf("load of l2 answering %s: err = %v, want %q", missing, err, want)
+		}
+	}
+}

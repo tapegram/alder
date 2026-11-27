@@ -1501,8 +1501,9 @@ func (b *Browser) patch(ev sseEvent) error {
 
 // replace applies a replace event's elements (#309, datastar.ReplaceEvent): each root, as
 // web.ReplaceRoots reads the roots of `Response.replace`, replaces the held page's element with
-// its id, and its id is kept (replaced). Every id is looked for first, so a step that fails
-// leaves the page as it was.
+// its id, and its id is kept (replaced). The roots are applied one by one in the order sent, as
+// the client applies them (#330): a root whose element an earlier root's replacement took out of
+// the page has nowhere to go. A step that fails leaves the page as it was.
 func (b *Browser) replace(elements string) error {
 	els, err := html.Parse(elements)
 	if err != nil {
@@ -1512,60 +1513,59 @@ func (b *Browser) replace(elements string) error {
 	if err != nil {
 		return fmt.Errorf("%s%w", b.reqHead, err)
 	}
+	doc, dom := b.doc, b.dom
 	ids := make([]string, len(roots))
 	for i, n := range roots {
 		ids[i], _ = html.RootOf(n)
-		if !b.hasID(ids[i]) {
+		if !hasID(doc, dom, ids[i]) {
 			return fmt.Errorf("%sthe answer replaced `#%s`, which the page does not have", b.reqHead, ids[i])
 		}
-	}
-	for i, n := range roots {
-		b.doc, _ = html.ReplaceByID(b.doc, ids[i], n)
+		doc, _ = html.ReplaceByID(doc, ids[i], n)
 		// Datastar morphs the element into the nodes its parser builds from the root
-		b.dom, _ = html.ReplaceByID(b.dom, ids[i], html.RepairFragment(n))
+		dom, _ = html.ReplaceByID(dom, ids[i], html.RepairFragment(n))
 	}
+	b.doc, b.dom = doc, dom
 	b.replaced = append(b.replaced, ids...)
 	return nil
 }
 
-// remove applies a removal (#309, datastar.RemoveEvent): the held page's element with the id
-// sel names (datastar.IDSelector's escapes read back) is removed, and its id kept (removed).
+// remove applies a removal (#309, datastar.RemoveEvent): the held page's elements with the id
+// sel names (datastar.IDSelector's escapes read back) are removed, every one as the client's
+// `mode remove` removes every match of its selector (#330), and the id is kept (removed).
 func (b *Browser) remove(sel string) error {
 	id, ok := idOfSelector(sel)
 	if !ok {
 		return fmt.Errorf("%sa removal of %q: the browser only removes an element by its id", b.reqHead, sel)
 	}
-	if !b.hasID(id) {
+	if !hasID(b.doc, b.dom, id) {
 		return fmt.Errorf("%sthe answer removed `#%s`, which the page does not have", b.reqHead, id)
 	}
-	b.doc, _ = removeByID(b.doc, id)
-	b.dom, _ = removeByID(b.dom, id)
+	b.doc = removeByID(b.doc, id)
+	b.dom = removeByID(b.dom, id)
 	b.removed = append(b.removed, id)
 	return nil
 }
 
-// hasID reports whether the held page has an element with id id, both as the router sent it
-// (doc) and as the browser's parser built it (dom): a replace or a removal of an id the built page
-// lacks does nothing in a real browser, so the step fails as for an id the markup lacks.
-func (b *Browser) hasID(id string) bool {
-	_, inDoc := elementByID(b.doc, id)
-	_, inDom := elementByID(b.dom, id)
+// hasID reports whether a page has an element with id id, both as the router sent it (doc) and
+// as the browser's parser built it (dom): a replace or a removal of an id the built page lacks
+// does nothing in a real browser, so the step fails as for an id the markup lacks. html.Repair
+// drops an element only where the browser's parser drops it too (a non-option in a <select>, a
+// table part outside a table, a form in a form, markup in a <textarea>), so an id the built page
+// lacks is one the client cannot find either; and a root patched in (html.RepairFragment) always
+// keeps its own element, so a valid root never loses its id (#330,
+// TestBrowser_RepairDropsOnlyWhatTheParserDrops).
+func hasID(doc, dom html.Node, id string) bool {
+	_, inDoc := elementByID(doc, id)
+	_, inDom := elementByID(dom, id)
 	return inDoc && inDom
 }
 
-// removeByID is n without its first element whose id is id (in document order), and whether
-// there was one.
-func removeByID(n html.Node, id string) (html.Node, bool) {
-	found := false
-	out := html.Without(n, func(c html.Node) bool {
-		if found {
-			return false
-		}
+// removeByID is n without every element whose id is id.
+func removeByID(n html.Node, id string) html.Node {
+	return html.Without(n, func(c html.Node) bool {
 		v, ok := html.AttrOf(c, "id")
-		found = ok && v == id
-		return found
+		return ok && v == id
 	})
-	return out, found
 }
 
 // idOfSelector is the id a selector `#<identifier>` names, its CSS escapes read back (the inverse
@@ -1656,8 +1656,8 @@ func (e *ReplacedError) Error() string {
 // and each element the answer replaced must equal the element with that id in the fresh page,
 // as the browser's parser builds both; an id the fresh page lacks is not compared. An element
 // the fresh page draws as a lazy region (`load=`: a placeholder a browser replaces as soon as
-// the page loads) that differs is compared again with the element its load fetches (loadLazy),
-// as the browser would show it. No element
+// the page loads), or that holds one, and differs is compared again with the element as the
+// browser shows it once its loads have run (resolveLazy). No element
 // the answer removed may be in it. The handler built the roots from its own data: the check
 // proves the page's own `load` agrees. It does not see a place the handler forgot to replace.
 func (b *Browser) checkReplaced() error {
@@ -1702,19 +1702,23 @@ func (b *Browser) checkReplaced() error {
 		if !differ {
 			continue
 		}
-		// a lazy region (`load=`): the fresh page draws its placeholder, which a browser replaces
-		// at once with the element its load fetches; the replaced element is compared with that
-		if u, lazy := lazyURL(want); lazy {
-			loaded, why, err := b.loadLazy(u, id)
-			if err != nil {
-				return err
+		// lazy regions (`load=`): the fresh page draws their placeholders, which a browser
+		// replaces at once with the elements their loads fetch; the replaced element is compared
+		// with the fresh one as it shows once those loads have run
+		var loads []string
+		shown, why, err := b.resolveLazy(want, lazyDepth, &loads)
+		if err != nil {
+			return err
+		}
+		if len(loads) > 0 {
+			for _, u := range loads {
+				fail.Fetch += ", its load GET " + u
 			}
-			fail.Fetch += ", its load GET " + u
 			if why != "" {
 				fail.Why = why
 				return fail
 			}
-			if d, differ = html.Diff(got, loaded); !differ {
+			if d, differ = html.Diff(got, shown); !differ {
 				fail.Fetch = http.MethodGet + " " + b.url
 				continue
 			}
@@ -1745,9 +1749,70 @@ func lazyURL(n html.Node) (string, bool) {
 	return m[1], true
 }
 
+// lazyDepth is how many levels of lazy regions the fresh-load check resolves (resolveLazy): a
+// region in the page, one in the element its load answers, and one in that; a region in the
+// element the third load answers is left as its placeholder and compared as such.
+const lazyDepth = 3
+
+// resolveLazy is n as a browser shows it once the loads of its lazy regions have run: n itself
+// when it is one (with depth above 0), else each region in it, in document order, replaced with
+// the element its load answers (loadLazy), whose own regions are resolved in turn while depth
+// levels remain. A region without an id is left as it is: no patch can name it. The URLs fetched
+// are added to loads in order; why says why a load answered no element ("" when each did), and
+// resolving stops there.
+func (b *Browser) resolveLazy(n html.Node, depth int, loads *[]string) (html.Node, string, error) {
+	if depth <= 0 {
+		return n, "", nil
+	}
+	u, lazy := lazyURL(n)
+	id, _ := html.AttrOf(n, "id")
+	if !lazy || id == "" {
+		return b.resolveInside(n, depth, loads)
+	}
+	*loads = append(*loads, u)
+	loaded, why, err := b.loadLazy(u, id)
+	if err != nil || why != "" {
+		return n, why, err
+	}
+	return b.resolveInside(loaded, depth-1, loads)
+}
+
+// resolveInside is n with the lazy regions inside it (not n itself) resolved (resolveLazy), each
+// patched in by its id as the client patches the element its load answers.
+func (b *Browser) resolveInside(n html.Node, depth int, loads *[]string) (html.Node, string, error) {
+	if depth <= 0 {
+		return n, "", nil
+	}
+	var regions []html.Node
+	var walk func(html.Node)
+	walk = func(c html.Node) {
+		for _, k := range c.Children() {
+			if _, lazy := lazyURL(k); lazy && k.Tag() != "" {
+				regions = append(regions, k)
+				continue
+			}
+			walk(k)
+		}
+	}
+	walk(n)
+	for _, r := range regions {
+		id, _ := html.AttrOf(r, "id")
+		if id == "" {
+			continue
+		}
+		shown, why, err := b.resolveLazy(r, depth, loads)
+		if err != nil || why != "" {
+			return n, why, err
+		}
+		n, _ = html.ReplaceByID(n, id, shown)
+	}
+	return n, "", nil
+}
+
 // loadLazy is the element with id id that the element fetch of u (a lazy region's load) answers,
-// fetched quietly as the fresh-load check's page was, as the browser's parser builds it; why
-// says why there is none ("" when there is).
+// fetched quietly as the fresh-load check's page was, as the browser's parser builds it: the
+// last patch of that id (the client applies each in turn), so a patch of another id is not
+// taken for it; why says why there is none ("" when there is).
 func (b *Browser) loadLazy(u, id string) (html.Node, string, error) {
 	ctx, req := b.elementRequest(u)
 	w, err := b.quietly(ctx, req, "the fresh-load check")
@@ -1759,6 +1824,8 @@ func (b *Browser) loadLazy(u, id string) (html.Node, string, error) {
 		if err != nil {
 			return html.Node{}, "", err
 		}
+		var el html.Node
+		found := false
 		for _, ev := range events {
 			if ev.typ != "datastar-patch-elements" || ev.field("mode") != "outer" || ev.field("selector") != "#"+id {
 				continue
@@ -1767,9 +1834,12 @@ func (b *Browser) loadLazy(u, id string) (html.Node, string, error) {
 			if err != nil {
 				return html.Node{}, "", fmt.Errorf("the fresh-load check: the view GET %s answers does not parse: %w", u, err)
 			}
-			if el, ok := elementByID(html.RepairFragment(n), id); ok {
-				return el, "", nil
+			if e, ok := elementByID(html.RepairFragment(n), id); ok {
+				el, found = e, true
 			}
+		}
+		if found {
+			return el, "", nil
 		}
 	}
 	status := strconv.Itoa(w.Code)

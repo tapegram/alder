@@ -1928,7 +1928,11 @@ Section 10 shows how each is made.
   A lazy region (an element with `load=`) is drawn by the page as a
   placeholder that a browser swaps at once for what its `load` fetches, so
   when the placeholder differs, the browser makes that fetch too and
-  compares the replaced element with what comes back.
+  compares the replaced element with what comes back. The same holds for
+  a lazy region inside the replaced element, and for one inside what a
+  load fetches, three levels down; a fourth level is compared as its
+  placeholder. A load that answers no element with the placeholder's `id`
+  fails the step ("… answered no element #badge for the load").
   The second load runs in a savepoint that is undone, and is not a step of
   the trace. It runs the page's `load` again (and a lazy region's `load`),
   so a capability they call is called again, a fake too (section 8): the
@@ -2495,8 +2499,11 @@ applies the events as Datastar would:
 
 - a patch of a `replace`'s elements, with no selector: each root replaces
   the element with its own `id`, and a removal takes out the element its
-  `#id` selector names. Every id is looked for before anything changes,
-  so a step that fails leaves the page as it was.
+  `#id` selector names, every element with that `id`, as the page's
+  script removes them. The roots are applied one after another, as the
+  page's script applies them, so a root whose element an earlier root
+  took out of the page has nowhere to go either. A step that fails leaves
+  the page as it was.
 
 - a toast is appended to the page's `<al-toasts>` and read into the
   step's `notices` and `toasts`.

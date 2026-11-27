@@ -5175,9 +5175,10 @@ answer into an `httptest.ResponseRecorder`, and the browser reads it:
     regions of a `refresh` or an `invalid`, the one element of a `render`
     or an element fetch.
   - No selector, mode `outer` (a `replace`): each root replaces the held
-    element with its `id` (`Browser.replace`); every id is looked for
-    first, so a step that fails leaves the page as it was.
-  - `#<id>` in mode `remove` (a `Response.remove`) takes out the held
+    element with its `id` (`Browser.replace`), one root after another on
+    a copy of the page, so a root whose element an earlier root took out
+    has nowhere to go, and a step that fails leaves the page as it was.
+  - `#<id>` in mode `remove` (a `Response.remove`) takes out every held
     element with that `id` (`Browser.remove`, the selector's escapes read
     back by `idOfSelector`).
   - `#_alder_shown` records the hash of the body shown (`Browser.shown`,
@@ -5290,10 +5291,14 @@ held page's address with the cookie, as a reload, also `quietly`; the page
 that comes back is parsed the same way, and each element the answer replaced
 must equal the element with that `id` there, and no removed id may be in it
 (a `ReplacedError` otherwise, with both markups). An id the fresh page lacks
-is not compared. An element the fresh page draws as a lazy region (`load=`,
-a placeholder) that differs is compared again with the element its load
-fetches (`lazyURL`, then `loadLazy`, also quietly), since that is what a
-browser would show. Here the two are not equal by construction: the handler
+is not compared. An element that differs is compared again with the
+fresh element as a browser shows it once its lazy regions (`load=`,
+placeholders) have loaded (`resolveLazy`): the element itself when it is
+one, and each region inside it, are replaced with the element their load
+fetches (`lazyURL`, then `loadLazy`, also quietly; the last patch with the
+placeholder's `id`), and the regions inside those in turn, down to
+`lazyDepth` (three) levels. A load that answers no element with the
+placeholder's `id` fails the step. Here the two are not equal by construction: the handler
 built its views from its own reads, and the check is what ties them to the
 page's `load`.
 
