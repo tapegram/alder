@@ -544,10 +544,14 @@ brands are gone in Go (`User.UserId` is a `string`), so the Go side must
 keep the brand's promise itself.
 
 `Text.Email` is the one brand with a rule of its own. An address handed to
-an adapter is folded to lower case, since the program made it. An address an
-adapter returns need not be: the runtime folds a `Text.Email` where it is written
-to or compared in the database (an insert, an update, and the operand of a
-`Db` condition such as `.eq` or `.in`), so an adapter may return
+an adapter is normally folded to lower case, since the program made it (from
+a form field, a literal or a row it read). Not always: the program may pass
+on an address it got from another adapter, which comes as that adapter wrote
+it. So an adapter that queries the database with `rt/db` itself folds the
+operand with `db.EncodeEmail`, as the generated auth adapter does. An address
+an adapter returns need not be folded: the runtime folds a `Text.Email` where
+it is written to or compared in the database (an insert, an update, and the
+operand of a `Db` condition such as `.eq` or `.in`), so an adapter may return
 `Ada@Example.com` and the row it finds or makes is `ada@example.com`. In
 memory it stays as the adapter wrote it until it has been stored and read
 back: `==` compares the two strings as they are, so an address straight from

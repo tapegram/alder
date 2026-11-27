@@ -4162,7 +4162,9 @@ with the user's id and never the password.
 - the upgrade of an old hash and a failed one;
 - another iteration count;
 - a changed key;
-- ten malformed texts.
+- ten malformed texts;
+- the lookup against a real store, which folds the address it is given
+  (`Me@Example.COM` finds the row stored as `me@example.com`).
 
 #### The cost of slowness
 

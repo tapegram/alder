@@ -5298,9 +5298,14 @@ region's load on an element a replace morphs in as on a page it loads. Each
 region is replaced with the element its load fetches (`lazyURL`, then
 `loadLazy`, also quietly; `patchOf` takes the last patch with the
 placeholder's `id`), and the regions inside those in turn, down to
-`lazyDepth` (three) levels by position; a region deeper than that stands as
-the same stub on both sides, so it is not compared. The replaced element
-itself is never loaded again: it is what the answer drew. A load that
+`lazyDepth` (three) levels by position. A region deeper than that is left
+on each side as it is drawn and compared as drawn: a placeholder equals the
+same placeholder, and a region drawn loaded fails against a placeholder or
+other content. That can be a false failure (a browser would load the
+placeholder), never a false pass. The replaced element itself is never
+loaded again: it is what the answer drew, so a replaced element that is
+itself a placeholder fails against the element the fresh page's load
+fetches. A load that
 answers no element with the placeholder's `id` fails the step. Here the two
 are not equal by construction: the handler built its views from its own
 reads, and the check is what ties them to the page's `load`.

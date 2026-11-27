@@ -1931,13 +1931,20 @@ Section 10 shows how each is made.
   answer replaced. So when the two differ, the browser makes those fetches
   too, on both sides, and compares them as they show once loaded: the
   regions inside the replaced element and inside the page's, and the ones
-  inside what a load fetches, three levels down. An answer may draw a
-  region as a placeholder or loaded; either compares equal when the
-  content agrees. A region deeper than three levels is not compared. The
+  inside what a load fetches, three levels down. Within those three
+  levels an answer may draw a region inside the element it replaces as a
+  placeholder or loaded; either compares equal when the content agrees.
+  A region deeper than three levels is compared as it is drawn on each
+  side: a placeholder equals the same placeholder, and a region drawn
+  loaded fails against the page's placeholder, even when its content is
+  right. So draw a region deeper than three levels as its placeholder. The
   replaced element itself is not loaded again, even when it has a `load=`
-  of its own (a badge that polls): it is what the answer drew. A load that
-  answers no element with the placeholder's `id` fails the step ("…
-  answered no element #badge for the load").
+  of its own (a badge that polls): it is what the answer drew, and it is
+  compared with what the page's `load` fetches for that `id`. An answer
+  whose replaced element is itself a bare placeholder therefore fails the
+  step: draw it loaded. A load that answers no element with the
+  placeholder's `id` fails the step ("… answered no element #badge for
+  the load").
   The second load runs in a savepoint that is undone, and is not a step of
   the trace. It runs the page's `load` again (and a lazy region's `load`),
   so a capability they call is called again, a fake too (section 8): the

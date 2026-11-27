@@ -1748,8 +1748,9 @@ func lazyURL(n html.Node) (string, bool) {
 
 // lazyDepth is how many levels of lazy regions the fresh-load check resolves (lazyShown), counted
 // by nesting position: a region, one inside it, and one inside that. A region deeper than that
-// is not compared: on both sides it stands as the same stub (lazyStub), whether it is drawn as
-// a placeholder or loaded.
+// is left on each side as it is drawn and compared as drawn: a placeholder equals the same
+// placeholder, and a region drawn loaded fails against a placeholder or other content. That can
+// be a false failure (a browser would load the placeholder), never a false pass.
 const lazyDepth = 3
 
 // lazyShown is got, an element the answer replaced as the page held it, and want, the element
@@ -1798,7 +1799,7 @@ func (r *lazyResolver) region(n html.Node) bool {
 }
 
 // shown is n, inside level regions, as a browser shows it: a region one level deeper, beyond
-// lazyDepth its stub, else (a placeholder) the element its load answers; then the regions
+// lazyDepth as it is drawn, else (a placeholder) the element its load answers; then the regions
 // inside it (inside). A load answers what the page shows at once; an element it answers that
 // carries a load again (a poll) is not loaded again.
 func (r *lazyResolver) shown(n html.Node, level int) (html.Node, string, error) {
@@ -1811,7 +1812,7 @@ func (r *lazyResolver) shown(n html.Node, level int) (html.Node, string, error) 
 	}
 	level++
 	if level > lazyDepth {
-		return lazyStub(id), "", nil
+		return n, "", nil
 	}
 	if u, lazy := lazyURL(n); lazy && id != "" {
 		r.loads = append(r.loads, u)
@@ -1853,11 +1854,6 @@ func (r *lazyResolver) inside(n html.Node, level int) (html.Node, string, error)
 		n, _ = html.ReplaceByID(n, id, s)
 	}
 	return n, "", nil
-}
-
-// lazyStub is what a lazy region deeper than lazyDepth is compared as, on both sides alike.
-func lazyStub(id string) html.Node {
-	return html.El("al-lazy", []html.Attr{html.A("id", id)}, html.Text("not compared: deeper than "+strconv.Itoa(lazyDepth)+" lazy regions"))
 }
 
 // loadLazy is the element with id id that the element fetch of u (a lazy region's load) answers,

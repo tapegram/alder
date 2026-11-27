@@ -222,9 +222,9 @@ as a brand (a literal is folded when the program is compiled), read from a
 database column, drawn by a property test, and given by `Text.toEmail`
 (chapter 9). It also happens when one is written to a column or compared in
 a condition. The one address that reaches the program unfolded is one a Go
-adapter returns (chapter 7, "What a capability looks like in Go"). It is `Text.toLower`'s fold, so `É` becomes `é`. What is lost
-is the capitals the person typed: an app that wants to show them keeps a
-second `Text` column.
+adapter returns (chapter 7, "What a capability looks like in Go"). It is
+`Text.toLower`'s fold, so `É` becomes `é`. What is lost is the capitals the
+person typed: an app that wants to show them keeps a second `Text` column.
 
 A `Text.Secret` gets a little more: a form never fills one back in, the dev
 panel and its curl line show `••••` for a route's form fields and path

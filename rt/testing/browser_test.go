@@ -2287,7 +2287,7 @@ func (a *nestApp) routes() []web.Route {
 // what their loads answer, to lazyDepth levels by position (#330): a #panel drawn with any number
 // of levels loaded and the next its placeholder shows what a reload shows, and passes. A level
 // within lazyDepth whose drawn content differs from what its load answers fails; one deeper is
-// not compared. A load that answers no element with the placeholder's id (the route's 404, a
+// compared as drawn, so a level 4 drawn loaded fails against the page's placeholder. A load that answers no element with the placeholder's id (the route's 404, a
 // view with another root id) fails the step saying so.
 func TestCheck_ReplacedLazyNested(t *testing.T) {
 	if lazyDepth != 3 {
@@ -2305,9 +2305,19 @@ func TestCheck_ReplacedLazyNested(t *testing.T) {
 		})
 		return err
 	}
-	for _, n := range []int{0, 1, 2, 3, 4, 5} {
+	for _, n := range []int{0, 1, 2, 3} {
 		if err := run(&nestApp{loaded: n}); err != nil {
 			t.Errorf("%d levels loaded: %v", n, err)
+		}
+	}
+	// Past lazyDepth each side is compared as drawn: the page loaded again holds level 4 as its
+	// placeholder, so an answer that draws level 4 loaded fails, rightly or wrongly (a false
+	// failure, never a false pass), and one whose level 4 is wrong fails too.
+	for _, c := range []struct{ loaded, lie int }{{4, 0}, {5, 0}, {5, 4}, {5, 5}} {
+		err := run(&nestApp{loaded: c.loaded, lie: c.lie})
+		want := "POST /nest/go: the answer replaced `#panel` unlike the page loaded again (GET /nest, its load GET /nest/1, its load GET /nest/2, its load GET /nest/3"
+		if err == nil || !strings.HasPrefix(err.Error(), want) || !strings.Contains(err.Error(), "span#l4") {
+			t.Errorf("%d levels loaded, level %d differing, level 4 drawn loaded: err = %v, want %q at span#l4", c.loaded, c.lie, err, want)
 		}
 	}
 	for _, c := range []struct{ loaded, lie int }{{3, 2}, {1, 1}, {5, 3}} {
@@ -2317,9 +2327,6 @@ func TestCheck_ReplacedLazyNested(t *testing.T) {
 		if err == nil || !strings.HasPrefix(err.Error(), want) || !strings.Contains(err.Error(), at) || !strings.Contains(err.Error(), "level "+strconv.Itoa(c.lie)+"!") {
 			t.Errorf("%d levels loaded, level %d differing: err = %v, want %q", c.loaded, c.lie, err, want)
 		}
-	}
-	if err := run(&nestApp{loaded: 5, lie: 4}); err != nil {
-		t.Errorf("level 4 differing, deeper than lazyDepth: %v", err)
 	}
 	for _, missing := range []string{"404", "other"} {
 		err := run(&nestApp{loaded: 3, missing: missing})

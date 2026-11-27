@@ -3140,7 +3140,7 @@ The admin form `requires user, role Admin, silo org`:
 #### W0013 — a write route's handler named `update`
 
 - A write route's handler still named `update`, not after its method: "`Toggle.update` is now `Toggle.patch`: a write route's handler is named after its method. `alder fmt` renames it." (chapter 6, "A route module"). The method gives the name: `post`, `put`, `patch` or `delete`, as in `Add.post`.
-- It is reported at the signature, at the definition and at every reference to it, in any module, each with the rename as its fix. The old name works for one release; after that it is E0043.
+- It is reported once at the declaration, on its signature (its fix renames the signature and the definition), and once at every reference to it, in any module, with the rename as the fix. The old name works for one release; after that it is E0043.
 
 **Fix offered:** the rename; `alder fmt` applies it (this chapter, "Formatting")
 

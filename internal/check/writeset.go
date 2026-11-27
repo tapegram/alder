@@ -289,7 +289,8 @@ func (c *Checker) mixMessage(name, from, mod string, groups []storeGroup) string
 }
 
 // storeVias is the part of a store's note in an E0031 message that names the helpers (of
-// module mod) its writes are reached through: ", through `Audit.record`", "" for none (#310).
+// module mod) its writes are reached through: ", through `Audit.record`", "" for none (#310;
+// a silo job's note names them too since #328).
 func storeVias(g storeGroup, mod string) string {
 	if len(g.vias) == 0 {
 		return ""

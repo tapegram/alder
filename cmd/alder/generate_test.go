@@ -940,7 +940,7 @@ func TestGenerate_AuthAdapter(t *testing.T) {
 	if err != nil || !strings.Contains(string(testOut), "ok  \tapp/adapters/auth") {
 		t.Fatalf("go test ./adapters/...: %v\n%s", err, testOut)
 	}
-	for _, name := range []string{"TestHash_RoundTrip", "TestVerify", "TestVerify_UnknownEmailDerives", "TestVerify_Rehash", "TestVerify_RehashFails", "TestCheck_StoredIterations", "TestCheck_WholeKey", "TestCheck_Malformed"} {
+	for _, name := range []string{"TestHash_RoundTrip", "TestVerify", "TestVerify_UnknownEmailDerives", "TestVerify_Rehash", "TestVerify_RehashFails", "TestCheck_StoredIterations", "TestCheck_WholeKey", "TestCheck_Malformed", "TestLookup_FoldsEmail"} {
 		if !strings.Contains(string(testOut), "--- PASS: "+name) {
 			t.Errorf("%s did not pass:\n%s", name, testOut)
 		}

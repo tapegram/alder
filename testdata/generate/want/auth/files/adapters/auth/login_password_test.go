@@ -2,8 +2,14 @@ package auth
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"alder/rt/db"
+	"alder/rt/eff"
+	"app"
 )
 
 // noRehash fails a test that rehashes when it should not.
@@ -166,6 +172,59 @@ func TestCheck_Malformed(t *testing.T) {
 		// derived against the dummy all the same, so a malformed row answers as slowly as a real one
 		if len(checked) != 1 || checked[0] != dummy {
 			t.Errorf("verify with %q derived against %q, want the dummy once", s, checked)
+		}
+	}
+}
+
+// lookup, against a real store, folds the address it is given as the app's own queries do: a
+// login typed with capitals, or an address another adapter passed on unfolded, finds the row
+// stored in lower case (#326).
+func TestLookup_FoldsEmail(t *testing.T) {
+	st, err := db.OpenSQLite(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	env := &eff.Env{Store: st}
+	if err := st.Ensure(t.Context(), app.Tables, true); err != nil {
+		t.Fatal(err)
+	}
+	var users db.TableDesc
+	for _, d := range app.Tables {
+		if d.Name == "Table.User.User" {
+			users = d
+		}
+	}
+	vals := make([]any, len(users.Columns))
+	for i, c := range users.Columns {
+		switch {
+		case c.Name == "email":
+			vals[i] = "me@example.com"
+		case c.Name == users.ID || c.Name == users.Created || c.Name == users.Updated || c.Nullable:
+		case c.Ref != "":
+			t.Skipf("the table has a reference column %s: the test makes no row for it", c.Name)
+		case c.Type == db.CEnum:
+			vals[i] = c.Enum[0]
+		case c.Type == db.CInt || c.Type == db.CBool:
+			vals[i] = int64(0)
+		case c.Type == db.CFloat:
+			vals[i] = 0.0
+		case c.Type == db.CDate:
+			vals[i] = "2026-01-01"
+		case c.Type == db.CTime:
+			vals[i] = db.EncodeTime(time.Now())
+		default:
+			vals[i] = "x"
+		}
+	}
+	id, err := st.Insert(t.Context(), nil, users.Name, users.Columns, users.ID, users.Created, users.Updated, vals, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, email := range []string{"me@example.com", "Me@Example.COM"} {
+		r, err := eff.Run(env, eff.KTask, eff.Call("lookup", false, func(e *eff.Env) (*row, error) { return lookup(e.Ctx, email) }))
+		if err != nil || r == nil || r.id != id {
+			t.Errorf("lookup(%q) = %+v, %v; want the row %s", email, r, err, id)
 		}
 	}
 }
