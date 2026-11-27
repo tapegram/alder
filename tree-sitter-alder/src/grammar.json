@@ -445,7 +445,7 @@
                     "members": [
                       {
                         "type": "SYMBOL",
-                        "name": "_newline"
+                        "name": "_clause_newline"
                       },
                       {
                         "type": "FIELD",
@@ -496,7 +496,7 @@
                   "members": [
                     {
                       "type": "SYMBOL",
-                      "name": "_newline"
+                      "name": "_clause_newline"
                     },
                     {
                       "type": "FIELD",
@@ -5806,6 +5806,10 @@
     {
       "type": "SYMBOL",
       "name": "_scratch_start"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_clause_newline"
     }
   ],
   "inline": [],

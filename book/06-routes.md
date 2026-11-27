@@ -1355,6 +1355,9 @@ recent : Select Todo requires user
 recent = Db.mine Todo |> Db.orderBy Todo.created.desc |> Db.limit 5
 ```
 
+The clause sits on the signature's line or on the line right after it,
+indented; a blank line ends the signature. Each key is named once and is a
+`Maybe` field of the session, as on a route line (E0011).
 The clause is not part of the type: `recent` is a `Select Todo`, and is
 passed, stored and unified as one. It may sit in the route's module or in
 `Table/Todo.alder`, where two routes can share it; a module with no route

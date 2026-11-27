@@ -833,6 +833,23 @@ func (mc *modCtx) defineParams(params *syntax.RecordType, rec *types.Record, nou
 	return declared
 }
 
+// checkValueRequires is the route guard's check of value vd's `requires` clause: each key named
+// once (E0011, as for `requires user, org, org` on the route line) and a `Maybe` field of the
+// session (checkRequires).
+func (mc *modCtx) checkValueRequires(vd *syntax.ValueDecl) {
+	g := &syntax.Guard{}
+	for i, key := range vd.Needs {
+		if slices.Contains(g.Requires, key) {
+			mc.c.errorf(diag.InvalidDecl, vd.NeedSpans[i], "`requires` names `%s` twice", key)
+			continue
+		}
+		g.Requires = append(g.Requires, key)
+		g.FieldSpans = append(g.FieldSpans, vd.NeedSpans[i])
+	}
+	g.RequiresSpan = g.FieldSpans[0]
+	mc.checkRequires(g, vd.NeedsSpan)
+}
+
 // checkRequires checks that each field of g's `requires` is a `Maybe` field of App's session;
 // at is the declaration's span, for a field without a span of its own.
 func (mc *modCtx) checkRequires(g *syntax.Guard, at diag.Span) {
@@ -1257,10 +1274,8 @@ func (mc *modCtx) declareValues() {
 			}
 			c.valueDecls[c.key(mc.m.Name, vd.FullName())] = valueDecl{mod: mc.m.Name, d: vd}
 		}
-		// the route guard's check: each key is a `Maybe` field of the session (not on a clause the
-		// parser gave up on, which already has its error)
-		if len(vd.Needs) > 0 && vd.NeedsSpan != (diag.Span{}) && !slices.Contains(vd.Needs, "") {
-			mc.checkRequires(&syntax.Guard{Requires: vd.Needs, RequiresSpan: vd.NeedSpans[0], FieldSpans: vd.NeedSpans}, vd.NeedsSpan)
+		if len(vd.Needs) > 0 && !vd.NeedsErr { // a clause the parser gave up on has its error
+			mc.checkValueRequires(vd)
 		}
 		params := map[string]bool{}
 		mc.value = vd.FullName() // a test type in the signature makes the value a test helper

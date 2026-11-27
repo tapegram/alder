@@ -203,7 +203,7 @@ func (c *Checker) checkWriteSets() {
 			case len(groups) == 1 && j.Silo != "" && groups[0].silo == "":
 				// a `silo k` job runs in its silo (the worker binds it there): a shared write
 				// is a second store, as it is for a route whose arm is the silo's
-				c.errorf(diag.WriteStores, vd.Span, "%s", siloJobMessage("`"+vd.FullName()+"`", j.Silo, groups[0].tables))
+				c.errorf(diag.WriteStores, vd.Span, "%s", siloJobMessage("`"+vd.FullName()+"`", j.Silo, name, groups[0]))
 			}
 		}
 	}
@@ -278,14 +278,7 @@ func (c *Checker) mixMessage(name, from, mod string, groups []storeGroup) string
 		} else {
 			shared = andList(ts)
 		}
-		if len(g.vias) > 0 {
-			vs := make([]string, len(g.vias))
-			for j, v := range g.vias {
-				vs[j] = "`" + helperName(v, mod) + "`"
-			}
-			where += ", through " + andList(vs)
-		}
-		where = "(" + where + ")"
+		where = "(" + where + storeVias(g, mod) + ")"
 		parts[i] = andList(ts) + " " + where
 	}
 	hint := "Send one of the writes from its own " + from + "."
@@ -295,15 +288,28 @@ func (c *Checker) mixMessage(name, from, mod string, groups []storeGroup) string
 	return name + " writes " + andList(parts) + ": a Task writes to one store. " + hint
 }
 
-// siloJobMessage is E0031's text for the `run` (name) of a `silo k` job that writes the shared
-// tables tables: the job runs in its silo, so they are a second store.
-func siloJobMessage(name, key string, tables []string) string {
-	ts := make([]string, len(tables))
-	for i, t := range tables {
+// storeVias is the part of a store's note in an E0031 message that names the helpers (of
+// module mod) its writes are reached through: ", through `Audit.record`", "" for none (#310).
+func storeVias(g storeGroup, mod string) string {
+	if len(g.vias) == 0 {
+		return ""
+	}
+	vs := make([]string, len(g.vias))
+	for i, v := range g.vias {
+		vs[i] = "`" + helperName(v, mod) + "`"
+	}
+	return ", through " + andList(vs)
+}
+
+// siloJobMessage is E0031's text for the `run` (name, of module mod) of a `silo k` job that
+// writes the shared tables of g: the job runs in its silo, so they are a second store.
+func siloJobMessage(name, key, mod string, g storeGroup) string {
+	ts := make([]string, len(g.tables))
+	for i, t := range g.tables {
 		ts[i] = "`" + t + "`"
 	}
-	return fmt.Sprintf("%s writes %s (shared), but a job with `silo %s` runs in its %s's silo: a Task writes to one store. "+
-		"Write %s from a job without `silo %s` (this job may enqueue one), or keep the write in the silo.", name, andList(ts), key, key, andList(ts), key)
+	return fmt.Sprintf("%s writes %s (shared%s), but a job with `silo %s` runs in its %s's silo: a Task writes to one store. "+
+		"Write %s from a job without `silo %s` (this job may enqueue one), or keep the write in the silo.", name, andList(ts), storeVias(g, mod), key, key, andList(ts), key)
 }
 
 // andList joins items as "a", "a and b", "a, b and c".

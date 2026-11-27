@@ -308,7 +308,7 @@ func TestJob_SiloRunWritesShared(t *testing.T) {
 		"add : Task Unit\nadd = {\n  let _ <- Db.insert Org { name: \"o\" }\n  Task.succeed ()\n}\n\n" +
 		"J.run : J.Params -> Task Unit\nJ.run p = add\n"
 	_, got = checkFiles(t, jobApp(t, src))
-	wantJobDiag(t, got, diag.WriteStores, "`J.run` writes `Org` (shared)")
+	wantJobDiag(t, got, diag.WriteStores, "`J.run` writes `Org` (shared, through `add`), but a job with `silo org`") // #328
 	src = "module Signup\n\nimport Org\n\njob J = { org: Org.OrgId } silo org\n\n" +
 		"J.run : J.Params -> Task Unit\nJ.run p = Task.succeed ()\n"
 	if _, got := checkFiles(t, jobApp(t, src)); len(got) != 0 {

@@ -85,8 +85,11 @@ type ValueDecl struct {
 	Needs     []string
 	NeedsSpan diag.Span
 	NeedSpans []diag.Span
-	Params    []*Ident
-	Body      Expr // nil in stdlib signature files
+	// NeedsErr marks a clause the parser gave up on (E0027, or a missing key; the error is
+	// reported): Needs then has the keys before the error, and NeedsSpan the clause as written.
+	NeedsErr bool
+	Params   []*Ident
+	Body     Expr // nil in stdlib signature files
 }
 
 // FullName is the declaration's name as written: "Index.load", or Name when Route is "".

@@ -1,0 +1,7 @@
+module Helpers
+
+import Project
+
+-- a key named twice is refused as on the route line
+count : Query (List Project) requires org, org
+count = Db.scoped Project |> Db.all

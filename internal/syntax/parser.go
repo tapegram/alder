@@ -1439,29 +1439,37 @@ func (p *Parser) parseDeployValue() *DeployValue {
 }
 
 // parseValueRequires parses the `requires key, …` clause of a value signature, on the signature's
-// line or the next one, if there is one. A value needs session keys only: `role` and `silo`
-// belong on the route line (E0027).
+// line or the next one (not after a blank line), if there is one. A value needs session keys
+// only: `role` and `silo` belong on the route line (E0027). A clause it gives up on is NeedsErr.
 func (p *Parser) parseValueRequires(d *ValueDecl) {
 	save, saveTok := p.mark()
-	p.skipNL()
+	if p.at(NL) {
+		p.advance()
+	}
 	if !p.atKeyword("requires") {
 		p.restore(save, saveTok)
 		return
 	}
 	rt := p.advance()
+	defer func() { d.NeedsSpan = p.spanFrom(rt) }()
 	for {
 		if p.atRole() || p.atSilo() {
 			p.errorCodeAt(p.tok, "E0027", "a value requires session keys only: a role check belongs on the route line")
 			p.skipLine()
+			d.NeedsErr = true
 			return
 		}
-		kt := p.tok
-		d.Needs = append(d.Needs, p.expect(LIdent, "session key").Text)
+		if !p.at(LIdent) {
+			p.expect(LIdent, "session key")
+			d.NeedsErr = true
+			return
+		}
+		kt := p.advance()
+		d.Needs = append(d.Needs, kt.Text)
 		d.NeedSpans = append(d.NeedSpans, p.spanFrom(kt))
 		if !p.at(Comma) {
-			break
+			return
 		}
 		p.advance()
 	}
-	d.NeedsSpan = p.spanFrom(rt)
 }

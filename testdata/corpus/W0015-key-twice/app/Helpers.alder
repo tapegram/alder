@@ -1,0 +1,5 @@
+module Helpers
+
+-- a key named twice and not needed: one W0015 for the key, and the duplicate refused
+count : Query Int requires org, org
+count = Query.succeed 1

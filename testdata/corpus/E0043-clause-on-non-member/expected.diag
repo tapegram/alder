@@ -1,0 +1,2 @@
+app/Helpers.alder:4:1 E0044 module `Helpers` has no route `Foo`
+app/Helpers.alder:4:23 E0043 `Foo.count` takes what it requires from its route or job, and `Foo` is neither: write `requires org` on a route or on a top-level value

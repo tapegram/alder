@@ -344,7 +344,7 @@ func helperLine(a *analysis, ref syntax.Ref) string {
 func withClause(a *analysis, ref syntax.Ref, block string) string {
 	_, d := findDecl(a, ref)
 	vd, ok := d.(*syntax.ValueDecl)
-	if !ok || len(vd.Needs) == 0 || slices.Contains(vd.Needs, "") {
+	if !ok || len(vd.Needs) == 0 || vd.NeedsErr {
 		return block
 	}
 	return strings.TrimSuffix(block, "\n```") + " requires " + strings.Join(vd.Needs, ", ") + "\n```"

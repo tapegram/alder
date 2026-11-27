@@ -1,0 +1,5 @@
+module Helpers
+
+-- a key a value requires is a `Maybe` field of the session, as on the route line
+count : Query Int requires locale
+count = Query.succeed 1

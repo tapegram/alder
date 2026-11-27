@@ -419,6 +419,8 @@ func (mc *modCtx) scopedRef(x *syntax.Var) {
 			c.routeRefs = append(c.routeRefs, routeRef{x: x, route: mc.route})
 		case mc.armJob() != nil:
 			c.routeRefs = append(c.routeRefs, routeRef{x: x, job: mc.armJob()})
+		case !mc.topValue(): // a brand's check, a field's default: no session, as scopedRefusal says
+			c.routeRefs = append(c.routeRefs, routeRef{x: x})
 		}
 		return
 	}
@@ -739,11 +741,15 @@ func (c *Checker) checkStatedNeeds() {
 }
 
 // memberClause reports E0043 for a `requires` clause on a route's member or a job's `run`: the
-// key belongs on the route line, or in the job's `silo k`.
+// key belongs on the route line, or in the job's `silo k`. (A clause on another qualified
+// declaration is refused with its name, names.noSuchRoute.)
 func (mc *modCtx) memberClause(vd *syntax.ValueDecl) {
 	c := mc.c
-	if vd.NeedsSpan == (diag.Span{}) || slices.Contains(vd.Needs, "") {
+	if vd.NeedsSpan == (diag.Span{}) || vd.NeedsErr {
 		return // no clause, or one the parser gave up on (its error is reported)
+	}
+	if len(c.statedKeys(vd)) < len(vd.Needs) {
+		return // a key that is no `Maybe` field of the session: that one error (E0011) is reported
 	}
 	if j := c.job(mc.m.Name, vd.Route); j != nil {
 		key := ""
@@ -772,7 +778,7 @@ func (mc *modCtx) memberClause(vd *syntax.ValueDecl) {
 func (mc *modCtx) checkStated(vd *syntax.ValueDecl, k string) {
 	c := mc.c
 	clause := vd.NeedsSpan != (diag.Span{})
-	if len(vd.Needs) > 0 && (!clause || slices.Contains(vd.Needs, "")) {
+	if vd.NeedsErr {
 		return // a clause the parser gave up on (E0027, or a missing key): its error is reported
 	}
 	inferred := c.scopedUsing[k]
@@ -833,6 +839,9 @@ func (mc *modCtx) checkStated(vd *syntax.ValueDecl, k string) {
 		}
 	}
 	for i, key := range vd.Needs {
+		if slices.Index(vd.Needs, key) < i {
+			continue // named twice: E0011 at the second (checkValueRequires)
+		}
 		if _, ok := inferred[key]; !ok && slices.Contains(stated, key) {
 			c.bag.Warn(diag.NeedUnused, vd.NeedSpans[i], "`%s` says `requires %s` and uses nothing that needs `%s`", vd.Name, key, key)
 		}

@@ -1,0 +1,11 @@
+module Orgs
+
+route Orgs = GET "/orgs" { } requires user
+
+type Model = { }
+
+Orgs.load : Orgs.Params -> Session -> Query Model
+Orgs.load params session = Query.succeed {}
+
+Orgs.view : Model -> Session -> Html
+Orgs.view model session = <p>orgs</p>

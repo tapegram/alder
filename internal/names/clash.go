@@ -224,7 +224,8 @@ func (r *resolver) ctorInScope(name string) string {
 }
 
 // noSuchRoute reports (E0044) declaration d, written `Route.name`, whose route this module does
-// not declare, with the nearest route's name when one is close.
+// not declare, with the nearest route's name when one is close; and (E0043, as for a member's)
+// a `requires` clause on it, which has no route or job to take its keys from.
 func (r *resolver) noSuchRoute(d *syntax.ValueDecl) {
 	msg := fmt.Sprintf("module `%s` has no route `%s`", r.m.Name, d.Route)
 	best, bestD := "", 3
@@ -242,6 +243,9 @@ func (r *resolver) noSuchRoute(d *syntax.ValueDecl) {
 		msg += fmt.Sprintf("; did you mean `%s`?", best)
 	}
 	r.bag.Error(diag.RouteName, d.RouteSpan, "%s", msg)
+	if d.NeedsSpan != (diag.Span{}) && !d.NeedsErr {
+		r.bag.Error(diag.RouteDecl, d.NeedsSpan, "`%s` takes what it requires from its route or job, and `%s` is neither: write `requires %s` on a route or on a top-level value", d.FullName(), d.Route, strings.Join(d.Needs, ", "))
+	}
 }
 
 // editDistance is the Levenshtein distance between a and b.

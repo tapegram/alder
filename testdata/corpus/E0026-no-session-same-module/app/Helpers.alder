@@ -1,0 +1,12 @@
+module Helpers
+
+import Project
+
+ok : Text -> Bool requires org
+ok s = {
+  let q = Db.scoped Project
+  True
+}
+
+-- a brand's check has no session: a helper that needs `org` is refused there, as from another module
+type Slug = brand Text where ok

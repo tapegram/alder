@@ -1,0 +1,5 @@
+module Helpers
+
+-- a qualified declaration that is no route's or job's member has nothing to take a key from
+Foo.count : Query Int requires org
+Foo.count = Query.succeed 1

@@ -167,6 +167,7 @@ module.exports = grammar({
     $._implicit_end_tag, // scanner.c scan_html_text: zero width, closes an element left open before a column-1 line
     $._error_sentinel, // never in a rule: valid only during error recovery
     $._scratch_start, // scanner.c scan_scratch_start: zero width, a file whose first word is not `module`
+    $._clause_newline, // scanner.c scan_newline: one newline before a value's `requires` line (parser.go parseValueRequires)
   ],
 
   extras: ($) => [/[ \t\r\n]/, $.comment],
@@ -241,12 +242,12 @@ module.exports = grammar({
           1,
           seq(
             field('signature', $.signature),
-            optional(seq($._newline, field('requires', $.requires_clause))),
+            optional(seq($._clause_newline, field('requires', $.requires_clause))),
             $._newline,
             field('binding', $.binding),
           ),
         ),
-        seq(field('signature', $.signature), optional(seq($._newline, field('requires', $.requires_clause)))),
+        seq(field('signature', $.signature), optional(seq($._clause_newline, field('requires', $.requires_clause)))),
         field('binding', $.binding),
       ),
 

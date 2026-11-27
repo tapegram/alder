@@ -2717,6 +2717,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 - A record that contains itself by value.
 - A delete rule such as `@cascade` on a field without `@ref`, before `@ref T`, or two on one field.
 - A `@renamed "old"` whose old name is not a name, is the field's or table's own, or is still a field of the table.
+- A `requires` key, on a route line or in a value's signature, that is no `Maybe` field of the session ("`requires role`: session field `role` must be a `Maybe`"), or that is named twice ("`requires` names `org` twice").
 
 #### E0012 — a type named like a Prelude type
 
@@ -2780,7 +2781,8 @@ A `route` declaration the rules refuse (chapter 6):
 - `form F` on a GET route.
 - A `{segment}` that names no parameter.
 - Two routes with one method and path.
-- A `requires` clause on a route's member or a job's `run`: "`Index.load` takes what it requires from its route: write `requires org` on `route Index`".
+- A `requires` clause on a route's member or a job's `run`: "`Index.load` takes what it requires from its route: write `requires org` on `route Index`". A key the session lacks there is E0011 alone.
+- A `requires` clause on a qualified declaration that names no route or job (itself E0044): "`Foo.count` takes what it requires from its route or job, and `Foo` is neither: write `requires org` on a route or on a top-level value".
 
 #### E0044 — a route name that cannot be told apart
 
@@ -2905,6 +2907,7 @@ The scoped operations need a session key (`user` for the `Db.mine` family, a tab
 - **Basic case.** "`Db.mine` needs a route that `requires user`: `Public` does not", "`Db.deleteMine` needs a route that `requires user`: `Clear` does not".
 - **Through another value.** At the use: "`Todos.Index.recent` uses `Db.mine`, which needs a route that `requires user`: `Public` does not"; when the need comes through helpers the text names the first one: "`Access.reviewers` uses `Db.scoped Reviewer` (through `Table.Reviewer.current`), which needs a route that `requires org`: `Index` does not".
 - **In a fake.** "`Db.mine` cannot be used in a fake: a fake has no session".
+- **Where there is no session.** A brand's check or a field's default that refers to a value with a need, in its own module or another: "`ok` uses `Db.scoped Project`, which needs a route that `requires org`: this has no session".
 - **In a job.** A job's `run` has no session: it needs `silo k` for the key, and never has `user`.
 - **Another key.** For another key the text names it and the table: "`Db.scoped Project` needs a route that `requires org`: `Public` does not".
 - **Unscoped operation on a siloed table.** "`Db.delete Project` (`Project` lives in `silo org`) needs a route that `requires org`: `Wipe` does not".
@@ -2969,6 +2972,7 @@ A `Task` that writes to two stores (chapter 8, "Partitions and silos"):
 - A shared table and a silo: "`Create.post` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own route."
 - Two silos: "… `Board` (silo `team`): a Task writes to one store. Send one of the writes from its own route."
 - A job with `silo org` that writes a shared table: "`Digest.run` writes `Org` (shared), but a job with `silo org` runs in its org's silo: a Task writes to one store. Write `Org` from a job without `silo org` (this job may enqueue one), or keep the write in the silo."
+- A write reached through a helper names it, in either case: "`Org` (shared, through `Audit.record`)".
 - The write route whose handler holds the writes, or the job whose `run` does, is named.
 
 #### E0032 — a refused partition declaration

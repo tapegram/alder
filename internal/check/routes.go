@@ -605,6 +605,8 @@ type routeRef struct {
 	job   *JobInfo // set instead of route for a reference in a job's `run` (#168)
 	// fake and entry are set instead for a reference in entry of `fake` (a fake has no session)
 	fake, entry string
+	// none of them is set for a reference where there is no session at all (a brand's check, a
+	// field's default)
 }
 
 // checkRouteRefs reports E0026 for each pending routeRef whose value has a need its place does
@@ -628,6 +630,10 @@ func (c *Checker) checkRouteRefs() {
 					break
 				}
 				continue
+			}
+			if rr.route == nil {
+				c.reportScoped(rr.x.Span, subject+" needs a route that `requires "+key+"`: this has no session")
+				break
 			}
 			if !slices.Contains(rr.route.narrowed, key) {
 				c.reportScoped(rr.x.Span, subject+" needs a route that `requires "+key+"`: `"+rr.route.Name+"` does not")

@@ -887,3 +887,46 @@ func TestParse_ValueRequires(t *testing.T) {
 		}
 	}
 }
+
+// TestParse_ValueRequiresGivenUp (#328): a clause the parser gives up on (E0027, or a missing
+// key) is marked NeedsErr, keeps only the keys before the error and still has its span; and the
+// clause may sit on the line after the signature only, not after a blank line.
+func TestParse_ValueRequiresGivenUp(t *testing.T) {
+	for _, c := range []struct {
+		clause string
+		keys   []string
+		end    int // NeedsSpan's last column
+	}{
+		{"requires org, role Admin", []string{"org"}, 43},
+		{"requires silo org", nil, 36},
+		{"requires", nil, 27},
+		{"requires Org", nil, 27},
+		{"requires org,", []string{"org"}, 32},
+	} {
+		m, diags := ParseFile("m.alder", []byte("module M\n\ncount : Query Int "+c.clause+"\ncount = Query.succeed 1\n"))
+		if len(diags) == 0 {
+			t.Errorf("%q: no error", c.clause)
+			continue
+		}
+		vd := m.Decls[0].(*ValueDecl)
+		if !vd.NeedsErr || strings.Join(vd.Needs, ",") != strings.Join(c.keys, ",") || len(vd.NeedSpans) != len(c.keys) {
+			t.Errorf("%q: NeedsErr %v Needs %q NeedSpans %v, want %q", c.clause, vd.NeedsErr, vd.Needs, vd.NeedSpans, c.keys)
+		}
+		if s := vd.NeedsSpan; s.Start.Line != 3 || s.Start.Col != 19 || s.End.Col != c.end {
+			t.Errorf("%q: NeedsSpan %+v", c.clause, s)
+		}
+	}
+	m, diags := ParseFile("m.alder", []byte("module M\n\ncount : Query Int requires org\ncount = Query.succeed 1\n"))
+	if vd := m.Decls[0].(*ValueDecl); len(diags) > 0 || vd.NeedsErr {
+		t.Errorf("a whole clause: NeedsErr %v, diags %v", vd.NeedsErr, diags)
+	}
+	for _, sep := range []string{"\n\n", "\n-- a comment\n", "\n\n\n"} {
+		m, diags := ParseFile("m.alder", []byte("module M\n\ncount : Query Int"+sep+"  requires org\ncount = Query.succeed 1\n"))
+		if len(diags) == 0 {
+			t.Errorf("%q between the signature and its clause: no error", sep)
+		}
+		if vd, ok := m.Decls[0].(*ValueDecl); ok && len(vd.Needs) > 0 {
+			t.Errorf("%q between the signature and its clause: Needs %v", sep, vd.Needs)
+		}
+	}
+}

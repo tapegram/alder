@@ -1,0 +1,12 @@
+module Index
+
+route Index = GET "/index" { } requires user
+
+type Model = { }
+
+-- an unknown key in a member's clause is one error, the unknown key
+Index.load : Index.Params -> Session -> Query Model requires nope
+Index.load params session = Query.succeed {}
+
+Index.view : Model -> Session -> Html
+Index.view model session = <p>x</p>

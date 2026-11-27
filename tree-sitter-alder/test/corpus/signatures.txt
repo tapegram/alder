@@ -204,3 +204,111 @@ total = Query.succeed 1
           module: (constructor)
           name: (identifier))
         argument: (integer)))))
+
+================================================================================
+a value's requires clause after a blank line is no clause (the Go parser refuses it)
+================================================================================
+
+module M
+
+total : Query Int
+
+  requires user
+total = Query.succeed 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    (module_name
+      (constructor)))
+  (value_decl
+    (signature
+      (identifier)
+      (type_app
+        (type_name
+          (constructor))
+        (type_name
+          (constructor))))
+    (binding
+      (identifier)
+      (parameters
+        (identifier)
+        (identifier))
+      (application
+        (qualified_name
+          (constructor)
+          (identifier))
+        (integer)))))
+
+================================================================================
+a value's requires clause after a comment line is no clause (the Go parser refuses it)
+================================================================================
+
+module M
+
+total : Query Int
+-- a comment
+  requires user
+total = Query.succeed 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    (module_name
+      (constructor)))
+  (value_decl
+    (signature
+      (identifier)
+      (type_app
+        (type_name
+          (constructor))
+        (type_name
+          (constructor))))
+    (comment)
+    (binding
+      (identifier)
+      (parameters
+        (identifier)
+        (identifier))
+      (application
+        (qualified_name
+          (constructor)
+          (identifier))
+        (integer)))))
+
+================================================================================
+a definition after its signature whose name starts like requires, or with r
+================================================================================
+
+module M
+
+requiresX : Int
+requiresX = 1
+
+rate : Int
+rate = 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    (module_name
+      (constructor)))
+  (value_decl
+    (signature
+      (identifier)
+      (type_name
+        (constructor)))
+    (binding
+      (identifier)
+      (integer)))
+  (value_decl
+    (signature
+      (identifier)
+      (type_name
+        (constructor)))
+    (binding
+      (identifier)
+      (integer))))

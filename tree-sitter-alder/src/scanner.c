@@ -21,6 +21,7 @@ enum TokenType {
   IMPLICIT_END_TAG,
   ERROR_SENTINEL,
   SCRATCH_START,
+  CLAUSE_NEWLINE,
 };
 
 typedef struct {
@@ -150,9 +151,33 @@ static bool is_watch_start(TSLexer *lexer) {
 // the newline is not a separator (no token; the newline is whitespace). During error recovery
 // it only separates before a line that starts at column 1, which is a declaration boundary.
 // In a scratch file a line that starts a watch separates too.
-static bool scan_newline(TSLexer *lexer, bool recovering, bool scratch) {
+//
+// Where a value's `requires` clause may follow its signature (clause), a newline followed
+// directly by a line that starts with `requires` is the clause's newline instead: the clause may
+// sit on the line after the signature only (parser.go parseValueRequires), so after a blank or a
+// comment line it is a plain separator, and the `requires` that follows is an error.
+static bool scan_newline(TSLexer *lexer, bool recovering, bool scratch, bool clause) {
   advance(lexer);
   lexer->mark_end(lexer);
+  if (clause && !recovering) {
+    while (is_blank(lexer->lookahead)) advance(lexer);
+    if (lexer->lookahead == 'r') {
+      // a line that starts with a letter is neither blank nor a continuation: the newline is
+      // the clause's or a separator, whatever the rest of the word
+      const char *word = "requires";
+      for (const char *c = word; *c; c++) {
+        if (lexer->lookahead != *c) {
+          lexer->result_symbol = NEWLINE;
+          return true;
+        }
+        advance(lexer);
+      }
+      int32_t c = lexer->lookahead;
+      bool ident = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+      lexer->result_symbol = ident ? NEWLINE : CLAUSE_NEWLINE;
+      return true;
+    }
+  }
   bool seen_comment = false;
   for (;;) {
     while (is_blank(lexer->lookahead)) advance(lexer);
@@ -361,7 +386,9 @@ bool tree_sitter_alder_external_scanner_scan(void *payload, TSLexer *lexer, cons
 
   while (is_blank(lexer->lookahead)) skip(lexer);
 
-  if (valid[NEWLINE] && lexer->lookahead == '\n') return scan_newline(lexer, recovering, s->scratch);
+  if (valid[NEWLINE] && lexer->lookahead == '\n') {
+    return scan_newline(lexer, recovering, s->scratch, valid[CLAUSE_NEWLINE]);
+  }
 
   if (valid[STRING]) {
     while (is_blank(lexer->lookahead) || lexer->lookahead == '\n') skip(lexer);

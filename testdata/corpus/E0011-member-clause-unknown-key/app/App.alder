@@ -1,0 +1,22 @@
+module App
+
+import Org
+import User
+
+session {
+  user: Maybe User.UserId,
+  org: Maybe Org.OrgId via Membership,
+  role: User.Role = Reader,
+}
+
+login = Login.Login
+
+choose org = Orgs.Orgs
+
+silo org { Project }
+
+error : Error -> Html
+error err = <p>error</p>
+
+notFound : Html
+notFound = <p>not found</p>
