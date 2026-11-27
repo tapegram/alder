@@ -1873,6 +1873,27 @@ type memberApp struct {
 	lieCount       bool     // the answer's count is one more than the page's
 	keep           bool     // the delete keeps the member (so the page loaded again still has it)
 	removeID       string   // the id the answer removes instead of the member's
+	// lazy: the page draws a badge of the count as a lazy region (`load=` M.Badge, GET
+	// /members/badge: a placeholder until its load), and the answer replaces it with the badge's
+	// view; lieBadge makes that view's count one more than the badge's load shows
+	lazy, lieBadge bool
+}
+
+func mBadge() rt.Route { return rt.Route{Name: "M.Badge", Method: "GET", Path: "/members/badge"} }
+
+// badge is the badge's view with count n, its own load again (so a poll keeps running).
+func (a *memberApp) badge(text string) html.Node {
+	return html.El("span", []html.Attr{html.A("id", "badge"), html.RouteAttr(html.LoadAttr, mBadge())}, html.Text(text))
+}
+
+func (a *memberApp) live() int {
+	n := 0
+	for _, m := range a.names {
+		if m != "" {
+			n++
+		}
+	}
+	return n
 }
 
 func mDelete(i int) rt.Route {
@@ -1905,6 +1926,9 @@ func (a *memberApp) routes() []web.Route {
 			if !a.noCount {
 				body = append(body, a.count(0))
 			}
+			if a.lazy {
+				body = append(body, a.badge("…"))
+			}
 			var items []html.Node
 			for i, m := range a.names {
 				if m != "" {
@@ -1914,6 +1938,9 @@ func (a *memberApp) routes() []web.Route {
 			}
 			body = append(body, html.El("ul", nil, items...))
 			return web.PageResponse(layout("Members", body...), &html.FormState{}, nil)
+		}},
+		{Method: "GET", Pattern: "/members/badge", Handle: func(rq *web.Request) web.Response {
+			return web.PageResponse(a.badge(strconv.Itoa(a.live())), &html.FormState{}, nil)
 		}},
 		{Method: "DELETE", Pattern: "/members/{id}", Handle: func(rq *web.Request) web.Response {
 			i, _ := strconv.Atoi(rq.Params["id"])
@@ -1925,6 +1952,13 @@ func (a *memberApp) routes() []web.Route {
 				extra = 1
 			}
 			roots := []any{a.count(extra)}
+			if a.lazy {
+				n := a.live()
+				if a.lieBadge {
+					n++
+				}
+				roots = append(roots, a.badge(strconv.Itoa(n)))
+			}
 			if a.banner {
 				roots = append(roots, a.bannerView())
 				a.banner = false // the page loaded again shows none
@@ -2056,6 +2090,34 @@ func TestBrowser_RenderWithRemove(t *testing.T) {
 		_, err := b.ClickRoute(rToggle(1), `R.Toggle { id: "1" }`)
 		if want := "PATCH /r/rows/1: the answer removed `#row-9`, which the page does not have"; err == nil || err.Error() != want {
 			t.Errorf("err = %v, want %q", err, want)
+		}
+	})
+}
+
+// A replaced lazy region (`load=`): the page loaded again draws its placeholder, and the
+// fresh-load check compares the replaced element with the element the placeholder's load
+// fetches, as a browser shows it: a badge agreeing with its load passes, one that does not fails
+// naming the load (#309). The held page replaces the placeholder whether or not a Test.load ran.
+func TestCheck_ReplacedLazy(t *testing.T) {
+	a := &memberApp{names: []string{"ann", "bob", "cy"}, prefix: "member-", lazy: true}
+	browseMembers(t, a, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/members"))
+		r := must(b.ClickRoute(mDelete(3), "M.Delete"))
+		wantAnswer(t, r, Answer{Tag: Replaced, Replaced: []string{"member-count", "badge"}, Removed: []string{"member-3"}})
+		if got := text(t, r.Doc, "#badge"); got != "2" {
+			t.Errorf("#badge = %q", got)
+		}
+		must(b.TriggerRoute(TriggerLoad, mBadge(), "M.Badge"))
+		must(b.ClickRoute(mDelete(2), "M.Delete"))
+	})
+	a = &memberApp{names: []string{"ann", "bob", "cy"}, prefix: "member-", lazy: true, lieBadge: true}
+	browseMembers(t, a, func(b *Browser, e *eff.Env) {
+		mustOf(t)(b.Get("/members"))
+		_, err := b.ClickRoute(mDelete(3), "M.Delete")
+		want := "DELETE /members/3: the answer replaced `#badge` unlike the page loaded again (GET /members, its load GET /members/badge) at span#badge"
+		if err == nil || !strings.HasPrefix(err.Error(), want) || !strings.Contains(err.Error(), ">3<") || !strings.Contains(err.Error(), ">2<") {
+			t.Errorf("err = %v, want %q and both markups", err, want)
 		}
 	})
 }

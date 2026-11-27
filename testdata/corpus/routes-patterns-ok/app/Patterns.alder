@@ -89,13 +89,14 @@ Badge.load params session = Db.from Ping |> Db.count
 Badge.view : Int -> Session -> Html
 Badge.view n session = <span id="badge" load={Badge {}} every="1s">{Text.fromInt n}</span>
 
+-- Bump replaces the badge with its new count, drawn by the badge's own view. The page loaded
+-- again draws the badge as its `load` placeholder: the test browser's fresh-load check compares
+-- the replaced badge with what that load fetches, as a browser shows it.
 Bump.post : Bump.Params -> Session -> Task Response
--- The badge loads itself and polls, so Bump replaces nothing: the badge shows the new count at
--- its next load. (The page holds the badge's placeholder, so a replace of the badge would not
--- agree with the page loaded again.)
 Bump.post params session = {
   let _ <- Db.insert Ping {}
-  Task.succeed (Response.replace [])
+  let n <- Db.from Ping |> Db.count
+  Task.succeed (Response.replace [ Badge.view n session ])
 }
 
 test "search as you type patches the results" = {
@@ -124,8 +125,10 @@ test "the slow widget fills in" = {
 test "the badge polls the count" = {
   let _ <- Test.get (Index { q: "" })
   let first <- Test.load (Badge {})
-  let _ <- Test.click (Bump {})
+  let bumped <- Test.click (Bump {})
   let second <- Test.load (Badge {})
-  Task.succeed ({ first: Test.text "#badge" first.doc, second: Test.text "#badge" second.doc, answer: second.answer }
-    == { first: Just "0", second: Just "1", answer: Rendered (Badge {}) })
+  Task.succeed ({ first: Test.text "#badge" first.doc, bumped: bumped.answer, now: Test.text "#badge" bumped.doc,
+      second: Test.text "#badge" second.doc, answer: second.answer }
+    == { first: Just "0", bumped: Replaced { replaced: ["badge"], removed: [] }, now: Just "1",
+      second: Just "1", answer: Rendered (Badge {}) })
 }

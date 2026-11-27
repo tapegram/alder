@@ -1110,25 +1110,7 @@ func (e *ElementError) Error() string {
 func (b *Browser) checkElement(r rt.Route) error {
 	id := b.regions[len(b.regions)-1]
 	u := rt.RouteURL(r)
-	sep := "?"
-	if strings.Contains(u, "?") {
-		sep = "&"
-	}
-	ctx := b.env.Ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	req := httptest.NewRequest(http.MethodGet, u+sep+"datastar="+url.QueryEscape("{}"), nil).WithContext(ctx)
-	req.Header.Set("Datastar-Request", "true")
-	req.Header.Set(datastar.FetchHeader, "1")
-	req.Header.Set(html.PageHeader, b.url)
-	req.Header.Set(datastar.BuildHeader, b.build)
-	if b.url != "" {
-		req.Header.Set("Referer", "http://example.com"+b.url)
-	}
-	if b.cookie != "" {
-		req.AddCookie(&http.Cookie{Name: web.CookieName, Value: b.cookie})
-	}
+	ctx, req := b.elementRequest(u)
 	fail := &ElementError{Step: strings.TrimSuffix(b.reqHead, ": "), ID: id, Route: r.Name, Fetch: http.MethodGet + " " + u}
 	if fail.Route == "" {
 		fail.Route = u
@@ -1183,6 +1165,32 @@ func (b *Browser) checkElement(r rt.Route) error {
 		return fail
 	}
 	return nil
+}
+
+// elementRequest is the request of an element fetch of u as the page's script makes it
+// (window._alderF): a Datastar GET with Alder-Fetch, the held page's Alder-Page and Alder-Build,
+// the held page as Referer and the cookie; and the context it runs in.
+func (b *Browser) elementRequest(u string) (context.Context, *http.Request) {
+	sep := "?"
+	if strings.Contains(u, "?") {
+		sep = "&"
+	}
+	ctx := b.env.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req := httptest.NewRequest(http.MethodGet, u+sep+"datastar="+url.QueryEscape("{}"), nil).WithContext(ctx)
+	req.Header.Set("Datastar-Request", "true")
+	req.Header.Set(datastar.FetchHeader, "1")
+	req.Header.Set(html.PageHeader, b.url)
+	req.Header.Set(datastar.BuildHeader, b.build)
+	if b.url != "" {
+		req.Header.Set("Referer", "http://example.com"+b.url)
+	}
+	if b.cookie != "" {
+		req.AddCookie(&http.Cookie{Name: web.CookieName, Value: b.cookie})
+	}
+	return ctx, req
 }
 
 // quietly has the router serve req, the fetch of check (the element check, the fresh-load check;
@@ -1646,7 +1654,10 @@ func (e *ReplacedError) Error() string {
 // the page the browser holds is loaded again as a reload loads it (a plain GET of its URL with
 // the cookie), in a savepoint rolled back afterwards (quietly, as the element check's fetch),
 // and each element the answer replaced must equal the element with that id in the fresh page,
-// as the browser's parser builds both; an id the fresh page lacks is not compared. No element
+// as the browser's parser builds both; an id the fresh page lacks is not compared. An element
+// the fresh page draws as a lazy region (`load=`: a placeholder a browser replaces as soon as
+// the page loads) that differs is compared again with the element its load fetches (loadLazy),
+// as the browser would show it. No element
 // the answer removed may be in it. The handler built the roots from its own data: the check
 // proves the page's own `load` agrees. It does not see a place the handler forgot to replace.
 func (b *Browser) checkReplaced() error {
@@ -1687,10 +1698,29 @@ func (b *Browser) checkReplaced() error {
 		if !ok {
 			continue // a later removal took it out of the page held
 		}
-		if d, differ := html.Diff(got, want); differ {
-			fail.Sel, fail.Diff = "#"+id, &d
-			return fail
+		d, differ := html.Diff(got, want)
+		if !differ {
+			continue
 		}
+		// a lazy region (`load=`): the fresh page draws its placeholder, which a browser replaces
+		// at once with the element its load fetches; the replaced element is compared with that
+		if u, lazy := lazyURL(want); lazy {
+			loaded, why, err := b.loadLazy(u, id)
+			if err != nil {
+				return err
+			}
+			fail.Fetch += ", its load GET " + u
+			if why != "" {
+				fail.Why = why
+				return fail
+			}
+			if d, differ = html.Diff(got, loaded); !differ {
+				fail.Fetch = http.MethodGet + " " + b.url
+				continue
+			}
+		}
+		fail.Sel, fail.Diff = "#"+id, &d
+		return fail
 	}
 	for _, id := range b.removed {
 		if el, ok := elementByID(fresh, id); ok {
@@ -1699,6 +1729,54 @@ func (b *Browser) checkReplaced() error {
 		}
 	}
 	return nil
+}
+
+// lazyURL is the URL element n's `load` fetches when the page loads (its data-init's request),
+// false when n has no load.
+func lazyURL(n html.Node) (string, bool) {
+	v, ok := html.AttrOf(n, html.LoadAttr)
+	if !ok {
+		return "", false
+	}
+	m := triggerRequest.FindStringSubmatch(v)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
+// loadLazy is the element with id id that the element fetch of u (a lazy region's load) answers,
+// fetched quietly as the fresh-load check's page was, as the browser's parser builds it; why
+// says why there is none ("" when there is).
+func (b *Browser) loadLazy(u, id string) (html.Node, string, error) {
+	ctx, req := b.elementRequest(u)
+	w, err := b.quietly(ctx, req, "the fresh-load check")
+	if err != nil {
+		return html.Node{}, "", err
+	}
+	if strings.HasPrefix(w.Header().Get("Content-Type"), "text/event-stream") {
+		events, err := sseEvents(w.Body.String())
+		if err != nil {
+			return html.Node{}, "", err
+		}
+		for _, ev := range events {
+			if ev.typ != "datastar-patch-elements" || ev.field("mode") != "outer" || ev.field("selector") != "#"+id {
+				continue
+			}
+			n, err := html.Parse(ev.field("elements"))
+			if err != nil {
+				return html.Node{}, "", fmt.Errorf("the fresh-load check: the view GET %s answers does not parse: %w", u, err)
+			}
+			if el, ok := elementByID(html.RepairFragment(n), id); ok {
+				return el, "", nil
+			}
+		}
+	}
+	status := strconv.Itoa(w.Code)
+	if s := w.Header().Get(web.StatusHeader); s != "" {
+		status = s
+	}
+	return html.Node{}, "answered no element #" + id + " for the load (status " + status + ")", nil
 }
 
 // external reports whether u leads to another site: it has a scheme or a host.
