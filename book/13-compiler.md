@@ -5291,16 +5291,19 @@ held page's address with the cookie, as a reload, also `quietly`; the page
 that comes back is parsed the same way, and each element the answer replaced
 must equal the element with that `id` there, and no removed id may be in it
 (a `ReplacedError` otherwise, with both markups). An id the fresh page lacks
-is not compared. An element that differs is compared again with the
-fresh element as a browser shows it once its lazy regions (`load=`,
-placeholders) have loaded (`resolveLazy`): the element itself when it is
-one, and each region inside it, are replaced with the element their load
-fetches (`lazyURL`, then `loadLazy`, also quietly; the last patch with the
+is not compared. An element that differs is compared again, the replaced
+element and the fresh one alike, as a browser shows them once their lazy
+regions (`load=`, placeholders) have loaded (`lazyShown`): Datastar runs a
+region's load on an element a replace morphs in as on a page it loads. Each
+region is replaced with the element its load fetches (`lazyURL`, then
+`loadLazy`, also quietly; `patchOf` takes the last patch with the
 placeholder's `id`), and the regions inside those in turn, down to
-`lazyDepth` (three) levels. A load that answers no element with the
-placeholder's `id` fails the step. Here the two are not equal by construction: the handler
-built its views from its own reads, and the check is what ties them to the
-page's `load`.
+`lazyDepth` (three) levels by position; a region deeper than that stands as
+the same stub on both sides, so it is not compared. The replaced element
+itself is never loaded again: it is what the answer drew. A load that
+answers no element with the placeholder's `id` fails the step. Here the two
+are not equal by construction: the handler built its views from its own
+reads, and the check is what ties them to the page's `load`.
 
 `Test.refresh` is the whole-page check, and is the developer's: it sends a
 plain `GET` for the address held, as a reload does, and compares the body it

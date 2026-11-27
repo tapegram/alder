@@ -1926,13 +1926,18 @@ Section 10 shows how each is made.
   Completed list would be every open todo, and the page on that filter
   counts none. An id the page loaded again does not have is not compared.
   A lazy region (an element with `load=`) is drawn by the page as a
-  placeholder that a browser swaps at once for what its `load` fetches, so
-  when the placeholder differs, the browser makes that fetch too and
-  compares the replaced element with what comes back. The same holds for
-  a lazy region inside the replaced element, and for one inside what a
-  load fetches, three levels down; a fourth level is compared as its
-  placeholder. A load that answers no element with the placeholder's `id`
-  fails the step ("… answered no element #badge for the load").
+  placeholder that a browser swaps at once for what its `load` fetches,
+  and a browser does the same for a placeholder inside an element the
+  answer replaced. So when the two differ, the browser makes those fetches
+  too, on both sides, and compares them as they show once loaded: the
+  regions inside the replaced element and inside the page's, and the ones
+  inside what a load fetches, three levels down. An answer may draw a
+  region as a placeholder or loaded; either compares equal when the
+  content agrees. A region deeper than three levels is not compared. The
+  replaced element itself is not loaded again, even when it has a `load=`
+  of its own (a badge that polls): it is what the answer drew. A load that
+  answers no element with the placeholder's `id` fails the step ("…
+  answered no element #badge for the load").
   The second load runs in a savepoint that is undone, and is not a step of
   the trace. It runs the page's `load` again (and a lazy region's `load`),
   so a capability they call is called again, a fake too (section 8): the

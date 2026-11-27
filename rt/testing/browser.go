@@ -1656,8 +1656,8 @@ func (e *ReplacedError) Error() string {
 // and each element the answer replaced must equal the element with that id in the fresh page,
 // as the browser's parser builds both; an id the fresh page lacks is not compared. An element
 // the fresh page draws as a lazy region (`load=`: a placeholder a browser replaces as soon as
-// the page loads), or that holds one, and differs is compared again with the element as the
-// browser shows it once its loads have run (resolveLazy). No element
+// the page loads), or that holds one, and differs is compared again, with the replaced element
+// alike, as the browser shows both once their loads have run (lazyShown). No element
 // the answer removed may be in it. The handler built the roots from its own data: the check
 // proves the page's own `load` agrees. It does not see a place the handler forgot to replace.
 func (b *Browser) checkReplaced() error {
@@ -1702,26 +1702,23 @@ func (b *Browser) checkReplaced() error {
 		if !differ {
 			continue
 		}
-		// lazy regions (`load=`): the fresh page draws their placeholders, which a browser
-		// replaces at once with the elements their loads fetch; the replaced element is compared
-		// with the fresh one as it shows once those loads have run
-		var loads []string
-		shown, why, err := b.resolveLazy(want, lazyDepth, &loads)
+		// lazy regions (`load=`): a browser replaces each placeholder at once with the element its
+		// load fetches, in the page loaded again and in the element the answer morphed in alike,
+		// so both are compared as they show once those loads have run (lazyShown)
+		gotShown, wantShown, loads, why, err := b.lazyShown(got, want)
 		if err != nil {
 			return err
 		}
-		if len(loads) > 0 {
-			for _, u := range loads {
-				fail.Fetch += ", its load GET " + u
-			}
-			if why != "" {
-				fail.Why = why
-				return fail
-			}
-			if d, differ = html.Diff(got, shown); !differ {
-				fail.Fetch = http.MethodGet + " " + b.url
-				continue
-			}
+		for _, u := range loads {
+			fail.Fetch += ", its load GET " + u
+		}
+		if why != "" {
+			fail.Why = why
+			return fail
+		}
+		if d, differ = html.Diff(gotShown, wantShown); !differ {
+			fail.Fetch = http.MethodGet + " " + b.url
+			continue
 		}
 		fail.Sel, fail.Diff = "#"+id, &d
 		return fail
@@ -1749,45 +1746,94 @@ func lazyURL(n html.Node) (string, bool) {
 	return m[1], true
 }
 
-// lazyDepth is how many levels of lazy regions the fresh-load check resolves (resolveLazy): a
-// region in the page, one in the element its load answers, and one in that; a region in the
-// element the third load answers is left as its placeholder and compared as such.
+// lazyDepth is how many levels of lazy regions the fresh-load check resolves (lazyShown), counted
+// by nesting position: a region, one inside it, and one inside that. A region deeper than that
+// is not compared: on both sides it stands as the same stub (lazyStub), whether it is drawn as
+// a placeholder or loaded.
 const lazyDepth = 3
 
-// resolveLazy is n as a browser shows it once the loads of its lazy regions have run: n itself
-// when it is one (with depth above 0), else each region in it, in document order, replaced with
-// the element its load answers (loadLazy), whose own regions are resolved in turn while depth
-// levels remain. A region without an id is left as it is: no patch can name it. The URLs fetched
-// are added to loads in order; why says why a load answered no element ("" when each did), and
-// resolving stops there.
-func (b *Browser) resolveLazy(n html.Node, depth int, loads *[]string) (html.Node, string, error) {
-	if depth <= 0 {
-		return n, "", nil
-	}
-	u, lazy := lazyURL(n)
-	id, _ := html.AttrOf(n, "id")
-	if !lazy || id == "" {
-		return b.resolveInside(n, depth, loads)
-	}
-	*loads = append(*loads, u)
-	loaded, why, err := b.loadLazy(u, id)
+// lazyShown is got, an element the answer replaced as the page held it, and want, the element
+// with its id in the page loaded again, as a browser shows them once the loads of their lazy
+// regions have run (#330): Datastar runs a region's load on the page it loads and on an element
+// a replace morphs in alike. Each region is replaced with the element its load answers
+// (loadLazy), and the regions inside that in turn, down to lazyDepth levels by position; a
+// region is an element with a load, or one with the id a placeholder had (a region drawn loaded).
+// want is resolved first, so the regions it reveals are known on got's side. got itself is never
+// loaded again, though it may carry a load (a region that polls): it is what the answer drew, and
+// what the check is for. The fetches are quiet and change nothing the test sees afterwards: only
+// these copies are resolved. loads is the URLs fetched in order; why says why a load answered no
+// element ("" when each did), and resolving stops there.
+func (b *Browser) lazyShown(got, want html.Node) (gotShown, wantShown html.Node, loads []string, why string, err error) {
+	r := &lazyResolver{b: b, regions: map[string]bool{}}
+	wantShown, why, err = r.shown(want, 0)
 	if err != nil || why != "" {
-		return n, why, err
+		return got, want, r.loads, why, err
 	}
-	return b.resolveInside(loaded, depth-1, loads)
+	level := 0
+	if r.region(got) {
+		level = 1
+	}
+	gotShown, why, err = r.inside(got, level)
+	return gotShown, wantShown, r.loads, why, err
 }
 
-// resolveInside is n with the lazy regions inside it (not n itself) resolved (resolveLazy), each
-// patched in by its id as the client patches the element its load answers.
-func (b *Browser) resolveInside(n html.Node, depth int, loads *[]string) (html.Node, string, error) {
-	if depth <= 0 {
-		return n, "", nil
+// lazyResolver resolves the lazy regions of the elements the fresh-load check compares
+// (lazyShown): regions is the ids of the regions seen so far, loads the URLs fetched.
+type lazyResolver struct {
+	b       *Browser
+	regions map[string]bool
+	loads   []string
+}
+
+// region reports whether element n is a lazy region: it has a load, or an id a region had.
+func (r *lazyResolver) region(n html.Node) bool {
+	if n.Tag() == "" {
+		return false
 	}
+	if _, lazy := lazyURL(n); lazy {
+		return true
+	}
+	id, _ := html.AttrOf(n, "id")
+	return id != "" && r.regions[id]
+}
+
+// shown is n, inside level regions, as a browser shows it: a region one level deeper, beyond
+// lazyDepth its stub, else (a placeholder) the element its load answers; then the regions
+// inside it (inside). A load answers what the page shows at once; an element it answers that
+// carries a load again (a poll) is not loaded again.
+func (r *lazyResolver) shown(n html.Node, level int) (html.Node, string, error) {
+	if !r.region(n) {
+		return r.inside(n, level)
+	}
+	id, _ := html.AttrOf(n, "id")
+	if id != "" {
+		r.regions[id] = true
+	}
+	level++
+	if level > lazyDepth {
+		return lazyStub(id), "", nil
+	}
+	if u, lazy := lazyURL(n); lazy && id != "" {
+		r.loads = append(r.loads, u)
+		loaded, why, err := r.b.loadLazy(u, id)
+		if err != nil || why != "" {
+			return n, why, err
+		}
+		n = loaded
+	}
+	return r.inside(n, level)
+}
+
+// inside is n, inside level regions, with each region within it (not n itself, nor one inside
+// another, which that one's own resolving reaches) shown (shown) and patched in by its id, as the
+// client patches the element a load answers. A region without an id is left as it is: no patch
+// can name it.
+func (r *lazyResolver) inside(n html.Node, level int) (html.Node, string, error) {
 	var regions []html.Node
 	var walk func(html.Node)
 	walk = func(c html.Node) {
 		for _, k := range c.Children() {
-			if _, lazy := lazyURL(k); lazy && k.Tag() != "" {
+			if r.region(k) {
 				regions = append(regions, k)
 				continue
 			}
@@ -1795,24 +1841,28 @@ func (b *Browser) resolveInside(n html.Node, depth int, loads *[]string) (html.N
 		}
 	}
 	walk(n)
-	for _, r := range regions {
-		id, _ := html.AttrOf(r, "id")
+	for _, k := range regions {
+		id, _ := html.AttrOf(k, "id")
 		if id == "" {
 			continue
 		}
-		shown, why, err := b.resolveLazy(r, depth, loads)
+		s, why, err := r.shown(k, level)
 		if err != nil || why != "" {
 			return n, why, err
 		}
-		n, _ = html.ReplaceByID(n, id, shown)
+		n, _ = html.ReplaceByID(n, id, s)
 	}
 	return n, "", nil
 }
 
+// lazyStub is what a lazy region deeper than lazyDepth is compared as, on both sides alike.
+func lazyStub(id string) html.Node {
+	return html.El("al-lazy", []html.Attr{html.A("id", id)}, html.Text("not compared: deeper than "+strconv.Itoa(lazyDepth)+" lazy regions"))
+}
+
 // loadLazy is the element with id id that the element fetch of u (a lazy region's load) answers,
-// fetched quietly as the fresh-load check's page was, as the browser's parser builds it: the
-// last patch of that id (the client applies each in turn), so a patch of another id is not
-// taken for it; why says why there is none ("" when there is).
+// fetched quietly as the fresh-load check's page was (patchOf: the last patch of that id); why
+// says why there is none ("" when there is).
 func (b *Browser) loadLazy(u, id string) (html.Node, string, error) {
 	ctx, req := b.elementRequest(u)
 	w, err := b.quietly(ctx, req, "the fresh-load check")
@@ -1824,19 +1874,9 @@ func (b *Browser) loadLazy(u, id string) (html.Node, string, error) {
 		if err != nil {
 			return html.Node{}, "", err
 		}
-		var el html.Node
-		found := false
-		for _, ev := range events {
-			if ev.typ != "datastar-patch-elements" || ev.field("mode") != "outer" || ev.field("selector") != "#"+id {
-				continue
-			}
-			n, err := html.Parse(ev.field("elements"))
-			if err != nil {
-				return html.Node{}, "", fmt.Errorf("the fresh-load check: the view GET %s answers does not parse: %w", u, err)
-			}
-			if e, ok := elementByID(html.RepairFragment(n), id); ok {
-				el, found = e, true
-			}
+		el, found, err := patchOf(events, id)
+		if err != nil {
+			return html.Node{}, "", fmt.Errorf("the fresh-load check: the view GET %s answers does not parse: %w", u, err)
 		}
 		if found {
 			return el, "", nil
@@ -1847,6 +1887,27 @@ func (b *Browser) loadLazy(u, id string) (html.Node, string, error) {
 		status = s
 	}
 	return html.Node{}, "answered no element #" + id + " for the load (status " + status + ")", nil
+}
+
+// patchOf is the element with id id that events patch in by that id (selector `#id`, mode
+// outer), as the browser's parser builds it: the last such patch, since the client applies each
+// in turn; a patch of another id is not taken for it. The error is a patch that does not parse.
+func patchOf(events []sseEvent, id string) (html.Node, bool, error) {
+	var el html.Node
+	found := false
+	for _, ev := range events {
+		if ev.typ != "datastar-patch-elements" || ev.field("mode") != "outer" || ev.field("selector") != "#"+id {
+			continue
+		}
+		n, err := html.Parse(ev.field("elements"))
+		if err != nil {
+			return html.Node{}, false, err
+		}
+		if e, ok := elementByID(html.RepairFragment(n), id); ok {
+			el, found = e, true
+		}
+	}
+	return el, found, nil
 }
 
 // external reports whether u leads to another site: it has a scheme or a host.

@@ -2204,8 +2204,11 @@ func TestBrowser_RepairDropsOnlyWhatTheParserDrops(t *testing.T) {
 		if _, ok := elementByID(b.dom, "x"); ok {
 			t.Errorf("%s: Repair kept #x", c.page)
 		}
-		events, _ := sseEvents(string(datastar.ReplaceEvent(c.root)))
-		err := b.patch(events[0])
+		events, err := sseEvents(string(datastar.ReplaceEvent(c.root)))
+		if err != nil || len(events) != 1 {
+			t.Fatalf("events = %v %v", events, err)
+		}
+		err = b.patch(events[0])
 		if want := "POST /x: the answer replaced `#x`, which the page does not have"; err == nil || err.Error() != want {
 			t.Errorf("%s: err = %v, want %q", c.page, err, want)
 		}
@@ -2227,6 +2230,7 @@ func TestBrowser_RepairDropsOnlyWhatTheParserDrops(t *testing.T) {
 // and the next level its placeholder.
 type nestApp struct {
 	loaded  int    // the levels the answer's #panel draws loaded
+	lie     int    // a level the answer draws loaded with other text than its load answers (0 for none)
 	missing string // a level whose load answers no element ("404": the route's 404; "other": a view with another root id)
 }
 
@@ -2238,14 +2242,19 @@ func nestLoad(i int) rt.Route {
 
 // level is level i (1 to 5) of the region: loaded, its text and the next level's placeholder
 // (when loaded is more than 0, the next level drawn loaded too, loaded-1 more); else the placeholder.
-func level(i, loaded int) html.Node {
+// Level lie, when drawn loaded, says "level N!" instead.
+func level(i, loaded, lie int) html.Node {
 	id := "l" + strconv.Itoa(i)
 	if loaded <= 0 {
 		return html.El("span", []html.Attr{html.A("id", id), html.RouteAttr(html.LoadAttr, nestLoad(i))}, html.Text("…"))
 	}
-	kids := []html.Node{html.Text("level " + strconv.Itoa(i))}
+	text := "level " + strconv.Itoa(i)
+	if i == lie {
+		text += "!"
+	}
+	kids := []html.Node{html.Text(text)}
 	if i < 5 {
-		kids = append(kids, level(i+1, loaded-1))
+		kids = append(kids, level(i+1, loaded-1, lie))
 	}
 	return html.El("span", []html.Attr{html.A("id", id)}, kids...)
 }
@@ -2253,7 +2262,7 @@ func level(i, loaded int) html.Node {
 func (a *nestApp) routes() []web.Route {
 	return []web.Route{
 		{Method: "GET", Pattern: "/nest", Handle: func(rq *web.Request) web.Response {
-			panel := html.El("section", []html.Attr{html.A("id", "panel")}, level(1, 0))
+			panel := html.El("section", []html.Attr{html.A("id", "panel")}, level(1, 0, 0))
 			return web.PageResponse(layout("Nest", panel, clickOf(nestGo(), "Go")), &html.FormState{}, nil)
 		}},
 		{Method: "GET", Pattern: "/nest/{i}", Handle: func(rq *web.Request) web.Response {
@@ -2264,20 +2273,22 @@ func (a *nestApp) routes() []web.Route {
 				}
 				return web.PageResponse(html.El("span", []html.Attr{html.A("id", "other")}), &html.FormState{}, nil)
 			}
-			return web.PageResponse(level(i, 1), &html.FormState{}, nil)
+			return web.PageResponse(level(i, 1, 0), &html.FormState{}, nil)
 		}},
 		{Method: "POST", Pattern: "/nest/go", Handle: func(rq *web.Request) web.Response {
-			panel := html.El("section", []html.Attr{html.A("id", "panel")}, level(1, a.loaded))
+			panel := html.El("section", []html.Attr{html.A("id", "panel")}, level(1, a.loaded, a.lie))
 			return web.AnswerResponse(rt.Replace([]any{panel}), nil, nil)
 		}},
 	}
 }
 
-// The fresh-load check resolves lazy regions inside a replaced element, and inside what their
-// loads answer, to lazyDepth levels (#330): a #panel drawn as the page shows once its loads have
-// run (three levels loaded, the fourth its placeholder) passes; one drawn with fewer levels
-// loaded, or with the fourth loaded too, does not. A load that answers no element with the
-// placeholder's id (the route's 404, a view with another root id) fails the step saying so.
+// The fresh-load check resolves lazy regions on both sides, in the replaced element (a browser
+// runs the load of a placeholder a replace morphs in) and in the page loaded again, and inside
+// what their loads answer, to lazyDepth levels by position (#330): a #panel drawn with any number
+// of levels loaded and the next its placeholder shows what a reload shows, and passes. A level
+// within lazyDepth whose drawn content differs from what its load answers fails; one deeper is
+// not compared. A load that answers no element with the placeholder's id (the route's 404, a
+// view with another root id) fails the step saying so.
 func TestCheck_ReplacedLazyNested(t *testing.T) {
 	if lazyDepth != 3 {
 		t.Fatalf("lazyDepth = %d", lazyDepth)
@@ -2288,18 +2299,27 @@ func TestCheck_ReplacedLazyNested(t *testing.T) {
 		browseOpts(t, Options{}, a.routes(), func(b *Browser, e *eff.Env) {
 			mustOf(t)(b.Get("/nest"))
 			_, err = b.ClickRoute(nestGo(), "N.Go")
+			if err == nil && strings.Contains(html.Render(b.doc), "al-lazy") {
+				t.Errorf("the held page took the comparison's stub: %s", html.Render(b.doc))
+			}
 		})
 		return err
 	}
-	if err := run(&nestApp{loaded: 3}); err != nil {
-		t.Errorf("three levels loaded: %v", err)
-	}
-	for _, n := range []int{1, 2, 4} {
-		err := run(&nestApp{loaded: n})
-		want := "POST /nest/go: the answer replaced `#panel` unlike the page loaded again (GET /nest, its load GET /nest/1, its load GET /nest/2, its load GET /nest/3) at "
-		if err == nil || !strings.HasPrefix(err.Error(), want) {
-			t.Errorf("%d levels loaded: err = %v, want %q", n, err, want)
+	for _, n := range []int{0, 1, 2, 3, 4, 5} {
+		if err := run(&nestApp{loaded: n}); err != nil {
+			t.Errorf("%d levels loaded: %v", n, err)
 		}
+	}
+	for _, c := range []struct{ loaded, lie int }{{3, 2}, {1, 1}, {5, 3}} {
+		err := run(&nestApp{loaded: c.loaded, lie: c.lie})
+		want := "POST /nest/go: the answer replaced `#panel` unlike the page loaded again (GET /nest, its load GET /nest/1, its load GET /nest/2, its load GET /nest/3"
+		at := ") at section#panel > span#l1"
+		if err == nil || !strings.HasPrefix(err.Error(), want) || !strings.Contains(err.Error(), at) || !strings.Contains(err.Error(), "level "+strconv.Itoa(c.lie)+"!") {
+			t.Errorf("%d levels loaded, level %d differing: err = %v, want %q", c.loaded, c.lie, err, want)
+		}
+	}
+	if err := run(&nestApp{loaded: 5, lie: 4}); err != nil {
+		t.Errorf("level 4 differing, deeper than lazyDepth: %v", err)
 	}
 	for _, missing := range []string{"404", "other"} {
 		err := run(&nestApp{loaded: 3, missing: missing})
@@ -2307,5 +2327,26 @@ func TestCheck_ReplacedLazyNested(t *testing.T) {
 		if err == nil || !strings.HasPrefix(err.Error(), want) {
 			t.Errorf("load of l2 answering %s: err = %v, want %q", missing, err, want)
 		}
+	}
+}
+
+// patchOf takes the last patch of the placeholder's id, as the client applies each in turn, and
+// never a patch of another id (#330); the router sends one per element fetch, so the events are
+// built by hand.
+func TestPatchOf(t *testing.T) {
+	raw := string(datastar.PatchEvent("#other", "outer", `<span id="other">o</span>`)) +
+		string(datastar.PatchEvent("#l1", "outer", `<span id="l1">first</span>`)) +
+		string(datastar.PatchEvent("#l1", "outer", `<span id="l1">last</span>`)) +
+		string(datastar.PatchEvent("#l1", "inner", `<span id="l1">inner</span>`))
+	events, err := sseEvents(raw)
+	if err != nil || len(events) != 4 {
+		t.Fatalf("events = %v %v", events, err)
+	}
+	el, found, err := patchOf(events, "l1")
+	if err != nil || !found || html.Render(el) != `<span id="l1">last</span>` {
+		t.Errorf("patchOf = %s %v %v", html.Render(el), found, err)
+	}
+	if _, found, _ := patchOf(events[:1], "l1"); found {
+		t.Error("took a patch of another id")
 	}
 }
