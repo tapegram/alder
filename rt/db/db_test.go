@@ -1210,3 +1210,19 @@ func TestCreateTables(t *testing.T) {
 		t.Fatalf("an unknown @ref: %v", err)
 	}
 }
+
+// A Text.Email column reads lower-cased (#311): a row written before the fold, or by hand,
+// compares equal to the values Alder makes. TEXT as []byte too; anything else is an error.
+func TestDecodeEmail(t *testing.T) {
+	for _, c := range []struct {
+		in   any
+		want string
+	}{{"Ada@x.com", "ada@x.com"}, {[]byte("É@X.com"), "é@x.com"}, {"a@b.c", "a@b.c"}} {
+		if got, err := DecodeEmail(c.in); err != nil || got != c.want {
+			t.Errorf("DecodeEmail(%#v) = %q, %v; want %q", c.in, got, err, c.want)
+		}
+	}
+	if _, err := DecodeEmail(int64(1)); err == nil {
+		t.Error("DecodeEmail(1) accepted an integer")
+	}
+}

@@ -1,6 +1,7 @@
 package fuzz
 
 import (
+	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -17,7 +18,7 @@ func TestStdBrandsPassTheirChecks(t *testing.T) {
 		check func(string) bool
 	}{
 		{"NonEmpty", NonEmpty, web.NonEmpty},
-		{"Email", Email, web.Email},
+		{"Email", Email, func(s string) bool { return web.Email(s) && strings.ToLower(s) == s }}, // lower case (#311)
 		{"URL", URL, web.URL},
 		{"Secret", Secret, web.Secret},
 	}

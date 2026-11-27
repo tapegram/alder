@@ -180,8 +180,8 @@ func (l *lowerer) ctorRef(x *syntax.CtorRef) Expr {
 		return l.eta(fn, func(arg Expr) Expr { return &JobRef{Typed: Typed{fn.Result}, Job: j, Params: arg} })
 	case syntax.RefCtor:
 		info := l.res.Ctors[key(x.Ref.Module, x.Ref.Name)]
-		if info == nil { // a brand constructor: erased to the identity
-			return l.eta(fn, func(arg Expr) Expr { return arg })
+		if info == nil { // a brand constructor
+			return l.eta(fn, func(arg Expr) Expr { return l.brandCtor(x.Ref.Module, x.Ref.Name, arg) })
 		}
 		if isFn {
 			return l.eta(fn, func(arg Expr) Expr { return l.ctor(fn.Result, x.Ref.Name, arg, nil, posOf(x.Span)) })
@@ -203,6 +203,24 @@ func (l *lowerer) eta(fn *types.Fun, body func(Expr) Expr) Expr {
 	name := l.temp()
 	arg := &Var{Typed: Typed{fn.Params[0]}, Kind: VarLocal, Name: name}
 	return &Lambda{Typed: Typed{fn}, Params: []*Param{{Name: name, Type: fn.Params[0]}}, Body: body(arg)}
+}
+
+// brandCtor is brand module.name's constructor applied to arg: the identity (a brand is erased,
+// so the result keeps arg's type), except Text.Email, which lower-cases its address (#311): a text literal is folded
+// here, with the runtime's strings.ToLower, and any other argument is a call of the stdlib value
+// Text.Email (gen: std.TextFoldEmail).
+func (l *lowerer) brandCtor(module, name string, arg Expr) Expr {
+	if module != "Text" || name != "Email" {
+		return arg
+	}
+	if lit, ok := arg.(*Lit); ok && lit.Kind == LitText {
+		folded := *lit
+		folded.Text = strings.ToLower(lit.Text)
+		return &folded
+	}
+	t := arg.Type()
+	fold := &Var{Typed: Typed{&types.Fun{Params: []types.Type{t}, Result: t}}, Kind: VarStd, Module: "Text", Name: "Email"}
+	return &Call{Typed: Typed{t}, Fn: fold, Args: []Expr{arg}}
 }
 
 func (l *lowerer) route(module, name string) *Route {
@@ -271,8 +289,8 @@ func (l *lowerer) app(fn syntax.Expr, args []syntax.Expr, piped Expr, t types.Ty
 		case syntax.RefJob:
 			return &JobRef{Typed: Typed{t}, Job: l.jobs[key(ct.Ref.Module, ct.Ref.Name)], Params: lower()[0]}
 		case syntax.RefCtor:
-			if l.res.Ctors[key(ct.Ref.Module, ct.Ref.Name)] == nil {
-				return lower()[0] // a brand constructor is erased
+			if l.res.Ctors[key(ct.Ref.Module, ct.Ref.Name)] == nil { // a brand constructor
+				return l.brandCtor(ct.Ref.Module, ct.Ref.Name, lower()[0])
 			}
 			u := l.union(t.(*types.Union))
 			if piped == nil && len(args) == 1 && !l.wrappers[u.ctorT(ct.Ref.Name).Payload] {

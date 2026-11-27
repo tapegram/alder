@@ -1654,3 +1654,68 @@ test "a removal the page still has" = {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 }
+
+// emailFoldTests are Admin.Users.New tests of #311 for TestTest_EmailFold: a Text.Email is
+// lower-cased wherever one is made (the constructor, a form's field, Text.toEmail, a property's
+// generator), so a literal equals a decoded value, the admin's `.eq` finds a case variant and
+// `@unique` refuses one.
+const emailFoldTests = `
+test "email: the constructor folds, at compile time and at run time" =
+  List.map (\e -> e ++ "") ([Text.Email "Ada@X.com", Text.Email "É@X.com"] ++ List.map Text.Email ["Bo@Y.com", "Ç@Y.COM"])
+    == ["ada@x.com", "é@x.com", "bo@y.com", "ç@y.com"]
+
+test "email: toEmail folds and checks" =
+  [Text.toEmail "Ada@X.com", Text.toEmail "no at", Text.toEmail " a@b.c"]
+    == [Just (Text.Email "ada@x.com"), Nothing, Nothing]
+
+test "email: generated emails are lower case" = \(e : Text.Email) -> Text.toLower e == e ++ ""
+
+test "email: a form's email is lower-cased and equals the literal" = {
+  let me <- Db.insert User { email: Text.Email "Boss@X.com", name: Text.NonEmpty "boss", passwordHash: "", role: Admin }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let _ <- Test.get (New {})
+  let _ <- Test.submitRaw Create [{ name: "email", value: "Ada@X.com" }, { name: "name", value: "Ada" }, { name: "role", value: "Member" }]
+  let rows <- Db.from User |> Db.where (User.email.eq (Text.Email "ADA@x.COM")) |> Db.all
+  Task.succeed (List.map (\row -> { email: row.email, text: row.email ++ "" }) rows == [{ email: Text.Email "Ada@X.com", text: "ada@x.com" }])
+}
+
+test "email: the admin refuses a case variant of an existing email" = {
+  let me <- Db.insert User { email: Text.Email "Boss@X.com", name: Text.NonEmpty "boss", passwordHash: "", role: Admin }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let _ <- Test.get (New {})
+  let r <- Test.submitRaw Create [{ name: "email", value: "BOSS@x.com" }, { name: "name", value: "Again" }, { name: "role", value: "Member" }]
+  let n <- Db.from User |> Db.count
+  Task.succeed ({ answer: r.answer, n: n } == { answer: FormRejected [{ field: "", message: "A user with this email exists." }], n: 1 })
+}
+
+test "email: unique refuses a case-variant insert" = {
+  let _ <- Db.insert User { email: Text.Email "Ada@X.com", name: Text.NonEmpty "a", passwordHash: "" }
+  let _ <- Db.insert User { email: Text.Email "ada@x.COM", name: Text.NonEmpty "b", passwordHash: "" }
+  Task.succeed True
+}
+`
+
+// A Text.Email holds its address lower-cased by construction (#311), run by `alder test`: every
+// case passes but the second insert of a case variant, which @unique refuses.
+func TestTest_EmailFold(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := tempTodos(t, "Admin/Users/New.alder", emailFoldTests)
+	code, stdout, stderr := runTest(t, dir, "-run", "email: ")
+	for _, want := range []string{
+		`ok   Admin.Users.New "email: the constructor folds, at compile time and at run time"`,
+		`ok   Admin.Users.New "email: toEmail folds and checks"`,
+		`ok   Admin.Users.New "email: generated emails are lower case"`,
+		`ok   Admin.Users.New "email: a form's email is lower-cased and equals the literal"`,
+		`ok   Admin.Users.New "email: the admin refuses a case variant of an existing email"`,
+		`FAIL Admin.Users.New "email: unique refuses a case-variant insert"`,
+		"User.email must be unique",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout lacks %q", want)
+		}
+	}
+	if code != 1 || t.Failed() {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+}

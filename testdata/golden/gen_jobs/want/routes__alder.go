@@ -6,6 +6,7 @@ import (
 	"alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
+	"alder/rt/std"
 	"alder/rt/web"
 	"errors"
 	"net/url"
@@ -67,10 +68,10 @@ func decode__Signup__Create__Params(_ map[string]string, _ url.Values) (r Signup
 func decode__Signup__NewUser(v url.Values) (r Signup__NewUser, errs []web.FieldError) {
 	if s, ok := web.Text(v, "email", false); !ok {
 		errs = append(errs, web.Missing("email"))
-	} else if e := web.Check(web.Email(s), "email", web.MsgEmail); e != nil {
+	} else if e := web.Check(web.Email(std.TextFoldEmail(s)), "email", web.MsgEmail); e != nil {
 		errs = append(errs, *e)
 	} else {
-		r.Email = s
+		r.Email = std.TextFoldEmail(s)
 	}
 	if s, ok := web.Text(v, "name", false); !ok {
 		errs = append(errs, web.Missing("name"))

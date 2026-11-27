@@ -28,8 +28,9 @@ func Secret(c *Choices) string {
 	return checked("Text.Secret", web.Secret, string(char(c, uni, 0.3))+textRest(c, uni))
 }
 
-// Email is Text.Email: local@domain, the local part a word of letters, digits and ". + - _",
-// the domain one or more lower-case words joined by dots. The simplest is "a@a".
+// Email is Text.Email: local@domain, the local part a word of lower-case letters, digits and
+// ". + - _", the domain one or more lower-case words joined by dots. The simplest is "a@a".
+// Every Text.Email is lower case (#311), so the generator draws no capitals.
 func Email(c *Choices) string {
 	local := word(c, emailLocal)
 	domain := word(c, hostChars)
@@ -80,7 +81,7 @@ func NonNegative(c *Choices) int64 {
 const (
 	hostChars  = "abcdefghijklmnopqrstuvwxyz0123456789"
 	pathChars  = hostChars + "-_."
-	emailLocal = hostChars + "ABCDEFGHIJKLMNOPQRSTUVWXYZ.+-_"
+	emailLocal = hostChars + ".+-_"
 )
 
 // word draws one character of alphabet or more (the first character simplest).

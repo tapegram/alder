@@ -6,6 +6,7 @@ import (
 	"alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
+	"alder/rt/std"
 	"alder/rt/web"
 	"errors"
 	"net/url"
@@ -160,10 +161,10 @@ func decode__Auth__Login__Submit__Params(_ map[string]string, _ url.Values) (r A
 func decode__Auth__Login__Credentials(v url.Values) (r Auth__Login__Credentials, errs []web.FieldError) {
 	if s, ok := web.Text(v, "email", false); !ok {
 		errs = append(errs, web.Missing("email"))
-	} else if e := web.Check(web.Email(s), "email", web.MsgEmail); e != nil {
+	} else if e := web.Check(web.Email(std.TextFoldEmail(s)), "email", web.MsgEmail); e != nil {
 		errs = append(errs, *e)
 	} else {
-		r.Email = s
+		r.Email = std.TextFoldEmail(s)
 	}
 	if s, ok := web.Text(v, "password", false); !ok {
 		errs = append(errs, web.Missing("password"))
@@ -332,10 +333,10 @@ func decode__Notes__Index__NewNote(v url.Values) (r Notes__Index__NewNote, errs 
 		r.Remark = s
 	}
 	if s, _ := web.Text(v, "contact", false); s != "" {
-		if e := web.Check(web.Email(s), "contact", web.MsgEmail); e != nil {
+		if e := web.Check(web.Email(std.TextFoldEmail(s)), "contact", web.MsgEmail); e != nil {
 			errs = append(errs, *e)
 		} else {
-			r.Contact = rt.Just(s)
+			r.Contact = rt.Just(std.TextFoldEmail(s))
 		}
 	}
 	return r, errs

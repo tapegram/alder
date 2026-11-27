@@ -151,10 +151,10 @@ func decode__M__Note(v url.Values) (r M__Note, errs []web.FieldError) {
 	}
 	if s, ok := web.Text(v, "email", false); !ok {
 		errs = append(errs, web.Missing("email"))
-	} else if e := web.Check(web.Email(s), "email", web.MsgEmail); e != nil {
+	} else if e := web.Check(web.Email(std.TextFoldEmail(s)), "email", web.MsgEmail); e != nil {
 		errs = append(errs, *e)
 	} else {
-		r.Email = s
+		r.Email = std.TextFoldEmail(s)
 	}
 	if s, _ := web.Text(v, "site", false); s != "" {
 		if e := web.Check(web.URL(s), "site", web.MsgURL); e != nil {

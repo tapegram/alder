@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"alder/rt"
@@ -78,6 +79,14 @@ func DecodeText(v any) (string, error) {
 		return string(x), nil
 	}
 	return "", fmt.Errorf("db: Text: want text, got %#v", v)
+}
+
+// DecodeEmail is DecodeText for a Text.Email column: the address lower-cased (#311), as
+// every Text.Email is, so a row stored before the fold compares equal to the values the app
+// makes. It is std.TextFoldEmail's strings.ToLower (rt/db cannot import rt/std).
+func DecodeEmail(v any) (string, error) {
+	s, err := DecodeText(v)
+	return strings.ToLower(s), err
 }
 
 // DecodeInt accepts INTEGER.

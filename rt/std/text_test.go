@@ -1,6 +1,10 @@
 package std
 
-import "testing"
+import (
+	"testing"
+
+	"alder/rt"
+)
 
 func TestText_Pad(t *testing.T) {
 	eq(t, "padLeft", TextPadLeft(2, "0", "7"), "07")
@@ -59,4 +63,18 @@ func TestText_CodePoints(t *testing.T) {
 	eq(t, "toCodePoints", TextToCodePoints("A😀"), []int64{65, 0x1F600})
 	eq(t, "fromCodePoints", TextFromCodePoints([]int64{104, 105}), "hi")
 	eq(t, "fromCodePoints invalid", TextFromCodePoints([]int64{-1, 0xD800, 0x110000}), "���")
+}
+
+// A Text.Email holds its address lower-cased (#311): the constructor and Text.toEmail fold the
+// whole address with strings.ToLower, non-ASCII capitals too; toEmail refuses what the form
+// check refuses, surrounding spaces included (they are not trimmed).
+func TestText_Email(t *testing.T) {
+	eq(t, "fold", TextFoldEmail("Ada@Example.com"), "ada@example.com")
+	eq(t, "fold non-ASCII", TextFoldEmail("É@x.com"), "é@x.com")
+	eq(t, "toEmail", TextToEmail("Ada@X.com"), rt.Just("ada@x.com"))
+	eq(t, "toEmail non-ASCII", TextToEmail("É@X.com"), rt.Just("é@x.com"))
+	eq(t, "toEmail no @", TextToEmail("no at"), rt.Nothing[string]())
+	eq(t, "toEmail leading space", TextToEmail(" a@b.c"), rt.Nothing[string]())
+	eq(t, "toEmail two @", TextToEmail("a@b@c"), rt.Nothing[string]())
+	eq(t, "toEmail empty local part", TextToEmail("@b.c"), rt.Nothing[string]())
 }

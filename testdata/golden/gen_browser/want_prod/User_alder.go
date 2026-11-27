@@ -40,7 +40,7 @@ var table__User__User = &db.Table[User__User]{
 		if r.Id, err = db.DecodeText(row[0]); err != nil {
 			return r, fmt.Errorf("column id: %w", err)
 		}
-		if r.Email, err = db.DecodeText(row[1]); err != nil {
+		if r.Email, err = db.DecodeEmail(row[1]); err != nil {
 			return r, fmt.Errorf("column email: %w", err)
 		}
 		if r.Name, err = db.DecodeText(row[2]); err != nil {

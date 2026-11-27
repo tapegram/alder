@@ -582,6 +582,15 @@ func decodeFunc(t types.Type) string {
 	panic(fmt.Sprintf("gen: type %s cannot be stored in a table", types.String(t)))
 }
 
+// columnDecoder is decodeFunc for a column of type t (a Maybe's element) declared with brand b:
+// a Text.Email column reads lower-cased (db.DecodeEmail, #311), as every Text.Email is.
+func columnDecoder(b *ir.Brand, t types.Type) string {
+	if b != nil && b.Module == "Text" && b.Name == "Email" {
+		return "db.DecodeEmail"
+	}
+	return decodeFunc(t)
+}
+
 // enumLists are a payload-less union's constructor names and values, as Go slices.
 func enumLists(u *types.Union) (names, values string) {
 	var ns, vs []string
@@ -670,12 +679,12 @@ func (g *gen) tableDecl(w *strings.Builder, tb *ir.Table) {
 		enc = append(enc, encode(fd.Type, "r."+Field(fd.Name)))
 		d := ""
 		if a := maybeArg(fd.Type); a != nil {
-			d = "db.DecodeMaybe(row[" + strconv.Itoa(i) + "], " + decodeFunc(a) + ")"
+			d = "db.DecodeMaybe(row[" + strconv.Itoa(i) + "], " + columnDecoder(fd.Brand, a) + ")"
 		} else if enumUnion(fd.Type) != nil {
 			names, values := enumLists(enumUnion(fd.Type))
 			d = "db.DecodeEnum(row[" + strconv.Itoa(i) + "], " + names + ", " + values + ")"
 		} else {
-			d = decodeFunc(fd.Type) + "(row[" + strconv.Itoa(i) + "])"
+			d = columnDecoder(fd.Brand, fd.Type) + "(row[" + strconv.Itoa(i) + "])"
 		}
 		fmt.Fprintf(&dec, "if r.%s, err = %s; err != nil {\nreturn r, fmt.Errorf(\"column %s: %%w\", err)\n}\n", Field(fd.Name), d, fd.Name)
 	}

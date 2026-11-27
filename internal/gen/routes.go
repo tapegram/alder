@@ -783,8 +783,8 @@ func (d *decoder) temp(base string) string {
 }
 
 // parse is the chain decoding a present scalar of type t at src[name] (for Text, the value is
-// already in text): clauses reporting a malformed value or a failed brand check, and the final
-// statement storing the value with assign.
+// already in text; a Text.Email is lower-cased before its check): clauses reporting a malformed
+// value or a failed brand check, and the final statement storing the value with assign.
 func (d *decoder) parse(t types.Type, b *ir.Brand, src, name, text string, assign func(string) string) ([]clause, string) {
 	fieldErr := "errs = append(errs, web.FieldError{Field: " + name + ", Message: msg})\n"
 	var cs []clause
@@ -792,6 +792,9 @@ func (d *decoder) parse(t types.Type, b *ir.Brand, src, name, text string, assig
 	switch scalarKind(t) {
 	case "text":
 		v = text
+		if b != nil && b.Module == "Text" && b.Name == "Email" { // lower-cased, then checked (#311)
+			v = "std.TextFoldEmail(" + text + ")"
+		}
 	case "bool":
 		if d.url { // an app-made URL: strict (web.BoolParam)
 			cs = append(cs, clause{"x, msg := web.BoolParam(" + src + ", " + name + "); msg != \"\"", fieldErr})

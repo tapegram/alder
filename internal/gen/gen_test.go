@@ -852,7 +852,7 @@ func TestStdCallsCoverStdlib(t *testing.T) {
 	// every entry names a real stdlib function
 	for key := range StdCalls {
 		mod, name, _ := strings.Cut(key, ".")
-		found := false
+		found := key == "Text.Email" // the brand constructor that folds (#311), a type declaration
 		if m := std[mod]; m != nil {
 			for _, d := range m.Decls {
 				if v, ok := d.(*syntax.ValueDecl); ok && v.Name == name {
@@ -4360,4 +4360,158 @@ func TestGenRoute_FormParamAndOverride(t *testing.T) {
 		`html.RouteAttr("data-on:submit", rt.Route{Name: "Search.Save", Method: "PATCH", Path: rt.Concat("/save/", rt.PathSegment("b"))})`,
 	)
 	vet(t, files)
+}
+
+// A Text.Email holds its address lower-cased wherever one is made (#311): the constructor (a
+// literal at compile time, any other argument by std.TextFoldEmail, also as a function value or
+// piped; app code may use it only in a test), Text.toEmail, a form's field (folded, then
+// checked) and a row read back (a column and a Maybe one), so `.eq` and `@unique` agree on case
+// variants. `alder test` runs the constructor's own cases (cmd/alder TestTest_EmailFold).
+func TestGen_RunEmailFold(t *testing.T) {
+	files := emitSourceWith(t, map[string]string{
+		"App.alder": `module App
+
+error : Error -> Html
+error err = <p>error</p>
+
+notFound : Html
+notFound = <p>not found</p>
+`,
+		"Person.alder": `module Person
+
+type PersonId = brand Text
+
+table Person {
+  id: PersonId @id,
+  email: Text.Email @unique,
+  alt: Maybe Text.Email,
+}
+
+conv : Text -> Maybe Text.Email
+conv s = Text.toEmail s
+
+add : Text.Email -> Task PersonId
+add e = Db.insert Person { email: e, alt: Nothing }
+
+byEmail : Text.Email -> Query (List Person)
+byEmail e = Db.from Person |> Db.where (Person.email.eq e) |> Db.all
+
+test "the constructor folds" =
+  [Text.Email "Ada@X.com", Text.Email "É@X.com"] ++ List.map Text.Email (List.map (\s -> s) ["B@Y.com"]) ++ ["C@Z.com" |> Text.Email]
+    == List.map Text.Email ["ada@x.com", "é@x.com", "b@y.com", "c@z.com"]
+`,
+		"Home.alder": `module Home
+
+import Person
+
+route Home = GET  "/home"     { }
+route Add  = POST "/home/add" { } form NewPerson
+
+form NewPerson = { email: Text.Email, alt: Maybe Text.Email }
+
+Home.load : Home.Params -> Session -> Query (List Person.Person)
+Home.load params session = Db.from Person |> Db.all
+
+Home.view : List Person.Person -> Session -> Html
+Home.view people session =
+  <ul>{for p in people -> <li>{p.email}|{for a in Maybe.toList p.alt -> <i>{a}</i>}</li>}</ul>
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insert Person { email: p.form.email, alt: p.form.alt }
+  Task.succeed Response.refresh
+}
+`,
+	}, true)
+	src := string(files["Person_alder.go"])
+	contains(t, files["Person_alder.go"], `"ada@x.com"`, "std.TextFoldEmail(", "std.TextToEmail(s)", "db.DecodeEmail(row[1])", "db.DecodeMaybe(row[2], db.DecodeEmail)")
+	if strings.Contains(src, "Ada@X.com") {
+		t.Errorf("a Text.Email literal is not folded at compile time:\n%s", src)
+	}
+	var all []byte
+	for _, b := range files {
+		all = append(all, b...)
+	}
+	contains(t, all, "web.Email(std.TextFoldEmail(s))", "r.Email = std.TextFoldEmail(s)", "rt.Just(std.TextFoldEmail(s))")
+	runGo(t, files, `package app
+
+import (
+	"context"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+
+	"alder/rt"
+	"alder/rt/db"
+	"alder/rt/eff"
+)
+
+func TestEmailFold(t *testing.T) {
+	if got := Person__conv("Ada@X.com"); !got.Ok || got.Val != "ada@x.com" {
+		t.Errorf("toEmail Ada@X.com = %+v", got)
+	}
+	if got := Person__conv("\u00c9@X.com"); !got.Ok || got.Val != "\u00e9@x.com" {
+		t.Errorf("toEmail \u00c9@X.com = %+v", got)
+	}
+	for _, bad := range []string{"no at", " a@b.c"} {
+		if got := Person__conv(bad); got.Ok {
+			t.Errorf("toEmail %q = %+v, want Nothing", bad, got)
+		}
+	}
+
+	ctx := context.Background()
+	store, err := db.OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Ensure(ctx, Tables, true); err != nil {
+		t.Fatal(err)
+	}
+	env := &eff.Env{Ctx: ctx, Store: store, Caps: map[string]any{}, Now: time.Now}
+	// a row stored before the fold (Go writes it as given) reads back lower-cased
+	if _, err := db.InsertRow(ctx, store, nil, table__Person__Person,
+		insertvals__Person__Person(insert__Person__Person{Email: "Old@X.com", Alt: rt.Just("Alt@X.com")}), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	all, err := db.All(ctx, store, nil, db.From(table__Person__Person))
+	if err != nil || len(all) != 1 || all[0].Email != "old@x.com" || !all[0].Alt.Ok || all[0].Alt.Val != "alt@x.com" {
+		t.Fatalf("read back %+v %v", all, err)
+	}
+	// @unique refuses a case variant: both are folded when made
+	if _, err := eff.Run(env, eff.KTask, Person__add(Person__conv("Ada@X.com").Val)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eff.Run(env, eff.KTask, Person__add(Person__conv("ADA@x.COM").Val)); err == nil || !strings.Contains(err.Error(), "must be unique") {
+		t.Errorf("a case-variant insert: %v, want a unique violation", err)
+	}
+	if rows, err := eff.RunQuery(env, Person__byEmail(Person__conv("aDa@X.cOm").Val)); err != nil || len(rows) != 1 || rows[0].Email != "ada@x.com" {
+		t.Errorf("byEmail = %+v %v", rows, err)
+	}
+
+	// a form's email is folded, then checked; a malformed one is refused
+	h, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := func(form url.Values) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "/home/add", strings.NewReader(form.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := post(url.Values{"email": {"Ada@Example.com"}, "alt": {"\u00c9@X.com"}}); w.Code >= 400 {
+		t.Fatalf("POST: %d %s", w.Code, w.Body.String())
+	}
+	post(url.Values{"email": {"Not An Email"}}) // refused: no row (below)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/home", nil))
+	if body := w.Body.String(); !strings.Contains(body, "<li>ada@example.com|<i>\u00e9@x.com</i></li>") || strings.Count(body, "<li>") != 1 {
+		t.Errorf("GET /home: %d %s", w.Code, body)
+	}
+}
+`)
 }

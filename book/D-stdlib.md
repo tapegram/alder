@@ -5155,13 +5155,21 @@ checked: `Text.NonEmpty ""` is accepted, so the caller must make sure the text i
 type Email = brand Text where True
 ```
 
-A `Text` that looks like an email address.
+A `Text` that looks like an email address, in lower case.
 
 It has exactly one `@`, some text on each side of it and no whitespace. It is a check on the
 shape only: it does not say that the address exists.
 
-The check runs when a value is decoded from a form or a route, not when the brand is applied
-to a `Text`, so the caller must make sure of a `Text.Email` made by hand.
+The whole address is lower-cased wherever a `Text.Email` is made: decoded from a form or a
+route, read from a database row, given by `Text.toEmail`, and applied as a brand, so
+`Text.Email "Ada@Example.com" == Text.Email "ada@example.com"`. The fold is `Text.toLower`'s,
+so `É` becomes `é`. So `==`, a `Dict` key, `.eq` and `@unique` treat two spellings of one
+address alike. The capitals a person typed are not kept: an app that wants to show them keeps
+a second `Text`.
+
+The check runs when a value is decoded from a form or a route, or by `Text.toEmail`, not
+when the brand is applied to a `Text`, so the caller must make sure of a `Text.Email` made by
+hand.
 
 ### `Text.Url`
 
@@ -5511,6 +5519,24 @@ Text.toFloat "3" == Just 3.0
 Text.toFloat "abc" == Nothing
 Text.toFloat " 2.5" == Nothing
 Text.toFloat "NaN" == Nothing
+```
+
+### `Text.toEmail`
+
+```alder fragment
+toEmail : Text -> Maybe Email
+```
+
+Turns a `Text` into a `Text.Email`, or gives `Nothing` when it does not look like one.
+
+It applies the check a form applies to a `Text.Email` field (one `@`, text on both sides, no
+whitespace) and lower-cases the address, as every `Text.Email` is. Surrounding spaces are
+refused, not trimmed.
+
+```alder fragment
+Text.toEmail "Ada@Example.com" == Just (Text.Email "ada@example.com")
+Text.toEmail "no at" == Nothing
+Text.toEmail " ada@example.com" == Nothing
 ```
 
 ### `Text.toBytes`

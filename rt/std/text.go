@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"alder/rt"
+	"alder/rt/web"
 )
 
 // TextHash is Text.hash: FNV-1a 64 over the UTF-8 bytes with the top bit cleared, so the result
@@ -32,6 +33,24 @@ func TextTrim(s string) string { return strings.TrimSpace(s) }
 func TextToUpper(s string) string { return strings.ToUpper(s) }
 
 func TextToLower(s string) string { return strings.ToLower(s) }
+
+// TextFoldEmail is the Text.Email constructor (#311): a Text.Email holds its address in lower
+// case, the whole of it, by strings.ToLower as Text.toLower (Unicode simple case mapping, no
+// locale). It does not check the address. Lower folds a literal argument at compile time with
+// the same function; a form's decoder (gen's decoder.parse) folds before the check and a row's
+// (db.DecodeEmail) when it reads the column.
+func TextFoldEmail(s string) string { return strings.ToLower(s) }
+
+// TextToEmail is Text.toEmail: the address lower-cased when it passes Text.Email's form check
+// (web.Email: one "@", text on both sides, no whitespace), else Nothing. Surrounding spaces are
+// refused, not trimmed.
+func TextToEmail(s string) rt.Maybe[string] {
+	e := TextFoldEmail(s)
+	if !web.Email(e) {
+		return rt.Nothing[string]()
+	}
+	return rt.Just(e)
+}
 
 // TextContains is `Text.contains needle haystack`.
 func TextContains(needle, haystack string) bool { return strings.Contains(haystack, needle) }

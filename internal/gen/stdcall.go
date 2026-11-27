@@ -14,7 +14,8 @@ import (
 // whose Go functions build effect values. A stdlib constant (Html.none, Time.epoch, Dict.empty,
 // Random.id, Time.now) is a Go function of no parameters, called at each use. Emitting a stdlib
 // reference that is not here is an internal error of gen (TestStdCallsCoverStdlib keeps the
-// table complete).
+// table complete). Text.Email is a brand, not a function: its constructor is the one that
+// changes its value (it lower-cases the address), so Lower calls it as a stdlib value.
 var StdCalls = map[string]string{
 	// Bool
 	"Bool.toText": "std.BoolToText",
@@ -195,6 +196,8 @@ var StdCalls = map[string]string{
 	"Text.fromFloat":      "std.TextFromFloat",
 	"Text.toInt":          "std.TextToInt",
 	"Text.toFloat":        "std.TextToFloat",
+	"Text.toEmail":        "std.TextToEmail",
+	"Text.Email":          "std.TextFoldEmail", // the brand's constructor, which folds (#311; Lower's brandCtor)
 	"Text.padLeft":        "std.TextPadLeft",
 	"Text.padRight":       "std.TextPadRight",
 	"Text.left":           "std.TextLeft",
