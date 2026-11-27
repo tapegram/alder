@@ -1927,7 +1927,10 @@ Section 10 shows how each is made.
   when the placeholder differs, the browser makes that fetch too and
   compares the replaced element with what comes back.
   The second load runs in a savepoint that is undone, and is not a step of
-  the trace.
+  the trace. It runs the page's `load` again (and a lazy region's `load`),
+  so a capability they call is called again, a fake too (section 8): the
+  savepoint undoes the rows in the fake's tables, not what it keeps outside
+  the database.
 
 - **The element check.** After `Rendered r`, the browser asks for `r` again
   on its own, as a button does, and the element it holds must equal the

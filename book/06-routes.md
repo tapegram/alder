@@ -421,8 +421,10 @@ The checker refuses a root it can see that has no `id`, shares one, is a
 the answer is sent: a root the checker cannot see (a variable, or a list
 built elsewhere), and a form control, which the checker does not look for
 yet. A replace the runtime cannot send sends nothing at all, logs why and
-shows an error toast, so the page is never left half-changed: a test that
-clicks it fails, which is where you find out. `Response.replace []`
+shows an error toast, so the page is never left half-changed. The test
+browser answers that click with `RequestFailed` and the reason, and a click
+whose answer the test never checks still passes, so check the answer to
+find out. `Response.replace []`
 changes nothing, for a write whose only news is a toast.
 
 **`remove id`** is added to a `replace` with `|>`, and removes the element
