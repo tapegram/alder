@@ -109,9 +109,15 @@ type fmtCache struct {
 	noted map[string]bool
 	progs map[string]*fmtProject
 	// cleanAtStart records, for each app root loaded, whether its first load in this run had no
-	// module with errors. A module that fails on a later load is the run's own work in progress (a
-	// reference renamed before its handler's declaration), so its fixes are not held (#327).
+	// module with errors (#327). The run assumes that only its own writes change the project, so
+	// a module that fails on a later load of a clean project is its own work in progress (a
+	// reference renamed before its handler's declaration) and nothing is held for it. heldGroups
+	// are, for a root whose first load had errors, the groups (diag.Fix.Group) that load held:
+	// they stay held for the rest of the run, though a later load, after fmt fixed the errors
+	// itself, no longer holds them. Otherwise a file still ahead would take its half of a rename
+	// whose other half, in a file already formatted, was held.
 	cleanAtStart map[string]bool
+	heldGroups   map[string]map[string]bool
 	// targets are the absolute paths of the files this run formats: a rename that spans files
 	// (format.Migrate's groups) is migrated only when the run formats all of them.
 	targets map[string]bool
@@ -210,16 +216,27 @@ func fmtMigrate(path string, src []byte, cache *fmtCache, stderr io.Writer) (out
 			if !seen {
 				clean = len(pr.failed) == 0
 				if cache.cleanAtStart == nil {
-					cache.cleanAtStart = map[string]bool{}
+					cache.cleanAtStart, cache.heldGroups = map[string]bool{}, map[string]map[string]bool{}
 				}
 				cache.cleanAtStart[root] = clean
-			}
-			if clean { // failures this run made itself: its renames are part-way, not held
+				held := map[string]bool{}
 				for _, d := range pr.bag.Items {
-					if d.Fix != nil {
-						d.Fix.Held = false
+					if d.Fix != nil && d.Fix.Held && d.Fix.Group != "" {
+						held[d.Fix.Group] = true
 					}
 				}
+				cache.heldGroups[root] = held
+			}
+			for _, d := range pr.bag.Items {
+				switch {
+				case d.Fix == nil:
+				case clean: // failures this run made itself: its renames are part-way, not held
+					d.Fix.Held = false
+				case cache.heldGroups[root][d.Fix.Group]:
+					d.Fix.Held = true
+				}
+			}
+			if clean {
 				pr.failed, pr.stuck = nil, nil
 			}
 		}
@@ -239,7 +256,8 @@ func fmtMigrate(path string, src []byte, cache *fmtCache, stderr io.Writer) (out
 
 // fmtNote is the line saying why a project's migration was skipped or partly held, "" when it was
 // neither. A module with errors is not checked, so its own migrations are not known and those
-// that reach other files wait (#327): with an error migration does not fix, the user fixes it;
+// that reach other files wait (#327): with an error migration does not fix, the user fixes it,
+// and the line says whether a fix was held back or only that the module's own were not checked;
 // with only errors migration fixes, the next run does the rest, and the line is printed only
 // when it held something back.
 func fmtNote(pr *fmtProject) string {
@@ -249,12 +267,15 @@ func fmtNote(pr *fmtProject) string {
 		}
 		return one
 	}
+	held := pr.bag != nil && slices.ContainsFunc(pr.bag.Items, func(d diag.Diagnostic) bool { return d.Fix != nil && d.Fix.Held })
 	switch {
 	case len(pr.broken) > 0:
 		return fmt.Sprintf("%s %s not parse, so imports were not migrated; fix %s and run again", strings.Join(pr.broken, ", "), plural(pr.broken, "does", "do"), plural(pr.broken, "it", "them"))
-	case len(pr.stuck) > 0:
+	case len(pr.stuck) > 0 && held:
 		return fmt.Sprintf("`%s` %s errors, so %s migrations were not checked and the handler renames and `requires` clauses that reach other files (W0013, W0014) were held back; fix %s and run again", strings.Join(pr.stuck, "`, `"), plural(pr.stuck, "has", "have"), plural(pr.stuck, "its", "their"), plural(pr.stuck, "it", "them"))
-	case len(pr.failed) > 0 && slices.ContainsFunc(pr.bag.Items, func(d diag.Diagnostic) bool { return d.Fix != nil && d.Fix.Held }):
+	case len(pr.stuck) > 0:
+		return fmt.Sprintf("`%s` %s errors, so %s migrations (W0013, W0014) were not checked; fix %s and run again", strings.Join(pr.stuck, "`, `"), plural(pr.stuck, "has", "have"), plural(pr.stuck, "its", "their"), plural(pr.stuck, "it", "them"))
+	case len(pr.failed) > 0 && held:
 		return fmt.Sprintf("`%s` %s errors that `alder fmt` fixes, so the handler renames and `requires` clauses that reach other files (W0013, W0014) were held back; run `alder fmt` again", strings.Join(pr.failed, "`, `"), plural(pr.failed, "has", "have"))
 	}
 	return ""

@@ -6,10 +6,11 @@ import "strings"
 // while a module of the program has errors. Such a module is not checked, so a change that reaches
 // it, or that depends on what it holds, cannot be judged safe.
 
-// anyFailed reports whether an app module of the program failed (names.Program.Failed).
+// anyFailed reports whether an app module of the program (names.Program.Modules, which holds no
+// standard-library module) failed (names.Program.Failed).
 func (c *Checker) anyFailed() bool {
 	for name, failed := range c.prog.Failed {
-		if failed && c.prog.Std[name] == nil {
+		if failed && c.prog.Modules[name] != nil {
 			return true
 		}
 	}

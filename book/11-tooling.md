@@ -3718,14 +3718,20 @@ could break a file that was correct: a reference renamed to `Todos.Add.post`
 while `Todos`, unchecked, still declares `Add.update`. So while any module has
 errors, fmt holds back the handler renames that reach other files (a
 reference to another module's handler, a declaration that a module with
-errors imports) and the `requires` clauses whose need comes through another
-module, and says so once on stderr, naming the module: ``alder fmt: `Todos`
-has errors, so its migrations were not checked and the handler renames and
-`requires` clauses that reach other files (W0013, W0014) were held back; fix
-it and run again``. A rename that stays in one file is still applied. When
-the only errors are ones fmt fixes itself (an import qualifier), the line
-says to run `alder fmt` again instead, and the second run does the rest. The
-editor's format command follows the same rule, without the line.
+errors imports) and two kinds of `requires` clause: one whose need comes
+through another module, and every clause in a module that imports a module
+with errors, directly or through others (what it needs through that module
+is not known yet). It says so once on stderr, naming the module: ``alder fmt:
+`Todos` has errors, so its migrations were not checked and the handler
+renames and `requires` clauses that reach other files (W0013, W0014) were
+held back; fix it and run again``. When nothing was held back, the line says
+only ``alder fmt: `Todos` has errors, so its migrations (W0013, W0014) were
+not checked; fix it and run again``. A rename that stays in one file is still
+applied. When the only errors are ones fmt fixes itself (an import
+qualifier) and that held something back, the line says to run `alder fmt`
+again instead, and the second run does the rest; when it held nothing back,
+there is no line. The editor's format command follows the same rule, without
+the line.
 
 `--stdin` and a file outside an app project only format, and `--check` lists a
 file that would be migrated as one that would be reformatted.

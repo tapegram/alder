@@ -521,37 +521,48 @@ func TestMigrate_RequiresClause(t *testing.T) {
 // import is fixed one run renames everything and a second changes nothing.
 func TestMigrate_HandlerRenameHeldWhileModuleFails(t *testing.T) {
 	t.Parallel()
-	dir, f := fmtHandlerProject(t)
-	good, _ := os.ReadFile(f["todos"])
-	bad := strings.Replace(string(good), "= Task.succeed Response.refresh\n", "= Task.succeed (Missing.thing Response.refresh)\n", 1)
-	if bad == string(good) {
-		t.Fatal("fixture changed: no handler body to break")
+	for _, other := range []string{"Checks", "Zed"} { // before Todos, after it
+		dir, f := fmtHandlerProject(t)
+		ref := f["checks"]
+		if other != "Checks" {
+			b, _ := os.ReadFile(ref)
+			if err := os.Remove(ref); err != nil {
+				t.Fatal(err)
+			}
+			ref = fmtWrite(t, dir, "app/"+other+".alder", strings.Replace(string(b), "module Checks", "module "+other, 1))
+		}
+		good, _ := os.ReadFile(f["todos"])
+		bad := strings.Replace(string(good), "= Task.succeed Response.refresh\n", "= Task.succeed (Missing.thing Response.refresh)\n", 1)
+		if bad == string(good) {
+			t.Fatal("fixture changed: no handler body to break")
+		}
+		fmtWrite(t, dir, "app/Todos.alder", bad)
+		before, _ := os.ReadFile(ref)
+		code, out, errOut := fmtRun(dir)
+		want := "alder fmt: `Todos` has errors, so its migrations were not checked and the handler renames and `requires` clauses that reach other files (W0013, W0014) were held back; fix it and run again\n"
+		if code != 0 || out != "" || errOut != want {
+			t.Fatalf("%s: code %d out %q err %q, want err %q", other, code, out, errOut, want)
+		}
+		if got, _ := os.ReadFile(ref); string(got) != string(before) {
+			t.Fatalf("%s.alder changed while Todos has errors:\n%s", other, got)
+		}
+		if got, _ := os.ReadFile(f["todos"]); string(got) != bad {
+			t.Fatalf("Todos.alder changed:\n%s", got)
+		}
+		fmtWrite(t, dir, "app/Todos.alder", string(good))
+		if code, out, errOut := fmtRun(dir); code != 0 || errOut != "" || !strings.Contains(out, "Todos.alder") || !strings.Contains(out, other+".alder") {
+			t.Fatalf("%s: after the fix: code %d out %q err %q", other, code, out, errOut)
+		}
+		if code, out, errOut := fmtRun(dir); code != 0 || out != "" || errOut != "" {
+			t.Fatalf("%s: second run: code %d out %q err %q", other, code, out, errOut)
+		}
+		fmtCheckClean(t, dir)
 	}
-	fmtWrite(t, dir, "app/Todos.alder", bad)
-	checks, _ := os.ReadFile(f["checks"])
-	code, out, errOut := fmtRun(dir)
-	want := "alder fmt: `Todos` has errors, so its migrations were not checked and the handler renames and `requires` clauses that reach other files (W0013, W0014) were held back; fix it and run again\n"
-	if code != 0 || out != "" || errOut != want {
-		t.Fatalf("code %d out %q err %q, want err %q", code, out, errOut, want)
-	}
-	if got, _ := os.ReadFile(f["checks"]); string(got) != string(checks) {
-		t.Fatalf("Checks.alder changed while Todos has errors:\n%s", got)
-	}
-	if got, _ := os.ReadFile(f["todos"]); string(got) != bad {
-		t.Fatalf("Todos.alder changed:\n%s", got)
-	}
-	fmtWrite(t, dir, "app/Todos.alder", string(good))
-	if code, out, errOut := fmtRun(dir); code != 0 || errOut != "" || !strings.Contains(out, "Todos.alder") || !strings.Contains(out, "Checks.alder") {
-		t.Fatalf("after the fix: code %d out %q err %q", code, out, errOut)
-	}
-	if code, out, errOut := fmtRun(dir); code != 0 || out != "" || errOut != "" {
-		t.Fatalf("second run: code %d out %q err %q", code, out, errOut)
-	}
-	fmtCheckClean(t, dir)
 }
 
 // #327: a rename that stays in one file is still applied while an unrelated module (one that
-// does not import the route's module) has errors; the run says that module's migrations wait.
+// does not import the route's module) has errors; the run says that module's migrations were not
+// checked, and claims nothing held back.
 func TestMigrate_SameFileRenameAppliesWhileOtherModuleFails(t *testing.T) {
 	t.Parallel()
 	dir, f := fmtHandlerProject(t)
@@ -560,7 +571,7 @@ func TestMigrate_SameFileRenameAppliesWhileOtherModuleFails(t *testing.T) {
 	}
 	fmtWrite(t, dir, "app/Broken.alder", "module Broken\n\nx : Int\nx = nope\n")
 	code, out, errOut := fmtRun(dir)
-	want := "alder fmt: `Broken` has errors, so its migrations were not checked and the handler renames and `requires` clauses that reach other files (W0013, W0014) were held back; fix it and run again\n"
+	want := "alder fmt: `Broken` has errors, so its migrations (W0013, W0014) were not checked; fix it and run again\n"
 	if code != 0 || out != f["todos"]+"\n" || errOut != want {
 		t.Fatalf("code %d out %q err %q, want err %q", code, out, errOut, want)
 	}
@@ -595,29 +606,55 @@ func TestMigrate_RequiresClauseHeldWhileImportFails(t *testing.T) {
 }
 
 // #327: when the route's module has only errors `alder fmt` fixes itself (an import qualifier),
-// the first run fixes them and holds the rename that reaches Checks, saying to run again; the
-// second run renames everything.
+// the first run fixes them and holds the rename that reaches the other file, saying to run
+// again; the second run renames everything. In both file orders: when Todos is formatted first,
+// the reload after its write has no error left, and the reference still waits for the next run.
 func TestMigrate_HandlerRenameHeldUntilImportsMigrated(t *testing.T) {
 	t.Parallel()
-	dir, f := fmtHandlerProject(t)
-	fmtWrite(t, dir, "app/Table/Todo.alder", "module Table.Todo\n\nfind : Int -> Int\nfind n = n\n")
-	good, _ := os.ReadFile(f["todos"])
-	src := strings.Replace(string(good), "module Todos\n", "module Todos\n\nimport Table.Todo\n\nfirst : Int\nfirst = Table.Todo.find 1\n", 1)
-	fmtWrite(t, dir, "app/Todos.alder", src)
-	checks, _ := os.ReadFile(f["checks"])
-	code, out, errOut := fmtRun(dir)
-	want := "alder fmt: `Todos` has errors that `alder fmt` fixes, so the handler renames and `requires` clauses that reach other files (W0013, W0014) were held back; run `alder fmt` again\n"
-	if code != 0 || out != f["todos"]+"\n" || errOut != want {
-		t.Fatalf("code %d out %q err %q, want err %q", code, out, errOut, want)
+	for _, other := range []string{"Checks", "Zed"} { // before Todos, after it
+		dir, f := fmtHandlerProject(t)
+		ref := f["checks"]
+		if other != "Checks" {
+			b, _ := os.ReadFile(ref)
+			if err := os.Remove(ref); err != nil {
+				t.Fatal(err)
+			}
+			ref = fmtWrite(t, dir, "app/"+other+".alder", strings.Replace(string(b), "module Checks", "module "+other, 1))
+		}
+		fmtWrite(t, dir, "app/Table/Todo.alder", "module Table.Todo\n\nfind : Int -> Int\nfind n = n\n")
+		good, _ := os.ReadFile(f["todos"])
+		src := strings.Replace(string(good), "module Todos\n", "module Todos\n\nimport Table.Todo\n\nfirst : Int\nfirst = Table.Todo.find 1\n", 1)
+		fmtWrite(t, dir, "app/Todos.alder", src)
+		before, _ := os.ReadFile(ref)
+		code, out, errOut := fmtRun(dir)
+		want := "alder fmt: `Todos` has errors that `alder fmt` fixes, so the handler renames and `requires` clauses that reach other files (W0013, W0014) were held back; run `alder fmt` again\n"
+		if code != 0 || out != f["todos"]+"\n" || errOut != want {
+			t.Fatalf("%s: code %d out %q err %q, want err %q", other, code, out, errOut, want)
+		}
+		if got, _ := os.ReadFile(ref); string(got) != string(before) {
+			t.Fatalf("%s.alder changed on the first run:\n%s", other, got)
+		}
+		fmtCheckCleanBut(t, dir, "W0013")
+		if code, out, errOut := fmtRun(dir); code != 0 || errOut != "" || !strings.Contains(out, "Todos.alder") || !strings.Contains(out, other+".alder") {
+			t.Fatalf("%s: second run: code %d out %q err %q", other, code, out, errOut)
+		}
+		if code, out, errOut := fmtRun(dir); code != 0 || out != "" || errOut != "" {
+			t.Fatalf("%s: third run: code %d out %q err %q", other, code, out, errOut)
+		}
+		fmtCheckClean(t, dir)
 	}
-	if got, _ := os.ReadFile(f["checks"]); string(got) != string(checks) {
-		t.Fatalf("Checks.alder changed on the first run:\n%s", got)
+}
+
+// fmtCheckCleanBut fails unless the app at dir checks with no diagnostic other than code's.
+func fmtCheckCleanBut(t *testing.T, dir, code string) {
+	t.Helper()
+	_, _, bag, ioErrs := buildkit.LoadChecked(dir, nil)
+	if len(ioErrs) > 0 {
+		t.Fatal(ioErrs)
 	}
-	if code, out, errOut := fmtRun(dir); code != 0 || errOut != "" || !strings.Contains(out, "Todos.alder") || !strings.Contains(out, "Checks.alder") {
-		t.Fatalf("second run: code %d out %q err %q", code, out, errOut)
+	for _, d := range bag.Items {
+		if d.Code != code {
+			t.Errorf("after the first run: %s %s:%d:%d %s", d.Code, d.Span.File, d.Span.Start.Line, d.Span.Start.Col, d.Message)
+		}
 	}
-	if code, out, errOut := fmtRun(dir); code != 0 || out != "" || errOut != "" {
-		t.Fatalf("third run: code %d out %q err %q", code, out, errOut)
-	}
-	fmtCheckClean(t, dir)
 }
