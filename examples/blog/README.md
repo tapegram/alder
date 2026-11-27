@@ -41,7 +41,7 @@ The example's login is the development stub, which refuses every password outsid
 
 ## Mutation score
 
-`alder test --mutate examples/blog` (book 10, "Mutation testing"): 364 mutants, 227 tests, 354
+`alder test --mutate examples/blog` (book 10, "Mutation testing"): 364 mutants, 228 tests, 354
 killed, 10 survived (score 0.97). `TestExample_Blog` fails if the score drops below 0.97, the
 exact 0.972 rounded down, or the number of mutants is not 364.
 

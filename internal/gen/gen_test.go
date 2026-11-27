@@ -4406,6 +4406,7 @@ import Person
 
 route Home = GET  "/home"     { }
 route Add  = POST "/home/add" { } form NewPerson
+route Who  = GET  "/who/{email}" { email: Text.Email }
 
 form NewPerson = { email: Text.Email, alt: Maybe Text.Email }
 
@@ -4415,6 +4416,12 @@ Home.load params session = Db.from Person |> Db.all
 Home.view : List Person.Person -> Session -> Html
 Home.view people session =
   <ul>{for p in people -> <li>{p.email}|{for a in Maybe.toList p.alt -> <i>{a}</i>}</li>}</ul>
+
+Who.load : Who.Params -> Session -> Query Text.Email
+Who.load params session = Query.succeed params.email
+
+Who.view : Text.Email -> Session -> Html
+Who.view email session = <p>who:{email}</p>
 
 Add.update : Add.Params -> Session -> Task Response
 Add.update p session = {
@@ -4505,6 +4512,12 @@ func TestEmailFold(t *testing.T) {
 	}
 	if w := post(url.Values{"email": {"Ada@Example.com"}, "alt": {"\u00c9@X.com"}}); w.Code >= 400 {
 		t.Fatalf("POST: %d %s", w.Code, w.Body.String())
+	}
+	// a route parameter of type Text.Email is folded too
+	wr := httptest.NewRecorder()
+	h.ServeHTTP(wr, httptest.NewRequest("GET", "/who/Ada@X.com", nil))
+	if body := wr.Body.String(); wr.Code != 200 || !strings.Contains(body, "<p>who:ada@x.com</p>") {
+		t.Errorf("GET /who/Ada@X.com: %d %s", wr.Code, body)
 	}
 	post(url.Values{"email": {"Not An Email"}}) // refused: no row (below)
 	w := httptest.NewRecorder()
