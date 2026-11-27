@@ -101,3 +101,18 @@ test "logging in through the form" = {
       == { answer: Redirected (Home.Home {}), user: Just me }
   )
 }
+
+test "an email typed in capitals logs in" = {
+  let _ <- Test.fake Password
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: Text.Secret "passwordhash-1",
+  }
+  let _ <- Test.get (Login {})
+  let r <- Test.submitRaw SignIn [
+    { name: "email", value: "ME@Example.com" },
+    { name: "password", value: "secret" },
+  ]
+  Task.succeed ({ user: r.session.user } == { user: Just me })
+}

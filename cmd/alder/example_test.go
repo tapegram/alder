@@ -183,7 +183,7 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Admin.Users.Index "filtering by role lists the rows with that value"`,
 		`ok   Admin.Users.Edit "an Admin cannot change their own role"`,
 		`ok   Admin.Users.Edit "an Admin demotes another Admin"`,
-		"227 passed, 0 failed\n",
+		"228 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/blog lacks %q:\n%s", want, out)

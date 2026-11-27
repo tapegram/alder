@@ -1676,9 +1676,12 @@ inputs would:
 | a union without payloads | the constructor's name: `Active` |
 | `Maybe a` | blank for `Nothing` (an empty input); `a`'s text for `Just` |
 
-Decoding it gives back `f`, except that a `Maybe Text` that is
+Decoding it gives back `f`, with two exceptions. A `Maybe Text` that is
 `Just ""` is sent blank and decodes as `Nothing`: neither a test nor a
-user can send `Just ""`.
+user can send `Just ""`. And an email comes back lower-cased, as every
+`Text.Email` is (chapter 4, "Refinements"); one built with `Text.Email` already
+is, so the exception shows only when the text is sent with `Test.submitRaw`
+(`"Ada@Example.com"` decodes as `ada@example.com`).
 
 The form must be on the page the browser holds, and the route the test
 writes must be the route that form posts to, parameters included. The

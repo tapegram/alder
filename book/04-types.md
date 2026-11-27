@@ -211,6 +211,19 @@ Int.NonNegative   -- >= 0
 
 These are ordinary brands of `Text` and `Int` and widen the same way.
 
+`Text.Email` is the one brand that changes the value it is given: it holds
+its address in lower case, the whole of it. `Ada@Example.com` and
+`ada@example.com` are one mailbox to every mail server, so they are one
+value to Alder: `Text.Email "Ada@Example.com" == Text.Email "ada@example.com"`,
+and `==`, a `Dict` key, `.eq` and `@unique` all agree that two sign-ups
+differing only in case are the same address. The fold happens wherever an
+email is made: decoded from a form or a route (before the check), applied
+as a brand (a literal is folded when the program is compiled), read from a
+database column, drawn by a property test, and given by `Text.toEmail`
+(chapter 9). It is `Text.toLower`'s fold, so `É` becomes `é`. What is lost
+is the capitals the person typed: an app that wants to show them keeps a
+second `Text` column.
+
 A `Text.Secret` gets a little more: a form never fills one back in, the dev
 panel and its curl line show `••••` for a route's form fields and path
 parameters of this type, and a session field may not be one (E0048: the

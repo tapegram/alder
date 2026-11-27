@@ -4590,7 +4590,7 @@ EOF
 edited app/Auth/Login.alder
 --- a/app/Auth/Login.alder
 +++ b/app/Auth/Login.alder
-@@ -97,6 +97,7 @@
+@@ -97,7 +97,8 @@
    let _ <- Test.get (Login {})
    let r <- Test.submit SignIn { email: Text.Email "me@example.com", password: Text.Secret "secret" }
    Task.succeed (
@@ -4599,6 +4599,7 @@ edited app/Auth/Login.alder
 +      == { answer: Redirected (Notes.Index.Index {}), user: Just me }
    )
  }
+ 
 ```
 
 A form goes in the route's `view`, so a `view` that is still a hole is

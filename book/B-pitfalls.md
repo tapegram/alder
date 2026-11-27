@@ -139,3 +139,11 @@ unless the item says what happens instead.
     needs in its signature
     (`current : ProjectId -> Query Project requires org`), and have each
     route call it (chapter 6, "Where they may be used").
+
+24. Comparing or storing an email as `Text`, or keeping the capitals a person
+    typed in a `Text.Email`. A `Text.Email` is lower-case wherever one is
+    made, so `Text.Email "Ada@X.com"` is `ada@x.com` and the capitals are
+    gone. Keep the address as a `Text.Email` for `==`, `.eq` and `@unique`,
+    and keep a second `Text` column for what to show. To make one from a
+    `Text`, use `Text.toEmail` (a `Maybe`); `Text.Email "…"` on a `Text`
+    that is not an email does not check it (chapter 4, "Refinements").

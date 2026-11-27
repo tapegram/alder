@@ -19,7 +19,7 @@ edited app/Auth/Login.alder
  test "an unknown email is rejected" = {
    let _ <- Test.fake Password
    let _ <- Test.get (Login {})
-@@ -97,6 +97,7 @@
+@@ -97,7 +97,8 @@
    let _ <- Test.get (Login {})
    let r <- Test.submit SignIn { email: Text.Email "me@example.com", password: Text.Secret "secret" }
    Task.succeed (
@@ -28,3 +28,4 @@ edited app/Auth/Login.alder
 +      == { answer: Redirected (Notes.Notes {}), user: Just me }
    )
  }
+ 

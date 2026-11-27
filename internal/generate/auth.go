@@ -221,8 +221,6 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 		Comment: []string{"Logging in through the form, with the fake: an unknown email is rejected with the form's",
 			"message, and a known one puts the user" + role1 + " in the session and goes to " + goesTo(d.Home) + "."},
 		Result: "{ answer: r.answer, user: r.session.user } == { answer: FormRejected [{ field: \"\", message: \"Email or password is incorrect.\" }], user: Nothing }"})
-	tb = newTestBuilder(probe, module, imports)
-	tb.let("let _ <- Test.fake Password")
 	over := map[string]string{"email": "Text.Email \"me@example.com\""}
 	lhs, rhs := "{ answer: r.answer, user: r.session.user", "{ answer: Redirected ("+d.Home+"), user: Just me"
 	if role != nil { // a role other than the default, so a login that drops it fails
@@ -230,10 +228,23 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 		over[roleColumn] = r
 		lhs, rhs = lhs+", role: r.session.role", rhs+", role: "+r
 	}
-	me := tb.insertRow(users, "me", over, true)
-	tb.let("let _ <- Test.get (Login {})")
-	tb.let("let r <- Test.submit SignIn { email: Text.Email \"me@example.com\", password: Text.Secret \"secret\" }")
-	d.Tests = append(d.Tests, TestData{Name: quote("logging in through the form"), Lines: tb.lines, Result: strings.Replace(lhs+" } == "+rhs+" }", "Just me", "Just "+me, 1)})
+	logIn := func(name, submit, lhs, rhs string) {
+		tb = newTestBuilder(probe, module, imports)
+		tb.let("let _ <- Test.fake Password")
+		me := tb.insertRow(users, "me", over, true)
+		tb.let("let _ <- Test.get (Login {})")
+		tb.let("%s", submit)
+		d.Tests = append(d.Tests, TestData{Name: quote(name), Lines: tb.lines, Result: strings.Replace(lhs+" } == "+rhs+" }", "Just me", "Just "+me, 1)})
+	}
+	logIn("logging in through the form", "let r <- Test.submit SignIn { email: Text.Email \"me@example.com\", password: Text.Secret \"secret\" }", lhs, rhs)
+	// the email typed in capitals: the form folds it to lower case, as the stored one is, so the
+	// user is found. It checks the session only, so it does not repeat the home route (a hole
+	// when there is no page for it yet, which would be a second one to fill).
+	lhs, rhs = "{ user: r.session.user", "{ user: Just me"
+	if role != nil {
+		lhs, rhs = lhs+", role: r.session.role", rhs+", role: "+ctors[len(ctors)-1]
+	}
+	logIn("an email typed in capitals logs in", "let r <- Test.submitRaw SignIn [{ name: \"email\", value: \"ME@Example.com\" }, { name: \"password\", value: \"secret\" }]", lhs, rhs)
 	d.Imports = imports.list()
 	loginBody, err := canonical(probe, FileOf(module), render("auth_login.tmpl", d)) // probe: it knows a user table created here (its name, recordName)
 	if err != nil {

@@ -239,3 +239,29 @@ test "a demoted Admin is refused at once" = {
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end
+
+-- A Text.Email is lower-case, so a second user whose email differs only in case is the same
+-- address, and is refused. Test.submitRaw posts the capitals as typed; the form folds them.
+test "a user whose email differs only in case is refused" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let _ <- Test.get (New {})
+  let r <- Test.submitRaw Create [
+    { name: "email", value: "Email-1@Example.com" },
+    { name: "name", value: "name-2" },
+    { name: "role", value: "Reader" },
+  ]
+  let rows <- Db.from User |> Db.count
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "", message: "A user with this email exists." }],
+        rows: 1,
+      }
+  )
+}

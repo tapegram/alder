@@ -129,6 +129,7 @@ Text.indexes   : Text -> Text -> List Int    -- Text.indexes needle haystack
 Text.toCodePoints : Text -> List Int
 Text.fromCodePoints : List Int -> Text
 Text.hash      : Text -> Int                 -- stable forever, never negative, not cryptographic
+Text.toEmail   : Text -> Maybe Text.Email    -- lower-cased; Nothing unless it passes the email check
 Text.NonEmpty, Text.Email, Text.Url, Text.Secret   -- refinement brands
 ```
 

@@ -298,6 +298,11 @@ fails the task with a message such as `User.email must be unique`, and
 everything the task wrote before is rolled back; check first with a query
 and answer `Response.invalid` if the user should see a message.
 
+A `Text.Email` column is stored lower-case (a `Text.Email` is lower-case
+wherever one is made; chapter 4, "Refinements"), so `@unique` on it refuses
+`Ada@Example.com` when `ada@example.com` is already there, and
+`User.email.eq` finds a user however the address was typed.
+
 > **`Response.invalid` keeps earlier writes.** It is a successful result, so
 > the transaction commits and writes made before it are kept (chapter 6,
 > "`Response`"): decide first, then write.
