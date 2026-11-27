@@ -790,9 +790,12 @@ A toast is a one-line notice shown once, in the next page the browser shows
 - `redirect` takes a GET route (E0045 for any other).
 - `replace` takes views whose roots are elements with an `id` each, not a
   form control, a click button or the page's `<html>`, `<head>` or
-  `<body>` (E0051 where the checker can see the root); `remove` goes on a
-  `replace` only (E0045 after a `redirect`, `refresh` or `invalid`, which
-  send the whole page). Chapter 6, "`Response`", has the rules and why.
+  `<body>`. E0051 refuses the roots the checker can see, except a form
+  control, which the runtime refuses when the answer is sent (nothing is
+  sent, and an error toast says so). `remove` goes on a `replace` (or the
+  deprecated `render`); after a `redirect`, `refresh` or `invalid`, which
+  send the whole page, it is E0045. Chapter 6, "`Response`", has the rules
+  and why.
 - `invalid` is a successful result: its `Task` commits.
 - A `Route` and a `Response` compare with `==`; two routes are equal when
   they lead to the same address.

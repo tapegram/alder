@@ -415,11 +415,14 @@ its place on the page by its `id`, so a root has rules:
   `click`): it is drawn inside a `<form>` of its own, so it is not the
   element with its `id` either. Put it inside an element with the `id`.
 
-The checker refuses a root it can see that breaks a rule (E0051: "the root
-of `countView` is a `<p>` without an `id`"). A root it cannot see, a
-variable or a list built elsewhere, is checked when the answer is sent: a
-replace the runtime cannot send sends nothing at all, logs why and shows an
-error toast, so the page is never left half-changed. `Response.replace []`
+The checker refuses a root it can see that has no `id`, shares one, is a
+`<html>`, `<head>` or `<body>`, or is a click button (E0051: "the root of
+`countView` is a `<p>` without an `id`"). Everything else is checked when
+the answer is sent: a root the checker cannot see (a variable, or a list
+built elsewhere), and a form control, which the checker does not look for
+yet. A replace the runtime cannot send sends nothing at all, logs why and
+shows an error toast, so the page is never left half-changed: a test that
+clicks it fails, which is where you find out. `Response.replace []`
 changes nothing, for a write whose only news is a toast.
 
 **`remove id`** is added to a `replace` with `|>`, and removes the element

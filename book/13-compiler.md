@@ -5285,7 +5285,10 @@ held page's address with the cookie, as a reload, also `quietly`; the page
 that comes back is parsed the same way, and each element the answer replaced
 must equal the element with that `id` there, and no removed id may be in it
 (a `ReplacedError` otherwise, with both markups). An id the fresh page lacks
-is not compared. Here the two are not equal by construction: the handler
+is not compared. An element the fresh page draws as a lazy region (`load=`,
+a placeholder) that differs is compared again with the element its load
+fetches (`lazyURL`, then `loadLazy`, also quietly), since that is what a
+browser would show. Here the two are not equal by construction: the handler
 built its views from its own reads, and the check is what ties them to the
 page's `load`.
 

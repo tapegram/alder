@@ -1922,6 +1922,10 @@ Section 10 shows how each is made.
   page's filter for this reason: without it, the count sent from the
   Completed list would be every open todo, and the page on that filter
   counts none. An id the page loaded again does not have is not compared.
+  A lazy region (an element with `load=`) is drawn by the page as a
+  placeholder that a browser swaps at once for what its `load` fetches, so
+  when the placeholder differs, the browser makes that fetch too and
+  compares the replaced element with what comes back.
   The second load runs in a savepoint that is undone, and is not a step of
   the trace.
 
