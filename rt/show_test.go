@@ -313,3 +313,29 @@ func TestResponse_ReplaceEqual(t *testing.T) {
 		t.Fatal("a replace and a refresh should be unequal")
 	}
 }
+
+// A replace's roots compare and print as they are sent (#329): flattened as web.ReplaceRoots
+// flattens them, so one built from a fragment with whitespace text equals one built from the
+// plain nodes, and both print alike in a failed comparison.
+func TestResponse_ReplaceEqualFlattened(t *testing.T) {
+	p := func(id string) html.Node { return html.El("p", []html.Attr{html.A("id", id)}, html.Text(id)) }
+	wrapped := rt.Replace([]any{html.Nodes(html.Text("\n  "), p("a"), html.None(), html.Nodes(p("b"))), html.Text(" ")})
+	plain := rt.Replace([]any{p("a"), p("b")})
+	if !rt.Eq(wrapped, plain) {
+		t.Errorf("a fragment of the roots should equal the roots: %s vs %s", rt.Show(wrapped), rt.Show(plain))
+	}
+	want := `Response.replace [<p id="a">a</p>, <p id="b">b</p>]`
+	if got := rt.Show(wrapped); got != want {
+		t.Errorf("Show = %s, want %s", got, want)
+	}
+	if rt.Eq(wrapped, rt.Replace([]any{html.Nodes(p("a"), p("b"), p("c"))})) {
+		t.Error("a third root should be unequal")
+	}
+}
+
+// A root that is not a view (only Go code can make one) prints by fmt instead of panicking.
+func TestShow_ReplaceNonNodeRoot(t *testing.T) {
+	if got, want := rt.Show(rt.Replace([]any{42})), "Response.replace [42]"; got != want {
+		t.Errorf("Show = %s, want %s", got, want)
+	}
+}

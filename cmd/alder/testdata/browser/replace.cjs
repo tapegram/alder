@@ -1,9 +1,10 @@
 // replace.cjs BASE: what Datastar v1.0.0 does with a `Response.replace` answer (#309): one
 // `datastar-patch-elements` event with no selector (mode outer) holding several roots, each
 // matched to the page by its id, then `mode remove` events naming ids by datastar.IDSelector. The
-// page at BASE has <p id="count">, a <ul> of <li id="a">, <li id="b">, <li id="c"> and
-// <li id="3">, and a button that GETs BASE/replace, which answers roots for #count, an id the
-// page lacks (#missing) and #a, then removes #c and #3 (an id starting with a digit, escaped).
+// page at BASE has <p id="count">, a <ul> of <li id="a">, <li id="b">, <li id="c">,
+// <li id="3">, <li id="d "> and <li id="d">, and a button that GETs BASE/replace, which answers
+// roots for #count, an id the page lacks (#missing) and #a, then removes #c, #3 (an id starting
+// with a digit, escaped) and "d " (an id ending in a space: `#d\ ` ends its data line, #329).
 // cmd/alder/browser_test.go (TestBrowser_DatastarReplace) runs it and reads the JSON it prints:
 // {"checks": [{"name", "ok", "got"}...], "body": "<the body's innerHTML>"}.
 const { chromium } = require('playwright');
@@ -33,7 +34,9 @@ const check = (name, ok, got) => checks.push({ name, ok: !!ok, got: JSON.stringi
     check('#b is left alone', (await text('#b')) === 'b', await text('#b'));
     check('the removal removes #c', (await page.$('#c')) === null, body);
     check('an id starting with a digit is removed by its escaped selector', (await page.$('[id="3"]')) === null, body);
-    check('the list is what remains, in order', /<ulid="list"><liid="a">A<\/li><liid="b">b<\/li><\/ul>/.test(body), body);
+    check('an id ending in a space is removed by its escaped selector, the line not trimmed', (await page.$('[id="d "]')) === null, body);
+    check('the id without the space is left alone', (await text('[id="d"]')) === 'kept', await text('[id="d"]'));
+    check('the list is what remains, in order', /<ulid="list"><liid="a">A<\/li><liid="b">b<\/li><liid="d">kept<\/li><\/ul>/.test(body), body);
     check('no page errors', errors.length === 0, errors);
   } finally {
     await browser.close();

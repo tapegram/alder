@@ -162,7 +162,7 @@ func (a *ansApp) routes() []Route {
 
 // replaceRoots is the roots a `replace` answers with, by spec (comma-separated, "" none): "row-N"
 // row N, the first one in a fragment with whitespace-only text around it; "count" a <p
-// id="count"> of the rows; "noid" a <p> without an id; "text" text; "body" a <body>.
+// id="count"> of the rows; "digit" a <p id="1st">; "noid" a <p> without an id; "text" text; "body" a <body>.
 func (a *ansApp) replaceRoots(spec string) []any {
 	var roots []any
 	for i, s := range strings.Split(spec, ",") {
@@ -172,6 +172,8 @@ func (a *ansApp) replaceRoots(spec string) []any {
 			continue
 		case s == "count":
 			n = html.El("p", []html.Attr{html.A("id", "count")}, html.Text(strconv.Itoa(len(a.done))+" rows"))
+		case s == "digit":
+			n = html.El("p", []html.Attr{html.A("id", "1st")}, html.Text("first"))
 		case s == "noid":
 			n = html.El("p", nil, html.Text("no id"))
 		case s == "text":
@@ -887,7 +889,7 @@ func TestAnswer_RedirectExternal(t *testing.T) {
 }
 
 // Options.Answered reports the answer the router delivers: a write's answer that a stale build's
-// reload (staleReload) or a target it cannot deliver (targetProblem) replaces is not reported,
+// reload (staleReload) or a target it cannot deliver (checkAnswer) replaces is not reported,
 // so a test never reads `Refreshed` off an answer that was a reload or an error.
 func TestAnswer_AnsweredOnlyWhenDelivered(t *testing.T) {
 	a := newAnsApp(3)
@@ -1085,6 +1087,29 @@ func TestReplaceRoots(t *testing.T) {
 	} {
 		if _, err := ReplaceRoots([]any{c.root}); err == nil || !strings.Contains(err.Error(), c.why) {
 			t.Errorf("%s: %v", html.Render(c.root), err)
+		}
+	}
+}
+
+// A root that is not a view (only Go code can make one) is refused with a reason, not a panic
+// (#329).
+func TestReplaceRoots_NotAView(t *testing.T) {
+	_, err := ReplaceRoots([]any{html.El("p", []html.Attr{html.A("id", "a")}), "x"})
+	if err == nil || err.Error() != "Response.replace: root 2 is a Go string, not a view" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// An empty removal id on a replace or a render makes the answer one that cannot be delivered
+// (ruling R11) without JavaScript too, though a 303 would never send the removal: the 500 page,
+// as for any answer the runtime cannot send (#329, kept by decision).
+func TestAnswerPlain_EmptyRemoval(t *testing.T) {
+	for _, target := range []string{"/w/replace?roots=count&remove=", "/w/render?id=1&remove="} {
+		a := newAnsApp(3)
+		h := NewRouter(a.routes(), testOpts(func(o *Options) { o.Log = func(string, string) {} }))
+		w := plainPost(h, target, "http://example.com/", nil)
+		if w.Code != http.StatusInternalServerError || w.Header().Get("Location") != "" {
+			t.Errorf("%s: %d %q", target, w.Code, w.Header().Get("Location"))
 		}
 	}
 }

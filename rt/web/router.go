@@ -1186,8 +1186,10 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, rq *Request
 }
 
 func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
+	var roots []html.Node // a replace's roots as sent, read once (checkAnswer)
 	if resp.Answer != nil {
-		if why := targetProblem(*resp.Answer); why != "" {
+		var why string
+		if roots, why = checkAnswer(*resp.Answer); why != "" {
 			rt.badTarget(w, r, st, rq, resp, why)
 			return
 		}
@@ -1199,7 +1201,7 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 		if rt.opts.Answered != nil { // the answer delivered: not one a reload or an error replaced
 			rt.opts.Answered(rq, *resp.Answer)
 		}
-		rt.answer(w, r, st, rq, resp)
+		rt.answer(w, r, st, rq, resp, roots)
 		return
 	}
 	if resp.Raw != nil {

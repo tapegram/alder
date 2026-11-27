@@ -5,6 +5,7 @@
 package html
 
 import (
+	"fmt"
 	"html"
 	"maps"
 	"net/url"
@@ -256,9 +257,27 @@ func (n Node) AlderEqual(other any) bool { return Render(n) == Render(other.(Nod
 // AlderEqual are one key.
 func (n Node) AlderKey() string { return Render(n) }
 
-// init gives rt the markup of a replace's roots (rt.ShowRoot), which rt cannot import this
-// package to render: Response's equality and printing compare and show them as Render does.
-func init() { rt.ShowRoot = func(root any) string { return Render(root.(Node)) } }
+// init gives rt the markup of a replace's roots (rt.ShowRoots), which rt cannot import this
+// package to render: Response's equality and printing compare and show them as they are sent.
+func init() { rt.ShowRoots = showRoots }
+
+// showRoots is the markup of each of a replace's roots as it is sent: the Nodes flattened by
+// Roots and rendered, in order; a root that is not a Node (only Go code can make one, and
+// rt/web refuses it) in fmt's form.
+func showRoots(roots []any) []string {
+	var out []string
+	for _, root := range roots {
+		n, ok := root.(Node)
+		if !ok {
+			out = append(out, fmt.Sprint(root))
+			continue
+		}
+		for _, c := range Roots([]Node{n}) {
+			out = append(out, Render(c))
+		}
+	}
+	return out
+}
 
 // RenderWith serialises a node like Render, filling deferred form controls from
 // st (see FormState). st may be nil.

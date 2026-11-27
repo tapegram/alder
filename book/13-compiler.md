@@ -1912,9 +1912,9 @@ This is chapter 6's lifecycle, line by line:
 #### Delivering the answer
 
 The router's `write` sees a `web.Response` with `Answer` set. It checks that
-the target is one it can deliver (`targetProblem`: a `redirect` goes to a
+the target is one it can deliver (`checkAnswer`: a `redirect` goes to a
 GET route, a `render` patches in a named GET route's view, a `replace`'s
-roots pass `ReplaceRoots`), and then
+roots pass `ReplaceRoots`, read once and handed on), and then
 `answer` (`rt/web/answer.go`) delivers the `Response` by its kind:
 
 - The toasts are set first (`setToasts`), to follow the patches.
@@ -2083,8 +2083,9 @@ already built when the `Task` ends. The checker finds no `refresh` or
 `web.AnswerResponse(resp, nil, …)`.
 
 The `rt.Response` holds the roots as `html.Node` values (`Roots`) and the
-removals' ids in order. Before anything is written, `targetProblem` runs
-`ReplaceRoots` over the roots:
+removals' ids in order, each event marked with its kind (a toast or a
+removal). Before anything is written, `checkAnswer` runs `ReplaceRoots`
+over the roots, once, and the roots it returns are the ones sent:
 
 1. It flattens the list as a view's roots are flattened (`html.Roots`:
    fragments opened, whitespace-only text dropped).
@@ -2103,12 +2104,16 @@ rendered roots, with no selector (Datastar puts each root in place of the
 page's element with the same `id`), then one `datastar.RemoveEvent` per
 removal, its selector built by `datastar.IDSelector` (escaped as
 `CSS.escape` would), then the toasts. The dev panel's answer line reads
-`replace (1 element, 1 removed)`. `al-shown` is not touched, as for
-`render`.
+`replace (1 element, 1 removed)`, and its Patches tab names each root and
+removal by `#` and the raw id (`remove #3`, where the event says `#\33 `).
+`al-shown` is not touched, as for `render`.
 
 Without Datastar the views are built and thrown away, and the answer is a
 303 to the page the browser is on (`answerPlain`), as for `render` and
-`refresh`.
+`refresh`. An answer refused above is refused without Datastar too, with
+the 500 page: a `Response.remove ""` fails the request even though the 303
+would never have sent the removal, so the mistake shows the same way in
+both.
 
 In tests the test browser applies the same events to the page it holds
 (`Browser.replace`, `Browser.remove`), refusing an id the page lacks, and

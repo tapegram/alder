@@ -558,34 +558,40 @@ func TestInjectedCSSTokens(t *testing.T) {
 
 // The Patches tab names what a write route's answer caused: an element fetched by `render`
 // (#row-7 (render Row)), the body morphed in by `redirect` (body (redirect Page)), the
-// region selectors of `refresh`, and each root and removal of `replace` (#309), with its answer.
+// region selectors of `refresh`, and each root and removal of `replace` (#309), by `#` and the
+// raw id, not its CSS escape (#329). The Answer tab names the answer.
 func TestDevPanel_PatchLabels(t *testing.T) {
 	t.Setenv("ALDER_DEV", "1")
 	for _, c := range []struct {
 		target string
+		tab    string // "answer" or "patches"
 		want   string
 		not    string
 	}{
-		{"/w/render?id=7", "<li>#row-7 (render Row)</li>", ""},
-		{"/w/redirect?to=/other", "<li>body (redirect Page)</li><li>title</li><li>html</li><li>history /other</li>", ""},
-		{"/w/refresh?id=7", "<li>#row-7</li>", "(refresh"},
-		{"/w/replace?roots=count&remove=row-3", "<li>replace #count</li><li>remove #row-3</li>", ""},
-		{"/w/replace?roots=count&remove=row-3", "<p>200 replace (1 element, 1 removed)</p>", ""},
-		{"/w/render?id=7&remove=row-3", "<li>#row-7 (render Row)</li><li>remove #row-3</li>", ""},
+		{"/w/render?id=7", "patches", "<li>#row-7 (render Row)</li>", ""},
+		{"/w/redirect?to=/other", "patches", "<li>body (redirect Page)</li><li>title</li><li>html</li><li>history /other</li>", ""},
+		{"/w/refresh?id=7", "patches", "<li>#row-7</li>", "(refresh"},
+		{"/w/replace?roots=count&remove=row-3", "patches", "<li>replace #count</li><li>remove #row-3</li>", ""},
+		{"/w/replace?roots=count&remove=row-3", "answer", "<p>200 replace (1 element, 1 removed)</p>", ""},
+		{"/w/render?id=7&remove=row-3", "patches", "<li>#row-7 (render Row)</li><li>remove #row-3</li>", ""},
+		{"/w/replace?roots=digit&remove=3&remove=a.b", "patches", "<li>replace #1st</li><li>remove #3</li><li>remove #a.b</li>", `\`},
 	} {
 		a := newAnsApp(10)
 		h := NewRouter(a.routes(), testOpts(func(o *Options) { o.Dev = true }))
 		body := ansPost(h, c.target, "/", nil).Body.String()
-		i := strings.Index(body, "_alder_tab_answer")
+		i := strings.Index(body, `<section id="_alder_tab_`+c.tab+`"`)
 		if i < 0 {
-			t.Fatalf("%s: no answer tab (`_alder_tab_answer`) in %s", c.target, body)
+			t.Fatalf("%s: no %s tab (`_alder_tab_%s`) in %s", c.target, c.tab, c.tab, body)
 		}
-		patches := body[i:]
-		if !strings.Contains(patches, c.want) {
-			t.Errorf("%s: missing %q in %s", c.target, c.want, patches)
+		tab := body[i:]
+		if j := strings.Index(tab, "</section>"); j >= 0 {
+			tab = tab[:j]
 		}
-		if c.not != "" && strings.Contains(patches, c.not) {
-			t.Errorf("%s: has %q in %s", c.target, c.not, patches)
+		if !strings.Contains(tab, c.want) {
+			t.Errorf("%s: missing %q in %s", c.target, c.want, tab)
+		}
+		if c.not != "" && strings.Contains(tab, c.not) {
+			t.Errorf("%s: has %q in %s", c.target, c.not, tab)
 		}
 	}
 }

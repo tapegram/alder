@@ -114,15 +114,33 @@ func TestResponse_ReplaceAndRemove(t *testing.T) {
 	if len(base.Events) != 0 {
 		t.Fatalf("WithRemove changed its argument: %+v", base.Events)
 	}
-	if len(r.Events) != 3 || r.Events[0].Remove != "a" || r.Events[1].Toast == nil || r.Events[2].Remove != "b" {
+	if len(r.Events) != 3 || r.Events[0] != (ResponseEvent{Kind: EventRemove, ID: "a"}) ||
+		r.Events[1] != (ResponseEvent{Kind: EventToast, Toast: Toast{Kind: NoticeInfo, Text: "x"}}) || r.Events[2] != (ResponseEvent{Kind: EventRemove, ID: "b"}) {
 		t.Fatalf("events = %+v", r.Events)
 	}
 	one := WithRemove("a", base)
 	x, y := WithRemove("x", one), WithRemove("y", one)
-	if x.Events[1].Remove != "x" || y.Events[1].Remove != "y" {
+	if x.Events[1].ID != "x" || y.Events[1].ID != "y" {
 		t.Fatalf("removals alias: %+v %+v", x.Events, y.Events)
 	}
 	if Eq(WithRemove("a", Render(Route{Path: "/"})), Render(Route{Path: "/"})) {
 		t.Fatal("a removal should make a response unequal")
+	}
+}
+
+// Each event names its kind (#329): an event of no kind a builder makes (the zero ResponseEvent,
+// or a kind added later) is neither a toast nor a removal. It prints as unknown, is in no
+// Toasts, and compares unequal to a removal of the empty id.
+func TestResponse_UnknownEvent(t *testing.T) {
+	r := Refresh()
+	r.Events = []ResponseEvent{{}, {Kind: EventKind(99), ID: "x"}}
+	if got, want := Show(r), "Response.refresh |> <unknown event 0> |> <unknown event 99>"; got != want {
+		t.Errorf("Show = %s, want %s", got, want)
+	}
+	if len(r.Toasts()) != 0 {
+		t.Errorf("Toasts = %+v", r.Toasts())
+	}
+	if Eq(Response{Kind: RespRefresh, Events: []ResponseEvent{{}}}, WithRemove("", Refresh())) {
+		t.Error("an unknown event should be unequal to a removal of the empty id")
 	}
 }

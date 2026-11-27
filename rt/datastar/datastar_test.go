@@ -346,6 +346,15 @@ func TestRemoveEvent(t *testing.T) {
 	if got, want := string(RemoveEvent("3")), "event: datastar-patch-elements\ndata: selector #\\33 \ndata: mode remove\n\n"; got != want {
 		t.Fatalf("RemoveEvent(3) = %q, want %q", got, want)
 	}
+	// An id with a space at an end keeps it escaped on the data line: the vendored client takes
+	// the line after "data: " as it is and the value after the first space (no trim), so
+	// `#a\ ` reaches querySelectorAll whole (#329; cmd/alder TestBrowser_DatastarReplace).
+	if got, want := string(RemoveEvent("a ")), "event: datastar-patch-elements\ndata: selector #a\\ \ndata: mode remove\n\n"; got != want {
+		t.Fatalf("RemoveEvent(\"a \") = %q, want %q", got, want)
+	}
+	if got, want := string(RemoveEvent(" a")), "event: datastar-patch-elements\ndata: selector #\\ a\ndata: mode remove\n\n"; got != want {
+		t.Fatalf("RemoveEvent(\" a\") = %q, want %q", got, want)
+	}
 }
 
 // IDSelector escapes an id as CSS.escape does (CSSOM, serialize an identifier).

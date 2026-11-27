@@ -58,8 +58,9 @@ func InvalidResponse(st *html.FormState, session any) Response {
 	return Response{Status: a.Code(), Answer: &a, State: st, Session: session}
 }
 
-// answer writes resp, a write route's answer (resp.Answer set), by its kind.
-func (rt *router) answer(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
+// answer writes resp, a write route's answer (resp.Answer set), by its kind; roots are a
+// replace's roots as checkAnswer read them.
+func (rt *router) answer(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response, roots []html.Node) {
 	a := resp.Answer
 	rt.setToasts(w, rq, a.Toasts())
 	rt.ignoredRemovals(w, r, *a)
@@ -79,7 +80,7 @@ func (rt *router) answer(w http.ResponseWriter, r *http.Request, st hop, rq *Req
 	case rtpkg.RespRender:
 		rt.answerRender(w, r, st, rq, resp)
 	case rtpkg.RespReplace:
-		rt.answerReplace(w, r, *a)
+		rt.answerReplace(w, r, *a, roots)
 	default:
 		rt.answerShown(w, r, st, rq, resp)
 	}
@@ -88,12 +89,17 @@ func (rt *router) answer(w http.ResponseWriter, r *http.Request, st hop, rq *Req
 // ReplaceRoots is the roots of `Response.replace roots` as they are sent (#309): the list
 // flattened as html.RootID flattens a view (html.Roots: fragments opened, whitespace-only text
 // dropped), each an element with a non-empty id (html.RootOf), no two with one id. The error says
-// which root cannot be sent and why; the answer then sends nothing (ruling R11). The test
-// browser (rt/testing) checks a replace with it too.
+// which root cannot be sent and why (a root that is not an html.Node, which only Go code can
+// make, included); the answer then sends nothing (ruling R11). The test browser (rt/testing)
+// checks a replace with it too.
 func ReplaceRoots(roots []any) ([]html.Node, error) {
 	ns := make([]html.Node, len(roots))
 	for i, root := range roots {
-		ns[i] = root.(html.Node)
+		n, ok := root.(html.Node)
+		if !ok {
+			return nil, fmt.Errorf("Response.replace: root %d is a Go %T, not a view", i+1, root)
+		}
+		ns[i] = n
 	}
 	out := html.Roots(ns)
 	seen := make(map[string]bool, len(out))
@@ -114,8 +120,8 @@ func ReplaceRoots(roots []any) ([]html.Node, error) {
 func removals(a rtpkg.Response) []string {
 	var ids []string
 	for _, e := range a.Events {
-		if e.Toast == nil {
-			ids = append(ids, e.Remove)
+		if e.Kind == rtpkg.EventRemove {
+			ids = append(ids, e.ID)
 		}
 	}
 	return ids
@@ -162,11 +168,12 @@ func (rt *router) ignoredRemovals(w http.ResponseWriter, r *http.Request, a rtpk
 		strings.Join(quoted, ", "), kindName(a.Kind))))
 }
 
-// answerReplace answers `replace roots` under Datastar (the roots checked by ReplaceRoots in
-// write): one ReplaceEvent of every root (none when there are none), one RemoveEvent per removal
-// in order, then the toasts and the panel. Status 200; the Alder-Shown hash is not updated.
-func (rt *router) answerReplace(w http.ResponseWriter, r *http.Request, a rtpkg.Response) {
-	roots, _ := ReplaceRoots(a.Roots)
+// answerReplace answers `replace roots` under Datastar, roots the answer's roots as sent (read
+// once, by checkAnswer in write): one ReplaceEvent of every root (none when there are none), one
+// RemoveEvent per removal in order, then the toasts and the panel. Status 200; the Alder-Shown
+// hash is not updated. The Patches tab names each root and removal by `#` and its raw id, as the
+// test browser does; only the event carries the id CSS-escaped.
+func (rt *router) answerReplace(w http.ResponseWriter, r *http.Request, a rtpkg.Response, roots []html.Node) {
 	ids := removals(a)
 	tw, _ := w.(*tracker)
 	if tw != nil {
@@ -186,7 +193,7 @@ func (rt *router) answerReplace(w http.ResponseWriter, r *http.Request, a rtpkg.
 		if tw != nil {
 			for _, n := range roots {
 				id, _ := html.RootOf(n)
-				tw.patches = append(tw.patches, "replace "+datastar.IDSelector(id))
+				tw.patches = append(tw.patches, "replace #"+id)
 			}
 		}
 	}
@@ -203,7 +210,8 @@ func (rt *router) answerReplace(w http.ResponseWriter, r *http.Request, a rtpkg.
 	rt.patchPanel(w, http.StatusOK)
 }
 
-// writeRemovals writes one RemoveEvent per id, in order, each named in the Patches tab.
+// writeRemovals writes one RemoveEvent per id, in order, each named in the Patches tab by `#` and
+// its raw id.
 func (rt *router) writeRemovals(w http.ResponseWriter, ids []string) error {
 	tw, _ := w.(*tracker)
 	for _, id := range ids {
@@ -211,40 +219,46 @@ func (rt *router) writeRemovals(w http.ResponseWriter, ids []string) error {
 			return err
 		}
 		if tw != nil {
-			tw.patches = append(tw.patches, "remove "+datastar.IDSelector(id))
+			tw.patches = append(tw.patches, "remove #"+id)
 		}
 	}
 	return nil
 }
 
-// targetProblem is why a, a write's answer, cannot be delivered, "" when it can (#160 ruling
-// R10; for replace and remove, #309 ruling R11: ReplaceRoots, removalProblem). The checker refuses a write route written in place (E0045), but not one held in a
-// variable or made by a helper:
+// checkAnswer reads a, a write's answer, once before it is delivered: roots are a replace's
+// roots as sent (ReplaceRoots; nil for any other kind), and why is why a cannot be delivered, ""
+// when it can (#160 ruling R10; for replace and remove, #309 ruling R11: ReplaceRoots,
+// removalProblem). The checker refuses a write route written in place (E0045), but not one held
+// in a variable or made by a helper:
 //   - `redirect` goes to a GET: a named GET route or a Url.external URL (no name, Method "GET":
 //     isExternal, a full navigation); a route of another method is refused (an empty Method
 //     is a GET);
 //   - `render` patches in a named GET route's view only: an external URL has no element to
 //     patch, and is refused, as a route of another method is.
-func targetProblem(a rtpkg.Response) string {
+func checkAnswer(a rtpkg.Response) (roots []html.Node, why string) {
 	t := a.Target
 	switch a.Kind {
 	case rtpkg.RespRedirect:
 		if t.Method != "" && t.Method != http.MethodGet {
-			return targetName(t) + " is a " + t.Method + " route, not a GET route of this app"
+			return nil, targetName(t) + " is a " + t.Method + " route, not a GET route of this app"
 		}
 	case rtpkg.RespRender:
 		switch {
 		case t.Name == "":
-			return "a Route with no name (Url.external makes one) is not a GET route of this app"
+			return nil, "a Route with no name (Url.external makes one) is not a GET route of this app"
 		case t.Method != "" && t.Method != http.MethodGet:
-			return t.Name + " is a " + t.Method + " route, not a GET route of this app"
+			return nil, t.Name + " is a " + t.Method + " route, not a GET route of this app"
 		}
 	case rtpkg.RespReplace:
-		if _, err := ReplaceRoots(a.Roots); err != nil {
-			return err.Error()
+		var err error
+		if roots, err = ReplaceRoots(a.Roots); err != nil {
+			return nil, err.Error()
 		}
 	}
-	return removalProblem(a)
+	if why := removalProblem(a); why != "" {
+		return nil, why
+	}
+	return roots, ""
 }
 
 // viaName is how the Patches tab names the answer `kind` to target: "render Row", the route's
@@ -268,7 +282,7 @@ func targetName(r rtpkg.Route) string {
 // this app.
 func isExternal(r rtpkg.Route) bool { return r.Name == "" && r.Method == http.MethodGet }
 
-// badTarget answers a write whose answer's target is not a GET route (targetProblem: why): never
+// badTarget answers a write whose answer's target is not a GET route (checkAnswer: why): never
 // followed or patched in. It is logged and answered as an error: without JavaScript the 500 page
 // (App.error); under Datastar no patch, the error toast and Alder-Status 500, as a `render`
 // whose target failed (renderFailed). The update committed, so the session it left is stored.

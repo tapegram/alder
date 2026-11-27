@@ -206,8 +206,8 @@ func TestBrowser_DatastarMultiRoot(t *testing.T) {
 // TestBrowser_DatastarReplace checks the events of a `Response.replace` answer (#309) in a real
 // browser (testdata/browser/replace.cjs): one datastar.ReplaceEvent of several roots lands each
 // on the page's element with its id, a root whose id the page lacks leaves the others applied,
-// and each datastar.RemoveEvent removes its element, an id starting with a digit included
-// (datastar.IDSelector).
+// and each datastar.RemoveEvent removes its element, an id starting with a digit and one ending
+// in a space included (datastar.IDSelector; the client does not trim the data line, #329).
 func TestBrowser_DatastarReplace(t *testing.T) {
 	t.Parallel()
 	node, env := playwrightEnv(t)
@@ -224,6 +224,7 @@ func TestBrowser_DatastarReplace(t *testing.T) {
 			datastar.ReplaceEvent(`<p id="count">2 rows</p><li id="missing">gone</li><li id="a">A</li>`),
 			datastar.RemoveEvent("c"),
 			datastar.RemoveEvent("3"),
+			datastar.RemoveEvent("d "),
 		} {
 			if _, err := w.Write(ev); err != nil {
 				t.Error(err)
@@ -233,7 +234,7 @@ func TestBrowser_DatastarReplace(t *testing.T) {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprintf(w, `<!doctype html><html><head><title>replace</title>%s</head><body>`+
-			`<p id="count">4 rows</p><ul id="list"><li id="a">a</li><li id="b">b</li><li id="c">c</li><li id="3">3</li></ul>`+
+			`<p id="count">4 rows</p><ul id="list"><li id="a">a</li><li id="b">b</li><li id="c">c</li><li id="3">3</li><li id="d ">d</li><li id="d">kept</li></ul>`+
 			`<button id="go" data-on:click="@get('/replace')">go</button></body></html>`, html.Render(datastar.ScriptTag()))
 	})
 	srv := httptest.NewServer(mux)
