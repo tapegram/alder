@@ -791,6 +791,7 @@ func (mc *modCtx) checkStated(vd *syntax.ValueDecl, k string) {
 	if len(missing) > 0 {
 		keys := strings.Join(c.sessionOrder(all), ", ")
 		reported := map[diag.Span]bool{} // one diagnostic per use, whatever it needs
+		held := mc.clauseHeld(inferred, missing)
 		for _, key := range missing {
 			n := inferred[key]
 			at := n.At
@@ -827,6 +828,7 @@ func (mc *modCtx) checkStated(vd *syntax.ValueDecl, k string) {
 				end := vd.Sig.GetSpan().End
 				d.Fix = diag.InsertAt(end.Line, end.Col, " requires "+keys)
 				d.Fix.Preferred = true
+				d.Fix.Held = held && d.Code == diag.HelperNeedUnstated
 			}
 		}
 	}

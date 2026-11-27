@@ -3705,6 +3705,24 @@ no file is migrated: fmt still formats, and says so once on stderr, `alder
 fmt: app/Broken.alder does not parse, so imports were not migrated; fix it and
 run again`, without changing the exit code.
 
+The same load brings over the other migrations: a write route's handler still
+named `update` is renamed after its method (W0013), with every reference to
+it, and a route or job module's helper gets the `requires` clause its body
+needs (W0014). A module with errors (an unknown name, say) is not checked, so
+its own migrations are not known yet, and a change that reaches other files
+could break a file that was correct: a reference renamed to `Todos.Add.post`
+while `Todos`, unchecked, still declares `Add.update`. So while any module has
+errors, fmt holds back the handler renames that reach other files (a
+reference to another module's handler, a declaration that a module with
+errors imports) and the `requires` clauses whose need comes through another
+module, and says so once on stderr, naming the module: ``alder fmt: `Todos`
+has errors, so its migrations were not checked and the handler renames and
+`requires` clauses that reach other files (W0013, W0014) were held back; fix
+it and run again``. A rename that stays in one file is still applied. When
+the only errors are ones fmt fixes itself (an import qualifier), the line
+says to run `alder fmt` again instead, and the second run does the rest. The
+editor's format command follows the same rule, without the line.
+
 `--stdin` and a file outside an app project only format, and `--check` lists a
 file that would be migrated as one that would be reformatted.
 

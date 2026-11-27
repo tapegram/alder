@@ -182,3 +182,36 @@ func TestMigrate_RequiresClauseFix(t *testing.T) {
 		t.Fatalf("changed=%v err=%v:\n%s", changed, err, out)
 	}
 }
+
+// #327: a fix marked Held is not applied, and neither is the rest of its group, even when every
+// file of the group is migrated; a held fix with no group stands alone.
+func TestMigrate_HeldFixWaits(t *testing.T) {
+	src := "module Todos\n\nA.update : Int\nA.update = 1\n\nb = A.update\n\nh : Int\nh = 1\n"
+	file := "app/Todos.alder"
+	at := func(f string, l1, c1, l2, c2 int) diag.Span {
+		return diag.Span{File: f, Start: diag.Pos{Line: l1, Col: c1}, End: diag.Pos{Line: l2, Col: c2}}
+	}
+	bag := &diag.Bag{}
+	decl := bag.Warn(diag.HandlerRenamed, at(file, 3, 1, 3, 9), "renamed")
+	decl.Fix = diag.ReplaceSpan(at(file, 3, 3, 4, 9), "post : Int\nA.post")
+	decl.Fix.Group = "W0013 Todos.A"
+	self := bag.Warn(diag.HandlerRenamed, at(file, 6, 5, 6, 13), "renamed")
+	self.Fix = diag.ReplaceSpan(at(file, 6, 5, 6, 13), "A.post")
+	self.Fix.Group = "W0013 Todos.A"
+	ref := bag.Warn(diag.HandlerRenamed, at("app/Checks.alder", 5, 1, 5, 15), "renamed")
+	ref.Fix = diag.ReplaceSpan(at("app/Checks.alder", 5, 1, 5, 15), "Todos.A.post")
+	ref.Fix.Group = "W0013 Todos.A"
+	ref.Fix.Held = true
+	clause := bag.Warn(diag.HelperNeedUnstated, at(file, 9, 5, 9, 6), "needs user")
+	clause.Fix = diag.InsertAt(8, 8, " requires user")
+	clause.Fix.Held = true
+	out, changed, err := Migrate(bag, file, []byte(src), nil)
+	if err != nil || changed || string(out) != src {
+		t.Fatalf("changed=%v err=%v:\n%s", changed, err, out)
+	}
+	ref.Fix.Held, clause.Fix.Held = false, false
+	out, _, err = Migrate(bag, file, []byte(src), nil)
+	if want := "module Todos\n\nA.post : Int\nA.post = 1\n\nb = A.post\n\nh : Int requires user\nh = 1\n"; err != nil || string(out) != want {
+		t.Fatalf("nothing held: err=%v:\n%s", err, out)
+	}
+}

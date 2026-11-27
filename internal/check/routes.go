@@ -363,6 +363,7 @@ func (mc *modCtx) legacyHandlerRef(x *syntax.Var) {
 	w.Fix = diag.ReplaceSpan(x.Span, renamed)
 	w.Fix.Preferred = true // the one obvious repair
 	w.Fix.Group = handlerGroup(r)
+	w.Fix.Held = mc.m.Name != r.Module && c.anyFailed() // a reference to another module's handler
 }
 
 // checkRoutes checks the members every route of the module has (E0043): a GET route's `load`
@@ -410,6 +411,7 @@ func (mc *modCtx) checkWriteRoute(r *RouteInfo, members map[string]*syntax.Value
 		if w.Fix = renameFix(mc.m, old, h); w.Fix != nil {
 			w.Fix.Preferred = true // the one obvious repair
 			w.Fix.Group = handlerGroup(r)
+			w.Fix.Held = c.importedByFailed(r.Module) // references there were not checked
 		}
 	}
 	if d == nil {

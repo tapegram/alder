@@ -207,3 +207,33 @@ func TestFormatting_HandlerRenameWaitsForOtherFiles(t *testing.T) {
 		}
 	}
 }
+
+// #327: while the route's module has errors, formatting another buffer does not rename its
+// reference to the handler: Todos still declares `update`. Analysed or not.
+func TestFormatting_HandlerRenameHeldWhileModuleFails(t *testing.T) {
+	for _, analysed := range []bool{false, true} {
+		root := t.TempDir()
+		if err := os.CopyFS(root, os.DirFS("../../testdata/corpus/W0013-handler-update")); err != nil {
+			t.Fatal(err)
+		}
+		todos := filepath.Join(root, "app", "Todos.alder")
+		b, err := os.ReadFile(todos)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bad := strings.Replace(string(b), "= Task.succeed Response.refresh\n", "= Task.succeed (Missing.thing Response.refresh)\n", 1)
+		if err := os.WriteFile(todos, []byte(bad), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		c := start(t, root)
+		const rel = "app/Checks.alder"
+		text := c.disk(rel)
+		c.open(rel, text)
+		if analysed {
+			c.diags(rel)
+		}
+		if got := applyEdits(t, text, formatting(t, c, rel)); strings.Contains(got, "patch") {
+			t.Fatalf("analysed=%v: renamed while Todos has errors:\n%s", analysed, got)
+		}
+	}
+}

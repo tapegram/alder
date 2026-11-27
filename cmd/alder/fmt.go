@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 
@@ -102,11 +103,15 @@ func fmtStdin(stdin io.Reader, stdout, stderr io.Writer) int {
 
 // fmtCache is what one `alder fmt` run keeps between files: the standard library, the loaded and
 // resolved program of each app root (dropped once a file in the root is written, so the next file
-// is migrated against what is on disk), and the roots whose skipped migration was reported.
+// is migrated against what is on disk), and the roots whose skipped or held migration was reported.
 type fmtCache struct {
 	std   map[string]*syntax.Module
 	noted map[string]bool
 	progs map[string]*fmtProject
+	// cleanAtStart records, for each app root loaded, whether its first load in this run had no
+	// module with errors. A module that fails on a later load is the run's own work in progress (a
+	// reference renamed before its handler's declaration), so its fixes are not held (#327).
+	cleanAtStart map[string]bool
 	// targets are the absolute paths of the files this run formats: a rename that spans files
 	// (format.Migrate's groups) is migrated only when the run formats all of them.
 	targets map[string]bool
@@ -115,10 +120,15 @@ type fmtCache struct {
 }
 
 // fmtProject is a loaded app root; bag is nil when the project could not be loaded or has files
-// that do not parse (broken lists them, relative to the root).
+// that do not parse (broken lists them, relative to the root). failed are the app modules with
+// errors (names.Program.Failed, in load order): their migrations were not checked, and the fixes
+// that reach other files are held (diag.Fix.Held, #327); stuck are those of them with an error
+// that migration does not fix.
 type fmtProject struct {
 	bag    *diag.Bag
 	broken []string
+	failed []string
+	stuck  []string
 }
 
 // fmtFile formats one file, reporting on stdout and problems on stderr; it returns the file's
@@ -142,17 +152,13 @@ func fmtFile(path string, isScratch, checkOnly bool, cache *fmtCache, stdout, st
 	}
 	// the formatter's safety check compares the migrated source with its output, so the
 	// migration is never judged by it; the file on disk is compared with the final output
-	migrated, root, broken := src, "", []string(nil)
+	migrated, root, note := src, "", ""
 	if !isScratch {
-		migrated, root, broken = fmtMigrate(path, src, cache, stderr)
+		migrated, root, note = fmtMigrate(path, src, cache, stderr)
 	}
-	if len(broken) > 0 && !cache.noted[root] {
+	if note != "" && !cache.noted[root] {
 		cache.noted[root] = true
-		verb, them := "does", "it"
-		if len(broken) > 1 {
-			verb, them = "do", "them"
-		}
-		fmt.Fprintf(stderr, "%s %s %s not parse, so imports were not migrated; fix %s and run again\n", errTag(stderr, "alder fmt:"), strings.Join(broken, ", "), verb, them)
+		fmt.Fprintf(stderr, "%s %s\n", errTag(stderr, "alder fmt:"), note)
 	}
 	formatSource := format.Source
 	if isScratch {
@@ -181,36 +187,77 @@ func fmtFile(path string, isScratch, checkOnly bool, cache *fmtCache, stdout, st
 }
 
 // fmtMigrate is src with the migration fixes (format.Migrate: import qualifiers, the handler
-// rename) of a file inside an app project applied; src itself for a file outside one, or when
-// the project cannot be loaded and resolved. When project files do not parse, it also returns
-// the app root and those files (relative to the root) so the caller can say why nothing was
-// migrated; the formatter reports the syntax errors of the file it formats. An error applying
-// the fixes goes to stderr and the file is formatted unmigrated.
-func fmtMigrate(path string, src []byte, cache *fmtCache, stderr io.Writer) (out []byte, root string, broken []string) {
+// rename, the `requires` clause) of a file inside an app project applied; src itself for a file
+// outside one, or when the project cannot be loaded and resolved. It also returns the app root
+// and, when migration was skipped or partly held, the line saying why (fmtNote), which the caller
+// prints once per project; the formatter reports the syntax errors of the file it formats. An
+// error applying the fixes goes to stderr and the file is formatted unmigrated.
+func fmtMigrate(path string, src []byte, cache *fmtCache, stderr io.Writer) (out []byte, root, note string) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return src, "", nil
+		return src, "", ""
 	}
 	root = findAppRoot(filepath.Dir(abs))
 	if root == "" {
-		return src, "", nil
+		return src, "", ""
 	}
 	pr := cache.progs[root]
 	if pr == nil {
 		pr = loadFmtProject(root, cache)
 		cache.progs[root] = pr
+		if pr.bag != nil {
+			clean, seen := cache.cleanAtStart[root]
+			if !seen {
+				clean = len(pr.failed) == 0
+				if cache.cleanAtStart == nil {
+					cache.cleanAtStart = map[string]bool{}
+				}
+				cache.cleanAtStart[root] = clean
+			}
+			if clean { // failures this run made itself: its renames are part-way, not held
+				for _, d := range pr.bag.Items {
+					if d.Fix != nil {
+						d.Fix.Held = false
+					}
+				}
+				pr.failed, pr.stuck = nil, nil
+			}
+		}
 	}
 	if pr.bag == nil {
-		return src, root, pr.broken
+		return src, root, fmtNote(pr)
 	}
 	out, _, err = format.Migrate(pr.bag, fmtRel(root, abs), src, func(rel string) bool {
 		return cache.targets[filepath.Join(root, filepath.FromSlash(rel))]
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "%s %s: imports were not migrated: %v\n", errTag(stderr, "alder fmt:"), path, err)
-		return src, root, nil
+		return src, root, fmtNote(pr)
 	}
-	return out, root, nil
+	return out, root, fmtNote(pr)
+}
+
+// fmtNote is the line saying why a project's migration was skipped or partly held, "" when it was
+// neither. A module with errors is not checked, so its own migrations are not known and those
+// that reach other files wait (#327): with an error migration does not fix, the user fixes it;
+// with only errors migration fixes, the next run does the rest, and the line is printed only
+// when it held something back.
+func fmtNote(pr *fmtProject) string {
+	plural := func(names []string, one, many string) string {
+		if len(names) > 1 {
+			return many
+		}
+		return one
+	}
+	switch {
+	case len(pr.broken) > 0:
+		return fmt.Sprintf("%s %s not parse, so imports were not migrated; fix %s and run again", strings.Join(pr.broken, ", "), plural(pr.broken, "does", "do"), plural(pr.broken, "it", "them"))
+	case len(pr.stuck) > 0:
+		return fmt.Sprintf("`%s` %s errors, so %s migrations were not checked and the handler renames and `requires` clauses that reach other files (W0013, W0014) were held back; fix %s and run again", strings.Join(pr.stuck, "`, `"), plural(pr.stuck, "has", "have"), plural(pr.stuck, "its", "their"), plural(pr.stuck, "it", "them"))
+	case len(pr.failed) > 0 && slices.ContainsFunc(pr.bag.Items, func(d diag.Diagnostic) bool { return d.Fix != nil && d.Fix.Held }):
+		return fmt.Sprintf("`%s` %s errors that `alder fmt` fixes, so the handler renames and `requires` clauses that reach other files (W0013, W0014) were held back; run `alder fmt` again", strings.Join(pr.failed, "`, `"), plural(pr.failed, "has", "have"))
+	}
+	return ""
 }
 
 func loadFmtProject(root string, cache *fmtCache) *fmtProject {
@@ -231,7 +278,27 @@ func loadFmtProject(root string, cache *fmtCache) *fmtProject {
 	prog.Resolve(bag)
 	prog.MarkFailed(bag)
 	check.Program(prog, bag) // W0013, the handler rename (#308), is the checker's
-	return &fmtProject{bag: bag}
+	pr := &fmtProject{bag: bag}
+	for _, name := range prog.Order {
+		m := prog.Modules[name]
+		if !prog.Failed[name] || m == nil {
+			continue
+		}
+		pr.failed = append(pr.failed, name)
+		errs, fixed := 0, 0
+		for _, d := range bag.Items {
+			if d.Span.File == m.File && d.Severity == "error" {
+				errs++
+				if format.Migrates(d) {
+					fixed++
+				}
+			}
+		}
+		if errs == 0 || fixed < errs { // no error of its own: it failed through another module's
+			pr.stuck = append(pr.stuck, name)
+		}
+	}
+	return pr
 }
 
 // fmtResult turns a format.Source result into an exit code: diagnostics (1), an unsafe rewrite

@@ -55,7 +55,9 @@ func formattingReq(s *server, params json.RawMessage) (any, error) {
 }
 
 // migrated is d's text with its migration fixes (format.Migrate: import qualifiers, the handler
-// rename) applied; the text itself when migration is off: a project file does not parse
+// rename, the `requires` clause) applied, less those held while a module has errors
+// (diag.Fix.Held, as `alder fmt` holds them, #327); the text itself when migration is off: a
+// project file does not parse
 // (Program.Unparsed, the rule `alder fmt` uses, which covers an unparseable buffer), the project
 // cannot be loaded, or there is nothing to fix. It reads the server's analysis when that was built
 // from the open documents as they now are, and loads and checks the program otherwise.

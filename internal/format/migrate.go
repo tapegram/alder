@@ -9,6 +9,12 @@ import (
 // migration are the codes whose fixes Migrate applies.
 var migration = map[string]bool{diag.ImportAlias: true, diag.FullPath: true, diag.HandlerRenamed: true, diag.HelperNeedUnstated: true}
 
+// Migrates reports whether Migrate applies d's fix when nothing holds or blocks it: d is one of the
+// migration codes, or its fix is marked Migration.
+func Migrates(d diag.Diagnostic) bool {
+	return d.Fix != nil && (migration[d.Code] || d.Fix.Migration)
+}
+
 // Migrate applies the migration fixes for file to src and reports whether anything changed: the
 // resolver's import-qualifier fixes (E0204, E0205), the checker's rename of a write route's
 // handler still named `update` (W0013, #308), the `requires` clause of a route or job module's
@@ -22,19 +28,19 @@ var migration = map[string]bool{diag.ImportAlias: true, diag.FullPath: true, dia
 //
 // migrating reports whether a file is migrated in the same run (nil: every file is). A fix of a
 // group (diag.Fix.Group) is applied only when every fix of its group lies in a migrated file, so
-// formatting one file never renames a handler whose references other files still hold.
+// formatting one file never renames a handler whose references other files still hold. A fix
+// marked Held (a change reaching other files while a module has errors, #327) is not applied,
+// and neither is the rest of its group.
 func Migrate(bag *diag.Bag, file string, src []byte, migrating func(file string) bool) ([]byte, bool, error) {
-	blocked := map[string]bool{} // groups with a fix in a file this run does not migrate
-	if migrating != nil {
-		for _, d := range bag.Items {
-			if d.Fix != nil && d.Fix.Group != "" && !migrating(d.Span.File) {
-				blocked[d.Fix.Group] = true
-			}
+	blocked := map[string]bool{} // groups with a fix held, or in a file this run does not migrate
+	for _, d := range bag.Items {
+		if d.Fix != nil && d.Fix.Group != "" && (d.Fix.Held || migrating != nil && !migrating(d.Span.File)) {
+			blocked[d.Fix.Group] = true
 		}
 	}
 	var fixes []diag.Fix
 	for _, d := range bag.Items {
-		if d.Fix == nil || d.Span.File != file || !migration[d.Code] && !d.Fix.Migration || blocked[d.Fix.Group] {
+		if d.Span.File != file || !Migrates(d) || d.Fix.Held || blocked[d.Fix.Group] {
 			continue
 		}
 		fixes = append(fixes, *d.Fix)

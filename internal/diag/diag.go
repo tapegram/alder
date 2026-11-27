@@ -28,6 +28,12 @@ type Fix struct {
 	// handler: its declaration and every reference); "" for a fix that stands alone. A migration
 	// of only some files (format.Migrate) applies a group only when every fix of it lies in them.
 	Group string
+	// Held marks a migration fix (W0013, W0014) that `alder fmt` does not apply on its own while
+	// a module of the program has errors, because its change reaches other files (#327): a
+	// reference to another module's handler, a rename whose references a module with errors may
+	// hold, or a `requires` clause whose need comes through another module. The rest of its
+	// group waits with it.
+	Held bool
 }
 
 // ReplaceSpan is a fix that replaces the half-open span [sp.Start, sp.End) with text.
