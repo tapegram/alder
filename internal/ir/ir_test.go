@@ -664,26 +664,27 @@ func TestPositions(t *testing.T) {
 		visit(value(show, name).Body)
 	}
 	want := map[string][]Pos{
-		"bind":              {{18, 3}, {26, 3}, {38, 3}, {47, 3}, {55, 3}, {56, 3}, {18, 3}, {26, 3}},
-		"select":            {{28, 10}}, // the step that extends the Base
-		"mine":              {{27, 5}},
+		"bind":              {{23, 3}, {31, 3}, {43, 3}, {52, 3}, {61, 3}, {65, 7}, {19, 3}, {27, 3}},
+		"select":            {{33, 10}}, // the step that extends the Base
+		"mine":              {{32, 5}},
+		"match":             {{62, 3}},
 		"where-step":        nil,
-		"ord":               {{28, 21}},
-		"order-step":        {{28, 10}},
-		"insert-mine":       {{38, 12}},
-		"update-mine":       {{47, 12}, {26, 12}},
-		"record-update":     {{47, 43}, {26, 43}},
-		"delete-mine":       {{55, 12}},
-		"get-mine":          {{18, 15}},
-		"Response.redirect": {{39, 17}, {27, 17}},
-		"Response.refresh":  {{48, 16}},
-		"Response.remove":   {{57, 53}}, // the outer call of `Response.replace [ … ] |> Response.remove …`
+		"ord":               {{33, 21}},
+		"order-step":        {{33, 10}},
+		"insert-mine":       {{43, 12}},
+		"update-mine":       {{52, 12}, {27, 12}},
+		"record-update":     {{52, 43}, {27, 43}},
+		"delete-mine":       {{61, 12}},
+		"get-mine":          {{19, 15}},
+		"Response.redirect": {{44, 17}, {63, 31}, {28, 17}},
+		"Response.refresh":  {{53, 16}},
+		"Response.remove":   {{66, 57}}, // the outer call of `Response.replace [ … ] |> Response.remove …`
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("positions:\n got %v\nwant %v", got, want)
 	}
 	for _, r := range p.Routes {
-		if r.Module == "Todos.Index" && r.Name == "Index" && r.RequiresPos != (Pos{7, 84}) {
+		if r.Module == "Todos.Index" && r.Name == "Index" && r.RequiresPos != (Pos{7, 107}) {
 			t.Fatalf("RequiresPos = %v", r.RequiresPos)
 		}
 	}

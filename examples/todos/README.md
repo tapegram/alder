@@ -40,11 +40,11 @@ The example's login is the development stub, which refuses every password outsid
 
 ## Mutation score
 
-`alder test --mutate examples/todos` (book 10, "Mutation testing"): 226 mutants, 148 tests, 222
+`alder test --mutate examples/todos` (book 10, "Mutation testing"): 228 mutants, 149 tests, 224
 killed, 4 survived (score 0.98). `TestExample_TodosMutation` fails if the score drops below
-0.98, the exact 0.982 rounded down, or the number of mutants is not 226.
+0.98, the exact 0.982 rounded down, or the number of mutants is not 228.
 
-- **The app's own code:** 41 mutants, all killed by its 26 tests (score 1.00).
+- **The app's own code:** 43 mutants, all killed by its 27 tests (score 1.00).
 
 - **The generated admin** (`app/Admin/`, "Replaying the admin" below): 185 mutants, 181 killed by
   its 122 generated tests, kept as `alder new admin` wrote them.
@@ -92,14 +92,17 @@ The history of the app's own code:
   (41 left); `Todos.Index "Delete by another user is not found"` now kills the `scope dropped`
   and the `write replaced` of `Todos.Show`'s `Delete`.
 - With `Response.replace` (#309): `Delete` (still the one `DELETE /todos/{id}`) moves back into
-  `Todos.Index`, where its only button is: it answers `Response.replace [ summary todos ] |>
-  Response.remove ("todo-" ++ p.id)`, the count again and the todo's item taken out, and carries
-  the list's filter so that the count agrees with the page. The todo's own page no longer has a
-  Delete button: that answer would have nowhere to go there. The four mutants moved with it
-  (`requires dropped`, `scope dropped`, `write replaced`, and `replace → refresh` for the old
-  `redirect → refresh`; 41 still), killed by `Todos.Index "a write after logging out is sent to
-  log in"`, `"Delete by another user is not found"` and `"deleting from the list"`; and
-  `Todos.Index "deleting from a filtered list keeps its count"` checks the filter.
+  `Todos.Index`, where its list button is: from the list it answers `Response.replace [ summary
+  todos ] |> Response.remove ("todo-" ++ p.id)`, the count again and the todo's item taken out,
+  and carries the list's filter so that the count agrees with the page. The todo's own page has a
+  Delete button too: it sends the same route with `from: FromShow`, and the handler answers
+  `Response.redirect` to the list, since that page has no list to change in place. The four
+  mutants moved with it (`requires dropped`, `scope dropped`, `write replaced`, and
+  `replace → refresh` for the old `redirect → refresh`), killed by `Todos.Index "a write after
+  logging out is sent to log in"`, `"Delete by another user is not found"` and `"deleting from
+  the list"`; `Todos.Index "deleting from a filtered list keeps its count"` checks the filter, and
+  `Todos.Show "deleting from the todo's page"` checks the redirect. The `from` branch added two
+  mutants (43 for the app's own code; 228 in all) and all are killed.
 
 The ownership rules are declared (book 06, "Rules"): `Todo.owner` is the table's `@owner`, and
 the routes use `Db.mine`, `Db.getMine`, `Db.updateMine`, `Db.deleteMine` and `Db.insertMine`.

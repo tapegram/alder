@@ -4,12 +4,17 @@ import Layout
 import Table.Todo
 import Table.User
 
-route Index  = GET    "/"           { filter: Todo.Filter = All }                  requires user
-route Submit = POST   "/todos"      { filter: Todo.Filter = All } form NewTodo     requires user
-route Toggle = PATCH  "/todos/{id}" { id: Todo.TodoId }                            requires user
--- The list deletes a todo in place. The filter the page shows rides in the URL, as `Submit`'s
--- does, so that the count it sends back is the count of the list the page shows.
-route Delete = DELETE "/todos/{id}" { id: Todo.TodoId, filter: Todo.Filter = All } requires user
+route Index  = GET    "/"           { filter: Todo.Filter = All }                                         requires user
+route Submit = POST   "/todos"      { filter: Todo.Filter = All } form NewTodo                            requires user
+route Toggle = PATCH  "/todos/{id}" { id: Todo.TodoId }                                                   requires user
+-- One route deletes a todo from either page, and `from` says which page the button is on. The
+-- list deletes in place; the todo's own page has nothing left to show, so it goes back to the
+-- list. The filter the page shows rides in the URL, as `Submit`'s does, so that the count it
+-- sends back is the count of the list the page shows.
+route Delete = DELETE "/todos/{id}" { id: Todo.TodoId, filter: Todo.Filter = All, from: From = FromList } requires user
+
+-- The page a Delete button is on.
+type From = FromList | FromShow
 
 type Model = { filter: Todo.Filter, todos: List Todo }
 
@@ -48,13 +53,19 @@ Toggle.patch p session = {
   Task.succeed Response.refresh
 }
 
--- Delete answers with what it changed: the todo's row goes, and the count is sent again, drawn by
--- `summary`, the function the page draws it with. Nothing else is loaded or sent.
+-- From the list, Delete answers with what it changed: the todo's row goes, and the count is sent
+-- again, drawn by `summary`, the function the page draws it with. Nothing else is loaded or
+-- sent. From the todo's own page, whose element is gone with it, it goes back to the list.
 Delete.delete : Delete.Params -> Session -> Task Response
 Delete.delete p session = {
   let _ <- Db.deleteMine Todo p.id
-  let todos <- listed p.filter
-  Task.succeed (Response.replace [summary todos] |> Response.remove ("todo-" ++ p.id))
+  match p.from {
+    FromShow -> Task.succeed (Response.redirect (Index { filter: p.filter })),
+    FromList -> {
+      let todos <- listed p.filter
+      Task.succeed (Response.replace [summary todos] |> Response.remove ("todo-" ++ p.id))
+    },
+  }
 }
 
 Index.view : Model -> Session -> Html

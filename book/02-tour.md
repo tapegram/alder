@@ -616,12 +616,17 @@ import Layout
 import Table.Todo
 import Table.User
 
-route Index  = GET    "/"           { filter: Todo.Filter = All }                  requires user
-route Submit = POST   "/todos"      { filter: Todo.Filter = All } form NewTodo     requires user
-route Toggle = PATCH  "/todos/{id}" { id: Todo.TodoId }                            requires user
--- The list deletes a todo in place. The filter the page shows rides in the URL, as `Submit`'s
--- does, so that the count it sends back is the count of the list the page shows.
-route Delete = DELETE "/todos/{id}" { id: Todo.TodoId, filter: Todo.Filter = All } requires user
+route Index  = GET    "/"           { filter: Todo.Filter = All }                                         requires user
+route Submit = POST   "/todos"      { filter: Todo.Filter = All } form NewTodo                            requires user
+route Toggle = PATCH  "/todos/{id}" { id: Todo.TodoId }                                                   requires user
+-- One route deletes a todo from either page, and `from` says which page the button is on. The
+-- list deletes in place; the todo's own page has nothing left to show, so it goes back to the
+-- list. The filter the page shows rides in the URL, as `Submit`'s does, so that the count it
+-- sends back is the count of the list the page shows.
+route Delete = DELETE "/todos/{id}" { id: Todo.TodoId, filter: Todo.Filter = All, from: From = FromList } requires user
+
+-- The page a Delete button is on.
+type From = FromList | FromShow
 ```
 
 `User` is imported for the tests at the end of the module. The module has
@@ -632,7 +637,9 @@ four **routes**:
   missing.
 - The other three are writes that the page sends: `Submit` is a `POST`
   that carries a form, `NewTodo`, `Toggle` is a `PATCH` that carries an id,
-  and `Delete` is a `DELETE` of one todo.
+  and `Delete` is a `DELETE` of one todo. Its `from` parameter says which
+  page the button is on: `From` is a type of the module's own, with a
+  default, as `filter` has, so the list's button need not send it.
 
 A route's parameters that are not in its path travel in the query string,
 so `Submit { filter: Active }` is sent to `/todos?filter=Active`. The paths
@@ -736,18 +743,26 @@ is the user's, and a todo that is someone else's answers exactly as a
 missing one does, with a 404 (chapter 6, "Rules").
 
 ```alder part=Todos.Index
--- Delete answers with what it changed: the todo's row goes, and the count is sent again, drawn by
--- `summary`, the function the page draws it with. Nothing else is loaded or sent.
+-- From the list, Delete answers with what it changed: the todo's row goes, and the count is sent
+-- again, drawn by `summary`, the function the page draws it with. Nothing else is loaded or
+-- sent. From the todo's own page, whose element is gone with it, it goes back to the list.
 Delete.delete : Delete.Params -> Session -> Task Response
 Delete.delete p session = {
   let _ <- Db.deleteMine Todo p.id
-  let todos <- listed p.filter
-  Task.succeed (Response.replace [summary todos] |> Response.remove ("todo-" ++ p.id))
+  match p.from {
+    FromShow -> Task.succeed (Response.redirect (Index { filter: p.filter })),
+    FromList -> {
+      let todos <- listed p.filter
+      Task.succeed (Response.replace [summary todos] |> Response.remove ("todo-" ++ p.id))
+    },
+  }
 }
 ```
 
-The list's Delete button sends `Delete`, `DELETE /todos/{id}`: one todo,
-one URL. Its handler answers with exactly what it changed. The todo's item
+The Delete buttons send `Delete`, `DELETE /todos/{id}`: one todo, one URL,
+from the list or, with `from: FromShow`, from the todo's own page, which
+has no list to change in place and is answered with a redirect to the list.
+From the list, the handler answers with exactly what it changed. The todo's item
 on the page goes (`Response.remove` takes out the element whose `id` is
 `"todo-" ++ p.id`), and the count of open todos below the list is sent
 again (`Response.replace` swaps in each view it is given for the element
@@ -1229,7 +1244,9 @@ None of that needed a test.
   route `Show` and the write route `Save`, whose path holds the todo's id
   (`PUT /todos/{id}`). `Show.load` reads the todo with `Db.getMine`, which
   answers 404 when the todo doesn't exist or belongs to someone else. Its
-  tests send a visitor to log in and save the form through the page.
+  page has a Delete button too, which sends the list's `Delete` with
+  `from: FromShow` (a redirect back to the list). Its tests send a visitor
+  to log in, save the form and delete through the page.
 
 - `app/Auth/Login.alder`: the login page. It declares a `Password`
   capability, implemented in Go, and uses `Session.put` to sign the user

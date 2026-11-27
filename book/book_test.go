@@ -371,7 +371,7 @@ func exampleImports(m, t string) bool {
 
 // placed is a block written into an app: its file (relative to the app dir) and, for each line
 // of the file, the book line it came from (0 for a line the verifier wrote). replaces is set
-// when a one-table block took the place of the example's module of that name: the example's
+// when a one-table or module block took the place of the example's module of that name: the example's
 // other modules may then miss what that module also declared, which is not the block's error.
 type placed struct {
 	s        Snippet
@@ -394,6 +394,9 @@ func (v *verifier) place(dir string, s Snippet, n int) placed {
 	kind := Classify(s)
 	if kind == Module {
 		p.file = filepath.Join("app", strings.ReplaceAll(ModuleName(s), ".", "/")+".alder")
+		for _, m := range exampleModules { // a module the example has: its other modules may miss what it declared
+			p.replaces = p.replaces || m == ModuleName(s)
+		}
 		bookLines := v.joined[s] // nil unless s was joined from part= blocks
 		for i, l := range src {
 			if bookLines != nil {
@@ -532,7 +535,24 @@ func (v *verifier) checkBatch(ex string, batch []Snippet) {
 		ps = append(ps, v.place(dir, s, i+1))
 	}
 	ds, bad := v.check(dir)
-	if bad == "" && len(failing(ds, ps)) == 0 {
+	f := failing(ds, ps)
+	replaces := false
+	for _, p := range ps {
+		replaces = replaces || p.replaces
+	}
+	if replaces { // the example's other modules may miss what a replaced module declared
+		var own []jdiag
+		for _, d := range f {
+			for _, p := range ps {
+				if d.File == filepath.ToSlash(p.file) {
+					own = append(own, d)
+					break
+				}
+			}
+		}
+		f = own
+	}
+	if bad == "" && len(f) == 0 {
 		return
 	}
 	for _, s := range batch {

@@ -3,11 +3,12 @@ module Todos.Show
 import Layout
 import Table.Todo
 import Table.User
+import Todos.Index
 
 -- `Db.getMine` finds the todo only when it is the session's user's: anyone else's, like a missing
 -- one, is a 404. The write route takes the id from its path, as the page does, and no `load`
 -- runs before it: `Db.updateMine` makes the same check, so another user's id is a 404 there too
--- (book 06, "Rules"). A todo is deleted from the list (`Todos.Index`'s `Delete`).
+-- (book 06, "Rules"). A todo is deleted with `Todos.Index`'s `Delete`, from here or from the list.
 route Show = GET "/todos/{id}" { id: Todo.TodoId }               requires user
 route Save = PUT "/todos/{id}" { id: Todo.TodoId } form EditTodo requires user
 
@@ -39,6 +40,11 @@ Show.view model session =
       </form>
       <div slot="actions">
         <al-button variant="ghost" href={Todos.Index.Index {}}>Back</al-button>
+        <al-button
+          variant="destructive"
+          click={Todos.Index.Delete { id: model.todo.id, from: FromShow }}>
+          Delete
+        </al-button>
       </div>
     </al-card>
   </Layout.Page>
@@ -87,6 +93,37 @@ test "saving changes the title and the due date" = {
       answer: Redirected (Todos.Index.Index {}),
       title: Just (Text.NonEmpty "Bread"),
       due: Date.fromText "2026-10-12",
+    }
+  )
+}
+
+-- The todo's own page has its own Delete button: it sends `Todos.Index`'s `Delete` with
+-- `from: FromShow`, and the answer is a redirect to the list, where the todo is gone.
+test "deleting from the todo's page" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Show { id: id })
+  let r <- Test.click (Todos.Index.Delete { id: id, from: FromShow })
+  let after <- Db.get Todo id
+  let page <- Test.get (Todos.Index.Index {})
+  Task.succeed (
+    {
+      answer: r.answer,
+      todo: Maybe.map (\t -> t.title) after,
+      items: Test.count "li" page.doc,
+    } == {
+      answer: Redirected (Todos.Index.Index {}),
+      todo: Nothing,
+      items: 0,
     }
   )
 }

@@ -253,8 +253,8 @@ alder deploy local → Script ./scripts/deploy-local.sh
 gate
   check    ok
   build    ok
-  test     ok  148 passed
-  mutate   ok  score 0.98 ≥ floor 0.00 (none yet; 226 mutants, 4 survived)
+  test     ok  149 passed
+  mutate   ok  score 0.98 ≥ floor 0.00 (none yet; 228 mutants, 4 survived)
 artifact build/todos/deploy/… (…)
 plan
   the target's schema is not known (the script applies the migrations): every migration is listed

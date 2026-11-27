@@ -425,6 +425,7 @@
                 (deleted (ctor Prelude.Maybe.Nothing))
                 (todo (ctor Prelude.Maybe.Just (record (value "Milk"))))))))))))
 (module Todos.Index)
+(union Todos.Index.From (FromList) (FromShow))
 (record Todos.Index.Model
   (filter Table.Todo.Filter)
   (todos List Table.Todo.Todo))
@@ -437,7 +438,8 @@
 (record Todos.Index.Toggle.Params (id Text))
 (record Todos.Index.Delete.Params
   (id Text)
-  (filter Table.Todo.Filter = (ctor Table.Todo.Filter.All)))
+  (filter Table.Todo.Filter = (ctor Table.Todo.Filter.All))
+  (from From = (ctor Todos.Index.From.FromList)))
 (record Todos.Index.Index.Session (user Text) (role Table.User.Role))
 (value Todos.Index.Index.load : Index.Params -> Index.Session -> Query Model (params session)
   (bind query todos : List Table.Todo.Todo
@@ -475,13 +477,20 @@
 (value Todos.Index.Delete.delete : Delete.Params -> Index.Session -> Task Response (p session)
   (bind task _
     (db-delete-scoped Db.deleteMine user Table.Todo.Todo (field id (var p)))
-    (bind task todos : List Table.Todo.Todo
-      (call (global Todos.Index.listed) (field filter (var p)))
-      (pure task
-        (call (std Response.remove)
-          (++ : Text "todo-" (field id (var p)))
-          (call (std Response.replace)
-            (list (call (global Todos.Index.summary) (var todos)))))))))
+    (match union (field from (var p))
+      (case FromShow
+        (pure task
+          (call (std Response.redirect)
+            (route-ref Todos.Index.Index
+              (record Index.Params (filter (field filter (var p))))))))
+      (case FromList
+        (bind task todos : List Table.Todo.Todo
+          (call (global Todos.Index.listed) (field filter (var p)))
+          (pure task
+            (call (std Response.remove)
+              (++ : Text "todo-" (field id (var p)))
+              (call (std Response.replace)
+                (list (call (global Todos.Index.summary) (var todos)))))))))))
 (value Todos.Index.Index.view : Model -> Index.Session -> Html (model session)
   (comp Layout.Page
     (record (title "Todos"))
@@ -559,7 +568,8 @@
           (route-ref Todos.Index.Delete
             (record Delete.Params
               (id (field id (field todo (var props))))
-              (filter (field filter (var props))))))
+              (filter (field filter (var props)))
+              (from (ctor Todos.Index.From.FromList)))))
         (htext "Delete")))))
 (test "Toggle flips done" task
   (bind task me : Text
@@ -676,7 +686,8 @@
               (test-click (route Todos.Index.Delete)
                 (record Delete.Params
                   (id (var id))
-                  (filter (ctor Table.Todo.Filter.All))))
+                  (filter (ctor Table.Todo.Filter.All))
+                  (from (ctor Todos.Index.From.FromList))))
               (bind task after : Maybe Table.Todo.Todo
                 (db-get Table.Todo.Todo (var id))
                 (pure task
@@ -842,7 +853,8 @@
                               (test-click (route Todos.Index.Delete)
                                 (record Delete.Params
                                   (id (var id))
-                                  (filter (ctor Table.Todo.Filter.All))))
+                                  (filter (ctor Table.Todo.Filter.All))
+                                  (from (ctor Todos.Index.From.FromList))))
                               (bind task todos : List Table.Todo.Todo
                                 (db-select Table.Todo.Todo all)
                                 (pure task
@@ -946,7 +958,8 @@
               (test-click (route Todos.Index.Delete)
                 (record Delete.Params
                   (id (var milk))
-                  (filter (ctor Table.Todo.Filter.All))))
+                  (filter (ctor Table.Todo.Filter.All))
+                  (from (ctor Todos.Index.From.FromList))))
               (bind task after : Maybe Table.Todo.Todo
                 (db-get Table.Todo.Todo (var milk))
                 (pure task
@@ -1004,7 +1017,8 @@
               (test-click (route Todos.Index.Delete)
                 (record Delete.Params
                   (id (var milk))
-                  (filter (ctor Table.Todo.Filter.Completed))))
+                  (filter (ctor Table.Todo.Filter.Completed))
+                  (from (ctor Todos.Index.From.FromList))))
               (pure task
                 (test-eq
                   (record
@@ -1154,7 +1168,17 @@
               (route-ref Todos.Index.Index
                 (record Todos.Index.Index.Params
                   (filter (ctor Table.Todo.Filter.All)))))
-            (htext "Back")))))))
+            (htext "Back")))
+        (elem al-button (attr variant text "destructive")
+          (elem button
+            (attr type text "button")
+            (attr click click
+              (route-ref Todos.Index.Delete
+                (record Todos.Index.Delete.Params
+                  (id (field id (field todo (var model))))
+                  (filter (ctor Table.Todo.Filter.All))
+                  (from (ctor Todos.Index.From.FromShow)))))
+            (htext "Delete")))))))
 (test "a visitor is sent to log in from a todo" task
   (bind task me : Text
     (db-insert Table.User.User
@@ -1231,6 +1255,60 @@
                                 (filter (ctor Table.Todo.Filter.All))))))))
                     (title (ctor Prelude.Maybe.Just (record (value "Bread"))))
                     (due (call (std Date.fromText) "2026-10-12"))))))))))))
+(test "deleting from the todo's page" task
+  (bind task me : Text
+    (db-insert Table.User.User
+      (record
+        (email "me@example.com")
+        (name "Me")
+        (passwordHash "")
+        (role (ctor Table.User.Role.Member))))
+    (bind task id : Text
+      (db-insert Table.Todo.Todo
+        (record
+          (title "Milk")
+          (done False)
+          (due (ctor Prelude.Maybe.Nothing))
+          (owner (var me))))
+      (bind task _
+        (test-login
+          (record App.Session
+            (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+            (role (ctor Table.User.Role.Member))))
+        (bind task _
+          (test-get (route Todos.Show.Show) (record Show.Params (id (var id))))
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
+            (test-click (route Todos.Index.Delete)
+              (record Todos.Index.Delete.Params
+                (id (var id))
+                (filter (ctor Table.Todo.Filter.All))
+                (from (ctor Todos.Index.From.FromShow))))
+            (bind task after : Maybe Table.Todo.Todo
+              (db-get Table.Todo.Todo (var id))
+              (bind task page : { model: Todos.Index.Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
+                (test-get (route Todos.Index.Index)
+                  (record Todos.Index.Index.Params
+                    (filter (ctor Table.Todo.Filter.All))))
+                (pure task
+                  (test-eq
+                    (record
+                      (answer (field answer (var r)))
+                      (todo
+                        (call (std Maybe.map)
+                          (lambda (t : Table.Todo.Todo) (field title (var t)))
+                          (var after)))
+                      (items
+                        (call (std Test.count) "li" (field doc (var page)))))
+                    (record
+                      (answer
+                        (ctor Prelude.Answer.Redirected
+                          (record
+                            (value
+                              (route-ref Todos.Index.Index
+                                (record Todos.Index.Index.Params
+                                  (filter (ctor Table.Todo.Filter.All))))))))
+                      (todo (ctor Prelude.Maybe.Nothing))
+                      (items 0))))))))))))
 (test "saving after logging out is sent to log in" task
   (bind task me : Text
     (db-insert Table.User.User

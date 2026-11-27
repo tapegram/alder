@@ -1,0 +1,26 @@
+module Todos
+
+route Index  = GET    "/"             { }
+route Remove = DELETE "/members/{id}" { id: Int, from: From = FromList }
+
+type From = FromList | FromShow
+
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <div>{countView n}{row n}</div>
+
+countView : Int -> Html
+countView n = <p id="member-count">{Text.fromInt n} members</p>
+
+row : Int -> Html
+row n = <li id={"member-" ++ Text.fromInt n}>Member</li>
+
+-- one write route, two answers in different branches: a redirect from the page of the member,
+-- a replace and a removal from the list. `Response.remove` is never chained after the redirect.
+Remove.delete : Remove.Params -> Session -> Task Response
+Remove.delete params session = match params.from {
+  FromShow -> Task.succeed (Response.redirect (Index {})),
+  FromList -> Task.succeed (Response.replace [ countView 1 ] |> Response.remove ("member-" ++ Text.fromInt params.id)),
+}

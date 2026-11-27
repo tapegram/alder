@@ -2868,8 +2868,8 @@ example, admin included, reads:
 ```text
 $ alder test --mutate examples/todos
 …
-148 passed, 0 failed
-226 mutants: 222 killed, 4 survived  (score 0.98)
+149 passed, 0 failed
+228 mutants: 224 killed, 4 survived  (score 0.98)
 survived:
   Admin.Todos.Edit   Save.put:80     step dropped       let _ <- Admin.Layout.adminOnly session.user → let _ <- Query.succeed ()
   Admin.Todos.New    New.load:33        operator flipped   ownersTotal > 200 → ownersTotal >= 200
@@ -3120,7 +3120,7 @@ ok   Table.Todo "Active keeps only open todos"
 ok   Table.Todo "each filter has its label"
 ok   Table.Todo "a user with todos cannot be deleted"
 4 passed, 0 failed
-226 mutants: 7 killed, 219 survived  (score 0.03)
+228 mutants: 7 killed, 221 survived  (score 0.03)
 survived:
 …
 ```
@@ -3154,7 +3154,7 @@ selects no test ends with `no test matches -run: nothing can kill a
 mutant`.
 
 Mutants run one after another, each with a fresh database
-per test; the to-do app's 226 take a few seconds once the build is made,
+per test; the to-do app's 228 take a few seconds once the build is made,
 because each mutant stops at the first test that fails, and the tests of
 the mutant's own module run first, where the killing test almost always is.
 
