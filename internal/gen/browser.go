@@ -73,7 +73,7 @@ func (f *fn) member(x *ir.Call, s *scope) string {
 			vals = append(vals, "_k")
 		default: // the checker made sure it is a Maybe, has a default, or is filled by the store
 			if fd.Default != nil {
-				vals = append(vals, encode(fd.Type, f.typedExpr(fd.Default, s)))
+				vals = append(vals, encode(fd.Brand, fd.Type, f.typedExpr(fd.Default, s)))
 			} else {
 				vals = append(vals, "nil")
 			}

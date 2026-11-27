@@ -65,11 +65,11 @@ import (
 // The Test nodes exist only in `test` bodies, which only a test build emits (Options.Tests):
 // one reaching the emitter in a production build is an internal error (testNode).
 //
-// Values compared with a column are encoded with the column's encoder (encode): Bool, Date, Time
-// and payload-less unions (name__M__U) have one, Maybe goes through db.EncodeMaybe, Text, Int and
-// Float are stored as they are. Calls read the transaction of the running effect (db.TxOf, which
-// begins a Task's transaction on its first store access): inside a Task every read sees the
-// Task's writes. A capability gets _e.Ctx, which carries the Env (eff.EnvFrom, db.TxFrom).
+// Values compared with a column are encoded with the column's encoder (encode): Bool, Date, Time,
+// Text.Email (folded, db.EncodeEmail) and payload-less unions (name__M__U) have one, Maybe goes
+// through db.EncodeMaybe, Text, Int and Float are stored as they are. Calls read the
+// transaction of the running effect (db.TxOf, which begins a Task's transaction on its first
+// store access): inside a Task every read sees the Task's writes. A capability gets _e.Ctx, which carries the Env (eff.EnvFrom, db.TxFrom).
 
 // effect is an effect, database or condition node as a Go expression of its own type.
 func (f *fn) effect(e ir.Expr, s *scope) string {
@@ -495,21 +495,22 @@ func (f *fn) cond(x *ir.Cond, s *scope) string {
 	case "isNothing", "isJust":
 		return fn + "(" + strconv.Quote(x.Col.Field) + ")"
 	case "in":
-		ct := columnType(x.Col)
-		return "db.CIn(" + strconv.Quote(x.Col.Field) + ", db.EncodeList(" + f.code(x.Value, s) + ", " + encodeFunc(ct) + "))"
+		fd := columnField(x.Col)
+		return "db.CIn(" + strconv.Quote(x.Col.Field) + ", db.EncodeList(" + f.code(x.Value, s) + ", " + encodeFunc(fd.Brand, fd.Type) + "))"
 	}
 	if fn == "" {
 		panic("gen: unknown condition " + x.Kind)
 	}
 	// typed: an Int literal passed as `any` would be a Go int
-	return fn + "(" + strconv.Quote(x.Col.Field) + ", " + encode(columnType(x.Col), f.typedExpr(x.Value, s)) + ")"
+	fd := columnField(x.Col)
+	return fn + "(" + strconv.Quote(x.Col.Field) + ", " + encode(fd.Brand, fd.Type, f.typedExpr(x.Value, s)) + ")"
 }
 
-// columnType is the type of a column's field.
-func columnType(c *ir.ColumnRef) types.Type {
+// columnField is a column's field: its type and brand, which its encoder takes.
+func columnField(c *ir.ColumnRef) ir.FieldT {
 	for _, fd := range c.Table.Record.Fields {
 		if fd.Name == c.Field {
-			return fd.Type
+			return fd
 		}
 	}
 	panic(fmt.Sprintf("gen: table %s.%s has no column %s", c.Table.Module, c.Table.Name, c.Field))
@@ -533,10 +534,17 @@ func enumUnion(t types.Type) *types.Union {
 	return nil
 }
 
-// encode is Go value v of column type t as the store keeps it.
-func encode(t types.Type, v string) string {
+// encode is Go value v of column type t, declared with brand b (a Maybe's element's), as the
+// store keeps it. A Text.Email is folded (db.EncodeEmail, #326), as columnDecoder folds it on
+// the way back: a value that reached the app unfolded (a Go adapter's) then matches, and
+// collides under @unique with, the stored address. Every column value written and every
+// operand compared with a column passes here, so encode takes the brand of every caller.
+func encode(b *ir.Brand, t types.Type, v string) string {
 	if a := maybeArg(t); a != nil {
-		return "db.EncodeMaybe(" + v + ", " + encodeFunc(a) + ")"
+		return "db.EncodeMaybe(" + v + ", " + encodeFunc(b, a) + ")"
+	}
+	if isEmail(b) {
+		return "db.EncodeEmail(" + v + ")"
 	}
 	if u := enumUnion(t); u != nil {
 		return enumName(u.Module, u.Name) + "(" + v + ")"
@@ -554,8 +562,8 @@ func encode(t types.Type, v string) string {
 
 // encodeFunc is encode as a Go function of type func(T) any. Its parameter x shadows nothing it
 // uses: its body refers to x alone.
-func encodeFunc(t types.Type) string {
-	return "func(x " + GoType(t) + ") any { return " + encode(t, "x") + " }"
+func encodeFunc(b *ir.Brand, t types.Type) string {
+	return "func(x " + GoType(t) + ") any { return " + encode(b, t, "x") + " }"
 }
 
 // decodeFunc is a Go function of type func(any) (T, error) decoding a stored value of column
@@ -585,11 +593,14 @@ func decodeFunc(t types.Type) string {
 // columnDecoder is decodeFunc for a column of type t (a Maybe's element) declared with brand b:
 // a Text.Email column reads lower-cased (db.DecodeEmail, #311), as every Text.Email is.
 func columnDecoder(b *ir.Brand, t types.Type) string {
-	if b != nil && b.Module == "Text" && b.Name == "Email" {
+	if isEmail(b) {
 		return "db.DecodeEmail"
 	}
 	return decodeFunc(t)
 }
+
+// isEmail reports whether b is the stdlib's Text.Email, which holds its address folded (#311).
+func isEmail(b *ir.Brand) bool { return brandName(b) == "Text.Email" }
 
 // enumLists are a payload-less union's constructor names and values, as Go slices.
 func enumLists(u *types.Union) (names, values string) {
@@ -656,7 +667,7 @@ func (g *gen) tableDecl(w *strings.Builder, tb *ir.Table) {
 	var vals []string
 	for _, fd := range tb.Record.Fields {
 		if inserted[fd.Name] {
-			vals = append(vals, encode(fd.Type, "r."+Field(fd.Name)))
+			vals = append(vals, encode(fd.Brand, fd.Type, "r."+Field(fd.Name)))
 		} else {
 			vals = append(vals, "nil")
 		}
@@ -676,7 +687,7 @@ func (g *gen) tableDecl(w *strings.Builder, tb *ir.Table) {
 	var dec strings.Builder
 	for i, fd := range tb.Record.Fields {
 		fmt.Fprintf(w, "%s,\n", columnLit(tb, fd))
-		enc = append(enc, encode(fd.Type, "r."+Field(fd.Name)))
+		enc = append(enc, encode(fd.Brand, fd.Type, "r."+Field(fd.Name)))
 		d := ""
 		if a := maybeArg(fd.Type); a != nil {
 			d = "db.DecodeMaybe(row[" + strconv.Itoa(i) + "], " + columnDecoder(fd.Brand, a) + ")"
@@ -736,7 +747,7 @@ func (g *gen) insertMineDecl(w *strings.Builder, tb *ir.Table, field func(string
 	var vals []string
 	for _, fd := range tb.Record.Fields {
 		if inserted[fd.Name] {
-			vals = append(vals, encode(fd.Type, "r."+Field(fd.Name)))
+			vals = append(vals, encode(fd.Brand, fd.Type, "r."+Field(fd.Name)))
 		} else {
 			vals = append(vals, "nil")
 		}

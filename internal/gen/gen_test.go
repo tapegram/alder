@@ -4450,7 +4450,6 @@ import (
 	"testing"
 	"time"
 
-	"alder/rt"
 	"alder/rt/db"
 	"alder/rt/eff"
 )
@@ -4478,9 +4477,9 @@ func TestEmailFold(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := &eff.Env{Ctx: ctx, Store: store, Caps: map[string]any{}, Now: time.Now}
-	// a row stored before the fold (Go writes it as given) reads back lower-cased
-	if _, err := db.InsertRow(ctx, store, nil, table__Person__Person,
-		insertvals__Person__Person(insert__Person__Person{Email: "Old@X.com", Alt: rt.Just("Alt@X.com")}), time.Now()); err != nil {
+	// a row stored before the fold (its column values written raw, not by insertvals, which
+	// folds since #326) reads back lower-cased
+	if _, err := db.InsertRow(ctx, store, nil, table__Person__Person, []any{nil, "Old@X.com", "Alt@X.com"}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	all, err := db.All(ctx, store, nil, db.From(table__Person__Person))

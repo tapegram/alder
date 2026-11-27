@@ -205,17 +205,21 @@ func (l *lowerer) eta(fn *types.Fun, body func(Expr) Expr) Expr {
 	return &Lambda{Typed: Typed{fn}, Params: []*Param{{Name: name, Type: fn.Params[0]}}, Body: body(arg)}
 }
 
+// FoldEmail is the compile-time fold of a Text.Email literal (#311): strings.ToLower, as the
+// runtime's std.TextFoldEmail and db.FoldEmail (internal/gen TestEmailFoldsAgree pins them).
+func FoldEmail(s string) string { return strings.ToLower(s) }
+
 // brandCtor is brand module.name's constructor applied to arg: the identity (a brand is erased,
 // so the result keeps arg's type), except Text.Email, which lower-cases its address (#311): a text literal is folded
-// here, with the runtime's strings.ToLower, and any other argument is a call of the stdlib value
-// Text.Email (gen: std.TextFoldEmail).
+// here (FoldEmail), and any other argument is a call of the stdlib value Text.Email (gen:
+// std.TextFoldEmail).
 func (l *lowerer) brandCtor(module, name string, arg Expr) Expr {
 	if module != "Text" || name != "Email" {
 		return arg
 	}
 	if lit, ok := arg.(*Lit); ok && lit.Kind == LitText {
 		folded := *lit
-		folded.Text = strings.ToLower(lit.Text)
+		folded.Text = FoldEmail(lit.Text)
 		return &folded
 	}
 	t := arg.Type()

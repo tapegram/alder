@@ -101,7 +101,7 @@ func fakeentry__Auth__Login__Password__Verify(args struct {
 	Password string
 }) eff.Task[rt.Maybe[string]] {
 	return eff.Bind(eff.Call("Db.first User", false, func(_e1 *eff.Env) (rt.Maybe[User__User], error) {
-		return db.First(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.Where(db.CEq("email", args.Email), db.From(table__User__User)))
+		return db.First(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.Where(db.CEq("email", db.EncodeEmail(args.Email)), db.From(table__User__User)))
 	}), func(found rt.Maybe[User__User]) eff.Task[rt.Maybe[string]] {
 		if args.Password == "secret" {
 			return eff.Pure(std.MaybeMap(func(u User__User) string {

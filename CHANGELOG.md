@@ -40,6 +40,7 @@ with the previous release, each with what to do.
 
 - Two `alder rollback --restore-backup` or `alder restore` runs within one second kept the database each replaced under one name (`db/app.db.before-rollback-<time>`), so the second overwrote the first's. A second kept file in the same second now gets `-2`, `-3`, … after the time, on SSH (and silo and Turso) targets and on Fly.
 - The dev panel and its "Copy as curl" line mask a route's `Text.Secret` form fields and path parameters by type, not only by name (a `pin` field was shown), and a log line masks a `Text.Secret` path parameter. The `Text.Secret` docs now say what is masked and what is not: `Log`, `Json.string`, `++` and a view's text show it in clear (#254).
+- A `Text.Email` is folded where it meets the database too: a column value inserted or updated, and the operand of every condition on a `Text.Email` column (`.eq`, `.ne`, `.lt`, `.le`, `.gt`, `.ge`, `.contains`, `.startsWith`, `.in`, a `Maybe Text.Email` column's too). An address that reached the app in capitals from a Go adapter found no row with `.eq` and passed `@unique`, so two users could share one email; it now finds the stored row and a second insert is a unique violation (#326).
 
 ## v0.2.0 — 2026-11-11
 

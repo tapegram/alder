@@ -81,12 +81,21 @@ func DecodeText(v any) (string, error) {
 	return "", fmt.Errorf("db: Text: want text, got %#v", v)
 }
 
-// DecodeEmail is DecodeText for a Text.Email column: the address lower-cased (#311), as
-// every Text.Email is, so a row stored before the fold compares equal to the values the app
-// makes. It is std.TextFoldEmail's strings.ToLower (rt/db cannot import rt/std).
+// FoldEmail is the case fold of a Text.Email (#311): the whole address lower-cased by
+// strings.ToLower. It is std.TextFoldEmail's fold and the compiler's for a literal
+// (ir.FoldEmail); rt/db cannot import rt/std, so a test in internal/gen pins the three equal.
+func FoldEmail(s string) string { return strings.ToLower(s) }
+
+// EncodeEmail is a Text.Email column value, or an operand compared with one, as stored:
+// folded (#326). A value that reached the app unfolded (a Go adapter's) then finds the stored
+// row, and a case variant of a stored address is refused by @unique.
+func EncodeEmail(s string) string { return FoldEmail(s) }
+
+// DecodeEmail is DecodeText for a Text.Email column: the address folded (#311), as every
+// Text.Email is, so a row stored before the fold compares equal to the values the app makes.
 func DecodeEmail(v any) (string, error) {
 	s, err := DecodeText(v)
-	return strings.ToLower(s), err
+	return FoldEmail(s), err
 }
 
 // DecodeInt accepts INTEGER.

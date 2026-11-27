@@ -19,7 +19,7 @@ type insert__Table__User__User = struct {
 }
 
 func insertvals__Table__User__User(r insert__Table__User__User) []any {
-	return []any{nil, r.Email, r.Name}
+	return []any{nil, db.EncodeEmail(r.Email), r.Name}
 }
 
 var table__Table__User__User = &db.Table[Table__User__User]{
@@ -31,7 +31,7 @@ var table__Table__User__User = &db.Table[Table__User__User]{
 	},
 	ID: "id",
 	Encode: func(r Table__User__User) []any {
-		return []any{r.Id, r.Email, r.Name}
+		return []any{r.Id, db.EncodeEmail(r.Email), r.Name}
 	},
 	Decode: func(row []any) (r Table__User__User, err error) {
 		if len(row) != 3 {

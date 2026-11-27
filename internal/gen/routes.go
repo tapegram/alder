@@ -792,7 +792,7 @@ func (d *decoder) parse(t types.Type, b *ir.Brand, src, name, text string, assig
 	switch scalarKind(t) {
 	case "text":
 		v = text
-		if b != nil && b.Module == "Text" && b.Name == "Email" { // lower-cased, then checked (#311)
+		if isEmail(b) { // lower-cased, then checked (#311)
 			v = "std.TextFoldEmail(" + text + ")"
 		}
 	case "bool":
