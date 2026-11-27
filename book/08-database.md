@@ -298,10 +298,12 @@ fails the task with a message such as `User.email must be unique`, and
 everything the task wrote before is rolled back; check first with a query
 and answer `Response.invalid` if the user should see a message.
 
-A `Text.Email` column is stored lower-case (a `Text.Email` is lower-case
-wherever one is made; chapter 4, "Refinements"), so `@unique` on it refuses
-`Ada@Example.com` when `ada@example.com` is already there, and
-`User.email.eq` finds a user however the address was typed.
+A `Text.Email` column is stored lower-case: an insert and an update fold the
+value, and so does every condition on the column (`.eq`, `.in` and the rest,
+a `Maybe` column too), so `@unique` on it refuses `Ada@Example.com` when
+`ada@example.com` is already there, and `User.email.eq` finds a user however
+the address was typed, even one a Go adapter returned in capitals (chapter 7,
+"What a capability looks like in Go"; chapter 4, "Refinements").
 
 > **`Response.invalid` keeps earlier writes.** It is a successful result, so
 > the transaction commits and writes made before it are kept (chapter 6,
@@ -958,7 +960,7 @@ refuses one whose writes fall in two stores (E0031):
 ```
 
 What it counts is every mention of a write function — `Db.insert`,
-`Db.update`, `Db.delete` and their scoped forms — anywhere the `update` can
+`Db.update`, `Db.delete` and their scoped forms — anywhere the handler can
 reach: in the handler, in every helper it mentions (in any module, a helper
 of a helper too), in a lambda, in a `Task.all` over a `List.map`.
 

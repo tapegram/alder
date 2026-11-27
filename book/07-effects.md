@@ -543,6 +543,17 @@ Returning a non-nil `error` fails the task, which rolls it back. The
 brands are gone in Go (`User.UserId` is a `string`), so the Go side must
 keep the brand's promise itself.
 
+`Text.Email` is the one brand with a rule of its own. An address handed to
+an adapter is folded to lower case, since the program made it. An address an
+adapter returns need not be: the runtime folds a `Text.Email` where it is written
+to or compared in the database (an insert, an update, and the operand of a
+`Db` condition such as `.eq` or `.in`), so an adapter may return
+`Ada@Example.com` and the row it finds or makes is `ada@example.com`. In
+memory it stays as the adapter wrote it until it has been stored and read
+back: `==` compares the two strings as they are, so an address straight from
+an adapter is not equal to the same address read from a row. Lower-case it in Go
+when the program compares it with `==` before storing it.
+
 The other types:
 
 - `Int` is `int64`, `Float` `float64`, `Text` `string`, `Bool` `bool`.

@@ -34,7 +34,7 @@ type FormOptions struct {
 	Fields []FieldSpec
 	Into   string // --into T: the table the arm inserts into
 	Msg    string // --msg M: the message that posts the form ("Submit<Name>" by default); on a route module, the route's name
-	Hole   bool   // --hole: on a route module, the `update` body is the hole ?answer
+	Hole   bool   // --hole: on a route module, the handler body is the hole ?answer
 	// Method is --method, the write route's method ("" for POST); Path is --path, its path ("" for
 	// the table's collection, else the page's own path).
 	Method string
@@ -146,9 +146,9 @@ type formTestSpec struct {
 	Answer  string        // the answer of a valid submission
 	Fields  []types.Field // the form's fields
 	Types   map[string]types.Type
-	Into    *Table // the table the update inserts into, or nil
+	Into    *Table // the table the handler inserts into, or nil
 	NoEmpty bool   // no test of an empty required field
-	Notice  string // the toast a valid submission's update sends ("Saved"), asserted with the rows; "" for none
+	Notice  string // the toast a valid submission's handler sends ("Saved"), asserted with the rows; "" for none
 }
 
 // formTests are the tests of a form: a valid submission (its answer, and the row inserted into

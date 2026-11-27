@@ -3118,6 +3118,14 @@ The admin form `requires user, role Admin, silo org`:
 
 **Fix offered:** the wire name as the `name`
 
+#### W0009 — deploy files exist but App.alder has no `deploy` block
+
+- `render.yaml` or `fly.toml` (the files of `alder deploy init`) exists in the project and App.alder has no `deploy` block (chapter 16): "render.yaml deploys whatever is pushed, with no check, migration plan or backup: add a `deploy` block to App.alder (book chapter 16)".
+- With both files, "render.yaml and fly.toml deploy …".
+- A Dockerfile alone is not reported.
+
+**Fix offered:** add a `deploy` block
+
 #### W0010 — a module that hides a capability of its name
 
 - A call `Clarity.latest` that resolved to module `Clarity`'s `latest` while an imported `capability Clarity` has that entry ("module `Clarity` shadows `capability Clarity` of `Feeds` in this module: `Clarity.latest` here is the module's `latest`, not the capability's entry; write `Feeds.Clarity.latest` for the capability, or rename module `Clarity` (for example to `ClarityModule`)"), reported at the import.
@@ -3129,17 +3137,12 @@ The admin form `requires user, role Admin, silo org`:
 - `Notice.with`, `Notice.success`, `Notice.warning` or `Notice.error`: "`Notice.success` is now `Response.success`" (chapter 9, "Response").
 - The old names still work, as aliases, for one release.
 
-#### W0016 — `Response.render`, which is going away
+#### W0013 — a write route's handler named `update`
 
-- "`Response.render Row` is going away: load what `Row.view` shows and answer `Response.replace [ Row.view … ]`, a handler sends the views it built" (chapter 6, "`Response`"). `render` still works, for one release.
+- A write route's handler still named `update`, not after its method: "`Toggle.update` is now `Toggle.patch`: a write route's handler is named after its method. `alder fmt` renames it." (chapter 6, "A route module"). The method gives the name: `post`, `put`, `patch` or `delete`, as in `Add.post`.
+- It is reported at the signature, at the definition and at every reference to it, in any module, each with the rename as its fix. The old name works for one release; after that it is E0043.
 
-#### W0009 — deploy files exist but App.alder has no `deploy` block
-
-- `render.yaml` or `fly.toml` (the files of `alder deploy init`) exists in the project and App.alder has no `deploy` block (chapter 16): "render.yaml deploys whatever is pushed, with no check, migration plan or backup: add a `deploy` block to App.alder (book chapter 16)".
-- With both files, "render.yaml and fly.toml deploy …".
-- A Dockerfile alone is not reported.
-
-**Fix offered:** add a `deploy` block
+**Fix offered:** the rename; `alder fmt` applies it (this chapter, "Formatting")
 
 #### W0014 — a helper of a route module without its `requires` clause
 
@@ -3148,6 +3151,10 @@ The admin form `requires user, role Admin, silo org`:
 #### W0015 — a `requires` clause the body does not need
 
 - "`current` says `requires org` and uses nothing that needs `org`". The clause may run ahead of the body, so a helper can be declared and its callers written before it is filled in; callers are checked against the clause all the same.
+
+#### W0016 — `Response.render`, which is going away
+
+- "`Response.render Row` is going away: load what `Row.view` shows and answer `Response.replace [ Row.view … ]`, a handler sends the views it built" (chapter 6, "`Response`"). `render` still works, for one release.
 
 ## Editor support
 

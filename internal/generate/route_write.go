@@ -10,7 +10,7 @@ import (
 // newWriteRoute is NewRoute for --method POST|PUT|PATCH|DELETE: a module with a write route,
 // which has a handler named after its method (`post`, …) answering `Response.refresh` and no `load` or `view`. It has no test: a
 // write route is pressed from a page that has its button or form, which the module does not
-// have (a comment above `update` says so). A parameter that is a `{name}` segment of the path is
+// have (a comment above the handler says so). A parameter that is a `{name}` segment of the path is
 // the URL's, the others ride in the query string (--param names them all); --form F declares `form F = { }` and posts it.
 func newWriteRoute(p *Program, o RouteOptions, route, method string) ([]Edit, error) {
 	if o.List != "" || o.Show != "" || len(o.From) > 0 || o.Blank || o.File || o.ContentType != "" || o.By != "" || o.Example {

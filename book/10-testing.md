@@ -1957,7 +1957,10 @@ Section 10 shows how each is made.
   the held page lacks changes nothing in a real browser, silently. The
   test fails the step: "DELETE /members/3: the answer replaced
   `#member-count`, which the page does not have" (and "…removed
-  `#member-3`, which the page does not have"). A `render` whose root `id`
+  `#member-3`, which the page does not have"). The roots are applied one
+  after another, as the page's script applies them, so a root whose element
+  an earlier root took out of the page has nowhere to go either, and a
+  removal takes out every element with the `id`. A `render` whose root `id`
   the page lacks fails the same way: "PATCH /todos/9: the answer patched
   `#todo-9`, which the page does not have".
 

@@ -420,7 +420,9 @@ The checker refuses a root it can see that has no `id`, shares one, is a
 `countView` is a `<p>` without an `id`"). Everything else is checked when
 the answer is sent: a root the checker cannot see (a variable, or a list
 built elsewhere), and a form control, which the checker does not look for
-yet. A replace the runtime cannot send sends nothing at all, logs why and
+yet: the runtime refuses it when the answer is sent, with "`Response.replace`:
+root 1 is a form control; each root replaces the page's element with its
+id". A replace the runtime cannot send sends nothing at all, logs why and
 shows an error toast, so the page is never left half-changed. The test
 browser answers that click with `RequestFailed` and the reason, and a click
 whose answer the test never checks still passes, so check the answer to
@@ -1317,7 +1319,7 @@ row that does not exist: **not found**.
 
 - In `load`, `Db.getMine` of another user's id is `Query.notFound`: the
   page is a 404, `App.notFound`.
-- In `update`, `Db.updateMine` or `Db.deleteMine` of another user's id
+- In a write route's handler, `Db.updateMine` or `Db.deleteMine` of another user's id
   is `Task.notFound`. The whole `Task` fails, so everything it did before
   is rolled back too, writes and `Session.put` alike (chapter 7), and the
   answer is a 404.
@@ -1355,8 +1357,9 @@ recent : Select Todo requires user
 recent = Db.mine Todo |> Db.orderBy Todo.created.desc |> Db.limit 5
 ```
 
-The clause sits on the signature's line or on the line right after it,
-indented; a blank line ends the signature. Each key is named once and is a
+The clause sits on the signature's line or on the line right after it
+(indenting it is the habit, not a rule); a blank line or a comment line
+ends the signature, and a clause after one is E0001. Each key is named once and is a
 `Maybe` field of the session, as on a route line (E0011).
 The clause is not part of the type: `recent` is a `Select Todo`, and is
 passed, stored and unified as one. It may sit in the route's module or in

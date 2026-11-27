@@ -14,7 +14,7 @@ import (
 // newRouteForm is `alder new form` on a route module (plan call 13): `form <Name>`, the write
 // route `<Name> = <METHOD> "<path>" { <page path parameters> } form <Name>` with the
 // page's guard (named `Submit<Name>`, or --msg's name: a route cannot share its form's name), its
-// `update` (an insert into the table the fields match by name and type, or --into's, then
+// handler (an insert into the table the fields match by name and type, or --into's, then
 // `Response.redirect` to the page and `Response.success "Saved"`; the hole `?answer` with
 // --hole, and when no table fits), the form in the GET route's `view` (inside its last
 // `al-card`, or in a card of its own), and two tests: a valid submission, and an empty required
@@ -129,7 +129,7 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 		d.Inputs = append(d.Inputs, input(f.Name, f.Type))
 	}
 
-	// the table the update inserts into
+	// the table the handler inserts into
 	var into *Table
 	switch {
 	case o.Hole, attach != nil:
@@ -204,7 +204,7 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 	}
 	line := fmt.Sprintf("route %s = %s \"%s\" %s form %s%s", route, method, path, ps, o.Name, guardText(r))
 
-	// the update
+	// the handler
 	response := "Response.refresh"
 	answerBack := "Refreshed"
 	if redirectable {
@@ -436,7 +436,7 @@ func formPath(r *Route, into *Table) string {
 // in its path and whose Model holds the row (`row: T`, what `--show T` writes), `form <Name>` of
 // the given fields (else T's editable columns: no ids, timestamps, secrets, owner, partition or
 // references to users), the write route `Save<Name> = PUT "<member path>" { <page path
-// parameters> } form <Name>` with the page's guard, its `update` writing the form over the row by
+// parameters> } form <Name>` with the page's guard, its handler writing the form over the row by
 // the table's access (updateMine for an `@owner` table, updateScoped for a `@partition k` one, a
 // keyless table's Db.update after Db.get, a missing row not found), the form in the view filled
 // with the row's values (its path parameters the row's: the id, and a partition key the path
@@ -575,7 +575,7 @@ func newEditForm(p *Program, o FormOptions, r *Route, m *Module, route string) (
 	}
 	line := fmt.Sprintf("route %s = %s \"%s\" { %s } form %s%s", route, method, path, strings.Join(params, ", "), o.Name, guardText(r))
 
-	// the update: getMine/getScoped need no load (the scoped update alone finds the row, another
+	// the handler: getMine/getScoped need no load (the scoped handler alone finds the row, another
 	// user's being not found); Db.get's Maybe is matched, a missing row not found
 	response := "Response.refresh"
 	if redirectable {

@@ -220,7 +220,9 @@ differing only in case are the same address. The fold happens wherever an
 email is made: decoded from a form or a route (before the check), applied
 as a brand (a literal is folded when the program is compiled), read from a
 database column, drawn by a property test, and given by `Text.toEmail`
-(chapter 9). It is `Text.toLower`'s fold, so `É` becomes `é`. What is lost
+(chapter 9). It also happens when one is written to a column or compared in
+a condition. The one address that reaches the program unfolded is one a Go
+adapter returns (chapter 7, "What a capability looks like in Go"). It is `Text.toLower`'s fold, so `É` becomes `é`. What is lost
 is the capitals the person typed: an app that wants to show them keeps a
 second `Text` column.
 

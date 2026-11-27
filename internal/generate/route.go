@@ -101,7 +101,7 @@ type RouteOptions struct {
 	Module string
 	Path   string
 	// Method is the route's method: GET (or "") for a route with `load` and `view`, else POST,
-	// PUT, PATCH or DELETE for a write route, which has only `update` (--method). Form (--form F)
+	// PUT, PATCH or DELETE for a write route, which has only its handler (--method). Form (--form F)
 	// is a write route's form, declared empty in the module.
 	Method   string
 	Form     string
@@ -115,7 +115,7 @@ type RouteOptions struct {
 	// page keeps --show's path and parameter (`/{id}`, the row's id), and nothing else of it.
 	Blank bool
 	// Example (--example): the plain route carries a `count: Int = 0` parameter, a write route
-	// `Bump = POST "<path>"`, the page's own path (a GET reads it, a POST writes it), whose `update` redirects to the route with the new count and
+	// `Bump = POST "<path>"`, the page's own path (a GET reads it, a POST writes it), whose handler redirects to the route with the new count and
 	// a view showing it, every part marked `-- example:` so the reader deletes it once
 	// understood. Off on the CLI; the editor's form starts with it on (Field.Default).
 	Example bool

@@ -164,7 +164,7 @@ func newRouteMsg(p *Program, page, name string, fields []FieldSpec, o ActionOpti
 		return nil, err
 	}
 
-	// after the button: a one-line view that ends the file is split at its end, where the update goes
+	// after the button: a one-line view that ends the file is split at its end, where the handler goes
 	e.insertBefore(lastRoute.GetSpan().End.Line+1, line+"\n")
 	if firstTest != nil {
 		e.insertBefore(declStart(e, firstTest), update+"\n")
